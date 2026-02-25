@@ -66,7 +66,20 @@ class SecurityConfig:
 
         origins = os.getenv("ALLOWED_ORIGINS", "")
         if origins:
-            config.allowed_origins = [o.strip() for o in origins.split(",")]
+            parsed_origins = [o.strip() for o in origins.split(",")]
+            # Validate origins - reject wildcards in production
+            for origin in parsed_origins:
+                if origin == "*":
+                    logger.warning(
+                        "SECURITY WARNING: Wildcard CORS origin '*' is insecure. "
+                        "Please specify exact origins in ALLOWED_ORIGINS"
+                    )
+                elif not origin.startswith(("http://", "https://")):
+                    logger.warning(
+                        f"SECURITY WARNING: Invalid CORS origin '{origin}' - "
+                        "must start with http:// or https://"
+                    )
+            config.allowed_origins = parsed_origins
 
         extra_paths = os.getenv("ALLOWED_PATHS", "")
         if extra_paths:
