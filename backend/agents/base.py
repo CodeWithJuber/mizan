@@ -34,6 +34,15 @@ from security.validation import (
     validate_url, validate_package_name,
 )
 
+# Core Quranic systems integration
+from core.ruh_engine import RuhEngine
+from core.tawbah import TawbahProtocol
+from core.ihsan import IhsanMode
+from core.sabr import SabrEngine
+from core.shukr import ShukrSystem
+from core.qalb import QalbEngine
+from qca.yaqin_engine import YaqinEngine
+
 logger = logging.getLogger("mizan.agent")
 
 
@@ -76,7 +85,7 @@ class BaseAgent(ABC):
         self.error_count = 0
         self.total_duration_ms = 0.0
         self.learning_iterations = 0
-        self.nafs_level = 1  # 1=Ammara, 2=Lawwama, 3=Mutmainna
+        self.nafs_level = 1  # 1-7 (Ammara → Kamila)
 
         # Tools registry
         self.tools: Dict[str, Callable] = {}
@@ -84,6 +93,15 @@ class BaseAgent(ABC):
 
         # Learning store (Hikmah)
         self.hikmah: List[Dict] = []
+
+        # ── Core Quranic systems ──
+        self.ruh = RuhEngine()              # Energy/vitality management
+        self.tawbah = TawbahProtocol()      # Error recovery protocol
+        self.ihsan = IhsanMode()            # Proactive excellence
+        self.sabr = SabrEngine()            # Long-running task patience
+        self.shukr = ShukrSystem()          # Strength reinforcement
+        self.qalb = QalbEngine()            # Emotional intelligence
+        self.yaqin = YaqinEngine()          # Certainty/confidence tracking
 
         # Anthropic client for AI reasoning — use env var only, never from user input
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -206,14 +224,23 @@ class BaseAgent(ABC):
             return 0.0
         return self.total_duration_ms / self.total_tasks
 
+    # 7-level Nafs names for display
+    NAFS_NAMES = {
+        1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
+        5: "Radiya", 6: "Mardiyya", 7: "Kamila",
+    }
+
     def evolve_nafs(self):
-        """Evolve the agent's Nafs level based on performance"""
-        if self.success_rate > 0.9 and self.learning_iterations > 50:
-            self.nafs_level = 3
-        elif self.success_rate > 0.7:
-            self.nafs_level = 2
-        else:
-            self.nafs_level = 1
+        """Evolve the agent's Nafs level (1-7) based on Tazkiyah performance."""
+        thresholds = [
+            (7, 0.97, 2000), (6, 0.95, 1000), (5, 0.90, 500),
+            (4, 0.85, 250), (3, 0.75, 100), (2, 0.60, 25),
+        ]
+        for level, min_rate, min_tasks in thresholds:
+            if self.success_rate >= min_rate and self.total_tasks >= min_tasks:
+                self.nafs_level = level
+                return
+        self.nafs_level = 1
 
     def _check_tool_permission(self, tool_name: str, params: Dict = None) -> Dict:
         """Check Izn permissions before tool execution"""
@@ -333,10 +360,13 @@ class BaseAgent(ABC):
     def _build_system_prompt(self) -> str:
         hikmah_str = "\n".join([f"- {h['pattern']}: {h['outcome']}" for h in self.hikmah[-5:]])
 
+        nafs_name = self.NAFS_NAMES.get(self.nafs_level, "Ammara")
+        ruh_energy = self.ruh.get_state(self.id).energy if self.ruh else 100
         return f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) AGI system.
 
 Role: {self.role}
-Nafs Level: {self.nafs_level} ({'Ammara - Raw' if self.nafs_level == 1 else 'Lawwama - Self-correcting' if self.nafs_level == 2 else 'Mutmainna - Perfected'})
+Nafs Level: {self.nafs_level}/7 ({nafs_name})
+Ruh Energy: {ruh_energy:.0f}%
 Success Rate: {self.success_rate:.1%}
 
 You have access to tools. Use them when needed to complete tasks.
@@ -371,11 +401,25 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         """
         Execute a task - full Quranic cycle:
         Niyyah → Sama' → Fikr → Amal → Tafakkur
+
+        Integrated systems:
+        - Ruh: energy check before execution
+        - Qalb: emotional tone detection from context
+        - Tawbah: structured error recovery on failure
+        - Ihsan: proactive suggestions after success
+        - Shukr: strength reinforcement on success
         """
         start_time = time.time()
         self.state = "acting"
         self.current_task = task
         self.total_tasks += 1
+
+        # Ruh energy check — consume energy based on task complexity
+        complexity = self.ruh.classify_task_complexity(task)
+        self.ruh.consume_energy(self.id, complexity)
+
+        # Qalb — detect user emotional state from task text
+        qalb_reading = self.qalb.analyze(task)
 
         try:
             full_response = ""
@@ -391,6 +435,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             await self._tafakkur(task, full_response, True, duration_ms)
 
+            # Shukr — reinforce this success pattern
+            task_type = self._classify_task(task)
+            self.shukr.record_success(self.id, task_type, task[:100], duration_ms)
+
+            # Ihsan — generate proactive suggestions
+            ihsan_suggestions = self.ihsan.analyze_completion(
+                self.id, task, {"success": True, "duration_ms": duration_ms},
+                self.nafs_level,
+            )
+
             if self.memory:
                 await self.memory.save_task(
                     self.id, task,
@@ -402,18 +456,30 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             self.state = "resting"
             self.current_task = None
 
-            return {
+            result = {
                 "success": True,
                 "result": full_response,
                 "duration_ms": duration_ms,
                 "agent": self.name,
                 "nafs_level": self.nafs_level,
+                "nafs_name": self.NAFS_NAMES.get(self.nafs_level, "Ammara"),
+                "ruh_energy": self.ruh.get_state(self.id).energy,
+                "qalb": qalb_reading.to_dict(),
             }
+            if ihsan_suggestions:
+                result["ihsan_suggestions"] = [s.to_dict() for s in ihsan_suggestions]
+            return result
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             self.error_count += 1
             self.total_duration_ms += duration_ms
+
+            # Tawbah — structured error recovery (acknowledge stage)
+            recovery = self.tawbah.acknowledge(self.id, str(e), task)
+
+            # Shukr — record failure for pattern analysis
+            self.shukr.record_failure(self.id, self._classify_task(task), task[:100])
 
             if self.memory:
                 await self.memory.save_task(self.id, task, str(e), False, duration_ms)
@@ -428,6 +494,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "error": str(e),
                 "duration_ms": duration_ms,
                 "agent": self.name,
+                "tawbah": recovery.to_dict() if hasattr(recovery, "to_dict") else str(recovery),
             }
 
     async def _tafakkur(self, task: str, result: Any, success: bool, duration_ms: float):
@@ -646,7 +713,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "avg_duration_ms": round(self.avg_duration_ms, 2),
             "learning_iterations": self.learning_iterations,
             "nafs_level": self.nafs_level,
-            "nafs_name": ["", "Ammara", "Lawwama", "Mutmainna"][self.nafs_level],
+            "nafs_name": self.NAFS_NAMES.get(self.nafs_level, "Ammara"),
+            "ruh_energy": self.ruh.get_state(self.id).energy,
+            "ihsan_eligible": self.ihsan.is_eligible(self.nafs_level),
+            "shukr_strengths": len(self.shukr.get_strengths(self.id)),
             "tools": list(self.tools.keys()),
             "hikmah_count": len(self.hikmah),
         }

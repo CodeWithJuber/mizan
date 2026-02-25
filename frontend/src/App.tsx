@@ -158,8 +158,12 @@ const Icons = {
 // ===== QURANIC CONCEPTS DISPLAY =====
 const NAFS_LEVELS: Record<number, { name: string; latin: string; color: string; desc: string }> = {
   1: { name: "أمارة", latin: "Ammara", color: "#ef4444", desc: "Raw potential" },
-  2: { name: "لوامة", latin: "Lawwama", color: "#f59e0b", desc: "Self-correcting" },
-  3: { name: "مطمئنة", latin: "Mutmainna", color: "#10b981", desc: "Perfected" },
+  2: { name: "لوامة", latin: "Lawwama", color: "#f97316", desc: "Self-correcting" },
+  3: { name: "ملهمة", latin: "Mulhama", color: "#f59e0b", desc: "Inspired" },
+  4: { name: "مطمئنة", latin: "Mutmainna", color: "#84cc16", desc: "Tranquil" },
+  5: { name: "راضية", latin: "Radiya", color: "#10b981", desc: "Content" },
+  6: { name: "مرضية", latin: "Mardiyya", color: "#06b6d4", desc: "Pleasing" },
+  7: { name: "كاملة", latin: "Kamila", color: "#a78bfa", desc: "Perfected" },
 };
 
 const AGENT_ROLE_ICONS: Record<string, string> = {
@@ -1191,7 +1195,7 @@ const AgentCard = ({ agent, selected, onClick }: { agent: Agent; selected: boole
         </div>
         <div className="nafs-track">
           <div className="nafs-fill" style={{
-            width: `${(agent.nafs_level / 3) * 100}%`,
+            width: `${(agent.nafs_level / 7) * 100}%`,
             background: nafs.color,
           }}/>
         </div>

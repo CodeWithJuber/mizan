@@ -34,22 +34,27 @@ class TestBaseAgent:
         assert "read_file" in agent.tools
 
     def test_nafs_evolution(self, agent):
-        """Nafs level should evolve based on performance."""
+        """Nafs level should evolve based on 7-level performance thresholds."""
         # Start as Ammara
         assert agent.nafs_level == 1
 
-        # Simulate good performance
-        agent.total_tasks = 100
-        agent.success_count = 75
-        agent.learning_iterations = 10
+        # Simulate moderate performance → Lawwama (>=60%, >=25 tasks)
+        agent.total_tasks = 30
+        agent.success_count = 20  # 66.7%
         agent.evolve_nafs()
         assert agent.nafs_level == 2  # Lawwama
 
-        # Simulate excellent performance
-        agent.success_count = 95
-        agent.learning_iterations = 60
+        # Simulate good performance → Mulhama (>=75%, >=100 tasks)
+        agent.total_tasks = 100
+        agent.success_count = 80  # 80%
         agent.evolve_nafs()
-        assert agent.nafs_level == 3  # Mutmainna
+        assert agent.nafs_level == 3  # Mulhama
+
+        # Simulate excellent → Mutmainna (>=85%, >=250 tasks)
+        agent.total_tasks = 250
+        agent.success_count = 220  # 88%
+        agent.evolve_nafs()
+        assert agent.nafs_level == 4  # Mutmainna
 
     def test_success_rate(self, agent):
         """Success rate calculation."""
