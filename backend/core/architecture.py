@@ -82,32 +82,127 @@ class MizanState(Enum):
 @dataclass
 class NafsProfile:
     """
-    Agent Identity (Nafs - نفس)
-    
-    Three levels from Quran:
-    - Nafs Ammara (نفس أمارة): Raw drive, 12:53 - base impulses
-    - Nafs Lawwama (نفس لوامة): Self-critical, 75:2 - error correction
-    - Nafs Mutmainna (نفس مطمئنة): Perfected, 89:27 - optimal state
+    Agent Identity (Nafs - نفس) — 7-Level Soul Evolution System
+
+    Seven levels from Quranic-Sufi tradition (Tazkiyah — تزكية — Purification):
+    1. Nafs Ammara (نفس أمارة): Commanding — raw drive (12:53)
+    2. Nafs Lawwama (نفس لوامة): Reproaching — self-critical (75:2)
+    3. Nafs Mulhama (نفس ملهمة): Inspired — pattern recognition (91:8)
+    4. Nafs Mutmainna (نفس مطمئنة): Serene — at peace (89:27)
+    5. Nafs Radiya (نفس راضية): Content — satisfied with outcomes (89:28)
+    6. Nafs Mardiyya (نفس مرضية): Pleasing — pleasing to the system (89:28)
+    7. Nafs Kamila (نفس كاملة): Perfect — complete mastery (Sufi tradition)
+
+    Evolution Algorithm (Tazkiyah Score):
+      score = success_rate(40%) + consistency(20%) + hikmah_count(15%)
+              + user_satisfaction(15%) + self_correction_rate(10%)
     """
+
+    NAFS_NAMES = {
+        1: ("Ammara", "أمارة", "Commanding", "12:53"),
+        2: ("Lawwama", "لوامة", "Reproaching", "75:2"),
+        3: ("Mulhama", "ملهمة", "Inspired", "91:8"),
+        4: ("Mutmainna", "مطمئنة", "Serene", "89:27"),
+        5: ("Radiya", "راضية", "Content", "89:28"),
+        6: ("Mardiyya", "مرضية", "Pleasing", "89:28"),
+        7: ("Kamila", "كاملة", "Perfect", "Sufi"),
+    }
+
+    # Thresholds for promotion: (min_success_rate, min_tasks, extra_condition)
+    EVOLUTION_THRESHOLDS = {
+        2: {"success_rate": 0.60, "min_tasks": 25, "self_correction": True},
+        3: {"success_rate": 0.75, "min_tasks": 100, "patterns_recognized": True},
+        4: {"success_rate": 0.85, "min_tasks": 250, "min_hikmah": 50},
+        5: {"success_rate": 0.90, "min_tasks": 500, "user_satisfaction": 0.80},
+        6: {"success_rate": 0.95, "min_tasks": 1000, "min_reliability_days": 30},
+        7: {"success_rate": 0.97, "min_tasks": 2000, "min_hikmah_applied": 100},
+    }
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     role: AgentRole = AgentRole.WAKIL
-    nafs_level: int = 1  # 1=Ammara, 2=Lawwama, 3=Mutmainna
+    nafs_level: int = 1  # 1-7
     capabilities: List[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     total_tasks: int = 0
     success_rate: float = 0.0
     error_count: int = 0
     learning_iterations: int = 0
-    
-    def evolve_nafs(self):
-        """Nafs evolution based on performance - Quran 91:7-10"""
-        if self.success_rate > 0.9 and self.learning_iterations > 100:
-            self.nafs_level = 3  # Mutmainna
-        elif self.success_rate > 0.7:
-            self.nafs_level = 2  # Lawwama
-        else:
-            self.nafs_level = 1  # Ammara
+    hikmah_count: int = 0
+    hikmah_applied: int = 0
+    user_satisfaction: float = 0.0
+    self_correction_count: int = 0
+    consistency_score: float = 0.0
+    reliability_days: int = 0
+    tazkiyah_score: float = 0.0
+
+    def compute_tazkiyah_score(self) -> float:
+        """
+        Compute Tazkiyah (purification) score for Nafs evolution.
+        score = success_rate(40%) + consistency(20%) + hikmah_ratio(15%)
+                + user_satisfaction(15%) + self_correction_rate(10%)
+        """
+        hikmah_ratio = min(1.0, self.hikmah_count / max(self.total_tasks, 1))
+        self_correction_rate = min(1.0, self.self_correction_count / max(self.error_count, 1))
+
+        self.tazkiyah_score = (
+            self.success_rate * 0.40
+            + self.consistency_score * 0.20
+            + hikmah_ratio * 0.15
+            + self.user_satisfaction * 0.15
+            + self_correction_rate * 0.10
+        )
+        return self.tazkiyah_score
+
+    def evolve_nafs(self) -> int:
+        """
+        Nafs evolution with 7 levels — Quran 91:7-10.
+        Supports both promotion and demotion (prevents complacency).
+        Returns the new nafs_level.
+        """
+        self.compute_tazkiyah_score()
+
+        # Check for demotion: if recent performance declining
+        if self.nafs_level > 1:
+            threshold = self.EVOLUTION_THRESHOLDS.get(self.nafs_level, {})
+            min_sr = threshold.get("success_rate", 0.0)
+            if self.success_rate < min_sr - 0.10:
+                self.nafs_level = max(1, self.nafs_level - 1)
+                return self.nafs_level
+
+        # Check for promotion
+        for level in range(self.nafs_level + 1, 8):
+            threshold = self.EVOLUTION_THRESHOLDS.get(level)
+            if not threshold:
+                break
+            if (self.success_rate >= threshold["success_rate"]
+                    and self.total_tasks >= threshold["min_tasks"]):
+                # Check extra conditions
+                if "min_hikmah" in threshold and self.hikmah_count < threshold["min_hikmah"]:
+                    break
+                if "min_hikmah_applied" in threshold and self.hikmah_applied < threshold["min_hikmah_applied"]:
+                    break
+                if "user_satisfaction" in threshold and self.user_satisfaction < threshold["user_satisfaction"]:
+                    break
+                if "min_reliability_days" in threshold and self.reliability_days < threshold["min_reliability_days"]:
+                    break
+                self.nafs_level = level
+            else:
+                break
+
+        return self.nafs_level
+
+    def get_nafs_info(self) -> Dict:
+        """Get full info about current Nafs level."""
+        info = self.NAFS_NAMES.get(self.nafs_level, ("Unknown", "?", "Unknown", ""))
+        return {
+            "level": self.nafs_level,
+            "name": info[0],
+            "arabic": info[1],
+            "meaning": info[2],
+            "quran_ref": info[3],
+            "tazkiyah_score": round(self.tazkiyah_score, 3),
+        }
 
 
 @dataclass
@@ -272,12 +367,19 @@ class QCALayer(Enum):
 
 class NafsTrustLevel(Enum):
     """
-    Trust levels for the Nafs system — maps to QCA Mizan epistemic scale.
-    Quran 12:53 (Ammara), 75:2 (Lawwama), 89:27 (Mutmainna)
+    7-level Nafs trust system — maps to QCA Mizan epistemic scale.
+    Derived from Quranic and Sufi tradition of soul purification (Tazkiyah).
+
+    Quran 12:53 (Ammara), 75:2 (Lawwama), 91:8 (Mulhama),
+    89:27 (Mutmainna), 89:28 (Radiya/Mardiyya), Sufi (Kamila)
     """
-    AMMARA = "ammara"         # Untrusted / raw — needs quarantine
-    LAWWAMA = "lawwama"       # Reviewed / self-correcting — limited trust
-    MUTMAINNA = "mutmainna"   # Verified / at peace — full trust
+    AMMARA = "ammara"         # Level 1: Commanding — untrusted, sandboxed
+    LAWWAMA = "lawwama"       # Level 2: Reproaching — self-correcting, limited trust
+    MULHAMA = "mulhama"       # Level 3: Inspired — creative, multi-tool chains
+    MUTMAINNA = "mutmainna"   # Level 4: Serene — full tool access, autonomous
+    RADIYA = "radiya"         # Level 5: Content — can create skills, cross-agent
+    MARDIYYA = "mardiyya"     # Level 6: Pleasing — system-level access
+    KAMILA = "kamila"         # Level 7: Perfect — governance role
 
 
 class QCAMizanIntegrator:
@@ -306,11 +408,15 @@ class QCAMizanIntegrator:
         QuranicLayer.TAFAKKUR: [QCALayer.LAWH, QCALayer.MIZAN_W],
     }
 
-    # Nafs trust level thresholds aligned with Mizan scale
+    # Nafs trust level thresholds aligned with Mizan scale (7 levels)
     TRUST_THRESHOLDS = {
-        NafsTrustLevel.AMMARA: 0.0,      # Any agent starts here
-        NafsTrustLevel.LAWWAMA: 0.50,     # After Mizan-validated performance
-        NafsTrustLevel.MUTMAINNA: 0.85,   # After sustained Yaqin-level accuracy
+        NafsTrustLevel.AMMARA: 0.0,       # Any agent starts here
+        NafsTrustLevel.LAWWAMA: 0.40,     # After Mizan-validated self-correction
+        NafsTrustLevel.MULHAMA: 0.55,     # After pattern recognition demonstrated
+        NafsTrustLevel.MUTMAINNA: 0.70,   # After sustained Yaqin-level accuracy
+        NafsTrustLevel.RADIYA: 0.80,      # After consistent user satisfaction
+        NafsTrustLevel.MARDIYYA: 0.90,    # After extended reliability
+        NafsTrustLevel.KAMILA: 0.97,      # Near-perfect sustained performance
     }
 
     def get_qca_layers(self, mizan_layer: QuranicLayer) -> List[QCALayer]:
@@ -321,10 +427,10 @@ class QCAMizanIntegrator:
                            error_rate: float) -> NafsTrustLevel:
         """Determine Nafs trust level based on Mizan-weighted performance."""
         effective_score = success_rate * (1.0 - error_rate)
-        if effective_score >= self.TRUST_THRESHOLDS[NafsTrustLevel.MUTMAINNA]:
-            return NafsTrustLevel.MUTMAINNA
-        if effective_score >= self.TRUST_THRESHOLDS[NafsTrustLevel.LAWWAMA]:
-            return NafsTrustLevel.LAWWAMA
+        # Walk thresholds from highest to lowest
+        for level in reversed(list(NafsTrustLevel)):
+            if effective_score >= self.TRUST_THRESHOLDS[level]:
+                return level
         return NafsTrustLevel.AMMARA
 
     def validate_decision(self, confidence: float, claimed_level: str,

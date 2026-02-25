@@ -9,14 +9,22 @@ import type { PageProps, MajlisAgent, MajlisNafsLevel, MajlisAgentStatus, Halaqa
 
 const NAFS_COLORS: Record<string, string> = {
   ammara: "#ef4444",
-  lawwama: "#f59e0b",
-  mutmainna: "#10b981",
+  lawwama: "#f97316",
+  mulhama: "#f59e0b",
+  mutmainna: "#84cc16",
+  radiya: "#10b981",
+  mardiyya: "#06b6d4",
+  kamila: "#a78bfa",
 };
 
 const NAFS_LABELS: Record<string, string> = {
   ammara: "أمارة · Ammara",
   lawwama: "لوامة · Lawwama",
+  mulhama: "ملهمة · Mulhama",
   mutmainna: "مطمئنة · Mutmainna",
+  radiya: "راضية · Radiya",
+  mardiyya: "مرضية · Mardiyya",
+  kamila: "كاملة · Kamila",
 };
 
 const STATUS_COLORS: Record<string, string> = {

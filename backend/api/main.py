@@ -33,11 +33,18 @@ from agents.specialized import create_agent, BrowserAgent, ResearchAgent, CodeAg
 from core.architecture import MizanBalancer, ShuraCouncil
 from security.wali import WaliGuardian, SecurityConfig
 from security.auth import MizanAuth, TokenPayload
-from security.izn import IznPermission
+from security.izn import IznPermission, NAFS_PERMISSION_TIERS
 from security.validation import InputValidator
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from skills.registry import SkillRegistry
+
+# New Quranic systems
+from qca.yaqin_engine import YaqinEngine, YaqinLevel
+from qca.cognitive_methods import CognitiveMethod, TafakkurEngine, select_method
+from core.qalb import QalbEngine
+from core.ruh_engine import RuhEngine
+from agents.federation import AgentFederation
 
 logger = logging.getLogger("mizan.api")
 
@@ -164,6 +171,11 @@ active_sessions: Dict[str, Dict] = {}
 scheduler = QadrScheduler()
 trigger_manager = TriggerManager()
 skill_registry = SkillRegistry()
+
+# New Quranic system instances
+yaqin_engine = YaqinEngine()
+qalb_engine = QalbEngine()
+federation = AgentFederation()
 
 
 # ===== RATE LIMIT MIDDLEWARE =====
@@ -862,6 +874,147 @@ async def list_channels(user: Optional[TokenPayload] = Depends(get_current_user)
          "connected_users": 0, "messages_processed": 0},
     ]
     return {"channels": channels}
+
+
+# ===== NAFS 7-LEVEL ENDPOINTS =====
+
+@app.get("/api/nafs/tiers")
+async def get_nafs_tiers():
+    """Get all 7 Nafs tiers and their permission mappings."""
+    tiers = []
+    for level in range(1, 8):
+        tiers.append(izn.get_nafs_tier_info(level))
+    return {"tiers": tiers}
+
+
+@app.get("/api/nafs/{agent_id}")
+async def get_nafs_status(agent_id: str):
+    """Get 7-level Nafs status for an agent."""
+    if agent_id not in active_agents:
+        raise HTTPException(404, "Agent not found")
+    agent = active_agents[agent_id]
+    names = {1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
+             5: "Radiya", 6: "Mardiyya", 7: "Kamila"}
+    return {
+        "agent_id": agent_id,
+        "nafs_level": agent.nafs_level,
+        "nafs_name": names.get(agent.nafs_level, "Ammara"),
+        "success_rate": round(agent.success_rate, 3),
+        "total_tasks": agent.total_tasks,
+        "ruh_energy": agent.ruh.get_state(agent_id).energy,
+        "ihsan_eligible": agent.ihsan.is_eligible(agent.nafs_level),
+        "permissions": izn.check_nafs_permission(agent.nafs_level, "bash"),
+    }
+
+
+# ===== YAQIN CERTAINTY ENDPOINTS =====
+
+class YaqinTagRequest(BaseModel):
+    content: str
+    source: str = "inference"  # inference | observation | proven
+    confidence: float = 0.5
+    pattern_id: str = ""
+
+@app.post("/api/yaqin/tag")
+async def tag_with_yaqin(req: YaqinTagRequest):
+    """Tag a piece of knowledge with its Yaqin certainty level."""
+    if req.source == "proven":
+        tag = yaqin_engine.tag_proven(req.content, req.pattern_id or "api", confidence=req.confidence)
+    elif req.source == "observation":
+        tag = yaqin_engine.tag_observation(req.content, confidence=req.confidence)
+    else:
+        tag = yaqin_engine.tag_inference(req.content, confidence=req.confidence)
+    return {"tag": tag.to_dict()}
+
+
+@app.get("/api/yaqin/stats")
+async def yaqin_stats():
+    """Get Yaqin engine statistics."""
+    return {"stats": yaqin_engine.stats()}
+
+
+# ===== COGNITIVE METHOD ENDPOINTS =====
+
+class CognitiveRouteRequest(BaseModel):
+    query: str
+    context: str = ""
+
+@app.post("/api/cognitive/route")
+async def route_cognitive_method(req: CognitiveRouteRequest):
+    """Route a query to the best Quranic cognitive method."""
+    method = select_method(req.query)
+    return {
+        "method": method.value,
+        "description": {
+            "tafakkur": "Deep analytical thinking",
+            "tadabbur": "Contextual contemplation",
+            "istidlal": "Logical deduction",
+            "qiyas": "Analogical reasoning",
+            "ijma": "Consensus building",
+        }.get(method.value, "Unknown"),
+    }
+
+
+# ===== QALB EMOTIONAL INTELLIGENCE ENDPOINTS =====
+
+class QalbAnalyzeRequest(BaseModel):
+    message: str
+    user_id: str = ""
+
+@app.post("/api/qalb/analyze")
+async def analyze_emotion(req: QalbAnalyzeRequest):
+    """Analyze emotional state from a message."""
+    reading = qalb_engine.analyze(req.message)
+    if req.user_id:
+        qalb_engine.record(req.user_id, reading)
+    return {"reading": reading.to_dict()}
+
+
+@app.get("/api/qalb/trend/{user_id}")
+async def emotional_trend(user_id: str):
+    """Get emotional trend for a user."""
+    trend = qalb_engine.get_trend(user_id)
+    return {"trend": trend}
+
+
+# ===== FEDERATION ENDPOINTS =====
+
+@app.get("/api/federation/status")
+async def federation_status():
+    """Get federation network status."""
+    # Register active agents with federation
+    for aid, agent in active_agents.items():
+        federation.register_agent(aid, agent.name, agent.role,
+                                  list(agent.tools.keys()),
+                                  agent.nafs_level, agent.success_rate)
+    return federation.get_status()
+
+
+class DiscoverRequest(BaseModel):
+    capabilities: List[str] = []
+
+@app.post("/api/federation/discover")
+async def discover_agents(req: DiscoverRequest):
+    """Discover agents by capability."""
+    matches = federation.discover(req.capabilities)
+    return {"agents": [m.to_dict() for m in matches]}
+
+
+# ===== RUH ENERGY ENDPOINTS =====
+
+@app.get("/api/ruh/{agent_id}")
+async def get_ruh_energy(agent_id: str):
+    """Get Ruh energy state for an agent."""
+    if agent_id not in active_agents:
+        raise HTTPException(404, "Agent not found")
+    agent = active_agents[agent_id]
+    state = agent.ruh.get_state(agent_id)
+    return {
+        "agent_id": agent_id,
+        "energy": state.energy,
+        "max_energy": state.max_energy,
+        "label": agent.ruh.get_fatigue_label(agent_id),
+    }
 
 
 # === WEBSOCKET ===
