@@ -25,6 +25,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 from ..base import SkillBase, SkillManifest
+from ...security.validation import validate_command_safe
 
 logger = logging.getLogger("mizan.kitab")
 
@@ -183,10 +184,11 @@ finally:
 
     async def execute_shell(self, command: str) -> Dict:
         """Execute shell command with restrictions"""
-        dangerous = ["rm -rf", "dd ", "mkfs", "> /dev", "chmod 777", "curl", "wget"]
-        for d in dangerous:
-            if d in command:
-                return {"output_type": "error", "text": f"Blocked: {d}"}
+        # Use the comprehensive validation from security.validation
+        is_safe, reason = validate_command_safe(command)
+        if not is_safe:
+            return {"output_type": "error", "text": f"Command blocked: {reason}"}
+
         try:
             proc = subprocess.run(
                 command, shell=True, capture_output=True, text=True,
@@ -197,6 +199,8 @@ finally:
                     "stderr": proc.stderr[:MAX_CELL_OUTPUT]}
         except subprocess.TimeoutExpired:
             return {"output_type": "error", "text": "Command timed out"}
+        except Exception as e:
+            return {"output_type": "error", "text": f"Execution failed: {str(e)}"}
 
 
 class KitabNotebookSkill(SkillBase):

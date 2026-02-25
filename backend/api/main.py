@@ -181,6 +181,37 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
+# ===== SECURITY HEADERS MIDDLEWARE =====
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses"""
+    response = await call_next(request)
+
+    # Prevent clickjacking attacks
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Enable browser XSS protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Strict transport security (HTTPS only)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Content Security Policy
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+
+    # Referrer policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions policy
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    return response
+
+
 # ===== AUTH DEPENDENCY =====
 
 async def get_current_user(
@@ -329,6 +360,8 @@ async def login(req: LoginRequest):
     user = auth.authenticate(req.username, req.password)
     if not user:
         wali.audit.log("login_failed", {"username": req.username}, severity="warning")
+        # Add delay on failed login to prevent brute force attacks
+        await asyncio.sleep(1)
         raise HTTPException(401, "Invalid credentials")
 
     token = auth.create_token(user)
@@ -867,17 +900,47 @@ async def list_channels(user: Optional[TokenPayload] = Depends(get_current_user)
 # === WEBSOCKET ===
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    connected = await manager.connect(client_id, websocket)
+async def websocket_endpoint(websocket: WebSocket, client_id: str, token: Optional[str] = None):
+    # Accept WebSocket connection
+    await websocket.accept()
+
+    # Authenticate via token (optional but recommended)
+    user = None
+    if token:
+        try:
+            user = auth.verify_token(token)
+            if user and user.is_expired:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Token expired. Please reconnect with a valid token.",
+                })
+                await websocket.close()
+                return
+        except Exception:
+            # Token validation failed - log warning but allow connection
+            wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
+
+    # Connect to WebSocket manager
+    connected = manager.connect(client_id, websocket)
     if not connected:
+        await websocket.send_json({
+            "type": "error",
+            "message": "Connection limit reached",
+        })
+        await websocket.close()
         return
 
-    wali.audit.log("ws_connected", {"client_id": client_id})
+    wali.audit.log("ws_connected", {
+        "client_id": client_id,
+        "authenticated": user is not None,
+        "user_id": user.user_id if user else None
+    })
 
     await manager.send(client_id, {
         "type": "connected",
         "message": "بسم الله - Connected to MIZAN",
         "agents": len(active_agents),
+        "authenticated": user is not None,
         "timestamp": datetime.utcnow().isoformat(),
     })
 
