@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { PageProps, Skill } from "../types";
 
-const BUILTIN_SKILLS = [
+const BUILTIN_SKILLS: Skill[] = [
   {
     name: "web_browse",
     display: "Web Browse",
@@ -58,7 +59,7 @@ const BUILTIN_SKILLS = [
   },
 ];
 
-const CATEGORY_COLORS = {
+const CATEGORY_COLORS: Record<string, string> = {
   Research: "#3b82f6",
   Analysis: "#f59e0b",
   Development: "#10b981",
@@ -66,16 +67,16 @@ const CATEGORY_COLORS = {
   Productivity: "#8b5cf6",
 };
 
-export default function SkillsPage({ api, addTerminalLine }) {
-  const [skills, setSkills] = useState(BUILTIN_SKILLS);
-  const [activeTab, setActiveTab] = useState("installed");
-  const [searchQuery, setSearchQuery] = useState("");
+export default function SkillsPage({ api, addTerminalLine }: PageProps) {
+  const [skills, setSkills] = useState<Skill[]>(BUILTIN_SKILLS);
+  const [activeTab, setActiveTab] = useState<string>("installed");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const loadSkills = useCallback(async () => {
     try {
       const data = await api.get("/skills");
-      if (data.skills?.length) {
-        setSkills(data.skills);
+      if ((data.skills as Skill[] | undefined)?.length) {
+        setSkills(data.skills as Skill[]);
       }
     } catch {
       // Use defaults
@@ -86,7 +87,7 @@ export default function SkillsPage({ api, addTerminalLine }) {
     loadSkills();
   }, [loadSkills]);
 
-  const installSkill = async (skillName) => {
+  const installSkill = async (skillName: string) => {
     try {
       await api.post("/skills/install", { name: skillName });
       addTerminalLine?.(`Skill installed: ${skillName}`, "gold");
@@ -98,7 +99,7 @@ export default function SkillsPage({ api, addTerminalLine }) {
     }
   };
 
-  const uninstallSkill = async (skillName) => {
+  const uninstallSkill = async (skillName: string) => {
     try {
       await api.post("/skills/uninstall", { name: skillName });
       addTerminalLine?.(`Skill uninstalled: ${skillName}`, "gold");

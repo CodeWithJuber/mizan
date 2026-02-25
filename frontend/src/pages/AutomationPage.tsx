@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { PageProps, ScheduledJob, Webhook } from "../types";
 
-export default function AutomationPage({ api, addTerminalLine }) {
+export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   const [activeTab, setActiveTab] = useState("jobs");
-  const [jobs, setJobs] = useState([]);
-  const [webhooks, setWebhooks] = useState([]);
+  const [jobs, setJobs] = useState<ScheduledJob[]>([]);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [showAddJob, setShowAddJob] = useState(false);
   const [showAddWebhook, setShowAddWebhook] = useState(false);
   const [newJob, setNewJob] = useState({
@@ -26,14 +27,14 @@ export default function AutomationPage({ api, addTerminalLine }) {
   const loadJobs = useCallback(async () => {
     try {
       const data = await api.get("/automation/jobs");
-      setJobs(data.jobs || []);
+      setJobs((data.jobs as ScheduledJob[]) || []);
     } catch {}
   }, [api]);
 
   const loadWebhooks = useCallback(async () => {
     try {
       const data = await api.get("/automation/webhooks");
-      setWebhooks(data.webhooks || []);
+      setWebhooks((data.webhooks as Webhook[]) || []);
     } catch {}
   }, [api]);
 
@@ -54,7 +55,7 @@ export default function AutomationPage({ api, addTerminalLine }) {
     }
   };
 
-  const removeJob = async (jobId) => {
+  const removeJob = async (jobId: string) => {
     try {
       await api.del(`/automation/jobs/${jobId}`);
       addTerminalLine?.("Job removed", "gold");
@@ -302,7 +303,6 @@ export default function AutomationPage({ api, addTerminalLine }) {
         )}
       </div>
 
-      {/* Add Job Modal */}
       {showAddJob && (
         <div className="modal-overlay" onClick={() => setShowAddJob(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -381,7 +381,6 @@ export default function AutomationPage({ api, addTerminalLine }) {
         </div>
       )}
 
-      {/* Add Webhook Modal */}
       {showAddWebhook && (
         <div className="modal-overlay" onClick={() => setShowAddWebhook(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

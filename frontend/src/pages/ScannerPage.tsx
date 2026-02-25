@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { PageProps, ScanReport, ScanFinding, ScanHistoryItem, ScanSeverity } from "../types";
 
-const SEVERITY_COLORS = {
+const SEVERITY_COLORS: Record<string, string> = {
   critical: "#dc2626",
   high: "#ef4444",
   medium: "#f59e0b",
@@ -13,7 +14,7 @@ const SEVERITY_COLORS = {
   info: "#6b7280",
 };
 
-const SEVERITY_BG = {
+const SEVERITY_BG: Record<string, string> = {
   critical: "rgba(220,38,38,0.15)",
   high: "rgba(239,68,68,0.15)",
   medium: "rgba(245,158,11,0.15)",
@@ -21,20 +22,20 @@ const SEVERITY_BG = {
   info: "rgba(107,114,128,0.15)",
 };
 
-export default function ScannerPage({ api, addTerminalLine }) {
-  const [scanning, setScanning] = useState(false);
-  const [scanPath, setScanPath] = useState("/home/user/mizan");
-  const [report, setReport] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [activeTab, setActiveTab] = useState("scan");
-  const [scanType, setScanType] = useState("full");
+export default function ScannerPage({ api, addTerminalLine }: PageProps) {
+  const [scanning, setScanning] = useState<boolean>(false);
+  const [scanPath, setScanPath] = useState<string>("/home/user/mizan");
+  const [report, setReport] = useState<ScanReport | null>(null);
+  const [history, setHistory] = useState<ScanHistoryItem[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("scan");
+  const [scanType, setScanType] = useState<string>("full");
 
   const loadHistory = useCallback(async () => {
     try {
       const data = await api.post("/skills/execute", {
         skill: "raqib_scanner", action: "history",
       });
-      setHistory(data.scans || []);
+      setHistory((data.scans || []) as ScanHistoryItem[]);
     } catch {}
   }, [api]);
 
@@ -47,10 +48,11 @@ export default function ScannerPage({ api, addTerminalLine }) {
       const data = await api.post("/skills/execute", {
         skill: "raqib_scanner", action: scanType, path: scanPath,
       });
-      setReport(data);
+      setReport(data as unknown as ScanReport);
       setActiveTab("results");
       loadHistory();
-      const total = data.summary?.total_findings || data.findings?.length || 0;
+      const report = data as unknown as ScanReport;
+      const total = report.summary?.total_findings || report.findings?.length || 0;
       addTerminalLine?.(`Scan complete: ${total} findings`, total > 0 ? "warn" : "gold");
     } catch (e) {
       addTerminalLine?.("Scan failed", "error");

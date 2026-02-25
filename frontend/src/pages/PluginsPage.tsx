@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { PageProps, Plugin, PluginType, TrustLevel, PluginHook } from "../types";
 
-const TYPE_COLORS = {
+const TYPE_COLORS: Record<string, string> = {
   ayah: "#c9a227",
   bab: "#3b82f6",
   hafiz: "#10b981",
@@ -13,7 +14,7 @@ const TYPE_COLORS = {
   muaddib: "#f59e0b",
 };
 
-const TYPE_LABELS = {
+const TYPE_LABELS: Record<string, string> = {
   ayah: "آية · Tool",
   bab: "باب · Channel",
   hafiz: "حافظ · Memory",
@@ -21,22 +22,37 @@ const TYPE_LABELS = {
   muaddib: "مؤدب · Middleware",
 };
 
-const TRUST_COLORS = {
+const TRUST_COLORS: Record<string, string> = {
   ammara: "#ef4444",
   lawwama: "#f59e0b",
   mutmainna: "#10b981",
 };
 
-export default function PluginsPage({ api, addTerminalLine }) {
-  const [activeTab, setActiveTab] = useState("installed");
-  const [plugins, setPlugins] = useState([]);
-  const [hooks, setHooks] = useState([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({
+interface CreateForm {
+  name: string;
+  description: string;
+  plugin_type: string;
+  author: string;
+}
+
+interface PluginCardProps {
+  plugin: Plugin;
+  onActivate: (name: string) => void;
+  onDeactivate: (name: string) => void;
+  onReload: (name: string) => void;
+  onVerify: (name: string) => void;
+}
+
+export default function PluginsPage({ api, addTerminalLine }: PageProps) {
+  const [activeTab, setActiveTab] = useState<string>("installed");
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [hooks, setHooks] = useState<PluginHook[]>([]);
+  const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [createForm, setCreateForm] = useState<CreateForm>({
     name: "", description: "", plugin_type: "ayah", author: "",
   });
 
-  const exec = useCallback(async (action, extra = {}) => {
+  const exec = useCallback(async (action: string, extra: Record<string, unknown> = {}) => {
     try {
       return await api.post("/skills/execute", {
         skill: "wahy_plugins", action, ...extra,
@@ -46,12 +62,12 @@ export default function PluginsPage({ api, addTerminalLine }) {
 
   const loadPlugins = useCallback(async () => {
     const data = await exec("list");
-    if (data?.plugins) setPlugins(data.plugins);
+    if (data?.plugins) setPlugins(data.plugins as Plugin[]);
   }, [exec]);
 
   const loadHooks = useCallback(async () => {
     const data = await exec("hooks");
-    if (data?.hooks) setHooks(data.hooks);
+    if (data?.hooks) setHooks(data.hooks as PluginHook[]);
   }, [exec]);
 
   useEffect(() => {
@@ -59,7 +75,7 @@ export default function PluginsPage({ api, addTerminalLine }) {
     loadHooks();
   }, [loadPlugins, loadHooks]);
 
-  const activatePlugin = async (name) => {
+  const activatePlugin = async (name: string) => {
     const data = await exec("activate", { name });
     if (data?.status === "activated") {
       addTerminalLine?.(`Plugin activated: ${name}`, "gold");
@@ -67,7 +83,7 @@ export default function PluginsPage({ api, addTerminalLine }) {
     }
   };
 
-  const deactivatePlugin = async (name) => {
+  const deactivatePlugin = async (name: string) => {
     const data = await exec("deactivate", { name });
     if (data?.status === "deactivated") {
       addTerminalLine?.(`Plugin deactivated: ${name}`, "warn");
@@ -75,7 +91,7 @@ export default function PluginsPage({ api, addTerminalLine }) {
     }
   };
 
-  const reloadPlugin = async (name) => {
+  const reloadPlugin = async (name: string) => {
     const data = await exec("reload", { name });
     if (data?.status === "reloaded") {
       addTerminalLine?.(`Plugin hot-reloaded: ${name}`, "gold");
@@ -83,7 +99,7 @@ export default function PluginsPage({ api, addTerminalLine }) {
     }
   };
 
-  const verifyPlugin = async (name) => {
+  const verifyPlugin = async (name: string) => {
     const data = await exec("verify", { name });
     addTerminalLine?.(
       data?.verified ? `Plugin verified: ${name} ✓` : `Plugin verification failed: ${name}`,
@@ -92,7 +108,7 @@ export default function PluginsPage({ api, addTerminalLine }) {
   };
 
   const createPlugin = async () => {
-    const data = await exec("create", createForm);
+    const data = await exec("create", createForm as unknown as Record<string, unknown>);
     if (data?.created) {
       addTerminalLine?.(`Plugin scaffold created: ${createForm.name}`, "gold");
       setShowCreate(false);
@@ -274,8 +290,8 @@ export default function PluginsPage({ api, addTerminalLine }) {
   );
 }
 
-function PluginCard({ plugin, onActivate, onDeactivate, onReload, onVerify }) {
-  const [expanded, setExpanded] = useState(false);
+function PluginCard({ plugin, onActivate, onDeactivate, onReload, onVerify }: PluginCardProps) {
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   return (
     <div className="memory-item" style={{
@@ -330,9 +346,9 @@ function PluginCard({ plugin, onActivate, onDeactivate, onReload, onVerify }) {
               Author: {plugin.author}
             </div>
           )}
-          {plugin.permissions?.length > 0 && (
+          {(plugin.permissions?.length ?? 0) > 0 && (
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-              Permissions: {plugin.permissions.join(", ")}
+              Permissions: {plugin.permissions!.join(", ")}
             </div>
           )}
           {plugin.checksum && (
