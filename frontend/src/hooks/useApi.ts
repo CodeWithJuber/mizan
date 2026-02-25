@@ -4,23 +4,24 @@
  */
 
 import { useCallback } from "react";
+import type { ApiClient } from "../types";
 
 const API_URL = "http://localhost:8000/api";
 
-export function useApi() {
+export function useApi(): ApiClient {
   const getToken = useCallback(() => {
     return localStorage.getItem("mizan_token") || "";
   }, []);
 
   const headers = useCallback(() => {
-    const h = { "Content-Type": "application/json" };
+    const h: Record<string, string> = { "Content-Type": "application/json" };
     const token = getToken();
     if (token) h["Authorization"] = `Bearer ${token}`;
     return h;
   }, [getToken]);
 
   const get = useCallback(
-    async (path) => {
+    async (path: string) => {
       const res = await fetch(`${API_URL}${path}`, { headers: headers() });
       return res.json();
     },
@@ -28,7 +29,7 @@ export function useApi() {
   );
 
   const post = useCallback(
-    async (path, body) => {
+    async (path: string, body?: Record<string, unknown>) => {
       const res = await fetch(`${API_URL}${path}`, {
         method: "POST",
         headers: headers(),
@@ -40,7 +41,7 @@ export function useApi() {
   );
 
   const del = useCallback(
-    async (path) => {
+    async (path: string) => {
       const res = await fetch(`${API_URL}${path}`, {
         method: "DELETE",
         headers: headers(),
