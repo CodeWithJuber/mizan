@@ -216,8 +216,10 @@ class DhikrMemorySystem:
             sql += " AND agent_id = ?"
             params.append(agent_id)
         if query:
-            sql += " AND (content LIKE ? OR tags LIKE ?)"
-            params.extend([f"%{query}%", f"%{query}%"])
+            # Escape LIKE special characters to prevent wildcard injection
+            escaped_query = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            sql += " AND (content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
+            params.extend([f"%{escaped_query}%", f"%{escaped_query}%"])
         
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
         params.append(limit)

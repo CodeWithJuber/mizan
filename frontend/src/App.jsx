@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ===========================
-// MIZAN (ميزان) - Quranic AGI System
+// MIZAN (ميزان) - Quranic AGI System v2.0
 // Design: Geometric Islamic patterns, deep space dark, gold accents
 // Typography: Arabic numerals + Latin + Quranic-inspired layout
+// Architecture: Seven-Layer Quranic Cognitive AGI
 // ===========================
+
+import ChannelsPage from "./pages/ChannelsPage";
+import SkillsPage from "./pages/SkillsPage";
+import SecurityPage from "./pages/SecurityPage";
+import AutomationPage from "./pages/AutomationPage";
+import { useApi } from "./hooks/useApi";
 
 const WS_URL = "ws://localhost:8000/ws";
 const API_URL = "http://localhost:8000/api";
@@ -85,6 +92,28 @@ const Icons = {
       <path d="M3 6l9-3 9 3"/>
       <path d="M3 6c0 3.3-2 5-2 5h4s-2-1.7-2-5"/>
       <path d="M21 6c0 3.3-2 5-2 5h4s-2-1.7-2-5"/>
+    </svg>
+  ),
+  Channel: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/>
+      <circle cx="5" cy="19" r="2" fill="currentColor"/>
+    </svg>
+  ),
+  Skill: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+    </svg>
+  ),
+  Shield: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  ),
+  Clock: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
     </svg>
   ),
 };
@@ -1222,8 +1251,10 @@ export default function App() {
   const [memoryQuery, setMemoryQuery] = useState("");
   const [status, setStatus] = useState(null);
   const [integrations, setIntegrations] = useState([]);
-  const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6", anthropic_api_key: "" });
+  const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6" });
   const [newIntegration, setNewIntegration] = useState({ name: "", type: "anthropic", config: {} });
+
+  const api = useApi();
   
   const messagesEndRef = useRef(null);
   const clientId = useRef(`client_${Date.now()}`);
@@ -1403,7 +1434,7 @@ export default function App() {
       });
       await res.json();
       setShowCreateAgent(false);
-      setNewAgent({ name: "", type: "general", model: "claude-opus-4-6", anthropic_api_key: "" });
+      setNewAgent({ name: "", type: "general", model: "claude-opus-4-6" });
       loadAgents();
     } catch (e) {
       addTerminalLine(`Error creating agent: ${e.message}`, "error");
@@ -1713,6 +1744,18 @@ export default function App() {
           </>
         );
       
+      case "channels":
+        return <ChannelsPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "skills":
+        return <SkillsPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "security":
+        return <SecurityPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "automation":
+        return <AutomationPage api={api} addTerminalLine={addTerminalLine} />;
+
       case "integrations":
         return (
           <>
@@ -1804,7 +1847,7 @@ export default function App() {
           </div>
           <div className="stat-chip">
             <Icons.Scale />
-            Layer: <span className="stat-chip-value">Mizan v1.0</span>
+            Layer: <span className="stat-chip-value">Mizan v2.0</span>
           </div>
         </div>
       )}
@@ -1836,6 +1879,7 @@ export default function App() {
             <div className="nav-section-label">Knowledge · علم</div>
             {[
               { id: "memory", label: "Memory", arabic: "ذاكرة", icon: <Icons.Memory /> },
+              { id: "skills", label: "Skills", arabic: "حكمة", icon: <Icons.Skill /> },
               { id: "architecture", label: "Architecture", arabic: "هندسة", icon: <Icons.Brain /> },
             ].map(item => (
               <div
@@ -1849,10 +1893,13 @@ export default function App() {
               </div>
             ))}
           </div>
-          
+
           <div className="nav-section">
             <div className="nav-section-label">System · نظام</div>
             {[
+              { id: "channels", label: "Channels", arabic: "أبواب", icon: <Icons.Channel /> },
+              { id: "automation", label: "Automation", arabic: "قدر", icon: <Icons.Clock /> },
+              { id: "security", label: "Security", arabic: "ولي", icon: <Icons.Shield /> },
               { id: "integrations", label: "Integrations", arabic: "وصل", icon: <Icons.Globe /> },
               { id: "settings", label: "Settings", arabic: "إعدادات", icon: <Icons.Settings /> },
             ].map(item => (
@@ -1934,13 +1981,6 @@ export default function App() {
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="ollama/llama3">Ollama Llama 3</option>
               </select>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Anthropic API Key (optional)</label>
-              <input className="form-input" type="password" placeholder="sk-ant-..."
-                value={newAgent.anthropic_api_key}
-                onChange={e => setNewAgent({...newAgent, anthropic_api_key: e.target.value})}/>
             </div>
             
             <div className="modal-footer">
