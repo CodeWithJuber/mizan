@@ -1,0 +1,48 @@
+name: Feature Request
+description: Suggest a new feature for MIZAN
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this feature work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions have you considered?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Agent System
+        - Memory / Knowledge
+        - Frontend / UI
+        - CLI
+        - API
+        - Skills / Plugins
+        - Security
+        - Deployment / Docker
+        - Documentation
+        - Other
+    validations:
+      required: true

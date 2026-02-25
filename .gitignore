@@ -1,6 +1,7 @@
 # Environment
 .env
 *.env
+!.env.example
 
 # Python
 __pycache__/
@@ -12,15 +13,22 @@ venv/
 .venv/
 *.egg-info/
 dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
+.coverage
 
 # Node
 node_modules/
-dist/
 .vite/
 
 # Database (local only)
 *.db
 *.sqlite
+data/
 
 # Logs
 *.log
@@ -33,3 +41,5 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo

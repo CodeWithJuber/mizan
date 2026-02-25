@@ -221,11 +221,17 @@ class BaseAgent(ABC):
             return self.izn.check_permission(self.id, self.role, tool_name, params)
         return {"allowed": True, "reason": "No Izn configured", "requires_approval": False}
 
+    # Maximum agentic loop iterations to prevent runaway execution
+    MAX_TOOL_TURNS = 15
+
     async def think(self, task: str, context: Dict = None,
                     stream: bool = False) -> AsyncGenerator[str, None]:
         """
-        Fikr (فكر) - Deep cognitive processing
-        Uses AI to reason about the task with tool_use API
+        Fikr (فكر) - Deep cognitive processing with full agentic loop.
+
+        Unlike a single-turn LLM call, this implements a proper ReAct loop:
+        the agent can call tools, observe results, reason further, call more
+        tools, and repeat — up to MAX_TOOL_TURNS — until the task is complete.
         """
         self.state = "thinking"
 
@@ -235,59 +241,10 @@ class BaseAgent(ABC):
 
         if self.ai_client:
             try:
-                if stream:
-                    with self.ai_client.messages.stream(
-                        model=self.ai_model,
-                        max_tokens=4096,
-                        system=system_prompt,
-                        messages=messages,
-                        tools=tool_schemas,
-                    ) as stream_obj:
-                        for text in stream_obj.text_stream:
-                            yield text
-                else:
-                    response = self.ai_client.messages.create(
-                        model=self.ai_model,
-                        max_tokens=4096,
-                        system=system_prompt,
-                        messages=messages,
-                        tools=tool_schemas,
-                    )
-
-                    # Process response content blocks
-                    for block in response.content:
-                        if block.type == "text":
-                            yield block.text
-                        elif block.type == "tool_use":
-                            # Execute tool through security layer
-                            tool_result = await self._execute_tool_safe(
-                                block.name, block.input
-                            )
-                            yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
-
-                            # Multi-turn: send result back for further reasoning
-                            messages.append({"role": "assistant", "content": response.content})
-                            messages.append({
-                                "role": "user",
-                                "content": [{
-                                    "type": "tool_result",
-                                    "tool_use_id": block.id,
-                                    "content": json.dumps(tool_result)[:5000],
-                                }],
-                            })
-
-                            # Get follow-up response
-                            followup = self.ai_client.messages.create(
-                                model=self.ai_model,
-                                max_tokens=4096,
-                                system=system_prompt,
-                                messages=messages,
-                                tools=tool_schemas,
-                            )
-                            for fb in followup.content:
-                                if fb.type == "text":
-                                    yield fb.text
-
+                async for chunk in self._agentic_loop(
+                    system_prompt, messages, tool_schemas, stream
+                ):
+                    yield chunk
             except Exception as e:
                 logger.error(f"[FIKR] Thinking error for {self.name}: {e}")
                 yield f"[Thinking error: {str(e)}]"
@@ -295,6 +252,62 @@ class BaseAgent(ABC):
             yield await self._structured_reasoning(task, context)
 
         self.state = "resting"
+
+    async def _agentic_loop(
+        self, system_prompt: str, messages: List[Dict],
+        tool_schemas: List[Dict], stream: bool = False,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Full agentic loop — the core of MIZAN's reasoning engine.
+
+        Repeatedly calls the LLM, executes any requested tools, feeds results
+        back, and continues until the model produces a final text response
+        with no further tool calls (stop_reason == 'end_turn') or we hit
+        the safety limit of MAX_TOOL_TURNS.
+        """
+        for turn in range(self.MAX_TOOL_TURNS):
+            # Call the model
+            response = self.ai_client.messages.create(
+                model=self.ai_model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=messages,
+                tools=tool_schemas,
+            )
+
+            # Collect text output and tool calls from this turn
+            has_tool_use = False
+            tool_results = []
+
+            for block in response.content:
+                if block.type == "text":
+                    yield block.text
+                elif block.type == "tool_use":
+                    has_tool_use = True
+
+                    # Execute through security layer
+                    tool_result = await self._execute_tool_safe(
+                        block.name, block.input
+                    )
+                    yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(tool_result)[:5000],
+                    })
+
+            # If no tool calls were made, the agent is done
+            if not has_tool_use or response.stop_reason == "end_turn":
+                return
+
+            # Feed tool results back for the next iteration
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+        logger.warning(
+            f"[FIKR] Agent {self.name} hit MAX_TOOL_TURNS ({self.MAX_TOOL_TURNS})"
+        )
 
     async def _execute_tool_safe(self, tool_name: str, params: Dict) -> Any:
         """Execute a tool with Wali security checks"""
