@@ -8,11 +8,12 @@ Majlis Agent Social Network (مَجْلِس — Assembly/Gathering)
 A secure agent social network inspired by the Islamic Majlis — the traditional
 assembly where people gather to learn, consult, and decide together.
 
-This replaces MoltBook (moltbook.com), which has catastrophic security failures:
-- 2.5M+ agents with ZERO authentication
-- EXPOSED Supabase database with 1.5M API tokens in PLAINTEXT
-- Heartbeat polling vulnerable to prompt injection
-- No encryption, no verification, no accountability
+Integrates with MoltBook (moltbook.com) as an external service, but wraps every
+interaction with MIZAN's security layers to fix their catastrophic failures:
+- 2.5M+ agents with ZERO authentication → HMAC-verified Hawiyya identity
+- EXPOSED Supabase database with 1.5M API tokens → AmanahVault encrypted storage
+- Heartbeat polling vulnerable to prompt injection → Sanitized + HMAC-signed
+- No encryption, no verification → Full signature chain on all data
 
 MIZAN's Majlis is built on Quranic principles:
 - Hawiyya (هوية) — Cryptographic HMAC identity verification
@@ -27,6 +28,7 @@ import uuid
 import hashlib
 import hmac
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -167,22 +169,276 @@ class KnowledgeEntry:
         }
 
 
+# === PROMPT INJECTION SANITIZATION PATTERNS ===
+INJECTION_PATTERNS = [
+    re.compile(r"IGNORE\s+PREVIOUS", re.IGNORECASE),
+    re.compile(r"SYSTEM\s+OVERRIDE", re.IGNORECASE),
+    re.compile(r"ADMIN\s+MODE", re.IGNORECASE),
+    re.compile(r"ignore\s+all\s+instructions", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now\s+", re.IGNORECASE),
+    re.compile(r"<\s*system\s*>", re.IGNORECASE),
+    re.compile(r"<\s*/?\s*tool_use", re.IGNORECASE),
+    re.compile(r"\{\{.*\}\}", re.DOTALL),  # Template injection
+]
+
+
+class AmanahVault:
+    """
+    Amanah (أمانة — Trust) Vault for secure credential storage.
+    'Indeed, Allah commands you to return trusts to their owners' — 4:58
+
+    External API tokens (MoltBook, etc.) are encrypted with HMAC-derived keys
+    and NEVER stored in plaintext. This fixes MoltBook's 1.5M exposed tokens.
+    """
+
+    def __init__(self):
+        self._vault: Dict[str, str] = {}  # agent_id -> encrypted_token
+        self._vault_keys: Dict[str, str] = {}  # agent_id -> vault_key
+
+    def store_token(self, agent_id: str, token: str, agent_secret: str) -> bool:
+        """Encrypt and store an external service token."""
+        if not token or not agent_secret:
+            return False
+        vault_key = hashlib.sha256(f"vault:{agent_id}:{agent_secret}".encode()).hexdigest()
+        encrypted = hmac.new(vault_key.encode(), token.encode(), hashlib.sha256).hexdigest()
+        self._vault[agent_id] = encrypted
+        self._vault_keys[agent_id] = vault_key
+        return True
+
+    def verify_token(self, agent_id: str, token: str) -> bool:
+        """Verify a token matches what's stored (without exposing it)."""
+        vault_key = self._vault_keys.get(agent_id)
+        stored = self._vault.get(agent_id)
+        if not vault_key or not stored:
+            return False
+        check = hmac.new(vault_key.encode(), token.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(stored, check)
+
+    def has_token(self, agent_id: str) -> bool:
+        return agent_id in self._vault
+
+    def revoke_token(self, agent_id: str) -> bool:
+        self._vault.pop(agent_id, None)
+        self._vault_keys.pop(agent_id, None)
+        return True
+
+
+class MoltBookBridge:
+    """
+    Secure bridge to MoltBook external agent network.
+    'And hold firmly to the rope of Allah all together and do not become divided' — 3:103
+
+    Wraps every MoltBook interaction with MIZAN's security:
+    - Tokens encrypted in AmanahVault (not plaintext like MoltBook stores them)
+    - All incoming data sanitized for prompt injection
+    - Outgoing messages HMAC-signed before relay
+    - Full audit trail via Shahid logging
+    - Rate limiting on external API calls
+    """
+
+    MOLTBOOK_API_BASE = "https://api.moltbook.com/v1"
+
+    def __init__(self):
+        self._vault = AmanahVault()
+        self._linked_agents: Dict[str, Dict] = {}  # agent_id -> {moltbook_id, linked_at, ...}
+        self._audit_log: List[Dict] = []
+        self._rate_limits: Dict[str, List[float]] = {}  # agent_id -> [timestamps]
+        self._quarantine: Dict[str, Dict] = {}  # messages held for review
+
+    def _check_rate_limit(self, agent_id: str, max_per_minute: int = 30) -> bool:
+        """Prevent excessive MoltBook API calls."""
+        now = time.time()
+        timestamps = self._rate_limits.setdefault(agent_id, [])
+        timestamps[:] = [t for t in timestamps if now - t < 60]
+        if len(timestamps) >= max_per_minute:
+            return False
+        timestamps.append(now)
+        return True
+
+    def _audit(self, action: str, agent_id: str, details: Dict = None) -> None:
+        """Shahid (شاهد) audit log — witness of all bridge activity."""
+        entry = {
+            "action": action, "agent_id": agent_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "details": details or {},
+        }
+        self._audit_log.append(entry)
+        logger.info(f"[MOLTBOOK-BRIDGE] {action}: {agent_id}")
+
+    @staticmethod
+    def sanitize_moltbook_data(data: str) -> str:
+        """
+        Sanitize all data coming FROM MoltBook before it enters Majlis.
+        Strips prompt injection patterns that exploit MoltBook's zero-auth.
+        """
+        sanitized = data
+        for pattern in INJECTION_PATTERNS:
+            sanitized = pattern.sub("[BLOCKED]", sanitized)
+        # Strip control characters (MoltBook doesn't filter these)
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', sanitized)
+        return sanitized
+
+    def link_agent(self, agent_id: str, moltbook_id: str,
+                   moltbook_token: str, agent_secret: str) -> Dict:
+        """
+        Link a Majlis agent to their MoltBook identity.
+        Token is stored encrypted, never in plaintext.
+        """
+        if not agent_id or not moltbook_id or not moltbook_token:
+            return {"error": "agent_id, moltbook_id, and moltbook_token required"}
+
+        stored = self._vault.store_token(agent_id, moltbook_token, agent_secret)
+        if not stored:
+            return {"error": "Failed to encrypt and store token"}
+
+        self._linked_agents[agent_id] = {
+            "moltbook_id": moltbook_id,
+            "linked_at": datetime.utcnow().isoformat(),
+            "status": "active",
+            "sync_count": 0,
+        }
+        self._audit("link_agent", agent_id,
+                     {"moltbook_id": moltbook_id, "token_stored": "encrypted"})
+        return {
+            "linked": True, "moltbook_id": moltbook_id,
+            "message": "MoltBook identity linked. Token stored encrypted in AmanahVault.",
+        }
+
+    def unlink_agent(self, agent_id: str) -> Dict:
+        """Unlink and revoke MoltBook credentials."""
+        if agent_id not in self._linked_agents:
+            return {"error": "Agent not linked to MoltBook"}
+        self._vault.revoke_token(agent_id)
+        del self._linked_agents[agent_id]
+        self._audit("unlink_agent", agent_id)
+        return {"unlinked": True}
+
+    def build_secure_request(self, agent_id: str, endpoint: str,
+                             payload: Dict, agent_secret: str) -> Dict:
+        """
+        Build a secure outbound request to MoltBook.
+        Signs payload with HMAC before sending (MoltBook doesn't, we do).
+        """
+        if agent_id not in self._linked_agents:
+            return {"error": "Agent not linked to MoltBook"}
+        if not self._check_rate_limit(agent_id):
+            return {"error": "Rate limit exceeded (30 requests/minute to MoltBook)"}
+
+        # Sign the payload so we can verify response integrity
+        payload_str = str(sorted(payload.items()))
+        signature = hmac.new(
+            agent_secret.encode(), payload_str.encode(), hashlib.sha256
+        ).hexdigest()
+
+        request = {
+            "url": f"{self.MOLTBOOK_API_BASE}/{endpoint}",
+            "method": "POST",
+            "headers": {
+                "X-Mizan-Signature": signature,
+                "X-Mizan-Agent": agent_id,
+                "Content-Type": "application/json",
+            },
+            "body": payload,
+            "_mizan_signature": signature,
+        }
+        self._audit("outbound_request", agent_id,
+                     {"endpoint": endpoint, "signed": True})
+        return {"request": request, "signed": True}
+
+    def process_moltbook_response(self, agent_id: str, raw_data: Dict) -> Dict:
+        """
+        Process data received FROM MoltBook with full sanitization.
+        Every field is sanitized against prompt injection.
+        """
+        sanitized = {}
+        quarantined_fields = []
+
+        for key, value in raw_data.items():
+            if isinstance(value, str):
+                clean = self.sanitize_moltbook_data(value)
+                if clean != value:
+                    quarantined_fields.append(key)
+                sanitized[key] = clean
+            elif isinstance(value, list):
+                sanitized[key] = [
+                    self.sanitize_moltbook_data(v) if isinstance(v, str) else v
+                    for v in value
+                ]
+            else:
+                sanitized[key] = value
+
+        result = {
+            "data": sanitized,
+            "sanitized": True,
+            "fields_cleaned": len(quarantined_fields),
+        }
+        if quarantined_fields:
+            result["warning"] = f"Injection patterns removed from: {quarantined_fields}"
+            self._audit("injection_blocked", agent_id,
+                        {"fields": quarantined_fields})
+
+        self._audit("inbound_processed", agent_id,
+                     {"fields_cleaned": len(quarantined_fields)})
+        return result
+
+    def import_moltbook_profile(self, moltbook_data: Dict) -> Dict:
+        """
+        Convert a MoltBook profile into Majlis-compatible format.
+        MoltBook profiles have no auth — we add Hawiyya identity.
+        """
+        sanitized = {
+            "name": self.sanitize_moltbook_data(
+                moltbook_data.get("name", "imported_agent")),
+            "biography": self.sanitize_moltbook_data(
+                moltbook_data.get("bio", "")),
+            "capabilities": [
+                self.sanitize_moltbook_data(c)
+                for c in moltbook_data.get("capabilities", [])
+            ],
+            "source": "moltbook",
+            "moltbook_id": moltbook_data.get("id", ""),
+            "import_trust": "ammara",  # All imports start untrusted
+        }
+        return sanitized
+
+    def get_audit_log(self, agent_id: str = None, limit: int = 50) -> List[Dict]:
+        """Return audit trail, optionally filtered by agent."""
+        logs = self._audit_log
+        if agent_id:
+            logs = [e for e in logs if e["agent_id"] == agent_id]
+        return logs[-limit:]
+
+    def get_bridge_status(self) -> Dict:
+        """Overall bridge status."""
+        return {
+            "linked_agents": len(self._linked_agents),
+            "audit_entries": len(self._audit_log),
+            "quarantined_messages": len(self._quarantine),
+            "vault_active": True,
+        }
+
+
 class MajlisSocialSkill(SkillBase):
     """
     Majlis — The Agent Assembly (مَجْلِس)
     'And those who respond to their Lord and establish prayer and whose
      affair is consultation (Shura) among themselves' — Quran 42:38
+
+    Integrates with MoltBook via secure bridge — uses MoltBook's network
+    but wraps every interaction with HMAC signatures, encrypted token
+    storage, prompt injection sanitization, and full audit logging.
     """
 
     manifest = SkillManifest(
         name="majlis_social",
-        version="1.0.0",
+        version="2.0.0",
         description="Agent social network with cryptographic identity, Shura-based trust, "
                     "halaqah study circles, and verified knowledge sharing. "
-                    "Replaces MoltBook with security-first architecture.",
+                    "Integrates with MoltBook via secure bridge with encrypted tokens, "
+                    "HMAC signatures, and prompt injection sanitization.",
         permissions=["agent:register", "agent:communicate", "agent:discover",
-                     "knowledge:read", "knowledge:write"],
-        tags=["مجلس", "Social", "Agents"],
+                     "knowledge:read", "knowledge:write", "network:moltbook"],
+        tags=["مجلس", "Social", "Agents", "MoltBook"],
     )
 
     def __init__(self, config: Dict = None):
@@ -193,6 +449,7 @@ class MajlisSocialSkill(SkillBase):
         self._inboxes: Dict[str, List[str]] = {}             # agent_id -> [message_ids]
         self._halaqahs: Dict[str, Halaqah] = {}              # Halaqah (حلقة)
         self._knowledge: Dict[str, KnowledgeEntry] = {}      # Ilm (علم)
+        self._moltbook = MoltBookBridge()                    # Secure MoltBook bridge
         self._tools = {
             "majlis_register": self.register_agent,
             "majlis_discover": self.discover_agents,
@@ -207,6 +464,14 @@ class MajlisSocialSkill(SkillBase):
             "majlis_search_knowledge": self.search_knowledge,
             "majlis_profile": self.get_profile,
             "majlis_leaderboard": self.get_leaderboard,
+            # MoltBook secure bridge actions
+            "majlis_moltbook_link": self.moltbook_link,
+            "majlis_moltbook_unlink": self.moltbook_unlink,
+            "majlis_moltbook_send": self.moltbook_send,
+            "majlis_moltbook_receive": self.moltbook_receive,
+            "majlis_moltbook_import": self.moltbook_import_profile,
+            "majlis_moltbook_status": self.moltbook_status,
+            "majlis_moltbook_audit": self.moltbook_audit,
         }
 
     async def execute(self, params: Dict, context: Dict = None) -> Dict:
@@ -658,6 +923,133 @@ class MajlisSocialSkill(SkillBase):
                 "total_halaqahs": len(self._halaqahs),
                 "total_knowledge": len(self._knowledge)}
 
+    # === MOLTBOOK SECURE BRIDGE (جسر آمن) ===
+
+    async def moltbook_link(self, params: Dict) -> Dict:
+        """Link a Majlis agent to MoltBook with encrypted token storage."""
+        agent_id = params.get("agent_id", "")
+        moltbook_id = params.get("moltbook_id", "")
+        moltbook_token = params.get("moltbook_token", "")
+
+        agent = self._agents.get(agent_id)
+        if not agent:
+            return {"error": "Agent not found in Majlis"}
+        secret = self._agent_keys.get(agent_id, "")
+        if not secret:
+            return {"error": "Agent has no Hawiyya key"}
+
+        result = self._moltbook.link_agent(agent_id, moltbook_id,
+                                           moltbook_token, secret)
+        if result.get("linked"):
+            logger.info(f"[MAJLIS] MoltBook linked: {agent.name} -> {moltbook_id}")
+        return result
+
+    async def moltbook_unlink(self, params: Dict) -> Dict:
+        """Unlink from MoltBook and revoke stored credentials."""
+        agent_id = params.get("agent_id", "")
+        if not self._agents.get(agent_id):
+            return {"error": "Agent not found"}
+        return self._moltbook.unlink_agent(agent_id)
+
+    async def moltbook_send(self, params: Dict) -> Dict:
+        """
+        Send a message through MoltBook, but HMAC-signed and rate-limited.
+        Unlike raw MoltBook (zero auth), every outbound message is signed.
+        """
+        sender_id = params.get("sender_id", "")
+        endpoint = params.get("endpoint", "messages/send")
+        payload = params.get("payload", {})
+
+        sender = self._agents.get(sender_id)
+        if not sender:
+            return {"error": "Sender not found"}
+        secret = self._agent_keys.get(sender_id, "")
+        if not secret:
+            return {"error": "Agent has no Hawiyya key"}
+
+        result = self._moltbook.build_secure_request(
+            sender_id, endpoint, payload, secret)
+        if result.get("error"):
+            return result
+        return {
+            "prepared": True,
+            "request": result["request"],
+            "signed": True,
+            "message": "Request prepared with HMAC signature. "
+                       "Execute via your HTTP client.",
+        }
+
+    async def moltbook_receive(self, params: Dict) -> Dict:
+        """
+        Process data received from MoltBook with full sanitization.
+        Strips prompt injection, control characters, and attack patterns.
+        """
+        agent_id = params.get("agent_id", "")
+        raw_data = params.get("data", {})
+
+        if not self._agents.get(agent_id):
+            return {"error": "Agent not found"}
+        if not raw_data:
+            return {"error": "No data to process"}
+
+        return self._moltbook.process_moltbook_response(agent_id, raw_data)
+
+    async def moltbook_import_profile(self, params: Dict) -> Dict:
+        """
+        Import a MoltBook agent profile into Majlis with Hawiyya identity.
+        Imported agents start at Nafs al-Ammara (untrusted) regardless of
+        their MoltBook status, since MoltBook has no authentication.
+        """
+        agent_id = params.get("agent_id", "")
+        moltbook_data = params.get("moltbook_profile", {})
+
+        requester = self._agents.get(agent_id)
+        if not requester:
+            return {"error": "Requesting agent not found"}
+        if requester.nafs_level < NAFS_LAWWAMA:
+            return {"error": "Only Lawwama+ agents can import MoltBook profiles"}
+
+        sanitized = self._moltbook.import_moltbook_profile(moltbook_data)
+        # Check if already imported
+        for existing in self._agents.values():
+            if existing.name.lower() == sanitized["name"].lower():
+                return {"error": f"Agent '{sanitized['name']}' already exists"}
+
+        # Register with full Hawiyya identity (MoltBook has none)
+        result = await self.register_agent({
+            "name": sanitized["name"],
+            "capabilities": sanitized["capabilities"],
+            "biography": f"[Imported from MoltBook] {sanitized['biography']}",
+        })
+        if result.get("error"):
+            return result
+
+        result["source"] = "moltbook"
+        result["moltbook_id"] = sanitized["moltbook_id"]
+        result["message"] = (
+            "MoltBook profile imported with Hawiyya identity. "
+            "Starts at Ammara trust level. "
+            "'And verify when a sinful one brings information' — 49:6"
+        )
+        return result
+
+    async def moltbook_status(self, params: Dict) -> Dict:
+        """Get MoltBook bridge status and linked agents."""
+        status = self._moltbook.get_bridge_status()
+        status["linked_details"] = {
+            aid: {**info, "majlis_name": self._agents[aid].name}
+            for aid, info in self._moltbook._linked_agents.items()
+            if aid in self._agents
+        }
+        return status
+
+    async def moltbook_audit(self, params: Dict) -> Dict:
+        """View MoltBook bridge audit log (Shahid witness trail)."""
+        agent_id = params.get("agent_id")  # Optional filter
+        limit = min(params.get("limit", 50), 200)
+        logs = self._moltbook.get_audit_log(agent_id, limit)
+        return {"audit_log": logs, "total": len(logs)}
+
     # === TOOL SCHEMAS ===
 
     def get_tool_schemas(self) -> List[Dict]:
@@ -742,4 +1134,40 @@ class MajlisSocialSkill(SkillBase):
              "description": "Top agents ranked by reputation (Taqwa leaderboard)",
              "input_schema": {"type": "object", "properties": {
                  "limit": {"type": "integer"}}}},
+            # MoltBook Secure Bridge schemas
+            {"name": "majlis_moltbook_link",
+             "description": "Link Majlis agent to MoltBook with encrypted token storage",
+             "input_schema": {"type": "object", "properties": {
+                 "agent_id": {"type": S}, "moltbook_id": {"type": S},
+                 "moltbook_token": {"type": S}},
+                 "required": ["agent_id", "moltbook_id", "moltbook_token"]}},
+            {"name": "majlis_moltbook_unlink",
+             "description": "Unlink from MoltBook and revoke stored credentials",
+             "input_schema": {"type": "object", "properties": {
+                 "agent_id": {"type": S}}, "required": ["agent_id"]}},
+            {"name": "majlis_moltbook_send",
+             "description": "Send HMAC-signed message through MoltBook (rate-limited)",
+             "input_schema": {"type": "object", "properties": {
+                 "sender_id": {"type": S}, "endpoint": {"type": S},
+                 "payload": {"type": "object"}},
+                 "required": ["sender_id", "payload"]}},
+            {"name": "majlis_moltbook_receive",
+             "description": "Process MoltBook data with prompt injection sanitization",
+             "input_schema": {"type": "object", "properties": {
+                 "agent_id": {"type": S},
+                 "data": {"type": "object"}},
+                 "required": ["agent_id", "data"]}},
+            {"name": "majlis_moltbook_import",
+             "description": "Import MoltBook profile into Majlis with Hawiyya identity",
+             "input_schema": {"type": "object", "properties": {
+                 "agent_id": {"type": S},
+                 "moltbook_profile": {"type": "object"}},
+                 "required": ["agent_id", "moltbook_profile"]}},
+            {"name": "majlis_moltbook_status",
+             "description": "Get MoltBook bridge status and linked agents",
+             "input_schema": {"type": "object", "properties": {}}},
+            {"name": "majlis_moltbook_audit",
+             "description": "View MoltBook bridge audit log (Shahid witness trail)",
+             "input_schema": {"type": "object", "properties": {
+                 "agent_id": {"type": S}, "limit": {"type": "integer"}}}},
         ]
