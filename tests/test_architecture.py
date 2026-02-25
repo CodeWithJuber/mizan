@@ -57,13 +57,17 @@ class TestNafsProfile:
         assert profile.nafs_level == 1
 
     def test_evolves_to_lawwama(self):
-        profile = NafsProfile(name="Test", success_rate=0.75, learning_iterations=10)
+        profile = NafsProfile(
+            name="Test", success_rate=0.75, total_tasks=30,
+            self_correction_count=1, error_count=1, learning_iterations=10,
+        )
         profile.evolve_nafs()
         assert profile.nafs_level == 2
 
-    def test_evolves_to_mutmainna(self):
+    def test_evolves_to_mulhama(self):
         profile = NafsProfile(
-            name="Test", success_rate=0.95, learning_iterations=150
+            name="Test", success_rate=0.80, total_tasks=110,
+            self_correction_count=5, error_count=5, learning_iterations=150,
         )
         profile.evolve_nafs()
         assert profile.nafs_level == 3
@@ -85,9 +89,11 @@ class TestQCAIntegrator:
         """Trust level should be computed from performance."""
         from core.architecture import NafsTrustLevel
 
-        level = integrator.compute_nafs_level(0.95, 0.02)
+        # 0.80 * (1 - 0.08) = 0.736 → MUTMAINNA (>=0.70, <0.80)
+        level = integrator.compute_nafs_level(0.80, 0.08)
         assert level == NafsTrustLevel.MUTMAINNA
 
+        # 0.6 * (1 - 0.1) = 0.54 → LAWWAMA (>=0.40, <0.55)
         level = integrator.compute_nafs_level(0.6, 0.1)
         assert level == NafsTrustLevel.LAWWAMA
 
