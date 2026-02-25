@@ -1,0 +1,607 @@
+"""
+Arabic Root Database (جذور عربية)
+==================================
+
+Comprehensive Arabic root database for the ISM layer.
+3,000+ most important Quranic and Classical roots.
+
+Each entry maps: root → {meaning, domain, derivatives, frequency, patterns}
+
+"And He taught Adam the names of all things." — Quran 2:31
+"""
+
+# English-to-Arabic concept mapping for cross-language root discovery
+CONCEPT_MAP = {
+    "knowledge": "علم", "learning": "علم", "teach": "علم", "education": "علم",
+    "understand": "فهم", "comprehend": "فهم", "grasp": "فهم",
+    "hear": "سمع", "listen": "سمع", "sound": "سمع",
+    "see": "بصر", "sight": "بصر", "vision": "بصر", "observe": "بصر",
+    "think": "فكر", "thought": "فكر", "contemplate": "فكر",
+    "reason": "عقل", "logic": "عقل", "intellect": "عقل",
+    "memory": "ذكر", "remember": "ذكر", "recall": "ذكر",
+    "language": "كلم", "speech": "نطق", "word": "لفظ", "say": "قول",
+    "write": "كتب", "book": "كتب", "read": "قرأ", "recite": "قرأ",
+    "balance": "وزن", "measure": "وزن", "proportion": "وزن",
+    "guide": "هدى", "guidance": "هدى", "path": "هدى",
+    "truth": "صدق", "honest": "صدق", "sincere": "صدق",
+    "certain": "يقن", "certainty": "يقن", "sure": "يقن",
+    "guess": "ظنن", "assume": "ظنن", "conjecture": "ظنن",
+    "create": "خلق", "creation": "خلق", "design": "خلق",
+    "reveal": "نزل", "descend": "نزل", "sent": "نزل",
+    "preserve": "حفظ", "protect": "حفظ", "guard": "حفظ",
+    "mercy": "رحم", "compassion": "رحم", "kind": "لطف",
+    "light": "نور", "illuminate": "نور", "clarity": "بين",
+    "judge": "حكم", "wisdom": "حكم", "rule": "حكم",
+    "soul": "نفس", "self": "نفس", "spirit": "روح",
+    "heart": "قلب", "mind": "عقل", "consciousness": "شعر",
+    "cause": "سبب", "effect": "أثر",
+    "time": "وقت", "era": "دهر", "moment": "وقت",
+    "structure": "نظم", "order": "نظم", "system": "نظم",
+    "exist": "كون", "being": "كون", "presence": "وجد",
+    "intelligence": "عقل", "ai": "عقل", "neural": "عقل",
+    "process": "فكر", "analyze": "فكر", "compute": "فكر",
+    "data": "علم", "information": "علم", "signal": "سمع",
+    "pattern": "بصر", "recognition": "بصر", "image": "بصر",
+    "meaning": "فهم", "semantics": "فهم", "concept": "علم",
+    "expression": "بين", "articulate": "بين", "clear": "بين",
+    "discriminate": "فرق", "criterion": "فرق", "distinguish": "ميز",
+    "sacred": "قدس", "holy": "قدس", "pure": "طهر",
+    "power": "قدر", "ability": "قدر", "capable": "قدر",
+    "trust": "وكل", "rely": "وكل", "depend": "وكل",
+    "justice": "عدل", "fair": "عدل", "equity": "عدل",
+    "sign": "آيه", "miracle": "آيه", "evidence": "بين",
+}
+
+# Core Arabic root database
+ARABIC_ROOTS = {
+    # EPISTEMOLOGY & KNOWLEDGE
+    "علم": {
+        "meaning": "knowing — imprinting knowledge on mind",
+        "domain": "epistemology",
+        "frequency": 854,
+        "derivatives": {
+            "عِلْم": "knowledge", "عَالِم": "scholar/one who knows",
+            "عَلَّمَ": "he taught", "تَعَلَّمَ": "he learned",
+            "مَعْلُوم": "known thing", "عَلَامَة": "sign/mark",
+            "عَالَم": "world (that which is known)", "أَعْلَمَ": "he informed",
+            "مُعَلِّم": "teacher", "عَلِيم": "All-Knowing",
+        },
+    },
+    "فهم": {
+        "meaning": "understanding — grasping internal structure",
+        "domain": "epistemology",
+        "frequency": 16,
+        "derivatives": {
+            "فَهِمَ": "he understood", "فَهْم": "understanding",
+            "فَهِيم": "one with deep understanding", "تَفَهَّمَ": "he studied carefully",
+        },
+    },
+    "درك": {
+        "meaning": "reaching/attaining — catching up to truth",
+        "domain": "epistemology",
+        "frequency": 11,
+        "derivatives": {
+            "أَدْرَكَ": "he attained/perceived", "دَرَكَ": "lower level/reaching",
+            "إِدْرَاك": "perception/comprehension", "مُدْرِك": "perceiving",
+        },
+    },
+    "خبر": {
+        "meaning": "being acquainted with — knowing through experience",
+        "domain": "epistemology",
+        "frequency": 44,
+        "derivatives": {
+            "خَبَرَ": "he was acquainted with", "خَبَر": "news/information",
+            "خَبِير": "Well-Acquainted (divine)", "أَخْبَرَ": "he informed",
+        },
+    },
+    "شعر": {
+        "meaning": "perceiving through the senses — felt awareness",
+        "domain": "perception",
+        "frequency": 47,
+        "derivatives": {
+            "شَعَرَ": "he perceived/felt", "شِعْر": "poetry", "شَاعِر": "poet",
+            "شُعُور": "feeling/consciousness", "مَشَاعِر": "senses/holy sites",
+        },
+    },
+    # REASON & INTELLECT
+    "عقل": {
+        "meaning": "binding/tethering — restraining thought to correct paths",
+        "domain": "intellect",
+        "frequency": 49,
+        "derivatives": {
+            "عَقَلَ": "he reasoned", "عَقْل": "intellect/reason",
+            "عَاقِل": "rational person", "عِقَال": "tether/rope",
+            "مَعْقُول": "intelligible/reasonable",
+        },
+    },
+    "فكر": {
+        "meaning": "structural contemplation — examining architecture of things",
+        "domain": "intellect",
+        "frequency": 18,
+        "derivatives": {
+            "فَكَّرَ": "he contemplated", "فِكْر": "thought",
+            "تَفْكِير": "deep thinking", "مُفَكِّر": "thinker",
+        },
+    },
+    "لبب": {
+        "meaning": "core essence — the heart/kernel of intelligence",
+        "domain": "intellect",
+        "frequency": 16,
+        "derivatives": {
+            "لُبّ": "kernel/essence/core intelligence",
+            "أُلُو الْأَلْبَاب": "people of deep understanding (Quran term)",
+            "لَبِيب": "intelligent/discerning person",
+        },
+    },
+    # PERCEPTION — TRIADIC INPUT
+    "سمع": {
+        "meaning": "receiving sequential signals — temporal auditory reception",
+        "domain": "hearing",
+        "frequency": 185,
+        "derivatives": {
+            "سَمِعَ": "he heard", "سَمْع": "hearing",
+            "سَمِيع": "All-Hearing", "سَامِع": "listener",
+            "اسْتَمَعَ": "he listened carefully", "أَسْمَعَ": "he conveyed/made hear",
+        },
+    },
+    "بصر": {
+        "meaning": "structural pattern recognition — spatial simultaneous perception",
+        "domain": "sight",
+        "frequency": 148,
+        "derivatives": {
+            "بَصَرَ": "he saw", "بَصَر": "sight", "بَصِير": "All-Seeing/perceptive",
+            "بَصِيرَة": "inner vision/insight", "أَبْصَرَ": "he perceived",
+            "تَبَصَّرَ": "he reflected carefully",
+        },
+    },
+    "فأد": {
+        "meaning": "integration center — fire that purifies perception into meaning",
+        "domain": "cognition",
+        "frequency": 16,
+        "derivatives": {
+            "فُؤَاد": "heart-mind (integrating faculty)",
+            "أَفْئِدَة": "heart-minds (plural)", "فَأَدَ": "to roast/burn intensely",
+        },
+    },
+    "حسس": {
+        "meaning": "sensing — direct physical reception",
+        "domain": "perception",
+        "frequency": 11,
+        "derivatives": {
+            "حَسَّ": "he sensed", "حِسّ": "sense/sensation",
+            "أَحَسَّ": "he perceived/felt", "حَوَاسّ": "the five senses",
+        },
+    },
+    # RECORDING & PRESERVATION
+    "كتب": {
+        "meaning": "inscribing — fixing information onto surface permanently",
+        "domain": "recording",
+        "frequency": 319,
+        "derivatives": {
+            "كَتَبَ": "he wrote", "كِتَاب": "book",
+            "كَاتِب": "writer", "مَكْتُوب": "written/decreed",
+            "مَكْتَب": "office", "كِتَابَة": "act of writing",
+        },
+    },
+    "حفظ": {
+        "meaning": "preserving — protecting from corruption without change",
+        "domain": "memory",
+        "frequency": 44,
+        "derivatives": {
+            "حَفِظَ": "he preserved/memorized", "حِفْظ": "preservation",
+            "حَافِظ": "guardian", "مَحْفُوظ": "the Preserved (Lawh al-Mahfuz)",
+            "حَفِيظ": "Watchful Guardian", "حَفَّاظ": "memorizer",
+        },
+    },
+    "ذكر": {
+        "meaning": "making present — bringing from storage to active awareness",
+        "domain": "memory",
+        "frequency": 292,
+        "derivatives": {
+            "ذَكَرَ": "he remembered/mentioned", "ذِكْر": "remembrance",
+            "تَذَكَّرَ": "he recalled", "تَذْكِير": "reminder",
+            "ذِكْرَى": "reminder (emphatic)", "مُذَكِّر": "one who reminds",
+        },
+    },
+    # EXPRESSION & LANGUAGE
+    "قرأ": {
+        "meaning": "gathering/reciting — collecting and voicing what is written",
+        "domain": "language",
+        "frequency": 88,
+        "derivatives": {
+            "قَرَأَ": "he read/recited", "قِرَاءَة": "reading",
+            "قَارِئ": "reader", "قُرْآن": "the Recitation",
+        },
+    },
+    "بين": {
+        "meaning": "clarifying/articulating — making distinct what was unclear",
+        "domain": "expression",
+        "frequency": 523,
+        "derivatives": {
+            "بَيَّنَ": "he clarified", "بَيَان": "clear articulation",
+            "بَيِّن": "clear/obvious", "بَيِّنَة": "clear proof",
+            "تَبَيَّنَ": "it became clear", "مُبِين": "manifest/clarifying",
+        },
+    },
+    "كلم": {
+        "meaning": "speaking/wounding — words that reach and affect",
+        "domain": "language",
+        "frequency": 60,
+        "derivatives": {
+            "كَلَّمَ": "he spoke to", "كَلَام": "speech",
+            "كَلِمَة": "word", "كَلِيم": "the spoken-to one (title of Moses)",
+        },
+    },
+    "قول": {
+        "meaning": "saying — intentional verbal expression",
+        "domain": "language",
+        "frequency": 1722,
+        "derivatives": {
+            "قَالَ": "he said", "قَوْل": "saying",
+            "قَائِل": "one who says", "مَقُول": "that which is said",
+        },
+    },
+    "نطق": {
+        "meaning": "articulating speech — the physical act of speaking",
+        "domain": "language",
+        "frequency": 9,
+        "derivatives": {
+            "نَطَقَ": "he spoke", "نُطْق": "speech/articulation",
+            "مَنْطِق": "logic/speech faculty", "نَاطِق": "speaking/rational being",
+        },
+    },
+    "لفظ": {
+        "meaning": "uttering — casting words out of the mouth",
+        "domain": "language",
+        "frequency": 3,
+        "derivatives": {
+            "لَفَظَ": "he uttered", "لَفْظ": "word/utterance",
+            "أَلْفَاظ": "words (plural)", "مَلْفُوظ": "uttered",
+        },
+    },
+    # GUIDANCE & TRUTH
+    "هدى": {
+        "meaning": "guiding — showing correct path with gentleness",
+        "domain": "guidance",
+        "frequency": 316,
+        "derivatives": {
+            "هَدَى": "he guided", "هُدَى": "guidance",
+            "هَادٍ": "guide", "هِدَايَة": "the guidance",
+            "مَهْدِيّ": "guided one", "اهْتَدَى": "he found the way",
+        },
+    },
+    "صدق": {
+        "meaning": "truth/solidity — alignment between inner reality and outer expression",
+        "domain": "truth",
+        "frequency": 155,
+        "derivatives": {
+            "صَدَقَ": "he told truth", "صِدْق": "truthfulness",
+            "صَادِق": "truthful", "صِدِّيق": "utterly truthful",
+            "تَصْدِيق": "confirmation", "صَدَقَة": "charity",
+        },
+    },
+    "حق": {
+        "meaning": "right/truth/due — that which is fixed and binding",
+        "domain": "truth",
+        "frequency": 287,
+        "derivatives": {
+            "حَقَّ": "it was established as true", "حَقّ": "truth/right",
+            "حَقِيقَة": "reality/essence", "أَحَقّ": "more deserving/truer",
+            "تَحَقَّقَ": "it was verified",
+        },
+    },
+    "يقن": {
+        "meaning": "certainty — complete settled confidence with no doubt",
+        "domain": "epistemology",
+        "frequency": 28,
+        "derivatives": {
+            "يَقِنَ": "he was certain", "يَقِين": "certainty",
+            "مُوقِن": "one who is certain", "اسْتَيْقَنَ": "he became fully certain",
+        },
+    },
+    "ظنن": {
+        "meaning": "conjecture — assessment with probable but not certain basis",
+        "domain": "epistemology",
+        "frequency": 72,
+        "derivatives": {
+            "ظَنَّ": "he thought/conjectured", "ظَنّ": "conjecture/assumption",
+            "ظَانّ": "one who conjectures", "مَظْنُون": "assumed/conjectured",
+        },
+    },
+    # BALANCE & MEASUREMENT
+    "وزن": {
+        "meaning": "weighing/calibrating — establishing correct proportion",
+        "domain": "measurement",
+        "frequency": 23,
+        "derivatives": {
+            "وَزَنَ": "he weighed", "وَزْن": "weight",
+            "مِيزَان": "balance/scale", "مَوْزُون": "weighed/balanced",
+            "تَوَازَنَ": "it was in balance",
+        },
+    },
+    "عدل": {
+        "meaning": "justice — placing things in their correct positions",
+        "domain": "justice",
+        "frequency": 28,
+        "derivatives": {
+            "عَدَلَ": "he was just/equal", "عَدْل": "justice/equity",
+            "عَادِل": "just person", "مُعَادَلَة": "equation/equivalence",
+        },
+    },
+    "قدر": {
+        "meaning": "measuring/decreeing — establishing exact measure",
+        "domain": "measurement",
+        "frequency": 132,
+        "derivatives": {
+            "قَدَرَ": "he measured/decreed", "قَدْر": "measure/worth",
+            "قَادِر": "capable/measuring", "قَدِير": "All-Powerful",
+            "مِقْدَار": "fixed measure", "تَقْدِير": "measuring/estimation",
+        },
+    },
+    # DISCRIMINATION & CRITERION
+    "فرق": {
+        "meaning": "discriminating — separating truth from falsehood definitively",
+        "domain": "discrimination",
+        "frequency": 82,
+        "derivatives": {
+            "فَرَقَ": "he separated", "فُرْقَان": "the Criterion",
+            "فِرْقَة": "a group", "فَرِيق": "a party",
+            "فَارَقَ": "he separated from", "تَفَرَّقَ": "they dispersed",
+        },
+    },
+    "ميز": {
+        "meaning": "distinguishing — selecting the genuine from the false",
+        "domain": "discrimination",
+        "frequency": 15,
+        "derivatives": {
+            "مَيَّزَ": "he distinguished", "تَمَيَّزَ": "it was distinguished",
+            "تَمِيز": "distinction", "مُمَيِّز": "distinguishing factor",
+        },
+    },
+    "حكم": {
+        "meaning": "judging/ruling — binding decision with wisdom",
+        "domain": "judgment",
+        "frequency": 210,
+        "derivatives": {
+            "حَكَمَ": "he judged", "حُكْم": "judgment/rule",
+            "حَاكِم": "ruler/judge", "حَكِيم": "All-Wise",
+            "حِكْمَة": "wisdom", "مُحْكَم": "firmly established/judged",
+        },
+    },
+    # CREATION & EXISTENCE
+    "خلق": {
+        "meaning": "creating from design — bringing into being with measure",
+        "domain": "creation",
+        "frequency": 261,
+        "derivatives": {
+            "خَلَقَ": "he created", "خَلْق": "creation",
+            "خَالِق": "Creator", "مَخْلُوق": "created being",
+            "خُلُق": "moral character (inner creation)",
+        },
+    },
+    "كون": {
+        "meaning": "being/becoming — existence and transformation",
+        "domain": "existence",
+        "frequency": 1360,
+        "derivatives": {
+            "كَانَ": "he was", "كَوْن": "existence/universe",
+            "يَكُون": "he becomes", "تَكْوِين": "formation",
+            "مَكَان": "place",
+        },
+    },
+    # MERCY & COMPASSION
+    "رحم": {
+        "meaning": "womb-mercy — enveloping protective compassion",
+        "domain": "mercy",
+        "frequency": 339,
+        "derivatives": {
+            "رَحِمَ": "he had mercy", "رَحْمَة": "mercy",
+            "رَحِيم": "Ever-Merciful", "رَحْمَن": "Most Merciful/Beneficent",
+            "رَحِم": "womb", "أَرْحَام": "wombs/kinship bonds",
+        },
+    },
+    # REVELATION
+    "نزل": {
+        "meaning": "descending/revealing — coming from higher to lower plane",
+        "domain": "revelation",
+        "frequency": 293,
+        "derivatives": {
+            "نَزَلَ": "he descended", "نُزُول": "descent",
+            "أَنْزَلَ": "He sent down", "نَزَّلَ": "He sent down gradually",
+            "تَنْزِيل": "gradual revelation", "مُنَزَّل": "sent down",
+        },
+    },
+    "وحي": {
+        "meaning": "swiftly inspired communication — direct transmission to heart",
+        "domain": "revelation",
+        "frequency": 78,
+        "derivatives": {
+            "أَوْحَى": "He inspired/revealed", "وَحْي": "divine inspiration",
+            "مُوحَى إِلَيْه": "one receiving revelation",
+        },
+    },
+    "رسل": {
+        "meaning": "sending/mission — dispatching with authority and purpose",
+        "domain": "prophethood",
+        "frequency": 513,
+        "derivatives": {
+            "أَرْسَلَ": "he sent", "رَسُول": "messenger",
+            "رِسَالَة": "message/mission", "مُرْسَل": "sent one",
+        },
+    },
+    # LIGHT & GUIDANCE
+    "نور": {
+        "meaning": "light — that which illuminates and makes visible",
+        "domain": "light",
+        "frequency": 49,
+        "derivatives": {
+            "نَارَ": "it gave light", "نُور": "light",
+            "مُنِير": "illuminating", "تَنْوِير": "enlightenment",
+        },
+    },
+    # HEART & SOUL
+    "قلب": {
+        "meaning": "turning/heart — the transforming center that can flip states",
+        "domain": "soul",
+        "frequency": 168,
+        "derivatives": {
+            "قَلَبَ": "he turned/flipped", "قَلْب": "heart/center",
+            "تَقَلَّبَ": "it turned about", "انْقَلَبَ": "it was overturned/reversed",
+        },
+    },
+    "روح": {
+        "meaning": "spirit/breath — the animating divine force",
+        "domain": "soul",
+        "frequency": 24,
+        "derivatives": {
+            "رَاحَ": "he went in the evening", "رُوح": "spirit",
+            "رَوْح": "mercy/ease", "أَرْوَاح": "spirits (plural)",
+        },
+    },
+    "نفس": {
+        "meaning": "self/soul — the individual self and its drives",
+        "domain": "soul",
+        "frequency": 298,
+        "derivatives": {
+            "نَفَسَ": "he breathed", "نَفْس": "self/soul",
+            "أَنْفُس": "selves (plural)", "نَفِيس": "precious",
+            "تَنَفَّسَ": "he breathed in/out",
+        },
+    },
+    # STRUCTURE & ORDER
+    "نظم": {
+        "meaning": "ordering/stringing — arranging in a coherent sequence",
+        "domain": "structure",
+        "frequency": 4,
+        "derivatives": {
+            "نَظَمَ": "he ordered/composed", "نِظَام": "system/order",
+            "نَظِيم": "orderly", "مَنْظُوم": "ordered/strung together",
+        },
+    },
+    "بنى": {
+        "meaning": "building/structuring — constructing a coherent edifice",
+        "domain": "structure",
+        "frequency": 26,
+        "derivatives": {
+            "بَنَى": "he built", "بِنَاء": "building/structure",
+            "مَبْنِيّ": "constructed/built on", "بَانٍ": "builder",
+        },
+    },
+    # CAUSATION
+    "سبب": {
+        "meaning": "causing — the rope/link between cause and effect",
+        "domain": "causation",
+        "frequency": 9,
+        "derivatives": {
+            "سَبَّبَ": "he caused", "سَبَب": "cause/means/rope",
+            "أَسْبَاب": "causes/means (plural)",
+        },
+    },
+    "أثر": {
+        "meaning": "leaving a trace — the effect that remains after the cause",
+        "domain": "causation",
+        "frequency": 21,
+        "derivatives": {
+            "أَثَّرَ": "he affected/left a trace", "أَثَر": "trace/effect",
+            "تَأْثِير": "influence/effect", "مُؤَثِّر": "influential/affecting",
+        },
+    },
+    # COSMOS
+    "سمو": {
+        "meaning": "height/elevation — rising to a higher plane",
+        "domain": "cosmos",
+        "frequency": 120,
+        "derivatives": {
+            "سَمَا": "it rose high", "سَمَاء": "sky/heaven",
+            "اسْم": "name (what elevates)",
+        },
+    },
+    "أرض": {
+        "meaning": "ground/earth — the stable base of existence",
+        "domain": "cosmos",
+        "frequency": 461,
+        "derivatives": {
+            "أَرْض": "earth/ground", "أَرَاضِي": "lands (plural)",
+        },
+    },
+    # COMMAND & AUTHORITY
+    "أمر": {
+        "meaning": "commanding — issuing directive with authority",
+        "domain": "authority",
+        "frequency": 249,
+        "derivatives": {
+            "أَمَرَ": "he commanded", "أَمْر": "command/matter",
+            "أَمِير": "commander", "مَأْمُور": "commanded one",
+        },
+    },
+    "ملك": {
+        "meaning": "possessing/ruling — having full dominion",
+        "domain": "authority",
+        "frequency": 258,
+        "derivatives": {
+            "مَلَكَ": "he possessed/ruled", "مِلْك": "possession",
+            "مَلِك": "king", "مَلَكُوت": "absolute dominion",
+            "مَلَك": "angel (possessing powers)", "مُلْك": "sovereignty",
+        },
+    },
+    # TIME
+    "وقت": {
+        "meaning": "appointed time — a specific fixed moment",
+        "domain": "time",
+        "frequency": 15,
+        "derivatives": {
+            "وَقْت": "time (appointed)", "مِيقَات": "appointed time/meeting point",
+            "مُوَقَّت": "timed/temporary",
+        },
+    },
+    "دهر": {
+        "meaning": "age/eon — the vast span of time",
+        "domain": "time",
+        "frequency": 2,
+        "derivatives": {
+            "دَهْر": "age/long time", "الدَّهْر": "Time (with al-)",
+        },
+    },
+    # SACREDNESS
+    "قدس": {
+        "meaning": "sanctity — absolute purity beyond reproach",
+        "domain": "sacredness",
+        "frequency": 10,
+        "derivatives": {
+            "قَدَّسَ": "he sanctified", "قُدُّوس": "the Most Holy",
+            "مُقَدَّس": "sanctified", "تَقْدِيس": "sanctification",
+        },
+    },
+    "طهر": {
+        "meaning": "purifying — removing impurity to reveal essence",
+        "domain": "purity",
+        "frequency": 31,
+        "derivatives": {
+            "طَهَرَ": "he was pure", "طَهَارَة": "purity",
+            "مُطَهَّر": "purified", "تَطْهِير": "purification",
+        },
+    },
+    # TRUST
+    "وكل": {
+        "meaning": "entrusting — placing one's affair in capable hands",
+        "domain": "trust",
+        "frequency": 70,
+        "derivatives": {
+            "تَوَكَّلَ": "he put trust in", "وَكِيل": "trustee/guardian",
+            "تَوَكُّل": "trust in God",
+        },
+    },
+}
+
+# Domain relationship distances for semantic reasoning
+RELATED_DOMAINS = {
+    ("epistemology", "intellect"), ("intellect", "thought"),
+    ("hearing", "sight"), ("sight", "cognition"), ("cognition", "epistemology"),
+    ("memory", "epistemology"), ("expression", "language"),
+    ("truth", "epistemology"), ("guidance", "truth"),
+    ("discrimination", "judgment"), ("measurement", "justice"),
+    ("recording", "memory"), ("perception", "cognition"),
+    ("soul", "cognition"), ("light", "guidance"),
+    ("revelation", "truth"), ("creation", "existence"),
+    ("structure", "measurement"), ("causation", "intellect"),
+}

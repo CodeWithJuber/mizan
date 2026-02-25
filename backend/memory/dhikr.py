@@ -17,6 +17,13 @@ Three Memory Types from Quranic Epistemology:
 
 Memory consolidation follows Tafakkur cycle (تفكر - deep reflection)
 Forgetting follows Nisyan principle (نسيان) - selective forgetting for optimization
+
+QCA Integration:
+  The Dhikr system maps to QCA's 4-tier Lawh memory (85:22):
+    Tier 1: Lawh (Immutable)   → Procedural axioms
+    Tier 2: Kitab (Verified)   → Semantic knowledge (high importance)
+    Tier 3: Dhikr (Active)     → Working memory / episodic (medium importance)
+    Tier 4: Wahm (Conjecture)  → Low-certainty observations
 """
 
 import json
@@ -465,3 +472,42 @@ class DhikrMemorySystem:
             "config": json.loads(r[3]) if r[3] else {},
             "enabled": bool(r[4]), "created_at": r[5]
         } for r in rows]
+
+    # ── QCA Lawh Memory Bridge ──────────────────────────────────────────
+
+    def get_qca_lawh(self):
+        """
+        Get QCA's 4-tier Lawh memory instance.
+        Bridges Dhikr's 3-tier (episodic/semantic/procedural) with
+        QCA's 4-tier (Lawh immutable / Kitab verified / Dhikr active / Wahm conjecture).
+        """
+        try:
+            from backend.qca.engine import LawhMemory
+            return LawhMemory()
+        except ImportError:
+            return None
+
+    async def remember_with_mizan(self, content: Any, memory_type: str = "episodic",
+                                  importance: float = 0.5, agent_id: str = "",
+                                  tags: List[str] = None,
+                                  certainty_level: str = "zann") -> str:
+        """
+        Store a new memory with QCA Mizan-weighted importance.
+        The certainty_level maps to QCA epistemic scale:
+          yaqin (1.0) → highest importance
+          zann_rajih (0.75) → high importance
+          zann (0.50) → medium importance
+          shakk (0.25) → low importance
+          wahm (0.05) → very low importance
+        """
+        # Map certainty to importance boost
+        mizan_weights = {
+            "yaqin": 1.0, "zann_rajih": 0.75, "zann": 0.5,
+            "shakk": 0.25, "wahm": 0.05,
+        }
+        mizan_factor = mizan_weights.get(certainty_level, 0.5)
+        adjusted_importance = min(1.0, importance * (0.5 + mizan_factor * 0.5))
+
+        return await self.remember(
+            content, memory_type, adjusted_importance, agent_id, tags
+        )
