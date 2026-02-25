@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { Agent, ChatMessage, TerminalLine, Memory, Integration, SystemStatus } from "./types";
 
 // ===========================
 // MIZAN (ميزان) - Quranic AGI System v2.0
@@ -155,13 +156,13 @@ const Icons = {
 };
 
 // ===== QURANIC CONCEPTS DISPLAY =====
-const NAFS_LEVELS = {
+const NAFS_LEVELS: Record<number, { name: string; latin: string; color: string; desc: string }> = {
   1: { name: "أمارة", latin: "Ammara", color: "#ef4444", desc: "Raw potential" },
   2: { name: "لوامة", latin: "Lawwama", color: "#f59e0b", desc: "Self-correcting" },
   3: { name: "مطمئنة", latin: "Mutmainna", color: "#10b981", desc: "Perfected" },
 };
 
-const AGENT_ROLE_ICONS = {
+const AGENT_ROLE_ICONS: Record<string, string> = {
   rasul: "رسول",
   wakil: "وكيل",
   hafiz: "حافظ",
@@ -1166,7 +1167,7 @@ const GeometricBackground = () => (
 );
 
 // ===== AGENT CARD =====
-const AgentCard = ({ agent, selected, onClick }) => {
+const AgentCard = ({ agent, selected, onClick }: { agent: Agent; selected: boolean; onClick: () => void }) => {
   const nafs = NAFS_LEVELS[agent.nafs_level] || NAFS_LEVELS[1];
   const roleArabic = AGENT_ROLE_ICONS[agent.role] || "وكيل";
   const stateClass = `state-${agent.state}`;
@@ -1265,15 +1266,15 @@ const SevenLayersPanel = () => {
 // ===== MAIN APP =====
 export default function App() {
   const [activeTab, setActiveTab] = useState("agents");
-  const [agents, setAgents] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [ws, setWs] = useState(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState("disconnected");
-  const [terminalLines, setTerminalLines] = useState([
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
     { text: "بسم الله الرحمن الرحيم", type: "gold" },
     { text: "MIZAN (ميزان) System Initializing...", type: "" },
     { text: "Architecture: Seven-Layer Quranic AGI", type: "info" },
@@ -1283,20 +1284,20 @@ export default function App() {
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [showIntegration, setShowIntegration] = useState(false);
-  const [memories, setMemories] = useState([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
-  const [status, setStatus] = useState(null);
-  const [integrations, setIntegrations] = useState([]);
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6" });
-  const [newIntegration, setNewIntegration] = useState({ name: "", type: "anthropic", config: {} });
+  const [newIntegration, setNewIntegration] = useState({ name: "", type: "anthropic", config: {} as Record<string, unknown> });
 
   const api = useApi();
   
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const clientId = useRef(`client_${Date.now()}`);
-  
-  const addTerminalLine = useCallback((text, type = "") => {
-    setTerminalLines(prev => [...prev.slice(-100), { text, type, ts: Date.now() }]);
+
+  const addTerminalLine = useCallback((text: string, type: string = "") => {
+    setTerminalLines(prev => [...prev.slice(-100), { text, type: type as TerminalLine["type"], ts: Date.now() }]);
   }, []);
   
   // Connect WebSocket
@@ -1326,8 +1327,8 @@ export default function App() {
         socket.onerror = () => {
           addTerminalLine("WebSocket error", "error");
         };
-      } catch (e) {
-        addTerminalLine(`Connection failed: ${e.message}`, "error");
+      } catch (e: unknown) {
+        addTerminalLine(`Connection failed: ${(e as Error).message}`, "error");
         setTimeout(connect, 5000);
       }
     };
@@ -1335,7 +1336,7 @@ export default function App() {
     connect();
   }, []);
   
-  const handleWsMessage = useCallback((data) => {
+  const handleWsMessage = useCallback((data: Record<string, unknown>) => {
     switch (data.type) {
       case "connected":
         addTerminalLine(`${data.message} · ${data.agents} agents`, "gold");
@@ -1343,29 +1344,29 @@ export default function App() {
         loadStatus();
         break;
       case "stream":
-        setStreamingText(prev => prev + data.chunk);
+        setStreamingText(prev => prev + (data.chunk as string));
         break;
       case "response":
         setStreamingText("");
         setStreaming(false);
         setMessages(prev => [...prev, {
           id: Date.now(),
-          role: "assistant",
-          content: data.content,
-          agent: data.agent,
+          role: "assistant" as const,
+          content: data.content as string,
+          agent: data.agent as string,
           ts: new Date().toLocaleTimeString(),
         }]);
         addTerminalLine(`✓ Response from ${data.agent}`, "info");
         break;
       case "task_stream":
-        addTerminalLine(data.chunk, "");
+        addTerminalLine(data.chunk as string, "");
         break;
       case "task_done":
         addTerminalLine(`✓ Task completed`, "gold");
         loadAgents();
         break;
       case "agent_created":
-        addTerminalLine(`✓ Agent created: ${data.agent.name}`, "gold");
+        addTerminalLine(`✓ Agent created: ${(data.agent as Record<string, unknown>).name}`, "gold");
         loadAgents();
         break;
     }
@@ -1379,8 +1380,8 @@ export default function App() {
       if (!selectedAgent && data.agents?.length > 0) {
         setSelectedAgent(data.agents[0]);
       }
-    } catch (e) {
-      addTerminalLine(`Failed to load agents: ${e.message}`, "error");
+    } catch (e: unknown) {
+      addTerminalLine(`Failed to load agents: ${(e as Error).message}`, "error");
     }
   };
   
@@ -1392,7 +1393,7 @@ export default function App() {
     } catch {}
   };
   
-  const loadMemories = async (query = "") => {
+  const loadMemories = async (query: string = "") => {
     try {
       const res = await fetch(`${API_URL}/memory/query`, {
         method: "POST",
@@ -1433,7 +1434,7 @@ export default function App() {
   const sendMessage = () => {
     if (!input.trim() || streaming || !ws) return;
     
-    const userMsg = { id: Date.now(), role: "user", content: input, ts: new Date().toLocaleTimeString() };
+    const userMsg: ChatMessage = { id: Date.now(), role: "user", content: input, ts: new Date().toLocaleTimeString() };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamingText("");
@@ -1472,12 +1473,12 @@ export default function App() {
       setShowCreateAgent(false);
       setNewAgent({ name: "", type: "general", model: "claude-opus-4-6" });
       loadAgents();
-    } catch (e) {
-      addTerminalLine(`Error creating agent: ${e.message}`, "error");
+    } catch (e: unknown) {
+      addTerminalLine(`Error creating agent: ${(e as Error).message}`, "error");
     }
   };
   
-  const deleteAgent = async (agentId) => {
+  const deleteAgent = async (agentId: string) => {
     if (!confirm("Delete this agent?")) return;
     try {
       await fetch(`${API_URL}/agents/${agentId}`, { method: "DELETE" });
@@ -1553,7 +1554,7 @@ export default function App() {
                 value={selectedAgent?.id || ""}
                 onChange={e => {
                   const agent = agents.find(a => a.id === e.target.value);
-                  setSelectedAgent(agent);
+                  setSelectedAgent(agent || null);
                 }}
               >
                 <option value="">Select Agent</option>
@@ -1733,9 +1734,9 @@ export default function App() {
                   <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                     {typeof mem.content === "string" ? mem.content : JSON.stringify(mem.content)}
                   </div>
-                  {mem.tags?.length > 0 && (
+                  {(mem.tags?.length ?? 0) > 0 && (
                     <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {mem.tags.map(t => <span key={t} className="tool-tag">{t}</span>)}
+                      {mem.tags!.map(t => <span key={t} className="tool-tag">{t}</span>)}
                     </div>
                   )}
                 </div>
