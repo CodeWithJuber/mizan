@@ -15,7 +15,8 @@ export interface ApiClient {
 // ===== Agent Types =====
 
 export type AgentState = "resting" | "thinking" | "acting" | "learning" | "error";
-export type NafsLevel = 1 | 2 | 3;
+export type NafsLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type NafsName = "Ammara" | "Lawwama" | "Mulhama" | "Mutmainna" | "Radiya" | "Mardiyya" | "Kamila";
 export type AgentRole =
   | "rasul" | "wakil" | "hafiz" | "shahid"
   | "wali" | "mubashir" | "mundhir" | "katib" | "muallim";
@@ -26,15 +27,54 @@ export interface Agent {
   role: AgentRole;
   state: AgentState;
   nafs_level: NafsLevel;
+  nafs_name?: NafsName;
+  ruh_energy?: number;
+  ihsan_eligible?: boolean;
+  shukr_strengths?: number;
   total_tasks: number;
   success_rate: number;
   hikmah_count: number;
   tools: string[];
 }
 
+// ===== Yaqin Certainty Types =====
+
+export type YaqinLevel = "ilm_al_yaqin" | "ayn_al_yaqin" | "haqq_al_yaqin";
+
+export interface YaqinTag {
+  level: YaqinLevel;
+  confidence: number;
+  source: string;
+  evidence: string[];
+}
+
+// ===== Cognitive Method Types =====
+
+export type CognitiveMethod = "tafakkur" | "tadabbur" | "istidlal" | "qiyas" | "ijma";
+
+// ===== Qalb Emotional Types =====
+
+export type EmotionalState = "neutral" | "positive" | "frustrated" | "anxious" | "confused" | "determined" | "fatigued";
+export type ToneStyle = "standard" | "encouraging" | "patient" | "concise" | "warm" | "focused";
+
+export interface QalbReading {
+  state: EmotionalState;
+  confidence: number;
+  recommended_tone: ToneStyle;
+  signals: string[];
+}
+
+// ===== Ruh Energy Types =====
+
+export interface RuhState {
+  energy: number;
+  max_energy: number;
+  label: string;
+}
+
 // ===== Majlis Agent Types =====
 
-export type MajlisNafsLevel = "ammara" | "lawwama" | "mutmainna";
+export type MajlisNafsLevel = "ammara" | "lawwama" | "mulhama" | "mutmainna" | "radiya" | "mardiyya" | "kamila";
 export type MajlisAgentStatus = "active" | "idle" | "busy" | "offline";
 
 export interface MajlisAgent {
@@ -145,7 +185,7 @@ export interface Webhook {
 // ===== Plugin Types =====
 
 export type PluginType = "ayah" | "bab" | "hafiz" | "ruh" | "muaddib";
-export type TrustLevel = "ammara" | "lawwama" | "mutmainna";
+export type TrustLevel = "ammara" | "lawwama" | "mulhama" | "mutmainna" | "radiya" | "mardiyya" | "kamila";
 
 export interface Plugin {
   name: string;

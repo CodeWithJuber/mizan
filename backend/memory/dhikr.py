@@ -68,22 +68,38 @@ class DhikrMemorySystem:
     Three-tier Quranic memory architecture
     Inspired by: Luh Mahfuz (لوح محفوظ) - The Preserved Tablet (85:22)
     """
-    
+
     def __init__(self, db_path: str = "mizan_memory.db"):
         self.db_path = db_path
+        # For in-memory databases, keep a persistent connection
+        # since each sqlite3.connect(":memory:") creates a new database
+        self._persistent_conn: Optional[sqlite3.Connection] = None
+        if db_path == ":memory:":
+            self._persistent_conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._init_db()
-        
+
         # Working memory (short-term) - like immediate consciousness
         self.working_memory: Dict[str, Memory] = {}
         self.working_capacity = 7  # Miller's Law meets Quranic pattern (7 heavens)
-        
+
         # Long-term memory tiers
         self._episodic_cache: Dict[str, Memory] = {}
         self._semantic_cache: Dict[str, Memory] = {}
         self._procedural_cache: Dict[str, Memory] = {}
-    
+
+    def _get_conn(self) -> sqlite3.Connection:
+        """Get a database connection. Reuses persistent connection for :memory: DBs."""
+        if self._persistent_conn is not None:
+            return self._persistent_conn
+        return sqlite3.connect(self.db_path)
+
+    def _release_conn(self, conn: sqlite3.Connection):
+        """Close connection if it's not the persistent in-memory one."""
+        if conn is not self._persistent_conn:
+            conn.close()
+
     def _init_db(self):
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             CREATE TABLE IF NOT EXISTS memories (
@@ -159,8 +175,8 @@ class DhikrMemorySystem:
             )
         """)
         conn.commit()
-        conn.close()
-    
+        self._release_conn(conn)
+
     async def remember(self, content: Any, memory_type: str = "episodic",
                        importance: float = 0.5, agent_id: str = "",
                        tags: List[str] = None) -> str:
@@ -210,9 +226,9 @@ class DhikrMemorySystem:
     async def recall(self, query: str, memory_type: str = None,
                      agent_id: str = None, limit: int = 10) -> List[Memory]:
         """Recall memories by query"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
-        
+
         sql = "SELECT * FROM memories WHERE 1=1"
         params = []
         
@@ -223,18 +239,20 @@ class DhikrMemorySystem:
             sql += " AND agent_id = ?"
             params.append(agent_id)
         if query:
-            # Escape LIKE special characters to prevent wildcard injection
-            escaped_query = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            sql += " AND (content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
-            params.extend([f"%{escaped_query}%", f"%{escaped_query}%"])
+            # Split query into words and match each one (AND logic)
+            words = query.strip().split()
+            for word in words:
+                escaped_word = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                sql += " AND (content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
+                params.extend([f"%{escaped_word}%", f"%{escaped_word}%"])
         
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
         params.append(limit)
         
         c.execute(sql, params)
         rows = c.fetchall()
-        conn.close()
-        
+        self._release_conn(conn)
+
         memories = []
         for row in rows:
             try:
@@ -261,7 +279,7 @@ class DhikrMemorySystem:
     
     async def _persist(self, memory: Memory):
         """Persist memory to database"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         
         try:
@@ -285,7 +303,7 @@ class DhikrMemorySystem:
             json.dumps(memory.related_ids),
         ))
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
     
     async def consolidate(self, agent_id: str = None):
         """
@@ -295,7 +313,7 @@ class DhikrMemorySystem:
         """
         cutoff = datetime.utcnow() - timedelta(days=30)
         
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         
         # Delete low-importance old memories
@@ -313,13 +331,13 @@ class DhikrMemorySystem:
         c.execute(sql, params)
         deleted = c.rowcount
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
         
         return {"consolidated": True, "pruned": deleted}
     
     async def save_agent_profile(self, profile: Dict):
         """Save agent profile"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             INSERT OR REPLACE INTO agent_profiles 
@@ -340,15 +358,15 @@ class DhikrMemorySystem:
             json.dumps(profile.get("config", {})),
         ))
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
     
     async def get_all_agents(self) -> List[Dict]:
         """Get all agent profiles"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM agent_profiles")
         rows = c.fetchall()
-        conn.close()
+        self._release_conn(conn)
         
         agents = []
         for row in rows:
@@ -372,7 +390,7 @@ class DhikrMemorySystem:
         """Save chat message"""
         import uuid
         msg_id = str(uuid.uuid4())
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             INSERT INTO agent_messages (id, session_id, role, content, agent_id, created_at, metadata)
@@ -383,19 +401,19 @@ class DhikrMemorySystem:
             json.dumps(metadata or {})
         ))
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
         return msg_id
     
     async def get_messages(self, session_id: str, limit: int = 50) -> List[Dict]:
         """Get messages for a session"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             SELECT id, session_id, role, content, agent_id, created_at, metadata
             FROM agent_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?
         """, (session_id, limit))
         rows = c.fetchall()
-        conn.close()
+        self._release_conn(conn)
         
         return [{
             "id": r[0], "session_id": r[1], "role": r[2],
@@ -408,7 +426,7 @@ class DhikrMemorySystem:
         """Save task history"""
         import uuid
         task_id = str(uuid.uuid4())
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             INSERT INTO task_history (id, agent_id, task, result, success, duration_ms, created_at, metadata)
@@ -418,12 +436,12 @@ class DhikrMemorySystem:
             datetime.utcnow().isoformat(), json.dumps(metadata or {})
         ))
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
         return task_id
     
     async def get_task_history(self, agent_id: str = None, limit: int = 100) -> List[Dict]:
         """Get task history"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         
         if agent_id:
@@ -433,7 +451,7 @@ class DhikrMemorySystem:
             c.execute("SELECT * FROM task_history ORDER BY created_at DESC LIMIT ?", (limit,))
         
         rows = c.fetchall()
-        conn.close()
+        self._release_conn(conn)
         
         return [{
             "id": r[0], "agent_id": r[1], "task": r[2], "result": r[3],
@@ -445,7 +463,7 @@ class DhikrMemorySystem:
         """Save integration config"""
         import uuid
         int_id = integration.get("id") or str(uuid.uuid4())
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("""
             INSERT OR REPLACE INTO integrations (id, name, type, config, enabled, created_at)
@@ -457,16 +475,16 @@ class DhikrMemorySystem:
             datetime.utcnow().isoformat()
         ))
         conn.commit()
-        conn.close()
+        self._release_conn(conn)
         return int_id
     
     async def get_integrations(self) -> List[Dict]:
         """Get all integrations"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM integrations")
         rows = c.fetchall()
-        conn.close()
+        self._release_conn(conn)
         return [{
             "id": r[0], "name": r[1], "type": r[2],
             "config": json.loads(r[3]) if r[3] else {},

@@ -26,6 +26,70 @@ class PermissionLevel(Enum):
     ALLOWED = "allowed"         # Fully allowed
 
 
+# ── 7-Level Nafs Permission Mapping ──────────────────────────────
+# Each Nafs level unlocks progressively more capabilities.
+# Agents must earn trust through performance to access higher permissions.
+
+NAFS_PERMISSION_TIERS: Dict[int, Dict[str, "PermissionLevel"]] = {
+    1: {  # Ammara — Raw, untrained
+        "bash": PermissionLevel.DENIED,
+        "http_get": PermissionLevel.RESTRICTED,
+        "http_post": PermissionLevel.DENIED,
+        "read_file": PermissionLevel.RESTRICTED,
+        "write_file": PermissionLevel.DENIED,
+        "python_exec": PermissionLevel.DENIED,
+    },
+    2: {  # Lawwama — Self-correcting
+        "bash": PermissionLevel.DENIED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.RESTRICTED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.APPROVAL_REQUIRED,
+        "python_exec": PermissionLevel.DENIED,
+    },
+    3: {  # Mulhama — Inspired
+        "bash": PermissionLevel.APPROVAL_REQUIRED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.RESTRICTED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.RESTRICTED,
+        "python_exec": PermissionLevel.APPROVAL_REQUIRED,
+    },
+    4: {  # Mutmainna — Tranquil
+        "bash": PermissionLevel.RESTRICTED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.ALLOWED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.ALLOWED,
+        "python_exec": PermissionLevel.RESTRICTED,
+    },
+    5: {  # Radiya — Content
+        "bash": PermissionLevel.ALLOWED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.ALLOWED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.ALLOWED,
+        "python_exec": PermissionLevel.RESTRICTED,
+    },
+    6: {  # Mardiyya — Pleasing
+        "bash": PermissionLevel.ALLOWED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.ALLOWED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.ALLOWED,
+        "python_exec": PermissionLevel.ALLOWED,
+    },
+    7: {  # Kamila — Perfect
+        "bash": PermissionLevel.ALLOWED,
+        "http_get": PermissionLevel.ALLOWED,
+        "http_post": PermissionLevel.ALLOWED,
+        "read_file": PermissionLevel.ALLOWED,
+        "write_file": PermissionLevel.ALLOWED,
+        "python_exec": PermissionLevel.ALLOWED,
+    },
+}
+
+
 @dataclass
 class ToolPermission:
     """Permission definition for a specific tool"""
@@ -263,3 +327,45 @@ class IznPermission:
                 tool_name=tool_name,
                 level=PermissionLevel.DENIED,
             )
+
+    def check_nafs_permission(self, nafs_level: int, tool_name: str) -> Dict:
+        """
+        Check permission based on agent's Nafs level (1-7).
+        Higher Nafs levels unlock more tool capabilities.
+        """
+        tier = NAFS_PERMISSION_TIERS.get(nafs_level, NAFS_PERMISSION_TIERS[1])
+        level = tier.get(tool_name, PermissionLevel.RESTRICTED)
+
+        if level == PermissionLevel.DENIED:
+            return {
+                "allowed": False,
+                "reason": f"Nafs level {nafs_level} cannot use '{tool_name}'",
+                "requires_approval": False,
+                "nafs_level": nafs_level,
+            }
+        if level == PermissionLevel.APPROVAL_REQUIRED:
+            return {
+                "allowed": False,
+                "reason": f"Nafs level {nafs_level} requires approval for '{tool_name}'",
+                "requires_approval": True,
+                "nafs_level": nafs_level,
+            }
+        return {
+            "allowed": True,
+            "reason": f"Permitted at Nafs level {nafs_level}",
+            "requires_approval": False,
+            "nafs_level": nafs_level,
+        }
+
+    def get_nafs_tier_info(self, nafs_level: int) -> Dict:
+        """Get permission summary for a given Nafs level."""
+        names = {
+            1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
+            5: "Radiya", 6: "Mardiyya", 7: "Kamila",
+        }
+        tier = NAFS_PERMISSION_TIERS.get(nafs_level, NAFS_PERMISSION_TIERS[1])
+        return {
+            "nafs_level": nafs_level,
+            "nafs_name": names.get(nafs_level, "Unknown"),
+            "permissions": {t: lv.value for t, lv in tier.items()},
+        }
