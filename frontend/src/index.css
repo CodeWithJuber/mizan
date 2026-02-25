@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-mizan-dark text-gray-200 antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-mizan-dark;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-mizan-dark-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-mizan-dark-card border border-mizan-dark-border rounded-xl p-5;
+  }
+  .btn-primary {
+    @apply bg-mizan-gold hover:bg-mizan-gold-light text-black font-medium
+           px-4 py-2 rounded-lg transition-colors duration-200;
+  }
+  .btn-secondary {
+    @apply bg-mizan-dark-card border border-mizan-dark-border hover:bg-mizan-dark-hover
+           text-gray-300 px-4 py-2 rounded-lg transition-colors duration-200;
+  }
+  .input {
+    @apply bg-mizan-dark border border-mizan-dark-border rounded-lg px-4 py-2.5
+           text-gray-200 placeholder-gray-500 focus:outline-none focus:border-mizan-gold
+           transition-colors duration-200;
+  }
+}
+
+/* Markdown content styling */
+.prose {
+  @apply text-gray-300 leading-relaxed;
+}
+.prose code {
+  @apply bg-mizan-dark-card px-1.5 py-0.5 rounded text-sm text-mizan-gold;
+}
+.prose pre {
+  @apply bg-mizan-dark border border-mizan-dark-border rounded-lg p-4 overflow-x-auto;
+}
+.prose pre code {
+  @apply bg-transparent p-0 text-gray-300;
+}
+.prose a {
+  @apply text-mizan-gold hover:text-mizan-gold-light underline;
+}
+.prose h1, .prose h2, .prose h3 {
+  @apply text-gray-100 font-semibold;
+}
+.prose ul, .prose ol {
+  @apply pl-6;
+}
+.prose li {
+  @apply mb-1;
+}

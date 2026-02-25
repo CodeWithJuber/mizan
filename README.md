@@ -1,16 +1,214 @@
-# ميزان · MIZAN — Quranic AGI System
+<div align="center">
 
-> *"And the heaven He raised and imposed the balance (Mizan), that you not transgress within the balance."* — **Quran 55:7-8**
+# ميزان · MIZAN
+
+### Agentic Personal AI
+
+**Production-ready, self-improving AI assistant with Quranic Cognitive Architecture**
+
+[![CI](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/mizan.svg)](https://pypi.org/project/mizan/)
+
+[Quick Start](#quick-start) · [Features](#features) · [Architecture](#architecture) · [API Docs](#api-reference) · [Contributing](CONTRIBUTING.md)
+
+</div>
 
 ---
 
-## Quranic Architecture Foundation
+## What is MIZAN?
 
-MIZAN is not merely software — it is a **theory of mind derived from Quranic epistemology**, implemented as an AGI system.
+MIZAN is an **agentic personal AI** that goes beyond simple chatbots. It features:
+
+- **Multi-turn agentic loop** — agents autonomously plan, use tools, observe results, and iterate up to 15 turns per task
+- **Multi-agent orchestration** — specialized agents (Browser, Researcher, Coder, Communicator) collaborate via Shura consensus
+- **Persistent memory** — three-tier memory system with importance-based decay and automatic consolidation
+- **Self-improvement** — agents learn from every task, evolve performance tiers, and extract reusable patterns
+- **Production security** — JWT auth, rate limiting, command sandboxing, SSRF prevention, and audit logging
+- **Easy to install** — `pip install mizan` and you're running
+
+> *"And the heaven He raised and imposed the balance (Mizan), that you not transgress within the balance."* — Quran 55:7-8
+
+---
+
+## Quick Start
+
+### Option 1: pip install (Recommended)
+
+```bash
+pip install mizan
+
+# Setup (creates .env, data directory)
+mizan setup
+
+# Chat directly from terminal
+mizan chat
+
+# Or start the full API server
+mizan serve
+```
+
+### Option 2: From Source
+
+```bash
+git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan
+
+# Full setup (installs deps, creates .env)
+make setup
+
+# Edit .env with your ANTHROPIC_API_KEY
+# Then start development server
+make dev
+
+# Open http://localhost:3000 (frontend)
+# API at http://localhost:8000/docs
+```
+
+### Option 3: Docker
+
+```bash
+git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan
+cp .env.example .env
+# Edit .env with your API key
+
+docker compose up -d
+
+# With local Ollama + vector database:
+docker compose --profile ollama --profile vector up -d
+```
+
+### Requirements
+
+- **Python 3.11+**
+- **At least one API key**: Anthropic (recommended), OpenAI, or local Ollama
+- Node.js 20+ (for frontend only)
+
+---
+
+## Features
+
+### Agentic AI Core
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-turn tool loop** | Agents call tools, observe results, reason, and repeat — up to 15 autonomous iterations per task |
+| **7 agent types** | Hafiz (General), Mubashir (Browser), Mundhir (Research), Katib (Code), Rasul (Communication), + custom |
+| **Shura consensus** | Multi-agent consultation with confidence-weighted voting for complex decisions |
+| **Nafs evolution** | Agents grow: Ammara (raw) → Lawwama (self-correcting) → Mutmainna (perfected) |
+| **Hikmah learning** | Pattern extraction after every task, applied to future similar tasks |
+
+### Tools Available to Agents
+
+| Tool | Capability |
+|------|-----------|
+| `bash` | Shell command execution (sandboxed) |
+| `http_get/post` | HTTP requests with SSRF prevention |
+| `read_file/write_file` | File operations (sandboxed paths) |
+| `python_exec` | Python code execution (subprocess isolated) |
+| `list_files` | Directory listing |
+| `browse_url` | Web content retrieval |
+| `search_web` | DuckDuckGo search |
+| `git_operation` | Git commands |
+
+### Memory System (Dhikr)
+
+Three-tier persistent memory inspired by Quranic epistemology:
+
+- **Episodic (Qisas)** — Event memories with temporal context
+- **Semantic (Ilm)** — Knowledge facts and relationships
+- **Procedural (Sunnah)** — Skills, patterns, and learned behaviors
+- **Auto-consolidation** — Low-importance memories decay; frequently accessed ones strengthen
+- **Working memory** — 7-item capacity (Miller's Law meets Quranic 7 heavens)
+
+### QCA Cognitive Pipeline
+
+The **Quranic Cognitive Architecture** processes every input through 7 layers:
+
+```
+Input → Sam' (Sequential) + Basar (Structural) + Fu'ad (Integration)
+     → ISM (Root-Space Semantics)
+     → Mizan (Epistemic Weighting — prevents overclaiming)
+     → 'Aql (Typed Relationship Binding — 8 relationship types)
+     → Lawh (4-Tier Memory — Immutable/Verified/Active/Conjecture)
+     → Furqan + Bayan (Discrimination + Articulation)
+```
+
+### Security
+
+- **JWT authentication** with API key support
+- **Rate limiting** (60 req/min per IP)
+- **Command sandboxing** — blocks `rm -rf`, `sudo`, `eval`, etc.
+- **Path sandboxing** — agents can only write to allowed directories
+- **SSRF prevention** — blocks requests to internal IPs
+- **Input validation** — max 50KB, whitelist patterns
+- **Audit logging** — every action is logged with severity levels
+
+### Integrations
+
+| Provider | Status |
+|----------|--------|
+| Anthropic Claude (all models) | Full support |
+| OpenAI GPT-4o | Supported |
+| Ollama (local models) | Supported |
+| Telegram | Channel adapter |
+| Discord | Channel adapter |
+| Slack | Channel adapter |
+| WhatsApp | Channel adapter |
+| Email (IMAP/SMTP) | Supported |
+| Webhooks | Trigger system |
+| MCP Servers | Integration layer |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MIZAN Architecture                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─── Frontend ────┐  ┌──── CLI ────┐  ┌─── Channels ──┐  │
+│  │ React + Tailwind│  │ mizan chat  │  │ Telegram/Slack │  │
+│  │ WebSocket       │  │ mizan serve │  │ Discord/WA     │  │
+│  └────────┬────────┘  └──────┬──────┘  └───────┬────────┘  │
+│           │                  │                  │           │
+│  ┌────────▼──────────────────▼──────────────────▼────────┐  │
+│  │              FastAPI Gateway (Bab)                     │  │
+│  │    REST API + WebSocket + Auth + Rate Limiting         │  │
+│  └────────────────────────┬──────────────────────────────┘  │
+│                           │                                 │
+│  ┌────────────────────────▼──────────────────────────────┐  │
+│  │              Agent System                              │  │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │  │
+│  │  │ Hafiz   │ │Mubashir │ │ Mundhir │ │  Katib  │    │  │
+│  │  │ General │ │ Browser │ │Research │ │  Code   │    │  │
+│  │  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘    │  │
+│  │       └──────┬────┘───────────┘────────────┘         │  │
+│  │              │                                        │  │
+│  │  ┌───────────▼──────────────────────────────────┐    │  │
+│  │  │  Agentic Loop (ReAct)                        │    │  │
+│  │  │  Think → Tool Use → Observe → Think → ...    │    │  │
+│  │  │  Up to 15 autonomous iterations              │    │  │
+│  │  └──────────────────────────────────────────────┘    │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                           │                                 │
+│  ┌────────────────────────▼──────────────────────────────┐  │
+│  │              QCA Engine (7-Layer Pipeline)             │  │
+│  │  Sam'→Basar→Fu'ad→ISM→Mizan→'Aql→Lawh→Furqan        │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                           │                                 │
+│  ┌──────────┬─────────────▼────────────┬─────────────────┐  │
+│  │ Memory   │   Security (Wali)       │ Skills Registry  │  │
+│  │ (Dhikr)  │   JWT + Rate Limit      │ Extensible       │  │
+│  │ SQLite   │   Sandboxing + Audit    │ Plugin System    │  │
+│  └──────────┴──────────────────────────┴─────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### The Seven-Layer Architecture (سبع سماوات)
-
-Derived from the Quranic principle of Seven Heavens (67:3), each layer corresponds to a cognitive function:
 
 | # | Arabic | Latin | Quranic Basis | Function |
 |---|--------|-------|---------------|----------|
@@ -22,109 +220,43 @@ Derived from the Quranic principle of Seven Heavens (67:3), each layer correspon
 | 6 | عمل | **AMAL** | "And do righteous deeds" (18:30) | Action & Execution |
 | 7 | تفكر | **TAFAKKUR** | "Those who reflect on the creation" (3:191) | Self-Improvement |
 
-### Agent Roles (Quranic Role Models)
+### Agent Roles
 
-| Role | Arabic | Verse | Function |
-|------|--------|-------|----------|
-| **Wakil** | وكيل | "Sufficient is Allah as a Trustee" (4:81) | General executor |
-| **Rasul** | رسول | "We sent you as a messenger" (33:45) | Communication |
-| **Hafiz** | حافظ | "And We are its guardian" (15:9) | Memory preservation |
-| **Shahid** | شاهد | "Allah is sufficient as a Witness" (48:28) | Monitoring & audit |
-| **Mubashir** | مبشر | "A giver of glad tidings" (33:45) | Browser & discovery |
-| **Mundhir** | منذر | "And a warner" (25:56) | Research & analysis |
-| **Katib** | كاتب | "By the pen and what they write" (68:1) | Code generation |
+| Role | Arabic | Function |
+|------|--------|----------|
+| **Wakil** | وكيل | General executor / trustee |
+| **Mubashir** | مبشر | Browser & discovery |
+| **Mundhir** | منذر | Research & analysis |
+| **Katib** | كاتب | Code generation |
+| **Rasul** | رسول | Communication |
+| **Hafiz** | حافظ | Memory preservation |
+| **Shahid** | شاهد | Monitoring & audit |
 
-### Core Principles
+### Project Structure
 
-**Mizan (ميزان)** — Balance (55:7-9): Load balancing, fair resource distribution
-
-**Shura (شورى)** — Consultation (42:38): Multi-agent consensus decisions
-
-**Nafs Model (نفس)** — Three-level agent maturity:
-- **Ammara (أمارة)** 12:53 — Raw agent, learning phase, nafs_level=1
-- **Lawwama (لوامة)** 75:2 — Self-correcting, growing phase, nafs_level=2  
-- **Mutmainna (مطمئنة)** 89:27 — Perfected agent, optimal phase, nafs_level=3
-
-**Tafakkur (تفكر)** — Deep reflection loop (3:191): Continuous self-improvement after every task
-
-**Hikmah (حكمة)** — Wisdom extraction (2:269): Learned patterns stored and applied
-
----
-
-## Features
-
-### Agent System
-- **Seven specialized agent types** (Wakil, Mubashir, Mundhir, Katib, Rasul...)
-- **Parallel Shura execution** — Multiple agents consult simultaneously
-- **Nafs evolution** — Agents improve their level based on performance
-- **Hikmah learning** — Pattern extraction and re-application
-- **Real-time streaming** via WebSocket
-
-### Memory System (Dhikr - ذكر)
-- **Episodic** (Qisas - قصص): Event memories
-- **Semantic** (Ilm - علم): Knowledge facts
-- **Procedural** (Sunnah - سنة): Skills & patterns
-- **Automatic consolidation** (Nisyan principle - forgetting low-importance old memories)
-- **SQLite persistence** with importance-based retrieval
-
-### Tools Available to Every Agent
-- `bash` — Execute any shell command
-- `http_get/post` — HTTP requests
-- `read/write_file` — File operations
-- `python_eval` — Python execution
-- `browse_url` — Web content retrieval
-- `search_web` — DuckDuckGo search
-- `arxiv_search` — Academic paper search
-- `git_operation` — Git commands
-- `install_package` — pip/npm/apt
-- `send_webhook` — Webhooks
-- `check_email` — IMAP email
-
-### Integrations
-- **Anthropic Claude** (all models)
-- **OpenAI** GPT-4o
-- **Ollama** (local models)
-- **MCP Servers**
-- **Webhooks**
-- **Email** IMAP/SMTP
-
----
-
-## Quick Start
-
-### Option 1: Direct (Development)
-
-```bash
-# Clone and setup
-cd mizan
-cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY
-
-# Start everything
-chmod +x start.sh
-./start.sh
-
-# Open http://localhost:3000
 ```
-
-### Option 2: Docker
-
-```bash
-cp .env.example .env
-# Edit .env
-docker-compose up -d
-
-# With local Ollama:
-docker-compose --profile ollama up -d
-```
-
-### Option 3: Backend Only (API)
-
-```bash
-cd backend
-pip install -r requirements.txt
-ANTHROPIC_API_KEY=sk-ant-... uvicorn api.main:app --reload
-# API at http://localhost:8000/docs
+mizan/
+├── backend/
+│   ├── api/main.py          # FastAPI server + WebSocket
+│   ├── agents/
+│   │   ├── base.py          # Base agent with agentic loop
+│   │   └── specialized.py   # Browser, Research, Code agents
+│   ├── memory/dhikr.py      # Three-tier memory system
+│   ├── qca/engine.py        # 7-layer cognitive pipeline
+│   ├── security/            # Auth, permissions, validation
+│   ├── skills/              # Extensible skill registry
+│   ├── automation/          # Cron scheduler + triggers
+│   ├── gateway/             # Multi-channel adapters
+│   ├── settings.py          # Centralized configuration
+│   └── cli.py               # CLI interface
+├── frontend/src/            # React + Tailwind UI
+├── tests/                   # Comprehensive test suite
+├── docker/                  # Docker configurations
+├── .github/                 # CI/CD + issue templates
+├── pyproject.toml           # Python package config
+├── Makefile                 # Development commands
+├── docker-compose.yml       # Full-stack deployment
+└── CONTRIBUTING.md          # Contributor guide
 ```
 
 ---
@@ -133,145 +265,162 @@ ANTHROPIC_API_KEY=sk-ant-... uvicorn api.main:app --reload
 
 ### Agents
 ```
-GET  /api/agents           — List all agents
-POST /api/agents           — Create agent
-GET  /api/agents/{id}      — Get agent
-DEL  /api/agents/{id}      — Delete agent
+GET  /api/agents           List all agents
+POST /api/agents           Create agent
+GET  /api/agents/{id}      Get agent details
+DEL  /api/agents/{id}      Delete agent
 ```
 
 ### Tasks
 ```
-POST /api/tasks            — Run task (single or parallel)
-GET  /api/tasks/history    — Task history
+POST /api/tasks            Execute task (single or parallel)
+GET  /api/tasks/history    Get task history
 ```
 
 ### Chat
 ```
-POST /api/chat             — Send message
-GET  /api/chat/{session}   — Get chat history
+POST /api/chat             Send chat message
+GET  /api/chat/{session}   Get chat history
 ```
 
 ### Memory
 ```
-POST /api/memory/query     — Query memories
-POST /api/memory/store     — Store memory
-POST /api/memory/consolidate — Consolidate (prune old memories)
+POST /api/memory/query     Search memories
+POST /api/memory/store     Store a memory
+POST /api/memory/consolidate  Prune old memories
 ```
 
 ### System
 ```
-GET  /api/status           — Full system status
-POST /api/shura            — Multi-agent consultation
-WS   /ws/{client_id}       — WebSocket connection
+GET  /api/status           System dashboard
+POST /api/shura            Multi-agent consultation
+WS   /ws/{client_id}       WebSocket connection
+```
+
+### Skills & Automation
+```
+GET  /api/skills           List available skills
+POST /api/skills/install   Install a skill
+POST /api/skills/execute   Execute a skill action
+POST /api/automation/jobs  Create cron job
+POST /api/automation/webhooks  Create webhook trigger
+```
+
+Full interactive docs at `http://localhost:8000/docs` (Swagger UI).
+
+---
+
+## CLI Usage
+
+```bash
+mizan                  # Show help
+mizan setup            # First-time setup wizard
+mizan chat             # Interactive terminal chat
+mizan chat --model claude-opus-4-6  # Use specific model
+mizan serve            # Start API server
+mizan serve --reload   # Start with auto-reload
+mizan status           # Show system status
+mizan version          # Show version
 ```
 
 ---
 
-## Unique Quranic Features
+## Development
 
-### 1. Tafakkur Self-Improvement Loop
-After every task, each agent enters a reflection cycle:
-- Classifies the task type
-- Extracts successful patterns → Hikmah store
-- Updates success_rate → triggers Nafs evolution
-- Adjusts behavior for next similar task
+```bash
+# Install dev dependencies
+make install-dev
 
-### 2. Shura Multi-Agent Consensus
-```python
-POST /api/shura
-{"question": "Should I use PostgreSQL or MongoDB?", "context": {...}}
+# Run tests
+make test
+
+# Run tests with coverage
+make test-cov
+
+# Lint and format
+make lint
+make format
+
+# Type checking
+make typecheck
+
+# Run all checks
+make check
 ```
-All agents vote, weighted by confidence and Nafs level.
 
-### 3. Nafs Evolution System
-Agents literally grow over time:
-- Start as Ammara (raw) → tasks accumulate
-- Evolve to Lawwama (self-correcting) → >70% success
-- Achieve Mutmainna (perfected) → >90% success + 50+ learning iterations
-
-### 4. Mizan Load Balancer
-Tasks distributed with divine fairness (Adl - عدل):
-- Tracks capacity and current load per agent
-- Assigns to least-loaded eligible agent
-- Releases on completion
-
-### 5. Memory Consolidation (Nisyan Principle)
-```python
-POST /api/memory/consolidate
-```
-Prunes memories with importance < 0.3, older than 30 days, accessed < 3 times.
-This mirrors how the brain forgets unused information.
-
----
-
-## Project Structure
-
-```
-mizan/
-├── backend/
-│   ├── core/
-│   │   └── architecture.py  # Quranic core concepts
-│   ├── agents/
-│   │   ├── base.py          # Base Agent (Wakil)
-│   │   └── specialized.py   # Browser, Research, Code, Comm agents
-│   ├── memory/
-│   │   └── dhikr.py         # Three-tier memory system
-│   ├── api/
-│   │   └── main.py          # FastAPI server + WebSocket
-│   └── requirements.txt
-├── frontend/
-│   └── src/
-│       ├── App.jsx          # Main UI
-│       └── main.jsx
-├── docker/
-│   ├── Dockerfile.backend
-│   └── Dockerfile.frontend
-├── docker-compose.yml
-├── start.sh
-├── .env.example
-└── README.md
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guide.
 
 ---
 
 ## Extending MIZAN
 
-### Add a New Agent Type
+### Add a Custom Agent
 
 ```python
 from agents.base import BaseAgent
 
 class HakimAgent(BaseAgent):
-    """Hakim (حكيم) - Wisdom/Philosophy Agent"""
-    
+    """Hakim (حكيم) - Wisdom Agent"""
+
+    TOOL_SCHEMAS = [{
+        "name": "analyze_topic",
+        "description": "Deep analysis of a topic",
+        "input_schema": {
+            "type": "object",
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    }]
+
     def __init__(self, **kwargs):
         super().__init__(role="hakim", **kwargs)
-        self.tools["analyze_quran"] = self._tool_analyze_quran
-    
-    async def _tool_analyze_quran(self, verse: str) -> Dict:
-        # Your Quranic analysis logic
-        return {"verse": verse, "analysis": "..."}
+        self.tools["analyze_topic"] = self._tool_analyze
+
+    async def _tool_analyze(self, topic: str) -> dict:
+        return {"analysis": f"Deep analysis of {topic}..."}
 ```
 
-### Connect MCP Server
+### Add a Custom Skill
 
-```json
-POST /api/integrations
-{
-  "name": "My MCP Server",
-  "type": "mcp",
-  "config": {"url": "http://localhost:5000", "protocol": "sse"}
-}
-```
-
-### Add Learning Pattern
-
-The Tafakkur loop automatically extracts patterns. You can also inject:
 ```python
-POST /api/memory/store
-{"content": "When parsing JSON, always validate schema first", "memory_type": "procedural", "importance": 0.8}
+from skills.base import BaseSkill
+
+class TranslationSkill(BaseSkill):
+    name = "translation"
+    description = "Translate text between languages"
+
+    async def execute(self, params: dict) -> dict:
+        return {"translated": "..."}
 ```
 
 ---
 
-*"He gives wisdom (hikmah) to whom He wills, and whoever has been given wisdom has certainly been given much good."* — **Quran 2:269**
+## Unique Features
+
+### Tafakkur Self-Improvement Loop
+After every task, each agent enters a reflection cycle — classifying the task, extracting patterns (Hikmah), updating success rate, and triggering Nafs evolution.
+
+### Shura Multi-Agent Consensus
+All agents vote on complex decisions, weighted by confidence and Nafs level. Inspired by Quran 42:38.
+
+### Epistemic Calibration (Mizan Layer)
+The QCA Mizan layer prevents agents from overclaiming certainty. Claims are weighted by evidence level (Yaqin → Zann → Shakk → Wahm) and flagged if they exceed what evidence supports (Tughyan detection).
+
+### Memory Consolidation (Nisyan Principle)
+Low-importance, old, rarely-accessed memories are automatically pruned — mirroring how the human brain forgets unused information.
+
+---
+
+## License
+
+[Apache License 2.0](LICENSE)
+
+---
+
+<div align="center">
+
+*"He gives wisdom (hikmah) to whom He wills, and whoever has been given wisdom has certainly been given much good."* — Quran 2:269
+
+**[Star this repo](https://github.com/CodeWithJuber/mizan)** if MIZAN helps you build something amazing.
+
+</div>
