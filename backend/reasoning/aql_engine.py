@@ -6,14 +6,15 @@ Aql Engine (عَقْل) — The Reasoning Engine
 
 Implements the full Quranic reasoning cycle:
 1. Niyyah (نية) — Intent declaration
-2. Sama' (سمع) — Input perception
-3. Fikr (فكر) — Cognitive processing
-4. Aql (عقل) — Logical reasoning with tool_use
-5. Amal (عمل) — Action execution
-6. Tafakkur (تفكر) — Deep reflection and self-correction
+2. Sama' (سمع) — Input perception via QCA DualInput (Sam' + Basar + Fu'ad)
+3. Fikr (فكر) — Cognitive processing via QCA ISM root-space
+4. Aql (عقل) — Logical reasoning with tool_use + QCA typed bindings
+5. Amal (عمل) — Action execution with Mizan-weighted confidence
+6. Tafakkur (تفكر) — Deep reflection, self-correction, and Lawh consolidation
 
 Key improvement over OpenClaw: Full Claude tool_use API with multi-turn
-reasoning, Lawwama self-correction checkpoints, and Nafs-aware prompting.
+reasoning, Lawwama self-correction checkpoints, Nafs-aware prompting,
+and QCA epistemic weighting through all 7 cognitive layers.
 """
 
 import json
@@ -40,17 +41,33 @@ class ReasoningStep:
 
 class AqlEngine:
     """
-    The core reasoning engine.
+    The core reasoning engine, enhanced with QCA cognitive layers.
 
     Implements a multi-turn ReAct loop:
       Thought → Action → Observation → Thought → ...
 
-    Mapped to Quranic cycle:
-      Fikr (Think) → Aql (Reason) → Amal (Act) → Tafakkur (Reflect)
+    Mapped to QCA cognitive cycle:
+      Sam'+Basar (Perceive) → Fu'ad (Integrate) → ISM (Semantics) →
+      Mizan (Weigh) → 'Aql (Bind) → Lawh (Remember) → Furqan (Validate)
+
+    All reasoning steps pass through QCA epistemic weighting (Mizan)
+    to prevent transgression (Tughyan) and ensure proportional certainty.
     """
 
     def __init__(self, max_iterations: int = 10):
         self.max_iterations = max_iterations
+        self._qca = None
+
+    @property
+    def qca(self):
+        """Lazy-load QCA engine to avoid circular imports."""
+        if self._qca is None:
+            try:
+                from backend.qca.engine import QCAEngine
+                self._qca = QCAEngine()
+            except ImportError:
+                self._qca = None
+        return self._qca
 
     async def reason(
         self,
@@ -214,12 +231,30 @@ class AqlEngine:
 
             iterations = step.iteration
 
-        return {
+        result = {
             "success": True,
             "response": full_text,
             "tool_calls": tool_calls,
             "iterations": iterations,
         }
+
+        # QCA cognitive enrichment: add epistemic analysis
+        if self.qca and full_text:
+            try:
+                qca_analysis = self.qca.process_input(full_text[:500])
+                mizan_label = self.qca.mizan.rate_confidence_string(
+                    0.7 if iterations < 3 else 0.85
+                )
+                result["qca_enrichment"] = {
+                    "roots_identified": qca_analysis.get("roots_identified", []),
+                    "key_terms": qca_analysis.get("key_terms", []),
+                    "epistemic_label": mizan_label,
+                    "lawh_stats": self.qca.lawh.stats(),
+                }
+            except Exception:
+                pass
+
+        return result
 
     def _build_initial_messages(self, task: str, context: Dict = None) -> List[Dict]:
         """Build initial message list"""

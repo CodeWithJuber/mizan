@@ -1,1 +1,15 @@
-"""MIZAN Core - Quranic Architecture Foundation"""
+"""MIZAN Core - Quranic Architecture Foundation with QCA Cognitive Engine"""
+
+from backend.core.architecture import (
+    QuranicLayer,
+    QCALayer,
+    AgentRole,
+    MizanState,
+    NafsProfile,
+    NafsTrustLevel,
+    QuranicMessage,
+    HikmahRecord,
+    MizanBalancer,
+    ShuraCouncil,
+    QCAMizanIntegrator,
+)
