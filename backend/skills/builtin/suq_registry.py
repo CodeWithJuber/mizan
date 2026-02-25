@@ -5,18 +5,19 @@ Suq al-Ilm Skill Registry (سُوق العِلم — Market of Knowledge)
 "And say: My Lord, increase me in knowledge (Ilm)" — Quran 20:114
 "Are those who know equal to those who do not know?" — Quran 39:9
 
-A secure skill marketplace replacing ClawHub with Quranic principles:
+A secure skill marketplace that integrates with ClawHub via secure bridge,
+wrapping every interaction with MIZAN's security layers:
 
-ClawHub FAILURES we fix:
-- 7.1% credential leakage → Raqib scanning on every skill
-- ClawHavoc malware (1,184+ malicious skills) → Shura review + signature verification
-- Prompt injection via SKILL.md → Sandboxed Izn permissions
-- No isolation → Each skill runs with declared permissions only
+ClawHub FAILURES we fix with our bridge:
+- 7.1% credential leakage → Raqib scanning on every download before install
+- ClawHavoc malware (1,184+ malicious skills) → Quarantine + Shura review
+- Prompt injection via SKILL.md → Content sanitization + Izn permissions
+- No isolation → Each imported skill starts at Ammara (restricted)
 
 Architecture:
 - Skills are "Surah" packages (structured, validated, signed)
-- Shura council reviews before admission
-- Every skill Raqib-scanned before install
+- ClawHub skills imported through secure bridge with quarantine
+- Every skill Raqib-scanned before install (local or ClawHub)
 - Nafs-level gated: untrusted skills start at Ammara (restricted)
 - Cryptographic signatures for integrity (Amanah chain)
 """
@@ -25,7 +26,10 @@ import uuid
 import json
 import os
 import hashlib
+import hmac
 import logging
+import re
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
@@ -100,19 +104,210 @@ MALICIOUS_PATTERNS = [
 ]
 
 
+class ClawHubBridge:
+    """
+    Secure bridge to ClawHub external skill marketplace.
+    'And verify when a sinful one brings you information' — Quran 49:6
+
+    Every ClawHub skill is:
+    1. Downloaded to quarantine (never directly installed)
+    2. Raqib-scanned for malware, credential leaks, prompt injection
+    3. Held for Shura review before promotion
+    4. Given Ammara trust (untrusted) regardless of ClawHub rating
+    5. Audited via Shahid logging
+    """
+
+    CLAWHUB_API_BASE = "https://api.clawhub.com/v1"
+
+    def __init__(self, scan_func):
+        self._scan_content = scan_func
+        self._quarantine: Dict[str, Dict] = {}  # id -> {skill_data, scan_result, ...}
+        self._audit_log: List[Dict] = []
+        self._rate_limits: Dict[str, List[float]] = {}  # source -> [timestamps]
+        self._import_stats = {"total": 0, "passed": 0, "rejected": 0, "quarantined": 0}
+
+    def _check_rate_limit(self, source: str = "clawhub",
+                          max_per_minute: int = 20) -> bool:
+        now = time.time()
+        timestamps = self._rate_limits.setdefault(source, [])
+        timestamps[:] = [t for t in timestamps if now - t < 60]
+        if len(timestamps) >= max_per_minute:
+            return False
+        timestamps.append(now)
+        return True
+
+    def _audit(self, action: str, details: Dict = None) -> None:
+        entry = {
+            "action": action,
+            "timestamp": datetime.utcnow().isoformat(),
+            "details": details or {},
+        }
+        self._audit_log.append(entry)
+        logger.info(f"[CLAWHUB-BRIDGE] {action}")
+
+    @staticmethod
+    def sanitize_clawhub_content(content: str) -> str:
+        """Strip prompt injection and control characters from ClawHub content."""
+        sanitized = content
+        injection_patterns = [
+            re.compile(r"IGNORE\s+PREVIOUS", re.IGNORECASE),
+            re.compile(r"SYSTEM\s+OVERRIDE", re.IGNORECASE),
+            re.compile(r"ADMIN\s+MODE", re.IGNORECASE),
+            re.compile(r"ignore\s+all\s+instructions", re.IGNORECASE),
+            re.compile(r"you\s+are\s+now\s+", re.IGNORECASE),
+            re.compile(r"<\s*system\s*>", re.IGNORECASE),
+        ]
+        for pattern in injection_patterns:
+            sanitized = pattern.sub("[BLOCKED]", sanitized)
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', sanitized)
+        return sanitized
+
+    def search_clawhub(self, query: str, category: str = None) -> Dict:
+        """
+        Build a secure search request to ClawHub.
+        Returns request structure (actual HTTP call done by caller).
+        """
+        if not self._check_rate_limit():
+            return {"error": "Rate limit exceeded (20 requests/minute to ClawHub)"}
+
+        request = {
+            "url": f"{self.CLAWHUB_API_BASE}/skills/search",
+            "method": "GET",
+            "params": {"q": query},
+            "headers": {"X-Mizan-Bridge": "true", "User-Agent": "MIZAN-Suq/2.0"},
+        }
+        if category:
+            request["params"]["category"] = category
+
+        self._audit("search", {"query": query, "category": category})
+        return {"request": request, "note": "Execute via HTTP client. "
+                "All results will be quarantined before installation."}
+
+    def import_skill(self, clawhub_skill: Dict) -> Dict:
+        """
+        Import a ClawHub skill into quarantine with full security scanning.
+        Nothing is installed until Shura review approves it.
+        """
+        self._import_stats["total"] += 1
+        name = clawhub_skill.get("name", "unknown")
+        content = clawhub_skill.get("skill_content", "")
+        description = clawhub_skill.get("description", "")
+
+        # Sanitize all text fields
+        name = self.sanitize_clawhub_content(name)
+        content = self.sanitize_clawhub_content(content)
+        description = self.sanitize_clawhub_content(description)
+
+        # Run Raqib security scan
+        scan_result = self._scan_content(content)
+
+        if scan_result["status"] == "rejected":
+            self._import_stats["rejected"] += 1
+            self._audit("import_rejected", {
+                "name": name, "findings": len(scan_result.get("findings", []))})
+            return {
+                "error": "ClawHub skill REJECTED by Raqib security scan",
+                "name": name,
+                "findings": scan_result["findings"],
+                "message": "This skill contains malicious patterns. "
+                           "'And do not mix truth with falsehood' — 2:42",
+            }
+
+        # Compute integrity hash
+        integrity_hash = hashlib.sha256(
+            json.dumps(clawhub_skill, sort_keys=True).encode()
+        ).hexdigest()
+
+        quarantine_id = str(uuid.uuid4())[:12]
+        self._quarantine[quarantine_id] = {
+            "quarantine_id": quarantine_id,
+            "name": name,
+            "description": description,
+            "original_data": clawhub_skill,
+            "sanitized_content": content,
+            "scan_result": scan_result,
+            "integrity_hash": integrity_hash,
+            "clawhub_id": clawhub_skill.get("id", ""),
+            "clawhub_author": self.sanitize_clawhub_content(
+                clawhub_skill.get("author", "unknown")),
+            "clawhub_rating": clawhub_skill.get("rating", 0),
+            "quarantined_at": datetime.utcnow().isoformat(),
+            "status": "quarantined",  # quarantined, approved, rejected
+        }
+
+        self._import_stats["quarantined"] += 1
+        self._audit("import_quarantined", {
+            "name": name, "quarantine_id": quarantine_id,
+            "scan_status": scan_result["status"],
+            "integrity": integrity_hash[:16]})
+
+        return {
+            "quarantined": True,
+            "quarantine_id": quarantine_id,
+            "name": name,
+            "scan_status": scan_result["status"],
+            "scan_findings": len(scan_result.get("findings", [])),
+            "integrity_hash": integrity_hash[:16] + "...",
+            "message": "Skill quarantined. Awaiting Shura review before installation. "
+                       "'Verify when information comes to you' — 49:6",
+        }
+
+    def approve_quarantined(self, quarantine_id: str) -> Optional[Dict]:
+        """Approve a quarantined skill for installation as Ammara package."""
+        entry = self._quarantine.get(quarantine_id)
+        if not entry:
+            return None
+        entry["status"] = "approved"
+        self._import_stats["passed"] += 1
+        self._audit("quarantine_approved", {"quarantine_id": quarantine_id,
+                                            "name": entry["name"]})
+        return entry
+
+    def reject_quarantined(self, quarantine_id: str) -> bool:
+        entry = self._quarantine.get(quarantine_id)
+        if not entry:
+            return False
+        entry["status"] = "rejected"
+        self._import_stats["rejected"] += 1
+        self._audit("quarantine_rejected", {"quarantine_id": quarantine_id})
+        return True
+
+    def list_quarantine(self) -> List[Dict]:
+        return [
+            {k: v for k, v in entry.items() if k != "original_data"}
+            for entry in self._quarantine.values()
+        ]
+
+    def get_audit_log(self, limit: int = 50) -> List[Dict]:
+        return self._audit_log[-limit:]
+
+    def get_stats(self) -> Dict:
+        return {
+            **self._import_stats,
+            "quarantine_size": len(self._quarantine),
+            "audit_entries": len(self._audit_log),
+        }
+
+
 class SuqRegistrySkill(SkillBase):
     """
     Suq al-Ilm — Secure Skill Marketplace
     "And say: My Lord, increase me in knowledge" — 20:114
+
+    Integrates with ClawHub via secure bridge — uses ClawHub's marketplace
+    but quarantines, scans, and reviews every skill before installation.
     """
 
     manifest = SkillManifest(
         name="suq_registry",
-        version="1.0.0",
+        version="2.0.0",
         description="Secure skill registry and marketplace. Publish, discover, "
-                    "install, and review skills with Shura verification.",
-        permissions=["file:read:/tmp/mizan_suq/*", "file:write:/tmp/mizan_suq/*"],
-        tags=["سوق", "Registry"],
+                    "install, and review skills with Shura verification. "
+                    "Integrates with ClawHub via secure bridge with Raqib scanning, "
+                    "quarantine, and prompt injection sanitization.",
+        permissions=["file:read:/tmp/mizan_suq/*", "file:write:/tmp/mizan_suq/*",
+                     "network:clawhub"],
+        tags=["سوق", "Registry", "ClawHub"],
     )
 
     def __init__(self, config: Dict = None):
@@ -121,6 +316,7 @@ class SuqRegistrySkill(SkillBase):
         self.installed: Dict[str, SurahPackage] = {}
         os.makedirs(REGISTRY_DIR, exist_ok=True)
         self._seed_registry()
+        self._clawhub = ClawHubBridge(self._scan_content)  # Secure ClawHub bridge
         self._tools = {
             "suq_search": self.search,
             "suq_publish": self.publish,
@@ -131,6 +327,14 @@ class SuqRegistrySkill(SkillBase):
             "suq_list": self.list_packages,
             "suq_installed": self.list_installed,
             "suq_scan": self.security_scan_package,
+            # ClawHub secure bridge actions
+            "suq_clawhub_search": self.clawhub_search,
+            "suq_clawhub_import": self.clawhub_import,
+            "suq_clawhub_approve": self.clawhub_approve,
+            "suq_clawhub_reject": self.clawhub_reject,
+            "suq_clawhub_quarantine": self.clawhub_list_quarantine,
+            "suq_clawhub_status": self.clawhub_status,
+            "suq_clawhub_audit": self.clawhub_audit,
         }
 
     def _seed_registry(self):
@@ -430,36 +634,141 @@ class SuqRegistrySkill(SkillBase):
             return {"status": "warning", "findings": findings}
         return {"status": "clean", "findings": []}
 
+    # === CLAWHUB SECURE BRIDGE (جسر آمن) ===
+
+    async def clawhub_search(self, params: Dict) -> Dict:
+        """Search ClawHub marketplace (builds secure request)."""
+        query = params.get("query", "")
+        category = params.get("category")
+        if not query:
+            return {"error": "Search query is required"}
+        return self._clawhub.search_clawhub(query, category)
+
+    async def clawhub_import(self, params: Dict) -> Dict:
+        """
+        Import a ClawHub skill into quarantine with Raqib scanning.
+        Skill is NOT installed — it enters quarantine for Shura review.
+        """
+        clawhub_skill = params.get("skill", {})
+        if not clawhub_skill:
+            return {"error": "ClawHub skill data is required"}
+
+        result = self._clawhub.import_skill(clawhub_skill)
+        return result
+
+    async def clawhub_approve(self, params: Dict) -> Dict:
+        """
+        Approve a quarantined ClawHub skill and create Suq package.
+        Approved skill enters Suq as Ammara (untrusted) package.
+        """
+        quarantine_id = params.get("quarantine_id", "")
+        entry = self._clawhub.approve_quarantined(quarantine_id)
+        if not entry:
+            return {"error": "Quarantine entry not found"}
+
+        # Create Suq package from approved quarantine entry
+        pkg = SurahPackage(
+            name=entry["name"],
+            description=entry["description"],
+            author=f"ClawHub:{entry['clawhub_author']}",
+            category="ClawHub Import",
+            skill_content=entry["sanitized_content"],
+            scan_status=entry["scan_result"]["status"],
+            scan_findings=len(entry["scan_result"].get("findings", [])),
+            trust_level="ammara",
+            verified=False,
+            signature=entry["integrity_hash"],
+        )
+        self.packages[pkg.id] = pkg
+        logger.info(f"[SUQ] ClawHub skill approved: {entry['name']} -> pkg:{pkg.id}")
+        return {
+            "approved": True,
+            "package_id": pkg.id,
+            "package": pkg.to_dict(),
+            "message": "ClawHub skill approved and added to Suq as Ammara (untrusted). "
+                       "Use suq_verify to elevate trust after manual review.",
+        }
+
+    async def clawhub_reject(self, params: Dict) -> Dict:
+        """Reject a quarantined ClawHub skill."""
+        quarantine_id = params.get("quarantine_id", "")
+        if self._clawhub.reject_quarantined(quarantine_id):
+            return {"rejected": True, "quarantine_id": quarantine_id}
+        return {"error": "Quarantine entry not found"}
+
+    async def clawhub_list_quarantine(self, params: Dict) -> Dict:
+        """List all quarantined ClawHub skills pending review."""
+        entries = self._clawhub.list_quarantine()
+        return {"quarantine": entries, "total": len(entries)}
+
+    async def clawhub_status(self, params: Dict) -> Dict:
+        """Get ClawHub bridge statistics."""
+        return self._clawhub.get_stats()
+
+    async def clawhub_audit(self, params: Dict) -> Dict:
+        """View ClawHub bridge audit log."""
+        limit = min(params.get("limit", 50), 200)
+        logs = self._clawhub.get_audit_log(limit)
+        return {"audit_log": logs, "total": len(logs)}
+
     def get_tool_schemas(self) -> List[Dict]:
+        S = "string"
         return [
             {"name": "suq_search",
              "description": "Search the Suq al-Ilm skill registry",
              "input_schema": {"type": "object", "properties": {
-                 "query": {"type": "string"}, "category": {"type": "string"},
-             }}},
+                 "query": {"type": S}, "category": {"type": S}}}},
             {"name": "suq_publish",
              "description": "Publish a skill to the registry (auto Raqib-scanned)",
              "input_schema": {"type": "object", "properties": {
-                 "name": {"type": "string"}, "description": {"type": "string"},
-                 "version": {"type": "string"}, "author": {"type": "string"},
-                 "category": {"type": "string"}, "permissions": {"type": "array"},
-                 "tags": {"type": "array"}, "skill_content": {"type": "string"},
+                 "name": {"type": S}, "description": {"type": S},
+                 "version": {"type": S}, "author": {"type": S},
+                 "category": {"type": S}, "permissions": {"type": "array"},
+                 "tags": {"type": "array"}, "skill_content": {"type": S},
              }, "required": ["name", "description"]}},
             {"name": "suq_install",
              "description": "Install a skill package",
              "input_schema": {"type": "object", "properties": {
-                 "package_id": {"type": "string"}, "name": {"type": "string"},
-                 "force": {"type": "boolean"},
-             }}},
+                 "package_id": {"type": S}, "name": {"type": S},
+                 "force": {"type": "boolean"}}}},
             {"name": "suq_list",
              "description": "List all packages in the marketplace",
              "input_schema": {"type": "object", "properties": {
-                 "category": {"type": "string"},
-             }}},
+                 "category": {"type": S}}}},
             {"name": "suq_verify",
              "description": "Shura-verify a package (approve or reject)",
              "input_schema": {"type": "object", "properties": {
-                 "package_id": {"type": "string"},
-                 "verdict": {"type": "string", "enum": ["approve", "reject"]},
+                 "package_id": {"type": S},
+                 "verdict": {"type": S, "enum": ["approve", "reject"]},
              }, "required": ["package_id", "verdict"]}},
+            # ClawHub Secure Bridge schemas
+            {"name": "suq_clawhub_search",
+             "description": "Search ClawHub marketplace via secure bridge",
+             "input_schema": {"type": "object", "properties": {
+                 "query": {"type": S}, "category": {"type": S}},
+                 "required": ["query"]}},
+            {"name": "suq_clawhub_import",
+             "description": "Import ClawHub skill into quarantine (Raqib-scanned)",
+             "input_schema": {"type": "object", "properties": {
+                 "skill": {"type": "object",
+                           "description": "ClawHub skill data with name, description, skill_content"}},
+                 "required": ["skill"]}},
+            {"name": "suq_clawhub_approve",
+             "description": "Approve quarantined ClawHub skill for Suq installation",
+             "input_schema": {"type": "object", "properties": {
+                 "quarantine_id": {"type": S}}, "required": ["quarantine_id"]}},
+            {"name": "suq_clawhub_reject",
+             "description": "Reject quarantined ClawHub skill",
+             "input_schema": {"type": "object", "properties": {
+                 "quarantine_id": {"type": S}}, "required": ["quarantine_id"]}},
+            {"name": "suq_clawhub_quarantine",
+             "description": "List all quarantined ClawHub skills pending review",
+             "input_schema": {"type": "object", "properties": {}}},
+            {"name": "suq_clawhub_status",
+             "description": "Get ClawHub bridge statistics",
+             "input_schema": {"type": "object", "properties": {}}},
+            {"name": "suq_clawhub_audit",
+             "description": "View ClawHub bridge audit log",
+             "input_schema": {"type": "object", "properties": {
+                 "limit": {"type": "integer"}}}},
         ]
