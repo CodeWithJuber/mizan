@@ -1,0 +1,172 @@
+#!/bin/bash
+# ============================================================
+# MIZAN (ميزان) - Startup Script
+# "And the heaven He raised and imposed the balance" - 55:7
+# ============================================================
+
+set -e
+
+MIZAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$MIZAN_DIR/backend"
+FRONTEND_DIR="$MIZAN_DIR/frontend"
+
+GREEN='\033[0;32m'
+GOLD='\033[0;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+print_header() {
+    echo ""
+    echo -e "${GOLD}╔══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GOLD}║              ميزان  ·  MIZAN AGI SYSTEM              ║${NC}"
+    echo -e "${GOLD}║   'And He imposed the balance (Mizan)' - 55:7        ║${NC}"
+    echo -e "${GOLD}╚══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+install_backend() {
+    echo -e "${BLUE}Installing backend dependencies...${NC}"
+    cd "$BACKEND_DIR"
+    
+    if [ ! -d "venv" ]; then
+        python3 -m venv venv
+    fi
+    
+    source venv/bin/activate
+    pip install -r requirements.txt --quiet
+    echo -e "${GREEN}✓ Backend dependencies installed${NC}"
+}
+
+install_frontend() {
+    echo -e "${BLUE}Installing frontend dependencies...${NC}"
+    cd "$FRONTEND_DIR"
+    npm install --silent
+    echo -e "${GREEN}✓ Frontend dependencies installed${NC}"
+}
+
+start_backend() {
+    echo -e "${BLUE}Starting MIZAN Backend (AQL Engine)...${NC}"
+    cd "$BACKEND_DIR"
+    
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+    
+    # Load .env if exists
+    if [ -f "$MIZAN_DIR/.env" ]; then
+        export $(grep -v '^#' "$MIZAN_DIR/.env" | xargs)
+    fi
+    
+    uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload &
+    BACKEND_PID=$!
+    echo -e "${GREEN}✓ Backend running on http://localhost:8000 (PID: $BACKEND_PID)${NC}"
+    echo $BACKEND_PID > /tmp/mizan-backend.pid
+}
+
+start_frontend() {
+    echo -e "${BLUE}Starting MIZAN Frontend (Sama' Layer)...${NC}"
+    cd "$FRONTEND_DIR"
+    npm run dev &
+    FRONTEND_PID=$!
+    echo -e "${GREEN}✓ Frontend running on http://localhost:3000 (PID: $FRONTEND_PID)${NC}"
+    echo $FRONTEND_PID > /tmp/mizan-frontend.pid
+}
+
+stop_all() {
+    echo -e "${BLUE}Stopping MIZAN...${NC}"
+    [ -f /tmp/mizan-backend.pid ] && kill $(cat /tmp/mizan-backend.pid) 2>/dev/null || true
+    [ -f /tmp/mizan-frontend.pid ] && kill $(cat /tmp/mizan-frontend.pid) 2>/dev/null || true
+    pkill -f "uvicorn api.main" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+    rm -f /tmp/mizan-*.pid
+    echo -e "${GREEN}✓ MIZAN stopped${NC}"
+}
+
+docker_start() {
+    echo -e "${BLUE}Starting with Docker Compose...${NC}"
+    cd "$MIZAN_DIR"
+    
+    if [ ! -f ".env" ]; then
+        cp .env.example .env
+        echo -e "${GOLD}⚠ Created .env from template. Please edit it with your API keys.${NC}"
+    fi
+    
+    docker-compose up -d --build
+    echo -e "${GREEN}✓ MIZAN running via Docker${NC}"
+    echo -e "${BLUE}  Frontend: http://localhost:3000${NC}"
+    echo -e "${BLUE}  Backend:  http://localhost:8000${NC}"
+}
+
+show_status() {
+    echo -e "${BLUE}MIZAN Status:${NC}"
+    curl -s http://localhost:8000/ | python3 -m json.tool 2>/dev/null || echo "Backend not running"
+}
+
+show_help() {
+    echo "Usage: ./start.sh [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start       - Start backend + frontend (dev mode)"
+    echo "  stop        - Stop all processes"
+    echo "  install     - Install dependencies only"
+    echo "  docker      - Start with Docker Compose"
+    echo "  status      - Show system status"
+    echo "  backend     - Start backend only"
+    echo "  frontend    - Start frontend only"
+    echo "  help        - Show this help"
+}
+
+# Main
+print_header
+
+case "${1:-start}" in
+    start)
+        install_backend
+        install_frontend
+        start_backend
+        sleep 2
+        start_frontend
+        echo ""
+        echo -e "${GOLD}═══════════════════════════════════════════${NC}"
+        echo -e "${GREEN}  MIZAN is running!${NC}"
+        echo -e "${BLUE}  Frontend: http://localhost:3000${NC}"
+        echo -e "${BLUE}  Backend:  http://localhost:8000${NC}"
+        echo -e "${BLUE}  API Docs: http://localhost:8000/docs${NC}"
+        echo -e "${GOLD}═══════════════════════════════════════════${NC}"
+        echo ""
+        echo "Press Ctrl+C to stop..."
+        wait
+        ;;
+    stop)
+        stop_all
+        ;;
+    install)
+        install_backend
+        install_frontend
+        ;;
+    docker)
+        docker_start
+        ;;
+    status)
+        show_status
+        ;;
+    backend)
+        install_backend
+        start_backend
+        wait
+        ;;
+    frontend)
+        install_frontend
+        start_frontend
+        wait
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        show_help
+        exit 1
+        ;;
+esac

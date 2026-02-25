@@ -1,0 +1,78 @@
+version: "3.9"
+
+# MIZAN (ميزان) - Full Stack Deployment
+# "And the heaven He raised and imposed the balance (Mizan)" - Quran 55:7
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: mizan-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
+      - SECRET_KEY=${SECRET_KEY:-mizan-secret-key-change-in-production}
+    volumes:
+      - mizan-data:/data
+      - ./backend:/app
+    networks:
+      - mizan-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: mizan-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - mizan-net
+
+  # Optional: Local LLM via Ollama
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mizan-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - mizan-net
+    profiles:
+      - ollama
+
+  # Optional: Vector database for semantic search
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: mizan-chroma
+    restart: unless-stopped
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma-data:/chroma/.chroma
+    networks:
+      - mizan-net
+    profiles:
+      - vector
+
+networks:
+  mizan-net:
+    driver: bridge
+
+volumes:
+  mizan-data:
+  ollama-data:
+  chroma-data:
