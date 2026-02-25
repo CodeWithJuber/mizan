@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
@@ -40,12 +41,98 @@ from skills.registry import SkillRegistry
 
 logger = logging.getLogger("mizan.api")
 
+# ===== LIFESPAN =====
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan — startup and shutdown logic."""
+    logger.info("MIZAN (ميزان) Starting...")
+    logger.info("   'And the heaven He raised and imposed the balance' - 55:7")
+
+    # Create default agents if none exist
+    existing = await memory.get_all_agents()
+    if not existing:
+        default_agents = [
+            {"name": "Hafiz", "type": "general", "role": "Preserver"},
+            {"name": "Mubashir", "type": "browser", "role": "Browser"},
+            {"name": "Mundhir", "type": "research", "role": "Researcher"},
+            {"name": "Katib", "type": "code", "role": "Coder"},
+        ]
+
+        for da in default_agents:
+            agent = create_agent(
+                da["type"],
+                name=da["name"],
+                memory=memory,
+                config={"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                wali=wali,
+                izn=izn,
+            )
+            active_agents[agent.id] = agent
+            balancer.register(agent.id)
+            shura.members[agent.id] = agent
+
+            await memory.save_agent_profile({
+                "id": agent.id,
+                "name": agent.name,
+                "role": da["type"],
+                "nafs_level": 1,
+                "capabilities": list(agent.tools.keys()),
+                "config": {"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+            })
+    else:
+        for profile in existing:
+            agent = create_agent(
+                profile.get("role", "general"),
+                agent_id=profile["id"],
+                name=profile["name"],
+                memory=memory,
+                config=profile.get("config", {}),
+                wali=wali,
+                izn=izn,
+            )
+            agent.total_tasks = profile.get("total_tasks", 0)
+            agent.learning_iterations = profile.get("learning_iterations", 0)
+            active_agents[agent.id] = agent
+            balancer.register(agent.id)
+            shura.members[agent.id] = agent
+
+    logger.info(f"{len(active_agents)} agents initialized")
+
+    # Initialize scheduler executor
+    async def execute_scheduled_task(task: str, agent_id: str = None):
+        aid = agent_id or (list(active_agents.keys())[0] if active_agents else None)
+        if aid and aid in active_agents:
+            agent = active_agents[aid]
+            return await agent.execute(task)
+        return {"error": "No agent available"}
+
+    scheduler.set_executor(execute_scheduled_task)
+    trigger_manager.set_executor(execute_scheduled_task)
+    await scheduler.start()
+
+    # Load built-in skills
+    try:
+        skill_registry.discover_builtin()
+    except Exception as e:
+        logger.warning(f"Skill discovery: {e}")
+
+    logger.info("MIZAN ready - Bismillah!")
+
+    yield  # App is running
+
+    # Shutdown
+    await scheduler.stop()
+    logger.info("MIZAN shutdown complete")
+
+
 # ===== APP INITIALIZATION =====
 
 app = FastAPI(
-    title="MIZAN (ميزان) - Quranic AGI System",
-    description="Seven-layer AGI architecture derived from Quranic principles",
-    version="2.0.0",
+    title="MIZAN (ميزان) - Agentic Personal AI",
+    description="Production-ready agentic AI with Quranic Cognitive Architecture",
+    version="3.0.0",
+    lifespan=lifespan,
 )
 
 # ===== SECURITY INITIALIZATION =====
@@ -192,90 +279,7 @@ class SkillInstallRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
 
-# ===== STARTUP =====
-
-@app.on_event("startup")
-async def startup():
-    """Initialize the MIZAN system - Bismillah (بسم الله)"""
-    logger.info("MIZAN (ميزان) Starting...")
-    logger.info("   'And the heaven He raised and imposed the balance' - 55:7")
-
-    # Create default agents if none exist
-    existing = await memory.get_all_agents()
-    if not existing:
-        default_agents = [
-            {"name": "Hafiz", "type": "general", "role": "Preserver"},
-            {"name": "Mubashir", "type": "browser", "role": "Browser"},
-            {"name": "Mundhir", "type": "research", "role": "Researcher"},
-            {"name": "Katib", "type": "code", "role": "Coder"},
-        ]
-
-        for da in default_agents:
-            agent = create_agent(
-                da["type"],
-                name=da["name"],
-                memory=memory,
-                config={"model": os.getenv("DEFAULT_MODEL", "claude-opus-4-6")},
-                wali=wali,
-                izn=izn,
-            )
-            active_agents[agent.id] = agent
-            balancer.register(agent.id)
-            shura.members[agent.id] = agent
-
-            await memory.save_agent_profile({
-                "id": agent.id,
-                "name": agent.name,
-                "role": da["type"],
-                "nafs_level": 1,
-                "capabilities": list(agent.tools.keys()),
-                "config": {"model": os.getenv("DEFAULT_MODEL", "claude-opus-4-6")},
-            })
-    else:
-        for profile in existing:
-            agent = create_agent(
-                profile.get("role", "general"),
-                agent_id=profile["id"],
-                name=profile["name"],
-                memory=memory,
-                config=profile.get("config", {}),
-                wali=wali,
-                izn=izn,
-            )
-            agent.total_tasks = profile.get("total_tasks", 0)
-            agent.learning_iterations = profile.get("learning_iterations", 0)
-            active_agents[agent.id] = agent
-            balancer.register(agent.id)
-            shura.members[agent.id] = agent
-
-    logger.info(f"{len(active_agents)} agents initialized")
-
-    # Initialize scheduler executor
-    async def execute_scheduled_task(task: str, agent_id: str = None):
-        aid = agent_id or (list(active_agents.keys())[0] if active_agents else None)
-        if aid and aid in active_agents:
-            agent = active_agents[aid]
-            return await agent.execute(task)
-        return {"error": "No agent available"}
-
-    scheduler.set_executor(execute_scheduled_task)
-    trigger_manager.set_executor(execute_scheduled_task)
-    await scheduler.start()
-
-    # Load built-in skills
-    try:
-        skill_registry.discover_builtin()
-    except Exception as e:
-        logger.warning(f"Skill discovery: {e}")
-
-    logger.info("MIZAN ready - Bismillah!")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Graceful shutdown — stop scheduler"""
-    await scheduler.stop()
-    logger.info("MIZAN shutdown complete")
+    # NOTE: Startup and shutdown logic is handled by the lifespan context manager above.
 
 
 # ===== WEBSOCKET MANAGER =====
@@ -362,7 +366,7 @@ async def root():
     return {
         "system": "MIZAN (ميزان)",
         "verse": "And the heaven He raised and imposed the balance (Mizan) - 55:7",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "agents": len(active_agents),
         "status": "active",
     }
@@ -684,7 +688,7 @@ async def system_status():
 
     return {
         "system": "MIZAN",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "active",
         "timestamp": datetime.utcnow().isoformat(),
         "agents": {
