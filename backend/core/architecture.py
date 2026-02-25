@@ -7,16 +7,26 @@ MIZAN (ميزان) - Quranic AGI Architecture
 Seven-Layer Architecture derived from سبع سماوات (Seven Heavens):
 
 Layer 1 - SAMA' (سمع): Perception & Input Processing
-Layer 2 - FIKR (فكر): Cognitive Processing & Analysis  
+Layer 2 - FIKR (فكر): Cognitive Processing & Analysis
 Layer 3 - DHIKR (ذكر): Memory & Knowledge Storage
 Layer 4 - AQL (عقل): Reasoning & Logic Engine
 Layer 5 - HIKMAH (حكمة): Wisdom & Meta-Learning
 Layer 6 - AMAL (عمل): Action & Execution
 Layer 7 - TAFAKKUR (تفكر): Deep Reflection & Self-Improvement
 
+QCA Cognitive Layers (Quranic Cognitive Architecture):
+  Sam' (سمع)    — Sequential temporal input processing (16:78)
+  Basar (بصر)   — Structural simultaneous pattern recognition (16:78)
+  Fu'ad (فؤاد)  — Integration engine combining both inputs (16:78)
+  ISM (اسم)     — Root-Space deep semantic representation (2:31)
+  Mizan (ميزان) — Epistemic weighting / truth calibration (55:7-9)
+  'Aql (عقل)    — Typed relationship binding engine (3:190)
+  Lawh (لوح)    — 4-tier hierarchical memory (85:22)
+  Furqan (فرقان) — Discrimination + articulation output (25:1, 55:4)
+
 Agent Roles from Quran:
 - Rasul (رسول): Messenger - Communication agent
-- Wakil (وكيل): Trustee - Task delegation agent  
+- Wakil (وكيل): Trustee - Task delegation agent
 - Hafiz (حافظ): Preserver - Memory guardian agent
 - Shahid (شاهد): Witness - Monitoring & audit agent
 - Wali (ولي): Guardian - Security agent
@@ -229,13 +239,106 @@ class ShuraCouncil:
         """Build consensus with weights based on confidence"""
         if not opinions:
             return {}
-        
+
         # Weight by confidence
         total_confidence = sum(o["confidence"] for o in opinions)
-        
+
         return {
             "consensus": opinions[0]["opinion"],  # Simplified
             "confidence": total_confidence / len(opinions),
             "unanimity": len(set(o["opinion"] for o in opinions)) == 1,
             "participants": len(opinions),
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QCA Integration — Quranic Cognitive Architecture
+# ─────────────────────────────────────────────────────────────────────────────
+
+class QCALayer(Enum):
+    """
+    QCA 7-layer cognitive pipeline derived from Quran 16:78, 2:31, 55:7-9.
+    Maps to MIZAN's architecture as the cognitive processing core.
+    """
+    SAM = "sam"           # Sequential temporal perception (16:78)
+    BASAR = "basar"       # Structural pattern recognition (16:78)
+    FUAD = "fuad"         # Integration engine (16:78)
+    ISM = "ism"           # Root-Space semantic representation (2:31)
+    MIZAN_W = "mizan_w"   # Epistemic weighting (55:7-9)
+    AQL_B = "aql_b"       # Typed relationship binding (3:190)
+    LAWH = "lawh"         # 4-tier hierarchical memory (85:22)
+    FURQAN = "furqan"     # Discrimination + Bayan output (25:1, 55:4)
+
+
+class NafsTrustLevel(Enum):
+    """
+    Trust levels for the Nafs system — maps to QCA Mizan epistemic scale.
+    Quran 12:53 (Ammara), 75:2 (Lawwama), 89:27 (Mutmainna)
+    """
+    AMMARA = "ammara"         # Untrusted / raw — needs quarantine
+    LAWWAMA = "lawwama"       # Reviewed / self-correcting — limited trust
+    MUTMAINNA = "mutmainna"   # Verified / at peace — full trust
+
+
+class QCAMizanIntegrator:
+    """
+    Integrates QCA cognitive layers into MIZAN's existing architecture.
+    Provides epistemic weighting for all agent decisions and memory operations.
+
+    Maps MIZAN layers to QCA layers:
+      SAMA (Perception) -> Sam' + Basar + Fu'ad
+      FIKR (Cognition)  -> ISM + Mizan
+      DHIKR (Memory)    -> Lawh (4-tier)
+      AQL (Reasoning)   -> 'Aql (typed bindings)
+      HIKMAH (Wisdom)   -> Furqan (discrimination) + meta-learning
+      AMAL (Action)     -> Bayan (articulated output)
+      TAFAKKUR (Reflect) -> Consolidation + Lawh tier promotion
+    """
+
+    # Map MIZAN layers to QCA processing
+    LAYER_MAP = {
+        QuranicLayer.SAMA: [QCALayer.SAM, QCALayer.BASAR, QCALayer.FUAD],
+        QuranicLayer.FIKR: [QCALayer.ISM, QCALayer.MIZAN_W],
+        QuranicLayer.DHIKR: [QCALayer.LAWH],
+        QuranicLayer.AQL: [QCALayer.AQL_B],
+        QuranicLayer.HIKMAH: [QCALayer.FURQAN],
+        QuranicLayer.AMAL: [QCALayer.FURQAN],
+        QuranicLayer.TAFAKKUR: [QCALayer.LAWH, QCALayer.MIZAN_W],
+    }
+
+    # Nafs trust level thresholds aligned with Mizan scale
+    TRUST_THRESHOLDS = {
+        NafsTrustLevel.AMMARA: 0.0,      # Any agent starts here
+        NafsTrustLevel.LAWWAMA: 0.50,     # After Mizan-validated performance
+        NafsTrustLevel.MUTMAINNA: 0.85,   # After sustained Yaqin-level accuracy
+    }
+
+    def get_qca_layers(self, mizan_layer: QuranicLayer) -> List[QCALayer]:
+        """Map a MIZAN architectural layer to its QCA cognitive components."""
+        return self.LAYER_MAP.get(mizan_layer, [])
+
+    def compute_nafs_level(self, success_rate: float,
+                           error_rate: float) -> NafsTrustLevel:
+        """Determine Nafs trust level based on Mizan-weighted performance."""
+        effective_score = success_rate * (1.0 - error_rate)
+        if effective_score >= self.TRUST_THRESHOLDS[NafsTrustLevel.MUTMAINNA]:
+            return NafsTrustLevel.MUTMAINNA
+        if effective_score >= self.TRUST_THRESHOLDS[NafsTrustLevel.LAWWAMA]:
+            return NafsTrustLevel.LAWWAMA
+        return NafsTrustLevel.AMMARA
+
+    def validate_decision(self, confidence: float, claimed_level: str,
+                          evidence_level: str) -> Dict:
+        """
+        Validate an agent's decision through QCA Mizan + Furqan layers.
+        Prevents epistemic transgression (Tughyan).
+        """
+        from backend.qca.engine import MizanLayer
+        mizan = MizanLayer()
+        is_tughyan, msg = mizan.check_tughyan(claimed_level, evidence_level)
+        return {
+            "valid": not is_tughyan,
+            "message": msg,
+            "confidence": confidence,
+            "epistemic_label": mizan.rate_confidence_string(confidence),
         }

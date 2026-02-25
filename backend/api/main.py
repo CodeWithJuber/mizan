@@ -799,6 +799,31 @@ async def uninstall_skill(req: SkillInstallRequest,
     raise HTTPException(404, "Skill not found")
 
 
+class SkillExecuteRequest(BaseModel):
+    skill: str = Field(..., min_length=1, max_length=200)
+    action: Optional[str] = None
+
+    class Config:
+        extra = "allow"  # Allow dynamic params for skill execution
+
+
+@app.post("/api/skills/execute")
+async def execute_skill(req: SkillExecuteRequest,
+                        user: Optional[TokenPayload] = Depends(get_current_user)):
+    """Execute a skill action — routes to the appropriate built-in skill"""
+    skill = skill_registry.get_skill(req.skill)
+    if not skill:
+        raise HTTPException(404, f"Skill '{req.skill}' not found")
+
+    # Build params from request (exclude 'skill' key)
+    params = req.model_dump(exclude={"skill"})
+    try:
+        result = await skill.execute(params)
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Skill execution error: {str(e)}")
+
+
 # === GATEWAY (Bab) ===
 
 @app.get("/api/gateway/status")
