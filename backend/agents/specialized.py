@@ -291,13 +291,17 @@ class CodeAgent(BaseAgent):
         return result
     
     async def _tool_install_package(self, package: str, manager: str = "pip") -> Dict:
+        from security.validation import validate_package_name
+        is_safe, reason = validate_package_name(package)
+        if not is_safe:
+            return {"error": f"Package name rejected: {reason}"}
+
         managers = {
             "pip": f"pip install {package} --break-system-packages",
             "npm": f"npm install {package}",
-            "apt": f"apt-get install -y {package}",
         }
         if manager not in managers:
-            return {"error": f"Unknown package manager: {manager}"}
+            return {"error": f"Unknown package manager: {manager}. Allowed: pip, npm"}
         result = await self._tool_bash(managers[manager], timeout=120)
         return result
 
