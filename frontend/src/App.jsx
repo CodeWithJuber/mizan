@@ -11,6 +11,10 @@ import ChannelsPage from "./pages/ChannelsPage";
 import SkillsPage from "./pages/SkillsPage";
 import SecurityPage from "./pages/SecurityPage";
 import AutomationPage from "./pages/AutomationPage";
+import NotebookPage from "./pages/NotebookPage";
+import ScannerPage from "./pages/ScannerPage";
+import MajlisPage from "./pages/MajlisPage";
+import PluginsPage from "./pages/PluginsPage";
 import { useApi } from "./hooks/useApi";
 
 const WS_URL = "ws://localhost:8000/ws";
@@ -114,6 +118,38 @@ const Icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
       <circle cx="12" cy="12" r="10"/>
       <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  ),
+  Notebook: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M4 4h16v16H4z"/>
+      <path d="M8 4v16M4 8h4M4 12h4M4 16h4"/>
+      <path d="M11 8h6M11 12h4"/>
+    </svg>
+  ),
+  Scanner: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+      <path d="M12 6v6l4 2"/>
+      <path d="M2 12h4M18 12h4M12 2v4"/>
+      <circle cx="12" cy="12" r="2"/>
+    </svg>
+  ),
+  Majlis: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <circle cx="12" cy="5" r="3"/>
+      <circle cx="5" cy="12" r="3"/>
+      <circle cx="19" cy="12" r="3"/>
+      <circle cx="8" cy="19" r="3"/>
+      <circle cx="16" cy="19" r="3"/>
+      <path d="M12 8v3M7.5 10.5l2 1.5M16.5 10.5l-2 1.5M9.5 16.5l1-2M14.5 16.5l-1-2"/>
+    </svg>
+  ),
+  Plugin: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+      <rect x="8" y="8" width="8" height="8" rx="1"/>
+      <path d="M10 8V6a2 2 0 114 0v2M8 14h-2a2 2 0 100 4h2"/>
     </svg>
   ),
 };
@@ -1756,6 +1792,18 @@ export default function App() {
       case "automation":
         return <AutomationPage api={api} addTerminalLine={addTerminalLine} />;
 
+      case "notebooks":
+        return <NotebookPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "scanner":
+        return <ScannerPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "majlis":
+        return <MajlisPage api={api} addTerminalLine={addTerminalLine} />;
+
+      case "plugins":
+        return <PluginsPage api={api} addTerminalLine={addTerminalLine} />;
+
       case "integrations":
         return (
           <>
@@ -1879,6 +1927,10 @@ export default function App() {
             <div className="nav-section-label">Knowledge · علم</div>
             {[
               { id: "memory", label: "Memory", arabic: "ذاكرة", icon: <Icons.Memory /> },
+              { id: "notebooks", label: "Notebooks", arabic: "كتاب", icon: <Icons.Notebook /> },
+              { id: "scanner", label: "Scanner", arabic: "رقيب", icon: <Icons.Scanner /> },
+              { id: "majlis", label: "Majlis", arabic: "مجلس", icon: <Icons.Majlis /> },
+              { id: "plugins", label: "Plugins", arabic: "وحي", icon: <Icons.Plugin /> },
               { id: "skills", label: "Skills", arabic: "حكمة", icon: <Icons.Skill /> },
               { id: "architecture", label: "Architecture", arabic: "هندسة", icon: <Icons.Brain /> },
             ].map(item => (
