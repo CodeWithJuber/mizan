@@ -5,45 +5,54 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { PageProps, MajlisAgent, MajlisNafsLevel, MajlisAgentStatus, Halaqah, KnowledgeItem } from "../types";
 
-const NAFS_COLORS = {
+const NAFS_COLORS: Record<string, string> = {
   ammara: "#ef4444",
   lawwama: "#f59e0b",
   mutmainna: "#10b981",
 };
 
-const NAFS_LABELS = {
+const NAFS_LABELS: Record<string, string> = {
   ammara: "أمارة · Ammara",
   lawwama: "لوامة · Lawwama",
   mutmainna: "مطمئنة · Mutmainna",
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   active: "#10b981",
   idle: "#f59e0b",
   busy: "#ef4444",
   offline: "#6b7280",
 };
 
-export default function MajlisPage({ api, addTerminalLine }) {
+interface LeaderboardAgent {
+  agent_id: string;
+  name: string;
+  arabic_name?: string;
+  nafs_level: MajlisNafsLevel;
+  reputation_score?: number;
+  capabilities?: string[];
+}
+
+export default function MajlisPage({ api, addTerminalLine }: PageProps) {
   const [activeTab, setActiveTab] = useState("agents");
-  const [agents, setAgents] = useState([]);
-  const [halaqahs, setHalaqahs] = useState([]);
-  const [knowledge, setKnowledge] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [agents, setAgents] = useState<MajlisAgent[]>([]);
+  const [halaqahs, setHalaqahs] = useState<Halaqah[]>([]);
+  const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<MajlisAgent | null>(null);
   const [showRegister, setShowRegister] = useState(false);
   const [showHalaqah, setShowHalaqah] = useState(false);
   const [showShare, setShowShare] = useState(false);
 
-  // Form state
   const [regForm, setRegForm] = useState({ name: "", arabic_name: "", capabilities: "" });
   const [halaqahForm, setHalaqahForm] = useState({ name: "", topic: "", description: "" });
   const [shareForm, setShareForm] = useState({ topic: "", content: "", source: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [messageText, setMessageText] = useState("");
 
-  const exec = useCallback(async (action, extra = {}) => {
+  const exec = useCallback(async (action: string, extra: Record<string, unknown> = {}) => {
     try {
       return await api.post("/skills/execute", {
         skill: "majlis_social", action, ...extra,
@@ -53,17 +62,17 @@ export default function MajlisPage({ api, addTerminalLine }) {
 
   const loadAgents = useCallback(async () => {
     const data = await exec("discover");
-    if (data?.agents) setAgents(data.agents);
+    if (data?.agents) setAgents(data.agents as MajlisAgent[]);
   }, [exec]);
 
   const loadHalaqahs = useCallback(async () => {
     const data = await exec("list_halaqahs");
-    if (data?.halaqahs) setHalaqahs(data.halaqahs);
+    if (data?.halaqahs) setHalaqahs(data.halaqahs as Halaqah[]);
   }, [exec]);
 
   const loadLeaderboard = useCallback(async () => {
     const data = await exec("leaderboard");
-    if (data?.leaderboard) setLeaderboard(data.leaderboard);
+    if (data?.leaderboard) setLeaderboard(data.leaderboard as LeaderboardAgent[]);
   }, [exec]);
 
   useEffect(() => {
@@ -106,14 +115,14 @@ export default function MajlisPage({ api, addTerminalLine }) {
     }
   };
 
-  const sendMessage = async (toId) => {
+  const sendMessage = async (toId: string) => {
     if (!messageText.trim()) return;
     await exec("message", { to_agent_id: toId, content: messageText, msg_type: "text" });
     addTerminalLine?.(`Message sent to ${toId.slice(0, 8)}...`, "gold");
     setMessageText("");
   };
 
-  const rateAgent = async (agentId, score) => {
+  const rateAgent = async (agentId: string, score: number) => {
     await exec("rate", { agent_id: agentId, score });
     addTerminalLine?.(`Rated agent: ${score}/5`, "gold");
     loadAgents();
@@ -121,7 +130,7 @@ export default function MajlisPage({ api, addTerminalLine }) {
 
   const searchKnowledgeBase = async () => {
     const data = await exec("search_knowledge", { query: searchQuery });
-    if (data?.results) setKnowledge(data.results);
+    if (data?.results) setKnowledge(data.results as KnowledgeItem[]);
   };
 
   return (
@@ -149,7 +158,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
 
-        {/* ===== AGENTS TAB ===== */}
         {activeTab === "agents" && (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -159,7 +167,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
               <button className="btn" onClick={loadAgents}>Refresh</button>
             </div>
 
-            {/* Register Modal */}
             {showRegister && (
               <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
                 border: "1px solid var(--gold)", borderRadius: 10 }}>
@@ -192,7 +199,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
               </div>
             )}
 
-            {/* Agent List */}
             {agents.length === 0 && (
               <div className="empty-state">
                 <div className="empty-arabic">مجلس</div>
@@ -239,7 +245,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
                   </div>
                 )}
 
-                {/* Expanded agent details */}
                 {selectedAgent?.agent_id === agent.agent_id && (
                   <div style={{ marginTop: 10, padding: 10, background: "rgba(3,6,8,0.5)",
                     borderRadius: 6, border: "1px solid var(--border)" }}>
@@ -277,7 +282,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
           </>
         )}
 
-        {/* ===== HALAQAHS TAB ===== */}
         {activeTab === "halaqahs" && (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -357,7 +361,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
           </>
         )}
 
-        {/* ===== KNOWLEDGE TAB ===== */}
         {activeTab === "knowledge" && (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -436,7 +439,6 @@ export default function MajlisPage({ api, addTerminalLine }) {
           </>
         )}
 
-        {/* ===== LEADERBOARD TAB ===== */}
         {activeTab === "leaderboard" && (
           <>
             <div style={{ marginBottom: 12 }}>

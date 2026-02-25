@@ -5,31 +5,32 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { PageProps, Notebook, NotebookCell, CellOutput } from "../types";
 
-export default function NotebookPage({ api, addTerminalLine }) {
-  const [notebooks, setNotebooks] = useState([]);
-  const [activeNotebook, setActiveNotebook] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newLang, setNewLang] = useState("python");
-  const [editingCell, setEditingCell] = useState(null);
-  const [cellSource, setCellSource] = useState("");
+export default function NotebookPage({ api, addTerminalLine }: PageProps) {
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
+  const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [newLang, setNewLang] = useState<string>("python");
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [cellSource, setCellSource] = useState<string>("");
 
   const loadNotebooks = useCallback(async () => {
     try {
       const data = await api.post("/skills/execute", {
         skill: "kitab_notebook", action: "list",
       });
-      setNotebooks(data.notebooks || []);
+      setNotebooks((data.notebooks || []) as Notebook[]);
     } catch {}
   }, [api]);
 
-  const loadNotebook = useCallback(async (id) => {
+  const loadNotebook = useCallback(async (id: string) => {
     try {
       const data = await api.post("/skills/execute", {
         skill: "kitab_notebook", action: "get", notebook_id: id,
       });
-      if (!data.error) setActiveNotebook(data);
+      if (!(data as Record<string, unknown>).error) setActiveNotebook(data as unknown as Notebook);
     } catch {}
   }, [api]);
 
@@ -42,7 +43,7 @@ export default function NotebookPage({ api, addTerminalLine }) {
         title: newTitle, language: newLang,
       });
       if (data.id) {
-        setActiveNotebook(data);
+        setActiveNotebook(data as unknown as Notebook);
         setShowCreate(false);
         setNewTitle("");
         loadNotebooks();
@@ -51,7 +52,7 @@ export default function NotebookPage({ api, addTerminalLine }) {
     } catch {}
   };
 
-  const addCell = async (type = "code") => {
+  const addCell = async (type: string = "code") => {
     if (!activeNotebook) return;
     try {
       await api.post("/skills/execute", {
@@ -62,7 +63,7 @@ export default function NotebookPage({ api, addTerminalLine }) {
     } catch {}
   };
 
-  const executeCell = async (cellId) => {
+  const executeCell = async (cellId: string) => {
     if (!activeNotebook) return;
     addTerminalLine?.("Executing cell...", "info");
     try {
@@ -71,7 +72,8 @@ export default function NotebookPage({ api, addTerminalLine }) {
         notebook_id: activeNotebook.id, cell_id: cellId,
       });
       loadNotebook(activeNotebook.id);
-      if (data.cell?.status === "error") {
+      const cell = (data as Record<string, unknown>).cell as Record<string, unknown> | undefined;
+      if (cell?.status === "error") {
         addTerminalLine?.("Cell execution error", "error");
       } else {
         addTerminalLine?.("Cell executed successfully", "gold");
@@ -92,22 +94,22 @@ export default function NotebookPage({ api, addTerminalLine }) {
     } catch {}
   };
 
-  const updateCell = async (cellId) => {
+  const updateCell = async (cellId: string) => {
     try {
       await api.post("/skills/execute", {
         skill: "kitab_notebook", action: "update_cell",
-        notebook_id: activeNotebook.id, cell_id: cellId, source: cellSource,
+        notebook_id: activeNotebook!.id, cell_id: cellId, source: cellSource,
       });
       setEditingCell(null);
-      loadNotebook(activeNotebook.id);
+      loadNotebook(activeNotebook!.id);
     } catch {}
   };
 
-  const exportNotebook = async (format) => {
+  const exportNotebook = async (format: string) => {
     try {
       const data = await api.post("/skills/execute", {
         skill: "kitab_notebook", action: "export",
-        notebook_id: activeNotebook.id, format,
+        notebook_id: activeNotebook!.id, format,
       });
       addTerminalLine?.(`Exported: ${data.exported}`, "gold");
     } catch {}
@@ -216,7 +218,7 @@ export default function NotebookPage({ api, addTerminalLine }) {
               <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
                 [{i}] {cell.cell_type}
               </span>
-              {cell.execution_count > 0 && (
+              {cell.execution_count != null && cell.execution_count > 0 && (
                 <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
                   run: {cell.execution_count}
                 </span>
@@ -251,7 +253,7 @@ export default function NotebookPage({ api, addTerminalLine }) {
             )}
 
             {/* Cell outputs */}
-            {cell.outputs?.length > 0 && cell.outputs.map((out, oi) => (
+            {cell.outputs?.length != null && cell.outputs.length > 0 && cell.outputs.map((out, oi) => (
               <div key={oi} style={{ borderTop: "1px solid rgba(30,58,85,0.3)",
                 padding: "8px 12px", background: "rgba(3,6,8,0.5)" }}>
                 {out.output_type === "error" ? (

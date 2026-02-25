@@ -4,18 +4,32 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { PageProps } from "../types";
 
-const SEVERITY_COLORS = {
+interface AuditEvent {
+  severity?: string;
+  event_type: string;
+  timestamp: string;
+  details?: string | Record<string, unknown>;
+}
+
+interface Permission {
+  key: string;
+  tool_name: string;
+  agent_id?: string;
+}
+
+const SEVERITY_COLORS: Record<string, string> = {
   info: "var(--sapphire)",
   warning: "var(--amber)",
   error: "var(--ruby)",
   critical: "#dc2626",
 };
 
-export default function SecurityPage({ api, addTerminalLine }) {
+export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   const [activeTab, setActiveTab] = useState("overview");
-  const [auditLog, setAuditLog] = useState([]);
-  const [permissions, setPendingApprovals] = useState([]);
+  const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
+  const [permissions, setPendingApprovals] = useState<Permission[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
@@ -28,7 +42,7 @@ export default function SecurityPage({ api, addTerminalLine }) {
   const loadAudit = useCallback(async () => {
     try {
       const data = await api.get("/security/audit");
-      setAuditLog(data.recent_events || []);
+      setAuditLog((data.recent_events as AuditEvent[]) || []);
     } catch {
       // Not authenticated or endpoint not available
     }
@@ -37,7 +51,7 @@ export default function SecurityPage({ api, addTerminalLine }) {
   const loadPermissions = useCallback(async () => {
     try {
       const data = await api.get("/security/permissions");
-      setPendingApprovals(data.pending_approvals || []);
+      setPendingApprovals((data.pending_approvals as Permission[]) || []);
     } catch {}
   }, [api]);
 
@@ -53,7 +67,7 @@ export default function SecurityPage({ api, addTerminalLine }) {
     try {
       const data = await api.post("/auth/login", loginForm);
       if (data.token) {
-        localStorage.setItem("mizan_token", data.token);
+        localStorage.setItem("mizan_token", data.token as string);
         localStorage.setItem("mizan_user", JSON.stringify(data));
         setIsAuthenticated(true);
         addTerminalLine?.(`Authenticated as ${data.username}`, "gold");
@@ -70,12 +84,12 @@ export default function SecurityPage({ api, addTerminalLine }) {
     try {
       const data = await api.post("/auth/register", loginForm);
       if (data.token) {
-        localStorage.setItem("mizan_token", data.token);
+        localStorage.setItem("mizan_token", data.token as string);
         localStorage.setItem("mizan_user", JSON.stringify(data));
         setIsAuthenticated(true);
         addTerminalLine?.(`Registered and authenticated as ${data.username}`, "gold");
       } else {
-        setLoginError(data.detail || "Registration failed");
+        setLoginError((data.detail as string) || "Registration failed");
       }
     } catch {
       setLoginError("Registration failed");
@@ -414,9 +428,9 @@ export default function SecurityPage({ api, addTerminalLine }) {
                       fontFamily: "var(--font-mono)",
                       padding: "1px 6px",
                       borderRadius: 3,
-                      background: `${SEVERITY_COLORS[event.severity] || "var(--text-muted)"}15`,
-                      color: SEVERITY_COLORS[event.severity] || "var(--text-muted)",
-                      border: `1px solid ${SEVERITY_COLORS[event.severity] || "var(--text-muted)"}30`,
+                      background: `${SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)"}15`,
+                      color: SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)",
+                      border: `1px solid ${SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)"}30`,
                       textTransform: "uppercase",
                     }}
                   >

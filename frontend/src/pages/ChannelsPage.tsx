@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { PageProps, Channel, ChannelInfo, GatewayStatus } from "../types";
 
-const CHANNEL_TYPES = {
+const CHANNEL_TYPES: Record<string, ChannelInfo> = {
   webchat: { name: "WebChat", arabic: "محادثة", color: "#3b82f6", icon: "💬" },
   telegram: { name: "Telegram", arabic: "تلغرام", color: "#0088cc", icon: "✈️" },
   discord: { name: "Discord", arabic: "ديسكورد", color: "#5865F2", icon: "🎮" },
@@ -13,23 +14,22 @@ const CHANNEL_TYPES = {
   whatsapp: { name: "WhatsApp", arabic: "واتساب", color: "#25D366", icon: "📱" },
 };
 
-export default function ChannelsPage({ api, addTerminalLine }) {
-  const [channels, setChannels] = useState([]);
-  const [gatewayStatus, setGatewayStatus] = useState(null);
-  const [showConfig, setShowConfig] = useState(null);
+export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
+  const [showConfig, setShowConfig] = useState<string | null>(null);
 
   const loadChannels = useCallback(async () => {
     try {
       const data = await api.get("/gateway/channels");
-      setChannels(data.channels || []);
+      setChannels((data.channels as Channel[]) || []);
     } catch {
-      // Gateway not started - show defaults
       setChannels(
         Object.entries(CHANNEL_TYPES).map(([id, info]) => ({
           id,
           type: id,
           name: info.name,
-          status: "disconnected",
+          status: "disconnected" as const,
           connected_users: 0,
           messages_processed: 0,
         })),
@@ -40,7 +40,7 @@ export default function ChannelsPage({ api, addTerminalLine }) {
   const loadGatewayStatus = useCallback(async () => {
     try {
       const data = await api.get("/gateway/status");
-      setGatewayStatus(data);
+      setGatewayStatus(data as unknown as GatewayStatus);
     } catch {
       setGatewayStatus({ status: "offline", channels: 0, sessions: 0 });
     }
@@ -51,7 +51,7 @@ export default function ChannelsPage({ api, addTerminalLine }) {
     loadGatewayStatus();
   }, [loadChannels, loadGatewayStatus]);
 
-  const toggleChannel = async (channelId) => {
+  const toggleChannel = async (channelId: string) => {
     try {
       await api.post(`/gateway/channels/${channelId}/toggle`);
       addTerminalLine?.(`Channel ${channelId} toggled`, "gold");
@@ -112,7 +112,7 @@ export default function ChannelsPage({ api, addTerminalLine }) {
         }}
       >
         {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
-          const channel = channels.find((c) => c.type === type) || {};
+          const channel = channels.find((c) => c.type === type) || {} as Partial<Channel>;
           const isConnected = channel.status === "connected";
 
           return (
@@ -128,7 +128,6 @@ export default function ChannelsPage({ api, addTerminalLine }) {
                 overflow: "hidden",
               }}
             >
-              {/* Top accent */}
               <div
                 style={{
                   position: "absolute",

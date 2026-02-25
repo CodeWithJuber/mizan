@@ -4,12 +4,20 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { WsConnectionStatus, WsMessage } from "../types";
 
 const WS_URL = "ws://localhost:8000/ws";
 
-export function useWebSocket(onMessage) {
-  const [ws, setWs] = useState(null);
-  const [status, setStatus] = useState("disconnected");
+interface UseWebSocketReturn {
+  ws: WebSocket | null;
+  status: WsConnectionStatus;
+  send: (data: WsMessage) => void;
+  clientId: string;
+}
+
+export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocketReturn {
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [status, setStatus] = useState<WsConnectionStatus>("disconnected");
   const clientId = useRef(`client_${Date.now()}`);
   const onMessageRef = useRef(onMessage);
 
@@ -18,8 +26,8 @@ export function useWebSocket(onMessage) {
   }, [onMessage]);
 
   useEffect(() => {
-    let socket = null;
-    let reconnectTimer = null;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     const connect = () => {
       try {
@@ -30,8 +38,8 @@ export function useWebSocket(onMessage) {
           setWs(socket);
         };
 
-        socket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
+        socket.onmessage = (event: MessageEvent) => {
+          const data = JSON.parse(event.data) as WsMessage;
           onMessageRef.current?.(data);
         };
 
@@ -44,7 +52,7 @@ export function useWebSocket(onMessage) {
         socket.onerror = () => {
           setStatus("error");
         };
-      } catch (e) {
+      } catch {
         reconnectTimer = setTimeout(connect, 5000);
       }
     };
@@ -52,13 +60,13 @@ export function useWebSocket(onMessage) {
     connect();
 
     return () => {
-      clearTimeout(reconnectTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) socket.close();
     };
   }, []);
 
   const send = useCallback(
-    (data) => {
+    (data: WsMessage) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(data));
       }
