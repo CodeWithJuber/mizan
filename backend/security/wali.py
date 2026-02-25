@@ -8,13 +8,11 @@ Central security enforcement for the entire MIZAN system.
 All operations pass through Wali before execution.
 """
 
+import logging
 import os
 import time
-import hashlib
-import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+from datetime import datetime
 
 logger = logging.getLogger("mizan.wali")
 
@@ -23,7 +21,7 @@ logger = logging.getLogger("mizan.wali")
 class SecurityConfig:
     """Security configuration for MIZAN"""
     # CORS
-    allowed_origins: List[str] = field(default_factory=lambda: [
+    allowed_origins: list[str] = field(default_factory=lambda: [
         "http://localhost:3000",
         "http://localhost:8000",
     ])
@@ -34,17 +32,17 @@ class SecurityConfig:
     ws_max_connections: int = 50
 
     # File system sandbox
-    allowed_paths: List[str] = field(default_factory=lambda: [
+    allowed_paths: list[str] = field(default_factory=lambda: [
         "/tmp/mizan/",
         "/data/mizan/",
     ])
-    blocked_paths: List[str] = field(default_factory=lambda: [
+    blocked_paths: list[str] = field(default_factory=lambda: [
         "/etc/", "/root/", "/home/", "/var/", "/usr/",
         "/proc/", "/sys/", "/dev/",
     ])
 
     # Command sandbox
-    blocked_commands: List[str] = field(default_factory=lambda: [
+    blocked_commands: list[str] = field(default_factory=lambda: [
         "rm -rf /", "rm -rf /*", "dd ", "mkfs", "> /dev/",
         ":(){ ", "chmod 777", "curl | sh", "wget | sh",
         "eval ", "exec ", "sudo ", "su ",
@@ -97,7 +95,7 @@ class RateLimiter:
     def __init__(self, per_minute: int = 60, burst: int = 10):
         self.per_minute = per_minute
         self.burst = burst
-        self._buckets: Dict[str, Dict] = {}
+        self._buckets: dict[str, dict] = {}
 
     def check(self, key: str) -> bool:
         """Returns True if request is allowed"""
@@ -140,10 +138,10 @@ class AuditLog:
     """
 
     def __init__(self):
-        self._events: List[Dict] = []
+        self._events: list[dict] = []
         self._max_events = 10000
 
-    def log(self, event_type: str, details: Dict, severity: str = "info"):
+    def log(self, event_type: str, details: dict, severity: str = "info"):
         entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "type": event_type,
@@ -159,7 +157,7 @@ class AuditLog:
         if len(self._events) > self._max_events:
             self._events = self._events[-self._max_events:]
 
-    def get_recent(self, limit: int = 100, severity: str = None) -> List[Dict]:
+    def get_recent(self, limit: int = 100, severity: str = None) -> list[dict]:
         events = self._events
         if severity:
             events = [e for e in events if e["severity"] == severity]
@@ -179,7 +177,7 @@ class WaliGuardian:
             burst=self.config.rate_limit_burst,
         )
         self.audit = AuditLog()
-        self._blocked_ips: Dict[str, datetime] = {}
+        self._blocked_ips: dict[str, datetime] = {}
 
     def check_rate_limit(self, client_id: str) -> bool:
         """Check if client is within rate limits"""
@@ -240,9 +238,6 @@ class WaliGuardian:
                 return False
 
         # Block shell metacharacters in dangerous positions
-        dangerous_patterns = [
-            "$(", "`", "&&", "||", ";", "|", ">", ">>",
-        ]
         # Allow these in quoted strings but flag unquoted usage
         # Simple heuristic: if the command contains these outside of quotes, warn
         if any(p in command for p in ["$(", "`"]):
@@ -298,7 +293,7 @@ class WaliGuardian:
         """Escape LIKE special characters to prevent wildcard injection"""
         return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-    def get_audit_summary(self) -> Dict:
+    def get_audit_summary(self) -> dict:
         """Get security audit summary"""
         events = self.audit.get_recent(1000)
         return {

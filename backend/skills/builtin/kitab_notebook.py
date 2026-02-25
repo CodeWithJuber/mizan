@@ -14,18 +14,16 @@ Like MolBook/Jupyter but with:
 - Multi-format cells: code, markdown, data, visualization
 """
 
-import uuid
 import json
-import os
 import logging
+import os
 import subprocess
-import tempfile
-from datetime import datetime
-from typing import Dict, List, Optional
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 
-from ..base import SkillBase, SkillManifest
 from ...security.validation import validate_command_safe
+from ..base import SkillBase, SkillManifest
 
 logger = logging.getLogger("mizan.kitab")
 
@@ -41,14 +39,14 @@ class KitabCell:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     cell_type: str = "code"
     source: str = ""
-    outputs: List[Dict] = field(default_factory=list)
-    metadata: Dict = field(default_factory=dict)
+    outputs: list[dict] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
     execution_count: int = 0
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    executed_at: Optional[str] = None
+    executed_at: str | None = None
     status: str = "idle"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id, "cell_type": self.cell_type,
             "source": self.source, "outputs": self.outputs,
@@ -67,16 +65,16 @@ class KitabNotebook:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: str = "Untitled Kitab"
     description: str = ""
-    cells: List[KitabCell] = field(default_factory=list)
+    cells: list[KitabCell] = field(default_factory=list)
     language: str = "python"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     version: int = 1
-    history: List[Dict] = field(default_factory=list)
-    owner: Optional[str] = None
+    history: list[dict] = field(default_factory=list)
+    owner: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id, "title": self.title,
             "description": self.description,
@@ -86,7 +84,7 @@ class KitabNotebook:
             "updated_at": self.updated_at, "version": self.version,
         }
 
-    def to_summary(self) -> Dict:
+    def to_summary(self) -> dict:
         return {
             "id": self.id, "title": self.title,
             "description": self.description,
@@ -120,7 +118,7 @@ class SandboxedExecutor:
                 return False, f"Blocked pattern: {pattern}"
         return True, "Valid"
 
-    async def execute_python(self, code: str, cell_id: str) -> Dict:
+    async def execute_python(self, code: str, cell_id: str) -> dict:
         """Execute Python in sandboxed subprocess"""
         safe, reason = self.validate_code(code)
         if not safe:
@@ -182,7 +180,7 @@ finally:
             except OSError:
                 pass
 
-    async def execute_shell(self, command: str) -> Dict:
+    async def execute_shell(self, command: str) -> dict:
         """Execute shell command with restrictions"""
         # Use the comprehensive validation from security.validation
         is_safe, reason = validate_command_safe(command)
@@ -219,9 +217,9 @@ class KitabNotebookSkill(SkillBase):
         tags=["كتاب", "Notebook"],
     )
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
-        self.notebooks: Dict[str, KitabNotebook] = {}
+        self.notebooks: dict[str, KitabNotebook] = {}
         self.executor = SandboxedExecutor()
         self._tools = {
             "notebook_create": self.create_notebook,
@@ -235,14 +233,14 @@ class KitabNotebookSkill(SkillBase):
             "notebook_export": self.export_notebook,
         }
 
-    async def execute(self, params: Dict, context: Dict = None) -> Dict:
+    async def execute(self, params: dict, context: dict = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"notebook_{action}")
         if handler:
             return await handler(params)
         return {"error": f"Unknown action: {action}"}
 
-    async def create_notebook(self, params: Dict) -> Dict:
+    async def create_notebook(self, params: dict) -> dict:
         """Create a new notebook — Bismillah"""
         nb = KitabNotebook(
             title=params.get("title", "Untitled Kitab"),
@@ -260,7 +258,7 @@ class KitabNotebookSkill(SkillBase):
         logger.info(f"[KITAB] Created: {nb.title}")
         return nb.to_dict()
 
-    async def add_cell(self, params: Dict) -> Dict:
+    async def add_cell(self, params: dict) -> dict:
         """Add cell to notebook"""
         nb = self.notebooks.get(params.get("notebook_id"))
         if not nb:
@@ -280,7 +278,7 @@ class KitabNotebookSkill(SkillBase):
         nb.updated_at = datetime.utcnow().isoformat()
         return {"cell": cell.to_dict(), "notebook_id": nb.id}
 
-    async def update_cell(self, params: Dict) -> Dict:
+    async def update_cell(self, params: dict) -> dict:
         """Update cell source code"""
         nb = self.notebooks.get(params.get("notebook_id"))
         if not nb:
@@ -293,7 +291,7 @@ class KitabNotebookSkill(SkillBase):
         nb.updated_at = datetime.utcnow().isoformat()
         return {"cell": cell.to_dict()}
 
-    async def execute_cell(self, params: Dict) -> Dict:
+    async def execute_cell(self, params: dict) -> dict:
         """Execute cell — Amal (action): 'Say: Work! Allah will see your work' — 9:105"""
         nb = self.notebooks.get(params.get("notebook_id"))
         if not nb:
@@ -324,7 +322,7 @@ class KitabNotebookSkill(SkillBase):
         nb.updated_at = datetime.utcnow().isoformat()
         return {"cell": cell.to_dict()}
 
-    async def execute_all(self, params: Dict) -> Dict:
+    async def execute_all(self, params: dict) -> dict:
         """Execute all code cells sequentially"""
         nb = self.notebooks.get(params.get("notebook_id"))
         if not nb:
@@ -336,21 +334,21 @@ class KitabNotebookSkill(SkillBase):
                 results.append(r)
         return {"notebook_id": nb.id, "executed": len(results), "results": results}
 
-    async def list_notebooks(self, params: Dict = None) -> Dict:
+    async def list_notebooks(self, params: dict = None) -> dict:
         return {"notebooks": [nb.to_summary() for nb in self.notebooks.values()]}
 
-    async def get_notebook(self, params: Dict) -> Dict:
+    async def get_notebook(self, params: dict) -> dict:
         nb = self.notebooks.get(params.get("notebook_id"))
         return nb.to_dict() if nb else {"error": "Notebook not found"}
 
-    async def delete_notebook(self, params: Dict) -> Dict:
+    async def delete_notebook(self, params: dict) -> dict:
         nb_id = params.get("notebook_id")
         if nb_id in self.notebooks:
             del self.notebooks[nb_id]
             return {"deleted": nb_id}
         return {"error": "Not found"}
 
-    async def export_notebook(self, params: Dict) -> Dict:
+    async def export_notebook(self, params: dict) -> dict:
         """Export — write into Lawh Al-Mahfuz (Preserved Tablet)"""
         nb = self.notebooks.get(params.get("notebook_id"))
         if not nb:
@@ -371,7 +369,7 @@ class KitabNotebookSkill(SkillBase):
                     lines.append(c.source)
                     lines.append("")
                 elif c.cell_type == "markdown":
-                    lines.extend(f"# {l}" for l in c.source.split("\n"))
+                    lines.extend(f"# {line}" for line in c.source.split("\n"))
                     lines.append("")
             with open(path, "w") as f:
                 f.write("\n".join(lines))
@@ -393,7 +391,7 @@ class KitabNotebookSkill(SkillBase):
             return {"error": f"Unknown format: {fmt}"}
         return {"exported": path, "format": fmt}
 
-    def get_tool_schemas(self) -> List[Dict]:
+    def get_tool_schemas(self) -> list[dict]:
         return [
             {"name": "notebook_create",
              "description": "Create a new Kitab computational notebook",
