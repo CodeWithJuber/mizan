@@ -3,12 +3,79 @@
  * Clean, accessible UI with light/dark/system theme support.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import type { Agent, ChatMessage, TerminalLine, Memory, Integration, SystemStatus } from "./types";
 import { config } from "./config";
 import { useTheme } from "./hooks/useTheme";
 import { useApi } from "./hooks/useApi";
 import { ToastProvider, useToast } from "./components/Toast";
+
+// ===== ERROR BOUNDARY =====
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-8 bg-gray-50 dark:bg-zinc-950">
+          <div className="max-w-md w-full text-center space-y-6">
+            <div className="mx-auto w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-red-600 dark:text-red-400">
+                <path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Something went wrong</h2>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                An unexpected error occurred while rendering this page. You can try again or refresh the browser.
+              </p>
+              {this.state.error && (
+                <p className="mt-3 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-zinc-900 rounded-lg p-3 text-left break-all">
+                  {this.state.error.message}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={this.handleRetry}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors shadow-sm"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path d="M1 4v6h6M23 20v-6h-6" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 import ChannelsPage from "./pages/ChannelsPage";
 import SkillsPage from "./pages/SkillsPage";
@@ -21,6 +88,7 @@ import PluginsPage from "./pages/PluginsPage";
 import ProvidersPage from "./pages/ProvidersPage";
 import DeveloperPage from "./pages/DeveloperPage";
 import WelcomePage from "./pages/WelcomePage";
+import SettingsPage from "./pages/SettingsPage";
 
 // ===== ICONS (inline SVG) =====
 const Icons = {
@@ -140,6 +208,11 @@ const Icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
       <rect x="2" y="3" width="20" height="14" rx="2"/>
       <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    </svg>
+  ),
+  Settings: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   ),
 };
@@ -273,6 +346,30 @@ function ConnectionBanner({ status, attempts }: { status: string; attempts: numb
   );
 }
 
+// ===== SIMPLE MARKDOWN TO HTML =====
+function simpleMarkdown(text: string): string {
+  let html = text
+    // Escape HTML entities first
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // Code blocks (``` ... ```)
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-gray-100 dark:bg-zinc-900 rounded p-2 my-2 overflow-x-auto text-xs"><code>$2</code></pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 dark:bg-zinc-900 px-1 rounded text-xs">$1</code>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    // Italic
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // Headers (only at line start)
+    .replace(/^### (.+)$/gm, '<h4 class="font-semibold mt-2">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="font-semibold mt-2 text-base">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 class="font-bold mt-2 text-lg">$1</h2>')
+    // Line breaks
+    .replace(/\n/g, "<br/>");
+  return html;
+}
+
 // ===== MAIN APP INNER =====
 function AppInner() {
   const { addToast } = useToast();
@@ -297,6 +394,8 @@ function AppInner() {
   ]);
   const [taskInput, setTaskInput] = useState("");
   const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [typingIndicator, setTypingIndicator] = useState(false);
+  const [toolStatus, setToolStatus] = useState("");
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
@@ -304,9 +403,26 @@ function AppInner() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6" });
   const [appVersion, setAppVersion] = useState("...");
+  const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [commandMenuIndex, setCommandMenuIndex] = useState(0);
+
+  const CHAT_COMMANDS = [
+    { name: "/help", description: "Show available commands" },
+    { name: "/status", description: "Show system status" },
+    { name: "/new", description: "Start a new chat session" },
+    { name: "/reset", description: "Reset agent state" },
+    { name: "/model", description: "Switch AI model (e.g. /model claude-sonnet-4-6)" },
+    { name: "/agents", description: "List available agents" },
+    { name: "/compact", description: "Summarize older messages to save context" },
+  ];
+
+  const filteredCommands = CHAT_COMMANDS.filter(cmd =>
+    input.startsWith("/") && cmd.name.startsWith(input.split(" ")[0].toLowerCase())
+  );
 
   const api = useApi();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const commandMenuRef = useRef<HTMLDivElement>(null);
   const clientId = useRef(`client_${Date.now()}`);
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
@@ -380,11 +496,15 @@ function AppInner() {
         loadStatus();
         break;
       case "stream":
+      case "chat_stream":
+        setTypingIndicator(false);
         setStreamingText(prev => prev + (data.chunk as string));
         break;
       case "response":
         setStreamingText("");
         setStreaming(false);
+        setTypingIndicator(false);
+        setToolStatus("");
         setMessages(prev => [...prev, {
           id: Date.now(),
           role: "assistant" as const,
@@ -393,6 +513,49 @@ function AppInner() {
           ts: new Date().toLocaleTimeString(),
         }]);
         addTerminalLine(`Response from ${data.agent}`, "info");
+        break;
+      case "chat_complete":
+        setStreamingText("");
+        setStreaming(false);
+        setTypingIndicator(false);
+        setToolStatus("");
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          role: "assistant" as const,
+          content: (data.response as string) || (data.content as string) || "",
+          agent: data.agent as string,
+          ts: new Date().toLocaleTimeString(),
+        }]);
+        addTerminalLine(`Response from ${data.agent}`, "info");
+        break;
+      case "typing":
+        setTypingIndicator(true);
+        break;
+      case "tool_use":
+        setToolStatus(`Agent is using ${data.tool_name as string}...`);
+        addTerminalLine(`Tool: ${data.tool_name as string}`, "info");
+        break;
+      case "command_result": {
+        setStreaming(false);
+        setStreamingText("");
+        setTypingIndicator(false);
+        const cmdContent = (data.content as string) || (data.result as string) || "done";
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          role: "system" as const,
+          content: cmdContent,
+          agent: "system",
+          ts: new Date().toLocaleTimeString(),
+        }]);
+        addTerminalLine(`Command: ${cmdContent.substring(0, 60)}`, "gold");
+        break;
+      }
+      case "error":
+        setStreaming(false);
+        setStreamingText("");
+        setTypingIndicator(false);
+        setToolStatus("");
+        addTerminalLine(`Error: ${data.message as string}`, "error");
         break;
       case "task_stream":
         addTerminalLine(data.chunk as string, "");
@@ -471,20 +634,47 @@ function AppInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
-  const sendMessage = () => {
-    if (!input.trim() || streaming || !ws) return;
-    const userMsg: ChatMessage = { id: Date.now(), role: "user", content: input, ts: new Date().toLocaleTimeString() };
+  const sendMessage = async () => {
+    if (!input.trim() || streaming) return;
+    const content = input;
+    const userMsg: ChatMessage = { id: Date.now(), role: "user", content, ts: new Date().toLocaleTimeString() };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamingText("");
-    ws.send(JSON.stringify({
-      type: "chat",
-      session_id: sessionId,
-      content: input,
-      agent_id: selectedAgent?.id,
-    }));
+    setTypingIndicator(true);
+    setToolStatus("");
     setInput("");
-    addTerminalLine(`> ${input.substring(0, 60)}...`, "info");
+    addTerminalLine(`> ${content.substring(0, 60)}...`, "info");
+
+    // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
+    // Fall back to WebSocket direct send if HTTP fails
+    try {
+      const res = await fetch(`${config.API_URL}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          content,
+          agent_id: selectedAgent?.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Response processing happens via chat_stream/chat_complete WebSocket events
+    } catch {
+      // Fallback: send via WebSocket directly
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: "chat",
+          session_id: sessionId,
+          content,
+          agent_id: selectedAgent?.id,
+        }));
+      } else {
+        setStreaming(false);
+        setTypingIndicator(false);
+        addTerminalLine("Not connected - cannot send message", "error");
+      }
+    }
   };
 
   const runTask = () => {
@@ -562,6 +752,7 @@ function AppInner() {
         { id: "channels", label: "Channels", desc: "Telegram, Discord, etc.", icon: <Icons.Channel /> },
         { id: "automation", label: "Automation", desc: "Scheduled tasks", icon: <Icons.Clock /> },
         { id: "security", label: "Security", desc: "Login & permissions", icon: <Icons.Shield /> },
+        { id: "settings", label: "Settings", desc: "Configure MIZAN", icon: <Icons.Settings /> },
         { id: "developer", label: "Developer", desc: "Build extensions", icon: <Icons.Brain /> },
       ],
     },
@@ -663,29 +854,89 @@ function AppInner() {
               )}
 
               {messages.map(msg => (
-                <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                  <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-medium ${
-                    msg.role === "user"
-                      ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
-                      : "bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700"
-                  }`}>
-                    {msg.role === "user" ? "You" : (msg.agent?.[0] || "AI")}
-                  </div>
-                  <div className="max-w-[75%]">
-                    <div className={`px-4 py-2.5 rounded-xl text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-gray-900 dark:text-gray-100 rounded-tr-sm"
-                        : "bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-800 dark:text-gray-200 rounded-tl-sm"
-                    }`}>
-                      {msg.content}
+                <div key={msg.id} className={`flex gap-3 ${
+                  msg.role === "user" ? "flex-row-reverse" :
+                  msg.role === "system" ? "justify-center" : ""
+                }`}>
+                  {msg.role === "system" ? (
+                    <div className="max-w-[85%] w-full">
+                      <div className="px-4 py-3 rounded-lg text-sm leading-relaxed italic
+                        bg-amber-50/60 dark:bg-amber-500/5 border border-amber-200/60 dark:border-amber-500/15
+                        text-amber-900 dark:text-amber-200/90"
+                        style={{ fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace" }}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5 not-italic">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400">
+                            <path d="M7 9l3 3-3 3M13 15h4" /><rect x="3" y="4" width="18" height="16" rx="2"/>
+                          </svg>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            System
+                          </span>
+                        </div>
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      </div>
+                      <div className="text-[10px] text-amber-400 dark:text-amber-500/60 mt-1 px-1 font-mono text-center">
+                        {msg.ts}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
-                      {msg.role === "assistant" ? msg.agent : "You"} &middot; {msg.ts}
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-medium ${
+                        msg.role === "user"
+                          ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
+                          : "bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700"
+                      }`}>
+                        {msg.role === "user" ? "You" : (msg.agent?.[0] || "AI")}
+                      </div>
+                      <div className="max-w-[75%]">
+                        {msg.role === "assistant" ? (
+                          <div
+                            className="px-4 py-2.5 rounded-xl text-sm leading-relaxed bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-800 dark:text-gray-200 rounded-tl-sm"
+                            dangerouslySetInnerHTML={{ __html: simpleMarkdown(msg.content) }}
+                          />
+                        ) : (
+                          <div className="px-4 py-2.5 rounded-xl text-sm leading-relaxed bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-gray-900 dark:text-gray-100 rounded-tr-sm">
+                            {msg.content}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
+                          {msg.role === "assistant" ? msg.agent : "You"} &middot; {msg.ts}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
 
+              {/* Typing indicator - shown before first token arrives */}
+              {streaming && !streamingText && typingIndicator && (
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700">
+                    {selectedAgent?.name?.[0] || "AI"}
+                  </div>
+                  <div className="max-w-[75%]">
+                    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl rounded-tl-sm text-sm leading-relaxed text-gray-400 dark:text-gray-500">
+                      <span className="inline-flex gap-1 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "0ms" }}/>
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "150ms" }}/>
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "300ms" }}/>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tool status indicator */}
+              {streaming && toolStatus && (
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 shrink-0"/>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+                    {toolStatus}
+                  </div>
+                </div>
+              )}
+
+              {/* Streaming text with markdown and blinking cursor */}
               {streaming && streamingText && (
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700">
@@ -693,7 +944,7 @@ function AppInner() {
                   </div>
                   <div className="max-w-[75%]">
                     <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl rounded-tl-sm text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                      {streamingText}
+                      <span dangerouslySetInnerHTML={{ __html: simpleMarkdown(streamingText) }}/>
                       <span className="inline-block w-0.5 h-4 bg-mizan-gold ml-0.5 align-middle animate-pulse"/>
                     </div>
                   </div>
@@ -703,27 +954,99 @@ function AppInner() {
               <div ref={messagesEndRef}/>
             </div>
 
-            <div className="px-4 py-3 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex gap-2 items-end">
-              <textarea
-                className="input flex-1 resize-none min-h-[38px] max-h-[120px]"
-                placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                rows={1}
-              />
-              <button
-                className="w-10 h-10 rounded-lg bg-mizan-gold hover:bg-mizan-gold-light text-black flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
-                onClick={sendMessage}
-                disabled={streaming || !input.trim() || !ws}
-              >
-                <Icons.Send />
-              </button>
+            <div className="relative px-4 py-3 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+              {/* Command autocomplete dropdown */}
+              {showCommandMenu && filteredCommands.length > 0 && (
+                <div
+                  ref={commandMenuRef}
+                  className="absolute bottom-full left-4 right-4 mb-1 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden z-50"
+                >
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-zinc-700">
+                    Commands
+                  </div>
+                  {filteredCommands.map((cmd, i) => (
+                    <button
+                      key={cmd.name}
+                      className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm transition-colors ${
+                        i === commandMenuIndex
+                          ? "bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                      }`}
+                      onMouseEnter={() => setCommandMenuIndex(i)}
+                      onClick={() => {
+                        setInput(cmd.name + " ");
+                        setShowCommandMenu(false);
+                        setCommandMenuIndex(0);
+                      }}
+                    >
+                      <span className="font-mono font-semibold text-amber-600 dark:text-amber-400 shrink-0">{cmd.name}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs truncate">{cmd.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
+                <textarea
+                  className="input flex-1 resize-none min-h-[38px] max-h-[120px]"
+                  placeholder="Type your message... (/ for commands, Enter to send)"
+                  value={input}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setInput(val);
+                    if (val.startsWith("/") && !val.includes(" ")) {
+                      setShowCommandMenu(true);
+                      setCommandMenuIndex(0);
+                    } else {
+                      setShowCommandMenu(false);
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (showCommandMenu && filteredCommands.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setCommandMenuIndex(prev => (prev + 1) % filteredCommands.length);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setCommandMenuIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+                        return;
+                      }
+                      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                        e.preventDefault();
+                        const selected = filteredCommands[commandMenuIndex];
+                        if (selected) {
+                          setInput(selected.name + " ");
+                          setShowCommandMenu(false);
+                          setCommandMenuIndex(0);
+                        }
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setShowCommandMenu(false);
+                        return;
+                      }
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding so clicks on menu items register
+                    setTimeout(() => setShowCommandMenu(false), 150);
+                  }}
+                  rows={1}
+                />
+                <button
+                  className="w-10 h-10 rounded-lg bg-mizan-gold hover:bg-mizan-gold-light text-black flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
+                  onClick={sendMessage}
+                  disabled={streaming || !input.trim() || !ws}
+                >
+                  <Icons.Send />
+                </button>
+              </div>
             </div>
           </div>
         );
@@ -864,6 +1187,8 @@ function AppInner() {
         return <PluginsPage api={api} addTerminalLine={addTerminalLine} />;
       case "providers":
         return <ProvidersPage api={api} addTerminalLine={addTerminalLine} />;
+      case "settings":
+        return <SettingsPage api={api} />;
       case "developer":
         return <DeveloperPage api={api} />;
       case "integrations":
@@ -990,7 +1315,9 @@ function AppInner() {
 
         {/* Content */}
         <main className="flex-1 overflow-hidden flex flex-col bg-gray-50 dark:bg-zinc-950">
-          {renderContent()}
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </main>
       </div>
 

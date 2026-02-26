@@ -28,7 +28,36 @@ COPY --from=builder /install /usr/local
 
 COPY . .
 
-RUN mkdir -p /data && chown -R mizan:mizan /app /data
+RUN mkdir -p /data plugins && chown -R mizan:mizan /app /data
+
+# Entrypoint script for env validation and graceful shutdown
+COPY <<'ENTRYPOINT' /entrypoint.sh
+#!/bin/bash
+set -e
+
+# ── Environment variable validation ──
+echo "MIZAN Backend (production) — validating environment..."
+MISSING=""
+
+if [ -z "$SECRET_KEY" ]; then
+    MISSING="$MISSING SECRET_KEY"
+fi
+
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$OLLAMA_URL" ]; then
+    echo "WARNING: No LLM provider configured (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL)"
+fi
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Missing required environment variables:$MISSING"
+    exit 1
+fi
+
+echo "Environment validated. Starting MIZAN backend..."
+
+# ── Graceful shutdown: exec replaces shell so PID 1 receives SIGTERM ──
+exec "$@"
+ENTRYPOINT
+RUN chmod +x /entrypoint.sh && chown mizan:mizan /entrypoint.sh
 
 USER mizan
 
@@ -37,4 +66,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]

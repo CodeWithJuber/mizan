@@ -323,6 +323,132 @@ class AgentFederation:
 
         return record
 
+    # ─── Direct Delegation (Agent-to-Agent) ───
+
+    async def delegate(self, from_agent_id: str, target_agent_id: str,
+                       task: str, context: Dict = None,
+                       priority: TaskPriority = TaskPriority.NORMAL,
+                       timeout: float = 120.0,
+                       execute_fn: Callable = None) -> Dict:
+        """
+        Delegate a task directly from one agent to a specific target agent.
+
+        Unlike delegate_task() which auto-discovers the best agent, this method
+        sends work to a *known* target agent by ID. It:
+          1. Validates the target agent is registered and available
+          2. Sends a DELEGATE message on the federation bus
+          3. Invokes the target agent's execute function (supplied via execute_fn)
+          4. Returns the result to the calling agent
+
+        Parameters
+        ----------
+        from_agent_id : str
+            ID of the requesting (calling) agent.
+        target_agent_id : str
+            ID of the agent that should handle the task.
+        task : str
+            Natural-language description of the work to do.
+        context : dict, optional
+            Extra context dict forwarded to the target agent.
+        priority : TaskPriority
+            Priority level for the delegation.
+        timeout : float
+            Maximum seconds to wait for the target to finish.
+        execute_fn : callable, optional
+            An async function ``(agent_id, task, context) -> dict`` that actually
+            runs the task on the target agent. When *None*, the method records the
+            delegation but cannot run the task (useful in decoupled setups where a
+            separate runner picks up pending delegations).
+
+        Returns
+        -------
+        dict
+            Contains delegation_id, target info, success flag, and result payload.
+        """
+        # --- Validate target ---
+        target = self.registry.get(target_agent_id)
+        if not target:
+            return {
+                "success": False,
+                "error": f"Target agent '{target_agent_id}' is not registered in the federation.",
+            }
+
+        if not target.available:
+            return {
+                "success": False,
+                "error": f"Target agent '{target.agent_name}' is at capacity ({target.current_load}/{target.max_capacity}).",
+            }
+
+        # --- Create and send DELEGATE message ---
+        msg = RisalahMessage(
+            msg_type=MessageType.DELEGATE,
+            sender_id=from_agent_id,
+            recipient_id=target_agent_id,
+            task=task,
+            context=context or {},
+            priority=priority,
+        )
+
+        await self.send_message(msg)
+        self.pending_delegations[msg.message_id] = msg
+        target.current_load += 1
+
+        logger.info(
+            f"[FEDERATION] Direct delegation {msg.message_id}: "
+            f"{from_agent_id} -> {target.agent_name} | task={task[:60]}"
+        )
+
+        # --- Execute on target if we have an executor ---
+        result_payload: Any = None
+        success = False
+        confidence = 0.5
+        yaqin_level = "ilm"
+
+        if execute_fn is not None:
+            try:
+                result_payload = await asyncio.wait_for(
+                    execute_fn(target_agent_id, task, context or {}),
+                    timeout=timeout,
+                )
+                success = result_payload.get("success", False) if isinstance(result_payload, dict) else True
+                confidence = result_payload.get("confidence", 0.7) if isinstance(result_payload, dict) else 0.7
+                if success:
+                    yaqin_level = "ayn"
+            except asyncio.TimeoutError:
+                result_payload = {"error": f"Delegation timed out after {timeout}s"}
+                success = False
+            except Exception as exc:
+                result_payload = {"error": str(exc)}
+                success = False
+                logger.error(f"[FEDERATION] Delegation execution error: {exc}")
+
+            # Report result back through the federation
+            await self.report_result(
+                delegation_id=msg.message_id,
+                agent_id=target_agent_id,
+                result=result_payload,
+                success=success,
+                confidence=confidence,
+                yaqin_level=yaqin_level,
+            )
+        else:
+            # No executor — delegation is recorded but not executed here
+            result_payload = {
+                "status": "pending",
+                "message": "Delegation recorded. Awaiting external execution.",
+            }
+
+        return {
+            "delegation_id": msg.message_id,
+            "success": success,
+            "target_agent_id": target_agent_id,
+            "target_agent_name": target.agent_name,
+            "task": task,
+            "result": result_payload,
+            "yaqin_level": yaqin_level,
+            "confidence": confidence,
+        }
+
     # ─── Learning ───
 
     async def share_learning(self, agent_id: str, pattern: str,

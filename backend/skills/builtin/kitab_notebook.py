@@ -22,7 +22,16 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ...security.validation import validate_command_safe
+import importlib.util as _ilu
+# Direct file import to avoid triggering security/__init__.py which
+# pulls in heavy dependencies (jwt, cryptography) not needed here.
+_val_path = os.path.join(os.path.dirname(__file__), "..", "..", "security", "validation.py")
+_spec = _ilu.spec_from_file_location("security.validation", os.path.abspath(_val_path))
+_val_mod = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_val_mod)
+validate_command_safe = _val_mod.validate_command_safe
+del _ilu, _val_path, _spec, _val_mod
+
 from ..base import SkillBase, SkillManifest
 
 logger = logging.getLogger("mizan.kitab")

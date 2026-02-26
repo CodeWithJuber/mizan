@@ -23,24 +23,29 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     task_template: "",
     agent_id: "",
   });
+  const [loading, setLoading] = useState(true);
 
   const loadJobs = useCallback(async () => {
     try {
       const data = await api.get("/automation/jobs");
       setJobs((data.jobs as ScheduledJob[]) || []);
-    } catch {}
+    } catch (err) {
+      console.error("Failed to fetch jobs:", err);
+    }
   }, [api]);
 
   const loadWebhooks = useCallback(async () => {
     try {
       const data = await api.get("/automation/webhooks");
       setWebhooks((data.webhooks as Webhook[]) || []);
-    } catch {}
+    } catch (err) {
+      console.error("Failed to fetch webhooks:", err);
+    }
   }, [api]);
 
   useEffect(() => {
-    loadJobs();
-    loadWebhooks();
+    setLoading(true);
+    Promise.all([loadJobs(), loadWebhooks()]).finally(() => setLoading(false));
   }, [loadJobs, loadWebhooks]);
 
   const addJob = async () => {
@@ -60,7 +65,10 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       await api.del(`/automation/jobs/${jobId}`);
       addTerminalLine?.("Job removed", "gold");
       loadJobs();
-    } catch {}
+    } catch (err) {
+      console.error("Failed to remove job:", err);
+      addTerminalLine?.("Failed to remove job", "error");
+    }
   };
 
   const addWebhookHandler = async () => {
@@ -130,6 +138,12 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
           </div>
         ))}
       </div>
+
+      {loading && (
+        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          Loading automation data...
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         {activeTab === "jobs" && (

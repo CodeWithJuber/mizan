@@ -2,6 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
 COPY package*.json ./
 RUN npm install
 
@@ -9,4 +12,5 @@ COPY . .
 
 EXPOSE 3000
 
+# Graceful shutdown: node handles SIGTERM natively with exec
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
