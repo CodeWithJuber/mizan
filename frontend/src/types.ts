@@ -286,6 +286,41 @@ export interface Notebook {
   cells?: NotebookCell[];
 }
 
+// ===== Provider Types =====
+
+export interface ProviderModel {
+  id: string;
+  name: string;
+  context?: number;
+  vision?: boolean;
+  pricing?: { prompt: string; completion: string };
+  size?: number;
+}
+
+export interface ProviderInfo {
+  name: string;
+  display: string;
+  configured: boolean;
+  models: ProviderModel[];
+  default_model: string;
+  base_url?: string;
+}
+
+export interface ProviderStatus {
+  active: string;
+  default_model: string;
+  providers: ProviderInfo[];
+}
+
+export interface ProviderHealth {
+  provider: string;
+  healthy: boolean;
+  error?: string;
+  usage?: number;
+  limit?: number | null;
+  models?: number;
+}
+
 // ===== Integration Types =====
 
 export interface Integration {

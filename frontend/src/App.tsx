@@ -16,6 +16,7 @@ import NotebookPage from "./pages/NotebookPage";
 import ScannerPage from "./pages/ScannerPage";
 import MajlisPage from "./pages/MajlisPage";
 import PluginsPage from "./pages/PluginsPage";
+import ProvidersPage from "./pages/ProvidersPage";
 import { useApi } from "./hooks/useApi";
 
 const WS_URL = "ws://localhost:8000/ws";
@@ -1809,6 +1810,9 @@ export default function App() {
       case "plugins":
         return <PluginsPage api={api} addTerminalLine={addTerminalLine} />;
 
+      case "providers":
+        return <ProvidersPage api={api} addTerminalLine={addTerminalLine} />;
+
       case "integrations":
         return (
           <>
@@ -1954,6 +1958,7 @@ export default function App() {
           <div className="nav-section">
             <div className="nav-section-label">System · نظام</div>
             {[
+              { id: "providers", label: "Providers", arabic: "روح", icon: <Icons.Zap /> },
               { id: "channels", label: "Channels", arabic: "أبواب", icon: <Icons.Channel /> },
               { id: "automation", label: "Automation", arabic: "قدر", icon: <Icons.Clock /> },
               { id: "security", label: "Security", arabic: "ولي", icon: <Icons.Shield /> },

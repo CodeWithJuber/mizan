@@ -409,3 +409,219 @@ def get_default_model(provider_name: str) -> str:
         "ollama": "llama3.2",
     }
     return defaults.get(provider_name, "claude-sonnet-4-20250514")
+
+
+# ───── Provider Discovery & Health ─────
+
+# Well-known models per provider for quick selection
+PROVIDER_MODELS = {
+    "anthropic": [
+        {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "context": 200000, "vision": True},
+        {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "context": 200000, "vision": True},
+        {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "context": 200000, "vision": True},
+    ],
+    "openai": [
+        {"id": "gpt-4o", "name": "GPT-4o", "context": 128000, "vision": True},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "context": 128000, "vision": True},
+        {"id": "o3-mini", "name": "o3 Mini", "context": 200000, "vision": False},
+    ],
+    "openrouter": [],  # Fetched dynamically
+    "ollama": [],  # Fetched dynamically
+}
+
+
+def get_provider_status() -> Dict:
+    """
+    Get status of all configured providers.
+    Returns which providers have API keys set and are available.
+    """
+    providers = []
+
+    # Anthropic
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    providers.append({
+        "name": "anthropic",
+        "display": "Anthropic (Claude)",
+        "configured": bool(anthropic_key and anthropic_key != "sk-ant-your-key-here"),
+        "models": PROVIDER_MODELS["anthropic"],
+        "default_model": "claude-sonnet-4-20250514",
+    })
+
+    # OpenRouter
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    providers.append({
+        "name": "openrouter",
+        "display": "OpenRouter (300+ models)",
+        "configured": bool(openrouter_key),
+        "models": PROVIDER_MODELS["openrouter"],
+        "default_model": "anthropic/claude-sonnet-4",
+    })
+
+    # OpenAI
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    providers.append({
+        "name": "openai",
+        "display": "OpenAI",
+        "configured": bool(openai_key and openai_key != "sk-your-openai-key-here"),
+        "models": PROVIDER_MODELS["openai"],
+        "default_model": "gpt-4o",
+    })
+
+    # Ollama
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    providers.append({
+        "name": "ollama",
+        "display": "Ollama (Local)",
+        "configured": True,  # Always "configured" — just may not be running
+        "base_url": ollama_url,
+        "models": PROVIDER_MODELS["ollama"],
+        "default_model": "llama3.2",
+    })
+
+    # Determine active provider
+    active = os.getenv("LLM_PROVIDER", "")
+    if not active:
+        for p in providers:
+            if p["configured"] and p["name"] != "ollama":
+                active = p["name"]
+                break
+
+    return {
+        "active": active,
+        "default_model": os.getenv("DEFAULT_MODEL", get_default_model(active)),
+        "providers": providers,
+    }
+
+
+async def fetch_openrouter_models(limit: int = 50) -> List[Dict]:
+    """
+    Fetch available models from OpenRouter's public API.
+    Returns a curated list of popular models.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get("https://openrouter.ai/api/v1/models")
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            models_raw = data.get("data", [])
+
+            # Sort by popularity and return curated list
+            models = []
+            for m in models_raw[:limit]:
+                models.append({
+                    "id": m.get("id", ""),
+                    "name": m.get("name", m.get("id", "")),
+                    "context": m.get("context_length", 0),
+                    "pricing": {
+                        "prompt": m.get("pricing", {}).get("prompt", "0"),
+                        "completion": m.get("pricing", {}).get("completion", "0"),
+                    },
+                })
+
+            return models
+    except Exception as e:
+        logger.warning(f"Failed to fetch OpenRouter models: {e}")
+        return []
+
+
+async def fetch_ollama_models() -> List[Dict]:
+    """Fetch locally available Ollama models."""
+    import httpx
+
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{ollama_url}/api/tags")
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            models = []
+            for m in data.get("models", []):
+                models.append({
+                    "id": m.get("name", ""),
+                    "name": m.get("name", ""),
+                    "size": m.get("size", 0),
+                    "context": 0,
+                })
+            return models
+    except Exception:
+        return []
+
+
+async def check_provider_health(provider_name: str) -> Dict:
+    """
+    Quick health check for a provider — verifies the API key works
+    by making a minimal request.
+    """
+    import httpx
+
+    if provider_name == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return {"provider": "anthropic", "healthy": False, "error": "No API key"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                )
+                return {"provider": "anthropic", "healthy": resp.status_code == 200}
+        except Exception as e:
+            return {"provider": "anthropic", "healthy": False, "error": str(e)}
+
+    elif provider_name == "openrouter":
+        api_key = os.getenv("OPENROUTER_API_KEY", "")
+        if not api_key:
+            return {"provider": "openrouter", "healthy": False, "error": "No API key"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://openrouter.ai/api/v1/auth/key",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                data = resp.json() if resp.status_code == 200 else {}
+                return {
+                    "provider": "openrouter",
+                    "healthy": resp.status_code == 200,
+                    "usage": data.get("data", {}).get("usage", 0),
+                    "limit": data.get("data", {}).get("limit", None),
+                }
+        except Exception as e:
+            return {"provider": "openrouter", "healthy": False, "error": str(e)}
+
+    elif provider_name == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        if not api_key:
+            return {"provider": "openai", "healthy": False, "error": "No API key"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                return {"provider": "openai", "healthy": resp.status_code == 200}
+        except Exception as e:
+            return {"provider": "openai", "healthy": False, "error": str(e)}
+
+    elif provider_name == "ollama":
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(f"{ollama_url}/api/tags")
+                return {
+                    "provider": "ollama",
+                    "healthy": resp.status_code == 200,
+                    "models": len(resp.json().get("models", [])) if resp.status_code == 200 else 0,
+                }
+        except Exception:
+            return {"provider": "ollama", "healthy": False, "error": "Ollama not running"}
+
+    return {"provider": provider_name, "healthy": False, "error": "Unknown provider"}
