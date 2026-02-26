@@ -281,7 +281,7 @@ class ChatMessage(BaseModel):
 
 class IntegrationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    type: str = Field(..., pattern=r"^(mcp|openai|anthropic|ollama|webhook|email)$")
+    type: str = Field(..., pattern=r"^(mcp|openai|anthropic|openrouter|ollama|webhook|email)$")
     config: dict = {}
     enabled: bool = True
 

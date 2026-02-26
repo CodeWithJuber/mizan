@@ -27,8 +27,8 @@ from typing import Any, Dict, List, Optional, Callable, AsyncGenerator
 from abc import ABC
 from dataclasses import dataclass, field
 import httpx
-import anthropic
 
+from providers import create_provider, get_default_model
 from security.validation import (
     sanitize_command, validate_command_safe, sanitize_path,
     validate_url, validate_package_name,
@@ -103,14 +103,14 @@ class BaseAgent(ABC):
         self.qalb = QalbEngine()            # Emotional intelligence
         self.yaqin = YaqinEngine()          # Certainty/confidence tracking
 
-        # Anthropic client for AI reasoning — use env var only, never from user input
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.ai_client = anthropic.Anthropic(api_key=api_key) if api_key else None
+        # LLM provider — unified interface for Anthropic, OpenRouter, OpenAI, Ollama
         self.ai_model = config.get("model", "claude-opus-4-6") if config else "claude-opus-4-6"
-
-        # Alternative AI providers
-        self.openai_key = os.getenv("OPENAI_API_KEY", "")
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        provider_name = os.getenv("LLM_PROVIDER", "") or None
+        self.ai_client = create_provider(provider=provider_name, model=self.ai_model)
+        if self.ai_client:
+            # If no model set in config, use the provider's default
+            if not config or "model" not in config:
+                self.ai_model = get_default_model(self.ai_client.provider_name)
 
     def _register_base_tools(self):
         """Register core Quranic tools every agent has"""
@@ -291,10 +291,13 @@ class BaseAgent(ABC):
         back, and continues until the model produces a final text response
         with no further tool calls (stop_reason == 'end_turn') or we hit
         the safety limit of MAX_TOOL_TURNS.
+
+        Uses the unified provider interface (providers.py) so this works
+        identically with Anthropic, OpenRouter, OpenAI, and Ollama.
         """
         for turn in range(self.MAX_TOOL_TURNS):
-            # Call the model
-            response = self.ai_client.messages.create(
+            # Call the model via unified provider
+            response = self.ai_client.create(
                 model=self.ai_model,
                 max_tokens=4096,
                 system=system_prompt,
