@@ -36,6 +36,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
     "anthropic>=0.34.0",
+    "openai>=1.40.0",
     "httpx>=0.27.0",
     "python-multipart>=0.0.12",
     "aiofiles>=24.1.0",
@@ -56,7 +57,6 @@ all = [
     "discord.py>=2.3.2",
     "slack-bolt>=1.20.0",
     "elevenlabs>=1.5.0",
-    "openai>=1.40.0",
 ]
 channels = [
     "python-telegram-bot>=21.5",

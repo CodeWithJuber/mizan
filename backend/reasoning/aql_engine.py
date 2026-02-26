@@ -91,7 +91,7 @@ class AqlEngine:
         if not agent.ai_client:
             yield ReasoningStep(
                 type="error",
-                content="No AI provider configured. Set ANTHROPIC_API_KEY.",
+                content="No AI provider configured. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY.",
             )
             return
 
@@ -101,7 +101,7 @@ class AqlEngine:
 
         for iteration in range(self.max_iterations):
             try:
-                response = agent.ai_client.messages.create(
+                response = agent.ai_client.create(
                     model=agent.ai_model,
                     max_tokens=4096,
                     system=system_prompt,

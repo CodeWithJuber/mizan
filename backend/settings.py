@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # ── AI Providers ─────────────────────────────────────────
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_referer: str = "https://github.com/CodeWithJuber/mizan"
+    llm_provider: str = ""  # auto-detect if empty; anthropic | openrouter | openai | ollama
     default_model: str = "claude-sonnet-4-20250514"
 
     # ── System ───────────────────────────────────────────────
@@ -75,6 +78,14 @@ class Settings(BaseSettings):
     @property
     def has_openai(self) -> bool:
         return bool(self.openai_api_key and self.openai_api_key != "sk-your-openai-key-here")
+
+    @property
+    def has_openrouter(self) -> bool:
+        return bool(self.openrouter_api_key)
+
+    @property
+    def has_any_provider(self) -> bool:
+        return self.has_anthropic or self.has_openai or self.has_openrouter
 
 
 def get_settings() -> Settings:
