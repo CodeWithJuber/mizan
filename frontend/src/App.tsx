@@ -303,6 +303,7 @@ function AppInner() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6" });
+  const [appVersion, setAppVersion] = useState("...");
 
   const api = useApi();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -450,6 +451,10 @@ function AppInner() {
 
   useEffect(() => {
     loadAgents();
+    // Fetch version from backend
+    fetch(`${config.API_URL}/version`).then(r => r.json()).then(data => {
+      if (data.version) setAppVersion(data.version);
+    }).catch(() => {});
     const interval = setInterval(() => {
       loadAgents();
       loadStatus();
@@ -916,7 +921,7 @@ function AppInner() {
           <div className="text-2xl leading-none select-none text-mizan-gold" style={{ fontFamily: "Georgia, serif" }}>&#1605;&#1610;&#1586;&#1575;&#1606;</div>
           <div className="flex flex-col">
             <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 tracking-wide">MIZAN</span>
-            <span className="text-[10px] text-gray-400 dark:text-gray-500 tracking-widest">v3.0</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 tracking-widest">v{appVersion}</span>
           </div>
         </div>
 
