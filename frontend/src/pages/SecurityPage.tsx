@@ -1,545 +1,363 @@
 /**
- * Security Page (Wali - وَلِيّ - Guardian)
- * Security dashboard with audit log, permissions, and auth management
+ * Security Page — Authentication & Access Control
+ * On localhost: auth is optional, shows simplified interface
+ * On remote: full auth forms and token management
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import type { PageProps } from "../types";
 
-interface AuditEvent {
-  severity?: string;
-  event_type: string;
-  timestamp: string;
-  details?: string | Record<string, unknown>;
-}
-
-interface Permission {
-  key: string;
-  tool_name: string;
-  agent_id?: string;
-}
-
-const SEVERITY_COLORS: Record<string, string> = {
-  info: "var(--sapphire)",
-  warning: "var(--amber)",
-  error: "var(--ruby)",
-  critical: "#dc2626",
+const isLocalhost = () => {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1";
 };
 
 export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   const [activeTab, setActiveTab] = useState("overview");
-  const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
-  const [permissions, setPendingApprovals] = useState<Permission[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState(() => localStorage.getItem("mizan_token") || "");
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
-  const [loginError, setLoginError] = useState("");
+  const [registerForm, setRegisterForm] = useState({ username: "", password: "", confirm: "" });
+  const [showAuthForms, setShowAuthForms] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const local = isLocalhost();
 
-  useEffect(() => {
-    const token = localStorage.getItem("mizan_token");
-    setIsAuthenticated(!!token);
-  }, []);
-
-  const loadAudit = useCallback(async () => {
+  const login = async () => {
+    setLoading(true);
+    setMessage(null);
     try {
-      const data = await api.get("/security/audit");
-      setAuditLog((data.recent_events as AuditEvent[]) || []);
-    } catch {
-      // Not authenticated or endpoint not available
-    }
-  }, [api]);
-
-  const loadPermissions = useCallback(async () => {
-    try {
-      const data = await api.get("/security/permissions");
-      setPendingApprovals((data.pending_approvals as Permission[]) || []);
-    } catch {}
-  }, [api]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadAudit();
-      loadPermissions();
-    }
-  }, [isAuthenticated, loadAudit, loadPermissions]);
-
-  const handleLogin = async () => {
-    setLoginError("");
-    try {
-      const data = await api.post("/auth/login", loginForm);
-      if (data.token) {
-        localStorage.setItem("mizan_token", data.token as string);
-        localStorage.setItem("mizan_user", JSON.stringify(data));
-        setIsAuthenticated(true);
-        addTerminalLine?.(`Authenticated as ${data.username}`, "gold");
+      const data = await api.post("/auth/login", loginForm) as { access_token?: string; error?: string };
+      if (data.access_token) {
+        localStorage.setItem("mizan_token", data.access_token);
+        setToken(data.access_token);
+        setMessage({ type: "success", text: "Logged in successfully" });
+        addTerminalLine?.("Authenticated", "gold");
       } else {
-        setLoginError("Invalid credentials");
+        setMessage({ type: "error", text: data.error || "Login failed" });
       }
     } catch {
-      setLoginError("Authentication failed");
+      setMessage({ type: "error", text: "Login request failed" });
     }
+    setLoading(false);
   };
 
-  const handleRegister = async () => {
-    setLoginError("");
+  const register = async () => {
+    if (registerForm.password !== registerForm.confirm) {
+      setMessage({ type: "error", text: "Passwords do not match" });
+      return;
+    }
+    setLoading(true);
+    setMessage(null);
     try {
-      const data = await api.post("/auth/register", loginForm);
-      if (data.token) {
-        localStorage.setItem("mizan_token", data.token as string);
-        localStorage.setItem("mizan_user", JSON.stringify(data));
-        setIsAuthenticated(true);
-        addTerminalLine?.(`Registered and authenticated as ${data.username}`, "gold");
+      const data = await api.post("/auth/register", {
+        username: registerForm.username,
+        password: registerForm.password,
+      }) as { access_token?: string; error?: string };
+      if (data.access_token) {
+        localStorage.setItem("mizan_token", data.access_token);
+        setToken(data.access_token);
+        setMessage({ type: "success", text: "Account created and logged in" });
+        addTerminalLine?.("Account created", "gold");
       } else {
-        setLoginError((data.detail as string) || "Registration failed");
+        setMessage({ type: "error", text: data.error || "Registration failed" });
       }
     } catch {
-      setLoginError("Registration failed");
+      setMessage({ type: "error", text: "Registration request failed" });
     }
+    setLoading(false);
   };
 
-  const handleLogout = () => {
+  const logout = () => {
     localStorage.removeItem("mizan_token");
-    localStorage.removeItem("mizan_user");
-    setIsAuthenticated(false);
+    setToken("");
+    setMessage({ type: "success", text: "Logged out" });
     addTerminalLine?.("Logged out", "info");
   };
 
-  // Login panel
-  if (!isAuthenticated) {
-    return (
-      <>
-        <div className="panel-header">
-          <div className="panel-title">Security · وَلِيّ (Wali Guardian)</div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-              border: "1px solid rgba(201,162,39,0.3)",
-              borderRadius: 12,
-              padding: 32,
-              width: 380,
-            }}
-          >
-            <div
-              style={{
-                textAlign: "center",
-                marginBottom: 24,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: "Georgia, serif",
-                  fontSize: 36,
-                  color: "var(--gold)",
-                  marginBottom: 8,
-                }}
-              >
-                ولي
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 12,
-                  letterSpacing: "0.15em",
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                }}
-              >
-                Wali Authentication
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  fontStyle: "italic",
-                  marginTop: 6,
-                }}
-              >
-                "And Allah is sufficient as a Guardian (Wali)" — 4:45
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Username</label>
-              <input
-                className="form-input"
-                placeholder="Enter username..."
-                value={loginForm.username}
-                onChange={(e) =>
-                  setLoginForm({ ...loginForm, username: e.target.value })
-                }
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Password</label>
-              <input
-                className="form-input"
-                type="password"
-                placeholder="Enter password..."
-                value={loginForm.password}
-                onChange={(e) =>
-                  setLoginForm({ ...loginForm, password: e.target.value })
-                }
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              />
-            </div>
-
-            {loginError && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--ruby)",
-                  marginBottom: 12,
-                  padding: "6px 10px",
-                  background: "rgba(239,68,68,0.1)",
-                  borderRadius: 4,
-                  border: "1px solid rgba(239,68,68,0.2)",
-                }}
-              >
-                {loginError}
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                className="btn primary"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={handleLogin}
-                disabled={!loginForm.username || !loginForm.password}
-              >
-                Login
-              </button>
-              <button
-                className="btn"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={handleRegister}
-                disabled={!loginForm.username || !loginForm.password}
-              >
-                Register
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
-
   return (
-    <>
-      <div className="panel-header">
-        <div className="panel-title">Security · وَلِيّ (Wali Guardian)</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontFamily: "var(--font-mono)",
-              color: "var(--emerald)",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "var(--emerald)",
-              }}
-            />
-            Wali Active
-          </div>
-          <button className="btn" style={{ fontSize: 10 }} onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <h2 className="page-title">Security</h2>
+        <p className="page-description">Authentication, access control, and security settings</p>
       </div>
 
+      {/* Tabs */}
       <div className="tab-bar">
         {[
           { id: "overview", label: "Overview" },
-          { id: "audit", label: "Audit Log" },
-          { id: "permissions", label: "Permissions" },
-        ].map((tab) => (
+          { id: "auth", label: "Authentication" },
+          { id: "tokens", label: "Tokens" },
+        ].map(tab => (
           <div
             key={tab.id}
             className={`tab ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab(tab.id);
-              if (tab.id === "audit") loadAudit();
-              if (tab.id === "permissions") loadPermissions();
-            }}
+            onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
           </div>
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-        {activeTab === "overview" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-              gap: 12,
-            }}
-          >
-            {[
-              {
-                label: "Auth System",
-                value: "JWT + API Keys",
-                arabic: "توثيق",
-                color: "var(--emerald)",
-                status: "Active",
-              },
-              {
-                label: "Rate Limiting",
-                value: "Token Bucket",
-                arabic: "حد",
-                color: "var(--sapphire)",
-                status: "Active",
-              },
-              {
-                label: "Input Validation",
-                value: "Pydantic + Wali",
-                arabic: "تحقق",
-                color: "var(--gold)",
-                status: "Active",
-              },
-              {
-                label: "Tool Permissions",
-                value: "Izn System",
-                arabic: "إذن",
-                color: "var(--amber)",
-                status: "Active",
-              },
-              {
-                label: "File Sandbox",
-                value: "Path Restriction",
-                arabic: "صندوق",
-                color: "var(--ruby)",
-                status: "Active",
-              },
-              {
-                label: "SSRF Prevention",
-                value: "URL Validation",
-                arabic: "حماية",
-                color: "#8b5cf6",
-                status: "Active",
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: 16,
-                  borderLeft: `3px solid ${item.color}`,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: "Georgia, serif",
-                      fontSize: 16,
-                      color: item.color,
-                    }}
-                  >
-                    {item.arabic}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--emerald)",
-                      padding: "1px 6px",
-                      borderRadius: 3,
-                      background: "rgba(16,185,129,0.1)",
-                      border: "1px solid rgba(16,185,129,0.2)",
-                    }}
-                  >
-                    {item.status}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: 12,
-                    color: "var(--text-primary)",
-                    marginBottom: 4,
-                  }}
-                >
-                  {item.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-muted)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  {item.value}
-                </div>
-              </div>
-            ))}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Localhost Banner */}
+        {local && (
+          <div className="bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 rounded-lg p-4 flex items-start gap-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                Running on localhost — authentication is optional
+              </p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400/70 mt-1">
+                You&apos;re running MIZAN locally. No login is required. All features are available without authentication.
+                If you deploy to a server, enable authentication to protect your instance.
+              </p>
+            </div>
           </div>
         )}
 
-        {activeTab === "audit" && (
-          <div>
-            {auditLog.length === 0 && (
-              <div className="empty-state">
-                <div className="empty-arabic">شاهد</div>
-                <div className="empty-text">No audit events</div>
-                <div className="empty-sub">Security events will appear here</div>
-              </div>
-            )}
-            {auditLog.map((event, i) => (
-              <div key={i} className="memory-item">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: "var(--font-mono)",
-                      padding: "1px 6px",
-                      borderRadius: 3,
-                      background: `${SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)"}15`,
-                      color: SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)",
-                      border: `1px solid ${SEVERITY_COLORS[event.severity || ""] || "var(--text-muted)"}30`,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {event.severity || "info"}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {event.event_type}
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    {event.timestamp}
-                  </span>
+        {/* Message */}
+        {message && (
+          <div className={`rounded-lg px-4 py-3 text-sm ${
+            message.type === "success"
+              ? "bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+              : "bg-red-50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-300"
+          }`}>
+            {message.text}
+          </div>
+        )}
+
+        {/* Overview Tab */}
+        {activeTab === "overview" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="card text-center">
+                <div className="text-2xl font-mono text-emerald-600 dark:text-emerald-400 mb-1">
+                  {token ? "Yes" : "No"}
                 </div>
-                {event.details && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-secondary)",
-                      marginTop: 4,
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    {typeof event.details === "string"
-                      ? event.details
-                      : JSON.stringify(event.details)}
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Authenticated</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-2xl font-mono text-gray-900 dark:text-gray-100 mb-1">
+                  {local ? "Local" : "Remote"}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Access Mode</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-2xl font-mono text-mizan-gold mb-1">
+                  {local ? "Open" : token ? "Protected" : "Unprotected"}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</div>
+              </div>
+            </div>
+
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Security Checklist</h3>
+              <div className="space-y-2">
+                {[
+                  { label: "Backend running", ok: true, info: false },
+                  { label: "HTTPS enabled", ok: !local && window.location.protocol === "https:", info: false },
+                  { label: "Authentication configured", ok: !!token, info: false },
+                  { label: "Running on localhost", ok: local, info: true },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center gap-2.5 py-1">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                      item.info
+                        ? "bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                        : item.ok
+                        ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-gray-100 dark:bg-zinc-800 text-gray-400 dark:text-gray-500"
+                    }`}>
+                      {item.info ? "i" : item.ok ? "\u2713" : "\u2013"}
+                    </div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Auth Tab */}
+        {activeTab === "auth" && (
+          <div className="space-y-4 max-w-md">
+            {token ? (
+              <div className="card">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      <path d="M9 12l2 2 4-4"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Authenticated</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Your session is active</div>
+                  </div>
+                </div>
+                <button className="btn-danger text-sm w-full" onClick={logout}>
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                {local && !showAuthForms && (
+                  <div className="card text-center py-8">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                      Authentication is optional on localhost
+                    </div>
+                    <button
+                      className="btn-secondary text-sm"
+                      onClick={() => setShowAuthForms(true)}
+                    >
+                      Set up authentication anyway
+                    </button>
                   </div>
                 )}
-              </div>
-            ))}
+
+                {(!local || showAuthForms) && (
+                  <div className="space-y-4">
+                    {/* Login */}
+                    <div className="card">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Login</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="form-label">Username</label>
+                          <input
+                            className="form-input"
+                            placeholder="Enter username"
+                            value={loginForm.username}
+                            onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="form-label">Password</label>
+                          <input
+                            className="form-input"
+                            type="password"
+                            placeholder="Enter password"
+                            value={loginForm.password}
+                            onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          className="btn-gold text-sm w-full"
+                          onClick={login}
+                          disabled={loading || !loginForm.username || !loginForm.password}
+                        >
+                          {loading ? "Logging in..." : "Login"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Register */}
+                    <div className="card">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Create Account</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="form-label">Username</label>
+                          <input
+                            className="form-input"
+                            placeholder="Choose a username"
+                            value={registerForm.username}
+                            onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="form-label">Password</label>
+                          <input
+                            className="form-input"
+                            type="password"
+                            placeholder="Choose a password"
+                            value={registerForm.password}
+                            onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="form-label">Confirm Password</label>
+                          <input
+                            className="form-input"
+                            type="password"
+                            placeholder="Re-enter password"
+                            value={registerForm.confirm}
+                            onChange={e => setRegisterForm({ ...registerForm, confirm: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          className="btn-secondary text-sm w-full"
+                          onClick={register}
+                          disabled={loading || !registerForm.username || !registerForm.password || !registerForm.confirm}
+                        >
+                          {loading ? "Creating..." : "Create Account"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        {activeTab === "permissions" && (
-          <div>
-            {permissions.length === 0 && (
-              <div className="empty-state">
-                <div className="empty-arabic">إذن</div>
-                <div className="empty-text">No pending approvals</div>
-                <div className="empty-sub">
-                  Tool permission requests will appear here
-                </div>
-              </div>
-            )}
-            {permissions.map((perm, i) => (
-              <div key={i} className="memory-item">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span className="memory-type-badge type-semantic">
-                    {perm.tool_name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    Agent: {perm.agent_id?.substring(0, 8)}
-                  </span>
-                  <div
-                    style={{ marginLeft: "auto", display: "flex", gap: 6 }}
-                  >
+        {/* Tokens Tab */}
+        {activeTab === "tokens" && (
+          <div className="space-y-4 max-w-lg">
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Current Token</h3>
+              {token ? (
+                <>
+                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 font-mono text-xs text-gray-600 dark:text-gray-400 break-all mb-3 border border-gray-200 dark:border-zinc-700">
+                    {token.substring(0, 20)}...{token.substring(token.length - 10)}
+                  </div>
+                  <div className="flex gap-2">
                     <button
-                      className="btn primary"
-                      style={{ fontSize: 10, padding: "3px 10px" }}
-                      onClick={async () => {
-                        await api.post("/security/permissions/approve", {
-                          key: perm.key,
-                        });
-                        loadPermissions();
+                      className="btn-secondary text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(token);
+                        setMessage({ type: "success", text: "Token copied to clipboard" });
                       }}
                     >
-                      Approve
+                      Copy Token
                     </button>
-                    <button
-                      className="btn danger"
-                      style={{ fontSize: 10, padding: "3px 10px" }}
-                      onClick={async () => {
-                        await api.post("/security/permissions/deny", {
-                          key: perm.key,
-                        });
-                        loadPermissions();
-                      }}
-                    >
-                      Deny
+                    <button className="btn-danger text-xs" onClick={logout}>
+                      Revoke
                     </button>
                   </div>
+                </>
+              ) : (
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  No active token. {local ? "Authentication is optional on localhost." : "Login to get a token."}
                 </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Manual Token</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Paste a token from another session or API call.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  className="form-input flex-1"
+                  type="password"
+                  placeholder="Paste token here..."
+                  onChange={e => {
+                    const val = e.target.value.trim();
+                    if (val) {
+                      localStorage.setItem("mizan_token", val);
+                      setToken(val);
+                      setMessage({ type: "success", text: "Token saved" });
+                    }
+                  }}
+                />
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

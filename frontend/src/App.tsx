@@ -1,12 +1,14 @@
+/**
+ * MIZAN — Main Application
+ * Clean, accessible UI with light/dark/system theme support.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Agent, ChatMessage, TerminalLine, Memory, Integration, SystemStatus } from "./types";
-
-// ===========================
-// MIZAN (ميزان) - Quranic AGI System v2.0
-// Design: Geometric Islamic patterns, deep space dark, gold accents
-// Typography: Arabic numerals + Latin + Quranic-inspired layout
-// Architecture: Seven-Layer Quranic Cognitive AGI
-// ===========================
+import { config } from "./config";
+import { useTheme } from "./hooks/useTheme";
+import { useApi } from "./hooks/useApi";
+import { ToastProvider, useToast } from "./components/Toast";
 
 import ChannelsPage from "./pages/ChannelsPage";
 import SkillsPage from "./pages/SkillsPage";
@@ -18,10 +20,7 @@ import MajlisPage from "./pages/MajlisPage";
 import PluginsPage from "./pages/PluginsPage";
 import ProvidersPage from "./pages/ProvidersPage";
 import DeveloperPage from "./pages/DeveloperPage";
-import { useApi } from "./hooks/useApi";
-
-const WS_URL = "ws://localhost:8000/ws";
-const API_URL = "http://localhost:8000/api";
+import WelcomePage from "./pages/WelcomePage";
 
 // ===== ICONS (inline SVG) =====
 const Icons = {
@@ -58,12 +57,6 @@ const Icons = {
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
     </svg>
   ),
-  Settings: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-    </svg>
-  ),
   Plus: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -91,14 +84,6 @@ const Icons = {
   Zap: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </svg>
-  ),
-  Scale: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-      <line x1="12" y1="3" x2="12" y2="21"/>
-      <path d="M3 6l9-3 9 3"/>
-      <path d="M3 6c0 3.3-2 5-2 5h4s-2-1.7-2-5"/>
-      <path d="M21 6c0 3.3-2 5-2 5h4s-2-1.7-2-5"/>
     </svg>
   ),
   Channel: () => (
@@ -130,24 +115,6 @@ const Icons = {
       <path d="M11 8h6M11 12h4"/>
     </svg>
   ),
-  Scanner: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
-      <path d="M12 6v6l4 2"/>
-      <path d="M2 12h4M18 12h4M12 2v4"/>
-      <circle cx="12" cy="12" r="2"/>
-    </svg>
-  ),
-  Majlis: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-      <circle cx="12" cy="5" r="3"/>
-      <circle cx="5" cy="12" r="3"/>
-      <circle cx="19" cy="12" r="3"/>
-      <circle cx="8" cy="19" r="3"/>
-      <circle cx="16" cy="19" r="3"/>
-      <path d="M12 8v3M7.5 10.5l2 1.5M16.5 10.5l-2 1.5M9.5 16.5l1-2M14.5 16.5l-1-2"/>
-    </svg>
-  ),
   Plugin: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
       <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
@@ -155,1123 +122,166 @@ const Icons = {
       <path d="M10 8V6a2 2 0 114 0v2M8 14h-2a2 2 0 100 4h2"/>
     </svg>
   ),
-};
-
-// ===== QURANIC CONCEPTS DISPLAY =====
-const NAFS_LEVELS: Record<number, { name: string; latin: string; color: string; desc: string }> = {
-  1: { name: "أمارة", latin: "Ammara", color: "#ef4444", desc: "Raw potential" },
-  2: { name: "لوامة", latin: "Lawwama", color: "#f97316", desc: "Self-correcting" },
-  3: { name: "ملهمة", latin: "Mulhama", color: "#f59e0b", desc: "Inspired" },
-  4: { name: "مطمئنة", latin: "Mutmainna", color: "#84cc16", desc: "Tranquil" },
-  5: { name: "راضية", latin: "Radiya", color: "#10b981", desc: "Content" },
-  6: { name: "مرضية", latin: "Mardiyya", color: "#06b6d4", desc: "Pleasing" },
-  7: { name: "كاملة", latin: "Kamila", color: "#a78bfa", desc: "Perfected" },
-};
-
-const AGENT_ROLE_ICONS: Record<string, string> = {
-  rasul: "رسول",
-  wakil: "وكيل",
-  hafiz: "حافظ",
-  shahid: "شاهد",
-  wali: "ولي",
-  mubashir: "مبشر",
-  mundhir: "منذر",
-  katib: "كاتب",
-  muallim: "معلم",
-};
-
-// ===== CSS =====
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500&display=swap');
-
-  :root {
-    --void: #030608;
-    --abyss: #060c10;
-    --depth: #0a1520;
-    --dark: #0f2030;
-    --mid: #162840;
-    --surface: #1e3a55;
-    --border: #1e3a55;
-    --border-light: #2a4f70;
-    
-    --gold: #c9a227;
-    --gold-light: #e8c547;
-    --gold-muted: #8a6e1a;
-    --gold-dim: #4a3a0f;
-    
-    --emerald: #10b981;
-    --emerald-dim: #064e3b;
-    --ruby: #ef4444;
-    --ruby-dim: #7f1d1d;
-    --amber: #f59e0b;
-    --amber-dim: #78350f;
-    --sapphire: #3b82f6;
-    --sapphire-dim: #1e3a8a;
-    
-    --text-primary: #e8d5b0;
-    --text-secondary: #8fa8c0;
-    --text-muted: #4a6880;
-    --text-arabic: #c9a227;
-    
-    --glow-gold: 0 0 20px rgba(201,162,39,0.3);
-    --glow-emerald: 0 0 20px rgba(16,185,129,0.3);
-    --font-display: 'Cinzel', serif;
-    --font-body: 'Libre Baskerville', serif;
-    --font-mono: 'IBM Plex Mono', monospace;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  
-  html, body { height: 100%; background: var(--void); color: var(--text-primary); }
-  
-  #root {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: var(--font-body);
-    font-size: 13px;
-    background: var(--void);
-  }
-
-  /* Geometric Islamic pattern background */
-  .geometric-bg {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    overflow: hidden;
-  }
-  
-  .geometric-bg::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: 
-      radial-gradient(ellipse at 20% 20%, rgba(201,162,39,0.04) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.03) 0%, transparent 50%),
-      radial-gradient(ellipse at 50% 50%, rgba(30,58,85,0.2) 0%, transparent 70%);
-  }
-  
-  .geometric-bg svg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0.025;
-  }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: var(--abyss); }
-  ::-webkit-scrollbar-thumb { background: var(--gold-muted); border-radius: 2px; }
-
-  /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 20px;
-    background: linear-gradient(180deg, rgba(6,12,16,0.98) 0%, rgba(6,12,16,0.9) 100%);
-    border-bottom: 1px solid rgba(201,162,39,0.2);
-    z-index: 100;
-    flex-shrink: 0;
-    backdrop-filter: blur(12px);
-  }
-  
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  
-  .logo-symbol {
-    width: 36px;
-    height: 36px;
-    position: relative;
-  }
-  
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  
-  .logo-arabic {
-    font-family: Georgia, serif;
-    font-size: 22px;
-    color: var(--gold);
-    line-height: 1;
-    letter-spacing: 0.05em;
-  }
-  
-  .logo-latin {
-    font-family: var(--font-display);
-    font-size: 9px;
-    letter-spacing: 0.3em;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  
-  .header-verse {
-    flex: 1;
-    text-align: center;
-    font-style: italic;
-    color: var(--text-muted);
-    font-size: 11px;
-    letter-spacing: 0.05em;
-  }
-  
-  .header-status {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  
-  .status-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    background: rgba(16,185,129,0.1);
-    border: 1px solid rgba(16,185,129,0.2);
-    font-size: 11px;
-    color: var(--emerald);
-    font-family: var(--font-mono);
-  }
-  
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--emerald);
-    animation: pulse 2s infinite;
-  }
-  
-  @keyframes pulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--emerald); }
-    50% { opacity: 0.5; box-shadow: none; }
-  }
-
-  /* Main layout */
-  .main-layout {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    position: relative;
-    z-index: 1;
-  }
-
-  /* Sidebar */
-  .sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    background: rgba(6,12,16,0.95);
-    border-right: 1px solid rgba(30,58,85,0.5);
-    display: flex;
-    flex-direction: column;
-    padding: 12px 0;
-    overflow-y: auto;
-  }
-  
-  .nav-section {
-    padding: 0 8px;
-    margin-bottom: 4px;
-  }
-  
-  .nav-section-label {
-    font-family: var(--font-display);
-    font-size: 8px;
-    letter-spacing: 0.3em;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    padding: 6px 10px 4px;
-  }
-  
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: all 0.15s;
-    font-size: 12px;
-    border: 1px solid transparent;
-  }
-  
-  .nav-item:hover {
-    background: rgba(30,58,85,0.4);
-    color: var(--text-primary);
-    border-color: rgba(201,162,39,0.1);
-  }
-  
-  .nav-item.active {
-    background: rgba(201,162,39,0.08);
-    color: var(--gold);
-    border-color: rgba(201,162,39,0.2);
-  }
-  
-  .nav-item-arabic {
-    margin-left: auto;
-    font-family: Georgia, serif;
-    font-size: 14px;
-    color: var(--gold-muted);
-    opacity: 0.6;
-  }
-
-  /* Content area */
-  .content {
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Agents panel */
-  .agents-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 12px;
-    padding: 16px;
-    overflow-y: auto;
-    flex: 1;
-  }
-  
-  .agent-card {
-    background: linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .agent-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  
-  .agent-card:hover {
-    border-color: rgba(201,162,39,0.3);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4), var(--glow-gold);
-  }
-  
-  .agent-card:hover::before { opacity: 1; }
-  
-  .agent-card.selected {
-    border-color: rgba(201,162,39,0.4);
-    background: linear-gradient(135deg, rgba(201,162,39,0.06) 0%, rgba(10,21,32,0.9) 100%);
-  }
-  
-  .agent-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  
-  .agent-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--dark) 0%, var(--depth) 100%);
-    border: 1px solid var(--border-light);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: Georgia, serif;
-    font-size: 16px;
-    color: var(--gold);
-    flex-shrink: 0;
-  }
-  
-  .agent-info { flex: 1; min-width: 0; }
-  
-  .agent-name {
-    font-family: var(--font-display);
-    font-size: 13px;
-    color: var(--text-primary);
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    margin-bottom: 2px;
-  }
-  
-  .agent-role {
-    font-size: 10px;
-    color: var(--text-muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-family: var(--font-mono);
-  }
-  
-  .agent-state {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-family: var(--font-mono);
-    padding: 2px 8px;
-    border-radius: 10px;
-  }
-  
-  .state-resting { background: rgba(74,104,128,0.2); color: var(--text-muted); border: 1px solid rgba(74,104,128,0.3); }
-  .state-thinking { background: rgba(59,130,246,0.15); color: var(--sapphire); border: 1px solid rgba(59,130,246,0.3); }
-  .state-acting { background: rgba(201,162,39,0.15); color: var(--gold); border: 1px solid rgba(201,162,39,0.3); }
-  .state-learning { background: rgba(16,185,129,0.15); color: var(--emerald); border: 1px solid rgba(16,185,129,0.3); }
-  .state-error { background: rgba(239,68,68,0.15); color: var(--ruby); border: 1px solid rgba(239,68,68,0.3); }
-  
-  .nafs-bar {
-    margin: 8px 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .nafs-label {
-    font-family: Georgia, serif;
-    font-size: 11px;
-    color: var(--text-muted);
-    min-width: 70px;
-  }
-  
-  .nafs-track {
-    flex: 1;
-    height: 3px;
-    background: var(--mid);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  
-  .nafs-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.3s;
-  }
-  
-  .agent-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 6px;
-    margin-top: 10px;
-  }
-  
-  .stat {
-    text-align: center;
-    padding: 6px 4px;
-    background: rgba(6,12,16,0.5);
-    border-radius: 4px;
-    border: 1px solid rgba(30,58,85,0.3);
-  }
-  
-  .stat-value {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--text-primary);
-    display: block;
-  }
-  
-  .stat-label {
-    font-size: 9px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    display: block;
-    margin-top: 1px;
-  }
-  
-  .agent-tools {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 8px;
-  }
-  
-  .tool-tag {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    padding: 2px 6px;
-    background: rgba(30,58,85,0.4);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-  }
-
-  /* Chat area */
-  .chat-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--abyss);
-  }
-  
-  .chat-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(30,58,85,0.5);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(6,12,16,0.8);
-  }
-  
-  .chat-agent-select {
-    background: var(--dark);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 5px 10px;
-    border-radius: 6px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    cursor: pointer;
-    outline: none;
-  }
-  
-  .chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .message {
-    display: flex;
-    gap: 10px;
-    animation: fadeIn 0.2s ease;
-  }
-  
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  
-  .message.user { flex-direction: row-reverse; }
-  
-  .msg-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-family: Georgia, serif;
-  }
-  
-  .msg-avatar.agent {
-    background: linear-gradient(135deg, var(--dark), var(--depth));
-    border: 1px solid rgba(201,162,39,0.3);
-    color: var(--gold);
-  }
-  
-  .msg-avatar.user {
-    background: linear-gradient(135deg, var(--sapphire-dim), var(--dark));
-    border: 1px solid rgba(59,130,246,0.3);
-    color: var(--sapphire);
-  }
-  
-  .msg-bubble {
-    max-width: 75%;
-    padding: 10px 14px;
-    border-radius: 10px;
-    line-height: 1.6;
-    font-size: 13px;
-  }
-  
-  .msg-bubble.agent {
-    background: rgba(15,32,48,0.8);
-    border: 1px solid rgba(30,58,85,0.6);
-    color: var(--text-primary);
-    border-radius: 2px 10px 10px 10px;
-  }
-  
-  .msg-bubble.user {
-    background: rgba(59,130,246,0.1);
-    border: 1px solid rgba(59,130,246,0.2);
-    color: var(--text-primary);
-    border-radius: 10px 2px 10px 10px;
-  }
-  
-  .msg-meta {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: 3px;
-    font-family: var(--font-mono);
-  }
-  
-  .streaming-cursor {
-    display: inline-block;
-    width: 2px;
-    height: 14px;
-    background: var(--gold);
-    margin-left: 2px;
-    vertical-align: middle;
-    animation: blink 1s infinite;
-  }
-  
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-  }
-  
-  .chat-input-area {
-    padding: 12px 16px;
-    border-top: 1px solid rgba(30,58,85,0.5);
-    background: rgba(6,12,16,0.9);
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-  }
-  
-  .chat-input {
-    flex: 1;
-    background: rgba(15,32,48,0.6);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text-primary);
-    padding: 10px 14px;
-    font-family: var(--font-body);
-    font-size: 13px;
-    resize: none;
-    outline: none;
-    max-height: 120px;
-    transition: border-color 0.15s;
-    line-height: 1.5;
-  }
-  
-  .chat-input:focus {
-    border-color: rgba(201,162,39,0.3);
-    box-shadow: 0 0 0 2px rgba(201,162,39,0.05);
-  }
-  
-  .chat-input::placeholder { color: var(--text-muted); }
-  
-  .send-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--gold-muted), var(--gold));
-    border: none;
-    color: var(--abyss);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.15s;
-    font-weight: bold;
-  }
-  
-  .send-btn:hover {
-    transform: scale(1.05);
-    box-shadow: var(--glow-gold);
-  }
-  
-  .send-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  /* Terminal / Task panel */
-  .terminal {
-    background: var(--void);
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    margin: 12px;
-  }
-  
-  .terminal-header {
-    padding: 8px 14px;
-    background: rgba(15,32,48,0.8);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .terminal-dots {
-    display: flex;
-    gap: 5px;
-  }
-  
-  .terminal-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-  
-  .terminal-body {
-    padding: 12px 14px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--emerald);
-    min-height: 120px;
-    max-height: 300px;
-    overflow-y: auto;
-    line-height: 1.6;
-  }
-  
-  .terminal-line { margin-bottom: 2px; }
-  .terminal-line.error { color: var(--ruby); }
-  .terminal-line.warn { color: var(--amber); }
-  .terminal-line.info { color: var(--sapphire); }
-  .terminal-line.gold { color: var(--gold); }
-  
-  .terminal-prompt {
-    color: var(--gold);
-    font-weight: 500;
-  }
-  
-  .terminal-input {
-    background: transparent;
-    border: none;
-    color: var(--emerald);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: none;
-    flex: 1;
-    padding: 8px 14px;
-    width: 100%;
-  }
-  
-  .terminal-input-row {
-    display: flex;
-    align-items: center;
-    border-top: 1px solid rgba(30,58,85,0.3);
-    padding: 4px 8px;
-  }
-
-  /* Memory panel */
-  .memory-panel {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-  }
-  
-  .memory-item {
-    background: rgba(10,21,32,0.8);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 14px;
-    margin-bottom: 8px;
-    transition: border-color 0.15s;
-  }
-  
-  .memory-item:hover { border-color: rgba(201,162,39,0.2); }
-  
-  .memory-type-badge {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  
-  .type-episodic { background: rgba(59,130,246,0.15); color: var(--sapphire); border: 1px solid rgba(59,130,246,0.2); }
-  .type-semantic { background: rgba(201,162,39,0.15); color: var(--gold); border: 1px solid rgba(201,162,39,0.2); }
-  .type-procedural { background: rgba(16,185,129,0.15); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
-
-  /* Tabs */
-  .tab-bar {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid rgba(30,58,85,0.5);
-    background: rgba(6,12,16,0.6);
-    padding: 0 16px;
-  }
-  
-  .tab {
-    padding: 10px 16px;
-    font-size: 11px;
-    font-family: var(--font-display);
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.15s;
-    text-transform: uppercase;
-  }
-  
-  .tab:hover { color: var(--text-secondary); }
-  
-  .tab.active {
-    color: var(--gold);
-    border-bottom-color: var(--gold);
-  }
-
-  /* Panel header */
-  .panel-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(30,58,85,0.5);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(6,12,16,0.6);
-  }
-  
-  .panel-title {
-    font-family: var(--font-display);
-    font-size: 12px;
-    letter-spacing: 0.15em;
-    color: var(--gold);
-    text-transform: uppercase;
-    flex: 1;
-  }
-  
-  .btn {
-    padding: 6px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: rgba(30,58,85,0.3);
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  
-  .btn:hover {
-    background: rgba(201,162,39,0.1);
-    border-color: rgba(201,162,39,0.3);
-    color: var(--gold);
-  }
-  
-  .btn.primary {
-    background: rgba(201,162,39,0.15);
-    border-color: rgba(201,162,39,0.4);
-    color: var(--gold);
-  }
-  
-  .btn.danger:hover {
-    background: rgba(239,68,68,0.1);
-    border-color: rgba(239,68,68,0.3);
-    color: var(--ruby);
-  }
-
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(3,6,8,0.85);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(4px);
-  }
-  
-  .modal {
-    background: linear-gradient(135deg, var(--depth) 0%, var(--dark) 100%);
-    border: 1px solid rgba(201,162,39,0.3);
-    border-radius: 12px;
-    padding: 24px;
-    width: 460px;
-    max-width: 95vw;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), var(--glow-gold);
-  }
-  
-  .modal-title {
-    font-family: var(--font-display);
-    font-size: 14px;
-    letter-spacing: 0.15em;
-    color: var(--gold);
-    text-transform: uppercase;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .modal-footer {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-top: 20px;
-  }
-  
-  .form-group {
-    margin-bottom: 14px;
-  }
-  
-  .form-label {
-    display: block;
-    font-size: 10px;
-    letter-spacing: 0.15em;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    font-family: var(--font-display);
-    margin-bottom: 6px;
-  }
-  
-  .form-input {
-    width: 100%;
-    background: rgba(6,12,16,0.8);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  
-  .form-input:focus { border-color: rgba(201,162,39,0.4); }
-  
-  .form-select {
-    width: 100%;
-    background: rgba(6,12,16,0.8);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: none;
-    cursor: pointer;
-  }
-
-  /* Stats bar */
-  .stats-bar {
-    display: flex;
-    gap: 16px;
-    padding: 8px 16px;
-    background: rgba(6,12,16,0.6);
-    border-bottom: 1px solid rgba(30,58,85,0.3);
-    flex-shrink: 0;
-  }
-  
-  .stat-chip {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-  
-  .stat-chip-value {
-    color: var(--text-primary);
-    font-weight: 500;
-  }
-
-  /* Seven Heavens visualization */
-  .seven-layers {
-    padding: 16px;
-    display: flex;
-    gap: 8px;
-    flex-direction: column;
-  }
-  
-  .layer-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    background: rgba(10,21,32,0.6);
-    border-radius: 6px;
-    border-left: 3px solid;
-    transition: all 0.2s;
-  }
-  
-  .layer-num {
-    font-family: var(--font-display);
-    font-size: 16px;
-    color: var(--text-muted);
-    min-width: 20px;
-  }
-  
-  .layer-arabic {
-    font-family: Georgia, serif;
-    font-size: 18px;
-    min-width: 50px;
-  }
-  
-  .layer-latin {
-    font-family: var(--font-display);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    color: var(--text-secondary);
-    flex: 1;
-  }
-  
-  .layer-desc {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-style: italic;
-  }
-
-  /* Empty state */
-  .empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    color: var(--text-muted);
-    padding: 40px;
-  }
-  
-  .empty-arabic {
-    font-family: Georgia, serif;
-    font-size: 48px;
-    color: var(--gold-muted);
-    opacity: 0.3;
-  }
-  
-  .empty-text {
-    font-family: var(--font-display);
-    font-size: 12px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-  }
-  
-  .empty-sub {
-    font-size: 12px;
-    font-style: italic;
-    opacity: 0.6;
-  }
-`;
-
-// ===== GEOMETRIC BACKGROUND =====
-const GeometricBackground = () => (
-  <div className="geometric-bg">
-    <svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <pattern id="star8" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
-          <g stroke="#c9a227" strokeWidth="0.5" fill="none">
-            <polygon points="40,5 52,28 78,28 58,44 66,70 40,55 14,70 22,44 2,28 28,28"/>
-            <circle cx="40" cy="40" r="12"/>
-            <line x1="40" y1="0" x2="40" y2="80"/>
-            <line x1="0" y1="40" x2="80" y2="40"/>
-          </g>
-        </pattern>
-      </defs>
-      <rect width="800" height="800" fill="url(#star8)" opacity="0.4"/>
+  Sun: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
     </svg>
-  </div>
-);
+  ),
+  Moon: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  ),
+  Monitor: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    </svg>
+  ),
+};
+
+// ===== NAFS LEVELS =====
+const NAFS_LEVELS: Record<number, { latin: string; color: string; desc: string }> = {
+  1: { latin: "Ammara", color: "#ef4444", desc: "Raw potential" },
+  2: { latin: "Lawwama", color: "#f97316", desc: "Self-correcting" },
+  3: { latin: "Mulhama", color: "#f59e0b", desc: "Inspired" },
+  4: { latin: "Mutmainna", color: "#84cc16", desc: "Tranquil" },
+  5: { latin: "Radiya", color: "#10b981", desc: "Content" },
+  6: { latin: "Mardiyya", color: "#06b6d4", desc: "Pleasing" },
+  7: { latin: "Kamila", color: "#a78bfa", desc: "Perfected" },
+};
 
 // ===== AGENT CARD =====
 const AgentCard = ({ agent, selected, onClick }: { agent: Agent; selected: boolean; onClick: () => void }) => {
   const nafs = NAFS_LEVELS[agent.nafs_level] || NAFS_LEVELS[1];
-  const roleArabic = AGENT_ROLE_ICONS[agent.role] || "وكيل";
-  const stateClass = `state-${agent.state}`;
-  
+
+  const stateColors: Record<string, string> = {
+    resting: "bg-gray-100 dark:bg-zinc-700/30 text-gray-500 dark:text-gray-400",
+    thinking: "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400",
+    acting: "bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    learning: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    error: "bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400",
+  };
+
   return (
-    <div className={`agent-card ${selected ? "selected" : ""}`} onClick={onClick}>
-      <div className="agent-header">
-        <div className="agent-avatar">{roleArabic[0]}</div>
-        <div className="agent-info">
-          <div className="agent-name">{agent.name}</div>
-          <div className="agent-role">{agent.role} · {roleArabic}</div>
+    <div
+      className={`card-hover cursor-pointer ${selected ? "ring-2 ring-mizan-gold/40 border-mizan-gold/30" : ""}`}
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-mizan-gold font-semibold text-sm shrink-0">
+          {agent.name[0]?.toUpperCase() || "A"}
         </div>
-        <div className={`agent-state ${stateClass}`}>
-          <span>{agent.state}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{agent.name}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wide">{agent.role}</div>
         </div>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stateColors[agent.state] || stateColors.resting}`}>
+          {agent.state}
+        </span>
       </div>
-      
-      <div className="nafs-bar">
-        <div className="nafs-label">
-          <span style={{ color: nafs.color }}>{nafs.name}</span>
-        </div>
-        <div className="nafs-track">
-          <div className="nafs-fill" style={{
+
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-gray-500 dark:text-gray-400 min-w-[60px]" title={`Trust tier ${agent.nafs_level}/7`}>
+          Level {agent.nafs_level}
+        </span>
+        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{
             width: `${(agent.nafs_level / 7) * 100}%`,
             background: nafs.color,
           }}/>
         </div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", whiteSpace: "nowrap" }}>
-          {nafs.desc}
-        </div>
+        <span className="text-xs text-gray-400 dark:text-gray-500 italic whitespace-nowrap">{nafs.desc}</span>
       </div>
-      
-      <div className="agent-stats">
-        <div className="stat">
-          <span className="stat-value">{agent.total_tasks}</span>
-          <span className="stat-label">Tasks</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value" style={{ color: agent.success_rate > 0.7 ? "var(--emerald)" : "var(--ruby)" }}>
-            {(agent.success_rate * 100).toFixed(0)}%
-          </span>
-          <span className="stat-label">Success</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{agent.hikmah_count}</span>
-          <span className="stat-label">Hikmah</span>
-        </div>
-      </div>
-      
-      <div className="agent-tools">
-        {(agent.tools || []).slice(0, 4).map(t => (
-          <span key={t} className="tool-tag">{t}</span>
-        ))}
-        {(agent.tools || []).length > 4 && (
-          <span className="tool-tag">+{(agent.tools || []).length - 4}</span>
-        )}
-      </div>
-    </div>
-  );
-};
 
-// ===== SEVEN LAYERS PANEL =====
-const SevenLayersPanel = () => {
-  const layers = [
-    { num: 1, arabic: "سمع", latin: "SAMA'", color: "#3b82f6", desc: "Perception & Input Processing" },
-    { num: 2, arabic: "فكر", latin: "FIKR", color: "#8b5cf6", desc: "Cognitive Processing & Analysis" },
-    { num: 3, arabic: "ذكر", latin: "DHIKR", color: "#06b6d4", desc: "Memory & Knowledge Storage" },
-    { num: 4, arabic: "عقل", latin: "AQL", color: "#c9a227", desc: "Reasoning & Logic Engine" },
-    { num: 5, arabic: "حكمة", latin: "HIKMAH", color: "#f59e0b", desc: "Wisdom & Meta-Learning" },
-    { num: 6, arabic: "عمل", latin: "AMAL", color: "#10b981", desc: "Action & Execution" },
-    { num: 7, arabic: "تفكر", latin: "TAFAKKUR", color: "#ec4899", desc: "Deep Reflection & Self-Improvement" },
-  ];
-  
-  return (
-    <div className="seven-layers">
-      <div style={{ padding: "0 0 8px", fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.2em", color: "var(--text-muted)", textTransform: "uppercase" }}>
-        سبع سماوات · Seven-Layer Architecture
-      </div>
-      {layers.map(layer => (
-        <div key={layer.num} className="layer-item" style={{ borderLeftColor: layer.color }}>
-          <div className="layer-num" style={{ color: layer.color }}>{layer.num}</div>
-          <div className="layer-arabic" style={{ color: layer.color }}>{layer.arabic}</div>
-          <div>
-            <div className="layer-latin" style={{ color: layer.color }}>{layer.latin}</div>
-            <div className="layer-desc">{layer.desc}</div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Tasks", value: agent.total_tasks, color: undefined as boolean | undefined },
+          { label: "Success", value: `${(agent.success_rate * 100).toFixed(0)}%`, color: agent.success_rate > 0.7 },
+          { label: "Wisdom", value: agent.hikmah_count, color: undefined as boolean | undefined },
+        ].map(s => (
+          <div key={s.label} className="text-center py-1.5 px-1 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50">
+            <span className={`block font-mono text-sm ${s.color === false ? "text-red-500" : s.color ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100"}`}>
+              {s.value}
+            </span>
+            <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">{s.label}</span>
           </div>
-        </div>
-      ))}
-      <div style={{ marginTop: 12, padding: 10, background: "rgba(201,162,39,0.05)", border: "1px solid rgba(201,162,39,0.15)", borderRadius: 6, fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-        "And the heaven He raised and imposed the balance (Mizan), that you not transgress within the balance." — Quran 55:7-8
+        ))}
       </div>
+
+      {(agent.tools || []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {(agent.tools || []).slice(0, 4).map(t => (
+            <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
+          ))}
+          {(agent.tools || []).length > 4 && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-gray-400 font-mono">+{(agent.tools || []).length - 4}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
-// ===== MAIN APP =====
-export default function App() {
-  const [activeTab, setActiveTab] = useState("agents");
+// ===== THEME TOGGLE =====
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const modes = ["light", "dark", "system"] as const;
+  const next = () => {
+    const idx = modes.indexOf(theme);
+    setTheme(modes[(idx + 1) % modes.length]);
+  };
+  const icon = theme === "light" ? <Icons.Sun /> : theme === "dark" ? <Icons.Moon /> : <Icons.Monitor />;
+  const label = theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System";
+
+  return (
+    <button
+      onClick={next}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+      title={`Theme: ${label}. Click to change.`}
+    >
+      {icon}
+      <span className="text-xs hidden sm:inline">{label}</span>
+    </button>
+  );
+}
+
+// ===== CONNECTION BANNER =====
+function ConnectionBanner({ status, attempts }: { status: string; attempts: number }) {
+  if (status === "connected") return null;
+  if (status === "connecting" || (status === "reconnecting" && attempts < 5)) return null;
+
+  return (
+    <div className="bg-amber-50 dark:bg-amber-500/5 border-b border-amber-200 dark:border-amber-500/20 px-4 py-2.5 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-300">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+        </svg>
+        <span>Cannot connect to backend. Make sure the server is running: <code className="code">mizan serve</code> or <code className="code">make dev</code></span>
+      </div>
+      <button
+        onClick={() => window.location.reload()}
+        className="text-xs px-3 py-1 bg-amber-100 dark:bg-amber-500/10 hover:bg-amber-200 dark:hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded transition-colors shrink-0"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// ===== MAIN APP INNER =====
+function AppInner() {
+  const { addToast } = useToast();
+
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return !localStorage.getItem("mizan_setup_complete");
+  });
+
+  const [activeTab, setActiveTab] = useState("chat");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1279,73 +289,92 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [wsStatus, setWsStatus] = useState("disconnected");
+  const [wsStatus, setWsStatus] = useState<string>("connecting");
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
-    { text: "بسم الله الرحمن الرحيم", type: "gold" },
-    { text: "MIZAN (ميزان) System Initializing...", type: "" },
-    { text: "Architecture: Seven-Layer Quranic AGI", type: "info" },
+    { text: "MIZAN System Initializing...", type: "" },
     { text: "Connecting to backend...", type: "" },
   ]);
   const [taskInput, setTaskInput] = useState("");
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
-  const [showIntegration, setShowIntegration] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({ name: "", type: "general", model: "claude-opus-4-6" });
-  const [newIntegration, setNewIntegration] = useState({ name: "", type: "anthropic", config: {} as Record<string, unknown> });
 
   const api = useApi();
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const clientId = useRef(`client_${Date.now()}`);
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
     setTerminalLines(prev => [...prev.slice(-100), { text, type: type as TerminalLine["type"], ts: Date.now() }]);
   }, []);
-  
+
   // Connect WebSocket
   useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+
     const connect = () => {
       try {
-        const socket = new WebSocket(`${WS_URL}/${clientId.current}`);
-        
+        if (attempts > 0) {
+          setWsStatus("reconnecting");
+        }
+
+        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
+
         socket.onopen = () => {
           setWsStatus("connected");
           setWs(socket);
-          addTerminalLine("✓ WebSocket connected", "gold");
+          attempts = 0;
+          setReconnectAttempts(0);
+          addTerminalLine("Connected to backend", "gold");
         };
-        
+
         socket.onmessage = (event) => {
           const data = JSON.parse(event.data);
           handleWsMessage(data);
         };
-        
+
         socket.onclose = () => {
-          setWsStatus("disconnected");
           setWs(null);
-          addTerminalLine("WebSocket disconnected. Reconnecting...", "warn");
-          setTimeout(connect, 3000);
+          attempts++;
+          setReconnectAttempts(attempts);
+          if (attempts >= 5) {
+            setWsStatus("disconnected");
+          } else {
+            setWsStatus("reconnecting");
+          }
+          addTerminalLine("Connection lost. Reconnecting...", "warn");
+          const delay = Math.min(3000 * Math.pow(1.5, attempts - 1), 15000);
+          reconnectTimer = setTimeout(connect, delay);
         };
-        
+
         socket.onerror = () => {
-          addTerminalLine("WebSocket error", "error");
+          addTerminalLine("Connection error", "error");
         };
       } catch (e: unknown) {
         addTerminalLine(`Connection failed: ${(e as Error).message}`, "error");
-        setTimeout(connect, 5000);
+        attempts++;
+        reconnectTimer = setTimeout(connect, 5000);
       }
     };
-    
+
     connect();
+
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) socket.close();
+    };
   }, []);
-  
+
   const handleWsMessage = useCallback((data: Record<string, unknown>) => {
     switch (data.type) {
       case "connected":
-        addTerminalLine(`${data.message} · ${data.agents} agents`, "gold");
+        addTerminalLine(`${data.message} — ${data.agents} agents online`, "gold");
         loadAgents();
         loadStatus();
         break;
@@ -1362,25 +391,25 @@ export default function App() {
           agent: data.agent as string,
           ts: new Date().toLocaleTimeString(),
         }]);
-        addTerminalLine(`✓ Response from ${data.agent}`, "info");
+        addTerminalLine(`Response from ${data.agent}`, "info");
         break;
       case "task_stream":
         addTerminalLine(data.chunk as string, "");
         break;
       case "task_done":
-        addTerminalLine(`✓ Task completed`, "gold");
+        addTerminalLine("Task completed", "gold");
         loadAgents();
         break;
       case "agent_created":
-        addTerminalLine(`✓ Agent created: ${(data.agent as Record<string, unknown>).name}`, "gold");
+        addTerminalLine(`Agent created: ${(data.agent as Record<string, unknown>).name}`, "gold");
         loadAgents();
         break;
     }
   }, [addTerminalLine]);
-  
+
   const loadAgents = async () => {
     try {
-      const res = await fetch(`${API_URL}/agents`);
+      const res = await fetch(`${config.API_URL}/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
       if (!selectedAgent && data.agents?.length > 0) {
@@ -1390,35 +419,35 @@ export default function App() {
       addTerminalLine(`Failed to load agents: ${(e as Error).message}`, "error");
     }
   };
-  
+
   const loadStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/status`);
+      const res = await fetch(`${config.API_URL}/status`);
       const data = await res.json();
       setStatus(data);
-    } catch {}
+    } catch { /* ignore */ }
   };
-  
+
   const loadMemories = async (query: string = "") => {
     try {
-      const res = await fetch(`${API_URL}/memory/query`, {
+      const res = await fetch(`${config.API_URL}/memory/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: query || "all", limit: 20 }),
       });
       const data = await res.json();
       setMemories(data.results || []);
-    } catch {}
+    } catch { /* ignore */ }
   };
-  
+
   const loadIntegrations = async () => {
     try {
-      const res = await fetch(`${API_URL}/integrations`);
+      const res = await fetch(`${config.API_URL}/integrations`);
       const data = await res.json();
       setIntegrations(data.integrations || []);
-    } catch {}
+    } catch { /* ignore */ }
   };
-  
+
   useEffect(() => {
     loadAgents();
     const interval = setInterval(() => {
@@ -1427,38 +456,34 @@ export default function App() {
     }, 5000);
     return () => clearInterval(interval);
   }, []);
-  
+
   useEffect(() => {
     if (activeTab === "memory") loadMemories(memoryQuery);
     if (activeTab === "integrations") loadIntegrations();
   }, [activeTab]);
-  
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
-  
+
   const sendMessage = () => {
     if (!input.trim() || streaming || !ws) return;
-    
     const userMsg: ChatMessage = { id: Date.now(), role: "user", content: input, ts: new Date().toLocaleTimeString() };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamingText("");
-    
     ws.send(JSON.stringify({
       type: "chat",
       session_id: sessionId,
       content: input,
       agent_id: selectedAgent?.id,
     }));
-    
     setInput("");
-    addTerminalLine(`→ ${input.substring(0, 60)}...`, "info");
+    addTerminalLine(`> ${input.substring(0, 60)}...`, "info");
   };
-  
+
   const runTask = () => {
     if (!taskInput.trim() || !ws) return;
-    
     addTerminalLine(`$ ${taskInput}`, "gold");
     ws.send(JSON.stringify({
       type: "task",
@@ -1467,10 +492,10 @@ export default function App() {
     }));
     setTaskInput("");
   };
-  
+
   const createAgent = async () => {
     try {
-      const res = await fetch(`${API_URL}/agents`, {
+      const res = await fetch(`${config.API_URL}/agents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newAgent),
@@ -1479,84 +504,132 @@ export default function App() {
       setShowCreateAgent(false);
       setNewAgent({ name: "", type: "general", model: "claude-opus-4-6" });
       loadAgents();
+      addToast({ type: "success", title: "Agent created", description: `${newAgent.name} is ready` });
     } catch (e: unknown) {
-      addTerminalLine(`Error creating agent: ${(e as Error).message}`, "error");
+      addToast({ type: "error", title: "Failed to create agent", description: (e as Error).message });
     }
   };
-  
+
   const deleteAgent = async (agentId: string) => {
     if (!confirm("Delete this agent?")) return;
     try {
-      await fetch(`${API_URL}/agents/${agentId}`, { method: "DELETE" });
+      await fetch(`${config.API_URL}/agents/${agentId}`, { method: "DELETE" });
       if (selectedAgent?.id === agentId) setSelectedAgent(null);
       loadAgents();
-    } catch {}
-  };
-  
-  const addIntegration = async () => {
-    try {
-      await fetch(`${API_URL}/integrations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newIntegration),
-      });
-      setShowIntegration(false);
-      loadIntegrations();
-    } catch {}
+      addToast({ type: "success", title: "Agent deleted" });
+    } catch { /* ignore */ }
   };
 
+  // ===== WELCOME PAGE =====
+  if (showWelcome) {
+    return (
+      <WelcomePage
+        api={api}
+        wsStatus={wsStatus}
+        onComplete={() => setShowWelcome(false)}
+      />
+    );
+  }
+
+  // ===== NAVIGATION =====
+  const navSections = [
+    {
+      label: "Main",
+      items: [
+        { id: "chat", label: "Chat", desc: "Talk to your AI", icon: <Icons.Chat /> },
+        { id: "agents", label: "Agents", desc: "Your AI team", icon: <Icons.Agent /> },
+        { id: "terminal", label: "Tasks", desc: "Run background jobs", icon: <Icons.Terminal /> },
+      ],
+    },
+    {
+      label: "Tools",
+      items: [
+        { id: "memory", label: "Memory", desc: "What your AI remembers", icon: <Icons.Memory /> },
+        { id: "notebooks", label: "Notebooks", desc: "Code scratchpad", icon: <Icons.Notebook /> },
+        { id: "skills", label: "Skills", desc: "AI abilities", icon: <Icons.Skill /> },
+        { id: "plugins", label: "Plugins", desc: "Extend with add-ons", icon: <Icons.Plugin /> },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { id: "providers", label: "Providers", desc: "AI model settings", icon: <Icons.Zap /> },
+        { id: "channels", label: "Channels", desc: "Telegram, Discord, etc.", icon: <Icons.Channel /> },
+        { id: "automation", label: "Automation", desc: "Scheduled tasks", icon: <Icons.Clock /> },
+        { id: "security", label: "Security", desc: "Login & permissions", icon: <Icons.Shield /> },
+        { id: "developer", label: "Developer", desc: "Build extensions", icon: <Icons.Brain /> },
+      ],
+    },
+  ];
+
+  // ===== STATUS =====
+  const statusDot = wsStatus === "connected"
+    ? "bg-emerald-500"
+    : wsStatus === "connecting" || wsStatus === "reconnecting"
+    ? "bg-amber-500 animate-pulse"
+    : "bg-red-500";
+
+  const statusLabel = wsStatus === "connected"
+    ? "Online"
+    : wsStatus === "connecting"
+    ? "Connecting..."
+    : wsStatus === "reconnecting"
+    ? "Reconnecting..."
+    : "Offline";
+
+  // ===== RENDER CONTENT =====
   const renderContent = () => {
     switch (activeTab) {
       case "agents":
         return (
-          <>
-            <div className="panel-header">
-              <div className="panel-title">Agents · وكلاء</div>
-              <button className="btn primary" onClick={() => setShowCreateAgent(true)}>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+              <div>
+                <h2 className="page-title">Agents</h2>
+                <p className="page-description">Your AI team — create and manage intelligent agents</p>
+              </div>
+              <button className="btn-gold flex items-center gap-2" onClick={() => setShowCreateAgent(true)}>
                 <Icons.Plus /> New Agent
               </button>
             </div>
-            <div style={{ padding: "0 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              "And sufficient is Allah as a Trustee (Wakil)" — 4:81
-            </div>
-            <div className="agents-grid">
-              {agents.map(agent => (
-                <div key={agent.id} style={{ position: "relative" }}>
-                  <AgentCard
-                    agent={agent}
-                    selected={selectedAgent?.id === agent.id}
-                    onClick={() => setSelectedAgent(agent)}
-                  />
-                  <button
-                    className="btn danger"
-                    style={{ position: "absolute", top: 10, right: 10, padding: "4px 6px" }}
-                    onClick={e => { e.stopPropagation(); deleteAgent(agent.id); }}
-                  >
-                    <Icons.Trash />
-                  </button>
-                </div>
-              ))}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {agents.map(agent => (
+                  <div key={agent.id} className="relative">
+                    <AgentCard
+                      agent={agent}
+                      selected={selectedAgent?.id === agent.id}
+                      onClick={() => setSelectedAgent(agent)}
+                    />
+                    <button
+                      className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                      onClick={e => { e.stopPropagation(); deleteAgent(agent.id); }}
+                      title="Delete agent"
+                    >
+                      <Icons.Trash />
+                    </button>
+                  </div>
+                ))}
+              </div>
               {agents.length === 0 && (
-                <div className="empty-state" style={{ gridColumn: "1/-1" }}>
-                  <div className="empty-arabic">وكيل</div>
-                  <div className="empty-text">No agents initialized</div>
-                  <div className="empty-sub">Ensure the backend is running</div>
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                  <Icons.Agent />
+                  <p className="mt-3 font-medium">No agents yet</p>
+                  <p className="text-sm mt-1">Create your first agent to get started, or make sure the backend is running.</p>
                 </div>
               )}
             </div>
-          </>
+          </div>
         );
-      
+
       case "chat":
         return (
-          <div className="chat-container">
-            <div className="chat-header">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
               <Icons.Chat />
-              <span style={{ fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: "0.1em", color: "var(--gold)" }}>
-                CHAT · محادثة
-              </span>
+              <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Chat</span>
               <select
-                className="chat-agent-select"
+                className="input text-sm py-1.5 px-3"
                 value={selectedAgent?.id || ""}
                 onChange={e => {
                   const agent = agents.find(a => a.id === e.target.value);
@@ -1569,60 +642,65 @@ export default function App() {
                 ))}
               </select>
               {selectedAgent && (
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)" }}>
-                  <span style={{ fontFamily: "Georgia", color: "var(--gold)", fontSize: 14 }}>
-                    {AGENT_ROLE_ICONS[selectedAgent.role] || "وكيل"}
-                  </span>
-                  <span>Nafs: {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}</span>
-                </div>
+                <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
+                  Level {selectedAgent.nafs_level} — {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
+                </span>
               )}
             </div>
-            
-            <div className="chat-messages">
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
               {messages.length === 0 && !streaming && (
-                <div className="empty-state">
-                  <div className="empty-arabic">تكلم</div>
-                  <div className="empty-text">Begin the Conversation</div>
-                  <div className="empty-sub">"And He taught Adam the names of all things" — 2:31</div>
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                  <Icons.Chat />
+                  <p className="mt-3 font-medium">Start a conversation</p>
+                  <p className="text-sm mt-1 text-center max-w-sm">Send a message below. Your AI is ready to help with anything.</p>
                 </div>
               )}
-              
+
               {messages.map(msg => (
-                <div key={msg.id} className={`message ${msg.role}`}>
-                  <div className={`msg-avatar ${msg.role}`}>
-                    {msg.role === "user" ? "أنت" : (msg.agent?.[0] || "م")}
+                <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+                  <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-medium ${
+                    msg.role === "user"
+                      ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
+                      : "bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700"
+                  }`}>
+                    {msg.role === "user" ? "You" : (msg.agent?.[0] || "AI")}
                   </div>
-                  <div>
-                    <div className={`msg-bubble ${msg.role}`}>
+                  <div className="max-w-[75%]">
+                    <div className={`px-4 py-2.5 rounded-xl text-sm leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-gray-900 dark:text-gray-100 rounded-tr-sm"
+                        : "bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-800 dark:text-gray-200 rounded-tl-sm"
+                    }`}>
                       {msg.content}
                     </div>
-                    <div className="msg-meta">
-                      {msg.role === "assistant" ? msg.agent : "You"} · {msg.ts}
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
+                      {msg.role === "assistant" ? msg.agent : "You"} &middot; {msg.ts}
                     </div>
                   </div>
                 </div>
               ))}
-              
+
               {streaming && streamingText && (
-                <div className="message assistant">
-                  <div className="msg-avatar agent">
-                    {selectedAgent?.name?.[0] || "م"}
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700">
+                    {selectedAgent?.name?.[0] || "AI"}
                   </div>
-                  <div>
-                    <div className="msg-bubble agent">
+                  <div className="max-w-[75%]">
+                    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl rounded-tl-sm text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                       {streamingText}
-                      <span className="streaming-cursor"/>
+                      <span className="inline-block w-0.5 h-4 bg-mizan-gold ml-0.5 align-middle animate-pulse"/>
                     </div>
                   </div>
                 </div>
               )}
-              
+
               <div ref={messagesEndRef}/>
             </div>
-            
-            <div className="chat-input-area">
+
+            <div className="px-4 py-3 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex gap-2 items-end">
               <textarea
-                className="chat-input"
+                className="input flex-1 resize-none min-h-[38px] max-h-[120px]"
                 placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
                 value={input}
                 onChange={e => setInput(e.target.value)}
@@ -1633,469 +711,338 @@ export default function App() {
                   }
                 }}
                 rows={1}
-                style={{ minHeight: 38 }}
               />
-              <button className="send-btn" onClick={sendMessage} disabled={streaming || !input.trim() || !ws}>
+              <button
+                className="w-10 h-10 rounded-lg bg-mizan-gold hover:bg-mizan-gold-light text-black flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
+                onClick={sendMessage}
+                disabled={streaming || !input.trim() || !ws}
+              >
                 <Icons.Send />
               </button>
             </div>
           </div>
         );
-      
+
       case "terminal":
         return (
-          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: 12, gap: 12 }}>
-            <div className="panel-header" style={{ padding: "8px 12px" }}>
-              <div className="panel-title">Task Runner · منفذ المهام</div>
-              <span style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
-                "By the pen and what they write" — 68:1
-              </span>
+          <div className="flex-1 flex flex-col overflow-hidden p-4 gap-3">
+            <div>
+              <h2 className="page-title">Task Runner</h2>
+              <p className="page-description">Execute tasks through your AI agents</p>
             </div>
-            
-            <div className="terminal" style={{ flex: 1 }}>
-              <div className="terminal-header">
-                <div className="terminal-dots">
-                  <div className="terminal-dot" style={{ background: "#ef4444" }}/>
-                  <div className="terminal-dot" style={{ background: "#f59e0b" }}/>
-                  <div className="terminal-dot" style={{ background: "#10b981" }}/>
+
+            <div className="flex-1 bg-gray-900 dark:bg-black rounded-xl border border-gray-200 dark:border-zinc-800 overflow-hidden flex flex-col">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 dark:bg-zinc-900 border-b border-gray-700 dark:border-zinc-800">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-red-500"/>
+                  <div className="w-3 h-3 rounded-full bg-amber-500"/>
+                  <div className="w-3 h-3 rounded-full bg-emerald-500"/>
                 </div>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>
-                  mizan@aql ~ %
-                </span>
-                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>
+                <span className="text-xs font-mono text-gray-400 ml-2">mizan ~ %</span>
+                <span className="ml-auto text-[10px] text-gray-500">
                   Agent: {selectedAgent?.name || "None"}
                 </span>
               </div>
-              <div className="terminal-body">
+
+              <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-emerald-400 min-h-[120px] max-h-[400px]">
                 {terminalLines.map((line, i) => (
-                  <div key={i} className={`terminal-line ${line.type}`}>
-                    {line.type === "gold" ? <span className="terminal-prompt">❯ </span> : null}
+                  <div key={i} className={`mb-0.5 ${
+                    line.type === "error" ? "text-red-400" :
+                    line.type === "warn" ? "text-amber-400" :
+                    line.type === "info" ? "text-blue-400" :
+                    line.type === "gold" ? "text-mizan-gold" : "text-emerald-400"
+                  }`}>
+                    {line.type === "gold" && <span className="text-mizan-gold font-semibold">{"> "}</span>}
                     {line.text}
                   </div>
                 ))}
               </div>
-              <div className="terminal-input-row">
-                <span className="terminal-prompt" style={{ fontFamily: "var(--font-mono)", fontSize: 12, padding: "0 8px", color: "var(--gold)" }}>❯</span>
+
+              <div className="flex items-center border-t border-gray-700 dark:border-zinc-800 px-2 py-1">
+                <span className="text-mizan-gold font-mono text-xs px-2 font-semibold">{">"}</span>
                 <input
-                  className="terminal-input"
+                  className="flex-1 bg-transparent border-none text-emerald-400 font-mono text-xs outline-none py-2 px-1"
                   placeholder="Enter task for agent... (e.g., 'search for latest AI papers')"
                   value={taskInput}
                   onChange={e => setTaskInput(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && runTask()}
                 />
-                <button className="btn primary" style={{ marginRight: 4, padding: "4px 10px" }} onClick={runTask}>
+                <button
+                  className="text-xs px-3 py-1 bg-mizan-gold/20 hover:bg-mizan-gold/30 text-mizan-gold rounded transition-colors mr-1"
+                  onClick={runTask}
+                >
                   Run
                 </button>
               </div>
             </div>
           </div>
         );
-      
+
       case "memory":
         return (
-          <>
-            <div className="panel-header">
-              <div className="panel-title">Memory · ذاكرة (Dhikr)</div>
-              <div style={{ display: "flex", gap: 8 }}>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+              <div>
+                <h2 className="page-title">Memory</h2>
+                <p className="page-description">What your AI remembers from past interactions</p>
+              </div>
+              <div className="flex items-center gap-2">
                 <input
-                  className="form-input"
-                  style={{ width: 200, padding: "5px 10px" }}
+                  className="input text-sm py-1.5 w-48"
                   placeholder="Search memories..."
                   value={memoryQuery}
                   onChange={e => setMemoryQuery(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && loadMemories(memoryQuery)}
                 />
-                <button className="btn" onClick={() => loadMemories(memoryQuery)}>Search</button>
-                <button className="btn" onClick={async () => {
-                  await fetch(`${API_URL}/memory/consolidate`, { method: "POST" });
-                  addTerminalLine("Memory consolidated (Nisyan applied)", "gold");
+                <button className="btn-secondary text-sm" onClick={() => loadMemories(memoryQuery)}>Search</button>
+                <button className="btn-secondary text-sm" onClick={async () => {
+                  await fetch(`${config.API_URL}/memory/consolidate`, { method: "POST" });
+                  addToast({ type: "success", title: "Memory consolidated" });
                   loadMemories();
                 }}>Consolidate</button>
               </div>
             </div>
-            
-            <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              "And We have certainly made the Quran easy for remembrance (Dhikr)" — 54:17
-            </div>
-            
-            <div className="memory-panel">
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {memories.length === 0 && (
-                <div className="empty-state">
-                  <div className="empty-arabic">ذكر</div>
-                  <div className="empty-text">No memories found</div>
-                  <div className="empty-sub">Search or run tasks to populate memory</div>
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                  <Icons.Memory />
+                  <p className="mt-3 font-medium">No memories yet</p>
+                  <p className="text-sm mt-1">As you chat, your AI will remember important information.</p>
                 </div>
               )}
               {memories.map(mem => (
-                <div key={mem.id} className="memory-item">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <span className={`memory-type-badge type-${mem.type}`}>{mem.type}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+                <div key={mem.id} className="card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`badge ${
+                      mem.type === "episodic" ? "badge-info" :
+                      mem.type === "semantic" ? "badge-warning" : "badge-success"
+                    }`}>{mem.type}</span>
+                    <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
                       {mem.agent_id ? `Agent: ${mem.agent_id.substring(0, 8)}` : "System"}
                     </span>
-                    <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>
+                    <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
                       Importance: {(mem.importance * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                     {typeof mem.content === "string" ? mem.content : JSON.stringify(mem.content)}
                   </div>
                   {(mem.tags?.length ?? 0) > 0 && (
-                    <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {mem.tags!.map(t => <span key={t} className="tool-tag">{t}</span>)}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {mem.tags!.map(t => (
+                        <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
+                      ))}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-          </>
+          </div>
         );
-      
-      case "architecture":
-        return (
-          <>
-            <div className="panel-header">
-              <div className="panel-title">Architecture · هندسة (Mizan)</div>
-            </div>
-            <div style={{ overflow: "auto", flex: 1 }}>
-              <SevenLayersPanel />
-              
-              {status && (
-                <div style={{ padding: "0 16px 16px" }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.2em", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 10 }}>
-                    System State · حال النظام
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                    {[
-                      { label: "Agents", value: status.agents?.total, arabic: "وكلاء" },
-                      { label: "Active", value: status.agents?.active, arabic: "نشط" },
-                      { label: "Sessions", value: status.sessions, arabic: "جلسات" },
-                      { label: "Connections", value: status.connections, arabic: "اتصالات" },
-                    ].map(s => (
-                      <div key={s.label} className="stat" style={{ padding: 12 }}>
-                        <span style={{ fontFamily: "Georgia", fontSize: 20, color: "var(--gold)", display: "block" }}>
-                          {s.arabic}
-                        </span>
-                        <span className="stat-value" style={{ fontSize: 20 }}>{s.value ?? "—"}</span>
-                        <span className="stat-label">{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        );
-      
+
       case "channels":
         return <ChannelsPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "skills":
         return <SkillsPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "security":
         return <SecurityPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "automation":
         return <AutomationPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "notebooks":
         return <NotebookPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "scanner":
         return <ScannerPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "majlis":
         return <MajlisPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "plugins":
         return <PluginsPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "providers":
         return <ProvidersPage api={api} addTerminalLine={addTerminalLine} />;
-
       case "developer":
         return <DeveloperPage api={api} />;
-
       case "integrations":
         return (
-          <>
-            <div className="panel-header">
-              <div className="panel-title">Integrations · تكاملات</div>
-              <button className="btn primary" onClick={() => setShowIntegration(true)}>
-                <Icons.Plus /> Add Integration
-              </button>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+              <div>
+                <h2 className="page-title">Integrations</h2>
+                <p className="page-description">Connect external services and APIs</p>
+              </div>
             </div>
-            <div style={{ padding: 16, overflow: "auto", flex: 1 }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {integrations.length === 0 && (
-                <div className="empty-state">
-                  <div className="empty-arabic">وصل</div>
-                  <div className="empty-text">No integrations configured</div>
-                  <div className="empty-sub">Connect AI providers, MCP servers, webhooks</div>
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                  <Icons.Globe />
+                  <p className="mt-3 font-medium">No integrations configured</p>
+                  <p className="text-sm mt-1">Use the Providers page to connect AI models, or Channels for messaging platforms.</p>
                 </div>
               )}
               {integrations.map(int => (
-                <div key={int.id} className="memory-item">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="memory-type-badge type-semantic">{int.type}</span>
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "var(--text-primary)" }}>{int.name}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 10, color: int.enabled ? "var(--emerald)" : "var(--ruby)" }}>
-                      {int.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <button className="btn danger" onClick={async () => {
-                      await fetch(`${API_URL}/integrations/${int.id}`, { method: "DELETE" });
+                <div key={int.id} className="card flex items-center gap-3">
+                  <span className={`badge ${int.enabled ? "badge-success" : "badge-error"}`}>{int.type}</span>
+                  <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{int.name}</span>
+                  <span className={`ml-auto text-xs ${int.enabled ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                    {int.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                  <button
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                    onClick={async () => {
+                      await fetch(`${config.API_URL}/integrations/${int.id}`, { method: "DELETE" });
                       loadIntegrations();
-                    }} style={{ padding: "3px 6px" }}>
-                      <Icons.Trash />
-                    </button>
-                  </div>
+                    }}
+                  >
+                    <Icons.Trash />
+                  </button>
                 </div>
               ))}
             </div>
-          </>
+          </div>
         );
-      
+
       default:
         return null;
     }
   };
-  
+
   return (
-    <>
-      <style>{styles}</style>
-      <GeometricBackground />
-      
+    <div className="h-screen flex flex-col overflow-hidden bg-gray-50 dark:bg-zinc-950 text-gray-900 dark:text-gray-100">
+      {/* Connection banner */}
+      <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
+
       {/* Header */}
-      <div className="header">
-        <div className="logo">
-          <svg className="logo-symbol" viewBox="0 0 36 36">
-            <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(201,162,39,0.3)" strokeWidth="1"/>
-            <polygon points="18,4 22,14 34,14 24,21 27,32 18,26 9,32 12,21 2,14 14,14" fill="none" stroke="#c9a227" strokeWidth="1.5"/>
-            <circle cx="18" cy="18" r="4" fill="rgba(201,162,39,0.2)" stroke="#c9a227" strokeWidth="1"/>
-          </svg>
-          <div className="logo-text">
-            <div className="logo-arabic">ميزان</div>
-            <div className="logo-latin">MIZAN · AGI SYSTEM</div>
+      <header className="flex items-center gap-4 px-4 py-2.5 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 z-50 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="text-2xl leading-none select-none text-mizan-gold" style={{ fontFamily: "Georgia, serif" }}>&#1605;&#1610;&#1586;&#1575;&#1606;</div>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 tracking-wide">MIZAN</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 tracking-widest">v3.0</span>
           </div>
         </div>
-        
-        <div className="header-verse">
-          "And the heaven He raised and imposed the balance (Mizan)" — Quran 55:7
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+            <div className={`w-2 h-2 rounded-full ${statusDot}`} />
+            <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{statusLabel}</span>
+          </div>
+          {agents.length > 0 && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+              {agents.length} agent{agents.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          <ThemeToggle />
         </div>
-        
-        <div className="header-status">
-          <div className="status-pill">
-            <div className={`status-dot ${wsStatus !== "connected" ? "style" : ""}`} 
-                 style={{ background: wsStatus === "connected" ? "var(--emerald)" : "var(--ruby)" }}/>
-            {wsStatus === "connected" ? "ONLINE" : "OFFLINE"}
-          </div>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>
-            {agents.length} وكيل
-          </div>
-        </div>
-      </div>
-      
-      {/* Stats bar */}
-      {status && (
-        <div className="stats-bar">
-          <div className="stat-chip">
-            <Icons.Agent />
-            Agents: <span className="stat-chip-value">{status.agents?.total}</span>
-          </div>
-          <div className="stat-chip">
-            <Icons.Zap />
-            Active: <span className="stat-chip-value">{status.agents?.active}</span>
-          </div>
-          <div className="stat-chip">
-            <Icons.Scale />
-            Layer: <span className="stat-chip-value">Mizan v2.0</span>
-          </div>
-        </div>
-      )}
-      
+      </header>
+
       {/* Main layout */}
-      <div className="main-layout">
+      <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <div className="sidebar">
-          <div className="nav-section">
-            <div className="nav-section-label">Core · جوهر</div>
-            {[
-              { id: "agents", label: "Agents", arabic: "وكلاء", icon: <Icons.Agent /> },
-              { id: "chat", label: "Chat", arabic: "محادثة", icon: <Icons.Chat /> },
-              { id: "terminal", label: "Tasks", arabic: "مهام", icon: <Icons.Terminal /> },
-            ].map(item => (
-              <div
-                key={item.id}
-                className={`nav-item ${activeTab === item.id ? "active" : ""}`}
-                onClick={() => setActiveTab(item.id)}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                <span className="nav-item-arabic">{item.arabic}</span>
-              </div>
-            ))}
-          </div>
-          
-          <div className="nav-section">
-            <div className="nav-section-label">Knowledge · علم</div>
-            {[
-              { id: "memory", label: "Memory", arabic: "ذاكرة", icon: <Icons.Memory /> },
-              { id: "notebooks", label: "Notebooks", arabic: "كتاب", icon: <Icons.Notebook /> },
-              { id: "scanner", label: "Scanner", arabic: "رقيب", icon: <Icons.Scanner /> },
-              { id: "majlis", label: "Majlis", arabic: "مجلس", icon: <Icons.Majlis /> },
-              { id: "plugins", label: "Plugins", arabic: "وحي", icon: <Icons.Plugin /> },
-              { id: "skills", label: "Skills", arabic: "حكمة", icon: <Icons.Skill /> },
-              { id: "architecture", label: "Architecture", arabic: "هندسة", icon: <Icons.Brain /> },
-            ].map(item => (
-              <div
-                key={item.id}
-                className={`nav-item ${activeTab === item.id ? "active" : ""}`}
-                onClick={() => setActiveTab(item.id)}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                <span className="nav-item-arabic">{item.arabic}</span>
+        <nav className="w-56 shrink-0 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col overflow-y-auto">
+          <div className="flex-1 py-2">
+            {navSections.map(section => (
+              <div key={section.label} className="px-2 mb-1">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 py-2">
+                  {section.label}
+                </div>
+                {section.items.map(item => (
+                  <button
+                    key={item.id}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors mb-0.5 ${
+                      activeTab === item.id
+                        ? "bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-900 dark:hover:text-gray-200 border border-transparent"
+                    }`}
+                    onClick={() => setActiveTab(item.id)}
+                    title={item.desc}
+                  >
+                    <span className="shrink-0">{item.icon}</span>
+                    <span className="text-sm">{item.label}</span>
+                  </button>
+                ))}
               </div>
             ))}
           </div>
 
-          <div className="nav-section">
-            <div className="nav-section-label">System · نظام</div>
-            {[
-              { id: "providers", label: "Providers", arabic: "روح", icon: <Icons.Zap /> },
-              { id: "channels", label: "Channels", arabic: "أبواب", icon: <Icons.Channel /> },
-              { id: "automation", label: "Automation", arabic: "قدر", icon: <Icons.Clock /> },
-              { id: "security", label: "Security", arabic: "ولي", icon: <Icons.Shield /> },
-              { id: "integrations", label: "Integrations", arabic: "وصل", icon: <Icons.Globe /> },
-              { id: "developer", label: "Developer", arabic: "مطور", icon: <Icons.Terminal /> },
-              { id: "settings", label: "Settings", arabic: "إعدادات", icon: <Icons.Settings /> },
-            ].map(item => (
-              <div
-                key={item.id}
-                className={`nav-item ${activeTab === item.id ? "active" : ""}`}
-                onClick={() => setActiveTab(item.id)}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                <span className="nav-item-arabic">{item.arabic}</span>
-              </div>
-            ))}
-          </div>
-          
-          {/* Selected agent info */}
           {selectedAgent && (
-            <div style={{ marginTop: "auto", padding: "12px 12px 8px", borderTop: "1px solid rgba(30,58,85,0.5)" }}>
-              <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "var(--text-muted)", textTransform: "uppercase", fontFamily: "var(--font-display)", marginBottom: 6 }}>
-                Active Agent
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontFamily: "Georgia", fontSize: 18, color: "var(--gold)" }}>
-                  {AGENT_ROLE_ICONS[selectedAgent.role]?.[0] || "و"}
+            <div className="px-3 py-3 border-t border-gray-200 dark:border-zinc-800">
+              <div className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">Active Agent</div>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-mizan-gold text-xs font-semibold">
+                  {selectedAgent.name[0]?.toUpperCase()}
                 </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
-                    {selectedAgent.name}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                    {NAFS_LEVELS[selectedAgent.nafs_level]?.name} · {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{selectedAgent.name}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+                    Level {selectedAgent.nafs_level} — {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
                   </div>
                 </div>
               </div>
             </div>
           )}
-        </div>
-        
+        </nav>
+
         {/* Content */}
-        <div className="content">
+        <main className="flex-1 overflow-hidden flex flex-col bg-gray-50 dark:bg-zinc-950">
           {renderContent()}
-        </div>
+        </main>
       </div>
-      
+
       {/* Create Agent Modal */}
       {showCreateAgent && (
-        <div className="modal-overlay" onClick={() => setShowCreateAgent(false)}>
+        <div className="modal-backdrop" onClick={() => setShowCreateAgent(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">
-              <span style={{ fontFamily: "Georgia", fontSize: 22, color: "var(--gold)" }}>وكيل</span>
-              Create New Agent
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5">Create New Agent</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Agent Name</label>
+                <input className="input w-full" placeholder="e.g., Research Assistant, Code Helper..."
+                  value={newAgent.name} onChange={e => setNewAgent({...newAgent, name: e.target.value})}/>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Agent Type</label>
+                <select className="input w-full" value={newAgent.type}
+                  onChange={e => setNewAgent({...newAgent, type: e.target.value})}>
+                  <option value="general">General Purpose</option>
+                  <option value="browser">Browser / Web Research</option>
+                  <option value="research">Deep Research</option>
+                  <option value="code">Code Generation</option>
+                  <option value="communication">Communication</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">AI Model</label>
+                <select className="input w-full" value={newAgent.model}
+                  onChange={e => setNewAgent({...newAgent, model: e.target.value})}>
+                  <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="ollama/llama3">Ollama Llama 3</option>
+                </select>
+              </div>
             </div>
-            
-            <div className="form-group">
-              <label className="form-label">Agent Name · اسم</label>
-              <input className="form-input" placeholder="e.g., Al-Hafiz, Al-Mundhir..."
-                value={newAgent.name} onChange={e => setNewAgent({...newAgent, name: e.target.value})}/>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Agent Type · نوع</label>
-              <select className="form-select" value={newAgent.type}
-                onChange={e => setNewAgent({...newAgent, type: e.target.value})}>
-                <option value="general">General (وكيل)</option>
-                <option value="browser">Browser / Mubashir (مبشر)</option>
-                <option value="research">Research / Mundhir (منذر)</option>
-                <option value="code">Code / Katib (كاتب)</option>
-                <option value="communication">Communication / Rasul (رسول)</option>
-              </select>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">AI Model · نموذج</label>
-              <select className="form-select" value={newAgent.model}
-                onChange={e => setNewAgent({...newAgent, model: e.target.value})}>
-                <option value="claude-opus-4-6">Claude Opus 4.6</option>
-                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="ollama/llama3">Ollama Llama 3</option>
-              </select>
-            </div>
-            
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setShowCreateAgent(false)}>Cancel</button>
-              <button className="btn primary" onClick={createAgent} disabled={!newAgent.name}>
-                Create Agent
-              </button>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button className="btn-secondary" onClick={() => setShowCreateAgent(false)}>Cancel</button>
+              <button className="btn-gold" onClick={createAgent} disabled={!newAgent.name}>Create Agent</button>
             </div>
           </div>
         </div>
       )}
-      
-      {/* Add Integration Modal */}
-      {showIntegration && (
-        <div className="modal-overlay" onClick={() => setShowIntegration(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">
-              <Icons.Globe /> Add Integration
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Name</label>
-              <input className="form-input" placeholder="Integration name"
-                value={newIntegration.name}
-                onChange={e => setNewIntegration({...newIntegration, name: e.target.value})}/>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Type</label>
-              <select className="form-select" value={newIntegration.type}
-                onChange={e => setNewIntegration({...newIntegration, type: e.target.value})}>
-                <option value="anthropic">Anthropic Claude</option>
-                <option value="openai">OpenAI</option>
-                <option value="ollama">Ollama (Local)</option>
-                <option value="mcp">MCP Server</option>
-                <option value="webhook">Webhook</option>
-                <option value="email">Email (IMAP/SMTP)</option>
-                <option value="custom">Custom API</option>
-              </select>
-            </div>
-            
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setShowIntegration(false)}>Cancel</button>
-              <button className="btn primary" onClick={addIntegration}>Add</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
+  );
+}
+
+// ===== APP ROOT (with providers) =====
+export default function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
   );
 }
