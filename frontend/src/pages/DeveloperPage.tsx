@@ -88,7 +88,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
 
   const fetchVersion = async () => {
     try {
-      const data = await api.get("/version") as VersionInfo;
+      const data = await api.get("/version") as unknown as VersionInfo;
       setVersionInfo(data);
     } catch { /* ignore */ }
   };
@@ -96,7 +96,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   const checkForUpdates = async () => {
     setCheckingUpdate(true);
     try {
-      const data = await api.get("/version") as VersionInfo;
+      const data = await api.get("/version") as unknown as VersionInfo;
       setVersionInfo(data);
     } catch { /* ignore */ }
     setCheckingUpdate(false);

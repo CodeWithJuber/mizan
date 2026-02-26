@@ -7,5 +7,19 @@ MIZAN Automation (Qadr - قَدَر — Predestination/Scheduling)
 Scheduled tasks, event triggers, and proactive behavior.
 """
 
-from .qadr import QadrScheduler, ScheduledJob
-from .triggers import WebhookTrigger
+from .qadr import QadrScheduler, ScheduledJob, HeartbeatScheduler, HeartbeatEntry
+from .triggers import WebhookTrigger, TriggerManager
+from .webhooks import WebhookManager
+
+__all__ = [
+    # Scheduling
+    "QadrScheduler",
+    "ScheduledJob",
+    "HeartbeatScheduler",
+    "HeartbeatEntry",
+    # Triggers
+    "WebhookTrigger",
+    "TriggerManager",
+    # Webhooks
+    "WebhookManager",
+]

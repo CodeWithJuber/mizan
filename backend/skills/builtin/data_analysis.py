@@ -100,3 +100,29 @@ class DataAnalysisSkill(SkillBase):
                 return {"type": type(parsed).__name__, "value": str(parsed)[:500]}
         except Exception as e:
             return {"error": str(e)}
+
+    def get_tool_schemas(self) -> List[Dict]:
+        return [
+            {
+                "name": "analyze_csv",
+                "description": "Analyze CSV data and return basic statistics (row count, columns, numeric stats)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "string", "description": "CSV data as a string"},
+                    },
+                    "required": ["data"],
+                },
+            },
+            {
+                "name": "analyze_json",
+                "description": "Analyze JSON data structure and return type info and samples",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "string", "description": "JSON data as a string"},
+                    },
+                    "required": ["data"],
+                },
+            },
+        ]
