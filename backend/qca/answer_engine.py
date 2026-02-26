@@ -16,7 +16,7 @@ import time
 import logging
 from typing import Any, Dict, List, Optional
 
-from backend.qca.engine import (
+from qca.engine import (
     QCAEngine,
     DualInputProcessor,
     ISMLayer,
