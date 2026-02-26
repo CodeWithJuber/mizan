@@ -80,7 +80,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/CodeWithJuber/mizan"
-Documentation = "https://github.com/CodeWithJuber/mizan#readme"
+Documentation = "https://github.com/CodeWithJuber/mizan/tree/main/docs"
 Repository = "https://github.com/CodeWithJuber/mizan"
 Issues = "https://github.com/CodeWithJuber/mizan/issues"
 

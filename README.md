@@ -1,17 +1,17 @@
 <div align="center">
 
-# ميزان · MIZAN
+# MIZAN
 
-### Agentic Personal AI
+### Your Personal AI That Grows With You
 
-**Production-ready, self-improving AI assistant with Quranic Cognitive Architecture**
+**An open-source, plugin-powered AI assistant that anyone can extend**
 
 [![CI](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/mizan.svg)](https://pypi.org/project/mizan/)
 
-[Quick Start](#quick-start) · [Features](#features) · [Architecture](#architecture) · [API Docs](#api-reference) · [Contributing](CONTRIBUTING.md)
+[Install in 1 Minute](#install-in-1-minute) · [What Can It Do?](#what-can-it-do) · [Build a Plugin](#build-a-plugin-in-5-minutes) · [Docs](docs/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -19,265 +19,270 @@
 
 ## What is MIZAN?
 
-MIZAN is an **agentic personal AI** that goes beyond simple chatbots. It features:
+MIZAN is a **personal AI assistant** you can run on your own computer. Unlike ChatGPT or other cloud services:
 
-- **Multi-turn agentic loop** — agents autonomously plan, use tools, observe results, and iterate up to 15 turns per task
-- **Multi-agent orchestration** — specialized agents (Browser, Researcher, Coder, Communicator) collaborate via Shura consensus
-- **Persistent memory** — three-tier memory system with importance-based decay and automatic consolidation
-- **Self-improvement** — agents learn from every task, evolve performance tiers, and extract reusable patterns
-- **Production security** — JWT auth, rate limiting, command sandboxing, SSRF prevention, and audit logging
-- **Easy to install** — `pip install mizan` and you're running
+- **You own your data** — everything runs locally or on your server
+- **It can DO things** — browse the web, run code, manage files, send messages
+- **It learns from you** — remembers your preferences and past conversations
+- **Anyone can extend it** — add new abilities with simple plugins
+- **Works with any AI** — Anthropic Claude, OpenAI, OpenRouter (300+ models), or local Ollama
 
-> *"And the heaven He raised and imposed the balance (Mizan), that you not transgress within the balance."* — Quran 55:7-8
+> Think of it as your personal AI employee that can use tools, remember things, and get better over time.
 
 ---
 
-## Quick Start
+## Install in 1 Minute
 
-### One-Liner (macOS / Linux)
+### Mac / Linux (recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
 ```
 
-Works everywhere. Installs Python and everything else for you.
-On macOS, first run may need an Administrator for Homebrew.
-
-### One-Liner (Windows PowerShell)
+### Windows (PowerShell)
 
 ```powershell
 irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex
 ```
 
-### Hackable Git Install (macOS / Linux)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method git
-```
-
-### Docker Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method docker
-```
-
-Or on Windows PowerShell:
-
-```powershell
-$env:MIZAN_METHOD="docker"; irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex
-```
-
-### pip Install
+### Using pip
 
 ```bash
 pip install mizan
-mizan setup      # First-time config
-mizan chat       # Chat in terminal
-mizan serve      # Start API server
+mizan setup      # First-time config (adds your API key)
+mizan chat       # Start chatting
+mizan serve      # Start the web UI
 ```
 
-### Manual Git Clone & Build
+### Using Docker
 
 ```bash
-git clone https://github.com/CodeWithJuber/mizan.git
-cd mizan && make setup
-# Edit .env with your ANTHROPIC_API_KEY
-make dev
+git clone https://github.com/CodeWithJuber/mizan.git && cd mizan
+cp .env.example .env      # Edit .env with your API key
+docker compose up -d       # Start everything
+# Open http://localhost:3000
+```
+
+### From Source (for developers)
+
+```bash
+git clone https://github.com/CodeWithJuber/mizan.git && cd mizan
+make setup                 # Install dependencies
+# Edit .env with your API key
+make dev                   # Start backend + frontend
 # Frontend: http://localhost:3000 — API: http://localhost:8000/docs
 ```
 
-### Docker Compose (Manual)
-
-```bash
-git clone https://github.com/CodeWithJuber/mizan.git
-cd mizan
-cp .env.example .env
-# Edit .env with your API key
-
-docker compose up -d
-
-# With local Ollama + vector database:
-docker compose --profile ollama --profile vector up -d
-```
-
-### Requirements
+### What You Need
 
 - **Python 3.11+** (auto-installed by the one-liner)
-- **At least one API key**: Anthropic (recommended), OpenAI, or local Ollama
-- Node.js 20+ (for frontend only, auto-installed by git method)
+- **At least one AI API key**: [Anthropic](https://console.anthropic.com/) (best), [OpenRouter](https://openrouter.ai/) (300+ models), [OpenAI](https://platform.openai.com/), or [Ollama](https://ollama.ai/) (free, local)
+- Node.js 20+ (only for frontend development, auto-installed)
 
 ---
 
-## Features
+## What Can It Do?
 
-### Agentic AI Core
+### For Everyone
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-turn tool loop** | Agents call tools, observe results, reason, and repeat — up to 15 autonomous iterations per task |
-| **7 agent types** | Hafiz (General), Mubashir (Browser), Mundhir (Research), Katib (Code), Rasul (Communication), + custom |
-| **Shura consensus** | Multi-agent consultation with confidence-weighted voting for complex decisions |
-| **Nafs evolution** | Agents grow: Ammara (raw) → Lawwama (self-correcting) → Mutmainna (perfected) |
-| **Hikmah learning** | Pattern extraction after every task, applied to future similar tasks |
+| Feature | What It Means |
+|---------|---------------|
+| **Chat** | Talk to your AI in the browser or terminal |
+| **Browse the web** | AI can search Google, read websites, extract information |
+| **Run code** | AI writes and executes Python, bash scripts |
+| **Manage files** | Read, write, organize files on your computer |
+| **Remember things** | Remembers your conversations and preferences |
+| **Multiple AI models** | Switch between Claude, GPT-4, Gemini, Llama, and 300+ others |
+| **Scheduled tasks** | Set up automated tasks that run on a schedule |
+| **Multiple channels** | Connect via Web, Telegram, Discord, Slack, WhatsApp |
 
-### Tools Available to Agents
+### For Developers
 
-| Tool | Capability |
-|------|-----------|
-| `bash` | Shell command execution (sandboxed) |
-| `http_get/post` | HTTP requests with SSRF prevention |
-| `read_file/write_file` | File operations (sandboxed paths) |
-| `python_exec` | Python code execution (subprocess isolated) |
-| `list_files` | Directory listing |
-| `browse_url` | Web content retrieval |
-| `search_web` | DuckDuckGo search |
-| `git_operation` | Git commands |
+| Feature | What It Means |
+|---------|---------------|
+| **Plugin system** | Add new abilities with a simple Python file |
+| **Event bus** | Modules communicate without knowing about each other |
+| **Hook system** | Modify any data flowing through the system |
+| **Middleware pipeline** | Intercept and process requests/responses |
+| **REST + WebSocket API** | Full API for building custom integrations |
+| **Multi-agent system** | Multiple AI agents collaborate on complex tasks |
+| **Security built-in** | JWT auth, rate limiting, sandboxing, audit logs |
 
-### Memory System (Dhikr)
+---
 
-Three-tier persistent memory inspired by Quranic epistemology:
+## Build a Plugin in 5 Minutes
 
-- **Episodic (Qisas)** — Event memories with temporal context
-- **Semantic (Ilm)** — Knowledge facts and relationships
-- **Procedural (Sunnah)** — Skills, patterns, and learned behaviors
-- **Auto-consolidation** — Low-importance memories decay; frequently accessed ones strengthen
-- **Working memory** — 7-item capacity (Miller's Law meets Quranic 7 heavens)
+MIZAN is **fully decoupled** — you can add any new feature without touching core code. Here's how:
 
-### QCA Cognitive Pipeline
-
-The **Quranic Cognitive Architecture** processes every input through 7 layers:
+### Step 1: Create a folder
 
 ```
-Input → Sam' (Sequential) + Basar (Structural) + Fu'ad (Integration)
-     → ISM (Root-Space Semantics)
-     → Mizan (Epistemic Weighting — prevents overclaiming)
-     → 'Aql (Typed Relationship Binding — 8 relationship types)
-     → Lawh (4-Tier Memory — Immutable/Verified/Active/Conjecture)
-     → Furqan + Bayan (Discrimination + Articulation)
+plugins/
+└── my_plugin/
+    ├── plugin.json    ← Describes your plugin
+    └── main.py        ← Your plugin code
 ```
 
-### Security
+### Step 2: Describe your plugin
 
-- **JWT authentication** with API key support
-- **Rate limiting** (60 req/min per IP)
-- **Command sandboxing** — blocks `rm -rf`, `sudo`, `eval`, etc.
-- **Path sandboxing** — agents can only write to allowed directories
-- **SSRF prevention** — blocks requests to internal IPs
-- **Input validation** — max 50KB, whitelist patterns
-- **Audit logging** — every action is logged with severity levels
+**plugins/my_plugin/plugin.json**
+```json
+{
+    "name": "my_plugin",
+    "version": "1.0.0",
+    "description": "What your plugin does",
+    "author": "Your Name",
+    "permissions": [],
+    "tags": ["example"],
+    "enabled": true
+}
+```
 
-### Integrations
+### Step 3: Write your code
 
-| Provider | Status |
-|----------|--------|
-| Anthropic Claude (all models) | Full support |
-| OpenAI GPT-4o | Supported |
-| Ollama (local models) | Supported |
-| Telegram | Channel adapter |
-| Discord | Channel adapter |
-| Slack | Channel adapter |
-| WhatsApp | Channel adapter |
-| Email (IMAP/SMTP) | Supported |
-| Webhooks | Trigger system |
-| MCP Servers | Integration layer |
+**plugins/my_plugin/main.py**
+```python
+from core.plugins import PluginBase
+
+class Plugin(PluginBase):
+    async def on_load(self):
+        # Give agents a new tool
+        self.add_tool("weather", self.get_weather, {
+            "name": "weather",
+            "description": "Get weather for a city",
+            "input_schema": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"]
+            }
+        })
+
+        # React to events
+        self.on_event("task.completed", self.on_task_done)
+
+    async def on_unload(self):
+        pass  # Cleanup is automatic
+
+    async def get_weather(self, city: str):
+        return {"city": city, "temp": 22, "condition": "sunny"}
+
+    async def on_task_done(self, data):
+        print(f"Task completed: {data}")
+```
+
+### Step 4: Restart MIZAN
+
+Your plugin loads automatically. The agent can now use the "weather" tool!
+
+### What Your Plugin Can Do
+
+| Capability | How | Example |
+|-----------|-----|---------|
+| **Add tools** | `self.add_tool(name, handler, schema)` | Give agents new abilities |
+| **Listen to events** | `self.on_event(name, handler)` | React when things happen |
+| **Modify data** | `self.add_hook(name, handler)` | Change prompts, responses, etc. |
+| **Emit events** | `await self.emit(name, data)` | Tell other parts something happened |
+
+See the [Plugin Development Guide](docs/) for the full reference.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    MIZAN Architecture                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─── Frontend ────┐  ┌──── CLI ────┐  ┌─── Channels ──┐  │
-│  │ React + Tailwind│  │ mizan chat  │  │ Telegram/Slack │  │
-│  │ WebSocket       │  │ mizan serve │  │ Discord/WA     │  │
-│  └────────┬────────┘  └──────┬──────┘  └───────┬────────┘  │
-│           │                  │                  │           │
-│  ┌────────▼──────────────────▼──────────────────▼────────┐  │
-│  │              FastAPI Gateway (Bab)                     │  │
-│  │    REST API + WebSocket + Auth + Rate Limiting         │  │
-│  └────────────────────────┬──────────────────────────────┘  │
-│                           │                                 │
-│  ┌────────────────────────▼──────────────────────────────┐  │
-│  │              Agent System                              │  │
-│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │  │
-│  │  │ Hafiz   │ │Mubashir │ │ Mundhir │ │  Katib  │    │  │
-│  │  │ General │ │ Browser │ │Research │ │  Code   │    │  │
-│  │  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘    │  │
-│  │       └──────┬────┘───────────┘────────────┘         │  │
-│  │              │                                        │  │
-│  │  ┌───────────▼──────────────────────────────────┐    │  │
-│  │  │  Agentic Loop (ReAct)                        │    │  │
-│  │  │  Think → Tool Use → Observe → Think → ...    │    │  │
-│  │  │  Up to 15 autonomous iterations              │    │  │
-│  │  └──────────────────────────────────────────────┘    │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                           │                                 │
-│  ┌────────────────────────▼──────────────────────────────┐  │
-│  │              QCA Engine (7-Layer Pipeline)             │  │
-│  │  Sam'→Basar→Fu'ad→ISM→Mizan→'Aql→Lawh→Furqan        │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                           │                                 │
-│  ┌──────────┬─────────────▼────────────┬─────────────────┐  │
-│  │ Memory   │   Security (Wali)       │ Skills Registry  │  │
-│  │ (Dhikr)  │   JWT + Rate Limit      │ Extensible       │  │
-│  │ SQLite   │   Sandboxing + Audit    │ Plugin System    │  │
-│  └──────────┴──────────────────────────┴─────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        MIZAN Architecture                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   YOU (Browser/Terminal/Telegram/Discord/Slack/WhatsApp)          │
+│    │                                                             │
+│    ▼                                                             │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │             Gateway (REST API + WebSocket)                │   │
+│   │    Auth · Rate Limiting · Input Validation · CORS        │   │
+│   └────────────────────────┬─────────────────────────────────┘   │
+│                            │                                     │
+│   ┌────────────────────────▼─────────────────────────────────┐   │
+│   │                  Plugin System                            │   │
+│   │   Events (Nida') · Hooks (Ta'liq) · Middleware (Silsilah) │   │
+│   │   Any plugin can listen, modify, or extend               │   │
+│   └────────────────────────┬─────────────────────────────────┘   │
+│                            │                                     │
+│   ┌────────────────────────▼─────────────────────────────────┐   │
+│   │              Agent System (Multi-Agent)                   │   │
+│   │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌────────┐         │   │
+│   │  │ Hafiz  │ │ Mubashir │ │ Mundhir │ │ Katib  │  + Any  │   │
+│   │  │General │ │ Browser  │ │Research │ │  Code  │  Custom  │   │
+│   │  └───┬────┘ └────┬─────┘ └────┬────┘ └───┬────┘         │   │
+│   │      └──────┬────┘────────────┘───────────┘              │   │
+│   │             ▼                                            │   │
+│   │  ┌──────────────────────────────────────────────┐        │   │
+│   │  │  Agentic Loop (Think → Use Tools → Repeat)   │        │   │
+│   │  │  Up to 15 autonomous iterations per task     │        │   │
+│   │  └──────────────────────────────────────────────┘        │   │
+│   └──────────────────────────────────────────────────────────┘   │
+│                            │                                     │
+│   ┌───────────┬────────────▼──────────┬──────────────────────┐   │
+│   │  Memory   │  LLM Providers        │  Skills & Tools      │   │
+│   │  SQLite   │  Claude/GPT/Gemini/   │  Web Browse, Code,   │   │
+│   │  3-tier   │  Llama/300+ models    │  File, HTTP + Custom │   │
+│   └───────────┴───────────────────────┴──────────────────────┘   │
+│                                                                  │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │              Security Layer (Wali Guardian)               │   │
+│   │   JWT Auth · Rate Limit · Sandbox · SSRF Block · Audit   │   │
+│   └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### The Seven-Layer Architecture (سبع سماوات)
-
-| # | Arabic | Latin | Quranic Basis | Function |
-|---|--------|-------|---------------|----------|
-| 1 | سمع | **SAMA'** | "He created hearing" (67:23) | Perception & Input |
-| 2 | فكر | **FIKR** | "Do they not think?" (88:17) | Cognitive Processing |
-| 3 | ذكر | **DHIKR** | "Quran easy for remembrance" (54:17) | Memory & Storage |
-| 4 | عقل | **AQL** | "For people of reason" (3:190) | Logic & Reasoning |
-| 5 | حكمة | **HIKMAH** | "He gives wisdom to whom He wills" (2:269) | Wisdom & Meta-learning |
-| 6 | عمل | **AMAL** | "And do righteous deeds" (18:30) | Action & Execution |
-| 7 | تفكر | **TAFAKKUR** | "Those who reflect on the creation" (3:191) | Self-Improvement |
-
-### Agent Roles
-
-| Role | Arabic | Function |
-|------|--------|----------|
-| **Wakil** | وكيل | General executor / trustee |
-| **Mubashir** | مبشر | Browser & discovery |
-| **Mundhir** | منذر | Research & analysis |
-| **Katib** | كاتب | Code generation |
-| **Rasul** | رسول | Communication |
-| **Hafiz** | حافظ | Memory preservation |
-| **Shahid** | شاهد | Monitoring & audit |
-
-### Project Structure
+### How Everything Connects (No Coupling!)
 
 ```
-mizan/
-├── backend/
-│   ├── api/main.py          # FastAPI server + WebSocket
-│   ├── agents/
-│   │   ├── base.py          # Base agent with agentic loop
-│   │   └── specialized.py   # Browser, Research, Code agents
-│   ├── memory/dhikr.py      # Three-tier memory system
-│   ├── qca/engine.py        # 7-layer cognitive pipeline
-│   ├── security/            # Auth, permissions, validation
-│   ├── skills/              # Extensible skill registry
-│   ├── automation/          # Cron scheduler + triggers
-│   ├── gateway/             # Multi-channel adapters
-│   ├── settings.py          # Centralized configuration
-│   └── cli.py               # CLI interface
-├── frontend/src/            # React + Tailwind UI
-├── tests/                   # Comprehensive test suite
-├── docker/                  # Docker configurations
-├── .github/                 # CI/CD + issue templates
-├── pyproject.toml           # Python package config
-├── Makefile                 # Development commands
-├── docker-compose.yml       # Full-stack deployment
-└── CONTRIBUTING.md          # Contributor guide
+Plugin A ──────►  Event Bus  ◄────── Plugin B
+                    │
+                    │ (events flow freely)
+                    │
+Agent ────────►  Hook Chain  ◄────── Plugin C
+                    │
+                    │ (data gets modified)
+                    │
+API Request ──►  Middleware  ──────► Handler
 ```
+
+**Modules don't import each other.** They communicate through:
+- **Events** — "Something happened" (fire and forget)
+- **Hooks** — "Modify this data" (transformation chain)
+- **Middleware** — "Process this request" (pipeline)
+
+---
+
+## Extensibility Points
+
+MIZAN has **5 ways** to extend it, from easiest to most powerful:
+
+### 1. Plugins (Easiest)
+
+Create a folder in `plugins/` with `plugin.json` + `main.py`. Plugins can:
+- Add new tools for agents
+- Listen to events
+- Modify data with hooks
+- Hot-reload without restart
+
+### 2. Skills
+
+Skills are built-in capabilities that agents can use. See `backend/skills/builtin/` for examples.
+
+### 3. Channel Adapters
+
+Connect MIZAN to new platforms (Telegram, Discord, etc.). See `backend/gateway/channels/base.py`.
+
+### 4. LLM Providers
+
+Add new AI model providers. See `backend/providers.py` for the unified interface.
+
+### 5. Custom Agents
+
+Create specialized agents with unique capabilities. See `backend/agents/specialized.py`.
 
 ---
 
@@ -285,45 +290,63 @@ mizan/
 
 ### Agents
 ```
-GET  /api/agents           List all agents
-POST /api/agents           Create agent
-GET  /api/agents/{id}      Get agent details
-DEL  /api/agents/{id}      Delete agent
+GET  /api/agents              List all agents
+POST /api/agents              Create a new agent
+GET  /api/agents/{id}         Get agent details
+DEL  /api/agents/{id}         Delete an agent
 ```
 
-### Tasks
+### Chat & Tasks
 ```
-POST /api/tasks            Execute task (single or parallel)
-GET  /api/tasks/history    Get task history
-```
-
-### Chat
-```
-POST /api/chat             Send chat message
-GET  /api/chat/{session}   Get chat history
+POST /api/chat                Send a chat message
+GET  /api/chat/{session}      Get chat history
+POST /api/tasks               Execute a task (single or parallel)
+GET  /api/tasks/history       Get task history
 ```
 
 ### Memory
 ```
-POST /api/memory/query     Search memories
-POST /api/memory/store     Store a memory
+POST /api/memory/query        Search memories
+POST /api/memory/store        Store a memory
 POST /api/memory/consolidate  Prune old memories
 ```
 
-### System
+### Plugins & Extensibility
 ```
-GET  /api/status           System dashboard
-POST /api/shura            Multi-agent consultation
-WS   /ws/{client_id}       WebSocket connection
+GET  /api/plugins             List all plugins
+POST /api/plugins/{n}/load    Load a plugin
+POST /api/plugins/{n}/unload  Unload a plugin
+POST /api/plugins/{n}/reload  Reload a plugin
+GET  /api/plugins/tools       List tools from plugins
+GET  /api/events              List events + handlers
+GET  /api/events/history      Recent event history
+GET  /api/hooks               List hooks + handlers
+GET  /api/middleware           List middleware pipelines
+GET  /api/extensibility       Full extensibility overview
+```
+
+### Providers
+```
+GET  /api/providers           List all LLM providers
+GET  /api/providers/{n}/models  List models for a provider
+GET  /api/providers/{n}/health  Health check
+POST /api/providers/switch    Switch active provider
 ```
 
 ### Skills & Automation
 ```
-GET  /api/skills           List available skills
-POST /api/skills/install   Install a skill
-POST /api/skills/execute   Execute a skill action
-POST /api/automation/jobs  Create cron job
-POST /api/automation/webhooks  Create webhook trigger
+GET  /api/skills              List available skills
+POST /api/skills/install      Install a skill
+POST /api/skills/execute      Execute a skill action
+POST /api/automation/jobs     Create cron job
+POST /api/automation/webhooks Create webhook trigger
+```
+
+### System
+```
+GET  /api/status              System dashboard
+POST /api/shura               Multi-agent consultation
+WS   /ws/{client_id}          WebSocket connection
 ```
 
 Full interactive docs at `http://localhost:8000/docs` (Swagger UI).
@@ -345,102 +368,155 @@ mizan version          # Show version
 
 ---
 
+## LLM Providers
+
+MIZAN works with any major AI provider:
+
+| Provider | Models | Setup |
+|----------|--------|-------|
+| **Anthropic** | Claude Opus, Sonnet, Haiku | `ANTHROPIC_API_KEY=sk-ant-...` |
+| **OpenRouter** | 300+ models (Gemini, Llama, Mistral...) | `OPENROUTER_API_KEY=sk-or-...` |
+| **OpenAI** | GPT-4o, o3 | `OPENAI_API_KEY=sk-...` |
+| **Ollama** | Any local model | Install [Ollama](https://ollama.ai/) and run it |
+
+Switch providers anytime from the UI or API — no restart needed.
+
+---
+
 ## Development
 
 ```bash
-# Install dev dependencies
-make install-dev
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-cov
-
-# Lint and format
-make lint
-make format
-
-# Type checking
-make typecheck
-
-# Run all checks
-make check
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guide.
-
----
-
-## Extending MIZAN
-
-### Add a Custom Agent
-
-```python
-from agents.base import BaseAgent
-
-class HakimAgent(BaseAgent):
-    """Hakim (حكيم) - Wisdom Agent"""
-
-    TOOL_SCHEMAS = [{
-        "name": "analyze_topic",
-        "description": "Deep analysis of a topic",
-        "input_schema": {
-            "type": "object",
-            "properties": {"topic": {"type": "string"}},
-            "required": ["topic"],
-        },
-    }]
-
-    def __init__(self, **kwargs):
-        super().__init__(role="hakim", **kwargs)
-        self.tools["analyze_topic"] = self._tool_analyze
-
-    async def _tool_analyze(self, topic: str) -> dict:
-        return {"analysis": f"Deep analysis of {topic}..."}
-```
-
-### Add a Custom Skill
-
-```python
-from skills.base import BaseSkill
-
-class TranslationSkill(BaseSkill):
-    name = "translation"
-    description = "Translate text between languages"
-
-    async def execute(self, params: dict) -> dict:
-        return {"translated": "..."}
+make setup        # Install everything
+make dev          # Start backend + frontend
+make test         # Run tests
+make lint         # Lint code
+make format       # Format code
+make typecheck    # Type checking
+make check        # Run all checks (lint + typecheck + test)
+make docker       # Start with Docker
 ```
 
 ---
 
-## Unique Features
+## Project Structure
 
-### Tafakkur Self-Improvement Loop
-After every task, each agent enters a reflection cycle — classifying the task, extracting patterns (Hikmah), updating success rate, and triggering Nafs evolution.
+```
+mizan/
+├── backend/
+│   ├── api/main.py              # FastAPI server + WebSocket + all routes
+│   ├── agents/
+│   │   ├── base.py              # Base agent with agentic loop (Think → Tool → Repeat)
+│   │   ├── specialized.py       # Browser, Research, Code agents
+│   │   └── federation.py        # Agent-to-agent communication
+│   ├── core/
+│   │   ├── events.py            # Event bus — decoupled communication
+│   │   ├── hooks.py             # Hook system — data transformation
+│   │   ├── plugins.py           # Plugin manager — extend without touching core
+│   │   ├── middleware.py         # Middleware pipeline
+│   │   └── ...                  # Quranic core systems
+│   ├── providers.py             # Unified LLM provider (Claude/GPT/Ollama/300+)
+│   ├── memory/dhikr.py          # Three-tier persistent memory
+│   ├── security/                # Auth, permissions, sandboxing
+│   ├── skills/                  # Extensible skill registry
+│   │   ├── base.py              # Skill base class
+│   │   ├── registry.py          # Skill discovery & loading
+│   │   └── builtin/             # Built-in skills
+│   ├── gateway/channels/        # Telegram, Discord, Slack, WhatsApp adapters
+│   ├── automation/              # Cron scheduler + webhook triggers
+│   ├── settings.py              # Configuration (env vars)
+│   └── cli.py                   # Terminal interface
+├── frontend/src/
+│   ├── App.tsx                  # Main UI
+│   ├── pages/                   # Feature pages (Plugins, Providers, Developer, etc.)
+│   ├── hooks/                   # API & WebSocket hooks
+│   └── types.ts                 # TypeScript types
+├── plugins/                     # Your custom plugins go here!
+│   ├── hello_world/             # Example plugin
+│   └── request_logger/          # Example monitoring plugin
+├── docs/                        # Documentation site
+├── tests/                       # Test suite
+├── docker/                      # Docker configs
+├── pyproject.toml               # Python package config
+├── Makefile                     # Development commands
+└── docker-compose.yml           # Full-stack deployment
+```
 
-### Shura Multi-Agent Consensus
-All agents vote on complex decisions, weighted by confidence and Nafs level. Inspired by Quran 42:38.
+---
 
-### Epistemic Calibration (Mizan Layer)
-The QCA Mizan layer prevents agents from overclaiming certainty. Claims are weighted by evidence level (Yaqin → Zann → Shakk → Wahm) and flagged if they exceed what evidence supports (Tughyan detection).
+## Events Reference
 
-### Memory Consolidation (Nisyan Principle)
-Low-importance, old, rarely-accessed memories are automatically pruned — mirroring how the human brain forgets unused information.
+Your plugins can listen to these events:
+
+| Event | When It Fires |
+|-------|--------------|
+| `system.startup` | MIZAN starts up |
+| `system.shutdown` | MIZAN shuts down |
+| `agent.created` | New agent created |
+| `agent.deleted` | Agent deleted |
+| `task.started` | Agent begins a task |
+| `task.completed` | Task finished successfully |
+| `task.failed` | Task failed |
+| `task.tool.called` | Agent calls a tool |
+| `chat.message.received` | User sends message |
+| `chat.message.sent` | System sends response |
+| `provider.switched` | LLM provider changed |
+| `plugin.loaded` | Plugin loaded |
+| `plugin.unloaded` | Plugin unloaded |
+| `memory.stored` | Memory saved |
+| `channel.connected` | Channel connects |
+| `webhook.triggered` | Webhook fires |
+
+---
+
+## Hooks Reference
+
+Your plugins can modify data at these points:
+
+| Hook | What You Can Modify |
+|------|-------------------|
+| `agent.system_prompt` | The system prompt before LLM call |
+| `agent.messages` | Message history before LLM call |
+| `agent.response` | Agent response before returning |
+| `agent.tool.before` | Tool parameters before execution |
+| `agent.tool.after` | Tool results after execution |
+| `chat.input` | User input before processing |
+| `chat.output` | Output before sending to user |
+| `provider.before_call` | LLM parameters before API call |
+| `provider.after_call` | LLM response after API call |
+| `memory.before_store` | Memory before saving |
+| `memory.after_query` | Query results before returning |
+
+---
+
+## FAQ
+
+**Q: Do I need to pay for an API key?**
+A: You need at least one AI provider. Ollama is completely free and runs locally. Anthropic, OpenAI, and OpenRouter are paid but offer free tiers.
+
+**Q: Can I run MIZAN completely offline?**
+A: Yes! Install Ollama and use local models like Llama 3.2. No internet needed.
+
+**Q: How do I add a new AI provider?**
+A: Add your provider to `backend/providers.py` following the `BaseLLMProvider` interface. Or use OpenRouter which already supports 300+ models.
+
+**Q: Can I use this in production?**
+A: Yes. MIZAN has JWT auth, rate limiting, input validation, command sandboxing, and SSRF prevention built in.
+
+**Q: How do I connect Telegram/Discord/Slack?**
+A: Set the bot token in your `.env` file (e.g., `TELEGRAM_BOT_TOKEN=your-token`). See the Channels page in the UI.
 
 ---
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE) — Free for personal and commercial use.
 
 ---
 
 <div align="center">
 
-*"He gives wisdom (hikmah) to whom He wills, and whoever has been given wisdom has certainly been given much good."* — Quran 2:269
-
 **[Star this repo](https://github.com/CodeWithJuber/mizan)** if MIZAN helps you build something amazing.
+
+Built with care by the MIZAN community.
 
 </div>

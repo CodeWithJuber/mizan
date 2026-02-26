@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIZAN Documentation</title>
+  <meta name="description" content="MIZAN - Open-source, plugin-powered personal AI assistant. Complete documentation for users and developers.">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-code: #1a1a2e;
+      --border: #2a2a3a;
+      --text: #e4e4ef;
+      --text-dim: #8888a0;
+      --accent: #f5a623;
+      --accent-dim: #c4841c;
+      --cyan: #06b6d4;
+      --purple: #a855f7;
+      --emerald: #10b981;
+      --red: #ef4444;
+      --link: #60a5fa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 280px;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+      z-index: 100;
+    }
+    .sidebar-logo {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .sidebar-logo h1 {
+      font-size: 24px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .sidebar-logo p {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .nav-section {
+      padding: 8px 16px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+    .nav-item {
+      display: block;
+      padding: 8px 24px;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      transition: all 0.15s;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+    }
+    .nav-item:hover, .nav-item.active {
+      color: var(--accent);
+      background: rgba(245, 166, 35, 0.05);
+      border-left-color: var(--accent);
+    }
+    .main {
+      margin-left: 280px;
+      flex: 1;
+      padding: 48px;
+      max-width: 900px;
+    }
+
+    /* Content */
+    h1 { font-size: 36px; font-weight: 700; margin-bottom: 16px; color: var(--accent); }
+    h2 { font-size: 28px; font-weight: 600; margin: 48px 0 16px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 20px; font-weight: 600; margin: 32px 0 12px; color: var(--text); }
+    h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--accent); }
+    p { margin-bottom: 16px; color: var(--text-dim); }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul, ol { margin: 0 0 16px 24px; color: var(--text-dim); }
+    li { margin-bottom: 6px; }
+    strong { color: var(--text); }
+
+    code {
+      background: var(--bg-code);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    pre {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      color: var(--text);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+    }
+    th {
+      text-align: left;
+      padding: 10px 16px;
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    td {
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .callout {
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 16px 0;
+      border-left: 4px solid;
+    }
+    .callout-info { background: rgba(6, 182, 212, 0.08); border-color: var(--cyan); }
+    .callout-warn { background: rgba(245, 166, 35, 0.08); border-color: var(--accent); }
+    .callout-tip { background: rgba(16, 185, 129, 0.08); border-color: var(--emerald); }
+    .callout p { margin: 0; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+    .badge-purple { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: var(--emerald); }
+    .badge-accent { background: rgba(245, 166, 35, 0.15); color: var(--accent); }
+
+    /* Sections */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Cards */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h4 { margin-top: 0; }
+
+    /* Mobile */
+    .menu-toggle { display: none; position: fixed; top: 16px; left: 16px; z-index: 200;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 12px; color: var(--text); cursor: pointer; font-size: 20px; }
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 24px 16px; padding-top: 64px; }
+      .menu-toggle { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+<div class="layout">
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h1>MIZAN</h1>
+      <p>Documentation v3.0</p>
+    </div>
+
+    <div class="nav-section">Getting Started</div>
+    <a class="nav-item active" onclick="showSection('overview')">Overview</a>
+    <a class="nav-item" onclick="showSection('installation')">Installation</a>
+    <a class="nav-item" onclick="showSection('quickstart')">Quick Start</a>
+    <a class="nav-item" onclick="showSection('configuration')">Configuration</a>
+
+    <div class="nav-section">User Guide</div>
+    <a class="nav-item" onclick="showSection('chat')">Chat Interface</a>
+    <a class="nav-item" onclick="showSection('agents')">Agents</a>
+    <a class="nav-item" onclick="showSection('providers')">LLM Providers</a>
+    <a class="nav-item" onclick="showSection('memory')">Memory System</a>
+    <a class="nav-item" onclick="showSection('automation')">Automation</a>
+    <a class="nav-item" onclick="showSection('channels')">Channels</a>
+    <a class="nav-item" onclick="showSection('security')">Security</a>
+
+    <div class="nav-section">Developer Guide</div>
+    <a class="nav-item" onclick="showSection('plugins')">Building Plugins</a>
+    <a class="nav-item" onclick="showSection('events')">Event System</a>
+    <a class="nav-item" onclick="showSection('hooks')">Hook System</a>
+    <a class="nav-item" onclick="showSection('skills')">Custom Skills</a>
+    <a class="nav-item" onclick="showSection('custom-agents')">Custom Agents</a>
+    <a class="nav-item" onclick="showSection('custom-providers')">Custom Providers</a>
+
+    <div class="nav-section">API Reference</div>
+    <a class="nav-item" onclick="showSection('api-agents')">Agents API</a>
+    <a class="nav-item" onclick="showSection('api-chat')">Chat API</a>
+    <a class="nav-item" onclick="showSection('api-plugins')">Plugins API</a>
+    <a class="nav-item" onclick="showSection('api-system')">System API</a>
+    <a class="nav-item" onclick="showSection('api-websocket')">WebSocket</a>
+
+    <div class="nav-section">Architecture</div>
+    <a class="nav-item" onclick="showSection('architecture')">System Design</a>
+    <a class="nav-item" onclick="showSection('project-structure')">Project Structure</a>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- ==================== OVERVIEW ==================== -->
+    <div id="overview" class="section active">
+      <h1>MIZAN Documentation</h1>
+      <p style="font-size: 18px; color: var(--text); margin-bottom: 32px;">
+        Your personal AI assistant that grows with you. Open-source, plugin-powered, fully extensible.
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h4>For Everyone</h4>
+          <p>Chat with AI, browse the web, run code, manage files, schedule tasks. Works with 300+ AI models.</p>
+        </div>
+        <div class="card">
+          <h4>For Developers</h4>
+          <p>Build plugins, listen to events, modify data with hooks. Full REST + WebSocket API.</p>
+        </div>
+        <div class="card">
+          <h4>Your Data, Your Rules</h4>
+          <p>Runs on your machine. No data sent to third parties. Use local AI models for full privacy.</p>
+        </div>
+      </div>
+
+      <h2>Key Features</h2>
+      <table>
+        <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Multi-Agent System</strong></td><td>Multiple AI agents collaborate: General, Browser, Research, Code</td></tr>
+          <tr><td><strong>Agentic Loop</strong></td><td>Agents think, use tools, observe results, and repeat autonomously</td></tr>
+          <tr><td><strong>Plugin System</strong></td><td>Extend with plugins. No core code changes needed</td></tr>
+          <tr><td><strong>300+ AI Models</strong></td><td>Claude, GPT-4, Gemini, Llama, Mistral via OpenRouter</td></tr>
+          <tr><td><strong>Persistent Memory</strong></td><td>Three-tier memory: events, knowledge, skills</td></tr>
+          <tr><td><strong>Security</strong></td><td>JWT auth, rate limiting, sandboxing, SSRF prevention</td></tr>
+          <tr><td><strong>Multi-Channel</strong></td><td>Web, Telegram, Discord, Slack, WhatsApp</td></tr>
+          <tr><td><strong>Event Bus</strong></td><td>Fully decoupled module communication</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== INSTALLATION ==================== -->
+    <div id="installation" class="section">
+      <h1>Installation</h1>
+      <p>Choose the method that works best for you.</p>
+
+      <h3>One-Line Install (Mac/Linux)</h3>
+      <pre><code>curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash</code></pre>
+
+      <h3>One-Line Install (Windows PowerShell)</h3>
+      <pre><code>irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex</code></pre>
+
+      <h3>Using pip</h3>
+      <pre><code>pip install mizan
+mizan setup      # Setup wizard
+mizan chat       # Start chatting</code></pre>
+
+      <h3>Using Docker</h3>
+      <pre><code>git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan
+cp .env.example .env
+# Edit .env with your API key
+docker compose up -d</code></pre>
+
+      <h3>From Source (Developers)</h3>
+      <pre><code>git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan && make setup
+# Edit .env with your API key
+make dev</code></pre>
+
+      <h3>Requirements</h3>
+      <ul>
+        <li><strong>Python 3.11+</strong> (auto-installed by one-liner)</li>
+        <li><strong>At least one AI API key</strong>: Anthropic, OpenRouter, OpenAI, or local Ollama</li>
+        <li>Node.js 20+ (only for frontend development)</li>
+      </ul>
+    </div>
+
+    <!-- ==================== QUICK START ==================== -->
+    <div id="quickstart" class="section">
+      <h1>Quick Start</h1>
+
+      <h3>Step 1: Install</h3>
+      <pre><code>pip install mizan</code></pre>
+
+      <h3>Step 2: Setup</h3>
+      <pre><code>mizan setup
+# Enter your API key when prompted</code></pre>
+
+      <h3>Step 3: Chat</h3>
+      <pre><code>mizan chat
+# Type your message and press Enter</code></pre>
+
+      <h3>Step 4: Start the Web UI</h3>
+      <pre><code>mizan serve
+# Open http://localhost:8000/docs for API docs</code></pre>
+
+      <div class="callout callout-tip">
+        <p><strong>Tip:</strong> Use <code>make dev</code> to start both the backend and frontend with live reload.</p>
+      </div>
+    </div>
+
+    <!-- ==================== CONFIGURATION ==================== -->
+    <div id="configuration" class="section">
+      <h1>Configuration</h1>
+      <p>MIZAN is configured via environment variables in a <code>.env</code> file.</p>
+
+      <h3>AI Providers</h3>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic Claude API key</td><td></td></tr>
+          <tr><td><code>OPENROUTER_API_KEY</code></td><td>OpenRouter API key (300+ models)</td><td></td></tr>
+          <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI API key</td><td></td></tr>
+          <tr><td><code>LLM_PROVIDER</code></td><td>Force a specific provider</td><td>auto-detect</td></tr>
+          <tr><td><code>DEFAULT_MODEL</code></td><td>Default AI model</td><td>claude-sonnet-4-20250514</td></tr>
+          <tr><td><code>OLLAMA_URL</code></td><td>Ollama server URL</td><td>http://localhost:11434</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Server</h3>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>HOST</code></td><td>Server bind address</td><td>0.0.0.0</td></tr>
+          <tr><td><code>PORT</code></td><td>Server port</td><td>8000</td></tr>
+          <tr><td><code>SECRET_KEY</code></td><td>JWT secret key</td><td>change-this</td></tr>
+          <tr><td><code>DEBUG</code></td><td>Debug mode</td><td>false</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Security</h3>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>RATE_LIMIT_PER_MINUTE</code></td><td>API rate limit</td><td>60</td></tr>
+          <tr><td><code>MAX_INPUT_LENGTH</code></td><td>Max input size (bytes)</td><td>50000</td></tr>
+          <tr><td><code>JWT_EXPIRY_HOURS</code></td><td>Token expiry</td><td>24</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Channels (Optional)</h3>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>TELEGRAM_BOT_TOKEN</code></td><td>Telegram bot token</td></tr>
+          <tr><td><code>DISCORD_BOT_TOKEN</code></td><td>Discord bot token</td></tr>
+          <tr><td><code>SLACK_APP_TOKEN</code></td><td>Slack app token</td></tr>
+          <tr><td><code>WHATSAPP_TOKEN</code></td><td>WhatsApp Business token</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== CHAT ==================== -->
+    <div id="chat" class="section">
+      <h1>Chat Interface</h1>
+      <p>MIZAN provides multiple ways to chat with your AI.</p>
+
+      <h3>Web Interface</h3>
+      <p>Start the server and open the frontend in your browser. The chat supports real-time streaming, session history, and agent selection.</p>
+      <pre><code>make dev
+# Open http://localhost:3000</code></pre>
+
+      <h3>Terminal Chat</h3>
+      <p>Chat directly in your terminal with rich text formatting.</p>
+      <pre><code>mizan chat
+mizan chat --model claude-opus-4-6  # Specific model</code></pre>
+
+      <h3>API Chat</h3>
+      <pre><code>curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "my-session", "content": "Hello!"}'</code></pre>
+
+      <h3>WebSocket Chat</h3>
+      <pre><code>// Connect to ws://localhost:8000/ws/my-client-id
+// Send: {"type": "chat", "content": "Hello!"}
+// Receive: {"type": "stream", "chunk": "Hi there!"}</code></pre>
+    </div>
+
+    <!-- ==================== AGENTS ==================== -->
+    <div id="agents" class="section">
+      <h1>Agents</h1>
+      <p>MIZAN uses multiple specialized AI agents that collaborate on tasks.</p>
+
+      <h3>Built-in Agents</h3>
+      <table>
+        <thead><tr><th>Agent</th><th>Type</th><th>Capabilities</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Hafiz</strong></td><td>General</td><td>All-purpose tasks, file operations, bash commands</td></tr>
+          <tr><td><strong>Mubashir</strong></td><td>Browser</td><td>Web browsing, search, content extraction</td></tr>
+          <tr><td><strong>Mundhir</strong></td><td>Research</td><td>Deep analysis, multi-source research</td></tr>
+          <tr><td><strong>Katib</strong></td><td>Code</td><td>Code generation, debugging, execution</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Agent Tools</h3>
+      <p>Every agent has access to these built-in tools:</p>
+      <table>
+        <thead><tr><th>Tool</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>bash</code></td><td>Run shell commands (sandboxed)</td></tr>
+          <tr><td><code>http_get</code></td><td>HTTP GET requests (SSRF-protected)</td></tr>
+          <tr><td><code>http_post</code></td><td>HTTP POST requests</td></tr>
+          <tr><td><code>read_file</code></td><td>Read files</td></tr>
+          <tr><td><code>write_file</code></td><td>Write files (sandboxed paths)</td></tr>
+          <tr><td><code>list_files</code></td><td>List directory contents</td></tr>
+          <tr><td><code>python_exec</code></td><td>Run Python code (isolated subprocess)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Agentic Loop</h3>
+      <p>Agents don't just respond once. They <strong>think, act, observe, and repeat</strong> up to 15 times per task:</p>
+      <pre><code>1. Think about the task
+2. Decide which tool to use
+3. Call the tool
+4. Observe the result
+5. Think again... need more info?
+6. Call another tool
+7. ... repeat until done
+8. Return the final answer</code></pre>
+    </div>
+
+    <!-- ==================== PROVIDERS ==================== -->
+    <div id="providers" class="section">
+      <h1>LLM Providers</h1>
+      <p>MIZAN works with any major AI provider through a unified interface.</p>
+
+      <table>
+        <thead><tr><th>Provider</th><th>Models</th><th>Setup</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Anthropic</strong></td><td>Claude Opus, Sonnet, Haiku</td><td><code>ANTHROPIC_API_KEY=sk-ant-...</code></td></tr>
+          <tr><td><strong>OpenRouter</strong></td><td>300+ models</td><td><code>OPENROUTER_API_KEY=sk-or-...</code></td></tr>
+          <tr><td><strong>OpenAI</strong></td><td>GPT-4o, o3</td><td><code>OPENAI_API_KEY=sk-...</code></td></tr>
+          <tr><td><strong>Ollama</strong></td><td>Local models (Llama, Mistral)</td><td>Install Ollama and run it</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-info">
+        <p><strong>Hot-swap:</strong> Switch providers anytime from the UI or API without restarting.</p>
+      </div>
+    </div>
+
+    <!-- ==================== MEMORY ==================== -->
+    <div id="memory" class="section">
+      <h1>Memory System</h1>
+      <p>MIZAN has a three-tier persistent memory system.</p>
+
+      <table>
+        <thead><tr><th>Tier</th><th>Type</th><th>What It Stores</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Episodic</strong></td><td>Events</td><td>What happened, when, and with whom</td></tr>
+          <tr><td><strong>Semantic</strong></td><td>Knowledge</td><td>Facts, relationships, concepts</td></tr>
+          <tr><td><strong>Procedural</strong></td><td>Skills</td><td>How to do things, learned patterns</td></tr>
+        </tbody>
+      </table>
+
+      <p>Memories are automatically ranked by importance. Low-importance, rarely-accessed memories are pruned over time.</p>
+    </div>
+
+    <!-- ==================== AUTOMATION ==================== -->
+    <div id="automation" class="section">
+      <h1>Automation</h1>
+      <p>Schedule tasks and set up webhook triggers.</p>
+
+      <h3>Cron Jobs</h3>
+      <pre><code>POST /api/automation/jobs
+{
+  "name": "Daily summary",
+  "cron": "0 9 * * *",
+  "task": "Summarize my unread emails"
+}</code></pre>
+
+      <h3>Webhook Triggers</h3>
+      <pre><code>POST /api/automation/webhooks
+{
+  "name": "GitHub PR",
+  "task_template": "Review pull request: {title}"
+}</code></pre>
+    </div>
+
+    <!-- ==================== CHANNELS ==================== -->
+    <div id="channels" class="section">
+      <h1>Channels</h1>
+      <p>Connect MIZAN to your favorite platforms.</p>
+
+      <table>
+        <thead><tr><th>Channel</th><th>Status</th><th>Setup</th></tr></thead>
+        <tbody>
+          <tr><td>Web Chat</td><td><span class="badge badge-emerald">Built-in</span></td><td>Always available</td></tr>
+          <tr><td>Telegram</td><td><span class="badge badge-cyan">Adapter</span></td><td>Set TELEGRAM_BOT_TOKEN</td></tr>
+          <tr><td>Discord</td><td><span class="badge badge-cyan">Adapter</span></td><td>Set DISCORD_BOT_TOKEN</td></tr>
+          <tr><td>Slack</td><td><span class="badge badge-cyan">Adapter</span></td><td>Set SLACK_APP_TOKEN</td></tr>
+          <tr><td>WhatsApp</td><td><span class="badge badge-cyan">Adapter</span></td><td>Set WHATSAPP_TOKEN</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== SECURITY ==================== -->
+    <div id="security" class="section">
+      <h1>Security</h1>
+      <p>MIZAN is built with production security in mind.</p>
+
+      <table>
+        <thead><tr><th>Feature</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td><strong>JWT Auth</strong></td><td>Secure token-based authentication</td></tr>
+          <tr><td><strong>Rate Limiting</strong></td><td>60 requests/minute per IP (configurable)</td></tr>
+          <tr><td><strong>Command Sandbox</strong></td><td>Blocks dangerous commands (rm -rf, sudo, eval)</td></tr>
+          <tr><td><strong>Path Sandbox</strong></td><td>Agents can only write to allowed directories</td></tr>
+          <tr><td><strong>SSRF Prevention</strong></td><td>Blocks requests to internal/private IPs</td></tr>
+          <tr><td><strong>Input Validation</strong></td><td>50KB max input, pattern whitelisting</td></tr>
+          <tr><td><strong>Audit Logging</strong></td><td>Every action is logged with severity</td></tr>
+          <tr><td><strong>Security Headers</strong></td><td>XSS, clickjacking, MIME type protections</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== PLUGINS ==================== -->
+    <div id="plugins" class="section">
+      <h1>Building Plugins</h1>
+      <p>The easiest way to extend MIZAN. No core code changes needed.</p>
+
+      <h3>Plugin Structure</h3>
+      <pre><code>plugins/
++-- my_plugin/
+    +-- plugin.json    &lt;- Plugin metadata
+    +-- main.py        &lt;- Plugin code</code></pre>
+
+      <h3>plugin.json</h3>
+      <pre><code>{
+    "name": "my_plugin",
+    "version": "1.0.0",
+    "description": "What your plugin does",
+    "author": "Your Name",
+    "permissions": [],
+    "tags": ["example"],
+    "enabled": true
+}</code></pre>
+
+      <h3>main.py</h3>
+      <pre><code>from core.plugins import PluginBase
+
+class Plugin(PluginBase):
+    async def on_load(self):
+        # Add a tool for agents
+        self.add_tool("my_tool", self.my_handler, {
+            "name": "my_tool",
+            "description": "Does something useful",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string"}
+                },
+                "required": ["input"]
+            }
+        })
+
+        # Listen to events
+        self.on_event("task.completed", self.on_task_done)
+
+        # Modify data with hooks
+        self.add_hook("agent.system_prompt", self.modify_prompt)
+
+    async def on_unload(self):
+        pass  # Cleanup is automatic
+
+    async def my_handler(self, input: str):
+        return {"result": f"Processed: {input}"}
+
+    async def on_task_done(self, data):
+        print(f"Task done by {data.get('agent')}")
+
+    async def modify_prompt(self, data):
+        data["prompt"] += "\nExtra instructions here."
+        return data</code></pre>
+
+      <h3>Plugin Capabilities</h3>
+      <table>
+        <thead><tr><th>Method</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>self.add_tool(name, handler, schema)</code></td><td>Give agents new abilities</td></tr>
+          <tr><td><code>self.on_event(name, handler)</code></td><td>React to system events</td></tr>
+          <tr><td><code>self.add_hook(name, handler)</code></td><td>Modify data in the pipeline</td></tr>
+          <tr><td><code>await self.emit(name, data)</code></td><td>Fire custom events</td></tr>
+          <tr><td><code>self.config</code></td><td>Access plugin configuration</td></tr>
+          <tr><td><code>self.manifest</code></td><td>Access plugin.json data</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-tip">
+        <p><strong>Tip:</strong> Plugins auto-cleanup when unloaded. All hooks, events, and tools are automatically removed.</p>
+      </div>
+    </div>
+
+    <!-- ==================== EVENTS ==================== -->
+    <div id="events" class="section">
+      <h1>Event System</h1>
+      <p>Events let modules communicate without importing each other. Like shouting into a room.</p>
+
+      <h3>How Events Work</h3>
+      <pre><code>from core.events import event_bus
+
+# Listen for events
+@event_bus.on("task.completed")
+async def handle_task(data):
+    print(f"Task done: {data}")
+
+# Emit events
+await event_bus.emit("task.completed", {"agent": "Hafiz", "task": "analyze data"})</code></pre>
+
+      <h3>Available Events</h3>
+      <table>
+        <thead><tr><th>Event</th><th>When</th></tr></thead>
+        <tbody>
+          <tr><td><code>system.startup</code></td><td>MIZAN starts</td></tr>
+          <tr><td><code>system.shutdown</code></td><td>MIZAN stops</td></tr>
+          <tr><td><code>agent.created</code></td><td>New agent created</td></tr>
+          <tr><td><code>agent.deleted</code></td><td>Agent deleted</td></tr>
+          <tr><td><code>task.started</code></td><td>Task begins</td></tr>
+          <tr><td><code>task.completed</code></td><td>Task succeeds</td></tr>
+          <tr><td><code>task.failed</code></td><td>Task fails</td></tr>
+          <tr><td><code>chat.message.received</code></td><td>User sends message</td></tr>
+          <tr><td><code>chat.message.sent</code></td><td>AI responds</td></tr>
+          <tr><td><code>provider.switched</code></td><td>LLM changed</td></tr>
+          <tr><td><code>plugin.loaded</code></td><td>Plugin activates</td></tr>
+          <tr><td><code>plugin.unloaded</code></td><td>Plugin deactivates</td></tr>
+          <tr><td><code>memory.stored</code></td><td>Memory saved</td></tr>
+          <tr><td><code>webhook.triggered</code></td><td>Webhook fires</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Wildcard Patterns</h3>
+      <pre><code>// Listen to ALL agent events
+@event_bus.on("agent.*")
+async def handle_all_agent_events(data):
+    print(data)
+
+// Listen to ALL events
+@event_bus.on("*")
+async def log_everything(data):
+    print(data)</code></pre>
+    </div>
+
+    <!-- ==================== HOOKS ==================== -->
+    <div id="hooks" class="section">
+      <h1>Hook System</h1>
+      <p>Hooks let you modify data as it flows through the system. Like an assembly line.</p>
+
+      <h3>How Hooks Work</h3>
+      <pre><code>from core.hooks import hook_registry
+
+# Register a hook
+@hook_registry.register("agent.system_prompt")
+async def add_instructions(data):
+    data["prompt"] += "\nAlways be concise."
+    return data  # Must return the (modified) data
+
+# Hooks are applied automatically by MIZAN</code></pre>
+
+      <h3>Events vs Hooks</h3>
+      <table>
+        <thead><tr><th></th><th>Events</th><th>Hooks</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Pattern</strong></td><td>Fire and forget</td><td>Transformation chain</td></tr>
+          <tr><td><strong>Return value</strong></td><td>Not used</td><td>Must return modified data</td></tr>
+          <tr><td><strong>Use case</strong></td><td>Logging, notifications</td><td>Modifying prompts, responses</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Available Hooks</h3>
+      <table>
+        <thead><tr><th>Hook</th><th>What You Can Modify</th></tr></thead>
+        <tbody>
+          <tr><td><code>agent.system_prompt</code></td><td>System prompt before LLM call</td></tr>
+          <tr><td><code>agent.messages</code></td><td>Message history before LLM call</td></tr>
+          <tr><td><code>agent.response</code></td><td>Agent response before returning</td></tr>
+          <tr><td><code>agent.tool.before</code></td><td>Tool parameters before execution</td></tr>
+          <tr><td><code>agent.tool.after</code></td><td>Tool results after execution</td></tr>
+          <tr><td><code>chat.input</code></td><td>User input before processing</td></tr>
+          <tr><td><code>chat.output</code></td><td>Output before sending to user</td></tr>
+          <tr><td><code>provider.before_call</code></td><td>LLM parameters</td></tr>
+          <tr><td><code>provider.after_call</code></td><td>LLM response</td></tr>
+          <tr><td><code>memory.before_store</code></td><td>Memory before saving</td></tr>
+          <tr><td><code>memory.after_query</code></td><td>Query results</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== SKILLS ==================== -->
+    <div id="skills" class="section">
+      <h1>Custom Skills</h1>
+      <p>Skills are reusable capabilities that agents can use.</p>
+
+      <pre><code>from skills.base import SkillBase, SkillManifest
+
+class TranslationSkill(SkillBase):
+    manifest = SkillManifest(
+        name="translation",
+        version="1.0.0",
+        description="Translate text between languages",
+        permissions=["network_access"],
+    )
+
+    async def execute(self, params: dict, context: dict = None) -> dict:
+        text = params.get("text", "")
+        target = params.get("target_language", "en")
+        # Your translation logic here
+        return {"translated": text, "language": target}</code></pre>
+
+      <p>Place skills in <code>backend/skills/builtin/</code> and they'll be auto-discovered.</p>
+    </div>
+
+    <!-- ==================== CUSTOM AGENTS ==================== -->
+    <div id="custom-agents" class="section">
+      <h1>Custom Agents</h1>
+      <p>Create specialized agents with unique tools and behaviors.</p>
+
+      <pre><code>from agents.base import BaseAgent
+
+class HakimAgent(BaseAgent):
+    """Hakim - Wisdom Agent"""
+
+    TOOL_SCHEMAS = [{
+        "name": "analyze_topic",
+        "description": "Deep analysis of a topic",
+        "input_schema": {
+            "type": "object",
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    }]
+
+    def __init__(self, **kwargs):
+        super().__init__(role="hakim", **kwargs)
+        self.tools["analyze_topic"] = self._analyze
+
+    async def _analyze(self, topic: str) -> dict:
+        return {"analysis": f"Deep analysis of {topic}"}</code></pre>
+    </div>
+
+    <!-- ==================== CUSTOM PROVIDERS ==================== -->
+    <div id="custom-providers" class="section">
+      <h1>Custom LLM Providers</h1>
+      <p>Add support for new AI model providers.</p>
+
+      <pre><code>from providers import BaseLLMProvider, ContentBlock, LLMResponse
+
+class MyProvider(BaseLLMProvider):
+    provider_name = "my_provider"
+
+    def __init__(self, api_key: str):
+        self._api_key = api_key
+
+    def create(self, model, max_tokens, system, messages, tools=None):
+        # Call your provider's API
+        # Return a normalized LLMResponse
+        return LLMResponse(
+            content=[ContentBlock(type="text", text="Hello!")],
+            stop_reason="end_turn",
+            model=model,
+        )
+
+    def stream(self, model, max_tokens, system, messages):
+        # Return a context manager with .text_stream
+        pass</code></pre>
+
+      <p>Then add it to <code>create_provider()</code> in <code>providers.py</code>.</p>
+    </div>
+
+    <!-- ==================== API: AGENTS ==================== -->
+    <div id="api-agents" class="section">
+      <h1>Agents API</h1>
+
+      <h3>List Agents</h3>
+      <pre><code>GET /api/agents
+
+Response:
+{
+  "agents": [
+    {
+      "id": "abc-123",
+      "name": "Hafiz",
+      "role": "general",
+      "state": "resting",
+      "nafs_level": 3,
+      "total_tasks": 42,
+      "success_rate": 0.95,
+      "tools": ["bash", "http_get", "read_file", ...]
+    }
+  ],
+  "total": 4
+}</code></pre>
+
+      <h3>Create Agent</h3>
+      <pre><code>POST /api/agents
+{
+  "name": "MyAgent",
+  "type": "general",
+  "model": "claude-sonnet-4-20250514"
+}</code></pre>
+
+      <h3>Delete Agent</h3>
+      <pre><code>DELETE /api/agents/{agent_id}</code></pre>
+    </div>
+
+    <!-- ==================== API: CHAT ==================== -->
+    <div id="api-chat" class="section">
+      <h1>Chat API</h1>
+
+      <h3>Send Message</h3>
+      <pre><code>POST /api/chat
+{
+  "session_id": "my-session",
+  "content": "What is the weather today?",
+  "agent_id": "optional-agent-id"
+}</code></pre>
+
+      <h3>Get History</h3>
+      <pre><code>GET /api/chat/{session_id}</code></pre>
+
+      <h3>Execute Task</h3>
+      <pre><code>POST /api/tasks
+{
+  "task": "Search for Python tutorials and summarize the top 3",
+  "parallel": false
+}</code></pre>
+    </div>
+
+    <!-- ==================== API: PLUGINS ==================== -->
+    <div id="api-plugins" class="section">
+      <h1>Plugins API</h1>
+
+      <h3>List Plugins</h3>
+      <pre><code>GET /api/plugins
+
+Response:
+{
+  "plugins": [
+    {
+      "name": "hello_world",
+      "version": "1.0.0",
+      "description": "Example plugin",
+      "loaded": true,
+      "enabled": true
+    }
+  ]
+}</code></pre>
+
+      <h3>Load/Unload/Reload</h3>
+      <pre><code>POST /api/plugins/hello_world/load
+POST /api/plugins/hello_world/unload
+POST /api/plugins/hello_world/reload</code></pre>
+
+      <h3>List Plugin Tools</h3>
+      <pre><code>GET /api/plugins/tools</code></pre>
+
+      <h3>Events & Hooks</h3>
+      <pre><code>GET /api/events          # List events + handlers
+GET /api/events/history  # Recent event history
+GET /api/hooks           # List hooks + handlers
+GET /api/extensibility   # Full overview</code></pre>
+    </div>
+
+    <!-- ==================== API: SYSTEM ==================== -->
+    <div id="api-system" class="section">
+      <h1>System API</h1>
+
+      <h3>System Status</h3>
+      <pre><code>GET /api/status
+
+Response:
+{
+  "system": "MIZAN",
+  "version": "3.0.0",
+  "status": "active",
+  "agents": {"total": 4, "active": 1},
+  "connections": 2,
+  "sessions": 3,
+  "provider": {"active": "anthropic", ...}
+}</code></pre>
+
+      <h3>Multi-Agent Consultation (Shura)</h3>
+      <pre><code>POST /api/shura
+{
+  "question": "Should we use React or Vue for the frontend?",
+  "context": {}
+}</code></pre>
+    </div>
+
+    <!-- ==================== API: WEBSOCKET ==================== -->
+    <div id="api-websocket" class="section">
+      <h1>WebSocket API</h1>
+      <p>Connect to <code>ws://localhost:8000/ws/{client_id}</code></p>
+
+      <h3>Send Chat Message</h3>
+      <pre><code>{"type": "chat", "content": "Hello!", "session_id": "my-session"}</code></pre>
+
+      <h3>Receive Streaming Response</h3>
+      <pre><code>{"type": "stream", "chunk": "Hi ", "session_id": "my-session"}
+{"type": "stream", "chunk": "there!", "session_id": "my-session"}
+{"type": "response", "content": "Hi there!", "agent": "Hafiz"}</code></pre>
+
+      <h3>Execute Task</h3>
+      <pre><code>{"type": "task", "task": "Search for Python tutorials"}</code></pre>
+
+      <h3>Ping/Pong</h3>
+      <pre><code>Send: {"type": "ping"}
+Receive: {"type": "pong"}</code></pre>
+    </div>
+
+    <!-- ==================== ARCHITECTURE ==================== -->
+    <div id="architecture" class="section">
+      <h1>System Design</h1>
+      <p>MIZAN is built on a fully decoupled architecture. Modules communicate through events and hooks, never by importing each other directly.</p>
+
+      <h3>Design Principles</h3>
+      <ul>
+        <li><strong>Decoupled:</strong> Modules communicate through events, hooks, and middleware — not imports</li>
+        <li><strong>Extensible:</strong> Plugins can add tools, modify behavior, and react to events</li>
+        <li><strong>Secure:</strong> Every operation passes through the Wali security layer</li>
+        <li><strong>Provider-agnostic:</strong> Works with any LLM through unified interface</li>
+        <li><strong>Memory-aware:</strong> Agents learn and remember across sessions</li>
+      </ul>
+
+      <h3>Communication Patterns</h3>
+      <table>
+        <thead><tr><th>Pattern</th><th>Use Case</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Events</strong></td><td>Notifications</td><td>"A task was completed"</td></tr>
+          <tr><td><strong>Hooks</strong></td><td>Data modification</td><td>"Change the system prompt"</td></tr>
+          <tr><td><strong>Middleware</strong></td><td>Request processing</td><td>"Log all API requests"</td></tr>
+          <tr><td><strong>Direct API</strong></td><td>Explicit calls</td><td>"Create an agent"</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== PROJECT STRUCTURE ==================== -->
+    <div id="project-structure" class="section">
+      <h1>Project Structure</h1>
+      <pre><code>mizan/
++-- backend/
+|   +-- api/main.py              # FastAPI server + all routes
+|   +-- agents/
+|   |   +-- base.py              # Base agent + agentic loop
+|   |   +-- specialized.py       # Browser, Research, Code agents
+|   |   +-- federation.py        # Agent-to-agent communication
+|   +-- core/
+|   |   +-- events.py            # Event bus (Nida')
+|   |   +-- hooks.py             # Hook system (Ta'liq)
+|   |   +-- plugins.py           # Plugin manager (Wasilah)
+|   |   +-- middleware.py         # Middleware pipeline (Silsilah)
+|   +-- providers.py             # LLM providers (Claude/GPT/Ollama/300+)
+|   +-- memory/dhikr.py          # 3-tier memory
+|   +-- security/                # Auth, permissions, sandbox
+|   +-- skills/                  # Skill registry + builtins
+|   +-- gateway/channels/        # Telegram, Discord, Slack, WhatsApp
+|   +-- automation/              # Cron jobs + webhooks
+|   +-- settings.py              # Configuration
+|   +-- cli.py                   # Terminal interface
++-- frontend/src/
+|   +-- App.tsx                  # Main UI
+|   +-- pages/                   # Feature pages
+|   +-- hooks/                   # React hooks
++-- plugins/                     # Your plugins go here!
++-- docs/                        # This documentation
++-- tests/                       # Test suite
++-- docker/                      # Docker configs
++-- pyproject.toml               # Package config
++-- Makefile                     # Dev commands</code></pre>
+    </div>
+
+  </main>
+</div>
+
+<script>
+function showSection(id) {
+  // Hide all sections
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  // Show selected
+  document.getElementById(id).classList.add('active');
+  // Update nav
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  event.target.classList.add('active');
+  // Close mobile menu
+  document.querySelector('.sidebar').classList.remove('open');
+  // Scroll to top
+  window.scrollTo(0, 0);
+}
+</script>
+
+</body>
+</html>
