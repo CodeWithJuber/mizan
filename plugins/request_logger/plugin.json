@@ -1,0 +1,11 @@
+{
+    "name": "request_logger",
+    "version": "1.0.0",
+    "description": "Logs all agent tasks and API events. Great for debugging and monitoring.",
+    "author": "MIZAN Team",
+    "permissions": [],
+    "hooks": ["chat.input", "chat.output"],
+    "events": ["task.started", "task.completed", "task.failed"],
+    "tags": ["monitoring", "debug"],
+    "enabled": true
+}
