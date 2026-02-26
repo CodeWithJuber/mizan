@@ -39,6 +39,10 @@ from providers import (
     get_provider_status, fetch_openrouter_models, fetch_ollama_models,
     check_provider_health, create_provider, get_default_model,
 )
+from core.events import event_bus, EVENTS
+from core.hooks import hook_registry, HOOKS
+from core.plugins import plugin_manager
+from core.middleware import middleware_pipeline
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from core.architecture import MizanBalancer, ShuraCouncil
@@ -134,11 +138,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Skill discovery: {e}")
 
+    # Load plugins
+    try:
+        await plugin_manager.load_all()
+        logger.info(f"[WASILAH] {len(plugin_manager._loaded)} plugins loaded")
+    except Exception as e:
+        logger.warning(f"Plugin loading: {e}")
+
+    # Emit system startup event
+    await event_bus.emit("system.startup", {
+        "agents": len(active_agents),
+        "skills": len(skill_registry.list_skills()),
+        "plugins": len(plugin_manager.list_plugins()),
+    })
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    await event_bus.emit("system.shutdown", {})
+    await plugin_manager.unload_all()
     await scheduler.stop()
     logger.info("MIZAN shutdown complete")
 
@@ -472,6 +492,7 @@ async def create_new_agent(req: AgentCreate,
     })
 
     wali.audit.log("agent_created", {"agent_id": agent.id, "name": agent.name, "type": req.type})
+    await event_bus.emit("agent.created", {"agent_id": agent.id, "name": agent.name, "type": req.type})
     return agent.to_dict()
 
 
@@ -491,6 +512,7 @@ async def delete_agent(agent_id: str,
     balancer.agents.pop(agent_id, None)
     shura.members.pop(agent_id, None)
     wali.audit.log("agent_deleted", {"agent_id": agent_id})
+    await event_bus.emit("agent.deleted", {"agent_id": agent_id})
     return {"deleted": agent_id}
 
 
@@ -751,6 +773,7 @@ async def switch_provider(req: ProviderSwitchRequest,
     })
 
     wali.audit.log("provider_switched", {"provider": req.provider, "model": req.model})
+    await event_bus.emit("provider.switched", {"provider": req.provider, "model": req.model})
     return {
         "provider": req.provider,
         "model": req.model,
@@ -1141,6 +1164,123 @@ async def get_ruh_energy(agent_id: str):
     }
 
 
+# === PLUGINS (Wasilah - وسيلة) ===
+
+@app.get("/api/plugins")
+async def list_plugins(user: TokenPayload | None = Depends(get_current_user)):
+    """List all discovered plugins with their status."""
+    return {"plugins": plugin_manager.list_plugins()}
+
+
+@app.post("/api/plugins/{name}/load")
+async def load_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+    """Load (activate) a plugin."""
+    result = await plugin_manager.load(name)
+    if result:
+        return {"loaded": True, "name": name}
+    raise HTTPException(404, f"Plugin '{name}' not found or failed to load")
+
+
+@app.post("/api/plugins/{name}/unload")
+async def unload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+    """Unload (deactivate) a plugin."""
+    result = await plugin_manager.unload(name)
+    if result:
+        return {"unloaded": True, "name": name}
+    raise HTTPException(404, f"Plugin '{name}' not found or not loaded")
+
+
+@app.post("/api/plugins/{name}/reload")
+async def reload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+    """Reload a plugin (unload + load)."""
+    result = await plugin_manager.reload(name)
+    if result:
+        return {"reloaded": True, "name": name}
+    raise HTTPException(500, f"Failed to reload plugin '{name}'")
+
+
+@app.get("/api/plugins/tools")
+async def list_plugin_tools():
+    """List all tools provided by loaded plugins."""
+    tools = []
+    for plugin in plugin_manager._loaded.values():
+        for name, info in plugin.get_tools().items():
+            tools.append({
+                "name": name,
+                "plugin": plugin.manifest.name,
+                "schema": info["schema"],
+            })
+    return {"tools": tools}
+
+
+# === EVENTS (Nida' - نداء) ===
+
+@app.get("/api/events")
+async def list_events():
+    """List all standard events and registered handlers."""
+    return {
+        "standard_events": EVENTS,
+        "handlers": event_bus.list_handlers(),
+        "history": event_bus.get_history(limit=50),
+    }
+
+
+@app.get("/api/events/history")
+async def event_history(event_name: str = None, limit: int = 50):
+    """Get recent event history."""
+    limit = min(limit, 200)
+    return {"history": event_bus.get_history(event_name, limit)}
+
+
+# === HOOKS (Ta'liq - تعليق) ===
+
+@app.get("/api/hooks")
+async def list_hooks():
+    """List all standard hooks and registered handlers."""
+    return {
+        "standard_hooks": HOOKS,
+        "registered": hook_registry.list_hooks(),
+    }
+
+
+# === MIDDLEWARE (Silsilah - سلسلة) ===
+
+@app.get("/api/middleware")
+async def list_middleware():
+    """List all registered middleware pipelines."""
+    return {"pipelines": middleware_pipeline.list_middleware()}
+
+
+# === EXTENSIBILITY STATUS ===
+
+@app.get("/api/extensibility")
+async def extensibility_status():
+    """
+    Overview of all extensibility points in MIZAN.
+    Useful for developers who want to build plugins.
+    """
+    return {
+        "plugins": {
+            "loaded": len(plugin_manager._loaded),
+            "available": len(plugin_manager._manifests),
+            "directory": plugin_manager.plugins_dir,
+            "list": plugin_manager.list_plugins(),
+        },
+        "events": {
+            "standard": list(EVENTS.keys()),
+            "handlers_count": len(event_bus.list_handlers()),
+        },
+        "hooks": {
+            "standard": list(HOOKS.keys()),
+            "registered_count": len(hook_registry.list_hooks()),
+        },
+        "skills": {
+            "count": len(skill_registry.list_skills()),
+        },
+        "middleware": middleware_pipeline.list_middleware(),
+    }
+
+
 # === WEBSOCKET ===
 
 @app.websocket("/ws/{client_id}")
@@ -1165,7 +1305,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
 
     # Connect to WebSocket manager
-    connected = manager.connect(client_id, websocket)
+    manager.connections[client_id] = websocket
+    connected = True
+    if len(manager.connections) > manager.max_connections:
+        manager.disconnect(client_id)
+        connected = False
     if not connected:
         await websocket.send_json({
             "type": "error",
