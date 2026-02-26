@@ -383,11 +383,63 @@ Switch providers anytime from the UI or API — no restart needed.
 
 ---
 
+## Updating MIZAN
+
+MIZAN has a built-in one-command updater. No manual git commands needed.
+
+### One-Command Update
+
+```bash
+./update.sh                # Update everything automatically
+```
+
+Or use any of these equivalent commands:
+
+```bash
+make update                # Via Makefile
+./start.sh update          # Via start script
+```
+
+### What the Updater Does
+
+1. Checks if new updates are available
+2. Stops running services gracefully
+3. Stashes your local changes (and restores them after)
+4. Pulls the latest code
+5. Rebuilds backend dependencies + frontend
+6. Restarts services
+7. Shows you the version change (e.g., `3.0.0 → 3.1.0`)
+
+### Other Update Commands
+
+```bash
+./update.sh --check        # Check for updates without installing
+./update.sh --version      # Show current version
+```
+
+### Docker Deployments
+
+```bash
+./update.sh                # Auto-detects Docker, rebuilds containers
+./deploy.sh --update       # Production deployment update
+```
+
+### Auto-Update Notifications
+
+When you start MIZAN with `./start.sh start` or `make dev`, it automatically checks for updates and shows a notification if a new version is available. No action is taken unless you run the update command.
+
+### Frontend Update Panel
+
+The Settings/Developer page in the web UI shows your current version and lets you check for updates directly from the browser.
+
+---
+
 ## Development
 
 ```bash
 make setup        # Install everything
 make dev          # Start backend + frontend
+make update       # Update to latest version
 make test         # Run tests
 make lint         # Lint code
 make format       # Format code
@@ -501,6 +553,9 @@ A: Add your provider to `backend/providers.py` following the `BaseLLMProvider` i
 
 **Q: Can I use this in production?**
 A: Yes. MIZAN has JWT auth, rate limiting, input validation, command sandboxing, and SSRF prevention built in.
+
+**Q: How do I update MIZAN?**
+A: Run `./update.sh` — it handles everything automatically (pulls code, rebuilds, restarts). You can also use `make update` or `./start.sh update`.
 
 **Q: How do I connect Telegram/Discord/Slack?**
 A: Set the bot token in your `.env` file (e.g., `TELEGRAM_BOT_TOKEN=your-token`). See the Channels page in the UI.
