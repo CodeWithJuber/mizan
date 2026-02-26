@@ -500,7 +500,7 @@ class DhikrMemorySystem:
         QCA's 4-tier (Lawh immutable / Kitab verified / Dhikr active / Wahm conjecture).
         """
         try:
-            from backend.qca.engine import LawhMemory
+            from qca.engine import LawhMemory
             return LawhMemory()
         except ImportError:
             return None

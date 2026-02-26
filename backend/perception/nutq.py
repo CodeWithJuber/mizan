@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from backend.perception.voice import VoiceProcessor
+from perception.voice import VoiceProcessor
 
 logger = logging.getLogger("mizan.nutq")
 

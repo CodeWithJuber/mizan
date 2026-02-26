@@ -63,7 +63,7 @@ class AqlEngine:
         """Lazy-load QCA engine to avoid circular imports."""
         if self._qca is None:
             try:
-                from backend.qca.engine import QCAEngine
+                from qca.engine import QCAEngine
                 self._qca = QCAEngine()
             except ImportError:
                 self._qca = None
