@@ -1,0 +1,143 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════
+# MIZAN (ميزان) — Production Deployment
+# "And the heaven He raised and imposed the balance" — Quran 55:7
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# With SSL:
+#   DOMAIN=mizan.example.com docker compose -f docker-compose.prod.yml up -d
+#
+# With Ollama + ChromaDB:
+#   docker compose -f docker-compose.prod.yml --profile ollama --profile vector up -d
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  # ── Nginx Reverse Proxy ──
+  nginx:
+    image: nginx:alpine
+    container_name: mizan-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./docker/${NGINX_CONF:-nginx-nossl.conf}:/etc/nginx/conf.d/default.conf:ro
+      - certbot-webroot:/var/www/certbot:ro
+      - certbot-certs:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - mizan-net
+
+  # ── Backend API ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend.prod
+    container_name: mizan-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_PATH=/data/mizan.db
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost}}
+    volumes:
+      - mizan-data:/data
+    networks:
+      - mizan-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+
+  # ── Frontend (Static Build) ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend.prod
+      args:
+        VITE_API_URL: /api
+        VITE_WS_URL: /ws
+    container_name: mizan-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    networks:
+      - mizan-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── SSL Certificate Manager (optional) ──
+  certbot:
+    image: certbot/certbot:latest
+    container_name: mizan-certbot
+    volumes:
+      - certbot-webroot:/var/www/certbot
+      - certbot-certs:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew --quiet; done'"
+    profiles:
+      - ssl
+
+  # ── Local LLM via Ollama (optional) ──
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mizan-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - mizan-net
+    profiles:
+      - ollama
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  # ── Vector DB for semantic search (optional) ──
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: mizan-chroma
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - chroma-data:/chroma/.chroma
+    networks:
+      - mizan-net
+    profiles:
+      - vector
+
+networks:
+  mizan-net:
+    driver: bridge
+
+volumes:
+  mizan-data:
+  ollama-data:
+  chroma-data:
+  certbot-webroot:
+  certbot-certs:
