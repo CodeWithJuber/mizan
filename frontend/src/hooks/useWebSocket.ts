@@ -5,19 +5,20 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { WsConnectionStatus, WsMessage } from "../types";
-
-const WS_URL = "ws://localhost:8000/ws";
+import { config } from "../config";
 
 interface UseWebSocketReturn {
   ws: WebSocket | null;
   status: WsConnectionStatus;
   send: (data: WsMessage) => void;
   clientId: string;
+  reconnectAttempts: number;
 }
 
 export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocketReturn {
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [status, setStatus] = useState<WsConnectionStatus>("disconnected");
+  const [status, setStatus] = useState<WsConnectionStatus>("connecting");
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const clientId = useRef(`client_${Date.now()}`);
   const onMessageRef = useRef(onMessage);
 
@@ -28,14 +29,23 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
 
     const connect = () => {
       try {
-        socket = new WebSocket(`${WS_URL}/${clientId.current}`);
+        if (attempts > 0) {
+          setStatus("reconnecting");
+        } else {
+          setStatus("connecting");
+        }
+
+        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
 
         socket.onopen = () => {
           setStatus("connected");
           setWs(socket);
+          attempts = 0;
+          setReconnectAttempts(0);
         };
 
         socket.onmessage = (event: MessageEvent) => {
@@ -44,15 +54,24 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
         };
 
         socket.onclose = () => {
-          setStatus("disconnected");
           setWs(null);
-          reconnectTimer = setTimeout(connect, 3000);
+          attempts++;
+          setReconnectAttempts(attempts);
+          if (attempts >= 5) {
+            setStatus("disconnected");
+          } else {
+            setStatus("reconnecting");
+          }
+          const delay = Math.min(3000 * Math.pow(1.5, attempts - 1), 15000);
+          reconnectTimer = setTimeout(connect, delay);
         };
 
         socket.onerror = () => {
           setStatus("error");
         };
       } catch {
+        attempts++;
+        setReconnectAttempts(attempts);
         reconnectTimer = setTimeout(connect, 5000);
       }
     };
@@ -74,5 +93,5 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
     [ws],
   );
 
-  return { ws, status, send, clientId: clientId.current };
+  return { ws, status, send, clientId: clientId.current, reconnectAttempts };
 }

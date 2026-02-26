@@ -2,10 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&display=swap');
+
 @layer base {
+  html {
+    font-size: 14px;
+  }
+
   body {
-    @apply bg-mizan-dark text-gray-200 antialiased;
+    @apply bg-gray-50 text-gray-900 antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .dark body {
+    @apply bg-zinc-950 text-gray-100;
   }
 
   /* Custom scrollbar */
@@ -13,53 +23,138 @@
     width: 6px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-mizan-dark;
+    @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-mizan-dark-border rounded-full;
+    @apply bg-gray-300 dark:bg-zinc-700 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-600;
+    @apply bg-gray-400 dark:bg-zinc-600;
   }
 }
 
 @layer components {
-  .card {
-    @apply bg-mizan-dark-card border border-mizan-dark-border rounded-xl p-5;
+  /* Slide-in animation for toasts */
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
   }
+
+  /* Cards */
+  .card {
+    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 transition-colors;
+  }
+  .card-hover {
+    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 transition-all
+           hover:border-gray-300 dark:hover:border-zinc-700 hover:shadow-md cursor-pointer;
+  }
+
+  /* Buttons */
   .btn-primary {
+    @apply bg-amber-500 hover:bg-amber-600 text-white font-medium
+           px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-50;
+  }
+  .btn-gold {
     @apply bg-mizan-gold hover:bg-mizan-gold-light text-black font-medium
-           px-4 py-2 rounded-lg transition-colors duration-200;
+           px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-50;
   }
   .btn-secondary {
-    @apply bg-mizan-dark-card border border-mizan-dark-border hover:bg-mizan-dark-hover
-           text-gray-300 px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700
+           text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg transition-colors
+           duration-200 hover:bg-gray-200 dark:hover:bg-zinc-700 disabled:opacity-50;
   }
+  .btn-danger {
+    @apply bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium
+           px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
+           hover:bg-gray-100 dark:hover:bg-zinc-800 px-3 py-2 rounded-lg transition-colors;
+  }
+
+  /* Inputs */
   .input {
-    @apply bg-mizan-dark border border-mizan-dark-border rounded-lg px-4 py-2.5
-           text-gray-200 placeholder-gray-500 focus:outline-none focus:border-mizan-gold
+    @apply bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700
+           rounded-lg px-4 py-2.5 text-gray-900 dark:text-gray-100
+           placeholder-gray-400 dark:placeholder-gray-500
+           focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500
            transition-colors duration-200;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-success {
+    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400;
+  }
+  .badge-error {
+    @apply bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400;
+  }
+  .badge-warning {
+    @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400;
+  }
+  .badge-info {
+    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400;
+  }
+  .badge-gold {
+    @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-mizan-gold;
+  }
+
+  /* Tabs */
+  .tab-bar {
+    @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1;
+  }
+  .tab {
+    @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer
+           text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200;
+  }
+  .tab.active {
+    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-sm;
+  }
+
+  /* Section */
+  .page-title {
+    @apply text-xl font-semibold text-gray-900 dark:text-gray-100;
+  }
+  .page-description {
+    @apply text-sm text-gray-500 dark:text-gray-400 mt-1;
+  }
+
+  /* Code */
+  .code {
+    @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono
+           text-amber-700 dark:text-mizan-gold;
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-50 flex items-center justify-center p-4;
+  }
+  .modal {
+    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800
+           rounded-2xl shadow-2xl w-full max-w-lg p-6;
   }
 }
 
-/* Markdown content styling */
+/* Prose / markdown content */
 .prose {
-  @apply text-gray-300 leading-relaxed;
+  @apply text-gray-700 dark:text-gray-300 leading-relaxed;
 }
 .prose code {
-  @apply bg-mizan-dark-card px-1.5 py-0.5 rounded text-sm text-mizan-gold;
+  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono text-amber-700 dark:text-mizan-gold;
 }
 .prose pre {
-  @apply bg-mizan-dark border border-mizan-dark-border rounded-lg p-4 overflow-x-auto;
+  @apply bg-gray-100 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg p-4 overflow-x-auto;
 }
 .prose pre code {
-  @apply bg-transparent p-0 text-gray-300;
+  @apply bg-transparent p-0 text-gray-800 dark:text-gray-300;
 }
 .prose a {
-  @apply text-mizan-gold hover:text-mizan-gold-light underline;
+  @apply text-blue-600 dark:text-blue-400 hover:underline;
 }
 .prose h1, .prose h2, .prose h3 {
-  @apply text-gray-100 font-semibold;
+  @apply text-gray-900 dark:text-gray-100 font-semibold;
 }
 .prose ul, .prose ol {
   @apply pl-6;

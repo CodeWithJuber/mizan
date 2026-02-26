@@ -348,7 +348,7 @@ export interface PageProps {
 
 // ===== WebSocket Types =====
 
-export type WsConnectionStatus = "connected" | "disconnected" | "error";
+export type WsConnectionStatus = "connected" | "connecting" | "reconnecting" | "disconnected" | "error";
 
 export interface WsMessage {
   type: string;
