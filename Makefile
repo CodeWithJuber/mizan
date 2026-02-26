@@ -81,3 +81,27 @@ build: ## Build Python package
 clean: ## Clean build artifacts
 	rm -rf dist/ build/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+version: ## Show current version
+	@cat VERSION
+
+bump-patch: ## Bump patch version (3.0.0 → 3.0.1)
+	./scripts/bump-version.sh patch
+
+bump-minor: ## Bump minor version (3.0.0 → 3.1.0)
+	./scripts/bump-version.sh minor
+
+bump-major: ## Bump major version (3.0.0 → 4.0.0)
+	./scripts/bump-version.sh major
+
+release-patch: ## Full release: bump patch, changelog, tag, push
+	./scripts/release.sh patch
+
+release-minor: ## Full release: bump minor, changelog, tag, push
+	./scripts/release.sh minor
+
+release-major: ## Full release: bump major, changelog, tag, push
+	./scripts/release.sh major
+
+release-dry: ## Dry run of a patch release (no changes)
+	./scripts/release.sh patch --dry-run
