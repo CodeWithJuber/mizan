@@ -9,34 +9,39 @@ Secured with Wali Guardian, Izn Permissions, and Input Validation
 """
 
 import asyncio
-import json
 import logging
 import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 from fastapi import (
-    FastAPI, WebSocket, WebSocketDisconnect,
-    HTTPException, BackgroundTasks, Depends, Header, Request,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from memory.dhikr import DhikrMemorySystem
-from agents.specialized import create_agent, BrowserAgent, ResearchAgent, CodeAgent
+from agents.specialized import create_agent
+from automation.qadr import QadrScheduler
+from automation.triggers import TriggerManager
 from core.architecture import MizanBalancer, ShuraCouncil
-from security.wali import WaliGuardian, SecurityConfig
+from memory.dhikr import DhikrMemorySystem
 from security.auth import MizanAuth, TokenPayload
 from security.izn import IznPermission, NAFS_PERMISSION_TIERS
 from security.validation import InputValidator
-from automation.qadr import QadrScheduler
-from automation.triggers import TriggerManager
+from security.wali import SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
 
 # New Quranic systems
@@ -166,8 +171,8 @@ app.add_middleware(
 memory = DhikrMemorySystem(db_path=os.getenv("DB_PATH", "/tmp/mizan_memory.db"))
 balancer = MizanBalancer()
 shura = ShuraCouncil()
-active_agents: Dict[str, Any] = {}
-active_sessions: Dict[str, Dict] = {}
+active_agents: dict[str, Any] = {}
+active_sessions: dict[str, dict] = {}
 scheduler = QadrScheduler()
 trigger_manager = TriggerManager()
 skill_registry = SkillRegistry()
@@ -193,12 +198,43 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
+# ===== SECURITY HEADERS MIDDLEWARE =====
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses"""
+    response = await call_next(request)
+
+    # Prevent clickjacking attacks
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Enable browser XSS protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Strict transport security (HTTPS only)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Content Security Policy
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+
+    # Referrer policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions policy
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    return response
+
+
 # ===== AUTH DEPENDENCY =====
 
 async def get_current_user(
-    authorization: Optional[str] = Header(None),
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> Optional[TokenPayload]:
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+) -> TokenPayload | None:
     """
     Extract user from auth headers.
     Returns None if no auth (allows open access with optional auth).
@@ -209,8 +245,8 @@ async def get_current_user(
 
 
 async def require_auth(
-    authorization: Optional[str] = Header(None),
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
 ) -> TokenPayload:
     """Require authentication - raises 401 if not authenticated"""
     token = auth.extract_token(authorization, x_api_key)
@@ -225,34 +261,34 @@ class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: str = Field(default="general", pattern=r"^(general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$")
     model: str = Field(default="claude-opus-4-6", max_length=100)
-    system_prompt: Optional[str] = Field(None, max_length=10000)
-    capabilities: List[str] = []
+    system_prompt: str | None = Field(None, max_length=10000)
+    capabilities: list[str] = []
 
 
 class TaskRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=50000)
-    agent_id: Optional[str] = None
-    context: Optional[Dict] = None
+    agent_id: str | None = None
+    context: dict | None = None
     parallel: bool = False
 
 
 class ChatMessage(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=50000)
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
 
 
 class IntegrationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: str = Field(..., pattern=r"^(mcp|openai|anthropic|ollama|webhook|email)$")
-    config: Dict = {}
+    config: dict = {}
     enabled: bool = True
 
 
 class MemoryQuery(BaseModel):
     query: str = Field(..., min_length=1, max_length=5000)
-    memory_type: Optional[str] = Field(None, pattern=r"^(episodic|semantic|procedural)$")
-    agent_id: Optional[str] = None
+    memory_type: str | None = Field(None, pattern=r"^(episodic|semantic|procedural)$")
+    agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=100)
 
 
@@ -260,7 +296,7 @@ class MemoryStore(BaseModel):
     content: str = Field(..., min_length=1, max_length=50000)
     memory_type: str = Field(default="semantic", pattern=r"^(episodic|semantic|procedural)$")
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
-    tags: List[str] = []
+    tags: list[str] = []
 
 
 class LoginRequest(BaseModel):
@@ -270,21 +306,21 @@ class LoginRequest(BaseModel):
 
 class ShuraRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=10000)
-    context: Dict = {}
+    context: dict = {}
 
 
 class ScheduleJobRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     cron: str = Field(..., min_length=1, max_length=100)
     task: str = Field(..., min_length=1, max_length=10000)
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
 
 
 class WebhookCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     task_template: str = Field(..., min_length=1, max_length=10000)
-    agent_id: Optional[str] = None
-    secret: Optional[str] = None
+    agent_id: str | None = None
+    secret: str | None = None
 
 
 class SkillInstallRequest(BaseModel):
@@ -298,7 +334,7 @@ class SkillInstallRequest(BaseModel):
 
 class ConnectionManager:
     def __init__(self, max_connections: int = 50):
-        self.connections: Dict[str, WebSocket] = {}
+        self.connections: dict[str, WebSocket] = {}
         self.max_connections = max_connections
 
     async def connect(self, ws_id: str, websocket: WebSocket) -> bool:
@@ -312,7 +348,7 @@ class ConnectionManager:
     def disconnect(self, ws_id: str):
         self.connections.pop(ws_id, None)
 
-    async def send(self, ws_id: str, data: Dict):
+    async def send(self, ws_id: str, data: dict):
         ws = self.connections.get(ws_id)
         if ws:
             try:
@@ -320,7 +356,7 @@ class ConnectionManager:
             except Exception:
                 self.disconnect(ws_id)
 
-    async def broadcast(self, data: Dict):
+    async def broadcast(self, data: dict):
         disconnected = []
         for ws_id, ws in self.connections.items():
             try:
@@ -341,6 +377,8 @@ async def login(req: LoginRequest):
     user = auth.authenticate(req.username, req.password)
     if not user:
         wali.audit.log("login_failed", {"username": req.username}, severity="warning")
+        # Add delay on failed login to prevent brute force attacks
+        await asyncio.sleep(1)
         raise HTTPException(401, "Invalid credentials")
 
     token = auth.create_token(user)
@@ -387,7 +425,7 @@ async def root():
 # === AGENTS ===
 
 @app.get("/api/agents")
-async def list_agents(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
     """List all agents with their Nafs profile"""
     agents_data = []
     for agent in active_agents.values():
@@ -399,7 +437,7 @@ async def list_agents(user: Optional[TokenPayload] = Depends(get_current_user)):
 
 @app.post("/api/agents")
 async def create_new_agent(req: AgentCreate,
-                            user: Optional[TokenPayload] = Depends(get_current_user)):
+                            user: TokenPayload | None = Depends(get_current_user)):
     """Create a new agent"""
     config = {
         "model": req.model,
@@ -441,7 +479,7 @@ async def get_agent(agent_id: str):
 
 @app.delete("/api/agents/{agent_id}")
 async def delete_agent(agent_id: str,
-                       user: Optional[TokenPayload] = Depends(get_current_user)):
+                       user: TokenPayload | None = Depends(get_current_user)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     del active_agents[agent_id]
@@ -455,7 +493,7 @@ async def delete_agent(agent_id: str,
 
 @app.post("/api/tasks")
 async def run_task(req: TaskRequest, background_tasks: BackgroundTasks,
-                   user: Optional[TokenPayload] = Depends(get_current_user)):
+                   user: TokenPayload | None = Depends(get_current_user)):
     """Execute a task - single or parallel"""
 
     if req.parallel and not req.agent_id:
@@ -526,7 +564,7 @@ async def run_task(req: TaskRequest, background_tasks: BackgroundTasks,
 
 
 @app.get("/api/tasks/history")
-async def get_task_history(agent_id: Optional[str] = None, limit: int = 50):
+async def get_task_history(agent_id: str | None = None, limit: int = 50):
     limit = min(limit, 200)
     history = await memory.get_task_history(agent_id, limit)
     return {"history": history}
@@ -536,7 +574,7 @@ async def get_task_history(agent_id: Optional[str] = None, limit: int = 50):
 
 @app.post("/api/chat")
 async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
-               user: Optional[TokenPayload] = Depends(get_current_user)):
+               user: TokenPayload | None = Depends(get_current_user)):
     """Chat with an agent"""
     session = active_sessions.get(req.session_id, {"history": []})
     active_sessions[req.session_id] = session
@@ -645,7 +683,7 @@ async def list_integrations():
 
 @app.post("/api/integrations")
 async def add_integration(req: IntegrationCreate,
-                           user: Optional[TokenPayload] = Depends(get_current_user)):
+                           user: TokenPayload | None = Depends(get_current_user)):
     int_id = await memory.save_integration({
         "name": req.name,
         "type": req.type,
@@ -657,7 +695,7 @@ async def add_integration(req: IntegrationCreate,
 
 @app.delete("/api/integrations/{int_id}")
 async def delete_integration(int_id: str,
-                              user: Optional[TokenPayload] = Depends(get_current_user)):
+                              user: TokenPayload | None = Depends(get_current_user)):
     import sqlite3
     conn = sqlite3.connect(memory.db_path)
     conn.execute("DELETE FROM integrations WHERE id = ?", (int_id,))
@@ -725,7 +763,7 @@ async def system_status():
 
 @app.post("/api/shura")
 async def shura_consult(req: ShuraRequest,
-                        user: Optional[TokenPayload] = Depends(get_current_user)):
+                        user: TokenPayload | None = Depends(get_current_user)):
     """Multi-agent Shura consultation"""
     result = await shura.consult(req.question, req.context, list(active_agents.keys()))
     return result
@@ -734,14 +772,14 @@ async def shura_consult(req: ShuraRequest,
 # === AUTOMATION (Qadr) ===
 
 @app.get("/api/automation/jobs")
-async def list_jobs(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def list_jobs(user: TokenPayload | None = Depends(get_current_user)):
     """List all scheduled jobs"""
     return {"jobs": scheduler.list_jobs()}
 
 
 @app.post("/api/automation/jobs")
 async def create_job(req: ScheduleJobRequest,
-                     user: Optional[TokenPayload] = Depends(get_current_user)):
+                     user: TokenPayload | None = Depends(get_current_user)):
     """Create a new scheduled job"""
     job = await scheduler.add_job(req.name, req.cron, req.task, req.agent_id)
     wali.audit.log("job_created", {"name": req.name, "cron": req.cron})
@@ -750,7 +788,7 @@ async def create_job(req: ScheduleJobRequest,
 
 @app.delete("/api/automation/jobs/{job_id}")
 async def delete_job(job_id: str,
-                     user: Optional[TokenPayload] = Depends(get_current_user)):
+                     user: TokenPayload | None = Depends(get_current_user)):
     """Remove a scheduled job"""
     removed = await scheduler.remove_job(job_id)
     if not removed:
@@ -759,14 +797,14 @@ async def delete_job(job_id: str,
 
 
 @app.get("/api/automation/webhooks")
-async def list_webhooks(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def list_webhooks(user: TokenPayload | None = Depends(get_current_user)):
     """List all webhook triggers"""
     return {"webhooks": trigger_manager.list_webhooks()}
 
 
 @app.post("/api/automation/webhooks")
 async def create_webhook(req: WebhookCreateRequest,
-                         user: Optional[TokenPayload] = Depends(get_current_user)):
+                         user: TokenPayload | None = Depends(get_current_user)):
     """Create a new webhook trigger"""
     webhook = await trigger_manager.register_webhook(
         req.name, req.task_template, req.agent_id, req.secret)
@@ -788,14 +826,14 @@ async def trigger_webhook(webhook_id: str, request: Request):
 # === SKILLS (Hikmah) ===
 
 @app.get("/api/skills")
-async def list_skills(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def list_skills(user: TokenPayload | None = Depends(get_current_user)):
     """List all available skills"""
     return {"skills": skill_registry.list_skills()}
 
 
 @app.post("/api/skills/install")
 async def install_skill(req: SkillInstallRequest,
-                        user: Optional[TokenPayload] = Depends(get_current_user)):
+                        user: TokenPayload | None = Depends(get_current_user)):
     """Install a skill"""
     result = skill_registry.install_skill(req.name)
     if result:
@@ -806,7 +844,7 @@ async def install_skill(req: SkillInstallRequest,
 
 @app.post("/api/skills/uninstall")
 async def uninstall_skill(req: SkillInstallRequest,
-                          user: Optional[TokenPayload] = Depends(get_current_user)):
+                          user: TokenPayload | None = Depends(get_current_user)):
     """Uninstall a skill"""
     result = skill_registry.uninstall_skill(req.name)
     if result:
@@ -817,7 +855,7 @@ async def uninstall_skill(req: SkillInstallRequest,
 
 class SkillExecuteRequest(BaseModel):
     skill: str = Field(..., min_length=1, max_length=200)
-    action: Optional[str] = None
+    action: str | None = None
 
     class Config:
         extra = "allow"  # Allow dynamic params for skill execution
@@ -825,7 +863,7 @@ class SkillExecuteRequest(BaseModel):
 
 @app.post("/api/skills/execute")
 async def execute_skill(req: SkillExecuteRequest,
-                        user: Optional[TokenPayload] = Depends(get_current_user)):
+                        user: TokenPayload | None = Depends(get_current_user)):
     """Execute a skill action — routes to the appropriate built-in skill"""
     skill = skill_registry.get_skill(req.skill)
     if not skill:
@@ -843,7 +881,7 @@ async def execute_skill(req: SkillExecuteRequest,
 # === GATEWAY (Bab) ===
 
 @app.get("/api/gateway/status")
-async def gateway_status(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def gateway_status(user: TokenPayload | None = Depends(get_current_user)):
     """Get gateway status"""
     return {
         "status": "online",
@@ -854,7 +892,7 @@ async def gateway_status(user: Optional[TokenPayload] = Depends(get_current_user
 
 
 @app.get("/api/gateway/channels")
-async def list_channels(user: Optional[TokenPayload] = Depends(get_current_user)):
+async def list_channels(user: TokenPayload | None = Depends(get_current_user)):
     """List all channel adapters"""
     channels = [
         {"id": "webchat", "type": "webchat", "name": "WebChat",
@@ -1020,17 +1058,47 @@ async def get_ruh_energy(agent_id: str):
 # === WEBSOCKET ===
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    connected = await manager.connect(client_id, websocket)
+async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | None = None):
+    # Accept WebSocket connection
+    await websocket.accept()
+
+    # Authenticate via token (optional but recommended)
+    user = None
+    if token:
+        try:
+            user = auth.verify_token(token)
+            if user and user.is_expired:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Token expired. Please reconnect with a valid token.",
+                })
+                await websocket.close()
+                return
+        except Exception:
+            # Token validation failed - log warning but allow connection
+            wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
+
+    # Connect to WebSocket manager
+    connected = manager.connect(client_id, websocket)
     if not connected:
+        await websocket.send_json({
+            "type": "error",
+            "message": "Connection limit reached",
+        })
+        await websocket.close()
         return
 
-    wali.audit.log("ws_connected", {"client_id": client_id})
+    wali.audit.log("ws_connected", {
+        "client_id": client_id,
+        "authenticated": user is not None,
+        "user_id": user.user_id if user else None
+    })
 
     await manager.send(client_id, {
         "type": "connected",
         "message": "بسم الله - Connected to MIZAN",
         "agents": len(active_agents),
+        "authenticated": user is not None,
         "timestamp": datetime.utcnow().isoformat(),
     })
 
