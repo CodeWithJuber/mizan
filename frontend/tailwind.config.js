@@ -4,21 +4,24 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         mizan: {
           gold: '#c9a227',
           'gold-light': '#e8c84a',
-          dark: '#0a0a0f',
-          'dark-card': '#111118',
-          'dark-border': '#1e1e2e',
-          'dark-hover': '#16161f',
-          accent: '#2563eb',
+          'gold-dim': '#8a6e1a',
         },
       },
       fontFamily: {
         arabic: ['Amiri', 'serif'],
+        display: ['Cinzel', 'serif'],
+        body: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        'xxs': '11px',
       },
     },
   },

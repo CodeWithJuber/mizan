@@ -5,8 +5,7 @@
 
 import { useCallback } from "react";
 import type { ApiClient } from "../types";
-
-const API_URL = "http://localhost:8000/api";
+import { config } from "../config";
 
 export function useApi(): ApiClient {
   const getToken = useCallback(() => {
@@ -22,7 +21,7 @@ export function useApi(): ApiClient {
 
   const get = useCallback(
     async (path: string) => {
-      const res = await fetch(`${API_URL}${path}`, { headers: headers() });
+      const res = await fetch(`${config.API_URL}${path}`, { headers: headers() });
       return res.json();
     },
     [headers],
@@ -30,7 +29,7 @@ export function useApi(): ApiClient {
 
   const post = useCallback(
     async (path: string, body?: Record<string, unknown>) => {
-      const res = await fetch(`${API_URL}${path}`, {
+      const res = await fetch(`${config.API_URL}${path}`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify(body),
@@ -42,7 +41,7 @@ export function useApi(): ApiClient {
 
   const del = useCallback(
     async (path: string) => {
-      const res = await fetch(`${API_URL}${path}`, {
+      const res = await fetch(`${config.API_URL}${path}`, {
         method: "DELETE",
         headers: headers(),
       });
@@ -51,5 +50,5 @@ export function useApi(): ApiClient {
     [headers],
   );
 
-  return { get, post, del, API_URL };
+  return { get, post, del, API_URL: config.API_URL };
 }
