@@ -63,7 +63,8 @@ class BaseAgent(ABC):
     TOOL_SCHEMAS: List[Dict] = []
 
     def __init__(self, agent_id: str = None, name: str = "", role: str = "wakil",
-                 config: Dict = None, memory=None, wali=None, izn=None):
+                 config: Dict = None, memory=None, wali=None, izn=None,
+                 skill_registry=None, plugin_manager=None):
         self.id = agent_id or str(uuid.uuid4())
         self.name = name or f"Agent-{self.id[:8]}"
         self.role = role
@@ -73,6 +74,10 @@ class BaseAgent(ABC):
         # Security (Wali guardian + Izn permissions)
         self.wali = wali
         self.izn = izn
+
+        # Skills and plugins (Hikmah + Wasilah)
+        self.skill_registry = skill_registry
+        self.plugin_manager = plugin_manager
 
         # State tracking
         self.state = "resting"
@@ -122,6 +127,8 @@ class BaseAgent(ABC):
             "write_file": self._tool_write_file,
             "list_files": self._tool_list_files,
             "python_exec": self._tool_python_exec,
+            "create_agent": self._tool_create_agent,
+            "compact_context": self._tool_compact_context,
         }
 
     def get_tool_schemas(self) -> List[Dict]:
@@ -209,8 +216,56 @@ class BaseAgent(ABC):
                     "required": ["code"],
                 },
             },
+            {
+                "name": "create_agent",
+                "description": "Create a new specialized agent. Types: browser, research, code, communication, general.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Name for the new agent"},
+                        "type": {"type": "string", "description": "Agent type: browser, research, code, communication, general", "default": "general"},
+                        "role": {"type": "string", "description": "Optional role description for the agent", "default": ""},
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
+                "name": "compact_context",
+                "description": "Compact conversation context by summarizing older messages to stay within context window limits. Use when conversation is getting long.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "conversation_history": {
+                            "type": "array",
+                            "description": "The conversation history to compact (list of message dicts with 'role' and 'content')",
+                            "items": {"type": "object"},
+                        },
+                    },
+                    "required": ["conversation_history"],
+                },
+            },
         ]
-        return schemas + self.TOOL_SCHEMAS
+        all_schemas = schemas + self.TOOL_SCHEMAS
+
+        # Include tool schemas from loaded skills (Hikmah — wisdom)
+        if self.skill_registry:
+            try:
+                skill_schemas = self.skill_registry.get_all_tool_schemas()
+                if skill_schemas:
+                    all_schemas.extend(skill_schemas)
+            except Exception as e:
+                logger.warning(f"[HIKMAH] Failed to get skill tool schemas: {e}")
+
+        # Include tool schemas from loaded plugins (Wahy — revelation)
+        if self.plugin_manager:
+            try:
+                plugin_schemas = self.plugin_manager.get_all_tool_schemas()
+                if plugin_schemas:
+                    all_schemas.extend(plugin_schemas)
+            except Exception as e:
+                logger.warning(f"[WAHY] Failed to get plugin tool schemas: {e}")
+
+        return all_schemas
 
     @property
     def success_rate(self) -> float:
@@ -340,19 +395,57 @@ class BaseAgent(ABC):
         )
 
     async def _execute_tool_safe(self, tool_name: str, params: Dict) -> Any:
-        """Execute a tool with Wali security checks"""
+        """Execute a tool with Wali security checks.
+
+        Tool resolution order:
+        1. Agent's own tools (self.tools) — bash, http_get, read_file, etc.
+        2. Skill tools (self.skill_registry) — web_browse, analyze_csv, notebook_*, etc.
+        3. Plugin tools (self.plugin_manager) — dynamically loaded plugin capabilities.
+        """
         # Check Izn permissions
         perm = self._check_tool_permission(tool_name, params)
         if not perm["allowed"]:
             logger.warning(f"[WALI] Tool blocked: {tool_name} for agent {self.name}: {perm['reason']}")
             return {"error": f"Permission denied: {perm['reason']}"}
 
-        # Execute the tool
+        # 1. Agent's own built-in tools
         if tool_name in self.tools:
             try:
                 return await self.tools[tool_name](**params)
             except Exception as e:
                 return {"error": str(e)}
+
+        # 2. Skill tools (Hikmah — wisdom skills from SkillRegistry)
+        if self.skill_registry:
+            try:
+                skill_tools = self.skill_registry.get_all_tools()
+                if tool_name in skill_tools:
+                    tool_fn = skill_tools[tool_name]
+                    result = tool_fn(**params)
+                    # Handle both sync and async tool functions
+                    if hasattr(result, "__await__"):
+                        return await result
+                    return result
+            except Exception as e:
+                logger.error(f"[HIKMAH] Skill tool '{tool_name}' failed: {e}")
+                return {"error": f"Skill tool error: {str(e)}"}
+
+        # 3. Plugin tools (Wahy — plugin capabilities)
+        if self.plugin_manager:
+            try:
+                plugin_tools = self.plugin_manager.get_all_tools()
+                if tool_name in plugin_tools:
+                    tool_info = plugin_tools[tool_name]
+                    # Plugin tools are stored as {"handler": fn, "schema": ...}
+                    handler = tool_info if callable(tool_info) else tool_info.get("handler")
+                    if handler:
+                        result = handler(**params)
+                        if hasattr(result, "__await__"):
+                            return await result
+                        return result
+            except Exception as e:
+                logger.error(f"[WAHY] Plugin tool '{tool_name}' failed: {e}")
+                return {"error": f"Plugin tool error: {str(e)}"}
 
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -400,7 +493,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         return messages
 
     async def execute(self, task: str, context: Dict = None,
-                       stream_callback: Callable = None) -> Dict:
+                       stream_callback: Callable = None, tool_callback: Callable = None) -> Dict:
         """
         Execute a task - full Quranic cycle:
         Niyyah → Sama' → Fikr → Amal → Tafakkur
@@ -427,9 +520,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         try:
             full_response = ""
             async for chunk in self.think(task, context, stream=bool(stream_callback)):
-                full_response += chunk
-                if stream_callback:
-                    await stream_callback(chunk)
+                # Check if this is a tool_use marker from _agentic_loop
+                if chunk.startswith("\n[Tool:") and stream_callback:
+                    # Extract tool name and send tool_use event
+                    tool_name = chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
+                    await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
+                    full_response += chunk
+                else:
+                    full_response += chunk
+                    if stream_callback:
+                        await stream_callback(chunk)
 
             # Tafakkur - learn from this execution
             duration_ms = (time.time() - start_time) * 1000
@@ -703,6 +803,249 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
+    # ===== AGENT ENHANCEMENT TOOLS (Phase 7) =====
+
+    async def _tool_create_agent(self, name: str, type: str = "general", role: str = "", **kwargs) -> str:
+        """
+        Create a new specialized agent.
+
+        Parses the request to determine agent type, name, and capabilities,
+        then uses the create_agent() factory from agents.specialized.
+        Returns information about the created agent.
+        """
+        from agents.specialized import create_agent
+
+        # Normalise type aliases
+        valid_types = {
+            "browser", "mubashir", "research", "mundhir",
+            "code", "katib", "communication", "rasul", "general", "wakil",
+        }
+        agent_type = type.lower().strip()
+        if agent_type not in valid_types:
+            agent_type = "general"
+
+        try:
+            new_agent = create_agent(
+                agent_type=agent_type,
+                name=name,
+                config=self.config,
+                memory=self.memory,
+                wali=self.wali,
+                izn=self.izn,
+                skill_registry=self.skill_registry,
+                plugin_manager=self.plugin_manager,
+                **kwargs,
+            )
+
+            # If the caller supplied a custom role description, override
+            if role:
+                new_agent.role = role
+
+            info = new_agent.to_dict()
+            logger.info(
+                f"[KHALQ] Agent created by {self.name}: "
+                f"{new_agent.name} (type={agent_type}, id={new_agent.id})"
+            )
+            return json.dumps({
+                "success": True,
+                "agent": info,
+                "message": f"Agent '{name}' of type '{agent_type}' created successfully.",
+            })
+        except Exception as e:
+            logger.error(f"[KHALQ] Agent creation failed: {e}")
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to create agent '{name}': {e}",
+            })
+
+    # ── Context window estimation constants ──
+    # Rough estimate: 1 token ~ 4 characters
+    _CHARS_PER_TOKEN = 4
+    _DEFAULT_CONTEXT_WINDOW = 200_000  # tokens (Claude-class model)
+    _COMPACT_THRESHOLD = 0.80          # 80% of context window triggers compaction
+    _PRESERVE_RECENT = 10              # keep last N messages intact
+
+    async def _tool_compact_context(self, conversation_history: List[Dict] = None) -> str:
+        """
+        Compact (condense) conversation context when it approaches the context
+        window limit.
+
+        Steps:
+          1. Estimate total token usage of the conversation history.
+          2. If usage < 80% of the context window, return the history unchanged.
+          3. Otherwise, split into *old* and *recent* (last 10 messages).
+          4. Extract important facts from old messages and persist them to memory.
+          5. Replace old messages with a single summary message.
+          6. Return the compacted conversation history.
+        """
+        if not conversation_history:
+            return json.dumps({
+                "compacted": False,
+                "reason": "No conversation history provided",
+                "history": [],
+            })
+
+        # Estimate token usage
+        total_chars = sum(len(m.get("content", "")) for m in conversation_history)
+        estimated_tokens = total_chars // self._CHARS_PER_TOKEN
+        window = self.config.get("context_window", self._DEFAULT_CONTEXT_WINDOW) if self.config else self._DEFAULT_CONTEXT_WINDOW
+        threshold = int(window * self._COMPACT_THRESHOLD)
+
+        if estimated_tokens < threshold:
+            return json.dumps({
+                "compacted": False,
+                "reason": f"Context usage ({estimated_tokens} tokens) is below threshold ({threshold} tokens)",
+                "estimated_tokens": estimated_tokens,
+                "history": conversation_history,
+            })
+
+        # Split into old and recent
+        if len(conversation_history) <= self._PRESERVE_RECENT:
+            return json.dumps({
+                "compacted": False,
+                "reason": f"Only {len(conversation_history)} messages — too few to compact",
+                "history": conversation_history,
+            })
+
+        # Separate system messages — they are always preserved
+        system_messages = [m for m in conversation_history if m.get("role") == "system"]
+        non_system = [m for m in conversation_history if m.get("role") != "system"]
+
+        old_messages = non_system[:-self._PRESERVE_RECENT]
+        recent_messages = non_system[-self._PRESERVE_RECENT:]
+
+        # Extract key facts from old messages
+        facts = self._extract_facts(old_messages)
+
+        # Persist facts to memory if available
+        if self.memory and facts:
+            try:
+                await self.memory.save_task(
+                    self.id,
+                    "context_compaction_facts",
+                    json.dumps(facts)[:5000],
+                    True,
+                    0,
+                )
+            except Exception as e:
+                logger.warning(f"[COMPACT] Failed to persist facts to memory: {e}")
+
+        # Build summary of old messages
+        summary_parts = []
+        summary_parts.append(f"[Compacted summary of {len(old_messages)} earlier messages]")
+        if facts:
+            summary_parts.append("Key facts from conversation:")
+            for fact in facts[:20]:
+                summary_parts.append(f"  - {fact}")
+
+        summary_text = "\n".join(summary_parts)
+
+        # Assemble compacted history: system + summary + recent
+        compacted = list(system_messages)
+        compacted.append({"role": "assistant", "content": summary_text})
+        compacted.extend(recent_messages)
+
+        new_chars = sum(len(m.get("content", "")) for m in compacted)
+        new_tokens = new_chars // self._CHARS_PER_TOKEN
+
+        logger.info(
+            f"[COMPACT] Compacted context for {self.name}: "
+            f"{estimated_tokens} -> {new_tokens} tokens, "
+            f"removed {len(old_messages)} old messages, "
+            f"preserved {len(recent_messages)} recent + {len(system_messages)} system"
+        )
+
+        return json.dumps({
+            "compacted": True,
+            "original_messages": len(conversation_history),
+            "compacted_messages": len(compacted),
+            "original_tokens": estimated_tokens,
+            "compacted_tokens": new_tokens,
+            "facts_extracted": len(facts),
+            "history": compacted,
+        })
+
+    def _extract_facts(self, messages: List[Dict]) -> List[str]:
+        """
+        Extract important facts from a list of messages.
+        Uses simple heuristics — looks for decisions, assignments,
+        named entities, URLs, and code references.
+        """
+        import re
+        facts: List[str] = []
+        seen = set()
+
+        for msg in messages:
+            content = msg.get("content", "")
+            if not isinstance(content, str):
+                continue
+
+            # Extract lines that look like decisions or facts
+            for line in content.split("\n"):
+                line = line.strip()
+                if not line or len(line) < 10:
+                    continue
+
+                # Skip purely conversational filler
+                lower = line.lower()
+                is_fact = False
+
+                # Decision markers
+                if any(marker in lower for marker in [
+                    "decided", "agreed", "confirmed", "will use", "chosen",
+                    "the answer is", "result:", "conclusion:", "important:",
+                    "note:", "key point", "action item", "todo:",
+                ]):
+                    is_fact = True
+
+                # URLs
+                if re.search(r'https?://\S+', line):
+                    is_fact = True
+
+                # Code file references
+                if re.search(r'\b[\w/]+\.(py|js|ts|go|rs|java|yaml|json|toml)\b', line):
+                    is_fact = True
+
+                # Numeric data / statistics
+                if re.search(r'\b\d{2,}\b.*(%|percent|tokens|MB|GB|ms|seconds)', lower):
+                    is_fact = True
+
+                if is_fact:
+                    # Deduplicate
+                    key = line[:80].lower()
+                    if key not in seen:
+                        seen.add(key)
+                        facts.append(line[:200])
+
+        return facts[:30]
+
+    async def compact_context(self, conversation_history: List[Dict] = None) -> Dict:
+        """
+        Public API for context compaction — usable from /compact command.
+        Wraps _tool_compact_context and returns parsed result.
+        """
+        raw = await self._tool_compact_context(conversation_history or [])
+        return json.loads(raw)
+
+    def _get_all_available_tool_names(self) -> List[str]:
+        """Get names of all tools available to this agent (built-in + skills + plugins)."""
+        tool_names = list(self.tools.keys())
+
+        if self.skill_registry:
+            try:
+                tool_names.extend(self.skill_registry.get_all_tools().keys())
+            except Exception:
+                pass
+
+        if self.plugin_manager:
+            try:
+                tool_names.extend(self.plugin_manager.get_all_tools().keys())
+            except Exception:
+                pass
+
+        return tool_names
+
     def to_dict(self) -> Dict:
         return {
             "id": self.id,
@@ -720,6 +1063,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "ruh_energy": self.ruh.get_state(self.id).energy,
             "ihsan_eligible": self.ihsan.is_eligible(self.nafs_level),
             "shukr_strengths": len(self.shukr.get_strengths(self.id)),
-            "tools": list(self.tools.keys()),
+            "tools": self._get_all_available_tool_names(),
             "hikmah_count": len(self.hikmah),
         }

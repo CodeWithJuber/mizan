@@ -4,8 +4,22 @@
  * On remote: full auth forms and token management
  */
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { PageProps } from "../types";
+
+interface AuditEvent {
+  timestamp: string;
+  type: string;
+  severity: string;
+  details: Record<string, unknown>;
+}
+
+interface AuditSummary {
+  total_events: number;
+  warnings: number;
+  errors: number;
+  recent: AuditEvent[];
+}
 
 const isLocalhost = () => {
   const host = window.location.hostname;
@@ -20,7 +34,29 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   const [showAuthForms, setShowAuthForms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [auditData, setAuditData] = useState<AuditSummary | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
   const local = isLocalhost();
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const data = await api.get("/security/audit");
+      setAuditData(data as unknown as AuditSummary);
+    } catch (err) {
+      console.error("Failed to fetch audit logs:", err);
+      // Fallback: empty audit data (may fail due to auth requirements)
+      setAuditData({ total_events: 0, warnings: 0, errors: 0, recent: [] });
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (activeTab === "audit") {
+      loadAudit();
+    }
+  }, [activeTab, loadAudit]);
 
   const login = async () => {
     setLoading(true);
@@ -88,6 +124,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
           { id: "overview", label: "Overview" },
           { id: "auth", label: "Authentication" },
           { id: "tokens", label: "Tokens" },
+          { id: "audit", label: "Audit Log" },
         ].map(tab => (
           <div
             key={tab.id}
@@ -355,6 +392,90 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Audit Tab */}
+        {activeTab === "audit" && (
+          <div className="space-y-4">
+            {auditLoading && (
+              <div className="text-sm text-gray-500 dark:text-gray-400 font-mono">
+                Loading audit logs...
+              </div>
+            )}
+
+            {!auditLoading && auditData && (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="card text-center">
+                    <div className="text-2xl font-mono text-gray-900 dark:text-gray-100 mb-1">
+                      {auditData.total_events}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Events</div>
+                  </div>
+                  <div className="card text-center">
+                    <div className="text-2xl font-mono text-amber-600 dark:text-amber-400 mb-1">
+                      {auditData.warnings}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Warnings</div>
+                  </div>
+                  <div className="card text-center">
+                    <div className="text-2xl font-mono text-red-600 dark:text-red-400 mb-1">
+                      {auditData.errors}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Errors</div>
+                  </div>
+                </div>
+
+                {/* Recent Events */}
+                <div className="card">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Audit Events</h3>
+                    <button
+                      className="text-sm text-mizan-gold hover:text-mizan-gold-light transition-colors"
+                      onClick={loadAudit}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {auditData.recent.length === 0 ? (
+                    <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+                      No audit events recorded yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-96 overflow-y-auto">
+                      {[...auditData.recent].reverse().map((event, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 py-2 px-3 rounded hover:bg-gray-100 dark:hover:bg-zinc-800/50 text-xs"
+                        >
+                          <span className={`inline-block w-2 h-2 rounded-full mt-1 shrink-0 ${
+                            event.severity === "error" || event.severity === "critical"
+                              ? "bg-red-500"
+                              : event.severity === "warning"
+                              ? "bg-amber-500"
+                              : "bg-emerald-500"
+                          }`} />
+                          <span className="text-gray-400 dark:text-gray-500 font-mono whitespace-nowrap">
+                            {event.timestamp.split("T")[1]?.split(".")[0] || event.timestamp}
+                          </span>
+                          <span className="font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            {event.type}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-400 truncate">
+                            {typeof event.details === "object"
+                              ? Object.entries(event.details).map(([k, v]) => `${k}: ${v}`).join(", ")
+                              : String(event.details)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

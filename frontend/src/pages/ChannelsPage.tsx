@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import type { PageProps, Channel, ChannelInfo, GatewayStatus } from "../types";
+import type { PageProps, Channel, ChannelInfo, GatewayStatus, Integration } from "../types";
 
 const CHANNEL_TYPES: Record<string, ChannelInfo> = {
   webchat: { name: "WebChat", arabic: "محادثة", color: "#3b82f6", icon: "💬" },
@@ -16,14 +16,18 @@ const CHANNEL_TYPES: Record<string, ChannelInfo> = {
 
 export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
   const [showConfig, setShowConfig] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const loadChannels = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await api.get("/gateway/channels");
       setChannels((data.channels as Channel[]) || []);
-    } catch {
+    } catch (err) {
+      console.error("Failed to fetch channels, using defaults:", err);
       setChannels(
         Object.entries(CHANNEL_TYPES).map(([id, info]) => ({
           id,
@@ -34,6 +38,17 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
           messages_processed: 0,
         })),
       );
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  const loadIntegrations = useCallback(async () => {
+    try {
+      const data = await api.get("/integrations");
+      setIntegrations((data.integrations as Integration[]) || []);
+    } catch (err) {
+      console.error("Failed to fetch integrations:", err);
     }
   }, [api]);
 
@@ -41,22 +56,36 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
     try {
       const data = await api.get("/gateway/status");
       setGatewayStatus(data as unknown as GatewayStatus);
-    } catch {
+    } catch (err) {
+      console.error("Failed to fetch gateway status:", err);
       setGatewayStatus({ status: "offline", channels: 0, sessions: 0 });
     }
   }, [api]);
 
   useEffect(() => {
     loadChannels();
+    loadIntegrations();
     loadGatewayStatus();
-  }, [loadChannels, loadGatewayStatus]);
+  }, [loadChannels, loadIntegrations, loadGatewayStatus]);
 
   const toggleChannel = async (channelId: string) => {
     try {
+      // Check if there's a matching integration to toggle
+      const integration = integrations.find((i) => i.type === channelId);
+      if (integration) {
+        await api.post("/integrations", {
+          name: integration.name,
+          type: integration.type,
+          enabled: !integration.enabled,
+          config: integration.config || {},
+        });
+      }
       await api.post(`/gateway/channels/${channelId}/toggle`);
       addTerminalLine?.(`Channel ${channelId} toggled`, "gold");
       loadChannels();
-    } catch {
+      loadIntegrations();
+    } catch (err) {
+      console.error("Failed to toggle channel:", err);
       addTerminalLine?.(`Failed to toggle channel ${channelId}`, "error");
     }
   };
@@ -101,6 +130,12 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
         "Enter upon them through the gate (Bab)" — Quran 5:23
       </div>
 
+      {loading && (
+        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          Loading channels...
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",
@@ -113,7 +148,8 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
       >
         {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
           const channel = channels.find((c) => c.type === type) || {} as Partial<Channel>;
-          const isConnected = channel.status === "connected";
+          const integration = integrations.find((i) => i.type === type);
+          const isConnected = channel.status === "connected" || (integration?.enabled === true);
 
           return (
             <div
