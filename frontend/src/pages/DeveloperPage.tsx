@@ -44,8 +44,15 @@ interface PluginTool {
   schema: Record<string, unknown>;
 }
 
+interface VersionInfo {
+  version: string;
+  updates_available: number;
+  latest_commit: string | null;
+  can_check: boolean;
+}
+
 export default function DeveloperPage({ api }: { api: ApiClient }) {
-  const [activeTab, setActiveTab] = useState<"plugins" | "events" | "hooks" | "guide">("plugins");
+  const [activeTab, setActiveTab] = useState<"system" | "plugins" | "events" | "hooks" | "guide">("system");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [events, setEvents] = useState<Record<string, string>>({});
   const [eventHandlers, setEventHandlers] = useState<EventHandler[]>([]);
@@ -54,6 +61,8 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   const [registeredHooks, setRegisteredHooks] = useState<HookEntry[]>([]);
   const [pluginTools, setPluginTools] = useState<PluginTool[]>([]);
   const [loading, setLoading] = useState(false);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -77,7 +86,23 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
     setLoading(false);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  const fetchVersion = async () => {
+    try {
+      const data = await api.get("/version") as VersionInfo;
+      setVersionInfo(data);
+    } catch { /* ignore */ }
+  };
+
+  const checkForUpdates = async () => {
+    setCheckingUpdate(true);
+    try {
+      const data = await api.get("/version") as VersionInfo;
+      setVersionInfo(data);
+    } catch { /* ignore */ }
+    setCheckingUpdate(false);
+  };
+
+  useEffect(() => { fetchAll(); fetchVersion(); }, []);
 
   const handlePluginAction = async (name: string, action: "load" | "unload" | "reload") => {
     try {
@@ -87,6 +112,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   };
 
   const tabs = [
+    { id: "system" as const, label: "System" },
     { id: "plugins" as const, label: "Plugins" },
     { id: "events" as const, label: "Events" },
     { id: "hooks" as const, label: "Hooks" },
@@ -115,6 +141,121 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {/* System Tab */}
+        {activeTab === "system" && (
+          <div className="space-y-5">
+            {/* Version Card */}
+            <div className="card">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">MIZAN</h3>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl font-bold text-mizan-gold">
+                      v{versionInfo?.version || "..."}
+                    </span>
+                    {versionInfo?.updates_available ? (
+                      <span className="badge badge-warning">
+                        {versionInfo.updates_available} update{versionInfo.updates_available !== 1 ? "s" : ""} available
+                      </span>
+                    ) : versionInfo ? (
+                      <span className="badge badge-success">Up to date</span>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  onClick={checkForUpdates}
+                  disabled={checkingUpdate}
+                  className="btn-secondary text-sm flex items-center gap-2"
+                >
+                  {checkingUpdate ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25"/>
+                        <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75"/>
+                      </svg>
+                      Checking...
+                    </>
+                  ) : "Check for Updates"}
+                </button>
+              </div>
+
+              {versionInfo?.updates_available ? (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
+                    New updates are available!
+                  </p>
+                  {versionInfo.latest_commit && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                      Latest: {versionInfo.latest_commit}
+                    </p>
+                  )}
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Run <code className="code">./update.sh</code> or <code className="code">make update</code> to update
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Quick Info Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="card text-center py-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{versionInfo?.version?.split(".")[0] || "3"}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Major Version</div>
+              </div>
+              <div className="card text-center py-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {versionInfo?.can_check ? (
+                    <span className="text-emerald-500">Git</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Install Method</div>
+              </div>
+              <div className="card text-center py-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {versionInfo?.updates_available || 0}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Pending Updates</div>
+              </div>
+            </div>
+
+            {/* How to Update */}
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">How to Update</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                MIZAN has a built-in one-command updater. Choose any of these:
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+                  <code className="text-sm font-mono text-mizan-gold flex-1">./update.sh</code>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Direct command</span>
+                </div>
+                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+                  <code className="text-sm font-mono text-mizan-gold flex-1">make update</code>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Via Makefile</span>
+                </div>
+                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+                  <code className="text-sm font-mono text-mizan-gold flex-1">./start.sh update</code>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Via start script</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+                The updater automatically stops services, pulls code, rebuilds everything, and restarts.
+              </p>
+            </div>
+
+            {/* Check Only */}
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Check Without Installing</h3>
+              <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+                <code className="text-sm font-mono text-mizan-gold flex-1">./update.sh --check</code>
+                <span className="text-xs text-gray-500 dark:text-gray-400">See if updates exist</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Plugins Tab */}
         {activeTab === "plugins" && (
           <div className="space-y-4">
