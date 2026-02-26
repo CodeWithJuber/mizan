@@ -10,6 +10,7 @@ services:
       dockerfile: ../docker/Dockerfile.backend
     container_name: mizan-backend
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "8000:8000"
     environment:
@@ -20,6 +21,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY environment variable is required}
     volumes:
       - mizan-data:/data
+      - mizan-plugins:/app/plugins
       - ./backend:/app
     networks:
       - mizan-net
@@ -28,6 +30,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
   frontend:
     build:
@@ -35,30 +38,45 @@ services:
       dockerfile: ../docker/Dockerfile.frontend
     container_name: mizan-frontend
     restart: unless-stopped
+    stop_grace_period: 10s
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - mizan-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Optional: Local LLM via Ollama
   ollama:
     image: ollama/ollama:latest
     container_name: mizan-ollama
     restart: unless-stopped
+    stop_grace_period: 15s
     volumes:
       - ollama-data:/root/.ollama
     networks:
       - mizan-net
     profiles:
       - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Optional: Vector database for semantic search
   chroma:
     image: chromadb/chroma:latest
     container_name: mizan-chroma
     restart: unless-stopped
+    stop_grace_period: 15s
     ports:
       - "8100:8000"
     volumes:
@@ -67,6 +85,11 @@ services:
       - mizan-net
     profiles:
       - vector
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   mizan-net:
@@ -74,5 +97,6 @@ networks:
 
 volumes:
   mizan-data:
+  mizan-plugins:
   ollama-data:
   chroma-data:

@@ -170,23 +170,45 @@ class WaliGuardian:
     All tool calls, API requests, and messages pass through here.
     """
 
-    def __init__(self, config: SecurityConfig = None):
+    def __init__(self, config: SecurityConfig = None, memory=None):
         self.config = config or SecurityConfig.from_env()
         self.rate_limiter = RateLimiter(
             per_minute=self.config.rate_limit_per_minute,
             burst=self.config.rate_limit_burst,
         )
         self.audit = AuditLog()
+        self.memory = memory  # DhikrMemorySystem for persistent audit logs
         self._blocked_ips: dict[str, datetime] = {}
 
-    def check_rate_limit(self, client_id: str) -> bool:
-        """Check if client is within rate limits"""
+    async def persist_audit(self, event_type: str, details: dict,
+                            severity: str = "info"):
+        """Persist audit entry to database if memory system available."""
+        if self.memory:
+            try:
+                await self.memory.log_audit(
+                    event_type=event_type,
+                    severity=severity,
+                    details=details,
+                )
+            except Exception as e:
+                logger.error(f"[WALI] Failed to persist audit: {e}")
+
+    def check_rate_limit(self, client_id: str) -> dict:
+        """Check if client is within rate limits. Returns status dict with headers."""
         allowed = self.rate_limiter.check(client_id)
+        bucket = self.rate_limiter._buckets.get(client_id, {})
+        remaining = int(bucket.get("tokens", 0))
+        result = {
+            "allowed": allowed,
+            "remaining": remaining,
+            "limit": self.config.rate_limit_per_minute,
+            "retry_after": 0 if allowed else max(1, int(60 / self.config.rate_limit_per_minute)),
+        }
         if not allowed:
             self.audit.log("rate_limit_exceeded", {
                 "client_id": client_id,
             }, severity="warning")
-        return allowed
+        return result
 
     def validate_file_path(self, path: str, mode: str = "read") -> bool:
         """

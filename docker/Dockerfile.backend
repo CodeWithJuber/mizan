@@ -12,6 +12,40 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Create data and plugins directories
+RUN mkdir -p /data plugins
+
 EXPOSE 8000
 
+# Entrypoint script for env validation and graceful shutdown
+COPY <<'ENTRYPOINT' /entrypoint.sh
+#!/bin/bash
+set -e
+
+# ── Environment variable validation ──
+echo "MIZAN Backend — validating environment..."
+MISSING=""
+
+if [ -z "$SECRET_KEY" ]; then
+    MISSING="$MISSING SECRET_KEY"
+fi
+
+# At least one LLM provider should be configured
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$OLLAMA_URL" ]; then
+    echo "WARNING: No LLM provider configured (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL)"
+fi
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Missing required environment variables:$MISSING"
+    exit 1
+fi
+
+echo "Environment validated. Starting MIZAN backend..."
+
+# ── Graceful shutdown via SIGTERM ──
+exec "$@"
+ENTRYPOINT
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

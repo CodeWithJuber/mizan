@@ -146,6 +146,187 @@ class QadrScheduler:
             logger.error(f"[QADR] Invalid cron: {cron}: {e}")
             return None
 
+    def add_heartbeat(self, interval_minutes: int = 5,
+                      callback: Optional[Callable] = None):
+        """Add a heartbeat that runs alongside cron jobs.
+
+        The heartbeat fires every *interval_minutes* and invokes *callback*
+        (if provided) with the list of pending/due jobs.  Results are also
+        forwarded to the configured executor when appropriate.
+        """
+        self._heartbeat = HeartbeatScheduler(
+            interval_minutes=interval_minutes,
+            callback=callback,
+            scheduler=self,
+        )
+        logger.info(
+            f"[QADR] Heartbeat attached (interval={interval_minutes}m)"
+        )
+        return self._heartbeat
+
     def list_jobs(self) -> List[Dict]:
         """List all scheduled jobs"""
         return [job.to_dict() for job in self.jobs.values()]
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat Scheduler
+# ---------------------------------------------------------------------------
+
+@dataclass
+class HeartbeatEntry:
+    """Audit record for a single heartbeat tick."""
+    timestamp: str
+    pending_jobs: int
+    due_jobs_executed: int
+    errors: List[str] = field(default_factory=list)
+
+
+class HeartbeatScheduler:
+    """
+    Proactive heartbeat that runs at a configurable interval.
+
+    On each tick it:
+      1. Checks for pending scheduled jobs in the parent QadrScheduler.
+      2. Executes any jobs that are due.
+      3. Logs the heartbeat to an internal audit trail.
+      4. Invokes an optional callback with a summary dict.
+
+    Fully async-compatible — use ``await start()`` / ``await stop()``.
+    """
+
+    def __init__(
+        self,
+        interval_minutes: int = 5,
+        callback: Optional[Callable] = None,
+        scheduler: Optional["QadrScheduler"] = None,
+    ):
+        self.interval_minutes = interval_minutes
+        self._callback = callback
+        self._scheduler = scheduler
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._audit_log: List[HeartbeatEntry] = []
+
+    # -- public API ---------------------------------------------------------
+
+    async def start(self):
+        """Start the heartbeat loop."""
+        if self._running:
+            logger.warning("[HEARTBEAT] Already running")
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._loop())
+        logger.info(
+            f"[HEARTBEAT] Started (every {self.interval_minutes}m)"
+        )
+
+    async def stop(self):
+        """Stop the heartbeat loop gracefully."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+        logger.info("[HEARTBEAT] Stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    def get_audit_log(self) -> List[Dict]:
+        """Return the heartbeat audit trail as a list of dicts."""
+        return [
+            {
+                "timestamp": e.timestamp,
+                "pending_jobs": e.pending_jobs,
+                "due_jobs_executed": e.due_jobs_executed,
+                "errors": e.errors,
+            }
+            for e in self._audit_log
+        ]
+
+    # -- internals ----------------------------------------------------------
+
+    async def _loop(self):
+        """Core heartbeat loop."""
+        interval_seconds = self.interval_minutes * 60
+        while self._running:
+            try:
+                summary = await self._tick()
+                if self._callback:
+                    try:
+                        result = self._callback(summary)
+                        # Support both sync and async callbacks
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except Exception as exc:
+                        logger.error(f"[HEARTBEAT] Callback error: {exc}")
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error(f"[HEARTBEAT] Loop error: {exc}")
+
+            await asyncio.sleep(interval_seconds)
+
+    async def _tick(self) -> Dict:
+        """Execute a single heartbeat tick."""
+        now = datetime.utcnow()
+        errors: List[str] = []
+        due_executed = 0
+        pending_count = 0
+
+        if self._scheduler:
+            for job in list(self._scheduler.jobs.values()):
+                if not job.enabled:
+                    continue
+                if not job.next_run:
+                    continue
+
+                pending_count += 1
+                next_run = datetime.fromisoformat(job.next_run)
+
+                if now >= next_run:
+                    # Job is due — execute it
+                    logger.info(
+                        f"[HEARTBEAT] Executing due job: {job.name}"
+                    )
+                    if self._scheduler._executor:
+                        try:
+                            await self._scheduler._executor(
+                                job.task, job.agent_id
+                            )
+                            due_executed += 1
+                        except Exception as exc:
+                            msg = f"Job {job.name} failed: {exc}"
+                            logger.error(f"[HEARTBEAT] {msg}")
+                            errors.append(msg)
+                    else:
+                        due_executed += 1  # counted but no executor
+
+                    job.last_run = now.isoformat()
+                    job.run_count += 1
+                    job.next_run = self._scheduler._next_run_time(job.cron)
+
+        entry = HeartbeatEntry(
+            timestamp=now.isoformat(),
+            pending_jobs=pending_count,
+            due_jobs_executed=due_executed,
+            errors=errors,
+        )
+        self._audit_log.append(entry)
+
+        summary = {
+            "timestamp": entry.timestamp,
+            "pending_jobs": entry.pending_jobs,
+            "due_jobs_executed": entry.due_jobs_executed,
+            "errors": entry.errors,
+        }
+        logger.info(
+            f"[HEARTBEAT] tick — pending={pending_count} "
+            f"executed={due_executed} errors={len(errors)}"
+        )
+        return summary

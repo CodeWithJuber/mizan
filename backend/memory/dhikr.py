@@ -174,6 +174,26 @@ class DhikrMemorySystem:
                 created_at TEXT
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                severity TEXT DEFAULT 'info',
+                user_id TEXT,
+                ip_address TEXT,
+                resource TEXT,
+                details TEXT,
+                success INTEGER DEFAULT 1
+            )
+        """)
+        # Performance indexes
+        c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON agent_messages(session_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_task_history_agent ON task_history(agent_id)")
         conn.commit()
         self._release_conn(conn)
 
@@ -490,6 +510,82 @@ class DhikrMemorySystem:
             "config": json.loads(r[3]) if r[3] else {},
             "enabled": bool(r[4]), "created_at": r[5]
         } for r in rows]
+
+    # ── Audit Log Persistence ────────────────────────────────────────────
+
+    async def log_audit(self, event_type: str, severity: str = "info",
+                        user_id: str = "", ip_address: str = "",
+                        resource: str = "", details: dict = None,
+                        success: bool = True):
+        """Persist an audit log entry to SQLite."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO audit_log (timestamp, event_type, severity, user_id,
+                                   ip_address, resource, details, success)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.utcnow().isoformat(), event_type, severity,
+            user_id, ip_address, resource,
+            json.dumps(details or {}), int(success)
+        ))
+        conn.commit()
+        self._release_conn(conn)
+
+    async def get_audit_logs(self, limit: int = 100, severity: str = None,
+                             event_type: str = None) -> List[Dict]:
+        """Query audit logs with optional filtering."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        query = "SELECT * FROM audit_log"
+        params = []
+        conditions = []
+        if severity:
+            conditions.append("severity = ?")
+            params.append(severity)
+        if event_type:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        c.execute(query, params)
+        rows = c.fetchall()
+        self._release_conn(conn)
+        cols = ["id", "timestamp", "event_type", "severity", "user_id",
+                "ip_address", "resource", "details", "success"]
+        results = []
+        for r in rows:
+            entry = dict(zip(cols, r))
+            if entry.get("details"):
+                try:
+                    entry["details"] = json.loads(entry["details"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            entry["success"] = bool(entry.get("success", 1))
+            results.append(entry)
+        return results
+
+    async def get_audit_summary(self) -> Dict:
+        """Get audit log summary statistics."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM audit_log")
+        total = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM audit_log WHERE severity = 'warning'")
+        warnings = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM audit_log WHERE severity = 'error'")
+        errors = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM audit_log WHERE severity = 'critical'")
+        critical = c.fetchone()[0]
+        self._release_conn(conn)
+        return {
+            "total_events": total,
+            "warnings": warnings,
+            "errors": errors,
+            "critical": critical,
+        }
 
     # ── QCA Lawh Memory Bridge ──────────────────────────────────────────
 

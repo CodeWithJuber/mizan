@@ -71,15 +71,20 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
   const [skills, setSkills] = useState<Skill[]>(BUILTIN_SKILLS);
   const [activeTab, setActiveTab] = useState<string>("installed");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
   const loadSkills = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await api.get("/skills");
       if ((data.skills as Skill[] | undefined)?.length) {
         setSkills(data.skills as Skill[]);
       }
-    } catch {
-      // Use defaults
+    } catch (err) {
+      console.error("Failed to fetch skills, using defaults:", err);
+      // Use defaults (BUILTIN_SKILLS already set)
+    } finally {
+      setLoading(false);
     }
   }, [api]);
 
@@ -166,6 +171,12 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           </div>
         ))}
       </div>
+
+      {loading && (
+        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          Loading skills...
+        </div>
+      )}
 
       <div
         style={{
