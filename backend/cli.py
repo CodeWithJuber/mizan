@@ -82,10 +82,11 @@ def chat(agent, model):
     from backend.settings import get_settings
     settings = get_settings()
 
-    if not settings.has_anthropic and not settings.has_openai:
+    if not settings.has_any_provider:
         console.print(
             "[bold red]No API key configured.[/]\n"
-            "Run [cyan]mizan setup[/] or set ANTHROPIC_API_KEY in your .env file.\n"
+            "Run [cyan]mizan setup[/] or set one of these in your .env file:\n"
+            "  ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY\n"
         )
         return
 
@@ -95,11 +96,22 @@ def chat(agent, model):
 
 
 async def _chat_loop(settings, agent_name, model_override):
-    """Async chat loop using the agent directly."""
-    import anthropic
+    """Async chat loop using the unified provider interface."""
+    from backend.providers import create_provider, get_default_model
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    provider_name = settings.llm_provider or None
     model = model_override or settings.default_model
+    provider = create_provider(provider=provider_name, model=model)
+
+    if not provider:
+        console.print("[bold red]Could not initialize LLM provider.[/]")
+        return
+
+    if not model_override:
+        model = model or get_default_model(provider.provider_name)
+
+    console.print(f"  [dim]Provider: {provider.provider_name} | Model: {model}[/]\n")
+
     history = []
 
     system_prompt = (
@@ -127,7 +139,7 @@ async def _chat_loop(settings, agent_name, model_override):
         console.print("[bold gold1]MIZAN[/] ", end="")
 
         try:
-            with client.messages.stream(
+            with provider.stream(
                 model=model,
                 max_tokens=4096,
                 system=system_prompt,
@@ -141,8 +153,6 @@ async def _chat_loop(settings, agent_name, model_override):
                 console.print()  # Newline after response
                 history.append({"role": "assistant", "content": full_response})
 
-        except anthropic.APIError as e:
-            console.print(f"\n[red]API Error: {e}[/]")
         except Exception as e:
             console.print(f"\n[red]Error: {e}[/]")
 
@@ -202,7 +212,7 @@ def setup():
     else:
         env_content = ""
 
-    # Ask for API key
+    # Ask for API keys
     console.print("\n[bold]AI Provider Configuration[/]")
     console.print("[dim]You need at least one API key to use MIZAN.[/]\n")
 
@@ -211,10 +221,18 @@ def setup():
         default="",
         password=True,
     )
-
     if api_key:
+        env_content = env_content.replace("sk-ant-your-key-here", api_key)
+
+    openrouter_key = Prompt.ask(
+        "OpenRouter API Key (sk-or-... — optional, 300+ models)",
+        default="",
+        password=True,
+    )
+    if openrouter_key:
         env_content = env_content.replace(
-            "sk-ant-your-key-here", api_key
+            "OPENROUTER_API_KEY=",
+            f"OPENROUTER_API_KEY={openrouter_key}",
         )
 
     # Write .env

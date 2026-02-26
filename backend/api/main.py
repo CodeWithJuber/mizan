@@ -35,6 +35,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from _version import __version__
 from agents.specialized import create_agent
+from providers import (
+    get_provider_status, fetch_openrouter_models, fetch_ollama_models,
+    check_provider_health, create_provider, get_default_model,
+)
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from core.architecture import MizanBalancer, ShuraCouncil
@@ -281,7 +285,7 @@ class ChatMessage(BaseModel):
 
 class IntegrationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    type: str = Field(..., pattern=r"^(mcp|openai|anthropic|ollama|webhook|email)$")
+    type: str = Field(..., pattern=r"^(mcp|openai|anthropic|openrouter|ollama|webhook|email)$")
     config: dict = {}
     enabled: bool = True
 
@@ -674,6 +678,86 @@ async def consolidate_memory():
     return result
 
 
+# === PROVIDERS (Ruh al-Ilm - روح العلم) ===
+
+@app.get("/api/providers")
+async def list_providers():
+    """
+    List all LLM providers with their status, models, and configuration.
+    Inspired by OpenClaw's multi-provider architecture.
+    """
+    return get_provider_status()
+
+
+@app.get("/api/providers/{provider_name}/models")
+async def list_provider_models(provider_name: str):
+    """
+    List available models for a specific provider.
+    For OpenRouter: fetches the live catalog from their API.
+    For Ollama: fetches locally installed models.
+    """
+    if provider_name == "openrouter":
+        models = await fetch_openrouter_models(limit=50)
+        return {"provider": "openrouter", "models": models}
+    elif provider_name == "ollama":
+        models = await fetch_ollama_models()
+        return {"provider": "ollama", "models": models}
+    else:
+        from providers import PROVIDER_MODELS
+        return {
+            "provider": provider_name,
+            "models": PROVIDER_MODELS.get(provider_name, []),
+        }
+
+
+@app.get("/api/providers/{provider_name}/health")
+async def provider_health(provider_name: str):
+    """
+    Health check for a specific provider.
+    Verifies API keys are valid and the provider is reachable.
+    """
+    result = await check_provider_health(provider_name)
+    return result
+
+
+class ProviderSwitchRequest(BaseModel):
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    model: str = Field(..., min_length=1, max_length=200)
+
+
+@app.post("/api/providers/switch")
+async def switch_provider(req: ProviderSwitchRequest,
+                          user: TokenPayload | None = Depends(get_current_user)):
+    """
+    Switch the active LLM provider and model for all agents.
+    This updates agents in memory — does not persist to .env.
+    """
+    provider = create_provider(provider=req.provider, model=req.model)
+    if not provider:
+        raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
+
+    # Update all active agents
+    switched = 0
+    for agent in active_agents.values():
+        agent.ai_client = provider
+        agent.ai_model = req.model
+        switched += 1
+
+    await manager.broadcast({
+        "type": "provider_switched",
+        "provider": req.provider,
+        "model": req.model,
+        "agents_updated": switched,
+    })
+
+    wali.audit.log("provider_switched", {"provider": req.provider, "model": req.model})
+    return {
+        "provider": req.provider,
+        "model": req.model,
+        "agents_updated": switched,
+    }
+
+
 # === INTEGRATIONS ===
 
 @app.get("/api/integrations")
@@ -753,6 +837,7 @@ async def system_status():
         "recent_tasks": task_history[:5],
         "connections": len(manager.connections),
         "sessions": len(active_sessions),
+        "provider": get_provider_status(),
         "security": {
             "auth_enabled": True,
             "rate_limiting": True,
@@ -1095,11 +1180,14 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         "user_id": user.user_id if user else None
     })
 
+    provider_info = get_provider_status()
     await manager.send(client_id, {
         "type": "connected",
         "message": "بسم الله - Connected to MIZAN",
         "agents": len(active_agents),
         "authenticated": user is not None,
+        "provider": provider_info["active"],
+        "model": provider_info["default_model"],
         "timestamp": datetime.utcnow().isoformat(),
     })
 
