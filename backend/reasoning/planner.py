@@ -137,7 +137,7 @@ class TafakkurPlanner:
 
         # Use AI to decompose
         try:
-            response = agent.ai_client.messages.create(
+            response = agent.ai_client.create(
                 model=agent.ai_model,
                 max_tokens=2048,
                 system="""You are a task planner. Decompose the given goal into 2-6 concrete sub-tasks.
@@ -151,7 +151,11 @@ Return ONLY the JSON array, no other text.""",
                 messages=[{"role": "user", "content": f"Decompose this goal into sub-tasks:\n\n{goal}"}],
             )
 
-            text = response.content[0].text.strip()
+            text = ""
+            for block in response.content:
+                if block.type == "text":
+                    text += block.text
+            text = text.strip()
             # Extract JSON from response
             if "[" in text:
                 json_str = text[text.index("["):text.rindex("]") + 1]
