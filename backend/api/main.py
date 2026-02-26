@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 import uuid
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
@@ -868,6 +869,55 @@ async def system_status():
             "izn_active": True,
         },
     }
+
+
+@app.get("/api/version")
+async def version_info():
+    """Version info and update check"""
+    import subprocess
+    result = {
+        "version": __version__,
+        "system": "MIZAN",
+        "updates_available": 0,
+        "latest_commit": None,
+        "can_check": False,
+    }
+
+    try:
+        # Check if we're in a git repo
+        subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True, check=True, cwd=str(Path(__file__).resolve().parent.parent.parent))
+        result["can_check"] = True
+
+        # Fetch latest (quick, non-blocking)
+        subprocess.run(["git", "fetch", "origin", "--quiet"], capture_output=True, timeout=10, cwd=str(Path(__file__).resolve().parent.parent.parent))
+
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+        )
+        branch = branch_result.stdout.strip() or "main"
+
+        # Count commits behind
+        behind_result = subprocess.run(
+            ["git", "rev-list", "--count", f"HEAD..origin/{branch}"],
+            capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+        )
+        behind = int(behind_result.stdout.strip() or "0")
+        result["updates_available"] = behind
+
+        # Get latest remote commit message
+        if behind > 0:
+            log_result = subprocess.run(
+                ["git", "log", "--oneline", f"origin/{branch}", "-1"],
+                capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+            )
+            result["latest_commit"] = log_result.stdout.strip()[:80]
+
+    except Exception:
+        pass
+
+    return result
 
 
 @app.post("/api/shura")
