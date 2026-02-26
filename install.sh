@@ -6,8 +6,12 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
 #
-# Options (pass via environment):
-#   MIZAN_METHOD=pip|git|docker   Installation method (default: pip)
+# Install methods:
+#   curl -fsSL https://mizan.dev/install.sh | bash                              # auto (pip)
+#   curl -fsSL https://mizan.dev/install.sh | bash -s -- --install-method git   # hackable git
+#   curl -fsSL https://mizan.dev/install.sh | bash -s -- --install-method docker
+#
+# Environment options:
 #   MIZAN_DIR=<path>              Install directory for git method (default: ~/mizan)
 #   MIZAN_SKIP_FRONTEND=1         Skip frontend setup
 #   MIZAN_BRANCH=main             Git branch (default: main)
@@ -16,21 +20,78 @@
 set -euo pipefail
 
 # ───── Colors ─────
-GOLD='\033[0;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-DIM='\033[2m'
-BOLD='\033[1m'
-NC='\033[0m'
+if [ -t 1 ]; then
+    GOLD='\033[0;33m'
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    RED='\033[0;31m'
+    DIM='\033[2m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+else
+    GOLD='' GREEN='' BLUE='' RED='' DIM='' BOLD='' NC=''
+fi
 
 # ───── Config ─────
-MIZAN_METHOD="${MIZAN_METHOD:-pip}"
+MIZAN_METHOD="${MIZAN_METHOD:-auto}"
 MIZAN_DIR="${MIZAN_DIR:-$HOME/mizan}"
 MIZAN_BRANCH="${MIZAN_BRANCH:-main}"
 MIZAN_REPO="https://github.com/CodeWithJuber/mizan.git"
 MIZAN_MIN_PYTHON="3.11"
 MIZAN_MIN_NODE="18"
+
+# ───── Parse CLI Arguments ─────
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --install-method)
+            MIZAN_METHOD="$2"
+            shift 2
+            ;;
+        --dir)
+            MIZAN_DIR="$2"
+            shift 2
+            ;;
+        --branch)
+            MIZAN_BRANCH="$2"
+            shift 2
+            ;;
+        --skip-frontend)
+            MIZAN_SKIP_FRONTEND=1
+            shift
+            ;;
+        --help|-h)
+            cat <<'HELP'
+MIZAN Installer — Agentic Personal AI
+
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
+  curl -fsSL ... | bash -s -- [OPTIONS]
+
+Options:
+  --install-method <method>   pip (default), git, or docker
+  --dir <path>                Install directory (default: ~/mizan)
+  --branch <branch>           Git branch (default: main)
+  --skip-frontend             Skip frontend (Node.js) setup
+  --help                      Show this help
+
+Examples:
+  # Quick install (pip)
+  curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
+
+  # Hackable install (full source)
+  curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method git
+
+  # Docker install
+  curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method docker
+HELP
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1 (use --help for usage)"
+            exit 1
+            ;;
+    esac
+done
 
 # ───── Helpers ─────
 
@@ -81,6 +142,8 @@ detect_os() {
         PKG_MANAGER="brew"
     elif command_exists apk; then
         PKG_MANAGER="apk"
+    elif command_exists zypper; then
+        PKG_MANAGER="zypper"
     fi
 
     info "Detected: ${BOLD}$OS${NC} ($ARCH) — package manager: ${PKG_MANAGER:-none}"
@@ -134,6 +197,9 @@ install_python() {
         apk)
             sudo apk add python3 py3-pip
             ;;
+        zypper)
+            sudo zypper install -y python3 python3-pip
+            ;;
         *)
             error "Cannot auto-install Python. Please install Python $MIZAN_MIN_PYTHON+ manually."
             error "Visit: https://www.python.org/downloads/"
@@ -181,6 +247,9 @@ install_node() {
         apk)
             sudo apk add nodejs npm
             ;;
+        zypper)
+            sudo zypper install -y nodejs20 npm20
+            ;;
         *)
             error "Cannot auto-install Node.js. Please install Node.js $MIZAN_MIN_NODE+ manually."
             error "Visit: https://nodejs.org/"
@@ -200,12 +269,61 @@ check_git() {
             pacman) sudo pacman -S --noconfirm git ;;
             brew)   brew install git ;;
             apk)    sudo apk add git ;;
+            zypper) sudo zypper install -y git ;;
             *)
                 error "Please install git manually"
                 exit 1
                 ;;
         esac
+        success "Git installed"
     fi
+}
+
+check_docker() {
+    if ! command_exists docker; then
+        warn "Docker not found"
+        install_docker
+    fi
+
+    if ! docker info &>/dev/null 2>&1; then
+        warn "Docker daemon not running"
+        if [ "$OS" = "linux" ]; then
+            info "Starting Docker..."
+            sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+        fi
+    fi
+}
+
+install_docker() {
+    info "Installing Docker..."
+    case "$OS" in
+        linux)
+            if command_exists curl; then
+                curl -fsSL https://get.docker.com | sudo sh
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
+                success "Docker installed (you may need to log out and back in for group changes)"
+            else
+                error "Cannot auto-install Docker. Visit: https://docs.docker.com/get-docker/"
+                exit 1
+            fi
+            ;;
+        macos)
+            if command_exists brew; then
+                brew install --cask docker
+                info "Docker Desktop installed — please open it from Applications to start the daemon"
+            else
+                error "Cannot auto-install Docker. Visit: https://docs.docker.com/get-docker/"
+                exit 1
+            fi
+            ;;
+        *)
+            error "Cannot auto-install Docker on this platform."
+            error "Visit: https://docs.docker.com/get-docker/"
+            exit 1
+            ;;
+    esac
+
+    success "Docker installed"
 }
 
 # ───── Installation Methods ─────
@@ -214,12 +332,14 @@ install_via_pip() {
     step "Installing MIZAN via pip"
 
     # Create virtual environment
-    if [ ! -d "$HOME/.mizan" ]; then
+    if [ ! -d "$HOME/.mizan/venv" ]; then
         info "Creating virtual environment..."
+        mkdir -p "$HOME/.mizan"
         $PYTHON_CMD -m venv "$HOME/.mizan/venv"
     fi
 
     # Activate and install
+    # shellcheck disable=SC1091
     source "$HOME/.mizan/venv/bin/activate"
     info "Installing mizan package..."
     pip install --upgrade pip -q
@@ -258,6 +378,7 @@ install_via_git() {
     # Backend setup
     info "Setting up Python environment..."
     $PYTHON_CMD -m venv venv
+    # shellcheck disable=SC1091
     source venv/bin/activate
     pip install --upgrade pip -q
     pip install -e "." -q
@@ -265,11 +386,16 @@ install_via_git() {
 
     # Frontend setup
     if [ "${MIZAN_SKIP_FRONTEND:-}" != "1" ]; then
-        info "Setting up frontend..."
-        cd "$MIZAN_DIR/frontend"
-        npm install --silent 2>/dev/null
-        success "Frontend dependencies installed"
-        cd "$MIZAN_DIR"
+        if command_exists node; then
+            info "Setting up frontend..."
+            cd "$MIZAN_DIR/frontend"
+            npm install --silent 2>/dev/null
+            success "Frontend dependencies installed"
+            cd "$MIZAN_DIR"
+        else
+            warn "Node.js not available — skipping frontend setup"
+            warn "Install Node.js $MIZAN_MIN_NODE+ and run: cd $MIZAN_DIR/frontend && npm install"
+        fi
     fi
 
     # Create .env if not exists
@@ -289,12 +415,7 @@ install_via_git() {
 install_via_docker() {
     step "Installing MIZAN via Docker"
 
-    if ! command_exists docker; then
-        error "Docker is not installed. Please install Docker first."
-        error "Visit: https://docs.docker.com/get-docker/"
-        exit 1
-    fi
-
+    check_docker
     check_git
 
     if [ -d "$MIZAN_DIR" ]; then
@@ -312,12 +433,12 @@ install_via_docker() {
     fi
 
     info "Building Docker containers..."
-    docker compose build --quiet 2>/dev/null || docker-compose build --quiet
+    docker compose build --quiet 2>/dev/null || docker-compose build --quiet 2>/dev/null
     success "Docker images built"
 
-    echo ""
-    info "Start MIZAN with:"
-    echo -e "    ${GOLD}cd $MIZAN_DIR && docker compose up -d${NC}"
+    info "Starting MIZAN..."
+    docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null
+    success "MIZAN is running!"
 }
 
 # ───── PATH Management ─────
@@ -407,8 +528,8 @@ interactive_setup() {
     echo -e "    ${GOLD}3)${NC} docker      ${DIM}(containerized — production)${NC}"
     echo ""
 
-    read -rp "  Select [1/2/3] (default: 2): " choice
-    case "${choice:-2}" in
+    read -rp "  Select [1/2/3] (default: 1): " choice
+    case "${choice:-1}" in
         1) MIZAN_METHOD="pip" ;;
         2) MIZAN_METHOD="git" ;;
         3) MIZAN_METHOD="docker" ;;
@@ -425,9 +546,15 @@ main() {
     banner
     detect_os
 
-    # Interactive mode if no method specified and running in terminal
-    if [ -t 0 ] && [ "${MIZAN_METHOD}" = "pip" ]; then
-        interactive_setup
+    # Resolve "auto" method
+    if [ "$MIZAN_METHOD" = "auto" ]; then
+        if [ -t 0 ]; then
+            # Interactive terminal — let user choose
+            interactive_setup
+        else
+            # Piped from curl — default to pip
+            MIZAN_METHOD="pip"
+        fi
     fi
 
     # Prerequisites
@@ -453,4 +580,4 @@ main() {
     print_success
 }
 
-main "$@"
+main

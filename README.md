@@ -34,39 +34,59 @@ MIZAN is an **agentic personal AI** that goes beyond simple chatbots. It feature
 
 ## Quick Start
 
-### Option 1: pip install (Recommended)
+### One-Liner (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
+```
+
+Works everywhere. Installs Python and everything else for you.
+On macOS, first run may need an Administrator for Homebrew.
+
+### One-Liner (Windows PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex
+```
+
+### Hackable Git Install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method git
+```
+
+### Docker Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash -s -- --install-method docker
+```
+
+Or on Windows PowerShell:
+
+```powershell
+$env:MIZAN_METHOD="docker"; irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex
+```
+
+### pip Install
 
 ```bash
 pip install mizan
-
-# Setup (creates .env, data directory)
-mizan setup
-
-# Chat directly from terminal
-mizan chat
-
-# Or start the full API server
-mizan serve
+mizan setup      # First-time config
+mizan chat       # Chat in terminal
+mizan serve      # Start API server
 ```
 
-### Option 2: From Source
+### Manual Git Clone & Build
 
 ```bash
 git clone https://github.com/CodeWithJuber/mizan.git
-cd mizan
-
-# Full setup (installs deps, creates .env)
-make setup
-
+cd mizan && make setup
 # Edit .env with your ANTHROPIC_API_KEY
-# Then start development server
 make dev
-
-# Open http://localhost:3000 (frontend)
-# API at http://localhost:8000/docs
+# Frontend: http://localhost:3000 — API: http://localhost:8000/docs
 ```
 
-### Option 3: Docker
+### Docker Compose (Manual)
 
 ```bash
 git clone https://github.com/CodeWithJuber/mizan.git
@@ -82,9 +102,9 @@ docker compose --profile ollama --profile vector up -d
 
 ### Requirements
 
-- **Python 3.11+**
+- **Python 3.11+** (auto-installed by the one-liner)
 - **At least one API key**: Anthropic (recommended), OpenAI, or local Ollama
-- Node.js 20+ (for frontend only)
+- Node.js 20+ (for frontend only, auto-installed by git method)
 
 ---
 
