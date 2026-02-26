@@ -1,4 +1,4 @@
-.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build
+.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build update
 
 # Default target
 help: ## Show this help message
@@ -30,6 +30,9 @@ setup: ## Full setup: install deps, setup frontend, create .env
 	cd frontend && npm install
 	@echo ""
 	@echo "✓ MIZAN setup complete. Edit .env with your API keys, then run: make dev"
+
+update: ## Update MIZAN to the latest version
+	@./update.sh
 
 # ─── Running ──────────────────────────────────────────────────
 

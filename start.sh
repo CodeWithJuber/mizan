@@ -110,6 +110,7 @@ show_help() {
     echo "  start       - Start backend + frontend (dev mode)"
     echo "  stop        - Stop all processes"
     echo "  install     - Install dependencies only"
+    echo "  update      - Update MIZAN to the latest version"
     echo "  docker      - Start with Docker Compose"
     echo "  status      - Show system status"
     echo "  backend     - Start backend only"
@@ -117,11 +118,32 @@ show_help() {
     echo "  help        - Show this help"
 }
 
+# ───── Auto-update check (non-blocking) ─────
+check_for_updates() {
+    # Silent background check — only shows a notice if updates exist
+    if [ -d "$MIZAN_DIR/.git" ] && command -v git &>/dev/null; then
+        git fetch origin --quiet 2>/dev/null || return 0
+        local branch
+        branch="$(git -C "$MIZAN_DIR" branch --show-current 2>/dev/null || echo "main")"
+        local behind
+        behind="$(git -C "$MIZAN_DIR" rev-list --count HEAD..origin/${branch} 2>/dev/null || echo "0")"
+        if [ "$behind" != "0" ] && [ "$behind" != "" ]; then
+            echo ""
+            echo -e "${GOLD}  ╭─────────────────────────────────────────────╮${NC}"
+            echo -e "${GOLD}  │${NC}  ${BOLD}Update available!${NC} ${behind} new update(s)          ${GOLD}│${NC}"
+            echo -e "${GOLD}  │${NC}  Run: ${GREEN}./update.sh${NC} or ${GREEN}make update${NC}            ${GOLD}│${NC}"
+            echo -e "${GOLD}  ╰─────────────────────────────────────────────╯${NC}"
+            echo ""
+        fi
+    fi
+}
+
 # Main
 print_header
 
 case "${1:-start}" in
     start)
+        check_for_updates
         install_backend
         install_frontend
         start_backend
@@ -147,6 +169,13 @@ case "${1:-start}" in
         ;;
     docker)
         docker_start
+        ;;
+    update)
+        if [ -f "$MIZAN_DIR/update.sh" ]; then
+            bash "$MIZAN_DIR/update.sh"
+        else
+            echo -e "${RED}update.sh not found. Run: git pull origin main${NC}"
+        fi
         ;;
     status)
         show_status

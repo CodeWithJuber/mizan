@@ -492,12 +492,19 @@ print_success() {
             echo -e "  ${BOLD}Or run directly:${NC}"
             echo -e "    ${GOLD}./start.sh start${NC}        # Backend + Frontend"
             echo ""
+            echo -e "  ${BOLD}Update later:${NC}"
+            echo -e "    ${GOLD}./update.sh${NC}             # One-command update"
+            echo -e "    ${GOLD}make update${NC}             # Or via make"
+            echo ""
             ;;
         docker)
             echo -e "  ${BOLD}Quick Start:${NC}"
             echo -e "    ${GOLD}cd $MIZAN_DIR${NC}"
             echo -e "    ${GOLD}# Edit .env with your ANTHROPIC_API_KEY${NC}"
             echo -e "    ${GOLD}docker compose up -d${NC}    # Start all services"
+            echo ""
+            echo -e "  ${BOLD}Update later:${NC}"
+            echo -e "    ${GOLD}./update.sh${NC}             # One-command update"
             echo ""
             ;;
     esac
