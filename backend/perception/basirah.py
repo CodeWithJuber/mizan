@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from backend.perception.vision import VisionProcessor
+from perception.vision import VisionProcessor
 
 logger = logging.getLogger("mizan.basirah")
 
