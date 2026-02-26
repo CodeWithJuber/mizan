@@ -24,11 +24,13 @@ from rich.table import Table
 from rich.live import Live
 from rich.text import Text
 
+from backend._version import __version__
+
 console = Console()
 
-BANNER = """[bold gold1]
+BANNER = f"""[bold gold1]
  ╔═══════════════════════════════════════════════════╗
- ║          ميزان  ·  MIZAN v3.0                     ║
+ ║          ميزان  ·  MIZAN v{__version__:<25s}║
  ║      Agentic Personal AI                          ║
  ║  "And He imposed the balance (Mizan)" — 55:7      ║
  ╚═══════════════════════════════════════════════════╝
@@ -232,7 +234,7 @@ def setup():
 @main.command()
 def version():
     """Show MIZAN version."""
-    console.print("MIZAN v3.0.0")
+    console.print(f"MIZAN v{__version__}")
 
 
 if __name__ == "__main__":
