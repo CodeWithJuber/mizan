@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from _version import __version__
 from agents.specialized import create_agent
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
@@ -143,7 +144,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
     description="Production-ready agentic AI with Quranic Cognitive Architecture",
-    version="3.0.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -416,7 +417,7 @@ async def root():
     return {
         "system": "MIZAN (ميزان)",
         "verse": "And the heaven He raised and imposed the balance (Mizan) - 55:7",
-        "version": "3.0.0",
+        "version": __version__,
         "agents": len(active_agents),
         "status": "active",
     }
@@ -738,7 +739,7 @@ async def system_status():
 
     return {
         "system": "MIZAN",
-        "version": "3.0.0",
+        "version": __version__,
         "status": "active",
         "timestamp": datetime.utcnow().isoformat(),
         "agents": {
