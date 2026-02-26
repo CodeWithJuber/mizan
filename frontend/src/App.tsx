@@ -17,6 +17,7 @@ import ScannerPage from "./pages/ScannerPage";
 import MajlisPage from "./pages/MajlisPage";
 import PluginsPage from "./pages/PluginsPage";
 import ProvidersPage from "./pages/ProvidersPage";
+import DeveloperPage from "./pages/DeveloperPage";
 import { useApi } from "./hooks/useApi";
 
 const WS_URL = "ws://localhost:8000/ws";
@@ -1813,6 +1814,9 @@ export default function App() {
       case "providers":
         return <ProvidersPage api={api} addTerminalLine={addTerminalLine} />;
 
+      case "developer":
+        return <DeveloperPage api={api} />;
+
       case "integrations":
         return (
           <>
@@ -1963,6 +1967,7 @@ export default function App() {
               { id: "automation", label: "Automation", arabic: "قدر", icon: <Icons.Clock /> },
               { id: "security", label: "Security", arabic: "ولي", icon: <Icons.Shield /> },
               { id: "integrations", label: "Integrations", arabic: "وصل", icon: <Icons.Globe /> },
+              { id: "developer", label: "Developer", arabic: "مطور", icon: <Icons.Terminal /> },
               { id: "settings", label: "Settings", arabic: "إعدادات", icon: <Icons.Settings /> },
             ].map(item => (
               <div

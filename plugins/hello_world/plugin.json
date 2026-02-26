@@ -1,0 +1,11 @@
+{
+    "name": "hello_world",
+    "version": "1.0.0",
+    "description": "A simple example plugin that shows how to extend MIZAN. Perfect for learning!",
+    "author": "MIZAN Team",
+    "permissions": [],
+    "hooks": ["agent.system_prompt"],
+    "events": ["task.completed"],
+    "tags": ["example", "beginner"],
+    "enabled": true
+}
