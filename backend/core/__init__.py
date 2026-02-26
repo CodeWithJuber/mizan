@@ -1,6 +1,6 @@
 """MIZAN Core - Quranic Architecture Foundation with QCA Cognitive Engine"""
 
-from backend.core.architecture import (
+from core.architecture import (
     QuranicLayer,
     QCALayer,
     AgentRole,

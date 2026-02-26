@@ -439,7 +439,7 @@ class QCAMizanIntegrator:
         Validate an agent's decision through QCA Mizan + Furqan layers.
         Prevents epistemic transgression (Tughyan).
         """
-        from backend.qca.engine import MizanLayer
+        from qca.engine import MizanLayer
         mizan = MizanLayer()
         is_tughyan, msg = mizan.check_tughyan(claimed_level, evidence_level)
         return {

@@ -23,7 +23,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
+from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
 logger = logging.getLogger("mizan.qca")
 
