@@ -11,11 +11,10 @@ Tracks and reinforces what works:
 - Provides gratitude-based feedback loops
 """
 
-import time
 import logging
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("mizan.shukr")
 
@@ -23,6 +22,7 @@ logger = logging.getLogger("mizan.shukr")
 @dataclass
 class StrengthRecord:
     """A recorded strength/success pattern."""
+
     pattern: str
     category: str
     success_count: int = 0
@@ -49,16 +49,16 @@ class ShukrSystem:
     """
 
     def __init__(self):
-        self._strengths: Dict[str, Dict[str, StrengthRecord]] = defaultdict(dict)
-        self._gratitude_log: List[Dict] = []
+        self._strengths: dict[str, dict[str, StrengthRecord]] = defaultdict(dict)
+        self._gratitude_log: list[dict] = []
 
-    def record_success(self, agent_id: str, category: str,
-                       pattern: str, duration_ms: float = 0):
+    def record_success(self, agent_id: str, category: str, pattern: str, duration_ms: float = 0):
         """Record a successful task completion."""
         key = f"{category}:{pattern}"
         if key not in self._strengths[agent_id]:
             self._strengths[agent_id][key] = StrengthRecord(
-                pattern=pattern, category=category,
+                pattern=pattern,
+                category=category,
             )
 
         record = self._strengths[agent_id][key]
@@ -69,34 +69,40 @@ class ShukrSystem:
         # Update average duration
         if duration_ms > 0:
             n = record.success_count
-            record.avg_duration_ms = (
-                record.avg_duration_ms * (n - 1) + duration_ms
-            ) / n
+            record.avg_duration_ms = (record.avg_duration_ms * (n - 1) + duration_ms) / n
 
         # Calculate confidence boost (logarithmic growth)
         import math
+
         record.confidence_boost = min(0.2, math.log(record.success_count + 1) * 0.05)
 
         if record.success_count % 10 == 0:
-            self._gratitude_log.append({
-                "agent_id": agent_id,
-                "pattern": pattern,
-                "milestone": record.success_count,
-                "timestamp": time.time(),
-            })
-            logger.info("[SHUKR] Agent %s reached %d successes in %s",
-                       agent_id, record.success_count, pattern)
+            self._gratitude_log.append(
+                {
+                    "agent_id": agent_id,
+                    "pattern": pattern,
+                    "milestone": record.success_count,
+                    "timestamp": time.time(),
+                }
+            )
+            logger.info(
+                "[SHUKR] Agent %s reached %d successes in %s",
+                agent_id,
+                record.success_count,
+                pattern,
+            )
 
     def record_failure(self, agent_id: str, category: str, pattern: str):
         """Record a task failure (updates total without adding success)."""
         key = f"{category}:{pattern}"
         if key not in self._strengths[agent_id]:
             self._strengths[agent_id][key] = StrengthRecord(
-                pattern=pattern, category=category,
+                pattern=pattern,
+                category=category,
             )
         self._strengths[agent_id][key].total_count += 1
 
-    def get_strengths(self, agent_id: str, min_success: int = 3) -> List[Dict]:
+    def get_strengths(self, agent_id: str, min_success: int = 3) -> list[dict]:
         """Get agent's identified strengths, sorted by success rate."""
         records = self._strengths.get(agent_id, {})
         strengths = [
@@ -118,13 +124,13 @@ class ShukrSystem:
         """Get confidence boost for a task category based on past successes."""
         records = self._strengths.get(agent_id, {})
         boosts = [
-            r.confidence_boost for key, r in records.items()
+            r.confidence_boost
+            for key, r in records.items()
             if r.category == category and r.success_rate > 0.7
         ]
         return sum(boosts) / max(len(boosts), 1) if boosts else 0.0
 
-    def get_best_agent_for(self, agent_ids: List[str],
-                           category: str) -> Optional[str]:
+    def get_best_agent_for(self, agent_ids: list[str], category: str) -> str | None:
         """Find the agent with highest success rate in a category."""
         best_agent = None
         best_rate = -1
@@ -132,8 +138,7 @@ class ShukrSystem:
         for aid in agent_ids:
             records = self._strengths.get(aid, {})
             category_records = [
-                r for r in records.values()
-                if r.category == category and r.total_count >= 3
+                r for r in records.values() if r.category == category and r.total_count >= 3
             ]
             if category_records:
                 avg_rate = sum(r.success_rate for r in category_records) / len(category_records)
@@ -143,21 +148,21 @@ class ShukrSystem:
 
         return best_agent
 
-    def get_gratitude_milestones(self, agent_id: str = None) -> List[Dict]:
+    def get_gratitude_milestones(self, agent_id: str = None) -> list[dict]:
         """Get gratitude milestones (celebration moments)."""
         if agent_id:
             return [g for g in self._gratitude_log if g["agent_id"] == agent_id]
         return list(self._gratitude_log)
 
-    def stats(self, agent_id: str = None) -> Dict:
+    def stats(self, agent_id: str = None) -> dict:
         if agent_id:
             records = self._strengths.get(agent_id, {})
             return {
                 "total_patterns": len(records),
                 "total_successes": sum(r.success_count for r in records.values()),
-                "top_category": Counter(
-                    r.category for r in records.values()
-                ).most_common(1)[0][0] if records else None,
+                "top_category": Counter(r.category for r in records.values()).most_common(1)[0][0]
+                if records
+                else None,
             }
         return {
             "agents_tracked": len(self._strengths),

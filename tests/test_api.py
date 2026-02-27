@@ -2,8 +2,9 @@
 Tests for the API endpoints
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 
@@ -11,12 +12,16 @@ from fastapi.testclient import TestClient
 def client():
     """Create a test client with mocked dependencies."""
     # We need to mock heavy dependencies before importing
-    with patch.dict("os.environ", {
-        "ANTHROPIC_API_KEY": "",
-        "DB_PATH": ":memory:",
-        "SECRET_KEY": "test-secret",
-    }):
+    with patch.dict(
+        "os.environ",
+        {
+            "ANTHROPIC_API_KEY": "",
+            "DB_PATH": ":memory:",
+            "SECRET_KEY": "test-secret",
+        },
+    ):
         from api.main import app
+
         return TestClient(app, raise_server_exceptions=False)
 
 
@@ -41,19 +46,25 @@ class TestAgentEndpoints:
 
 class TestMemoryEndpoints:
     def test_store_memory(self, client):
-        resp = client.post("/api/memory/store", json={
-            "content": "Test memory",
-            "memory_type": "semantic",
-            "importance": 0.7,
-        })
+        resp = client.post(
+            "/api/memory/store",
+            json={
+                "content": "Test memory",
+                "memory_type": "semantic",
+                "importance": 0.7,
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["stored"] is True
 
     def test_query_memory(self, client):
-        resp = client.post("/api/memory/query", json={
-            "query": "test",
-            "limit": 5,
-        })
+        resp = client.post(
+            "/api/memory/query",
+            json={
+                "query": "test",
+                "limit": 5,
+            },
+        )
         assert resp.status_code == 200
         assert "results" in resp.json()
 

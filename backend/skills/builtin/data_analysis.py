@@ -5,10 +5,9 @@ Data Analysis Skill
 Analyze CSV/JSON data with basic statistics.
 """
 
-import json
 import csv
 import io
-from typing import Dict, List
+import json
 
 from ..base import SkillBase, SkillManifest
 
@@ -24,14 +23,14 @@ class DataAnalysisSkill(SkillBase):
         tags=["data", "analysis", "statistics"],
     )
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._tools = {
             "analyze_csv": self.analyze_csv,
             "analyze_json": self.analyze_json,
         }
 
-    async def execute(self, params: Dict, context: Dict = None) -> Dict:
+    async def execute(self, params: dict, context: dict = None) -> dict:
         action = params.get("action", "analyze_csv")
         if action == "analyze_csv":
             return await self.analyze_csv(params.get("data", ""))
@@ -39,7 +38,7 @@ class DataAnalysisSkill(SkillBase):
             return await self.analyze_json(params.get("data", ""))
         return {"error": f"Unknown action: {action}"}
 
-    async def analyze_csv(self, data: str) -> Dict:
+    async def analyze_csv(self, data: str) -> dict:
         """Analyze CSV data"""
         try:
             reader = csv.DictReader(io.StringIO(data))
@@ -78,7 +77,7 @@ class DataAnalysisSkill(SkillBase):
         except Exception as e:
             return {"error": str(e)}
 
-    async def analyze_json(self, data: str) -> Dict:
+    async def analyze_json(self, data: str) -> dict:
         """Analyze JSON data"""
         try:
             parsed = json.loads(data)
@@ -101,7 +100,7 @@ class DataAnalysisSkill(SkillBase):
         except Exception as e:
             return {"error": str(e)}
 
-    def get_tool_schemas(self) -> List[Dict]:
+    def get_tool_schemas(self) -> list[dict]:
         return [
             {
                 "name": "analyze_csv",

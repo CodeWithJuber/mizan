@@ -14,10 +14,9 @@ The Ruh engine manages agent cognitive energy:
 Energy model inspired by the soul's need for spiritual refreshment.
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 logger = logging.getLogger("mizan.ruh")
 
@@ -25,13 +24,14 @@ logger = logging.getLogger("mizan.ruh")
 @dataclass
 class RuhState:
     """Current vitality state of an agent's Ruh."""
-    energy: float = 100.0          # Current energy (0-100)
-    max_energy: float = 100.0      # Maximum energy capacity
-    regen_rate: float = 2.0        # Energy regenerated per minute of rest
+
+    energy: float = 100.0  # Current energy (0-100)
+    max_energy: float = 100.0  # Maximum energy capacity
+    regen_rate: float = 2.0  # Energy regenerated per minute of rest
     last_activity: float = field(default_factory=time.time)
-    last_rest_start: Optional[float] = None
+    last_rest_start: float | None = None
     total_tasks_since_rest: int = 0
-    fatigue_level: float = 0.0     # 0=fresh, 1=exhausted
+    fatigue_level: float = 0.0  # 0=fresh, 1=exhausted
 
     # Energy costs by task complexity
     ENERGY_COSTS = {
@@ -65,10 +65,11 @@ class RuhEngine:
     """
 
     def __init__(self):
-        self._states: Dict[str, RuhState] = {}
+        self._states: dict[str, RuhState] = {}
 
-    def initialize_agent(self, agent_id: str, max_energy: float = 100.0,
-                         regen_rate: float = 2.0) -> RuhState:
+    def initialize_agent(
+        self, agent_id: str, max_energy: float = 100.0, regen_rate: float = 2.0
+    ) -> RuhState:
         """Initialize Ruh state for a new agent."""
         state = RuhState(
             energy=max_energy,
@@ -92,8 +93,9 @@ class RuhEngine:
         cost = state.ENERGY_COSTS.get(complexity, 15.0)
         return state.energy >= cost
 
-    def consume_energy(self, agent_id: str, complexity: str = "moderate",
-                       duration_ms: float = 0) -> float:
+    def consume_energy(
+        self, agent_id: str, complexity: str = "moderate", duration_ms: float = 0
+    ) -> float:
         """
         Consume energy for task execution.
         Returns remaining energy.
@@ -168,7 +170,7 @@ class RuhEngine:
                 return label
         return "exhausted"
 
-    def get_vitality_report(self, agent_id: str) -> Dict:
+    def get_vitality_report(self, agent_id: str) -> dict:
         """Get full vitality report for an agent."""
         state = self.get_state(agent_id)
         return {
@@ -182,7 +184,7 @@ class RuhEngine:
             "is_resting": state.last_rest_start is not None,
         }
 
-    def find_most_rested(self, agent_ids: list) -> Optional[str]:
+    def find_most_rested(self, agent_ids: list) -> str | None:
         """Find the most rested agent from a list (for task delegation)."""
         if not agent_ids:
             return None

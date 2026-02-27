@@ -16,39 +16,39 @@ Input (Sama' - سمع) → Process (Fikr - فكر) → Act (Amal - عمل) → R
 
 import asyncio
 import json
+import logging
+import os
+import subprocess
 import time
 import uuid
-import os
-import shlex
-import subprocess
-import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Callable, AsyncGenerator
-from abc import ABC
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, Callable
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
 
-from providers import create_provider, get_default_model
-from security.validation import (
-    sanitize_command, validate_command_safe, sanitize_path,
-    validate_url, validate_package_name,
-)
+from core.ihsan import IhsanMode
+from core.qalb import EmotionalState, QalbEngine
 
 # Core Quranic systems integration
 from core.ruh_engine import RuhEngine
-from core.tawbah import TawbahProtocol
-from core.ihsan import IhsanMode
 from core.sabr import SabrEngine
 from core.shukr import ShukrSystem
-from core.qalb import QalbEngine, EmotionalState, ToneStyle
-from qca.yaqin_engine import YaqinEngine
+from core.tawbah import TawbahProtocol
+from providers import create_provider, get_default_model
+from qca.cognitive_methods import IjmaEngine, select_method
 from qca.engine import QCAEngine
-from qca.cognitive_methods import select_method, IjmaEngine, CognitiveMethod
+from qca.yaqin_engine import YaqinEngine
+from security.validation import (
+    sanitize_path,
+    validate_command_safe,
+    validate_url,
+)
 
 logger = logging.getLogger("mizan.agent")
 
 
-class BaseAgent(ABC):
+class BaseAgent:
     """
     Quranic Agent Architecture
     Every agent has seven core attributes (Sab'a Sifat - سبع صفات):
@@ -62,11 +62,20 @@ class BaseAgent(ABC):
     """
 
     # Tool schemas for Claude tool_use API
-    TOOL_SCHEMAS: List[Dict] = []
+    TOOL_SCHEMAS: list[dict] = []
 
-    def __init__(self, agent_id: str = None, name: str = "", role: str = "wakil",
-                 config: Dict = None, memory=None, wali=None, izn=None,
-                 skill_registry=None, plugin_manager=None):
+    def __init__(
+        self,
+        agent_id: str = None,
+        name: str = "",
+        role: str = "wakil",
+        config: dict = None,
+        memory=None,
+        wali=None,
+        izn=None,
+        skill_registry=None,
+        plugin_manager=None,
+    ):
         self.id = agent_id or str(uuid.uuid4())
         self.name = name or f"Agent-{self.id[:8]}"
         self.role = role
@@ -83,7 +92,7 @@ class BaseAgent(ABC):
 
         # State tracking
         self.state = "resting"
-        self.current_task: Optional[str] = None
+        self.current_task: str | None = None
         self.task_queue: asyncio.Queue = asyncio.Queue()
 
         # Performance metrics (Mizan - balance)
@@ -95,22 +104,22 @@ class BaseAgent(ABC):
         self.nafs_level = 1  # 1-7 (Ammara → Kamila)
 
         # Tools registry
-        self.tools: Dict[str, Callable] = {}
+        self.tools: dict[str, Callable] = {}
         self._register_base_tools()
 
         # Learning store (Hikmah)
-        self.hikmah: List[Dict] = []
+        self.hikmah: list[dict] = []
 
         # ── Core Quranic systems ──
-        self.ruh = RuhEngine()              # Energy/vitality management
-        self.tawbah = TawbahProtocol()      # Error recovery protocol
-        self.ihsan = IhsanMode()            # Proactive excellence
-        self.sabr = SabrEngine()            # Long-running task patience
-        self.shukr = ShukrSystem()          # Strength reinforcement
-        self.qalb = QalbEngine()            # Emotional intelligence
-        self.yaqin = YaqinEngine()          # Certainty/confidence tracking
-        self.qca = QCAEngine()              # 7-layer cognitive architecture
-        self.cognitive = IjmaEngine()       # Cognitive reasoning methods
+        self.ruh = RuhEngine()  # Energy/vitality management
+        self.tawbah = TawbahProtocol()  # Error recovery protocol
+        self.ihsan = IhsanMode()  # Proactive excellence
+        self.sabr = SabrEngine()  # Long-running task patience
+        self.shukr = ShukrSystem()  # Strength reinforcement
+        self.qalb = QalbEngine()  # Emotional intelligence
+        self.yaqin = YaqinEngine()  # Certainty/confidence tracking
+        self.qca = QCAEngine()  # 7-layer cognitive architecture
+        self.cognitive = IjmaEngine()  # Cognitive reasoning methods
 
         # LLM provider — unified interface for Anthropic, OpenRouter, OpenAI, Ollama
         self.ai_model = config.get("model", "claude-opus-4-6") if config else "claude-opus-4-6"
@@ -135,7 +144,7 @@ class BaseAgent(ABC):
             "compact_context": self._tool_compact_context,
         }
 
-    def get_tool_schemas(self) -> List[Dict]:
+    def get_tool_schemas(self) -> list[dict]:
         """Get Claude tool_use API schemas for this agent's tools"""
         schemas = [
             {
@@ -144,8 +153,15 @@ class BaseAgent(ABC):
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "command": {"type": "string", "description": "The shell command to execute"},
-                        "timeout": {"type": "integer", "description": "Timeout in seconds (max 60)", "default": 30},
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute",
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Timeout in seconds (max 60)",
+                            "default": 30,
+                        },
                     },
                     "required": ["command"],
                 },
@@ -205,7 +221,11 @@ class BaseAgent(ABC):
                     "type": "object",
                     "properties": {
                         "path": {"type": "string", "description": "Directory path", "default": "."},
-                        "pattern": {"type": "string", "description": "Glob pattern", "default": "*"},
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern",
+                            "default": "*",
+                        },
                     },
                 },
             },
@@ -227,8 +247,16 @@ class BaseAgent(ABC):
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Name for the new agent"},
-                        "type": {"type": "string", "description": "Agent type: browser, research, code, communication, general", "default": "general"},
-                        "role": {"type": "string", "description": "Optional role description for the agent", "default": ""},
+                        "type": {
+                            "type": "string",
+                            "description": "Agent type: browser, research, code, communication, general",
+                            "default": "general",
+                        },
+                        "role": {
+                            "type": "string",
+                            "description": "Optional role description for the agent",
+                            "default": "",
+                        },
                     },
                     "required": ["name"],
                 },
@@ -285,15 +313,24 @@ class BaseAgent(ABC):
 
     # 7-level Nafs names for display
     NAFS_NAMES = {
-        1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
-        5: "Radiya", 6: "Mardiyya", 7: "Kamila",
+        1: "Ammara",
+        2: "Lawwama",
+        3: "Mulhama",
+        4: "Mutmainna",
+        5: "Radiya",
+        6: "Mardiyya",
+        7: "Kamila",
     }
 
     def evolve_nafs(self):
         """Evolve the agent's Nafs level (1-7) based on Tazkiyah performance."""
         thresholds = [
-            (7, 0.97, 2000), (6, 0.95, 1000), (5, 0.90, 500),
-            (4, 0.85, 250), (3, 0.75, 100), (2, 0.60, 25),
+            (7, 0.97, 2000),
+            (6, 0.95, 1000),
+            (5, 0.90, 500),
+            (4, 0.85, 250),
+            (3, 0.75, 100),
+            (2, 0.60, 25),
         ]
         for level, min_rate, min_tasks in thresholds:
             if self.success_rate >= min_rate and self.total_tasks >= min_tasks:
@@ -301,7 +338,7 @@ class BaseAgent(ABC):
                 return
         self.nafs_level = 1
 
-    def _check_tool_permission(self, tool_name: str, params: Dict = None) -> Dict:
+    def _check_tool_permission(self, tool_name: str, params: dict = None) -> dict:
         """Check Izn permissions before tool execution"""
         if self.izn:
             return self.izn.check_permission(self.id, self.role, tool_name, params)
@@ -310,9 +347,9 @@ class BaseAgent(ABC):
     # Maximum agentic loop iterations to prevent runaway execution
     MAX_TOOL_TURNS = 15
 
-    async def think(self, task: str, context: Dict = None,
-                    stream: bool = False,
-                    qalb_reading=None) -> AsyncGenerator[str, None]:
+    async def think(
+        self, task: str, context: dict = None, stream: bool = False, qalb_reading=None
+    ) -> AsyncGenerator[str, None]:
         """
         Fikr (فكر) - Deep cognitive processing with full agentic loop.
 
@@ -339,8 +376,7 @@ class BaseAgent(ABC):
         memory_hits = self.qca.lawh.search(task, top_k=3, tiers=[1, 2, 3])
         if memory_hits:
             mem_context = " | ".join(
-                f"{key}: {entry.get('content', '')[:60]}"
-                for _score, key, entry in memory_hits[:3]
+                f"{key}: {entry.get('content', '')[:60]}" for _score, key, entry in memory_hits[:3]
             )
             messages[-1]["content"] += f"\n[Lawh Memory: {mem_context}]"
 
@@ -359,8 +395,11 @@ class BaseAgent(ABC):
         self.state = "resting"
 
     async def _agentic_loop(
-        self, system_prompt: str, messages: List[Dict],
-        tool_schemas: List[Dict], stream: bool = False,
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        tool_schemas: list[dict],
+        stream: bool = False,
         original_task: str = "",
     ) -> AsyncGenerator[str, None]:
         """
@@ -407,9 +446,7 @@ class BaseAgent(ABC):
                     tool_count += 1
 
                     # Execute through security layer
-                    tool_result = await self._execute_tool_safe(
-                        block.name, block.input
-                    )
+                    tool_result = await self._execute_tool_safe(block.name, block.input)
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
                     # Yaqin: Tag tool result as Ayn al-Yaqin (observed/verified)
@@ -430,11 +467,13 @@ class BaseAgent(ABC):
                         tier=3,
                     )
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(tool_result)[:5000],
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(tool_result)[:5000],
+                        }
+                    )
 
             # If no tool calls were made, the agent is done
             if not has_tool_use or response.stop_reason == "end_turn":
@@ -458,7 +497,8 @@ class BaseAgent(ABC):
                     if furqan_report.get("checks"):
                         logger.info(
                             "[FURQAN] Validation flags for %s: %s",
-                            self.name, furqan_report["checks"],
+                            self.name,
+                            furqan_report["checks"],
                         )
                 return
 
@@ -474,13 +514,13 @@ class BaseAgent(ABC):
                     "Is there a more efficient approach? Correct course if needed."
                 )
                 messages.append({"role": "user", "content": lawwama_prompt})
-                logger.info("[LAWWAMA] Self-correction checkpoint at turn %d for %s", turn, self.name)
+                logger.info(
+                    "[LAWWAMA] Self-correction checkpoint at turn %d for %s", turn, self.name
+                )
 
-        logger.warning(
-            f"[FIKR] Agent {self.name} hit MAX_TOOL_TURNS ({self.MAX_TOOL_TURNS})"
-        )
+        logger.warning(f"[FIKR] Agent {self.name} hit MAX_TOOL_TURNS ({self.MAX_TOOL_TURNS})")
 
-    async def _execute_tool_safe(self, tool_name: str, params: Dict) -> Any:
+    async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
         """Execute a tool with Wali security checks.
 
         Tool resolution order:
@@ -491,7 +531,9 @@ class BaseAgent(ABC):
         # Check Izn permissions
         perm = self._check_tool_permission(tool_name, params)
         if not perm["allowed"]:
-            logger.warning(f"[WALI] Tool blocked: {tool_name} for agent {self.name}: {perm['reason']}")
+            logger.warning(
+                f"[WALI] Tool blocked: {tool_name} for agent {self.name}: {perm['reason']}"
+            )
             return {"error": f"Permission denied: {perm['reason']}"}
 
         # 1. Agent's own built-in tools
@@ -535,7 +577,7 @@ class BaseAgent(ABC):
 
         return {"error": f"Unknown tool: {tool_name}"}
 
-    async def _structured_reasoning(self, task: str, context: Dict = None) -> str:
+    async def _structured_reasoning(self, task: str, context: dict = None) -> str:
         """Fallback reasoning without AI"""
         return f"Task received: {task}\nContext: {json.dumps(context or {}, indent=2)}\nStatus: Processing without AI provider configured."
 
@@ -564,7 +606,7 @@ class BaseAgent(ABC):
 
         # Masalik — neural pathway memory context
         masalik_note = ""
-        if self.memory and hasattr(self.memory, 'masalik'):
+        if self.memory and hasattr(self.memory, "masalik"):
             mstats = self.memory.masalik.stats()
             masalik_note = (
                 f"Neural pathways: {mstats['total_concepts']} concepts, "
@@ -591,7 +633,7 @@ Success Rate: {self.success_rate:.1%}
 You have access to tools. Use them when needed to complete tasks.
 
 Learned Patterns (Hikmah):
-{hikmah_str or 'No patterns learned yet.'}
+{hikmah_str or "No patterns learned yet."}
 
 Core Principles:
 - Ihsan (إحسان): Always strive for excellence
@@ -606,22 +648,29 @@ Epistemic Discipline (Mizan — ميزان):
 
 Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوامة)."""
 
-    def _build_messages(self, task: str, context: Dict = None) -> List[Dict]:
+    def _build_messages(self, task: str, context: dict = None) -> list[dict]:
         messages = []
 
         if context and context.get("history"):
             for hist in context["history"][-5:]:
                 messages.append({"role": hist["role"], "content": hist["content"]})
 
-        messages.append({
-            "role": "user",
-            "content": f"Task: {task}\n\nContext: {json.dumps(context or {}, indent=2) if context else 'None'}"
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Task: {task}\n\nContext: {json.dumps(context or {}, indent=2) if context else 'None'}",
+            }
+        )
 
         return messages
 
-    async def execute(self, task: str, context: Dict = None,
-                       stream_callback: Callable = None, tool_callback: Callable = None) -> Dict:
+    async def execute(
+        self,
+        task: str,
+        context: dict = None,
+        stream_callback: Callable = None,
+        tool_callback: Callable = None,
+    ) -> dict:
         """
         Execute a task - full Quranic cycle:
         Niyyah → Sama' → Fikr → Amal → Tafakkur
@@ -647,7 +696,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             ruh_state = self.ruh.get_state(self.id)
             logger.warning(
                 "[RUH] Agent %s energy too low (%.1f%%) for %s task, triggering rest",
-                self.name, ruh_state.energy, complexity,
+                self.name,
+                ruh_state.energy,
+                complexity,
             )
             self.ruh.rest(self.id)
             # After rest trigger, re-check — if still too low, warn in result
@@ -667,15 +718,21 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         # Cognitive method selection — route to best reasoning strategy
         cognitive_method = select_method(task, context)
-        logger.info("[COGNITIVE] Selected method %s for task: %s", cognitive_method.value, task[:80])
+        logger.info(
+            "[COGNITIVE] Selected method %s for task: %s", cognitive_method.value, task[:80]
+        )
 
         try:
             full_response = ""
-            async for chunk in self.think(task, context, stream=bool(stream_callback), qalb_reading=qalb_reading):
+            async for chunk in self.think(
+                task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
+            ):
                 # Check if this is a tool_use marker from _agentic_loop
                 if chunk.startswith("\n[Tool:") and stream_callback:
                     # Extract tool name and send tool_use event
-                    tool_name = chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
+                    tool_name = (
+                        chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
+                    )
                     await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
                     full_response += chunk
                 else:
@@ -705,11 +762,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 yaqin_tag = self.yaqin.promote(yaqin_tag, f"Proven pattern: {task_type}")
 
             # Cognitive method enrichment — run symbolic analysis
-            cognitive_result = self.cognitive.tafakkur.process(task, context)
+            self.cognitive.tafakkur.process(task, context)
 
             # Ihsan — generate proactive suggestions
             ihsan_suggestions = self.ihsan.analyze_completion(
-                self.id, task, {"success": True, "duration_ms": duration_ms},
+                self.id,
+                task,
+                {"success": True, "duration_ms": duration_ms},
                 self.nafs_level,
             )
 
@@ -718,14 +777,20 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             if self.memory:
                 await self.memory.save_task(
-                    self.id, task,
-                    full_response[:5000] if isinstance(full_response, str) else json.dumps(full_response)[:5000],
-                    True, duration_ms
+                    self.id,
+                    task,
+                    full_response[:5000]
+                    if isinstance(full_response, str)
+                    else json.dumps(full_response)[:5000],
+                    True,
+                    duration_ms,
                 )
                 # Masalik: Encode task + result into neural pathways
                 # Successful tasks get higher importance → stronger pathways
-                if hasattr(self.memory, 'masalik'):
-                    learn_text = f"{task} {full_response[:500] if isinstance(full_response, str) else ''}"
+                if hasattr(self.memory, "masalik"):
+                    learn_text = (
+                        f"{task} {full_response[:500] if isinstance(full_response, str) else ''}"
+                    )
                     self.memory.masalik.encode(learn_text, importance=0.7)
 
             self.evolve_nafs()
@@ -766,7 +831,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             if self.memory:
                 await self.memory.save_task(self.id, task, str(e), False, duration_ms)
                 # Masalik: Encode failure too — lower importance, but still learn
-                if hasattr(self.memory, 'masalik'):
+                if hasattr(self.memory, "masalik"):
                     self.memory.masalik.encode(f"{task} error {e}", importance=0.3)
 
             await self._tafakkur(task, str(e), False, duration_ms)
@@ -794,15 +859,17 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "task_type": self._classify_task(task),
             "success": success,
             "duration_ms": duration_ms,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         if success and duration_ms < 5000:
-            self.hikmah.append({
-                "pattern": f"Task type '{pattern['task_type']}' completed in {duration_ms:.0f}ms",
-                "outcome": "success",
-                "confidence": 0.8,
-            })
+            self.hikmah.append(
+                {
+                    "pattern": f"Task type '{pattern['task_type']}' completed in {duration_ms:.0f}ms",
+                    "outcome": "success",
+                    "confidence": 0.8,
+                }
+            )
 
             if len(self.hikmah) > 20:
                 self.hikmah = self.hikmah[-20:]
@@ -821,7 +888,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             return "file_management"
         return "general"
 
-    async def evaluate(self, question: str, context: Dict) -> Dict:
+    async def evaluate(self, question: str, context: dict) -> dict:
         """Evaluate a question for Shura council"""
         try:
             response = ""
@@ -837,7 +904,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
     # ===== SECURE TOOL IMPLEMENTATIONS =====
 
-    async def _tool_bash(self, command: str, timeout: int = 30) -> Dict:
+    async def _tool_bash(self, command: str, timeout: int = 30) -> dict:
         """
         Execute bash command with Wali security.
         - Validates command against blocklist
@@ -859,8 +926,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             # Use shell=True but with validated command
             # shlex.split doesn't work well for complex shell commands
             result = subprocess.run(
-                command, shell=True, capture_output=True,
-                text=True, timeout=timeout,
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
                 env={**os.environ, "PATH": os.getenv("PATH", "/usr/bin:/bin")},
             )
             return {
@@ -873,7 +943,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e), "returncode": -1}
 
-    async def _tool_http_get(self, url: str, headers: Dict = None) -> Dict:
+    async def _tool_http_get(self, url: str, headers: dict = None) -> dict:
         """HTTP GET with SSRF prevention"""
         is_safe, reason = validate_url(url)
         if not is_safe:
@@ -893,7 +963,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_http_post(self, url: str, data: Dict = None, headers: Dict = None) -> Dict:
+    async def _tool_http_post(self, url: str, data: dict = None, headers: dict = None) -> dict:
         """HTTP POST with SSRF prevention"""
         is_safe, reason = validate_url(url)
         if not is_safe:
@@ -912,7 +982,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_read_file(self, path: str) -> Dict:
+    async def _tool_read_file(self, path: str) -> dict:
         """Read file with path traversal prevention"""
         resolved = sanitize_path(path)
 
@@ -920,13 +990,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             return {"error": f"Read access denied for path: {path}"}
 
         try:
-            with open(resolved, "r") as f:
+            with open(resolved) as f:
                 content = f.read(1024 * 1024)  # Max 1MB
                 return {"content": content, "path": resolved}
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_write_file(self, path: str, content: str) -> Dict:
+    async def _tool_write_file(self, path: str, content: str) -> dict:
         """Write file with sandbox enforcement"""
         resolved = sanitize_path(path)
 
@@ -947,9 +1017,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_list_files(self, path: str = ".", pattern: str = "*") -> Dict:
+    async def _tool_list_files(self, path: str = ".", pattern: str = "*") -> dict:
         """List files in directory"""
         import glob
+
         resolved = sanitize_path(path)
 
         if self.wali and not self.wali.validate_file_path(resolved, mode="read"):
@@ -961,7 +1032,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_python_exec(self, code: str) -> Dict:
+    async def _tool_python_exec(self, code: str) -> dict:
         """
         Execute Python code in a sandboxed subprocess.
         Replaces unsafe exec() with subprocess isolation.
@@ -972,7 +1043,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         try:
             result = subprocess.run(
                 ["python3", "-c", code],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
                 timeout=30,
                 env={"PATH": os.getenv("PATH", "/usr/bin:/bin")},
             )
@@ -988,7 +1060,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
     # ===== AGENT ENHANCEMENT TOOLS (Phase 7) =====
 
-    async def _tool_create_agent(self, name: str, type: str = "general", role: str = "", **kwargs) -> str:
+    async def _tool_create_agent(
+        self, name: str, type: str = "general", role: str = "", **kwargs
+    ) -> str:
         """
         Create a new specialized agent.
 
@@ -1000,8 +1074,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         # Normalise type aliases
         valid_types = {
-            "browser", "mubashir", "research", "mundhir",
-            "code", "katib", "communication", "rasul", "general", "wakil",
+            "browser",
+            "mubashir",
+            "research",
+            "mundhir",
+            "code",
+            "katib",
+            "communication",
+            "rasul",
+            "general",
+            "wakil",
         }
         agent_type = type.lower().strip()
         if agent_type not in valid_types:
@@ -1029,27 +1111,31 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 f"[KHALQ] Agent created by {self.name}: "
                 f"{new_agent.name} (type={agent_type}, id={new_agent.id})"
             )
-            return json.dumps({
-                "success": True,
-                "agent": info,
-                "message": f"Agent '{name}' of type '{agent_type}' created successfully.",
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "agent": info,
+                    "message": f"Agent '{name}' of type '{agent_type}' created successfully.",
+                }
+            )
         except Exception as e:
             logger.error(f"[KHALQ] Agent creation failed: {e}")
-            return json.dumps({
-                "success": False,
-                "error": str(e),
-                "message": f"Failed to create agent '{name}': {e}",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "message": f"Failed to create agent '{name}': {e}",
+                }
+            )
 
     # ── Context window estimation constants ──
     # Rough estimate: 1 token ~ 4 characters
     _CHARS_PER_TOKEN = 4
     _DEFAULT_CONTEXT_WINDOW = 200_000  # tokens (Claude-class model)
-    _COMPACT_THRESHOLD = 0.80          # 80% of context window triggers compaction
-    _PRESERVE_RECENT = 10              # keep last N messages intact
+    _COMPACT_THRESHOLD = 0.80  # 80% of context window triggers compaction
+    _PRESERVE_RECENT = 10  # keep last N messages intact
 
-    async def _tool_compact_context(self, conversation_history: List[Dict] = None) -> str:
+    async def _tool_compact_context(self, conversation_history: list[dict] = None) -> str:
         """
         Compact (condense) conversation context when it approaches the context
         window limit.
@@ -1063,40 +1149,50 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
           6. Return the compacted conversation history.
         """
         if not conversation_history:
-            return json.dumps({
-                "compacted": False,
-                "reason": "No conversation history provided",
-                "history": [],
-            })
+            return json.dumps(
+                {
+                    "compacted": False,
+                    "reason": "No conversation history provided",
+                    "history": [],
+                }
+            )
 
         # Estimate token usage
         total_chars = sum(len(m.get("content", "")) for m in conversation_history)
         estimated_tokens = total_chars // self._CHARS_PER_TOKEN
-        window = self.config.get("context_window", self._DEFAULT_CONTEXT_WINDOW) if self.config else self._DEFAULT_CONTEXT_WINDOW
+        window = (
+            self.config.get("context_window", self._DEFAULT_CONTEXT_WINDOW)
+            if self.config
+            else self._DEFAULT_CONTEXT_WINDOW
+        )
         threshold = int(window * self._COMPACT_THRESHOLD)
 
         if estimated_tokens < threshold:
-            return json.dumps({
-                "compacted": False,
-                "reason": f"Context usage ({estimated_tokens} tokens) is below threshold ({threshold} tokens)",
-                "estimated_tokens": estimated_tokens,
-                "history": conversation_history,
-            })
+            return json.dumps(
+                {
+                    "compacted": False,
+                    "reason": f"Context usage ({estimated_tokens} tokens) is below threshold ({threshold} tokens)",
+                    "estimated_tokens": estimated_tokens,
+                    "history": conversation_history,
+                }
+            )
 
         # Split into old and recent
         if len(conversation_history) <= self._PRESERVE_RECENT:
-            return json.dumps({
-                "compacted": False,
-                "reason": f"Only {len(conversation_history)} messages — too few to compact",
-                "history": conversation_history,
-            })
+            return json.dumps(
+                {
+                    "compacted": False,
+                    "reason": f"Only {len(conversation_history)} messages — too few to compact",
+                    "history": conversation_history,
+                }
+            )
 
         # Separate system messages — they are always preserved
         system_messages = [m for m in conversation_history if m.get("role") == "system"]
         non_system = [m for m in conversation_history if m.get("role") != "system"]
 
-        old_messages = non_system[:-self._PRESERVE_RECENT]
-        recent_messages = non_system[-self._PRESERVE_RECENT:]
+        old_messages = non_system[: -self._PRESERVE_RECENT]
+        recent_messages = non_system[-self._PRESERVE_RECENT :]
 
         # Extract key facts from old messages
         facts = self._extract_facts(old_messages)
@@ -1139,24 +1235,27 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             f"preserved {len(recent_messages)} recent + {len(system_messages)} system"
         )
 
-        return json.dumps({
-            "compacted": True,
-            "original_messages": len(conversation_history),
-            "compacted_messages": len(compacted),
-            "original_tokens": estimated_tokens,
-            "compacted_tokens": new_tokens,
-            "facts_extracted": len(facts),
-            "history": compacted,
-        })
+        return json.dumps(
+            {
+                "compacted": True,
+                "original_messages": len(conversation_history),
+                "compacted_messages": len(compacted),
+                "original_tokens": estimated_tokens,
+                "compacted_tokens": new_tokens,
+                "facts_extracted": len(facts),
+                "history": compacted,
+            }
+        )
 
-    def _extract_facts(self, messages: List[Dict]) -> List[str]:
+    def _extract_facts(self, messages: list[dict]) -> list[str]:
         """
         Extract important facts from a list of messages.
         Uses simple heuristics — looks for decisions, assignments,
         named entities, URLs, and code references.
         """
         import re
-        facts: List[str] = []
+
+        facts: list[str] = []
         seen = set()
 
         for msg in messages:
@@ -1175,23 +1274,36 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 is_fact = False
 
                 # Decision markers
-                if any(marker in lower for marker in [
-                    "decided", "agreed", "confirmed", "will use", "chosen",
-                    "the answer is", "result:", "conclusion:", "important:",
-                    "note:", "key point", "action item", "todo:",
-                ]):
+                if any(
+                    marker in lower
+                    for marker in [
+                        "decided",
+                        "agreed",
+                        "confirmed",
+                        "will use",
+                        "chosen",
+                        "the answer is",
+                        "result:",
+                        "conclusion:",
+                        "important:",
+                        "note:",
+                        "key point",
+                        "action item",
+                        "todo:",
+                    ]
+                ):
                     is_fact = True
 
                 # URLs
-                if re.search(r'https?://\S+', line):
+                if re.search(r"https?://\S+", line):
                     is_fact = True
 
                 # Code file references
-                if re.search(r'\b[\w/]+\.(py|js|ts|go|rs|java|yaml|json|toml)\b', line):
+                if re.search(r"\b[\w/]+\.(py|js|ts|go|rs|java|yaml|json|toml)\b", line):
                     is_fact = True
 
                 # Numeric data / statistics
-                if re.search(r'\b\d{2,}\b.*(%|percent|tokens|MB|GB|ms|seconds)', lower):
+                if re.search(r"\b\d{2,}\b.*(%|percent|tokens|MB|GB|ms|seconds)", lower):
                     is_fact = True
 
                 if is_fact:
@@ -1203,7 +1315,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         return facts[:30]
 
-    async def compact_context(self, conversation_history: List[Dict] = None) -> Dict:
+    async def compact_context(self, conversation_history: list[dict] = None) -> dict:
         """
         Public API for context compaction — usable from /compact command.
         Wraps _tool_compact_context and returns parsed result.
@@ -1211,7 +1323,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         raw = await self._tool_compact_context(conversation_history or [])
         return json.loads(raw)
 
-    def _get_all_available_tool_names(self) -> List[str]:
+    def _get_all_available_tool_names(self) -> list[str]:
         """Get names of all tools available to this agent (built-in + skills + plugins)."""
         tool_names = list(self.tools.keys())
 
@@ -1229,7 +1341,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         return tool_names
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
@@ -1252,5 +1364,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "yaqin": self.yaqin.stats(),
             "lawh_memory": self.qca.lawh.stats(),
             "aql_bindings": self.qca.aql.get_all_bindings_summary()[0],
-            "masalik": self.memory.masalik.stats() if self.memory and hasattr(self.memory, 'masalik') else {},
+            "masalik": self.memory.masalik.stats()
+            if self.memory and hasattr(self.memory, "masalik")
+            else {},
         }

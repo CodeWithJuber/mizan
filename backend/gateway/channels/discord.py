@@ -7,7 +7,6 @@ Discord bot integration using discord.py.
 
 import asyncio
 import logging
-from typing import Dict, Optional
 
 from .base import ChannelAdapter, IncomingMessage
 
@@ -23,7 +22,7 @@ class DiscordChannel(ChannelAdapter):
     - guild_ids: Optional list of guild IDs to operate in
     """
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._client = None
         self._task = None
@@ -95,8 +94,7 @@ class DiscordChannel(ChannelAdapter):
             self._task.cancel()
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str,
-                            attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
         """Send a message via Discord DM"""
         if not self._client or not self.is_connected:
             return
@@ -106,7 +104,7 @@ class DiscordChannel(ChannelAdapter):
             dm = await user.create_dm()
 
             # Split long messages (Discord limit: 2000 chars)
-            chunks = [content[i:i + 1900] for i in range(0, len(content), 1900)]
+            chunks = [content[i : i + 1900] for i in range(0, len(content), 1900)]
             for chunk in chunks:
                 await dm.send(chunk)
         except Exception as e:

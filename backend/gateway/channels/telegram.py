@@ -5,9 +5,7 @@ Telegram Channel (Bab Telegram)
 Telegram bot integration using python-telegram-bot.
 """
 
-import asyncio
 import logging
-from typing import Dict, Optional
 
 from .base import ChannelAdapter, IncomingMessage
 
@@ -22,7 +20,7 @@ class TelegramChannel(ChannelAdapter):
     - bot_token: Telegram bot token from @BotFather
     """
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._app = None
 
@@ -36,11 +34,7 @@ class TelegramChannel(ChannelAdapter):
         try:
             from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-            self._app = (
-                ApplicationBuilder()
-                .token(bot_token)
-                .build()
-            )
+            self._app = ApplicationBuilder().token(bot_token).build()
 
             # Handle all text messages
             self._app.add_handler(
@@ -56,7 +50,9 @@ class TelegramChannel(ChannelAdapter):
             logger.info("[TELEGRAM] Bot connected and polling")
 
         except ImportError:
-            logger.error("[TELEGRAM] python-telegram-bot not installed. pip install python-telegram-bot")
+            logger.error(
+                "[TELEGRAM] python-telegram-bot not installed. pip install python-telegram-bot"
+            )
         except Exception as e:
             logger.error(f"[TELEGRAM] Connection failed: {e}")
 
@@ -71,15 +67,14 @@ class TelegramChannel(ChannelAdapter):
                 logger.error(f"[TELEGRAM] Disconnect error: {e}")
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str,
-                            attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
         """Send a message via Telegram"""
         if not self._app or not self.is_connected:
             return
 
         try:
             # Split long messages (Telegram limit: 4096 chars)
-            chunks = [content[i:i + 4000] for i in range(0, len(content), 4000)]
+            chunks = [content[i : i + 4000] for i in range(0, len(content), 4000)]
             for chunk in chunks:
                 await self._app.bot.send_message(
                     chat_id=int(recipient_id),

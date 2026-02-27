@@ -16,7 +16,6 @@ Basirah goes beyond raw vision — it provides insight and understanding:
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from perception.vision import VisionProcessor
 
@@ -26,14 +25,15 @@ logger = logging.getLogger("mizan.basirah")
 @dataclass
 class BasirahInsight:
     """An insight extracted from visual input."""
+
     description: str
-    category: str              # "text", "diagram", "screenshot", "photo", "document"
+    category: str  # "text", "diagram", "screenshot", "photo", "document"
     confidence: float = 0.8
     extracted_text: str = ""
-    key_elements: List[str] = field(default_factory=list)
+    key_elements: list[str] = field(default_factory=list)
     processing_time_ms: float = 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "description": self.description[:200],
             "category": self.category,
@@ -61,8 +61,9 @@ class BasirahEngine:
     def __init__(self):
         self._vision = VisionProcessor()
 
-    async def analyze(self, image_bytes: bytes, context: str = "",
-                      media_type: str = "image/png") -> BasirahInsight:
+    async def analyze(
+        self, image_bytes: bytes, context: str = "", media_type: str = "image/png"
+    ) -> BasirahInsight:
         """Analyze an image with contextual insight."""
         start = time.time()
 

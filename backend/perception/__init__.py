@@ -7,5 +7,5 @@ MIZAN Perception (Sama' - سَمْع — Hearing/Perception)
 Multimodal perception: voice, vision, and document understanding.
 """
 
-from .voice import VoiceProcessor
-from .vision import VisionProcessor
+from .vision import VisionProcessor as VisionProcessor
+from .voice import VoiceProcessor as VoiceProcessor

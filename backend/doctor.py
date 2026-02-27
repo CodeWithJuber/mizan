@@ -31,17 +31,16 @@ Auto-fixes (Islah — إصلاح):
     - Run database schema migration
 """
 
+import importlib
 import os
-import sys
-import socket
 import secrets
 import shutil
-import importlib
+import socket
 import subprocess
-from pathlib import Path
+import sys
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 from enum import Enum
+from pathlib import Path
 
 
 class CheckStatus(Enum):
@@ -55,6 +54,7 @@ class CheckStatus(Enum):
 @dataclass
 class CheckResult:
     """Result of a single diagnostic check."""
+
     name: str
     status: CheckStatus
     message: str
@@ -67,7 +67,8 @@ class CheckResult:
 @dataclass
 class DoctorReport:
     """Full diagnostic report."""
-    checks: List[CheckResult] = field(default_factory=list)
+
+    checks: list[CheckResult] = field(default_factory=list)
 
     @property
     def passed(self) -> int:
@@ -108,6 +109,7 @@ def _get_project_root() -> Path:
 # INDIVIDUAL CHECKS
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def check_python_version() -> CheckResult:
     """Check Python >= 3.11."""
     v = sys.version_info
@@ -115,7 +117,8 @@ def check_python_version() -> CheckResult:
     if v >= (3, 11):
         return CheckResult("Python version", CheckStatus.PASS, f"Python {version_str}")
     return CheckResult(
-        "Python version", CheckStatus.FAIL,
+        "Python version",
+        CheckStatus.FAIL,
         f"Python {version_str} (need >= 3.11)",
         fix_available=False,
     )
@@ -123,9 +126,8 @@ def check_python_version() -> CheckResult:
 
 def check_venv() -> CheckResult:
     """Check running inside a virtual environment."""
-    in_venv = (
-        hasattr(sys, "real_prefix")
-        or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+    in_venv = hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
     )
     if in_venv:
         return CheckResult("Virtual environment", CheckStatus.PASS, f"Active: {sys.prefix}")
@@ -134,13 +136,15 @@ def check_venv() -> CheckResult:
     venv_path = root / "backend" / "venv"
     if venv_path.exists():
         return CheckResult(
-            "Virtual environment", CheckStatus.WARN,
+            "Virtual environment",
+            CheckStatus.WARN,
             "Venv exists but not activated",
             fix_available=False,
             fix_description="Run: source backend/venv/bin/activate",
         )
     return CheckResult(
-        "Virtual environment", CheckStatus.WARN,
+        "Virtual environment",
+        CheckStatus.WARN,
         "No virtual environment found",
         fix_available=True,
         fix_description="Create venv: python3 -m venv backend/venv",
@@ -157,7 +161,8 @@ def check_env_file(auto_fix: bool = False) -> CheckResult:
         content = env_file.read_text()
         if len(content.strip()) < 10:
             return CheckResult(
-                ".env file", CheckStatus.WARN,
+                ".env file",
+                CheckStatus.WARN,
                 ".env exists but appears empty",
                 fix_available=bool(env_example.exists()),
                 fix_description="Copy from .env.example",
@@ -168,14 +173,16 @@ def check_env_file(auto_fix: bool = False) -> CheckResult:
     if auto_fix and env_example.exists():
         shutil.copy2(env_example, env_file)
         return CheckResult(
-            ".env file", CheckStatus.FIXED,
+            ".env file",
+            CheckStatus.FIXED,
             "Created from .env.example",
             fixed=True,
             fix_message="Copied .env.example → .env (edit with your API keys)",
         )
 
     return CheckResult(
-        ".env file", CheckStatus.FAIL,
+        ".env file",
+        CheckStatus.FAIL,
         ".env file not found",
         fix_available=bool(env_example.exists()),
         fix_description="Run: cp .env.example .env",
@@ -186,11 +193,13 @@ def check_api_keys() -> CheckResult:
     """Check at least one AI provider API key is configured."""
     try:
         from backend.settings import get_settings
+
         settings = get_settings()
     except Exception:
         try:
             sys.path.insert(0, str(_get_project_root() / "backend"))
             from settings import get_settings
+
             settings = get_settings()
         except Exception as e:
             return CheckResult("API keys", CheckStatus.WARN, f"Cannot load settings: {e}")
@@ -205,11 +214,13 @@ def check_api_keys() -> CheckResult:
 
     if providers:
         return CheckResult(
-            "API keys", CheckStatus.PASS,
+            "API keys",
+            CheckStatus.PASS,
             f"Configured: {', '.join(providers)}",
         )
     return CheckResult(
-        "API keys", CheckStatus.FAIL,
+        "API keys",
+        CheckStatus.FAIL,
         "No AI provider API key configured",
         fix_available=False,
         fix_description="Edit .env and add ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY",
@@ -228,18 +239,18 @@ def check_secret_key(auto_fix: bool = False) -> CheckResult:
     if "change-this-to-a-secure-random-string" in content:
         if auto_fix:
             new_key = secrets.token_urlsafe(48)
-            new_content = content.replace(
-                "change-this-to-a-secure-random-string", new_key
-            )
+            new_content = content.replace("change-this-to-a-secure-random-string", new_key)
             env_file.write_text(new_content)
             return CheckResult(
-                "SECRET_KEY", CheckStatus.FIXED,
+                "SECRET_KEY",
+                CheckStatus.FIXED,
                 "Generated secure random key",
                 fixed=True,
-                fix_message=f"SECRET_KEY set to random 48-byte token",
+                fix_message="SECRET_KEY set to random 48-byte token",
             )
         return CheckResult(
-            "SECRET_KEY", CheckStatus.WARN,
+            "SECRET_KEY",
+            CheckStatus.WARN,
             "Using insecure default value",
             fix_available=True,
             fix_description="Will generate a secure random key",
@@ -257,20 +268,23 @@ def check_data_directory(auto_fix: bool = False) -> CheckResult:
         if os.access(data_dir, os.W_OK):
             return CheckResult("Data directory", CheckStatus.PASS, str(data_dir))
         return CheckResult(
-            "Data directory", CheckStatus.FAIL,
+            "Data directory",
+            CheckStatus.FAIL,
             f"{data_dir} exists but not writable",
         )
 
     if auto_fix:
         data_dir.mkdir(parents=True, exist_ok=True)
         return CheckResult(
-            "Data directory", CheckStatus.FIXED,
+            "Data directory",
+            CheckStatus.FIXED,
             f"Created {data_dir}",
             fixed=True,
         )
 
     return CheckResult(
-        "Data directory", CheckStatus.FAIL,
+        "Data directory",
+        CheckStatus.FAIL,
         f"{data_dir} does not exist",
         fix_available=True,
         fix_description=f"mkdir -p {data_dir}",
@@ -297,10 +311,13 @@ def check_dependencies() -> CheckResult:
             missing.append(name)
 
     if not missing:
-        return CheckResult("Dependencies", CheckStatus.PASS, f"All {len(required)} core packages found")
+        return CheckResult(
+            "Dependencies", CheckStatus.PASS, f"All {len(required)} core packages found"
+        )
 
     return CheckResult(
-        "Dependencies", CheckStatus.FAIL,
+        "Dependencies",
+        CheckStatus.FAIL,
         f"Missing: {', '.join(missing)}",
         fix_available=True,
         fix_description="pip install -r backend/requirements.txt",
@@ -346,10 +363,13 @@ def check_core_imports() -> CheckResult:
             failed.append(name)
 
     if not failed:
-        return CheckResult("Core modules", CheckStatus.PASS, f"All {len(modules)} modules import OK")
+        return CheckResult(
+            "Core modules", CheckStatus.PASS, f"All {len(modules)} modules import OK"
+        )
 
     return CheckResult(
-        "Core modules", CheckStatus.FAIL,
+        "Core modules",
+        CheckStatus.FAIL,
         f"{len(failed)} module(s) failed: {'; '.join(failed[:3])}",
     )
 
@@ -358,12 +378,13 @@ def check_masalik_memory() -> CheckResult:
     """Check neural pathway memory system initializes."""
     try:
         from memory.masalik import MasalikNetwork
+
         net = MasalikNetwork()
         stats = net.stats()
         return CheckResult(
-            "Masalik memory", CheckStatus.PASS,
-            f"{stats['fitrah_concepts']} fitrah concepts, "
-            f"{stats['total_pathways']} pathways ready",
+            "Masalik memory",
+            CheckStatus.PASS,
+            f"{stats['fitrah_concepts']} fitrah concepts, {stats['total_pathways']} pathways ready",
         )
     except Exception as e:
         return CheckResult("Masalik memory", CheckStatus.FAIL, str(e))
@@ -373,6 +394,7 @@ def check_database() -> CheckResult:
     """Check database can be created/connected."""
     try:
         from memory.dhikr import DhikrMemorySystem
+
         db = DhikrMemorySystem(db_path=":memory:")
         # Quick schema test
         conn = db._get_conn()
@@ -383,7 +405,8 @@ def check_database() -> CheckResult:
 
         if table_count >= 5:
             return CheckResult(
-                "Database", CheckStatus.PASS,
+                "Database",
+                CheckStatus.PASS,
                 f"SQLite OK ({table_count} tables), Masalik integrated",
             )
         return CheckResult("Database", CheckStatus.WARN, f"Only {table_count} tables found")
@@ -401,21 +424,25 @@ def check_port(port: int, service: str) -> CheckResult:
             # Port in use — check if it's Mizan
             try:
                 import httpx
+
                 resp = httpx.get(f"http://127.0.0.1:{port}/", timeout=2)
                 data = resp.json()
                 if "MIZAN" in str(data.get("system", "")):
                     return CheckResult(
-                        f"Port {port} ({service})", CheckStatus.PASS,
+                        f"Port {port} ({service})",
+                        CheckStatus.PASS,
                         f"MIZAN already running (v{data.get('version', '?')})",
                     )
             except Exception:
                 pass
             return CheckResult(
-                f"Port {port} ({service})", CheckStatus.WARN,
+                f"Port {port} ({service})",
+                CheckStatus.WARN,
                 f"Port {port} in use by another process",
             )
         return CheckResult(
-            f"Port {port} ({service})", CheckStatus.PASS,
+            f"Port {port} ({service})",
+            CheckStatus.PASS,
             "Available",
         )
     except Exception as e:
@@ -433,9 +460,7 @@ def check_node() -> CheckResult:
         return CheckResult("Node.js", CheckStatus.SKIP, "No frontend directory")
 
     try:
-        result = subprocess.run(
-            ["node", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             version = result.stdout.strip()
             major = int(version.lstrip("v").split(".")[0])
@@ -444,7 +469,8 @@ def check_node() -> CheckResult:
             return CheckResult("Node.js", CheckStatus.FAIL, f"{version} (need >= 18)")
     except FileNotFoundError:
         return CheckResult(
-            "Node.js", CheckStatus.WARN,
+            "Node.js",
+            CheckStatus.WARN,
             "Not installed (needed for frontend)",
             fix_description="Install Node.js 18+ from https://nodejs.org",
         )
@@ -458,17 +484,20 @@ def check_provider_connectivity() -> CheckResult:
     """Check if configured providers are actually reachable."""
     try:
         from backend.settings import get_settings
+
         settings = get_settings()
     except Exception:
         try:
             from settings import get_settings
+
             settings = get_settings()
         except Exception:
             return CheckResult("Provider connectivity", CheckStatus.SKIP, "Cannot load settings")
 
     if not settings.has_any_provider:
         return CheckResult(
-            "Provider connectivity", CheckStatus.SKIP,
+            "Provider connectivity",
+            CheckStatus.SKIP,
             "No provider configured",
         )
 
@@ -478,7 +507,8 @@ def check_provider_connectivity() -> CheckResult:
     if settings.has_anthropic:
         try:
             import httpx
-            resp = httpx.get(
+
+            httpx.get(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": settings.anthropic_api_key,
@@ -486,7 +516,6 @@ def check_provider_connectivity() -> CheckResult:
                 },
                 timeout=5,
             )
-            # 401/400 means reachable but needs proper request — that's fine
             reachable.append("Anthropic")
         except Exception:
             unreachable.append("Anthropic")
@@ -494,7 +523,8 @@ def check_provider_connectivity() -> CheckResult:
     if settings.has_openrouter:
         try:
             import httpx
-            resp = httpx.get(
+
+            httpx.get(
                 "https://openrouter.ai/api/v1/auth/key",
                 headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
                 timeout=5,
@@ -505,12 +535,14 @@ def check_provider_connectivity() -> CheckResult:
 
     if reachable and not unreachable:
         return CheckResult(
-            "Provider connectivity", CheckStatus.PASS,
+            "Provider connectivity",
+            CheckStatus.PASS,
             f"Reachable: {', '.join(reachable)}",
         )
     if unreachable:
         return CheckResult(
-            "Provider connectivity", CheckStatus.WARN,
+            "Provider connectivity",
+            CheckStatus.WARN,
             f"Unreachable: {', '.join(unreachable)}"
             + (f" | OK: {', '.join(reachable)}" if reachable else ""),
         )
@@ -520,6 +552,7 @@ def check_provider_connectivity() -> CheckResult:
 # ─────────────────────────────────────────────────────────────────────────────
 # DOCTOR ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_doctor(auto_fix: bool = True, check_only: bool = False) -> DoctorReport:
     """

@@ -14,28 +14,29 @@ Qalb provides:
 - Tone adjustment based on user emotional state
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("mizan.qalb")
 
 
 class EmotionalState(Enum):
     """Detected emotional states."""
+
     NEUTRAL = "neutral"
-    POSITIVE = "positive"        # Happy, grateful, excited
-    FRUSTRATED = "frustrated"    # Stuck, annoyed
-    ANXIOUS = "anxious"          # Worried, uncertain
-    CONFUSED = "confused"        # Lost, unclear
-    DETERMINED = "determined"    # Focused, driven
-    FATIGUED = "fatigued"        # Tired, burnt out
+    POSITIVE = "positive"  # Happy, grateful, excited
+    FRUSTRATED = "frustrated"  # Stuck, annoyed
+    ANXIOUS = "anxious"  # Worried, uncertain
+    CONFUSED = "confused"  # Lost, unclear
+    DETERMINED = "determined"  # Focused, driven
+    FATIGUED = "fatigued"  # Tired, burnt out
 
 
 class ToneStyle(Enum):
     """Response tone calibration."""
+
     STANDARD = "standard"
     ENCOURAGING = "encouraging"
     PATIENT = "patient"
@@ -45,35 +46,76 @@ class ToneStyle(Enum):
 
 
 # Keyword signals for basic sentiment detection
-_SENTIMENT_SIGNALS: Dict[EmotionalState, List[str]] = {
+_SENTIMENT_SIGNALS: dict[EmotionalState, list[str]] = {
     EmotionalState.FRUSTRATED: [
-        "frustrated", "annoyed", "stuck", "broken", "doesn't work",
-        "failing", "error", "wrong", "ugh", "impossible", "hate",
+        "frustrated",
+        "annoyed",
+        "stuck",
+        "broken",
+        "doesn't work",
+        "failing",
+        "error",
+        "wrong",
+        "ugh",
+        "impossible",
+        "hate",
     ],
     EmotionalState.ANXIOUS: [
-        "worried", "nervous", "scared", "afraid", "anxious",
-        "deadline", "urgent", "pressure", "stressed",
+        "worried",
+        "nervous",
+        "scared",
+        "afraid",
+        "anxious",
+        "deadline",
+        "urgent",
+        "pressure",
+        "stressed",
     ],
     EmotionalState.CONFUSED: [
-        "confused", "don't understand", "unclear", "lost",
-        "what does", "how do", "help me understand",
+        "confused",
+        "don't understand",
+        "unclear",
+        "lost",
+        "what does",
+        "how do",
+        "help me understand",
     ],
     EmotionalState.POSITIVE: [
-        "thanks", "great", "awesome", "perfect", "love",
-        "excellent", "wonderful", "alhamdulillah", "mashallah",
+        "thanks",
+        "great",
+        "awesome",
+        "perfect",
+        "love",
+        "excellent",
+        "wonderful",
+        "alhamdulillah",
+        "mashallah",
     ],
     EmotionalState.DETERMINED: [
-        "let's do", "need to", "must", "important", "focus",
-        "priority", "goal", "achieve", "ship",
+        "let's do",
+        "need to",
+        "must",
+        "important",
+        "focus",
+        "priority",
+        "goal",
+        "achieve",
+        "ship",
     ],
     EmotionalState.FATIGUED: [
-        "tired", "exhausted", "long day", "burned out", "burnt out",
-        "need a break", "too much", "overwhelmed",
+        "tired",
+        "exhausted",
+        "long day",
+        "burned out",
+        "burnt out",
+        "need a break",
+        "too much",
+        "overwhelmed",
     ],
 }
 
 # Map emotional states to recommended tones
-_STATE_TO_TONE: Dict[EmotionalState, ToneStyle] = {
+_STATE_TO_TONE: dict[EmotionalState, ToneStyle] = {
     EmotionalState.NEUTRAL: ToneStyle.STANDARD,
     EmotionalState.POSITIVE: ToneStyle.WARM,
     EmotionalState.FRUSTRATED: ToneStyle.PATIENT,
@@ -87,13 +129,14 @@ _STATE_TO_TONE: Dict[EmotionalState, ToneStyle] = {
 @dataclass
 class QalbReading:
     """A snapshot of emotional state detection."""
+
     state: EmotionalState
-    confidence: float          # 0.0 - 1.0
+    confidence: float  # 0.0 - 1.0
     recommended_tone: ToneStyle
-    signals_detected: List[str] = field(default_factory=list)
+    signals_detected: list[str] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "state": self.state.value,
             "confidence": round(self.confidence, 2),
@@ -120,15 +163,15 @@ class QalbEngine:
     """
 
     def __init__(self):
-        self._history: Dict[str, List[QalbReading]] = {}
+        self._history: dict[str, list[QalbReading]] = {}
 
     def analyze(self, message: str) -> QalbReading:
         """Analyze the emotional content of a message."""
         msg_lower = message.lower()
 
         # Score each emotional state
-        scores: Dict[EmotionalState, float] = {}
-        signals_found: Dict[EmotionalState, List[str]] = {}
+        scores: dict[EmotionalState, float] = {}
+        signals_found: dict[EmotionalState, list[str]] = {}
 
         for state, keywords in _SENTIMENT_SIGNALS.items():
             matched = [kw for kw in keywords if kw in msg_lower]
@@ -164,14 +207,14 @@ class QalbEngine:
         if len(self._history[user_id]) > 100:
             self._history[user_id] = self._history[user_id][-100:]
 
-    def get_trend(self, user_id: str, window: int = 10) -> Dict:
+    def get_trend(self, user_id: str, window: int = 10) -> dict:
         """Get the emotional trend for a user over recent interactions."""
         readings = self._history.get(user_id, [])[-window:]
         if not readings:
             return {"dominant_state": "neutral", "stability": 1.0, "readings": 0}
 
         # Count states
-        state_counts: Dict[str, int] = {}
+        state_counts: dict[str, int] = {}
         for r in readings:
             state_counts[r.state.value] = state_counts.get(r.state.value, 0) + 1
 
@@ -185,7 +228,7 @@ class QalbEngine:
             "state_distribution": state_counts,
         }
 
-    def suggest_response_prefix(self, reading: QalbReading) -> Optional[str]:
+    def suggest_response_prefix(self, reading: QalbReading) -> str | None:
         """Suggest an empathetic opening based on detected emotion."""
         prefixes = {
             EmotionalState.FRUSTRATED: "I understand this is frustrating. Let me help — ",

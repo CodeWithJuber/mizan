@@ -19,17 +19,17 @@ Architecture Layers:
   8. Furqan (فرقان) — Discrimination and validated output (Bayan)
 """
 
+from qca.answer_engine import QCAAnswerEngine
 from qca.engine import (
-    DualInputProcessor,
-    ISMLayer,
-    MizanLayer,
     AqlLayer,
-    LawhMemory,
+    DualInputProcessor,
     FurqanBayan,
+    ISMLayer,
+    LawhMemory,
+    MizanLayer,
     QCAEngine,
 )
-from qca.answer_engine import QCAAnswerEngine
-from qca.training import UGRLTrainer, MizanCalibrationTrainer, AqlRelationExtractor
+from qca.training import AqlRelationExtractor, MizanCalibrationTrainer, UGRLTrainer
 
 __all__ = [
     "DualInputProcessor",

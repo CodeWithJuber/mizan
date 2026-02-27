@@ -2,21 +2,20 @@
 Tests for the QCA Engine (7-Layer Cognitive Pipeline)
 """
 
-import pytest
-
 # QCA engine uses backend.qca imports
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.qca.engine import (
-    DualInputProcessor,
-    ISMLayer,
-    MizanLayer,
     AqlLayer,
-    LawhMemory,
+    DualInputProcessor,
     FurqanBayan,
+    LawhMemory,
+    MizanLayer,
     QCAEngine,
 )
 

@@ -69,9 +69,8 @@ import importlib.util
 import json
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from core.events import event_bus
 from core.hooks import hook_registry
@@ -82,17 +81,18 @@ logger = logging.getLogger("mizan.plugins")
 @dataclass
 class PluginManifest:
     """Plugin metadata loaded from plugin.json."""
+
     name: str = ""
     version: str = "1.0.0"
     description: str = ""
     author: str = ""
-    permissions: List[str] = field(default_factory=list)
-    hooks: List[str] = field(default_factory=list)
-    events: List[str] = field(default_factory=list)
+    permissions: list[str] = field(default_factory=list)
+    hooks: list[str] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
     enabled: bool = True
     min_mizan_version: str = ""
-    tags: List[str] = field(default_factory=list)
-    config_schema: Dict = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+    config_schema: dict = field(default_factory=dict)
 
 
 class PluginBase:
@@ -111,12 +111,12 @@ class PluginBase:
     - on_unload(): Called when plugin is unloaded
     """
 
-    def __init__(self, manifest: PluginManifest, config: Dict = None):
+    def __init__(self, manifest: PluginManifest, config: dict = None):
         self.manifest = manifest
         self.config = config or {}
-        self._registered_hooks: List[tuple] = []
-        self._registered_events: List[tuple] = []
-        self._registered_tools: Dict[str, Dict] = {}
+        self._registered_hooks: list[tuple] = []
+        self._registered_events: list[tuple] = []
+        self._registered_tools: dict[str, dict] = {}
 
     async def on_load(self):
         """Called when the plugin is loaded. Override this."""
@@ -135,21 +135,23 @@ class PluginBase:
 
     def on_event(self, event_pattern: str, callback: Callable, priority: int = 0):
         """Listen for an event. Automatically cleaned up on unload."""
-        event_bus.add_listener(event_pattern, callback, priority=priority, source=self.manifest.name)
+        event_bus.add_listener(
+            event_pattern, callback, priority=priority, source=self.manifest.name
+        )
         self._registered_events.append((event_pattern, callback))
 
-    async def emit(self, event_name: str, data: Dict = None):
+    async def emit(self, event_name: str, data: dict = None):
         """Emit an event from this plugin."""
         await event_bus.emit(event_name, data or {}, source=self.manifest.name)
 
-    def add_tool(self, name: str, handler: Callable, schema: Dict):
+    def add_tool(self, name: str, handler: Callable, schema: dict):
         """Register a tool that agents can use."""
         self._registered_tools[name] = {
             "handler": handler,
             "schema": schema,
         }
 
-    def get_tools(self) -> Dict[str, Dict]:
+    def get_tools(self) -> dict[str, dict]:
         """Get all tools this plugin provides."""
         return self._registered_tools
 
@@ -180,11 +182,11 @@ class PluginManager:
         self.plugins_dir = plugins_dir or os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "plugins"
         )
-        self._loaded: Dict[str, PluginBase] = {}
-        self._manifests: Dict[str, PluginManifest] = {}
-        self._plugin_configs: Dict[str, Dict] = {}
+        self._loaded: dict[str, PluginBase] = {}
+        self._manifests: dict[str, PluginManifest] = {}
+        self._plugin_configs: dict[str, dict] = {}
 
-    async def discover(self) -> List[PluginManifest]:
+    async def discover(self) -> list[PluginManifest]:
         """Discover all plugins in the plugins directory."""
         manifests = []
 
@@ -201,10 +203,13 @@ class PluginManager:
                 try:
                     with open(manifest_path) as f:
                         data = json.load(f)
-                    manifest = PluginManifest(**{
-                        k: v for k, v in data.items()
-                        if k in PluginManifest.__dataclass_fields__
-                    })
+                    manifest = PluginManifest(
+                        **{
+                            k: v
+                            for k, v in data.items()
+                            if k in PluginManifest.__dataclass_fields__
+                        }
+                    )
                     if not manifest.name:
                         manifest.name = entry
                     self._manifests[manifest.name] = manifest
@@ -239,9 +244,7 @@ class PluginManager:
 
         try:
             # Load the module dynamically
-            spec = importlib.util.spec_from_file_location(
-                f"plugins.{plugin_name}", main_path
-            )
+            spec = importlib.util.spec_from_file_location(f"plugins.{plugin_name}", main_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
@@ -260,19 +263,25 @@ class PluginManager:
             logger.info(f"[WASILAH] Loaded plugin: {plugin_name} v{manifest.version}")
 
             # Emit event
-            await event_bus.emit("plugin.loaded", {
-                "name": plugin_name,
-                "version": manifest.version,
-            })
+            await event_bus.emit(
+                "plugin.loaded",
+                {
+                    "name": plugin_name,
+                    "version": manifest.version,
+                },
+            )
 
             return True
 
         except Exception as e:
             logger.error(f"[WASILAH] Failed to load plugin {plugin_name}: {e}")
-            await event_bus.emit("plugin.error", {
-                "name": plugin_name,
-                "error": str(e),
-            })
+            await event_bus.emit(
+                "plugin.error",
+                {
+                    "name": plugin_name,
+                    "error": str(e),
+                },
+            )
             return False
 
     async def unload(self, plugin_name: str) -> bool:
@@ -311,18 +320,18 @@ class PluginManager:
         for name in list(self._loaded.keys()):
             await self.unload(name)
 
-    def get_plugin(self, name: str) -> Optional[PluginBase]:
+    def get_plugin(self, name: str) -> PluginBase | None:
         """Get a loaded plugin instance."""
         return self._loaded.get(name)
 
-    def get_all_tools(self) -> Dict[str, Dict]:
+    def get_all_tools(self) -> dict[str, dict]:
         """Get all tools from all loaded plugins."""
         tools = {}
         for plugin in self._loaded.values():
             tools.update(plugin.get_tools())
         return tools
 
-    def get_all_tool_schemas(self) -> List[Dict]:
+    def get_all_tool_schemas(self) -> list[dict]:
         """Get tool schemas from all loaded plugins."""
         schemas = []
         for plugin in self._loaded.values():
@@ -330,23 +339,25 @@ class PluginManager:
                 schemas.append(tool_info["schema"])
         return schemas
 
-    def list_plugins(self) -> List[Dict]:
+    def list_plugins(self) -> list[dict]:
         """List all discovered plugins with their status."""
         result = []
         for name, manifest in self._manifests.items():
-            result.append({
-                "name": manifest.name,
-                "version": manifest.version,
-                "description": manifest.description,
-                "author": manifest.author,
-                "enabled": manifest.enabled,
-                "loaded": name in self._loaded,
-                "permissions": manifest.permissions,
-                "tags": manifest.tags,
-            })
+            result.append(
+                {
+                    "name": manifest.name,
+                    "version": manifest.version,
+                    "description": manifest.description,
+                    "author": manifest.author,
+                    "enabled": manifest.enabled,
+                    "loaded": name in self._loaded,
+                    "permissions": manifest.permissions,
+                    "tags": manifest.tags,
+                }
+            )
         return result
 
-    def set_plugin_config(self, plugin_name: str, config: Dict):
+    def set_plugin_config(self, plugin_name: str, config: dict):
         """Set configuration for a plugin."""
         self._plugin_configs[plugin_name] = config
 

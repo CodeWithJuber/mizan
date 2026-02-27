@@ -21,8 +21,9 @@ HOW TO USE:
 """
 
 import logging
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("mizan.middleware")
 
@@ -30,6 +31,7 @@ logger = logging.getLogger("mizan.middleware")
 @dataclass
 class MiddlewareEntry:
     """A middleware handler in the pipeline."""
+
     callback: Callable
     name: str = ""
     pipeline: str = "api"
@@ -49,10 +51,11 @@ class MiddlewarePipeline:
     """
 
     def __init__(self):
-        self._pipelines: Dict[str, List[MiddlewareEntry]] = {}
+        self._pipelines: dict[str, list[MiddlewareEntry]] = {}
 
     def use(self, pipeline: str = "api", name: str = "", priority: int = 0, source: str = ""):
         """Decorator to add middleware to a pipeline."""
+
         def decorator(func):
             entry = MiddlewareEntry(
                 callback=func,
@@ -66,10 +69,12 @@ class MiddlewarePipeline:
             self._pipelines[pipeline].append(entry)
             self._pipelines[pipeline].sort(key=lambda e: e.priority, reverse=True)
             return func
+
         return decorator
 
-    def add(self, pipeline: str, callback: Callable, name: str = "",
-            priority: int = 0, source: str = ""):
+    def add(
+        self, pipeline: str, callback: Callable, name: str = "", priority: int = 0, source: str = ""
+    ):
         """Programmatic way to add middleware."""
         entry = MiddlewareEntry(
             callback=callback,
@@ -86,9 +91,7 @@ class MiddlewarePipeline:
     def remove_from_source(self, source: str):
         """Remove all middleware from a specific source."""
         for pipeline in self._pipelines:
-            self._pipelines[pipeline] = [
-                e for e in self._pipelines[pipeline] if e.source != source
-            ]
+            self._pipelines[pipeline] = [e for e in self._pipelines[pipeline] if e.source != source]
 
     async def execute(self, pipeline: str, data: Any, final_handler: Callable = None) -> Any:
         """
@@ -119,13 +122,12 @@ class MiddlewarePipeline:
 
         return await create_chain(0)
 
-    def list_middleware(self) -> Dict[str, List[Dict]]:
+    def list_middleware(self) -> dict[str, list[dict]]:
         """List all registered middleware by pipeline."""
         result = {}
         for pipeline, entries in self._pipelines.items():
             result[pipeline] = [
-                {"name": e.name, "priority": e.priority, "source": e.source}
-                for e in entries
+                {"name": e.name, "priority": e.priority, "source": e.source} for e in entries
             ]
         return result
 

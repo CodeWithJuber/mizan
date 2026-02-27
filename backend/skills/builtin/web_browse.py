@@ -5,9 +5,9 @@ Web Browse Skill
 Enhanced web browsing with content extraction.
 """
 
-from typing import Dict, List
-import httpx
 from html.parser import HTMLParser
+
+import httpx
 
 from ..base import SkillBase, SkillManifest
 
@@ -45,14 +45,14 @@ class WebBrowseSkill(SkillBase):
         tags=["web", "browse", "scrape"],
     )
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._tools = {
             "web_browse": self.browse,
             "web_search": self.search,
         }
 
-    async def execute(self, params: Dict, context: Dict = None) -> Dict:
+    async def execute(self, params: dict, context: dict = None) -> dict:
         action = params.get("action", "browse")
         if action == "browse":
             return await self.browse(params.get("url", ""))
@@ -60,13 +60,13 @@ class WebBrowseSkill(SkillBase):
             return await self.search(params.get("query", ""))
         return {"error": f"Unknown action: {action}"}
 
-    async def browse(self, url: str) -> Dict:
+    async def browse(self, url: str) -> dict:
         """Browse a URL and extract text content"""
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"
-                })
+                response = await client.get(
+                    url, headers={"User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"}
+                )
 
                 extractor = TextExtractor()
                 extractor.feed(response.text)
@@ -80,19 +80,21 @@ class WebBrowseSkill(SkillBase):
         except Exception as e:
             return {"error": str(e), "url": url}
 
-    async def search(self, query: str) -> Dict:
+    async def search(self, query: str) -> dict:
         """Search the web using DuckDuckGo"""
         import urllib.parse
+
         encoded = urllib.parse.quote(query)
         url = f"https://duckduckgo.com/html/?q={encoded}"
 
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"
-                })
+                response = await client.get(
+                    url, headers={"User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"}
+                )
 
                 import re
+
                 titles = re.findall(
                     r'<a[^>]+class=["\']result__a["\'][^>]*>(.*?)</a>',
                     response.text,

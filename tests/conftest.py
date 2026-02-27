@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 import pytest
 

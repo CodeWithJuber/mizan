@@ -28,21 +28,20 @@ Plugin Types (Quranic naming):
 - Muaddib (مؤدب — Educator):     Middleware plugins — request/response transforms
 """
 
-import os
-import sys
-import uuid
-import json
-import time
-import types
 import hashlib
-import logging
 import importlib
 import importlib.util
+import json
+import logging
+import os
+import sys
 import threading
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+import time
+import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 from ..base import SkillBase, SkillManifest
 
@@ -58,16 +57,18 @@ PLUGINS_DIR = os.environ.get("MIZAN_PLUGINS_DIR", "/tmp/mizan_plugins")
 # Plugin Types — Quranic Classification
 # ===================================================================
 
+
 class PluginType(Enum):
     """
     Plugin categories inspired by Quranic concepts.
     Each type has a clear role, just as every Ayah has a clear purpose.
     """
-    AYAH = "ayah"           # آية — Tool plugins (new capabilities)
-    BAB = "bab"             # باب — Channel plugins (communication gates)
-    HAFIZ = "hafiz"         # حافظ — Memory plugins (custom memory backends)
-    RUH = "ruh"             # روح — Provider plugins (AI model providers)
-    MUADDIB = "muaddib"     # مؤدب — Middleware plugins (transforms)
+
+    AYAH = "ayah"  # آية — Tool plugins (new capabilities)
+    BAB = "bab"  # باب — Channel plugins (communication gates)
+    HAFIZ = "hafiz"  # حافظ — Memory plugins (custom memory backends)
+    RUH = "ruh"  # روح — Provider plugins (AI model providers)
+    MUADDIB = "muaddib"  # مؤدب — Middleware plugins (transforms)
 
 
 class TrustLevel(Enum):
@@ -77,14 +78,16 @@ class TrustLevel(Enum):
     - Lawwama: reviewed, partially trusted — relaxed restrictions
     - Mutmainna: fully verified and trusted — full access within declared perms
     """
-    AMMARA = "ammara"           # النفس الأمارة — unreviewed
-    LAWWAMA = "lawwama"         # النفس اللوامة — reviewed once
-    MUTMAINNA = "mutmainna"     # النفس المطمئنة — fully trusted
+
+    AMMARA = "ammara"  # النفس الأمارة — unreviewed
+    LAWWAMA = "lawwama"  # النفس اللوامة — reviewed once
+    MUTMAINNA = "mutmainna"  # النفس المطمئنة — fully trusted
 
 
 # ===================================================================
 # Plugin Manifest — Declaration of Intent
 # ===================================================================
+
 
 @dataclass
 class WahyManifest:
@@ -92,23 +95,24 @@ class WahyManifest:
     Every plugin must declare its manifest — a transparent covenant (Mithaq).
     'Fulfill the covenant (Ahd); indeed the covenant is questioned about' — 17:34
     """
+
     name: str = ""
     version: str = "1.0.0"
     description: str = ""
     author: str = ""
     plugin_type: str = PluginType.AYAH.value
-    permissions: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
+    permissions: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     entry_point: str = "main"
     checksum: str = ""
     trust_level: str = TrustLevel.AMMARA.value
     min_mizan_version: str = "1.0.0"
     quranic_reference: str = ""
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     enabled: bool = False
-    installed_at: Optional[str] = None
+    installed_at: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "name": self.name,
             "version": self.version,
@@ -132,11 +136,13 @@ class WahyManifest:
 # Plugin Hook System — Event-driven Extensibility
 # ===================================================================
 
+
 class HookType(Enum):
     """
     Plugin hooks — structured interception points.
     Like the Malaika (angels) assigned to specific duties.
     """
+
     ON_MESSAGE_RECEIVED = "on_message_received"
     ON_MESSAGE_SENT = "on_message_sent"
     ON_TOOL_CALLED = "on_tool_called"
@@ -148,13 +154,14 @@ class HookType(Enum):
 @dataclass
 class PluginHook:
     """A registered hook — a plugin's declared point of interception."""
+
     plugin_name: str
     hook_type: str
     callback_name: str
-    priority: int = 5          # 1-10, lower executes earlier
+    priority: int = 5  # 1-10, lower executes earlier
     enabled: bool = True
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "plugin_name": self.plugin_name,
             "hook_type": self.hook_type,
@@ -172,8 +179,14 @@ class PluginHook:
 BLOCKED_BUILTINS = {"eval", "exec", "compile", "__import__", "breakpoint"}
 
 BLOCKED_MODULES = {
-    "os.system", "subprocess", "shutil.rmtree", "ctypes",
-    "importlib", "code", "codeop", "compileall",
+    "os.system",
+    "subprocess",
+    "shutil.rmtree",
+    "ctypes",
+    "importlib",
+    "code",
+    "codeop",
+    "compileall",
 }
 
 # Top-level modules that require explicit network permission
@@ -192,56 +205,46 @@ class WahyIsolation:
     - Error isolation — plugin failures do not crash the host system
     """
 
-    def __init__(self, plugin_name: str, plugin_dir: str,
-                 permissions: List[str] = None):
+    def __init__(self, plugin_name: str, plugin_dir: str, permissions: list[str] = None):
         self.plugin_name = plugin_name
         self.plugin_dir = os.path.realpath(plugin_dir)
         self.permissions = set(permissions or [])
-        self.violations: List[Dict] = []
+        self.violations: list[dict] = []
 
     # ------------------------------------------------------------------
     # Static analysis: scan source before loading
     # ------------------------------------------------------------------
 
-    def scan_source(self, source: str) -> Tuple[bool, List[str]]:
+    def scan_source(self, source: str) -> tuple[bool, list[str]]:
         """
         Scan plugin source code for forbidden patterns.
         Returns (is_safe, list_of_violations).
         """
-        violations: List[str] = []
+        violations: list[str] = []
 
         for blocked in BLOCKED_BUILTINS:
             # Look for direct calls: eval(, exec(, etc.
             if f"{blocked}(" in source:
-                violations.append(
-                    f"Forbidden builtin '{blocked}' detected in source"
-                )
+                violations.append(f"Forbidden builtin '{blocked}' detected in source")
 
         for blocked_mod in BLOCKED_MODULES:
             # Catch both 'import subprocess' and 'from subprocess import'
             parts = blocked_mod.split(".")
             mod_root = parts[0]
             if f"import {mod_root}" in source:
-                violations.append(
-                    f"Forbidden module '{blocked_mod}' imported in source"
-                )
+                violations.append(f"Forbidden module '{blocked_mod}' imported in source")
 
         # Check for network module usage without permission
-        has_network_perm = any(
-            p.startswith("network:") for p in self.permissions
-        )
+        has_network_perm = any(p.startswith("network:") for p in self.permissions)
         if not has_network_perm:
             for net_mod in NETWORK_MODULES:
                 if f"import {net_mod}" in source:
                     violations.append(
-                        f"Network module '{net_mod}' used without "
-                        f"'network:*' permission"
+                        f"Network module '{net_mod}' used without 'network:*' permission"
                     )
 
         is_safe = len(violations) == 0
-        self.violations.extend(
-            {"type": "source_scan", "detail": v} for v in violations
-        )
+        self.violations.extend({"type": "source_scan", "detail": v} for v in violations)
         return is_safe, violations
 
     # ------------------------------------------------------------------
@@ -253,32 +256,35 @@ class WahyIsolation:
         real = os.path.realpath(path)
         allowed = real.startswith(self.plugin_dir)
         if not allowed:
-            self.violations.append({
-                "type": "file_access",
-                "detail": f"Blocked access to '{path}' outside plugin dir",
-            })
+            self.violations.append(
+                {
+                    "type": "file_access",
+                    "detail": f"Blocked access to '{path}' outside plugin dir",
+                }
+            )
         return allowed
 
     # ------------------------------------------------------------------
     # Build a restricted globals dict for plugin execution
     # ------------------------------------------------------------------
 
-    def build_restricted_globals(self) -> Dict:
+    def build_restricted_globals(self) -> dict:
         """
         Create a globals dict that excludes dangerous builtins.
         Plugins run inside this restricted namespace.
         """
-        safe_builtins = {
-            k: v for k, v in __builtins__.items()
-            if k not in BLOCKED_BUILTINS
-        } if isinstance(__builtins__, dict) else {
-            k: getattr(__builtins__, k)
-            for k in dir(__builtins__)
-            if k not in BLOCKED_BUILTINS and not k.startswith("_")
-        }
+        safe_builtins = (
+            {k: v for k, v in __builtins__.items() if k not in BLOCKED_BUILTINS}
+            if isinstance(__builtins__, dict)
+            else {
+                k: getattr(__builtins__, k)
+                for k in dir(__builtins__)
+                if k not in BLOCKED_BUILTINS and not k.startswith("_")
+            }
+        )
         return {"__builtins__": safe_builtins}
 
-    def get_violations(self) -> List[Dict]:
+    def get_violations(self) -> list[dict]:
         return list(self.violations)
 
 
@@ -286,26 +292,28 @@ class WahyIsolation:
 # Lifecycle Record — Track Every Plugin's Journey
 # ===================================================================
 
+
 @dataclass
 class PluginRecord:
     """
     Full record for a discovered/installed plugin.
     Tracks the lifecycle: discover -> verify -> install -> activate -> monitor.
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
     manifest: WahyManifest = field(default_factory=WahyManifest)
     state: str = "discovered"  # discovered, verified, installed, active, error, deactivated
     plugin_dir: str = ""
-    module: Any = None         # loaded Python module (not serialised)
-    instance: Any = None       # instantiated plugin class (not serialised)
-    isolation: Any = None      # WahyIsolation (not serialised)
-    hooks: List[PluginHook] = field(default_factory=list)
+    module: Any = None  # loaded Python module (not serialised)
+    instance: Any = None  # instantiated plugin class (not serialised)
+    isolation: Any = None  # WahyIsolation (not serialised)
+    hooks: list[PluginHook] = field(default_factory=list)
     load_time_ms: float = 0.0
-    error: Optional[str] = None
-    activated_at: Optional[str] = None
-    deactivated_at: Optional[str] = None
+    error: str | None = None
+    activated_at: str | None = None
+    deactivated_at: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "manifest": self.manifest.to_dict(),
@@ -322,6 +330,7 @@ class PluginRecord:
 # ===================================================================
 # WahyPluginSkill — The Main Plugin Manager
 # ===================================================================
+
 
 class OpenClawBridge:
     """
@@ -342,28 +351,41 @@ class OpenClawBridge:
 
     # TypeScript patterns that are dangerous without sandboxing
     DANGEROUS_TS_PATTERNS = [
-        "child_process", "fs.writeFile", "fs.unlink", "fs.rmdir",
-        "process.env", "require('os')", "require('net')",
-        "eval(", "Function(", "global.", "globalThis.",
-        "process.exit", "Buffer.from", "crypto.createHash",
-        "__dirname", "__filename",
+        "child_process",
+        "fs.writeFile",
+        "fs.unlink",
+        "fs.rmdir",
+        "process.env",
+        "require('os')",
+        "require('net')",
+        "eval(",
+        "Function(",
+        "global.",
+        "globalThis.",
+        "process.exit",
+        "Buffer.from",
+        "crypto.createHash",
+        "__dirname",
+        "__filename",
     ]
 
     def __init__(self, plugins_dir: str):
         self._plugins_dir = plugins_dir
-        self._quarantine: Dict[str, Dict] = {}
-        self._audit_log: List[Dict] = []
+        self._quarantine: dict[str, dict] = {}
+        self._audit_log: list[dict] = []
         self._conversion_stats = {"total": 0, "converted": 0, "rejected": 0}
 
-    def _audit(self, action: str, details: Dict = None) -> None:
-        self._audit_log.append({
-            "action": action,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": details or {},
-        })
+    def _audit(self, action: str, details: dict = None) -> None:
+        self._audit_log.append(
+            {
+                "action": action,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "details": details or {},
+            }
+        )
         logger.info(f"[OPENCLAW-BRIDGE] {action}")
 
-    def convert_manifest(self, openclaw_manifest: Dict) -> Dict:
+    def convert_manifest(self, openclaw_manifest: dict) -> dict:
         """
         Convert OpenClaw package.json manifest to Wahy wahy.json format.
         OpenClaw declares no permissions — we extract them from source analysis.
@@ -409,7 +431,7 @@ class OpenClawBridge:
         }
         return wahy_manifest
 
-    def analyze_source(self, source_code: str) -> Dict:
+    def analyze_source(self, source_code: str) -> dict:
         """
         Static analysis of OpenClaw TypeScript/JavaScript source.
         Detects dangerous patterns that OpenClaw doesn't block.
@@ -419,13 +441,15 @@ class OpenClawBridge:
 
         for pattern in self.DANGEROUS_TS_PATTERNS:
             if pattern in source_code:
-                findings.append({
-                    "severity": "critical" if pattern in (
-                        "eval(", "Function(", "child_process", "process.exit"
-                    ) else "warning",
-                    "pattern": pattern,
-                    "description": f"Dangerous TypeScript pattern: {pattern}",
-                })
+                findings.append(
+                    {
+                        "severity": "critical"
+                        if pattern in ("eval(", "Function(", "child_process", "process.exit")
+                        else "warning",
+                        "pattern": pattern,
+                        "description": f"Dangerous TypeScript pattern: {pattern}",
+                    }
+                )
 
         # Infer permissions from usage patterns
         if "http" in source_code.lower() or "fetch(" in source_code:
@@ -438,8 +462,7 @@ class OpenClawBridge:
             inferred_permissions.append("shell:*")
 
         critical_count = sum(1 for f in findings if f["severity"] == "critical")
-        status = "rejected" if critical_count > 0 else (
-            "warning" if findings else "clean")
+        status = "rejected" if critical_count > 0 else ("warning" if findings else "clean")
 
         return {
             "status": status,
@@ -448,7 +471,7 @@ class OpenClawBridge:
             "inferred_permissions": inferred_permissions,
         }
 
-    def import_plugin(self, openclaw_data: Dict) -> Dict:
+    def import_plugin(self, openclaw_data: dict) -> dict:
         """
         Import an OpenClaw plugin with full security analysis.
         Creates a quarantine entry — never installs directly.
@@ -466,9 +489,9 @@ class OpenClawBridge:
 
         if analysis["status"] == "rejected":
             self._conversion_stats["rejected"] += 1
-            self._audit("import_rejected", {
-                "name": name,
-                "critical_findings": analysis["critical_count"]})
+            self._audit(
+                "import_rejected", {"name": name, "critical_findings": analysis["critical_count"]}
+            )
             return {
                 "error": "OpenClaw plugin REJECTED — dangerous patterns detected",
                 "name": name,
@@ -490,15 +513,20 @@ class OpenClawBridge:
             "source_analysis": analysis,
             "original_source": source,
             "integrity": integrity,
-            "quarantined_at": datetime.now(timezone.utc).isoformat(),
+            "quarantined_at": datetime.now(UTC).isoformat(),
             "status": "quarantined",
         }
 
         self._conversion_stats["converted"] += 1
-        self._audit("import_quarantined", {
-            "name": name, "quarantine_id": quarantine_id,
-            "permissions": analysis["inferred_permissions"],
-            "findings": len(analysis["findings"])})
+        self._audit(
+            "import_quarantined",
+            {
+                "name": name,
+                "quarantine_id": quarantine_id,
+                "permissions": analysis["inferred_permissions"],
+                "findings": len(analysis["findings"]),
+            },
+        )
 
         return {
             "quarantined": True,
@@ -512,10 +540,10 @@ class OpenClawBridge:
             },
             "integrity": integrity[:16] + "...",
             "message": "OpenClaw plugin converted and quarantined. "
-                       "Awaiting review. Will be sandboxed by WahyIsolation.",
+            "Awaiting review. Will be sandboxed by WahyIsolation.",
         }
 
-    def approve_and_scaffold(self, quarantine_id: str) -> Optional[Dict]:
+    def approve_and_scaffold(self, quarantine_id: str) -> dict | None:
         """
         Approve quarantined OpenClaw plugin and create Wahy scaffold.
         Creates a Python wrapper (since OpenClaw is TypeScript).
@@ -576,8 +604,10 @@ def execute(params: dict, context: dict = None) -> dict:
         with open(manifest_path, "w") as fh:
             json.dump(entry["wahy_manifest"], fh, indent=2)
 
-        self._audit("approved_and_scaffolded", {
-            "name": name, "plugin_dir": plugin_dir, "checksum": checksum[:16]})
+        self._audit(
+            "approved_and_scaffolded",
+            {"name": name, "plugin_dir": plugin_dir, "checksum": checksum[:16]},
+        )
 
         return {
             "approved": True,
@@ -592,16 +622,16 @@ def execute(params: dict, context: dict = None) -> dict:
             ],
         }
 
-    def list_quarantine(self) -> List[Dict]:
+    def list_quarantine(self) -> list[dict]:
         return [
             {k: v for k, v in e.items() if k != "original_source"}
             for e in self._quarantine.values()
         ]
 
-    def get_audit_log(self, limit: int = 50) -> List[Dict]:
+    def get_audit_log(self, limit: int = 50) -> list[dict]:
         return self._audit_log[-limit:]
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         return {
             **self._conversion_stats,
             "quarantine_size": len(self._quarantine),
@@ -625,9 +655,9 @@ class WahyPluginSkill(SkillBase):
         name="wahy_plugins",
         version="2.0.0",
         description="Wahy plugin system: discover, verify, install, and manage "
-                    "plugins with SHA-256 integrity, sandboxed execution, and "
-                    "Izn permission gating. Integrates with OpenClaw via secure "
-                    "bridge with manifest conversion, static analysis, and quarantine.",
+        "plugins with SHA-256 integrity, sandboxed execution, and "
+        "Izn permission gating. Integrates with OpenClaw via secure "
+        "bridge with manifest conversion, static analysis, and quarantine.",
         permissions=[
             "file:read:/tmp/mizan_plugins/*",
             "file:write:/tmp/mizan_plugins/*",
@@ -636,17 +666,15 @@ class WahyPluginSkill(SkillBase):
         tags=["وحي", "Plugins", "OpenClaw"],
     )
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self.plugins_dir = (config or {}).get("plugins_dir", PLUGINS_DIR)
         os.makedirs(self.plugins_dir, exist_ok=True)
 
         # Plugin registry: name -> PluginRecord
-        self._plugins: Dict[str, PluginRecord] = {}
+        self._plugins: dict[str, PluginRecord] = {}
         # Hook registry: HookType.value -> sorted list of PluginHook
-        self._hooks: Dict[str, List[PluginHook]] = {
-            ht.value: [] for ht in HookType
-        }
+        self._hooks: dict[str, list[PluginHook]] = {ht.value: [] for ht in HookType}
         # Reload lock — prevents concurrent reloads
         self._reload_lock = threading.Lock()
 
@@ -674,25 +702,26 @@ class WahyPluginSkill(SkillBase):
     # Execute — single entry-point dispatcher
     # ==================================================================
 
-    async def execute(self, params: Dict, context: Dict = None) -> Dict:
+    async def execute(self, params: dict, context: dict = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"wahy_{action}")
         if handler:
             return await handler(params, context or {})
-        return {"error": f"Unknown Wahy action: '{action}'", "available": list(
-            a.replace("wahy_", "") for a in self._tools
-        )}
+        return {
+            "error": f"Unknown Wahy action: '{action}'",
+            "available": list(a.replace("wahy_", "") for a in self._tools),
+        }
 
     # ==================================================================
     # Lifecycle — Internal Methods
     # ==================================================================
 
-    def _discover_plugins(self) -> List[WahyManifest]:
+    def _discover_plugins(self) -> list[WahyManifest]:
         """
         Scan the plugins directory for manifest files.
         Each plugin lives in its own subdirectory with a wahy.json manifest.
         """
-        discovered: List[WahyManifest] = []
+        discovered: list[WahyManifest] = []
         if not os.path.isdir(self.plugins_dir):
             return discovered
 
@@ -701,7 +730,7 @@ class WahyPluginSkill(SkillBase):
             manifest_path = os.path.join(plugin_dir, "wahy.json")
             if os.path.isdir(plugin_dir) and os.path.isfile(manifest_path):
                 try:
-                    with open(manifest_path, "r") as fh:
+                    with open(manifest_path) as fh:
                         data = json.load(fh)
                     m = WahyManifest(
                         name=data.get("name", entry),
@@ -732,13 +761,11 @@ class WahyPluginSkill(SkillBase):
                         self._plugins[m.name].manifest = m
                         self._plugins[m.name].plugin_dir = plugin_dir
 
-                except (json.JSONDecodeError, IOError) as exc:
-                    logger.warning(
-                        f"[WAHY] Failed to read manifest in '{entry}': {exc}"
-                    )
+                except (OSError, json.JSONDecodeError) as exc:
+                    logger.warning(f"[WAHY] Failed to read manifest in '{entry}': {exc}")
         return discovered
 
-    def _verify_integrity(self, plugin_name: str) -> Tuple[bool, str]:
+    def _verify_integrity(self, plugin_name: str) -> tuple[bool, str]:
         """
         SHA-256 integrity verification.
         'Indeed, it is We who sent down the reminder (Dhikr)
@@ -749,24 +776,21 @@ class WahyPluginSkill(SkillBase):
             return False, "Plugin not found"
 
         manifest = record.manifest
-        entry_file = os.path.join(
-            record.plugin_dir, f"{manifest.entry_point}.py"
-        )
+        entry_file = os.path.join(record.plugin_dir, f"{manifest.entry_point}.py")
         if not os.path.isfile(entry_file):
             return False, f"Entry point file not found: {entry_file}"
 
         try:
             with open(entry_file, "rb") as fh:
                 file_hash = hashlib.sha256(fh.read()).hexdigest()
-        except IOError as exc:
+        except OSError as exc:
             return False, f"Cannot read entry point: {exc}"
 
         if not manifest.checksum:
             # First verification: record the checksum
             manifest.checksum = file_hash
             logger.info(
-                f"[WAHY] Recorded initial checksum for '{plugin_name}': "
-                f"{file_hash[:16]}..."
+                f"[WAHY] Recorded initial checksum for '{plugin_name}': {file_hash[:16]}..."
             )
             return True, "Checksum recorded (first verification)"
 
@@ -774,12 +798,10 @@ class WahyPluginSkill(SkillBase):
             return True, "Integrity verified — checksum matches"
 
         return False, (
-            f"INTEGRITY FAILURE: expected {manifest.checksum[:16]}... "
-            f"but got {file_hash[:16]}..."
+            f"INTEGRITY FAILURE: expected {manifest.checksum[:16]}... but got {file_hash[:16]}..."
         )
 
-    def _check_permissions(self, plugin_name: str,
-                           context: Dict = None) -> Tuple[bool, str]:
+    def _check_permissions(self, plugin_name: str, context: dict = None) -> tuple[bool, str]:
         """
         Validate that the plugin's required permissions are satisfiable
         within the current Izn policy.
@@ -805,13 +827,12 @@ class WahyPluginSkill(SkillBase):
                 result = izn.check_permission(agent_id, agent_role, perm)
                 if not result.get("allowed"):
                     return False, (
-                        f"Izn denied permission '{perm}': "
-                        f"{result.get('reason', 'unknown')}"
+                        f"Izn denied permission '{perm}': {result.get('reason', 'unknown')}"
                     )
 
         return True, "Permissions satisfied"
 
-    def _resolve_dependencies(self, plugin_name: str) -> Tuple[bool, List[str]]:
+    def _resolve_dependencies(self, plugin_name: str) -> tuple[bool, list[str]]:
         """
         Check that every declared dependency is already active.
         """
@@ -829,7 +850,7 @@ class WahyPluginSkill(SkillBase):
             return False, missing
         return True, []
 
-    def _load_plugin(self, plugin_name: str) -> Tuple[bool, str]:
+    def _load_plugin(self, plugin_name: str) -> tuple[bool, str]:
         """
         Dynamically import and instantiate the plugin module.
         Applies WahyIsolation sandbox checks before loading.
@@ -839,9 +860,7 @@ class WahyPluginSkill(SkillBase):
             return False, "Plugin not found"
 
         manifest = record.manifest
-        entry_file = os.path.join(
-            record.plugin_dir, f"{manifest.entry_point}.py"
-        )
+        entry_file = os.path.join(record.plugin_dir, f"{manifest.entry_point}.py")
         if not os.path.isfile(entry_file):
             return False, f"Entry point not found: {entry_file}"
 
@@ -852,28 +871,23 @@ class WahyPluginSkill(SkillBase):
             permissions=manifest.permissions,
         )
         try:
-            with open(entry_file, "r") as fh:
+            with open(entry_file) as fh:
                 source = fh.read()
-        except IOError as exc:
+        except OSError as exc:
             return False, f"Cannot read source: {exc}"
 
         is_safe, violations = isolation.scan_source(source)
         if not is_safe:
             record.state = "error"
             record.error = f"Sandbox violations: {'; '.join(violations)}"
-            logger.warning(
-                f"[WAHY] Plugin '{plugin_name}' failed sandbox scan: "
-                f"{violations}"
-            )
+            logger.warning(f"[WAHY] Plugin '{plugin_name}' failed sandbox scan: {violations}")
             return False, record.error
 
         # Dynamic import via importlib
         t0 = time.monotonic()
         module_name = f"wahy_plugin_{plugin_name}"
         try:
-            spec = importlib.util.spec_from_file_location(
-                module_name, entry_file
-            )
+            spec = importlib.util.spec_from_file_location(module_name, entry_file)
             if spec is None or spec.loader is None:
                 return False, "Failed to create module spec"
 
@@ -891,13 +905,11 @@ class WahyPluginSkill(SkillBase):
         record.isolation = isolation
         record.load_time_ms = round(load_ms, 2)
         record.state = "installed"
-        manifest.installed_at = datetime.now(timezone.utc).isoformat()
-        logger.info(
-            f"[WAHY] Loaded plugin '{plugin_name}' in {load_ms:.1f}ms"
-        )
+        manifest.installed_at = datetime.now(UTC).isoformat()
+        logger.info(f"[WAHY] Loaded plugin '{plugin_name}' in {load_ms:.1f}ms")
         return True, "Plugin loaded successfully"
 
-    def _activate_plugin(self, plugin_name: str) -> Tuple[bool, str]:
+    def _activate_plugin(self, plugin_name: str) -> tuple[bool, str]:
         """
         Enable the plugin and register its hooks.
         """
@@ -921,23 +933,19 @@ class WahyPluginSkill(SkillBase):
                         )
                         if hook.hook_type in self._hooks:
                             self._hooks[hook.hook_type].append(hook)
-                            self._hooks[hook.hook_type].sort(
-                                key=lambda h: h.priority
-                            )
+                            self._hooks[hook.hook_type].sort(key=lambda h: h.priority)
                             record.hooks.append(hook)
             except Exception as exc:
-                logger.warning(
-                    f"[WAHY] Hook registration failed for '{plugin_name}': {exc}"
-                )
+                logger.warning(f"[WAHY] Hook registration failed for '{plugin_name}': {exc}")
 
         record.state = "active"
         record.manifest.enabled = True
-        record.activated_at = datetime.now(timezone.utc).isoformat()
+        record.activated_at = datetime.now(UTC).isoformat()
         record.error = None
         logger.info(f"[WAHY] Activated plugin '{plugin_name}'")
         return True, "Plugin activated"
 
-    def _deactivate_plugin(self, plugin_name: str) -> Tuple[bool, str]:
+    def _deactivate_plugin(self, plugin_name: str) -> tuple[bool, str]:
         """
         Disable the plugin and unregister its hooks.
         """
@@ -947,9 +955,7 @@ class WahyPluginSkill(SkillBase):
 
         # Remove hooks
         for hook_type, hooks_list in self._hooks.items():
-            self._hooks[hook_type] = [
-                h for h in hooks_list if h.plugin_name != plugin_name
-            ]
+            self._hooks[hook_type] = [h for h in hooks_list if h.plugin_name != plugin_name]
         record.hooks.clear()
 
         # Clean up module reference
@@ -960,12 +966,11 @@ class WahyPluginSkill(SkillBase):
 
         record.state = "deactivated"
         record.manifest.enabled = False
-        record.deactivated_at = datetime.now(timezone.utc).isoformat()
+        record.deactivated_at = datetime.now(UTC).isoformat()
         logger.info(f"[WAHY] Deactivated plugin '{plugin_name}'")
         return True, "Plugin deactivated"
 
-    def _hot_reload(self, plugin_name: str,
-                    context: Dict = None) -> Tuple[bool, str]:
+    def _hot_reload(self, plugin_name: str, context: dict = None) -> tuple[bool, str]:
         """
         Hot-reload: deactivate, re-verify, re-load, re-activate.
         Thread-safe via _reload_lock.
@@ -984,7 +989,7 @@ class WahyPluginSkill(SkillBase):
                     return False, f"Deactivation failed: {msg}"
 
             # 2. Re-verify integrity (checksum recomputed)
-            record.manifest.checksum = ""       # force re-hash
+            record.manifest.checksum = ""  # force re-hash
             ok, msg = self._verify_integrity(plugin_name)
             if not ok:
                 return False, f"Integrity check failed: {msg}"
@@ -1008,12 +1013,12 @@ class WahyPluginSkill(SkillBase):
     # Hook Dispatch — fire hooks for a given event
     # ==================================================================
 
-    async def fire_hook(self, hook_type: str, data: Dict) -> List[Dict]:
+    async def fire_hook(self, hook_type: str, data: dict) -> list[dict]:
         """
         Fire all registered hooks for the given event type.
         Hooks execute in priority order; failures are isolated.
         """
-        results: List[Dict] = []
+        results: list[dict] = []
         for hook in self._hooks.get(hook_type, []):
             if not hook.enabled:
                 continue
@@ -1025,32 +1030,34 @@ class WahyPluginSkill(SkillBase):
                 continue
             try:
                 result = callback(data)
-                results.append({
-                    "plugin": hook.plugin_name,
-                    "hook": hook_type,
-                    "result": result,
-                })
-            except Exception as exc:
-                logger.warning(
-                    f"[WAHY] Hook error ({hook.plugin_name}/{hook_type}): {exc}"
+                results.append(
+                    {
+                        "plugin": hook.plugin_name,
+                        "hook": hook_type,
+                        "result": result,
+                    }
                 )
-                results.append({
-                    "plugin": hook.plugin_name,
-                    "hook": hook_type,
-                    "error": str(exc),
-                })
+            except Exception as exc:
+                logger.warning(f"[WAHY] Hook error ({hook.plugin_name}/{hook_type}): {exc}")
+                results.append(
+                    {
+                        "plugin": hook.plugin_name,
+                        "hook": hook_type,
+                        "error": str(exc),
+                    }
+                )
         return results
 
     # ==================================================================
     # Action Handlers — called from execute()
     # ==================================================================
 
-    async def _action_list(self, params: Dict, context: Dict) -> Dict:
+    async def _action_list(self, params: dict, context: dict) -> dict:
         """List all discovered plugins and their states."""
         self._discover_plugins()
         plugin_type = params.get("plugin_type")
         plugins = []
-        for name, rec in self._plugins.items():
+        for _name, rec in self._plugins.items():
             if plugin_type and rec.manifest.plugin_type != plugin_type:
                 continue
             plugins.append(rec.to_dict())
@@ -1060,7 +1067,7 @@ class WahyPluginSkill(SkillBase):
             "plugin_types": [pt.value for pt in PluginType],
         }
 
-    async def _action_install(self, params: Dict, context: Dict) -> Dict:
+    async def _action_install(self, params: dict, context: dict) -> dict:
         """
         Full install pipeline: discover -> verify -> check perms -> deps -> load.
         """
@@ -1103,13 +1110,10 @@ class WahyPluginSkill(SkillBase):
         return {
             "installed": True,
             "plugin": record.to_dict(),
-            "message": (
-                f"Plugin '{name}' installed. "
-                f"Use action='activate' to enable it."
-            ),
+            "message": (f"Plugin '{name}' installed. Use action='activate' to enable it."),
         }
 
-    async def _action_uninstall(self, params: Dict, context: Dict) -> Dict:
+    async def _action_uninstall(self, params: dict, context: dict) -> dict:
         """Uninstall a plugin — deactivate and remove from registry."""
         name = params.get("name", "")
         if name not in self._plugins:
@@ -1123,19 +1127,14 @@ class WahyPluginSkill(SkillBase):
         logger.info(f"[WAHY] Uninstalled plugin '{name}'")
         return {"uninstalled": True, "name": name}
 
-    async def _action_activate(self, params: Dict, context: Dict) -> Dict:
+    async def _action_activate(self, params: dict, context: dict) -> dict:
         """Activate an installed plugin."""
         name = params.get("name", "")
         record = self._plugins.get(name)
         if not record:
             return {"error": f"Plugin '{name}' not found"}
         if record.state not in ("installed", "deactivated", "verified"):
-            return {
-                "error": (
-                    f"Plugin '{name}' is in state '{record.state}'. "
-                    f"Install it first."
-                )
-            }
+            return {"error": (f"Plugin '{name}' is in state '{record.state}'. Install it first.")}
         # Load if not already loaded
         if not record.module:
             ok, msg = self._load_plugin(name)
@@ -1147,7 +1146,7 @@ class WahyPluginSkill(SkillBase):
             return {"error": msg}
         return {"activated": True, "plugin": record.to_dict()}
 
-    async def _action_deactivate(self, params: Dict, context: Dict) -> Dict:
+    async def _action_deactivate(self, params: dict, context: dict) -> dict:
         """Deactivate an active plugin."""
         name = params.get("name", "")
         ok, msg = self._deactivate_plugin(name)
@@ -1155,7 +1154,7 @@ class WahyPluginSkill(SkillBase):
             return {"error": msg}
         return {"deactivated": True, "name": name}
 
-    async def _action_reload(self, params: Dict, context: Dict) -> Dict:
+    async def _action_reload(self, params: dict, context: dict) -> dict:
         """Hot-reload a plugin without restarting the system."""
         name = params.get("name", "")
         ok, msg = self._hot_reload(name, context)
@@ -1167,7 +1166,7 @@ class WahyPluginSkill(SkillBase):
             "plugin": record.to_dict() if record else None,
         }
 
-    async def _action_info(self, params: Dict, context: Dict) -> Dict:
+    async def _action_info(self, params: dict, context: dict) -> dict:
         """Get detailed information about a plugin."""
         name = params.get("name", "")
         self._discover_plugins()
@@ -1181,7 +1180,7 @@ class WahyPluginSkill(SkillBase):
             info["sandbox_violations"] = record.isolation.get_violations()
         return info
 
-    async def _action_create(self, params: Dict, context: Dict) -> Dict:
+    async def _action_create(self, params: dict, context: dict) -> dict:
         """
         Create a new plugin scaffold — a template for plugin developers.
         Generates the directory structure and manifest file.
@@ -1252,7 +1251,7 @@ class WahyPluginSkill(SkillBase):
             ],
         }
 
-    async def _action_verify(self, params: Dict, context: Dict) -> Dict:
+    async def _action_verify(self, params: dict, context: dict) -> dict:
         """Run integrity verification on a plugin."""
         name = params.get("name", "")
         self._discover_plugins()
@@ -1269,10 +1268,10 @@ class WahyPluginSkill(SkillBase):
             "checksum": record.manifest.checksum,
         }
 
-    async def _action_hooks(self, params: Dict, context: Dict) -> Dict:
+    async def _action_hooks(self, params: dict, context: dict) -> dict:
         """List all registered hooks, optionally filtered by type."""
         hook_type = params.get("hook_type")
-        result: Dict[str, List[Dict]] = {}
+        result: dict[str, list[dict]] = {}
         for ht, hooks_list in self._hooks.items():
             if hook_type and ht != hook_type:
                 continue
@@ -1287,14 +1286,14 @@ class WahyPluginSkill(SkillBase):
     # OpenClaw Secure Bridge Actions
     # ==================================================================
 
-    async def _action_openclaw_import(self, params: Dict, context: Dict) -> Dict:
+    async def _action_openclaw_import(self, params: dict, context: dict) -> dict:
         """Import an OpenClaw plugin with security analysis and quarantine."""
         openclaw_data = params.get("plugin", {})
         if not openclaw_data:
             return {"error": "OpenClaw plugin data required (manifest + source)"}
         return self._openclaw.import_plugin(openclaw_data)
 
-    async def _action_openclaw_approve(self, params: Dict, context: Dict) -> Dict:
+    async def _action_openclaw_approve(self, params: dict, context: dict) -> dict:
         """Approve quarantined OpenClaw plugin and create Wahy scaffold."""
         quarantine_id = params.get("quarantine_id", "")
         result = self._openclaw.approve_and_scaffold(quarantine_id)
@@ -1302,16 +1301,16 @@ class WahyPluginSkill(SkillBase):
             return {"error": "Quarantine entry not found or already processed"}
         return result
 
-    async def _action_openclaw_quarantine(self, params: Dict, context: Dict) -> Dict:
+    async def _action_openclaw_quarantine(self, params: dict, context: dict) -> dict:
         """List all quarantined OpenClaw plugins."""
         entries = self._openclaw.list_quarantine()
         return {"quarantine": entries, "total": len(entries)}
 
-    async def _action_openclaw_status(self, params: Dict, context: Dict) -> Dict:
+    async def _action_openclaw_status(self, params: dict, context: dict) -> dict:
         """Get OpenClaw bridge statistics."""
         return self._openclaw.get_stats()
 
-    async def _action_openclaw_audit(self, params: Dict, context: Dict) -> Dict:
+    async def _action_openclaw_audit(self, params: dict, context: dict) -> dict:
         """View OpenClaw bridge audit log."""
         limit = min(params.get("limit", 50), 200)
         return {"audit_log": self._openclaw.get_audit_log(limit)}
@@ -1320,7 +1319,7 @@ class WahyPluginSkill(SkillBase):
     # Tool Schemas — for Claude tool_use integration
     # ==================================================================
 
-    def get_tool_schemas(self) -> List[Dict]:
+    def get_tool_schemas(self) -> list[dict]:
         return [
             {
                 "name": "wahy_list",
@@ -1500,8 +1499,8 @@ class WahyPluginSkill(SkillBase):
 # Scaffold Generator — Template for New Plugins
 # ===================================================================
 
-def _generate_scaffold(name: str, ptype: str, description: str,
-                       quranic_ref: str) -> str:
+
+def _generate_scaffold(name: str, ptype: str, description: str, quranic_ref: str) -> str:
     """Generate a Python scaffold for a new Wahy plugin."""
     type_label = {
         "ayah": "Tool",

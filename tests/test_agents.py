@@ -3,8 +3,7 @@ Tests for the Agent System
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from agents.base import BaseAgent
+
 from agents.specialized import create_agent
 
 

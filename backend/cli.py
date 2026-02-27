@@ -9,22 +9,15 @@ Usage:
     mizan setup         Interactive setup wizard
 """
 
-import os
-import sys
-import json
 import asyncio
 from pathlib import Path
 
 import click
+from backend._version import __version__
 from rich.console import Console
 from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.prompt import Prompt
 from rich.table import Table
-from rich.live import Live
-from rich.text import Text
-
-from backend._version import __version__
 
 console = Console()
 
@@ -62,6 +55,7 @@ def serve(host, port, reload):
     console.print(f"  API docs at [bold cyan]http://{host}:{port}/docs[/]\n")
 
     import uvicorn
+
     uvicorn.run(
         "backend.api.main:app",
         host=host,
@@ -80,6 +74,7 @@ def chat(agent, model):
 
     # Check for API key
     from backend.settings import get_settings
+
     settings = get_settings()
 
     if not settings.has_any_provider:
@@ -163,6 +158,7 @@ def status():
     console.print(BANNER)
 
     import httpx
+
     try:
         resp = httpx.get("http://localhost:8000/api/status", timeout=5)
         data = resp.json()
@@ -267,7 +263,7 @@ def doctor(check, fix, as_json):
     "And We send down of the Quran that which is a healing (shifa)
      and a mercy for the believers." — 17:82
     """
-    from backend.doctor import run_doctor, report_to_dict, CheckStatus
+    from backend.doctor import CheckStatus, report_to_dict, run_doctor
 
     if not as_json:
         console.print(BANNER)
@@ -279,16 +275,17 @@ def doctor(check, fix, as_json):
 
     if as_json:
         import json
+
         console.print(json.dumps(report_to_dict(report), indent=2))
         return
 
     # Rich formatted output
     status_styles = {
-        CheckStatus.PASS:  ("[green]✓[/]", "green"),
-        CheckStatus.WARN:  ("[yellow]⚠[/]", "yellow"),
-        CheckStatus.FAIL:  ("[red]✗[/]", "red"),
+        CheckStatus.PASS: ("[green]✓[/]", "green"),
+        CheckStatus.WARN: ("[yellow]⚠[/]", "yellow"),
+        CheckStatus.FAIL: ("[red]✗[/]", "red"),
         CheckStatus.FIXED: ("[cyan]⚕[/]", "cyan"),
-        CheckStatus.SKIP:  ("[dim]–[/]", "dim"),
+        CheckStatus.SKIP: ("[dim]–[/]", "dim"),
     }
 
     for c in report.checks:
@@ -325,8 +322,8 @@ def doctor(check, fix, as_json):
                 f"{report.failures} failures, "
                 f"{report.warnings} warnings\n\n"
                 f"Run [cyan]mizan doctor --fix[/] to auto-heal"
-                if check else
-                f"Some issues could not be auto-fixed. See above.",
+                if check
+                else "Some issues could not be auto-fixed. See above.",
                 title="Diagnosis",
                 border_style="red",
             )

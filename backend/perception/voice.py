@@ -7,9 +7,8 @@ Voice Processing (Sama' - سَمْع)
 Text-to-Speech and Speech-to-Text with multiple backends.
 """
 
-import os
 import logging
-from typing import Optional
+import os
 
 logger = logging.getLogger("mizan.voice")
 
@@ -25,19 +24,19 @@ class VoiceProcessor:
         self._elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
         self._openai_key = os.getenv("OPENAI_API_KEY", "")
 
-    async def text_to_speech(self, text: str, voice: str = "default") -> Optional[bytes]:
+    async def text_to_speech(self, text: str, voice: str = "default") -> bytes | None:
         """Convert text to speech audio bytes"""
         if self._elevenlabs_key:
             return await self._tts_elevenlabs(text, voice)
         return None
 
-    async def speech_to_text(self, audio_bytes: bytes) -> Optional[str]:
+    async def speech_to_text(self, audio_bytes: bytes) -> str | None:
         """Convert speech audio to text"""
         if self._openai_key:
             return await self._stt_whisper(audio_bytes)
         return None
 
-    async def _tts_elevenlabs(self, text: str, voice: str) -> Optional[bytes]:
+    async def _tts_elevenlabs(self, text: str, voice: str) -> bytes | None:
         """Text-to-Speech via ElevenLabs"""
         try:
             from elevenlabs import ElevenLabs
@@ -64,7 +63,7 @@ class VoiceProcessor:
             logger.error(f"[VOICE] ElevenLabs TTS failed: {e}")
             return None
 
-    async def _stt_whisper(self, audio_bytes: bytes) -> Optional[str]:
+    async def _stt_whisper(self, audio_bytes: bytes) -> str | None:
         """Speech-to-Text via OpenAI Whisper API"""
         try:
             import httpx

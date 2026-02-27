@@ -24,32 +24,31 @@ MIZAN's Majlis is built on Quranic principles:
 - Ilm (علم) — Knowledge sharing with attribution and verification
 """
 
-import uuid
 import hashlib
 import hmac
 import logging
 import re
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from ..base import SkillBase, SkillManifest
 
 logger = logging.getLogger("mizan.majlis")
 
 # Nafs Trust Levels (نفس — Quranic stages of the soul)
-NAFS_AMMARA = 1    # النفس الأمارة — Commanding soul (new, unproven)
-NAFS_LAWWAMA = 2   # النفس اللوامة — Self-reproaching soul (proven)
-NAFS_MUTMAINNA = 3 # النفس المطمئنة — Tranquil soul (trusted)
+NAFS_AMMARA = 1  # النفس الأمارة — Commanding soul (new, unproven)
+NAFS_LAWWAMA = 2  # النفس اللوامة — Self-reproaching soul (proven)
+NAFS_MUTMAINNA = 3  # النفس المطمئنة — Tranquil soul (trusted)
 NAFS_NAMES = {1: "ammara", 2: "lawwama", 3: "mutmainna"}
 NAFS_THRESHOLDS = {2: 50.0, 3: 85.0}
 
 # Reputation parameters
 REPUTATION_INITIAL = 10.0
 REPUTATION_MAX = 100.0
-REPUTATION_DECAY_RATE = 0.5       # Points lost per day of inactivity
-REPUTATION_DECAY_GRACE_DAYS = 7   # Days before decay begins
+REPUTATION_DECAY_RATE = 0.5  # Points lost per day of inactivity
+REPUTATION_DECAY_GRACE_DAYS = 7  # Days before decay begins
 TASK_COMPLETE_REWARD = 5.0
 TASK_FAIL_PENALTY = -8.0
 KNOWLEDGE_SHARE_REWARD = 3.0
@@ -59,40 +58,46 @@ RATING_WEIGHT = 2.0
 @dataclass
 class AgentProfile:
     """Hawiyya (هوية) — Agent Identity. Cryptographically backed, unlike MoltBook."""
+
     agent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     arabic_name: str = ""
-    capabilities: List[str] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
     nafs_level: int = NAFS_AMMARA
     reputation_score: float = REPUTATION_INITIAL
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     public_key: str = ""
     verified: bool = False
     status: str = "active"  # active, idle, busy, offline
-    last_heartbeat: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_heartbeat: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     biography: str = ""
     tasks_completed: int = 0
     tasks_failed: int = 0
     knowledge_shared: int = 0
     ratings_received: int = 0
     rating_sum: float = 0.0
-    halaqahs: List[str] = field(default_factory=list)
+    halaqahs: list[str] = field(default_factory=list)
 
-    def to_dict(self, include_key: bool = False) -> Dict:
+    def to_dict(self, include_key: bool = False) -> dict:
         d = {
-            "agent_id": self.agent_id, "name": self.name,
-            "arabic_name": self.arabic_name, "capabilities": self.capabilities,
+            "agent_id": self.agent_id,
+            "name": self.name,
+            "arabic_name": self.arabic_name,
+            "capabilities": self.capabilities,
             "nafs_level": self.nafs_level,
             "nafs_name": NAFS_NAMES.get(self.nafs_level, "ammara"),
             "reputation_score": round(self.reputation_score, 2),
-            "verified": self.verified, "status": self.status,
+            "verified": self.verified,
+            "status": self.status,
             "biography": self.biography,
             "tasks_completed": self.tasks_completed,
             "knowledge_shared": self.knowledge_shared,
             "average_rating": round(self.rating_sum / self.ratings_received, 2)
-                if self.ratings_received > 0 else 0.0,
+            if self.ratings_received > 0
+            else 0.0,
             "halaqahs": self.halaqahs,
-            "created_at": self.created_at, "last_heartbeat": self.last_heartbeat,
+            "created_at": self.created_at,
+            "last_heartbeat": self.last_heartbeat,
         }
         if include_key:
             d["public_key"] = self.public_key
@@ -102,22 +107,27 @@ class AgentProfile:
 @dataclass
 class SignedMessage:
     """Muhadathah (محادثة) — HMAC-signed message. Tampered messages are rejected."""
+
     message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     sender_id: str = ""
-    recipient_id: str = ""       # Empty for broadcasts
-    halaqah_id: str = ""         # For broadcast messages
-    message_type: str = "text"   # text, task_request, task_response, knowledge_share, shura_call
+    recipient_id: str = ""  # Empty for broadcasts
+    halaqah_id: str = ""  # For broadcast messages
+    message_type: str = "text"  # text, task_request, task_response, knowledge_share, shura_call
     content: str = ""
-    metadata: Dict = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    signature: str = ""          # HMAC-SHA256
+    metadata: dict = field(default_factory=dict)
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    signature: str = ""  # HMAC-SHA256
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
-            "message_id": self.message_id, "sender_id": self.sender_id,
-            "recipient_id": self.recipient_id, "halaqah_id": self.halaqah_id,
-            "message_type": self.message_type, "content": self.content,
-            "metadata": self.metadata, "timestamp": self.timestamp,
+            "message_id": self.message_id,
+            "sender_id": self.sender_id,
+            "recipient_id": self.recipient_id,
+            "halaqah_id": self.halaqah_id,
+            "message_type": self.message_type,
+            "content": self.content,
+            "metadata": self.metadata,
+            "timestamp": self.timestamp,
             "signature": self.signature[:16] + "..." if self.signature else "",
         }
 
@@ -125,45 +135,54 @@ class SignedMessage:
 @dataclass
 class Halaqah:
     """Halaqah (حلقة) — Study Circle. Topic-based agent group for collaboration."""
+
     halaqah_id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
     topic: str = ""
     description: str = ""
     creator_id: str = ""
     moderator_id: str = ""
-    members: List[str] = field(default_factory=list)
-    messages: List[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    members: list[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
-            "halaqah_id": self.halaqah_id, "topic": self.topic,
-            "description": self.description, "creator_id": self.creator_id,
+            "halaqah_id": self.halaqah_id,
+            "topic": self.topic,
+            "description": self.description,
+            "creator_id": self.creator_id,
             "moderator_id": self.moderator_id,
             "member_count": len(self.members),
-            "message_count": len(self.messages), "created_at": self.created_at,
+            "message_count": len(self.messages),
+            "created_at": self.created_at,
         }
 
 
 @dataclass
 class KnowledgeEntry:
     """Hikmah (حكمة) — Shared knowledge with attribution. No anonymous misinformation."""
+
     entry_id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
     author_id: str = ""
     topic: str = ""
     title: str = ""
     content: str = ""
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     verified: bool = False
     verification_votes: int = 0
     quality_score: float = 0.0
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
-            "entry_id": self.entry_id, "author_id": self.author_id,
-            "topic": self.topic, "title": self.title,
-            "content": self.content[:500], "tags": self.tags,
-            "verified": self.verified, "verification_votes": self.verification_votes,
+            "entry_id": self.entry_id,
+            "author_id": self.author_id,
+            "topic": self.topic,
+            "title": self.title,
+            "content": self.content[:500],
+            "tags": self.tags,
+            "verified": self.verified,
+            "verification_votes": self.verification_votes,
             "quality_score": round(self.quality_score, 2),
             "created_at": self.created_at,
         }
@@ -192,8 +211,8 @@ class AmanahVault:
     """
 
     def __init__(self):
-        self._vault: Dict[str, str] = {}  # agent_id -> encrypted_token
-        self._vault_keys: Dict[str, str] = {}  # agent_id -> vault_key
+        self._vault: dict[str, str] = {}  # agent_id -> encrypted_token
+        self._vault_keys: dict[str, str] = {}  # agent_id -> vault_key
 
     def store_token(self, agent_id: str, token: str, agent_secret: str) -> bool:
         """Encrypt and store an external service token."""
@@ -240,10 +259,10 @@ class MoltBookBridge:
 
     def __init__(self):
         self._vault = AmanahVault()
-        self._linked_agents: Dict[str, Dict] = {}  # agent_id -> {moltbook_id, linked_at, ...}
-        self._audit_log: List[Dict] = []
-        self._rate_limits: Dict[str, List[float]] = {}  # agent_id -> [timestamps]
-        self._quarantine: Dict[str, Dict] = {}  # messages held for review
+        self._linked_agents: dict[str, dict] = {}  # agent_id -> {moltbook_id, linked_at, ...}
+        self._audit_log: list[dict] = []
+        self._rate_limits: dict[str, list[float]] = {}  # agent_id -> [timestamps]
+        self._quarantine: dict[str, dict] = {}  # messages held for review
 
     def _check_rate_limit(self, agent_id: str, max_per_minute: int = 30) -> bool:
         """Prevent excessive MoltBook API calls."""
@@ -255,11 +274,12 @@ class MoltBookBridge:
         timestamps.append(now)
         return True
 
-    def _audit(self, action: str, agent_id: str, details: Dict = None) -> None:
+    def _audit(self, action: str, agent_id: str, details: dict = None) -> None:
         """Shahid (شاهد) audit log — witness of all bridge activity."""
         entry = {
-            "action": action, "agent_id": agent_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "agent_id": agent_id,
+            "timestamp": datetime.now(UTC).isoformat(),
             "details": details or {},
         }
         self._audit_log.append(entry)
@@ -275,11 +295,12 @@ class MoltBookBridge:
         for pattern in INJECTION_PATTERNS:
             sanitized = pattern.sub("[BLOCKED]", sanitized)
         # Strip control characters (MoltBook doesn't filter these)
-        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', sanitized)
+        sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", sanitized)
         return sanitized
 
-    def link_agent(self, agent_id: str, moltbook_id: str,
-                   moltbook_token: str, agent_secret: str) -> Dict:
+    def link_agent(
+        self, agent_id: str, moltbook_id: str, moltbook_token: str, agent_secret: str
+    ) -> dict:
         """
         Link a Majlis agent to their MoltBook identity.
         Token is stored encrypted, never in plaintext.
@@ -293,18 +314,20 @@ class MoltBookBridge:
 
         self._linked_agents[agent_id] = {
             "moltbook_id": moltbook_id,
-            "linked_at": datetime.now(timezone.utc).isoformat(),
+            "linked_at": datetime.now(UTC).isoformat(),
             "status": "active",
             "sync_count": 0,
         }
-        self._audit("link_agent", agent_id,
-                     {"moltbook_id": moltbook_id, "token_stored": "encrypted"})
+        self._audit(
+            "link_agent", agent_id, {"moltbook_id": moltbook_id, "token_stored": "encrypted"}
+        )
         return {
-            "linked": True, "moltbook_id": moltbook_id,
+            "linked": True,
+            "moltbook_id": moltbook_id,
             "message": "MoltBook identity linked. Token stored encrypted in AmanahVault.",
         }
 
-    def unlink_agent(self, agent_id: str) -> Dict:
+    def unlink_agent(self, agent_id: str) -> dict:
         """Unlink and revoke MoltBook credentials."""
         if agent_id not in self._linked_agents:
             return {"error": "Agent not linked to MoltBook"}
@@ -313,8 +336,9 @@ class MoltBookBridge:
         self._audit("unlink_agent", agent_id)
         return {"unlinked": True}
 
-    def build_secure_request(self, agent_id: str, endpoint: str,
-                             payload: Dict, agent_secret: str) -> Dict:
+    def build_secure_request(
+        self, agent_id: str, endpoint: str, payload: dict, agent_secret: str
+    ) -> dict:
         """
         Build a secure outbound request to MoltBook.
         Signs payload with HMAC before sending (MoltBook doesn't, we do).
@@ -341,11 +365,10 @@ class MoltBookBridge:
             "body": payload,
             "_mizan_signature": signature,
         }
-        self._audit("outbound_request", agent_id,
-                     {"endpoint": endpoint, "signed": True})
+        self._audit("outbound_request", agent_id, {"endpoint": endpoint, "signed": True})
         return {"request": request, "signed": True}
 
-    def process_moltbook_response(self, agent_id: str, raw_data: Dict) -> Dict:
+    def process_moltbook_response(self, agent_id: str, raw_data: dict) -> dict:
         """
         Process data received FROM MoltBook with full sanitization.
         Every field is sanitized against prompt injection.
@@ -361,8 +384,7 @@ class MoltBookBridge:
                 sanitized[key] = clean
             elif isinstance(value, list):
                 sanitized[key] = [
-                    self.sanitize_moltbook_data(v) if isinstance(v, str) else v
-                    for v in value
+                    self.sanitize_moltbook_data(v) if isinstance(v, str) else v for v in value
                 ]
             else:
                 sanitized[key] = value
@@ -374,26 +396,21 @@ class MoltBookBridge:
         }
         if quarantined_fields:
             result["warning"] = f"Injection patterns removed from: {quarantined_fields}"
-            self._audit("injection_blocked", agent_id,
-                        {"fields": quarantined_fields})
+            self._audit("injection_blocked", agent_id, {"fields": quarantined_fields})
 
-        self._audit("inbound_processed", agent_id,
-                     {"fields_cleaned": len(quarantined_fields)})
+        self._audit("inbound_processed", agent_id, {"fields_cleaned": len(quarantined_fields)})
         return result
 
-    def import_moltbook_profile(self, moltbook_data: Dict) -> Dict:
+    def import_moltbook_profile(self, moltbook_data: dict) -> dict:
         """
         Convert a MoltBook profile into Majlis-compatible format.
         MoltBook profiles have no auth — we add Hawiyya identity.
         """
         sanitized = {
-            "name": self.sanitize_moltbook_data(
-                moltbook_data.get("name", "imported_agent")),
-            "biography": self.sanitize_moltbook_data(
-                moltbook_data.get("bio", "")),
+            "name": self.sanitize_moltbook_data(moltbook_data.get("name", "imported_agent")),
+            "biography": self.sanitize_moltbook_data(moltbook_data.get("bio", "")),
             "capabilities": [
-                self.sanitize_moltbook_data(c)
-                for c in moltbook_data.get("capabilities", [])
+                self.sanitize_moltbook_data(c) for c in moltbook_data.get("capabilities", [])
             ],
             "source": "moltbook",
             "moltbook_id": moltbook_data.get("id", ""),
@@ -401,14 +418,14 @@ class MoltBookBridge:
         }
         return sanitized
 
-    def get_audit_log(self, agent_id: str = None, limit: int = 50) -> List[Dict]:
+    def get_audit_log(self, agent_id: str = None, limit: int = 50) -> list[dict]:
         """Return audit trail, optionally filtered by agent."""
         logs = self._audit_log
         if agent_id:
             logs = [e for e in logs if e["agent_id"] == agent_id]
         return logs[-limit:]
 
-    def get_bridge_status(self) -> Dict:
+    def get_bridge_status(self) -> dict:
         """Overall bridge status."""
         return {
             "linked_agents": len(self._linked_agents),
@@ -433,23 +450,29 @@ class MajlisSocialSkill(SkillBase):
         name="majlis_social",
         version="2.0.0",
         description="Agent social network with cryptographic identity, Shura-based trust, "
-                    "halaqah study circles, and verified knowledge sharing. "
-                    "Integrates with MoltBook via secure bridge with encrypted tokens, "
-                    "HMAC signatures, and prompt injection sanitization.",
-        permissions=["agent:register", "agent:communicate", "agent:discover",
-                     "knowledge:read", "knowledge:write", "network:moltbook"],
+        "halaqah study circles, and verified knowledge sharing. "
+        "Integrates with MoltBook via secure bridge with encrypted tokens, "
+        "HMAC signatures, and prompt injection sanitization.",
+        permissions=[
+            "agent:register",
+            "agent:communicate",
+            "agent:discover",
+            "knowledge:read",
+            "knowledge:write",
+            "network:moltbook",
+        ],
         tags=["مجلس", "Social", "Agents", "MoltBook"],
     )
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
-        self._agents: Dict[str, AgentProfile] = {}           # Diwan (ديوان)
-        self._agent_keys: Dict[str, str] = {}                # Secret keys — NEVER exposed
-        self._messages: Dict[str, SignedMessage] = {}         # Muhadathah (محادثة)
-        self._inboxes: Dict[str, List[str]] = {}             # agent_id -> [message_ids]
-        self._halaqahs: Dict[str, Halaqah] = {}              # Halaqah (حلقة)
-        self._knowledge: Dict[str, KnowledgeEntry] = {}      # Ilm (علم)
-        self._moltbook = MoltBookBridge()                    # Secure MoltBook bridge
+        self._agents: dict[str, AgentProfile] = {}  # Diwan (ديوان)
+        self._agent_keys: dict[str, str] = {}  # Secret keys — NEVER exposed
+        self._messages: dict[str, SignedMessage] = {}  # Muhadathah (محادثة)
+        self._inboxes: dict[str, list[str]] = {}  # agent_id -> [message_ids]
+        self._halaqahs: dict[str, Halaqah] = {}  # Halaqah (حلقة)
+        self._knowledge: dict[str, KnowledgeEntry] = {}  # Ilm (علم)
+        self._moltbook = MoltBookBridge()  # Secure MoltBook bridge
         self._tools = {
             "majlis_register": self.register_agent,
             "majlis_discover": self.discover_agents,
@@ -474,13 +497,15 @@ class MajlisSocialSkill(SkillBase):
             "majlis_moltbook_audit": self.moltbook_audit,
         }
 
-    async def execute(self, params: Dict, context: Dict = None) -> Dict:
+    async def execute(self, params: dict, context: dict = None) -> dict:
         action = params.get("action", "discover")
         handler = self._tools.get(f"majlis_{action}")
         if handler:
             return await handler(params)
-        return {"error": f"Unknown action: {action}",
-                "available": list(a.replace("majlis_", "") for a in self._tools)}
+        return {
+            "error": f"Unknown action: {action}",
+            "available": list(a.replace("majlis_", "") for a in self._tools),
+        }
 
     # === HAWIYYA (هوية) — Identity & Cryptographic Verification ===
 
@@ -511,7 +536,7 @@ class MajlisSocialSkill(SkillBase):
             last_active = datetime.fromisoformat(agent.last_heartbeat)
         except (ValueError, TypeError):
             return
-        days_inactive = (datetime.now(timezone.utc) - last_active).total_seconds() / 86400
+        days_inactive = (datetime.now(UTC) - last_active).total_seconds() / 86400
         if days_inactive > REPUTATION_DECAY_GRACE_DAYS:
             decay = (days_inactive - REPUTATION_DECAY_GRACE_DAYS) * REPUTATION_DECAY_RATE
             agent.reputation_score = max(0.0, agent.reputation_score - decay)
@@ -529,7 +554,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === DIWAN (ديوان) — Agent Registry ===
 
-    async def register_agent(self, params: Dict) -> Dict:
+    async def register_agent(self, params: dict) -> dict:
         """Register a new agent. Starts at Nafs al-Ammara (unproven)."""
         name = params.get("name", "")
         if not name:
@@ -539,7 +564,8 @@ class MajlisSocialSkill(SkillBase):
                 return {"error": f"Agent name '{name}' already registered"}
 
         agent = AgentProfile(
-            name=name, arabic_name=params.get("arabic_name", ""),
+            name=name,
+            arabic_name=params.get("arabic_name", ""),
             capabilities=params.get("capabilities", []),
             biography=params.get("biography", ""),
         )
@@ -550,15 +576,17 @@ class MajlisSocialSkill(SkillBase):
 
         logger.info(f"[MAJLIS] Agent registered: {name} (nafs: ammara)")
         return {
-            "agent_id": agent.agent_id, "name": agent.name,
+            "agent_id": agent.agent_id,
+            "name": agent.name,
             "secret_key": secret_key,  # Returned ONCE, never again
-            "public_key": agent.public_key, "nafs_level": "ammara",
+            "public_key": agent.public_key,
+            "nafs_level": "ammara",
             "message": "Welcome to the Majlis. Guard your secret_key — it will not "
-                       "be shown again. 'Indeed, Allah commands you to return trusts "
-                       "(Amanah) to their owners' — 4:58",
+            "be shown again. 'Indeed, Allah commands you to return trusts "
+            "(Amanah) to their owners' — 4:58",
         }
 
-    async def discover_agents(self, params: Dict) -> Dict:
+    async def discover_agents(self, params: dict) -> dict:
         """Discover agents by capability, trust level, or availability. (5:2)"""
         capability = params.get("capability", "").lower()
         min_nafs = params.get("min_nafs_level", 1)
@@ -579,7 +607,7 @@ class MajlisSocialSkill(SkillBase):
         results.sort(key=lambda a: -a["reputation_score"])
         return {"agents": results[:limit], "total": len(results)}
 
-    async def get_profile(self, params: Dict) -> Dict:
+    async def get_profile(self, params: dict) -> dict:
         """Get detailed agent profile."""
         agent = self._agents.get(params.get("agent_id", ""))
         if not agent:
@@ -591,7 +619,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === MUHADATHAH (محادثة) — Communication ===
 
-    async def send_message(self, params: Dict) -> Dict:
+    async def send_message(self, params: dict) -> dict:
         """Send a signed message. All messages are HMAC-verified."""
         sender_id = params.get("sender_id", "")
         recipient_id = params.get("recipient_id", "")
@@ -618,16 +646,23 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Signature verification failed. Message rejected."}
 
         msg = SignedMessage(
-            sender_id=sender_id, recipient_id=recipient_id,
-            message_type=msg_type, content=content,
-            metadata=params.get("metadata", {}), signature=signature,
+            sender_id=sender_id,
+            recipient_id=recipient_id,
+            message_type=msg_type,
+            content=content,
+            metadata=params.get("metadata", {}),
+            signature=signature,
         )
         self._messages[msg.message_id] = msg
         self._inboxes.setdefault(recipient_id, []).append(msg.message_id)
-        return {"sent": True, "message_id": msg.message_id,
-                "verified": True, "timestamp": msg.timestamp}
+        return {
+            "sent": True,
+            "message_id": msg.message_id,
+            "verified": True,
+            "timestamp": msg.timestamp,
+        }
 
-    async def broadcast_message(self, params: Dict) -> Dict:
+    async def broadcast_message(self, params: dict) -> dict:
         """Broadcast to a Halaqah. Only members receive the message."""
         sender_id = params.get("sender_id", "")
         halaqah_id = params.get("halaqah_id", "")
@@ -648,9 +683,11 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Signature verification failed"}
 
         msg = SignedMessage(
-            sender_id=sender_id, halaqah_id=halaqah_id,
+            sender_id=sender_id,
+            halaqah_id=halaqah_id,
             message_type=params.get("message_type", "text"),
-            content=content, signature=signature,
+            content=content,
+            signature=signature,
         )
         self._messages[msg.message_id] = msg
         halaqah.messages.append(msg.message_id)
@@ -660,10 +697,14 @@ class MajlisSocialSkill(SkillBase):
             if member_id != sender_id:
                 self._inboxes.setdefault(member_id, []).append(msg.message_id)
                 delivered += 1
-        return {"broadcast": True, "message_id": msg.message_id,
-                "halaqah": halaqah.topic, "delivered_to": delivered}
+        return {
+            "broadcast": True,
+            "message_id": msg.message_id,
+            "halaqah": halaqah.topic,
+            "delivered_to": delivered,
+        }
 
-    async def delegate_task(self, params: Dict) -> Dict:
+    async def delegate_task(self, params: dict) -> dict:
         """Delegate a task — auto-discovers best agent or sends to a specific one."""
         sender_id = params.get("sender_id", "")
         target_id = params.get("target_id", "")
@@ -677,10 +718,14 @@ class MajlisSocialSkill(SkillBase):
 
         # Auto-discover best qualified agent
         if not target_id and required_capability:
-            discovery = await self.discover_agents({
-                "capability": required_capability, "min_nafs_level": NAFS_LAWWAMA,
-                "status": "active", "limit": 1,
-            })
+            discovery = await self.discover_agents(
+                {
+                    "capability": required_capability,
+                    "min_nafs_level": NAFS_LAWWAMA,
+                    "status": "active",
+                    "limit": 1,
+                }
+            )
             found = discovery.get("agents", [])
             if not found:
                 return {"error": f"No qualified agent found for '{required_capability}'"}
@@ -688,20 +733,30 @@ class MajlisSocialSkill(SkillBase):
         elif not target_id:
             return {"error": "Specify target_id or capability for auto-discovery"}
 
-        result = await self.send_message({
-            "sender_id": sender_id, "recipient_id": target_id,
-            "content": task_description, "message_type": "task_request",
-            "metadata": {"capability": required_capability,
-                         "delegated_at": datetime.now(timezone.utc).isoformat()},
-        })
+        result = await self.send_message(
+            {
+                "sender_id": sender_id,
+                "recipient_id": target_id,
+                "content": task_description,
+                "message_type": "task_request",
+                "metadata": {
+                    "capability": required_capability,
+                    "delegated_at": datetime.now(UTC).isoformat(),
+                },
+            }
+        )
         if result.get("error"):
             return result
-        return {"delegated": True, "target_agent": target_id,
-                "message_id": result["message_id"], "task": task_description}
+        return {
+            "delegated": True,
+            "target_agent": target_id,
+            "message_id": result["message_id"],
+            "task": task_description,
+        }
 
     # === TAQWA (تقوى) — Reputation & Trust ===
 
-    async def rate_agent(self, params: Dict) -> Dict:
+    async def rate_agent(self, params: dict) -> dict:
         """Rate an agent (1-5 stars). Drives nafs evolution. (49:13)"""
         rater_id = params.get("rater_id", "")
         target_id = params.get("target_id", "")
@@ -729,13 +784,16 @@ class MajlisSocialSkill(SkillBase):
             target.tasks_failed += 1
             reputation_delta += TASK_FAIL_PENALTY
 
-        target.reputation_score = max(0.0, min(REPUTATION_MAX,
-                                               target.reputation_score + reputation_delta))
+        target.reputation_score = max(
+            0.0, min(REPUTATION_MAX, target.reputation_score + reputation_delta)
+        )
         old_nafs = target.nafs_level
         self._evaluate_nafs(target)
 
         result = {
-            "rated": True, "target": target.name, "rating": rating,
+            "rated": True,
+            "target": target.name,
+            "rating": rating,
             "reputation_delta": round(reputation_delta, 2),
             "new_reputation": round(target.reputation_score, 2),
             "nafs_level": NAFS_NAMES[target.nafs_level],
@@ -747,7 +805,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === HEARTBEAT — Secure Status Updates ===
 
-    async def heartbeat(self, params: Dict) -> Dict:
+    async def heartbeat(self, params: dict) -> dict:
         """HMAC-verified heartbeat. Blocks injection attacks that plagued MoltBook."""
         agent_id = params.get("agent_id", "")
         status = params.get("status", "active")
@@ -761,7 +819,7 @@ class MajlisSocialSkill(SkillBase):
         if status not in valid_statuses:
             return {"error": f"Invalid status. Must be one of: {valid_statuses}"}
 
-        heartbeat_payload = f"{agent_id}:{status}:{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
+        heartbeat_payload = f"{agent_id}:{status}:{datetime.now(UTC).strftime('%Y-%m-%d')}"
         if not signature:
             signature = self._sign_message(agent_id, heartbeat_payload)
         if not self._verify_signature(agent_id, heartbeat_payload, signature):
@@ -769,11 +827,13 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Heartbeat signature failed. Spoofing attempt blocked."}
 
         agent.status = status
-        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
+        agent.last_heartbeat = datetime.now(UTC).isoformat()
         self._apply_reputation_decay(agent)
 
         return {
-            "heartbeat": "acknowledged", "agent_id": agent_id, "status": status,
+            "heartbeat": "acknowledged",
+            "agent_id": agent_id,
+            "status": status,
             "reputation": round(agent.reputation_score, 2),
             "nafs_level": NAFS_NAMES[agent.nafs_level],
             "unread_messages": len(self._inboxes.get(agent_id, [])),
@@ -782,7 +842,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === HALAQAH (حلقة) — Study Circles ===
 
-    async def create_halaqah(self, params: Dict) -> Dict:
+    async def create_halaqah(self, params: dict) -> dict:
         """Create a Halaqah study circle on a topic. (3:103)"""
         creator_id = params.get("creator_id", "")
         topic = params.get("topic", "")
@@ -794,17 +854,21 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Halaqah topic is required"}
 
         halaqah = Halaqah(
-            topic=topic, description=params.get("description", ""),
-            creator_id=creator_id, moderator_id=creator_id,
+            topic=topic,
+            description=params.get("description", ""),
+            creator_id=creator_id,
+            moderator_id=creator_id,
             members=[creator_id],
         )
         self._halaqahs[halaqah.halaqah_id] = halaqah
         creator.halaqahs.append(halaqah.halaqah_id)
         logger.info(f"[MAJLIS] Halaqah created: '{topic}' by {creator.name}")
-        return {**halaqah.to_dict(),
-                "message": f"Halaqah '{topic}' created. Invite agents to join."}
+        return {
+            **halaqah.to_dict(),
+            "message": f"Halaqah '{topic}' created. Invite agents to join.",
+        }
 
-    async def join_halaqah(self, params: Dict) -> Dict:
+    async def join_halaqah(self, params: dict) -> dict:
         """Join a Halaqah. Moderator auto-updated to highest nafs member."""
         agent_id = params.get("agent_id", "")
         halaqah_id = params.get("halaqah_id", "")
@@ -824,17 +888,21 @@ class MajlisSocialSkill(SkillBase):
         # Update moderator to highest nafs-level member
         best_mod = max(
             (self._agents[m] for m in halaqah.members if m in self._agents),
-            key=lambda a: (a.nafs_level, a.reputation_score), default=None,
+            key=lambda a: (a.nafs_level, a.reputation_score),
+            default=None,
         )
         if best_mod:
             halaqah.moderator_id = best_mod.agent_id
-        return {"joined": True, "halaqah": halaqah.topic,
-                "moderator": halaqah.moderator_id,
-                "member_count": len(halaqah.members)}
+        return {
+            "joined": True,
+            "halaqah": halaqah.topic,
+            "moderator": halaqah.moderator_id,
+            "member_count": len(halaqah.members),
+        }
 
     # === ILM (علم) — Knowledge Sharing ===
 
-    async def share_knowledge(self, params: Dict) -> Dict:
+    async def share_knowledge(self, params: dict) -> dict:
         """Share Hikmah (wisdom) with attribution. Mutmainna authors auto-verify. (20:114)"""
         author_id = params.get("author_id", "")
         title = params.get("title", "")
@@ -847,23 +915,32 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Title and content are required"}
 
         entry = KnowledgeEntry(
-            author_id=author_id, topic=params.get("topic", ""),
-            title=title, content=content, tags=params.get("tags", []),
+            author_id=author_id,
+            topic=params.get("topic", ""),
+            title=title,
+            content=content,
+            tags=params.get("tags", []),
             quality_score=2.0 if author.nafs_level >= NAFS_MUTMAINNA else 0.0,
             verified=author.nafs_level >= NAFS_MUTMAINNA,
         )
         self._knowledge[entry.entry_id] = entry
         author.knowledge_shared += 1
-        author.reputation_score = min(REPUTATION_MAX,
-                                      author.reputation_score + KNOWLEDGE_SHARE_REWARD)
+        author.reputation_score = min(
+            REPUTATION_MAX, author.reputation_score + KNOWLEDGE_SHARE_REWARD
+        )
         self._evaluate_nafs(author)
 
-        return {**entry.to_dict(),
-                "message": "Knowledge shared. "
-                           + ("Auto-verified (Mutmainna author)." if entry.verified
-                              else "Awaiting Shura verification from trusted agents.")}
+        return {
+            **entry.to_dict(),
+            "message": "Knowledge shared. "
+            + (
+                "Auto-verified (Mutmainna author)."
+                if entry.verified
+                else "Awaiting Shura verification from trusted agents."
+            ),
+        }
 
-    async def search_knowledge(self, params: Dict) -> Dict:
+    async def search_knowledge(self, params: dict) -> dict:
         """Search shared knowledge. 'Are those who know equal to those who do not?' (39:9)"""
         query = params.get("query", "").lower()
         topic = params.get("topic", "").lower()
@@ -876,11 +953,16 @@ class MajlisSocialSkill(SkillBase):
                 continue
             score = 0
             if query:
-                if query in entry.title.lower(): score += 10
-                if query in entry.content.lower(): score += 5
-                if any(query in t.lower() for t in entry.tags): score += 8
-            if topic and topic in entry.topic.lower(): score += 7
-            if not query and not topic: score = 1
+                if query in entry.title.lower():
+                    score += 10
+                if query in entry.content.lower():
+                    score += 5
+                if any(query in t.lower() for t in entry.tags):
+                    score += 8
+            if topic and topic in entry.topic.lower():
+                score += 7
+            if not query and not topic:
+                score = 1
 
             if score > 0:
                 result = entry.to_dict()
@@ -898,7 +980,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === LEADERBOARD ===
 
-    async def get_leaderboard(self, params: Dict = None) -> Dict:
+    async def get_leaderboard(self, params: dict = None) -> dict:
         """Taqwa leaderboard — top agents by reputation. (49:13)"""
         params = params or {}
         limit = min(params.get("limit", 10), 50)
@@ -906,26 +988,35 @@ class MajlisSocialSkill(SkillBase):
         for agent in self._agents.values():
             self._apply_reputation_decay(agent)
 
-        ranked = sorted(self._agents.values(),
-                        key=lambda a: (-a.reputation_score, -a.tasks_completed))
+        ranked = sorted(
+            self._agents.values(), key=lambda a: (-a.reputation_score, -a.tasks_completed)
+        )
         leaderboard = []
         for rank, agent in enumerate(ranked[:limit], 1):
-            leaderboard.append({
-                "rank": rank, "agent_id": agent.agent_id, "name": agent.name,
-                "reputation": round(agent.reputation_score, 2),
-                "nafs_level": NAFS_NAMES[agent.nafs_level],
-                "tasks_completed": agent.tasks_completed,
-                "knowledge_shared": agent.knowledge_shared,
-                "average_rating": round(agent.rating_sum / agent.ratings_received, 2)
-                    if agent.ratings_received > 0 else 0.0,
-            })
-        return {"leaderboard": leaderboard, "total_agents": len(self._agents),
-                "total_halaqahs": len(self._halaqahs),
-                "total_knowledge": len(self._knowledge)}
+            leaderboard.append(
+                {
+                    "rank": rank,
+                    "agent_id": agent.agent_id,
+                    "name": agent.name,
+                    "reputation": round(agent.reputation_score, 2),
+                    "nafs_level": NAFS_NAMES[agent.nafs_level],
+                    "tasks_completed": agent.tasks_completed,
+                    "knowledge_shared": agent.knowledge_shared,
+                    "average_rating": round(agent.rating_sum / agent.ratings_received, 2)
+                    if agent.ratings_received > 0
+                    else 0.0,
+                }
+            )
+        return {
+            "leaderboard": leaderboard,
+            "total_agents": len(self._agents),
+            "total_halaqahs": len(self._halaqahs),
+            "total_knowledge": len(self._knowledge),
+        }
 
     # === MOLTBOOK SECURE BRIDGE (جسر آمن) ===
 
-    async def moltbook_link(self, params: Dict) -> Dict:
+    async def moltbook_link(self, params: dict) -> dict:
         """Link a Majlis agent to MoltBook with encrypted token storage."""
         agent_id = params.get("agent_id", "")
         moltbook_id = params.get("moltbook_id", "")
@@ -938,20 +1029,19 @@ class MajlisSocialSkill(SkillBase):
         if not secret:
             return {"error": "Agent has no Hawiyya key"}
 
-        result = self._moltbook.link_agent(agent_id, moltbook_id,
-                                           moltbook_token, secret)
+        result = self._moltbook.link_agent(agent_id, moltbook_id, moltbook_token, secret)
         if result.get("linked"):
             logger.info(f"[MAJLIS] MoltBook linked: {agent.name} -> {moltbook_id}")
         return result
 
-    async def moltbook_unlink(self, params: Dict) -> Dict:
+    async def moltbook_unlink(self, params: dict) -> dict:
         """Unlink from MoltBook and revoke stored credentials."""
         agent_id = params.get("agent_id", "")
         if not self._agents.get(agent_id):
             return {"error": "Agent not found"}
         return self._moltbook.unlink_agent(agent_id)
 
-    async def moltbook_send(self, params: Dict) -> Dict:
+    async def moltbook_send(self, params: dict) -> dict:
         """
         Send a message through MoltBook, but HMAC-signed and rate-limited.
         Unlike raw MoltBook (zero auth), every outbound message is signed.
@@ -967,19 +1057,17 @@ class MajlisSocialSkill(SkillBase):
         if not secret:
             return {"error": "Agent has no Hawiyya key"}
 
-        result = self._moltbook.build_secure_request(
-            sender_id, endpoint, payload, secret)
+        result = self._moltbook.build_secure_request(sender_id, endpoint, payload, secret)
         if result.get("error"):
             return result
         return {
             "prepared": True,
             "request": result["request"],
             "signed": True,
-            "message": "Request prepared with HMAC signature. "
-                       "Execute via your HTTP client.",
+            "message": "Request prepared with HMAC signature. Execute via your HTTP client.",
         }
 
-    async def moltbook_receive(self, params: Dict) -> Dict:
+    async def moltbook_receive(self, params: dict) -> dict:
         """
         Process data received from MoltBook with full sanitization.
         Strips prompt injection, control characters, and attack patterns.
@@ -994,7 +1082,7 @@ class MajlisSocialSkill(SkillBase):
 
         return self._moltbook.process_moltbook_response(agent_id, raw_data)
 
-    async def moltbook_import_profile(self, params: Dict) -> Dict:
+    async def moltbook_import_profile(self, params: dict) -> dict:
         """
         Import a MoltBook agent profile into Majlis with Hawiyya identity.
         Imported agents start at Nafs al-Ammara (untrusted) regardless of
@@ -1016,11 +1104,13 @@ class MajlisSocialSkill(SkillBase):
                 return {"error": f"Agent '{sanitized['name']}' already exists"}
 
         # Register with full Hawiyya identity (MoltBook has none)
-        result = await self.register_agent({
-            "name": sanitized["name"],
-            "capabilities": sanitized["capabilities"],
-            "biography": f"[Imported from MoltBook] {sanitized['biography']}",
-        })
+        result = await self.register_agent(
+            {
+                "name": sanitized["name"],
+                "capabilities": sanitized["capabilities"],
+                "biography": f"[Imported from MoltBook] {sanitized['biography']}",
+            }
+        )
         if result.get("error"):
             return result
 
@@ -1033,7 +1123,7 @@ class MajlisSocialSkill(SkillBase):
         )
         return result
 
-    async def moltbook_status(self, params: Dict) -> Dict:
+    async def moltbook_status(self, params: dict) -> dict:
         """Get MoltBook bridge status and linked agents."""
         status = self._moltbook.get_bridge_status()
         status["linked_details"] = {
@@ -1043,7 +1133,7 @@ class MajlisSocialSkill(SkillBase):
         }
         return status
 
-    async def moltbook_audit(self, params: Dict) -> Dict:
+    async def moltbook_audit(self, params: dict) -> dict:
         """View MoltBook bridge audit log (Shahid witness trail)."""
         agent_id = params.get("agent_id")  # Optional filter
         limit = min(params.get("limit", 50), 200)
@@ -1052,122 +1142,244 @@ class MajlisSocialSkill(SkillBase):
 
     # === TOOL SCHEMAS ===
 
-    def get_tool_schemas(self) -> List[Dict]:
+    def get_tool_schemas(self) -> list[dict]:
         S = "string"
         return [
-            {"name": "majlis_register",
-             "description": "Register an agent in the Majlis social network",
-             "input_schema": {"type": "object", "properties": {
-                 "name": {"type": S}, "arabic_name": {"type": S},
-                 "capabilities": {"type": "array", "items": {"type": S}},
-                 "biography": {"type": S}}, "required": ["name"]}},
-            {"name": "majlis_discover",
-             "description": "Discover agents by capability, trust level, or status",
-             "input_schema": {"type": "object", "properties": {
-                 "capability": {"type": S},
-                 "min_nafs_level": {"type": "integer", "enum": [1, 2, 3]},
-                 "status": {"type": S, "enum": ["active", "idle", "busy", "offline"]},
-                 "limit": {"type": "integer"}}}},
-            {"name": "majlis_message",
-             "description": "Send a signed message to another agent",
-             "input_schema": {"type": "object", "properties": {
-                 "sender_id": {"type": S}, "recipient_id": {"type": S},
-                 "content": {"type": S},
-                 "message_type": {"type": S, "enum": ["text", "task_request",
-                     "task_response", "knowledge_share", "shura_call"]},
-                 "signature": {"type": S}},
-                 "required": ["sender_id", "recipient_id", "content"]}},
-            {"name": "majlis_broadcast",
-             "description": "Broadcast a message to a Halaqah study circle",
-             "input_schema": {"type": "object", "properties": {
-                 "sender_id": {"type": S}, "halaqah_id": {"type": S},
-                 "content": {"type": S}},
-                 "required": ["sender_id", "halaqah_id", "content"]}},
-            {"name": "majlis_delegate",
-             "description": "Delegate a task to the best-suited agent",
-             "input_schema": {"type": "object", "properties": {
-                 "sender_id": {"type": S}, "target_id": {"type": S},
-                 "task": {"type": S}, "capability": {"type": S}},
-                 "required": ["sender_id", "task"]}},
-            {"name": "majlis_rate",
-             "description": "Rate an agent's performance (1-5 stars)",
-             "input_schema": {"type": "object", "properties": {
-                 "rater_id": {"type": S}, "target_id": {"type": S},
-                 "rating": {"type": "integer", "minimum": 1, "maximum": 5},
-                 "task_outcome": {"type": S, "enum": ["completed", "failed"]},
-                 "review": {"type": S}},
-                 "required": ["rater_id", "target_id", "rating"]}},
-            {"name": "majlis_heartbeat",
-             "description": "Update agent status with HMAC-verified heartbeat",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S},
-                 "status": {"type": S, "enum": ["active", "idle", "busy", "offline"]},
-                 "signature": {"type": S}}, "required": ["agent_id"]}},
-            {"name": "majlis_create_halaqah",
-             "description": "Create a Halaqah (study circle) on a topic",
-             "input_schema": {"type": "object", "properties": {
-                 "creator_id": {"type": S}, "topic": {"type": S},
-                 "description": {"type": S}}, "required": ["creator_id", "topic"]}},
-            {"name": "majlis_join_halaqah",
-             "description": "Join an existing Halaqah study circle",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S}, "halaqah_id": {"type": S}},
-                 "required": ["agent_id", "halaqah_id"]}},
-            {"name": "majlis_share_knowledge",
-             "description": "Share learned patterns (Hikmah) with the community",
-             "input_schema": {"type": "object", "properties": {
-                 "author_id": {"type": S}, "title": {"type": S},
-                 "content": {"type": S}, "topic": {"type": S},
-                 "tags": {"type": "array", "items": {"type": S}}},
-                 "required": ["author_id", "title", "content"]}},
-            {"name": "majlis_search_knowledge",
-             "description": "Search shared knowledge base",
-             "input_schema": {"type": "object", "properties": {
-                 "query": {"type": S}, "topic": {"type": S},
-                 "verified_only": {"type": "boolean"},
-                 "limit": {"type": "integer"}}}},
-            {"name": "majlis_profile",
-             "description": "Get detailed agent profile",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S}}, "required": ["agent_id"]}},
-            {"name": "majlis_leaderboard",
-             "description": "Top agents ranked by reputation (Taqwa leaderboard)",
-             "input_schema": {"type": "object", "properties": {
-                 "limit": {"type": "integer"}}}},
+            {
+                "name": "majlis_register",
+                "description": "Register an agent in the Majlis social network",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": S},
+                        "arabic_name": {"type": S},
+                        "capabilities": {"type": "array", "items": {"type": S}},
+                        "biography": {"type": S},
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
+                "name": "majlis_discover",
+                "description": "Discover agents by capability, trust level, or status",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "capability": {"type": S},
+                        "min_nafs_level": {"type": "integer", "enum": [1, 2, 3]},
+                        "status": {"type": S, "enum": ["active", "idle", "busy", "offline"]},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
+                "name": "majlis_message",
+                "description": "Send a signed message to another agent",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sender_id": {"type": S},
+                        "recipient_id": {"type": S},
+                        "content": {"type": S},
+                        "message_type": {
+                            "type": S,
+                            "enum": [
+                                "text",
+                                "task_request",
+                                "task_response",
+                                "knowledge_share",
+                                "shura_call",
+                            ],
+                        },
+                        "signature": {"type": S},
+                    },
+                    "required": ["sender_id", "recipient_id", "content"],
+                },
+            },
+            {
+                "name": "majlis_broadcast",
+                "description": "Broadcast a message to a Halaqah study circle",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sender_id": {"type": S},
+                        "halaqah_id": {"type": S},
+                        "content": {"type": S},
+                    },
+                    "required": ["sender_id", "halaqah_id", "content"],
+                },
+            },
+            {
+                "name": "majlis_delegate",
+                "description": "Delegate a task to the best-suited agent",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sender_id": {"type": S},
+                        "target_id": {"type": S},
+                        "task": {"type": S},
+                        "capability": {"type": S},
+                    },
+                    "required": ["sender_id", "task"],
+                },
+            },
+            {
+                "name": "majlis_rate",
+                "description": "Rate an agent's performance (1-5 stars)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "rater_id": {"type": S},
+                        "target_id": {"type": S},
+                        "rating": {"type": "integer", "minimum": 1, "maximum": 5},
+                        "task_outcome": {"type": S, "enum": ["completed", "failed"]},
+                        "review": {"type": S},
+                    },
+                    "required": ["rater_id", "target_id", "rating"],
+                },
+            },
+            {
+                "name": "majlis_heartbeat",
+                "description": "Update agent status with HMAC-verified heartbeat",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_id": {"type": S},
+                        "status": {"type": S, "enum": ["active", "idle", "busy", "offline"]},
+                        "signature": {"type": S},
+                    },
+                    "required": ["agent_id"],
+                },
+            },
+            {
+                "name": "majlis_create_halaqah",
+                "description": "Create a Halaqah (study circle) on a topic",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "creator_id": {"type": S},
+                        "topic": {"type": S},
+                        "description": {"type": S},
+                    },
+                    "required": ["creator_id", "topic"],
+                },
+            },
+            {
+                "name": "majlis_join_halaqah",
+                "description": "Join an existing Halaqah study circle",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}, "halaqah_id": {"type": S}},
+                    "required": ["agent_id", "halaqah_id"],
+                },
+            },
+            {
+                "name": "majlis_share_knowledge",
+                "description": "Share learned patterns (Hikmah) with the community",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "author_id": {"type": S},
+                        "title": {"type": S},
+                        "content": {"type": S},
+                        "topic": {"type": S},
+                        "tags": {"type": "array", "items": {"type": S}},
+                    },
+                    "required": ["author_id", "title", "content"],
+                },
+            },
+            {
+                "name": "majlis_search_knowledge",
+                "description": "Search shared knowledge base",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": S},
+                        "topic": {"type": S},
+                        "verified_only": {"type": "boolean"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
+                "name": "majlis_profile",
+                "description": "Get detailed agent profile",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}},
+                    "required": ["agent_id"],
+                },
+            },
+            {
+                "name": "majlis_leaderboard",
+                "description": "Top agents ranked by reputation (Taqwa leaderboard)",
+                "input_schema": {"type": "object", "properties": {"limit": {"type": "integer"}}},
+            },
             # MoltBook Secure Bridge schemas
-            {"name": "majlis_moltbook_link",
-             "description": "Link Majlis agent to MoltBook with encrypted token storage",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S}, "moltbook_id": {"type": S},
-                 "moltbook_token": {"type": S}},
-                 "required": ["agent_id", "moltbook_id", "moltbook_token"]}},
-            {"name": "majlis_moltbook_unlink",
-             "description": "Unlink from MoltBook and revoke stored credentials",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S}}, "required": ["agent_id"]}},
-            {"name": "majlis_moltbook_send",
-             "description": "Send HMAC-signed message through MoltBook (rate-limited)",
-             "input_schema": {"type": "object", "properties": {
-                 "sender_id": {"type": S}, "endpoint": {"type": S},
-                 "payload": {"type": "object"}},
-                 "required": ["sender_id", "payload"]}},
-            {"name": "majlis_moltbook_receive",
-             "description": "Process MoltBook data with prompt injection sanitization",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S},
-                 "data": {"type": "object"}},
-                 "required": ["agent_id", "data"]}},
-            {"name": "majlis_moltbook_import",
-             "description": "Import MoltBook profile into Majlis with Hawiyya identity",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S},
-                 "moltbook_profile": {"type": "object"}},
-                 "required": ["agent_id", "moltbook_profile"]}},
-            {"name": "majlis_moltbook_status",
-             "description": "Get MoltBook bridge status and linked agents",
-             "input_schema": {"type": "object", "properties": {}}},
-            {"name": "majlis_moltbook_audit",
-             "description": "View MoltBook bridge audit log (Shahid witness trail)",
-             "input_schema": {"type": "object", "properties": {
-                 "agent_id": {"type": S}, "limit": {"type": "integer"}}}},
+            {
+                "name": "majlis_moltbook_link",
+                "description": "Link Majlis agent to MoltBook with encrypted token storage",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_id": {"type": S},
+                        "moltbook_id": {"type": S},
+                        "moltbook_token": {"type": S},
+                    },
+                    "required": ["agent_id", "moltbook_id", "moltbook_token"],
+                },
+            },
+            {
+                "name": "majlis_moltbook_unlink",
+                "description": "Unlink from MoltBook and revoke stored credentials",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}},
+                    "required": ["agent_id"],
+                },
+            },
+            {
+                "name": "majlis_moltbook_send",
+                "description": "Send HMAC-signed message through MoltBook (rate-limited)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sender_id": {"type": S},
+                        "endpoint": {"type": S},
+                        "payload": {"type": "object"},
+                    },
+                    "required": ["sender_id", "payload"],
+                },
+            },
+            {
+                "name": "majlis_moltbook_receive",
+                "description": "Process MoltBook data with prompt injection sanitization",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}, "data": {"type": "object"}},
+                    "required": ["agent_id", "data"],
+                },
+            },
+            {
+                "name": "majlis_moltbook_import",
+                "description": "Import MoltBook profile into Majlis with Hawiyya identity",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}, "moltbook_profile": {"type": "object"}},
+                    "required": ["agent_id", "moltbook_profile"],
+                },
+            },
+            {
+                "name": "majlis_moltbook_status",
+                "description": "Get MoltBook bridge status and linked agents",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "majlis_moltbook_audit",
+                "description": "View MoltBook bridge audit log (Shahid witness trail)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"agent_id": {"type": S}, "limit": {"type": "integer"}},
+                },
+            },
         ]
