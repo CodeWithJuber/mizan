@@ -562,9 +562,18 @@ class BaseAgent(ABC):
         elif ruh_energy < 50:
             ruh_note = "\n[Note: Energy moderate — balance thoroughness with efficiency]"
 
-        # Lawh — memory context summary
-        lawh_stats = self.qca.lawh.stats()
-        lawh_note = f"Memory: {lawh_stats[2]} active items, {lawh_stats[1]} verified entries"
+        # Masalik — neural pathway memory context
+        masalik_note = ""
+        if self.memory and hasattr(self.memory, 'masalik'):
+            mstats = self.memory.masalik.stats()
+            masalik_note = (
+                f"Neural pathways: {mstats['total_concepts']} concepts, "
+                f"{mstats['total_pathways']} connections, "
+                f"{mstats['hikmah_pathways']} wisdom paths"
+            )
+        else:
+            lawh_stats = self.qca.lawh.stats()
+            masalik_note = f"Memory: {lawh_stats[2]} active items, {lawh_stats[1]} verified entries"
 
         # Yaqin — epistemic discipline
         yaqin_stats = self.yaqin.stats()
@@ -576,7 +585,7 @@ Role: {self.role}
 Nafs Level: {self.nafs_level}/7 ({nafs_name})
 Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})
 Success Rate: {self.success_rate:.1%}
-{lawh_note}
+{masalik_note}
 {yaqin_note}{tone_guidance}{ruh_note}
 
 You have access to tools. Use them when needed to complete tasks.
@@ -713,6 +722,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     full_response[:5000] if isinstance(full_response, str) else json.dumps(full_response)[:5000],
                     True, duration_ms
                 )
+                # Masalik: Encode task + result into neural pathways
+                # Successful tasks get higher importance → stronger pathways
+                if hasattr(self.memory, 'masalik'):
+                    learn_text = f"{task} {full_response[:500] if isinstance(full_response, str) else ''}"
+                    self.memory.masalik.encode(learn_text, importance=0.7)
 
             self.evolve_nafs()
             self.state = "resting"
@@ -751,6 +765,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             if self.memory:
                 await self.memory.save_task(self.id, task, str(e), False, duration_ms)
+                # Masalik: Encode failure too — lower importance, but still learn
+                if hasattr(self.memory, 'masalik'):
+                    self.memory.masalik.encode(f"{task} error {e}", importance=0.3)
 
             await self._tafakkur(task, str(e), False, duration_ms)
 
@@ -1235,4 +1252,5 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "yaqin": self.yaqin.stats(),
             "lawh_memory": self.qca.lawh.stats(),
             "aql_bindings": self.qca.aql.get_all_bindings_summary()[0],
+            "masalik": self.memory.masalik.stats() if self.memory and hasattr(self.memory, 'masalik') else {},
         }
