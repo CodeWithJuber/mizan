@@ -347,7 +347,7 @@ class DhikrMemorySystem:
         
         try:
             content_str = json.dumps(memory.content) if not isinstance(memory.content, str) else memory.content
-        except:
+        except (TypeError, ValueError):
             content_str = str(memory.content)
         
         c.execute("""

@@ -1071,7 +1071,7 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
         key_set = bool(os.getenv(env_key))
         healthy = False
         try:
-            health = check_provider_health(name)
+            health = await check_provider_health(name)
             healthy = health.get("healthy", False) if isinstance(health, dict) else False
         except Exception:
             pass
@@ -1348,11 +1348,10 @@ async def uninstall_skill(req: SkillInstallRequest,
 
 
 class SkillExecuteRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
     skill: str = Field(..., min_length=1, max_length=200)
     action: str | None = None
-
-    class Config:
-        extra = "allow"  # Allow dynamic params for skill execution
 
 
 @app.post("/api/skills/execute")

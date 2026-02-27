@@ -78,7 +78,7 @@ start_backend() {
 
     # Run from project root so 'backend.api.main:app' resolves correctly
     cd "$MIZAN_DIR"
-    python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload &
+    python3 -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload &
     BACKEND_PID=$!
     echo -e "${GREEN}✓ Backend running on http://localhost:8000 (PID: $BACKEND_PID)${NC}"
     echo $BACKEND_PID > /tmp/mizan-backend.pid
@@ -117,7 +117,7 @@ docker_start() {
         echo -e "${GOLD}⚠ Created .env from template. Please edit it with your API keys.${NC}"
     fi
     
-    docker-compose up -d --build
+    docker compose up -d --build
     echo -e "${GREEN}✓ MIZAN running via Docker${NC}"
     echo -e "${BLUE}  Frontend: http://localhost:3000${NC}"
     echo -e "${BLUE}  Backend:  http://localhost:8000${NC}"
@@ -137,7 +137,7 @@ run_doctor() {
     fi
 
     cd "$MIZAN_DIR"
-    python -m backend.cli doctor "$@"
+    python3 -m backend.cli doctor "$@"
 }
 
 show_help() {
