@@ -26,8 +26,10 @@ interface ProviderOption {
 export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePageProps) {
   const [step, setStep] = useState<Step>("welcome");
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState<string | null>(null);
   const [healthResult, setHealthResult] = useState<Record<string, boolean>>({});
+  const [saveStatus, setSaveStatus] = useState<Record<string, "success" | "error" | "">>({});
 
   useEffect(() => {
     loadProviders();
@@ -161,7 +163,7 @@ export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePagePr
             <div className="text-center space-y-2">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Choose Your AI Provider</h2>
               <p className="text-gray-600 dark:text-gray-400">
-                You need at least one AI provider. Set the API key in your <code className="bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">.env</code> file.
+                You need at least one AI provider. Enter your API key below or set it in your <code className="bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">.env</code> file.
               </p>
             </div>
 
@@ -188,28 +190,69 @@ export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePagePr
                         )}
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{p.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <a
-                        href={p.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        Get key
-                      </a>
-                      <button
-                        onClick={() => testProvider(p.id)}
-                        disabled={testing !== null}
-                        className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
-                      >
-                        {testing === p.id ? "Testing..." : "Test"}
-                      </button>
+                      <input
+                        type="password"
+                        placeholder={
+                          p.id === "anthropic" ? "sk-ant-..." :
+                          p.id === "openai" ? "sk-..." :
+                          p.id === "openrouter" ? "sk-or-..." :
+                          "API key"
+                        }
+                        value={apiKeys[p.id] || ""}
+                        onChange={(e) => setApiKeys((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        className="input w-full text-sm font-mono mt-2"
+                      />
+                      <div className="flex items-center gap-2 mt-2">
+                        <a
+                          href={p.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Get key
+                        </a>
+                        <button
+                          onClick={async () => {
+                            const key = apiKeys[p.id];
+                            if (!key) return;
+                            try {
+                              await api.post("/settings", { section: "provider", provider: p.id, api_key: key });
+                              setSaveStatus((prev) => ({ ...prev, [p.id]: "success" }));
+                              setApiKeys((prev) => ({ ...prev, [p.id]: "" }));
+                              await testProvider(p.id);
+                              await loadProviders();
+                            } catch {
+                              setSaveStatus((prev) => ({ ...prev, [p.id]: "error" }));
+                            }
+                          }}
+                          disabled={!apiKeys[p.id]}
+                          className="text-xs px-3 py-1.5 bg-mizan-gold hover:bg-mizan-gold-light text-black font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => testProvider(p.id)}
+                          disabled={testing !== null}
+                          className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
+                        >
+                          {testing === p.id ? "Testing..." : "Test"}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  {healthResult[p.id] === false && (
+                  {saveStatus[p.id] === "success" && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                      API key saved. Run Test to verify.
+                    </p>
+                  )}
+                  {saveStatus[p.id] === "error" && (
                     <p className="text-xs text-red-500 mt-2">
-                      Not configured. Add the API key to your .env file and restart the backend.
+                      Failed to save API key. Try again or add it to your .env file.
+                    </p>
+                  )}
+                  {healthResult[p.id] === false && saveStatus[p.id] !== "success" && (
+                    <p className="text-xs text-red-500 mt-2">
+                      Not configured. Enter your API key above or add it to your .env file.
                     </p>
                   )}
                 </div>

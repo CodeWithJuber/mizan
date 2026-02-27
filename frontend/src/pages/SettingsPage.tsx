@@ -47,6 +47,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   const [saving, setSaving] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, string>>({});
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [channelTokens, setChannelTokens] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState("providers");
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -276,10 +277,44 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                     <input
                       type="password"
                       placeholder={`${channel.name.toUpperCase()}_BOT_TOKEN`}
+                      value={channelTokens[channel.name] || ""}
+                      onChange={e => setChannelTokens(prev => ({ ...prev, [channel.name]: e.target.value }))}
                       className="input flex-1 text-sm font-mono"
                     />
-                    <button className="btn-primary text-sm">Save</button>
-                    <button className="btn-secondary text-sm">
+                    <button
+                      onClick={async () => {
+                        const token = channelTokens[channel.name];
+                        if (!token) return;
+                        setSaving(true);
+                        try {
+                          await api.post("/settings", { section: "channel", provider: channel.name, api_key: token });
+                          setSaveMessage(`Channel ${channel.name} token saved.`);
+                          setChannelTokens(prev => ({ ...prev, [channel.name]: "" }));
+                          setTimeout(() => setSaveMessage(""), 3000);
+                          fetchSettings();
+                        } catch {
+                          setSaveMessage(`Failed to save ${channel.name} token.`);
+                        }
+                        setSaving(false);
+                      }}
+                      disabled={!channelTokens[channel.name] || saving}
+                      className="btn-primary text-sm disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.post(`/channels/${channel.name}/${channel.connected ? "stop" : "start"}`);
+                          setSaveMessage(channel.connected ? `${channel.name} stopped.` : `${channel.name} started.`);
+                          setTimeout(() => setSaveMessage(""), 3000);
+                          fetchSettings();
+                        } catch {
+                          setSaveMessage(`Failed to ${channel.connected ? "stop" : "start"} ${channel.name}.`);
+                        }
+                      }}
+                      className="btn-secondary text-sm"
+                    >
                       {channel.connected ? "Stop" : "Start"}
                     </button>
                   </div>
