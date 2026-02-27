@@ -22,9 +22,6 @@ RUN npm run build
 # ── Production stage — lightweight Nginx ──
 FROM nginx:alpine
 
-# Install wget for healthcheck
-RUN apk add --no-cache wget
-
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 
