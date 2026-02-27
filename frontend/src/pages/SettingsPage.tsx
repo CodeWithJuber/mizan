@@ -153,8 +153,8 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+    <div className="page-wrapper">
+      <div className="page-header">
         <div>
           <h2 className="page-title flex items-center gap-2">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">

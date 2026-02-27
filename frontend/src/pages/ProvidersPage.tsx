@@ -102,9 +102,9 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="page-wrapper">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+      <div className="page-header">
         <div>
           <h2 className="page-title">LLM Providers</h2>
           <p className="page-description">
@@ -114,7 +114,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div className="page-body">
         {/* Provider Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {status?.providers.map((provider: ProviderInfo) => {
@@ -185,13 +185,13 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => checkHealth(provider.name)}
-                    className="btn text-xs"
+                    className="btn-secondary btn-sm"
                   >
                     Health Check
                   </button>
                   <button
                     onClick={() => browseModels(provider.name)}
-                    className="btn text-xs"
+                    className="btn-secondary btn-sm"
                   >
                     Browse Models
                   </button>
@@ -201,7 +201,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                         setSelectedProvider(provider.name);
                         setSelectedModel(provider.default_model);
                       }}
-                      className={`btn text-xs ${accentClass}`}
+                      className={`btn-secondary btn-sm ${accentClass}`}
                     >
                       Select
                     </button>
