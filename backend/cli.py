@@ -255,5 +255,83 @@ def version():
     console.print(f"MIZAN v{__version__}")
 
 
+@main.command()
+@click.option("--check", is_flag=True, default=False, help="Diagnose only, don't fix")
+@click.option("--fix", is_flag=True, default=False, help="Auto-fix all issues")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
+def doctor(check, fix, as_json):
+    """
+    Self-healing diagnostic — check system health and auto-fix issues.
+
+    \b
+    "And We send down of the Quran that which is a healing (shifa)
+     and a mercy for the believers." — 17:82
+    """
+    from backend.doctor import run_doctor, report_to_dict, CheckStatus
+
+    if not as_json:
+        console.print(BANNER)
+        console.print("[bold]MIZAN Doctor (شفاء - Shifa)[/]")
+        console.print("[dim]Diagnosing system health...[/]\n")
+
+    auto_fix = fix or (not check)  # Default: auto-fix unless --check
+    report = run_doctor(auto_fix=auto_fix, check_only=check)
+
+    if as_json:
+        import json
+        console.print(json.dumps(report_to_dict(report), indent=2))
+        return
+
+    # Rich formatted output
+    status_styles = {
+        CheckStatus.PASS:  ("[green]✓[/]", "green"),
+        CheckStatus.WARN:  ("[yellow]⚠[/]", "yellow"),
+        CheckStatus.FAIL:  ("[red]✗[/]", "red"),
+        CheckStatus.FIXED: ("[cyan]⚕[/]", "cyan"),
+        CheckStatus.SKIP:  ("[dim]–[/]", "dim"),
+    }
+
+    for c in report.checks:
+        icon, style = status_styles[c.status]
+        console.print(f"  {icon} [{style}]{c.name}[/]: {c.message}")
+        if c.status == CheckStatus.FIXED and c.fix_message:
+            console.print(f"       [cyan]Healed:[/] {c.fix_message}")
+        elif c.status == CheckStatus.FAIL and c.fix_description:
+            console.print(f"       [red]Fix:[/] {c.fix_description}")
+        elif c.status == CheckStatus.WARN and c.fix_description:
+            console.print(f"       [yellow]Hint:[/] {c.fix_description}")
+
+    console.print()
+
+    total = len(report.checks)
+    skipped = sum(1 for c in report.checks if c.status == CheckStatus.SKIP)
+
+    if report.healthy:
+        console.print(
+            Panel(
+                f"[green bold]HEALTHY[/]\n"
+                f"{report.passed}/{total - skipped} passed, "
+                f"{report.warnings} warnings, "
+                f"{report.fixes_applied} auto-healed",
+                title="Diagnosis",
+                border_style="green",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                f"[red bold]NEEDS ATTENTION[/]\n"
+                f"{report.passed}/{total - skipped} passed, "
+                f"{report.failures} failures, "
+                f"{report.warnings} warnings\n\n"
+                f"Run [cyan]mizan doctor --fix[/] to auto-heal"
+                if check else
+                f"Some issues could not be auto-fixed. See above.",
+                title="Diagnosis",
+                border_style="red",
+            )
+        )
+
+
 if __name__ == "__main__":
     main()
