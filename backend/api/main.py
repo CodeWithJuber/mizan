@@ -1022,6 +1022,33 @@ async def health_check():
     )
 
 
+# === DOCTOR (SELF-HEALING DIAGNOSTIC) ===
+
+@app.get("/api/doctor")
+async def doctor_check():
+    """
+    Self-healing diagnostic — check system health and auto-fix issues.
+    "And We send down of the Quran that which is a healing (shifa)" — 17:82
+    """
+    try:
+        from doctor import run_doctor, report_to_dict
+        report = run_doctor(auto_fix=False, check_only=True)
+        return report_to_dict(report)
+    except Exception as e:
+        return {"healthy": False, "error": str(e)}
+
+
+@app.post("/api/doctor/fix")
+async def doctor_fix():
+    """Run doctor with auto-fix enabled."""
+    try:
+        from doctor import run_doctor, report_to_dict
+        report = run_doctor(auto_fix=True)
+        return report_to_dict(report)
+    except Exception as e:
+        return {"healthy": False, "error": str(e)}
+
+
 # === SETTINGS API ===
 
 class SettingsUpdate(BaseModel):
