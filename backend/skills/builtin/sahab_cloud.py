@@ -27,7 +27,7 @@ import subprocess
 import hashlib
 import hmac
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
@@ -46,7 +46,7 @@ class CloudService:
     status: str = "disconnected"  # connected, disconnected, error
     last_check: Optional[str] = None
     metadata: Dict = field(default_factory=dict)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -95,7 +95,7 @@ class AmanahVault:
         self._secrets[secret_id] = value
         self._metadata[secret_id] = {
             "key": key,
-            "stored_at": datetime.utcnow().isoformat(),
+            "stored_at": datetime.now(timezone.utc).isoformat(),
             "masked": value[:4] + "****" + value[-4:] if len(value) > 8 else "****",
             **(meta or {}),
         }
@@ -196,16 +196,16 @@ class SahabCloudSkill(SkillBase):
                     async with httpx.AsyncClient(timeout=10) as client:
                         resp = await client.get(svc.base_url)
                         svc.status = "connected" if resp.status_code < 500 else "error"
-                        svc.last_check = datetime.utcnow().isoformat()
+                        svc.last_check = datetime.now(timezone.utc).isoformat()
                         results.append({
                             "service": svc.name, "status": svc.status,
                             "status_code": resp.status_code,
                         })
                 except Exception as e:
                     svc.status = "error"
-                    svc.last_check = datetime.utcnow().isoformat()
+                    svc.last_check = datetime.now(timezone.utc).isoformat()
                     results.append({"service": svc.name, "status": "error", "error": str(e)})
-        return {"health_checks": results, "timestamp": datetime.utcnow().isoformat()}
+        return {"health_checks": results, "timestamp": datetime.now(timezone.utc).isoformat()}
 
     # === GIT OPERATIONS — "By the pen and what they inscribe" (68:1) ===
 

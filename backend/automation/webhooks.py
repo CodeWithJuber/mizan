@@ -10,7 +10,7 @@ import json
 import hashlib
 import hmac
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Dict, Optional
 
 logger = logging.getLogger("mizan.webhooks")
@@ -35,7 +35,7 @@ class WebhookManager:
             "id": webhook_id,
             "name": name,
             "secret": secret,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "trigger_count": 0,
             "last_triggered": None,
         }
@@ -89,7 +89,7 @@ class WebhookManager:
             return {"error": "Webhook not found"}
 
         webhook["trigger_count"] += 1
-        webhook["last_triggered"] = datetime.utcnow().isoformat()
+        webhook["last_triggered"] = datetime.now(timezone.utc).isoformat()
 
         handler = self._handlers.get(webhook_id)
         if handler:

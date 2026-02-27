@@ -12,7 +12,7 @@ import time
 import uuid
 import hashlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
@@ -106,7 +106,7 @@ class MizanAuth:
             username=username,
             password_hash=pwd_context.hash(password),
             roles=roles or ["user"],
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
             api_keys=[],
         )
         self._users[user_id] = user

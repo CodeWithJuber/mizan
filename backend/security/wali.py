@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger("mizan.wali")
 
@@ -143,7 +143,7 @@ class AuditLog:
 
     def log(self, event_type: str, details: dict, severity: str = "info"):
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "severity": severity,
             "details": details,

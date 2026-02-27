@@ -43,7 +43,7 @@ Core Principles:
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import uuid
 
@@ -123,7 +123,7 @@ class NafsProfile:
     role: AgentRole = AgentRole.WAKIL
     nafs_level: int = 1  # 1-7
     capabilities: List[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     total_tasks: int = 0
     success_rate: float = 0.0
     error_count: int = 0
@@ -222,7 +222,7 @@ class QuranicMessage:
     bayyinah: List = field(default_factory=list)  # Evidence/Data
     taklif: Optional[str] = None  # Required action
     priority: int = 5       # 1-10, Mizan scale
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     channel: str = "internal"
 
 
@@ -238,7 +238,7 @@ class HikmahRecord:
     outcome: str = ""
     confidence: float = 0.0
     applications: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source_agent: str = ""
 
 
@@ -325,7 +325,7 @@ class ShuraCouncil:
                 "question": question,
                 "consensus": consensus,
                 "opinions": opinions,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             })
             return consensus
         return {"consensus": None, "confidence": 0}

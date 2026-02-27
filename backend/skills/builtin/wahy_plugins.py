@@ -39,7 +39,7 @@ import logging
 import importlib
 import importlib.util
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -358,7 +358,7 @@ class OpenClawBridge:
     def _audit(self, action: str, details: Dict = None) -> None:
         self._audit_log.append({
             "action": action,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "details": details or {},
         })
         logger.info(f"[OPENCLAW-BRIDGE] {action}")
@@ -490,7 +490,7 @@ class OpenClawBridge:
             "source_analysis": analysis,
             "original_source": source,
             "integrity": integrity,
-            "quarantined_at": datetime.utcnow().isoformat(),
+            "quarantined_at": datetime.now(timezone.utc).isoformat(),
             "status": "quarantined",
         }
 
@@ -891,7 +891,7 @@ class WahyPluginSkill(SkillBase):
         record.isolation = isolation
         record.load_time_ms = round(load_ms, 2)
         record.state = "installed"
-        manifest.installed_at = datetime.utcnow().isoformat()
+        manifest.installed_at = datetime.now(timezone.utc).isoformat()
         logger.info(
             f"[WAHY] Loaded plugin '{plugin_name}' in {load_ms:.1f}ms"
         )
@@ -932,7 +932,7 @@ class WahyPluginSkill(SkillBase):
 
         record.state = "active"
         record.manifest.enabled = True
-        record.activated_at = datetime.utcnow().isoformat()
+        record.activated_at = datetime.now(timezone.utc).isoformat()
         record.error = None
         logger.info(f"[WAHY] Activated plugin '{plugin_name}'")
         return True, "Plugin activated"
@@ -960,7 +960,7 @@ class WahyPluginSkill(SkillBase):
 
         record.state = "deactivated"
         record.manifest.enabled = False
-        record.deactivated_at = datetime.utcnow().isoformat()
+        record.deactivated_at = datetime.now(timezone.utc).isoformat()
         logger.info(f"[WAHY] Deactivated plugin '{plugin_name}'")
         return True, "Plugin deactivated"
 

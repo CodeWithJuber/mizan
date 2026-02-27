@@ -9,7 +9,7 @@ Each adapter converts platform-specific messages to/from the unified format.
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -23,7 +23,7 @@ class IncomingMessage:
     reply_to: Optional[str] = None  # ID of message being replied to
     attachments: list = field(default_factory=list)  # File attachments
     metadata: Dict = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class ChannelAdapter(ABC):

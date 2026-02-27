@@ -15,7 +15,7 @@ import sys
 import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List
 
 from fastapi import (
@@ -915,7 +915,7 @@ async def system_status():
         "system": "MIZAN",
         "version": __version__,
         "status": "active",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "agents": {
             "total": len(active_agents),
             "active": sum(1 for a in active_agents.values() if a.state == "acting"),
@@ -1717,7 +1717,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         "authenticated": user is not None,
         "provider": provider_info["active"],
         "model": provider_info["default_model"],
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     try:

@@ -10,7 +10,7 @@ Cron-like task scheduler that executes through the full agent pipeline.
 import asyncio
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -29,7 +29,7 @@ class ScheduledJob:
     last_run: Optional[str] = None
     next_run: Optional[str] = None
     run_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -104,7 +104,7 @@ class QadrScheduler:
         """Main scheduler loop — checks every 60 seconds"""
         while self._running:
             try:
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
 
                 for job in list(self.jobs.values()):
                     if not job.enabled or not job.next_run:
@@ -135,13 +135,13 @@ class QadrScheduler:
         """Calculate next run time from cron expression"""
         try:
             from croniter import croniter
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cron_iter = croniter(cron, now)
             next_time = cron_iter.get_next(datetime)
             return next_time.isoformat()
         except ImportError:
             logger.warning("[QADR] croniter not installed, using 1-hour interval")
-            return (datetime.utcnow() + timedelta(hours=1)).isoformat()
+            return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         except Exception as e:
             logger.error(f"[QADR] Invalid cron: {cron}: {e}")
             return None
@@ -274,7 +274,7 @@ class HeartbeatScheduler:
 
     async def _tick(self) -> Dict:
         """Execute a single heartbeat tick."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         errors: List[str] = []
         due_executed = 0
         pending_count = 0

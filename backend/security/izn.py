@@ -9,7 +9,7 @@ Solves OpenClaw's skill data exfiltration problem.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
@@ -239,7 +239,7 @@ class IznPermission:
                     "agent_id": agent_id,
                     "tool": tool_name,
                     "params": params,
-                    "requested_at": datetime.utcnow().isoformat(),
+                    "requested_at": datetime.now(timezone.utc).isoformat(),
                 }
             return {
                 "allowed": False,

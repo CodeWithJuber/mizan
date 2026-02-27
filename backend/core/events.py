@@ -29,7 +29,7 @@ import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional, Set
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 logger = logging.getLogger("mizan.events")
@@ -41,7 +41,7 @@ class Event:
     name: str
     data: Dict[str, Any] = field(default_factory=dict)
     source: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     id: str = field(default_factory=lambda: __import__("uuid").uuid4().hex[:12])
 
 

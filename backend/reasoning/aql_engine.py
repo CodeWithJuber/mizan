@@ -20,7 +20,7 @@ and QCA epistemic weighting through all 7 cognitive layers.
 import json
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -36,7 +36,7 @@ class ReasoningStep:
     tool_input: Optional[Dict] = None
     tool_result: Optional[Any] = None
     iteration: int = 0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class AqlEngine:
