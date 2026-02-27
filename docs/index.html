@@ -243,8 +243,13 @@
     <a class="nav-item" onclick="showSection('api-system')">System API</a>
     <a class="nav-item" onclick="showSection('api-websocket')">WebSocket</a>
 
+    <div class="nav-section">Operations</div>
+    <a class="nav-item" onclick="showSection('doctor')">Self-Healing Doctor</a>
+    <a class="nav-item" onclick="showSection('updating')">Updating</a>
+
     <div class="nav-section">Architecture</div>
     <a class="nav-item" onclick="showSection('architecture')">System Design</a>
+    <a class="nav-item" onclick="showSection('qca')">Cognitive Architecture</a>
     <a class="nav-item" onclick="showSection('project-structure')">Project Structure</a>
   </nav>
 
@@ -956,6 +961,146 @@ Response:
       <h3>Ping/Pong</h3>
       <pre><code>Send: {"type": "ping"}
 Receive: {"type": "pong"}</code></pre>
+    </div>
+
+    <!-- ==================== DOCTOR ==================== -->
+    <div id="doctor" class="section">
+      <h1>Self-Healing Doctor (Shifa)</h1>
+      <p>MIZAN includes a built-in diagnostic and self-healing system inspired by the Quranic concept of Shifa (healing).</p>
+
+      <h3>Running Diagnostics</h3>
+      <pre><code># CLI
+mizan doctor          # Full diagnostic + auto-fix
+mizan doctor --check  # Diagnose only (no fixes)
+
+# API
+GET  /api/doctor      # Run diagnostic checks
+POST /api/doctor/fix  # Run with auto-fix enabled</code></pre>
+
+      <h3>What It Checks</h3>
+      <table>
+        <thead><tr><th>Check</th><th>What It Verifies</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Python version</strong></td><td>Python >= 3.11 is installed</td></tr>
+          <tr><td><strong>Virtual environment</strong></td><td>Running inside a venv</td></tr>
+          <tr><td><strong>Node.js</strong></td><td>Node.js >= 18 for frontend</td></tr>
+          <tr><td><strong>.env file</strong></td><td>Configuration file exists and is populated</td></tr>
+          <tr><td><strong>API keys</strong></td><td>At least one AI provider is configured</td></tr>
+          <tr><td><strong>SECRET_KEY</strong></td><td>Not using the insecure default value</td></tr>
+          <tr><td><strong>Data directory</strong></td><td>data/ exists and is writable</td></tr>
+          <tr><td><strong>Dependencies</strong></td><td>All core pip packages are importable</td></tr>
+          <tr><td><strong>Core modules</strong></td><td>All MIZAN modules import correctly</td></tr>
+          <tr><td><strong>Masalik memory</strong></td><td>Neural pathway network initializes</td></tr>
+          <tr><td><strong>Database</strong></td><td>SQLite connection and schema are valid</td></tr>
+          <tr><td><strong>Ports</strong></td><td>8000 and 3000 are available</td></tr>
+          <tr><td><strong>Provider connectivity</strong></td><td>Configured providers are reachable</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Auto-Fixes</h3>
+      <p>The doctor can automatically fix common issues:</p>
+      <ul>
+        <li>Create <code>.env</code> from <code>.env.example</code> if missing</li>
+        <li>Generate a secure random <code>SECRET_KEY</code></li>
+        <li>Create the <code>data/</code> directory</li>
+      </ul>
+
+      <div class="callout callout-tip">
+        <p><strong>Tip:</strong> Run <code>mizan doctor</code> as your first troubleshooting step whenever something isn't working.</p>
+      </div>
+    </div>
+
+    <!-- ==================== UPDATING ==================== -->
+    <div id="updating" class="section">
+      <h1>Updating MIZAN</h1>
+      <p>MIZAN has a built-in one-command updater.</p>
+
+      <h3>One-Command Update</h3>
+      <pre><code>./update.sh                # Update everything automatically
+make update                # Via Makefile
+./start.sh update          # Via start script</code></pre>
+
+      <h3>What the Updater Does</h3>
+      <ol>
+        <li>Checks if new updates are available</li>
+        <li>Stops running services gracefully</li>
+        <li>Stashes your local changes (and restores them after)</li>
+        <li>Pulls the latest code</li>
+        <li>Rebuilds backend dependencies + frontend</li>
+        <li>Restarts services</li>
+        <li>Shows the version change</li>
+      </ol>
+
+      <h3>Check Without Installing</h3>
+      <pre><code>./update.sh --check        # Check for updates only
+./update.sh --version      # Show current version</code></pre>
+
+      <h3>Docker Deployments</h3>
+      <pre><code>./update.sh                # Auto-detects Docker, rebuilds containers
+./deploy.sh --update       # Production deployment update</code></pre>
+
+      <div class="callout callout-info">
+        <p><strong>Auto-check:</strong> When you start MIZAN with <code>./start.sh</code> or <code>make dev</code>, it automatically checks for updates and shows a notification if available.</p>
+      </div>
+    </div>
+
+    <!-- ==================== QCA ==================== -->
+    <div id="qca" class="section">
+      <h1>Quranic Cognitive Architecture (QCA)</h1>
+      <p>MIZAN's reasoning engine is built on a 7-layer cognitive architecture inspired by Quranic epistemology.</p>
+
+      <h3>Cognitive Layers</h3>
+      <table>
+        <thead><tr><th>Layer</th><th>Arabic</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Sam'</strong></td><td>سمع</td><td>Sequential temporal input processing</td></tr>
+          <tr><td><strong>Basar</strong></td><td>بصر</td><td>Structural pattern recognition</td></tr>
+          <tr><td><strong>Fu'ad</strong></td><td>فؤاد</td><td>Integration engine combining inputs</td></tr>
+          <tr><td><strong>ISM</strong></td><td>اسم</td><td>Deep semantic root-space representation</td></tr>
+          <tr><td><strong>Mizan</strong></td><td>ميزان</td><td>Epistemic weighting and truth calibration</td></tr>
+          <tr><td><strong>'Aql</strong></td><td>عقل</td><td>Typed relationship binding engine</td></tr>
+          <tr><td><strong>Lawh</strong></td><td>لوح</td><td>4-tier hierarchical memory</td></tr>
+          <tr><td><strong>Furqan</strong></td><td>فرقان</td><td>Discrimination and articulation output</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Yaqin Certainty Engine</h3>
+      <p>Every piece of knowledge is tagged with its certainty level:</p>
+      <table>
+        <thead><tr><th>Level</th><th>Arabic</th><th>Meaning</th><th>Confidence</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Ilm al-Yaqin</strong></td><td>علم اليقين</td><td>Knowledge-based certainty (inference)</td><td>0.3 - 0.6</td></tr>
+          <tr><td><strong>Ayn al-Yaqin</strong></td><td>عين اليقين</td><td>Observation-based certainty (verified)</td><td>0.6 - 0.9</td></tr>
+          <tr><td><strong>Haqq al-Yaqin</strong></td><td>حق اليقين</td><td>Proven truth (reproduced)</td><td>0.9 - 1.0</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Nafs Evolution (Agent Growth)</h3>
+      <p>Agents evolve through 7 levels based on their performance:</p>
+      <table>
+        <thead><tr><th>Level</th><th>Name</th><th>Requirements</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Ammara (Commanding)</td><td>Starting level</td></tr>
+          <tr><td>2</td><td>Lawwama (Self-Reproaching)</td><td>60% success, 25+ tasks</td></tr>
+          <tr><td>3</td><td>Mulhama (Inspired)</td><td>75% success, 100+ tasks</td></tr>
+          <tr><td>4</td><td>Mutmainna (Tranquil)</td><td>85% success, 250+ tasks</td></tr>
+          <tr><td>5</td><td>Radiya (Pleased)</td><td>90% success, 500+ tasks</td></tr>
+          <tr><td>6</td><td>Mardiyya (Pleasing)</td><td>95% success, 1000+ tasks</td></tr>
+          <tr><td>7</td><td>Kamila (Complete)</td><td>97% success, 2000+ tasks</td></tr>
+        </tbody>
+      </table>
+
+      <h3>QCA API Endpoints</h3>
+      <pre><code>POST /api/yaqin/tag         Tag knowledge with certainty level
+GET  /api/yaqin/stats       Get certainty engine statistics
+POST /api/cognitive/route   Route query to best reasoning method
+POST /api/qalb/analyze      Analyze emotional state from text
+GET  /api/qalb/trend/{id}   Get emotional trend for a user
+GET  /api/nafs/tiers         Get all 7 Nafs permission tiers
+GET  /api/nafs/{agent_id}   Get agent's Nafs status
+GET  /api/ruh/{agent_id}    Get agent's energy state
+GET  /api/federation/status  Get agent federation status
+POST /api/federation/discover  Discover agents by capability</code></pre>
     </div>
 
     <!-- ==================== ARCHITECTURE ==================== -->
