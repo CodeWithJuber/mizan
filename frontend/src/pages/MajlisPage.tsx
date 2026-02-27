@@ -143,10 +143,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
   return (
     <>
-      <div className="panel-header">
-        <div className="panel-title">Agent Majlis · مَجْلِس</div>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <h2 className="page-title">Agent Majlis · مَجْلِس</h2>
       </div>
-      <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+      <div className="px-4 pb-2 pt-1 text-xs text-gray-500 dark:text-gray-400 italic">
         "And cooperate in righteousness and piety" — Quran 5:2
       </div>
 
@@ -164,45 +164,44 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="flex-1 overflow-auto p-4">
 
         {activeTab === "agents" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button className="btn primary" onClick={() => setShowRegister(true)}>
+            <div className="flex gap-2 mb-3">
+              <button className="btn-primary" onClick={() => setShowRegister(true)}>
                 Register Agent
               </button>
-              <button className="btn" onClick={loadAgents}>Refresh</button>
+              <button className="btn-secondary" onClick={loadAgents}>Refresh</button>
             </div>
 
             {showRegister && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
+              <div className="card mb-4 border-mizan-gold">
+                <div className="text-sm text-mizan-gold mb-3 font-semibold">
                   Register New Agent · تسجيل
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Agent Name</label>
-                  <input className="form-input" value={regForm.name}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agent Name</label>
+                  <input className="input w-full text-sm" value={regForm.name}
                     onChange={e => setRegForm({ ...regForm, name: e.target.value })}
                     placeholder="e.g. Katib, Mubashir" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Arabic Name</label>
-                  <input className="form-input" value={regForm.arabic_name}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Arabic Name</label>
+                  <input className="input w-full text-sm" value={regForm.arabic_name}
                     onChange={e => setRegForm({ ...regForm, arabic_name: e.target.value })}
                     placeholder="e.g. كاتب، مبشر" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Capabilities (comma separated)</label>
-                  <input className="form-input" value={regForm.capabilities}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Capabilities (comma separated)</label>
+                  <input className="input w-full text-sm" value={regForm.capabilities}
                     onChange={e => setRegForm({ ...regForm, capabilities: e.target.value })}
                     placeholder="coding, research, analysis" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={registerAgent}
+                <div className="flex gap-2">
+                  <button className="btn-primary" onClick={registerAgent}
                     disabled={!regForm.name}>Register</button>
-                  <button className="btn" onClick={() => setShowRegister(false)}>Cancel</button>
+                  <button className="btn-secondary" onClick={() => setShowRegister(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -215,38 +214,33 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             {agents.map(agent => (
-              <div key={agent.agent_id} className="memory-item"
-                style={{ borderLeft: `3px solid ${NAFS_COLORS[agent.nafs_level] || "#6b7280"}`,
-                  cursor: "pointer" }}
+              <div key={agent.agent_id} className="card mb-3 cursor-pointer"
+                style={{ borderLeft: `3px solid ${NAFS_COLORS[agent.nafs_level] || "#6b7280"}` }}
                 onClick={() => setSelectedAgent(selectedAgent?.agent_id === agent.agent_id ? null : agent)}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%",
-                    background: STATUS_COLORS[agent.status] || STATUS_COLORS.offline }} />
-                  <div style={{ fontFamily: "Georgia, serif", fontSize: 16, color: "var(--gold)" }}>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full"
+                    style={{ background: STATUS_COLORS[agent.status] || STATUS_COLORS.offline }} />
+                  <div className="font-serif text-base text-mizan-gold">
                     {agent.arabic_name || "عميل"}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
+                  <div className="text-xs text-gray-900 dark:text-gray-100 font-medium">
                     {agent.name}
                   </div>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: `${NAFS_COLORS[agent.nafs_level]}20`,
-                    color: NAFS_COLORS[agent.nafs_level],
-                    border: `1px solid ${NAFS_COLORS[agent.nafs_level]}30` }}>
+                  <span className="text-[9px] font-mono px-1.5 rounded"
+                    style={{ background: `${NAFS_COLORS[agent.nafs_level]}20`,
+                      color: NAFS_COLORS[agent.nafs_level],
+                      border: `1px solid ${NAFS_COLORS[agent.nafs_level]}30` }}>
                     {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
                   </span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--amber)" }}>
+                  <span className="ml-auto text-[10px] font-mono text-amber-500">
                     ★ {(agent.reputation_score || 0).toFixed(1)}
                   </span>
                 </div>
 
                 {agent.capabilities && (
-                  <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
                     {agent.capabilities.map((cap, i) => (
-                      <span key={i} style={{ fontSize: 9, fontFamily: "var(--font-mono)",
-                        padding: "1px 5px", borderRadius: 3,
-                        background: "rgba(30,58,85,0.4)", color: "var(--text-muted)",
-                        border: "1px solid var(--border)" }}>
+                      <span key={i} className="text-[9px] font-mono px-1.5 py-px rounded bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-zinc-800">
                         {cap}
                       </span>
                     ))}
@@ -254,30 +248,28 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 )}
 
                 {selectedAgent?.agent_id === agent.agent_id && (
-                  <div style={{ marginTop: 10, padding: 10, background: "rgba(3,6,8,0.5)",
-                    borderRadius: 6, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: 6 }}>
+                  <div className="mt-2.5 p-2.5 bg-gray-50 dark:bg-zinc-800/50 rounded-md border border-gray-200 dark:border-zinc-800">
+                    <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400 mb-1.5">
                       ID: {agent.agent_id}
                     </div>
                     {agent.verified && (
-                      <div style={{ fontSize: 10, color: "var(--emerald)", marginBottom: 6 }}>
+                      <div className="text-[10px] text-emerald-500 mb-1.5">
                         ✓ Verified Agent
                       </div>
                     )}
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      <input className="form-input" style={{ flex: 1, fontSize: 11 }}
+                    <div className="flex gap-1.5 mb-2">
+                      <input className="input flex-1 text-xs"
                         value={messageText}
                         onChange={e => setMessageText(e.target.value)}
                         placeholder="Send a message..."
                         onKeyDown={e => e.key === "Enter" && sendMessage(agent.agent_id)} />
-                      <button className="btn" style={{ fontSize: 10 }}
+                      <button className="btn-secondary text-[10px]"
                         onClick={() => sendMessage(agent.agent_id)}>Send</button>
                     </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 4 }}>Rate:</span>
+                    <div className="flex gap-1">
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 mr-1">Rate:</span>
                       {[1, 2, 3, 4, 5].map(s => (
-                        <button key={s} className="btn" style={{ padding: "2px 6px", fontSize: 10,
-                          minWidth: 0 }}
+                        <button key={s} className="btn-secondary px-1.5 py-0.5 text-[10px] min-w-0"
                           onClick={e => { e.stopPropagation(); rateAgent(agent.agent_id, s); }}>
                           {"★".repeat(s)}
                         </button>
@@ -292,41 +284,40 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "halaqahs" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button className="btn primary" onClick={() => setShowHalaqah(true)}>
+            <div className="flex gap-2 mb-3">
+              <button className="btn-primary" onClick={() => setShowHalaqah(true)}>
                 Create Halaqah
               </button>
-              <button className="btn" onClick={loadHalaqahs}>Refresh</button>
+              <button className="btn-secondary" onClick={loadHalaqahs}>Refresh</button>
             </div>
 
             {showHalaqah && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
+              <div className="card mb-4 border-mizan-gold">
+                <div className="text-sm text-mizan-gold mb-3 font-semibold">
                   Create Study Circle · حلقة
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Name</label>
-                  <input className="form-input" value={halaqahForm.name}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</label>
+                  <input className="input w-full text-sm" value={halaqahForm.name}
                     onChange={e => setHalaqahForm({ ...halaqahForm, name: e.target.value })}
                     placeholder="e.g. Code Review Circle" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Topic</label>
-                  <input className="form-input" value={halaqahForm.topic}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Topic</label>
+                  <input className="input w-full text-sm" value={halaqahForm.topic}
                     onChange={e => setHalaqahForm({ ...halaqahForm, topic: e.target.value })}
                     placeholder="e.g. security, architecture, testing" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <input className="form-input" value={halaqahForm.description}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</label>
+                  <input className="input w-full text-sm" value={halaqahForm.description}
                     onChange={e => setHalaqahForm({ ...halaqahForm, description: e.target.value })}
                     placeholder="What is this circle about?" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={createHalaqah}
+                <div className="flex gap-2">
+                  <button className="btn-primary" onClick={createHalaqah}
                     disabled={!halaqahForm.name || !halaqahForm.topic}>Create</button>
-                  <button className="btn" onClick={() => setShowHalaqah(false)}>Cancel</button>
+                  <button className="btn-secondary" onClick={() => setShowHalaqah(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -339,23 +330,22 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             {halaqahs.map(h => (
-              <div key={h.halaqah_id} className="memory-item">
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontFamily: "Georgia, serif", fontSize: 14, color: "var(--gold)" }}>حلقة</span>
-                  <span style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>{h.name}</span>
+              <div key={h.halaqah_id} className="card mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-serif text-sm text-mizan-gold">حلقة</span>
+                  <span className="text-xs text-gray-900 dark:text-gray-100 font-medium">{h.name}</span>
                   <span className="memory-type-badge type-semantic">{h.topic}</span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)" }}>
+                  <span className="ml-auto text-[10px] font-mono text-gray-500 dark:text-gray-400">
                     {h.member_count || 0} members
                   </span>
                 </div>
                 {h.description && (
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
                     {h.description}
                   </div>
                 )}
-                <div style={{ marginTop: 6 }}>
-                  <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+                <div className="mt-1.5">
+                  <button className="btn-secondary text-[10px] px-2 py-0.5"
                     onClick={async () => {
                       await exec("join_halaqah", { halaqah_id: h.halaqah_id });
                       addTerminalLine?.(`Joined halaqah: ${h.name}`, "gold");
@@ -371,46 +361,45 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "knowledge" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <input className="form-input" style={{ flex: 1 }}
+            <div className="flex gap-2 mb-3">
+              <input className="input flex-1 text-sm"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search shared knowledge..."
                 onKeyDown={e => e.key === "Enter" && searchKnowledgeBase()} />
-              <button className="btn" onClick={searchKnowledgeBase}>Search</button>
-              <button className="btn primary" onClick={() => setShowShare(true)}>
+              <button className="btn-secondary" onClick={searchKnowledgeBase}>Search</button>
+              <button className="btn-primary" onClick={() => setShowShare(true)}>
                 Share Knowledge
               </button>
             </div>
 
             {showShare && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
+              <div className="card mb-4 border-mizan-gold">
+                <div className="text-sm text-mizan-gold mb-3 font-semibold">
                   Share Knowledge · علم
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Topic</label>
-                  <input className="form-input" value={shareForm.topic}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Topic</label>
+                  <input className="input w-full text-sm" value={shareForm.topic}
                     onChange={e => setShareForm({ ...shareForm, topic: e.target.value })}
                     placeholder="e.g. python-security, react-patterns" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Knowledge Content</label>
-                  <textarea className="form-input" rows={4} value={shareForm.content}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Knowledge Content</label>
+                  <textarea className="input w-full text-sm" rows={4} value={shareForm.content}
                     onChange={e => setShareForm({ ...shareForm, content: e.target.value })}
                     placeholder="Share what you've learned..." />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Source (optional)</label>
-                  <input className="form-input" value={shareForm.source}
+                <div className="space-y-1.5 mb-4">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Source (optional)</label>
+                  <input className="input w-full text-sm" value={shareForm.source}
                     onChange={e => setShareForm({ ...shareForm, source: e.target.value })}
                     placeholder="Where did you learn this?" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={shareKnowledge}
+                <div className="flex gap-2">
+                  <button className="btn-primary" onClick={shareKnowledge}
                     disabled={!shareForm.topic || !shareForm.content}>Share</button>
-                  <button className="btn" onClick={() => setShowShare(false)}>Cancel</button>
+                  <button className="btn-secondary" onClick={() => setShowShare(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -423,22 +412,21 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             {knowledge.map((k, i) => (
-              <div key={k.knowledge_id || i} className="memory-item">
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <div key={k.knowledge_id || i} className="card mb-3">
+                <div className="flex items-center gap-2 mb-1">
                   <span className="memory-type-badge type-semantic">{k.topic}</span>
                   {k.verified && (
-                    <span style={{ fontSize: 9, color: "var(--emerald)" }}>✓ verified</span>
+                    <span className="text-[9px] text-emerald-500">✓ verified</span>
                   )}
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)" }}>
+                  <span className="ml-auto text-[10px] font-mono text-gray-500 dark:text-gray-400">
                     {k.quality_score ? `★ ${k.quality_score.toFixed(1)}` : ""}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
+                <div className="text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
                   {k.content}
                 </div>
                 {k.source && (
-                  <div style={{ fontSize: 10, color: "var(--sapphire)", marginTop: 4 }}>
+                  <div className="text-[10px] text-blue-500 mt-1">
                     Source: {k.source}
                   </div>
                 )}
@@ -449,51 +437,48 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "leaderboard" && (
           <>
-            <div style={{ marginBottom: 12 }}>
-              <button className="btn" onClick={loadLeaderboard}>Refresh</button>
+            <div className="mb-3">
+              <button className="btn-secondary" onClick={loadLeaderboard}>Refresh</button>
             </div>
-            <div style={{ padding: 16,
-              background: "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-              border: "1px solid var(--border)", borderRadius: 10, marginBottom: 16 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 12, letterSpacing: "0.2em",
-                color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 12 }}>
+            <div className="card mb-4">
+              <div className="text-xs tracking-widest text-gray-500 dark:text-gray-400 uppercase mb-3">
                 Agent Leaderboard · لوحة الشرف
               </div>
               {leaderboard.length === 0 && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: 20 }}>
+                <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-5">
                   No agents ranked yet
                 </div>
               )}
               {leaderboard.map((agent, i) => (
-                <div key={agent.agent_id || i} style={{ display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 12px", borderRadius: 6, marginBottom: 4,
-                  background: i === 0 ? "rgba(201,162,39,0.08)" :
-                             i === 1 ? "rgba(192,192,192,0.06)" :
-                             i === 2 ? "rgba(205,127,50,0.06)" : "transparent",
-                  border: i < 3 ? "1px solid rgba(201,162,39,0.15)" : "1px solid transparent" }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 14,
-                    color: i === 0 ? "var(--gold)" : i < 3 ? "var(--amber)" : "var(--text-muted)",
-                    width: 24, textAlign: "center", fontWeight: 600 }}>
+                <div key={agent.agent_id || i}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-md mb-1 ${
+                    i === 0 ? "bg-amber-500/5 border border-amber-500/15" :
+                    i < 3 ? "bg-gray-100/50 dark:bg-zinc-800/30 border border-amber-500/10" :
+                    "border border-transparent"
+                  }`}>
+                  <div className={`font-mono text-sm w-6 text-center font-semibold ${
+                    i === 0 ? "text-mizan-gold" : i < 3 ? "text-amber-500" : "text-gray-500 dark:text-gray-400"
+                  }`}>
                     {i + 1}
                   </div>
-                  <div style={{ fontFamily: "Georgia, serif", fontSize: 14, color: "var(--gold)", width: 30 }}>
+                  <div className="font-serif text-sm text-mizan-gold w-8">
                     {agent.arabic_name ? agent.arabic_name.charAt(0) : ""}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-900 dark:text-gray-100 font-medium">
                       {agent.name}
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                    <div className="text-[9px] text-gray-500 dark:text-gray-400">
                       {agent.capabilities?.slice(0, 3).join(", ")}
                     </div>
                   </div>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: `${NAFS_COLORS[agent.nafs_level]}20`,
-                    color: NAFS_COLORS[agent.nafs_level] }}>
+                  <span className="text-[9px] font-mono px-1.5 rounded"
+                    style={{ background: `${NAFS_COLORS[agent.nafs_level]}20`,
+                      color: NAFS_COLORS[agent.nafs_level] }}>
                     {agent.nafs_level}
                   </span>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--amber)" }}>
+                  <div className="text-right">
+                    <div className="font-mono text-sm text-amber-500">
                       ★ {(agent.reputation_score || 0).toFixed(1)}
                     </div>
                   </div>

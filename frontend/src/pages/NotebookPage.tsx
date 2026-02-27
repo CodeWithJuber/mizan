@@ -119,41 +119,40 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
   if (!activeNotebook) {
     return (
       <>
-        <div className="panel-header">
-          <div className="panel-title">Notebooks · كِتَاب (Kitab)</div>
-          <button className="btn primary" onClick={() => setShowCreate(true)}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+          <h2 className="page-title">Notebooks · كِتَاب (Kitab)</h2>
+          <button className="btn-primary" onClick={() => setShowCreate(true)}>
             + New Notebook
           </button>
         </div>
-        <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div className="px-4 pb-2 pt-1 text-xs text-gray-500 dark:text-gray-400 italic">
           "Read! In the name of your Lord who created" — Quran 96:1
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, padding: 16, overflow: "auto", flex: 1 }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 p-4 overflow-auto flex-1">
           {notebooks.map(nb => (
-            <div key={nb.id} className="agent-card" onClick={() => loadNotebook(nb.id)}
-              style={{ cursor: "pointer" }}>
-              <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: "var(--gold)", marginBottom: 8 }}>كتاب</div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--text-primary)", fontWeight: 600 }}>{nb.title}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{nb.description}</div>
-              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <div className="stat" style={{ flex: 1 }}>
-                  <span className="stat-value">{nb.cell_count}</span>
-                  <span className="stat-label">Cells</span>
+            <div key={nb.id} className="card-hover cursor-pointer" onClick={() => loadNotebook(nb.id)}>
+              <div className="font-serif text-xl text-mizan-gold mb-2">كتاب</div>
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{nb.title}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{nb.description}</div>
+              <div className="flex gap-3 mt-2.5">
+                <div className="text-center py-1.5 px-1 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50 flex-1">
+                  <span className="block font-mono text-sm text-gray-900 dark:text-gray-100">{nb.cell_count}</span>
+                  <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">Cells</span>
                 </div>
-                <div className="stat" style={{ flex: 1 }}>
-                  <span className="stat-value">{nb.language}</span>
-                  <span className="stat-label">Language</span>
+                <div className="text-center py-1.5 px-1 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50 flex-1">
+                  <span className="block font-mono text-sm text-gray-900 dark:text-gray-100">{nb.language}</span>
+                  <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">Language</span>
                 </div>
-                <div className="stat" style={{ flex: 1 }}>
-                  <span className="stat-value">v{nb.version}</span>
-                  <span className="stat-label">Version</span>
+                <div className="text-center py-1.5 px-1 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50 flex-1">
+                  <span className="block font-mono text-sm text-gray-900 dark:text-gray-100">v{nb.version}</span>
+                  <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">Version</span>
                 </div>
               </div>
             </div>
           ))}
           {notebooks.length === 0 && (
-            <div className="empty-state" style={{ gridColumn: "1/-1" }}>
+            <div className="empty-state col-span-full">
               <div className="empty-arabic">كتاب</div>
               <div className="empty-text">No notebooks yet</div>
               <div className="empty-sub">"He taught by the pen" — 96:4</div>
@@ -165,24 +164,24 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
           <div className="modal-overlay" onClick={() => setShowCreate(false)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-title">
-                <span style={{ fontFamily: "Georgia", fontSize: 22, color: "var(--gold)" }}>كتاب</span>
+                <span className="font-serif text-[22px] text-mizan-gold">كتاب</span>
                 New Kitab Notebook
               </div>
-              <div className="form-group">
-                <label className="form-label">Title</label>
-                <input className="form-input" placeholder="e.g., Data Analysis" value={newTitle}
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</label>
+                <input className="input w-full text-sm" placeholder="e.g., Data Analysis" value={newTitle}
                   onChange={e => setNewTitle(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Language</label>
-                <select className="form-select" value={newLang} onChange={e => setNewLang(e.target.value)}>
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Language</label>
+                <select className="input w-full text-sm" value={newLang} onChange={e => setNewLang(e.target.value)}>
                   <option value="python">Python</option>
                   <option value="shell">Shell</option>
                 </select>
               </div>
               <div className="modal-footer">
-                <button className="btn" onClick={() => setShowCreate(false)}>Cancel</button>
-                <button className="btn primary" onClick={createNotebook} disabled={!newTitle}>Create</button>
+                <button className="btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+                <button className="btn-primary" onClick={createNotebook} disabled={!newTitle}>Create</button>
               </div>
             </div>
           </div>
@@ -194,85 +193,75 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
   // Active notebook view
   return (
     <>
-      <div className="panel-header">
-        <button className="btn" onClick={() => setActiveNotebook(null)} style={{ fontSize: 10 }}>Back</button>
-        <div className="panel-title">{activeNotebook.title} · كتاب</div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button className="btn" onClick={() => addCell("code")} style={{ fontSize: 10 }}>+ Code</button>
-          <button className="btn" onClick={() => addCell("markdown")} style={{ fontSize: 10 }}>+ Markdown</button>
-          <button className="btn primary" onClick={executeAll} style={{ fontSize: 10 }}>Run All</button>
-          <button className="btn" onClick={() => exportNotebook("markdown")} style={{ fontSize: 10 }}>Export</button>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <button className="btn-secondary text-[10px]" onClick={() => setActiveNotebook(null)}>Back</button>
+        <h2 className="page-title">{activeNotebook.title} · كتاب</h2>
+        <div className="flex gap-1.5">
+          <button className="btn-secondary text-[10px]" onClick={() => addCell("code")}>+ Code</button>
+          <button className="btn-secondary text-[10px]" onClick={() => addCell("markdown")}>+ Markdown</button>
+          <button className="btn-primary text-[10px]" onClick={executeAll}>Run All</button>
+          <button className="btn-secondary text-[10px]" onClick={() => exportNotebook("markdown")}>Export</button>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="flex-1 overflow-auto p-4">
         {(activeNotebook.cells || []).map((cell, i) => (
-          <div key={cell.id} style={{
-            marginBottom: 12, border: "1px solid var(--border)", borderRadius: 8,
-            background: "rgba(10,21,32,0.8)", overflow: "hidden",
-            borderLeft: `3px solid ${cell.cell_type === "markdown" ? "var(--sapphire)" : cell.status === "error" ? "var(--ruby)" : cell.status === "success" ? "var(--emerald)" : "var(--gold)"}`,
-          }}>
-            {/* Cell header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
-              background: "rgba(6,12,16,0.5)", borderBottom: "1px solid rgba(30,58,85,0.3)" }}>
-              <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+          <div key={cell.id} className="mb-3 border border-gray-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 overflow-hidden"
+            style={{
+              borderLeft: `3px solid ${cell.cell_type === "markdown" ? "#3b82f6" : cell.status === "error" ? "#ef4444" : cell.status === "success" ? "#10b981" : "#c9a227"}`,
+            }}>
+            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-200 dark:border-zinc-800">
+              <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
                 [{i}] {cell.cell_type}
               </span>
               {cell.execution_count != null && cell.execution_count > 0 && (
-                <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
                   run: {cell.execution_count}
                 </span>
               )}
-              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+              <div className="ml-auto flex gap-1">
                 {cell.cell_type !== "markdown" && (
-                  <button className="btn primary" style={{ fontSize: 9, padding: "2px 8px" }}
+                  <button className="btn-primary text-[9px] px-2 py-0.5"
                     onClick={() => executeCell(cell.id)}>Run</button>
                 )}
-                <button className="btn" style={{ fontSize: 9, padding: "2px 8px" }}
+                <button className="btn-secondary text-[9px] px-2 py-0.5"
                   onClick={() => { setEditingCell(cell.id); setCellSource(cell.source); }}>Edit</button>
               </div>
             </div>
 
-            {/* Cell source */}
             {editingCell === cell.id ? (
-              <div style={{ padding: 8 }}>
-                <textarea className="form-input" style={{ fontFamily: "var(--font-mono)", fontSize: 12,
-                  minHeight: 80, resize: "vertical", width: "100%" }}
+              <div className="p-2">
+                <textarea className="input w-full font-mono text-xs min-h-[80px] resize-y"
                   value={cellSource} onChange={e => setCellSource(e.target.value)} />
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <button className="btn primary" style={{ fontSize: 10 }} onClick={() => updateCell(cell.id)}>Save</button>
-                  <button className="btn" style={{ fontSize: 10 }} onClick={() => setEditingCell(null)}>Cancel</button>
+                <div className="flex gap-1.5 mt-1.5">
+                  <button className="btn-primary text-[10px]" onClick={() => updateCell(cell.id)}>Save</button>
+                  <button className="btn-secondary text-[10px]" onClick={() => setEditingCell(null)}>Cancel</button>
                 </div>
               </div>
             ) : (
-              <pre style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: 12,
-                color: cell.cell_type === "markdown" ? "var(--text-secondary)" : "var(--emerald)",
-                whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.5 }}>
+              <pre className={`px-3 py-2 font-mono text-xs whitespace-pre-wrap m-0 leading-relaxed ${
+                cell.cell_type === "markdown" ? "text-gray-600 dark:text-gray-300" : "text-emerald-500"
+              }`}>
                 {cell.source || "(empty)"}
               </pre>
             )}
 
-            {/* Cell outputs */}
             {cell.outputs?.length != null && cell.outputs.length > 0 && cell.outputs.map((out, oi) => (
-              <div key={oi} style={{ borderTop: "1px solid rgba(30,58,85,0.3)",
-                padding: "8px 12px", background: "rgba(3,6,8,0.5)" }}>
+              <div key={oi} className="border-t border-gray-200 dark:border-zinc-800 px-3 py-2 bg-gray-50 dark:bg-zinc-800/50">
                 {out.output_type === "error" ? (
-                  <pre style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ruby)",
-                    whiteSpace: "pre-wrap", margin: 0 }}>{out.text || out.stderr}</pre>
+                  <pre className="font-mono text-xs text-red-500 whitespace-pre-wrap m-0">{out.text || out.stderr}</pre>
                 ) : (
                   <>
                     {out.stdout && (
-                      <pre style={{ fontFamily: "var(--font-mono)", fontSize: 11,
-                        color: "var(--text-primary)", whiteSpace: "pre-wrap", margin: 0 }}>{out.stdout}</pre>
+                      <pre className="font-mono text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap m-0">{out.stdout}</pre>
                     )}
                     {out.stderr && (
-                      <pre style={{ fontFamily: "var(--font-mono)", fontSize: 11,
-                        color: "var(--amber)", whiteSpace: "pre-wrap", margin: 0 }}>{out.stderr}</pre>
+                      <pre className="font-mono text-xs text-amber-500 whitespace-pre-wrap m-0">{out.stderr}</pre>
                     )}
                   </>
                 )}
                 {out.execution_time != null && (
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+                  <div className="text-[9px] text-gray-500 dark:text-gray-400 font-mono mt-1">
                     {out.execution_time.toFixed(2)}s
                   </div>
                 )}

@@ -93,34 +93,25 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
 
   return (
     <>
-      <div className="panel-header">
-        <div className="panel-title">Automation · قَدَر (Qadr)</div>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <h2 className="page-title">Automation · قَدَر (Qadr)</h2>
+        <div className="flex gap-2">
           <button
-            className="btn primary"
+            className="btn-primary text-[10px]"
             onClick={() => setShowAddJob(true)}
-            style={{ fontSize: 10 }}
           >
             + Add Job
           </button>
           <button
-            className="btn"
+            className="btn-secondary text-[10px]"
             onClick={() => setShowAddWebhook(true)}
-            style={{ fontSize: 10 }}
           >
             + Add Webhook
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "4px 16px 8px",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          fontStyle: "italic",
-        }}
-      >
+      <div className="px-4 pb-2 pt-1 text-xs text-gray-500 dark:text-gray-400 italic">
         "Indeed, all things We created with predestination (Qadr)" — Quran 54:49
       </div>
 
@@ -140,12 +131,12 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       {loading && (
-        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <div className="p-4 text-xs text-gray-500 dark:text-gray-400 font-mono">
           Loading automation data...
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="flex-1 overflow-auto p-4">
         {activeTab === "jobs" && (
           <>
             {jobs.length === 0 && (
@@ -156,91 +147,41 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             {jobs.map((job) => (
-              <div key={job.id} className="memory-item">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 8,
-                  }}
-                >
+              <div key={job.id} className="card mb-3">
+                <div className="flex items-center gap-2.5 mb-2">
                   <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: job.enabled
-                        ? "rgba(16,185,129,0.15)"
-                        : "rgba(74,104,128,0.2)",
-                      border: `1px solid ${job.enabled ? "rgba(16,185,129,0.3)" : "rgba(74,104,128,0.3)"}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 14,
-                    }}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                      job.enabled
+                        ? "bg-emerald-500/15 border border-emerald-500/30"
+                        : "bg-gray-500/20 border border-gray-500/30"
+                    }`}
                   >
                     {job.enabled ? "⏱" : "⏸"}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                        fontWeight: 600,
-                      }}
-                    >
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                       {job.name}
                     </div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        color: "var(--gold)",
-                      }}
-                    >
+                    <div className="font-mono text-[10px] text-mizan-gold">
                       {job.cron}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
+                  <div className="text-right">
+                    <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                       Runs: {job.run_count}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
+                    <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                       Next: {job.next_run ? new Date(job.next_run).toLocaleString() : "—"}
                     </div>
                   </div>
                   <button
-                    className="btn danger"
-                    style={{ padding: "4px 8px", fontSize: 10 }}
+                    className="btn-danger px-2 py-1 text-[10px]"
                     onClick={() => removeJob(job.id)}
                   >
                     Remove
                   </button>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-secondary)",
-                    padding: "6px 10px",
-                    background: "rgba(6,12,16,0.5)",
-                    borderRadius: 4,
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
+                <div className="text-xs text-gray-600 dark:text-gray-300 px-2.5 py-1.5 bg-gray-100 dark:bg-zinc-800/50 rounded font-mono">
                   Task: {job.task}
                 </div>
               </div>
@@ -258,56 +199,20 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             {webhooks.map((wh) => (
-              <div key={wh.id} className="memory-item">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: "rgba(59,130,246,0.15)",
-                      border: "1px solid rgba(59,130,246,0.3)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 14,
-                    }}
-                  >
+              <div key={wh.id} className="card mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-sm">
                     🔗
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    >
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-900 dark:text-gray-100">
                       {wh.name}
                     </div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        color: "var(--sapphire)",
-                      }}
-                    >
+                    <div className="font-mono text-[10px] text-blue-500">
                       {wh.path}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                     Triggered: {wh.trigger_count}x
                   </div>
                 </div>
@@ -321,45 +226,35 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
         <div className="modal-overlay" onClick={() => setShowAddJob(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
-              <span
-                style={{ fontFamily: "Georgia", fontSize: 22, color: "var(--gold)" }}
-              >
+              <span className="font-serif text-[22px] text-mizan-gold">
                 قدر
               </span>
               Schedule New Job
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Job Name</label>
+            <div className="space-y-1.5 mb-4">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Job Name</label>
               <input
-                className="form-input"
+                className="input w-full text-sm"
                 placeholder="e.g., Morning Briefing"
                 value={newJob.name}
                 onChange={(e) => setNewJob({ ...newJob, name: e.target.value })}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Cron Schedule</label>
+            <div className="space-y-1.5 mb-4">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cron Schedule</label>
               <input
-                className="form-input"
+                className="input w-full text-sm"
                 placeholder="0 9 * * *"
                 value={newJob.cron}
                 onChange={(e) => setNewJob({ ...newJob, cron: e.target.value })}
               />
-              <div
-                style={{
-                  display: "flex",
-                  gap: 4,
-                  marginTop: 6,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div className="flex gap-1 mt-1.5 flex-wrap">
                 {CRON_PRESETS.map((preset) => (
                   <button
                     key={preset.cron}
-                    className="btn"
-                    style={{ fontSize: 9, padding: "2px 8px" }}
+                    className="btn-secondary text-[9px] px-2 py-0.5"
                     onClick={() => setNewJob({ ...newJob, cron: preset.cron })}
                   >
                     {preset.label}
@@ -368,11 +263,10 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Task Description</label>
+            <div className="space-y-1.5 mb-4">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Task Description</label>
               <textarea
-                className="form-input"
-                style={{ minHeight: 60, resize: "vertical" }}
+                className="input w-full text-sm min-h-[60px] resize-y"
                 placeholder="What should the agent do?"
                 value={newJob.task}
                 onChange={(e) => setNewJob({ ...newJob, task: e.target.value })}
@@ -380,11 +274,11 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="modal-footer">
-              <button className="btn" onClick={() => setShowAddJob(false)}>
+              <button className="btn-secondary" onClick={() => setShowAddJob(false)}>
                 Cancel
               </button>
               <button
-                className="btn primary"
+                className="btn-primary"
                 onClick={addJob}
                 disabled={!newJob.name || !newJob.task}
               >
@@ -399,18 +293,16 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
         <div className="modal-overlay" onClick={() => setShowAddWebhook(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
-              <span
-                style={{ fontFamily: "Georgia", fontSize: 22, color: "var(--gold)" }}
-              >
+              <span className="font-serif text-[22px] text-mizan-gold">
                 خطاف
               </span>
               Create Webhook
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Webhook Name</label>
+            <div className="space-y-1.5 mb-4">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Webhook Name</label>
               <input
-                className="form-input"
+                className="input w-full text-sm"
                 placeholder="e.g., GitHub Push Handler"
                 value={newWebhook.name}
                 onChange={(e) =>
@@ -419,34 +311,27 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Task Template</label>
+            <div className="space-y-1.5 mb-4">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Task Template</label>
               <textarea
-                className="form-input"
-                style={{ minHeight: 60, resize: "vertical" }}
+                className="input w-full text-sm min-h-[60px] resize-y"
                 placeholder='e.g., Process push event from {repo} by {sender}'
                 value={newWebhook.task_template}
                 onChange={(e) =>
                   setNewWebhook({ ...newWebhook, task_template: e.target.value })
                 }
               />
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  marginTop: 4,
-                }}
-              >
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
                 Use {"{key}"} placeholders for webhook payload values
               </div>
             </div>
 
             <div className="modal-footer">
-              <button className="btn" onClick={() => setShowAddWebhook(false)}>
+              <button className="btn-secondary" onClick={() => setShowAddWebhook(false)}>
                 Cancel
               </button>
               <button
-                className="btn primary"
+                className="btn-primary"
                 onClick={addWebhookHandler}
                 disabled={!newWebhook.name || !newWebhook.task_template}
               >

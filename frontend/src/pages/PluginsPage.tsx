@@ -122,10 +122,10 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
 
   return (
     <>
-      <div className="panel-header">
-        <div className="panel-title">Plugin System · وَحْي (Wahy)</div>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <h2 className="page-title">Plugin System · وَحْي (Wahy)</h2>
       </div>
-      <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+      <div className="px-4 pb-2 pt-1 text-xs text-gray-500 dark:text-gray-400 italic">
         "And We have revealed to you the Book as clarification for all things" — Quran 16:89
       </div>
 
@@ -143,7 +143,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="flex-1 overflow-auto p-4">
 
         {/* ===== INSTALLED PLUGINS ===== */}
         {activeTab === "installed" && (
@@ -183,8 +183,8 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
         {/* ===== HOOKS ===== */}
         {activeTab === "hooks" && (
           <>
-            <div style={{ marginBottom: 12 }}>
-              <button className="btn" onClick={loadHooks}>Refresh</button>
+            <div className="mb-3">
+              <button className="btn-secondary" onClick={loadHooks}>Refresh</button>
             </div>
             {hooks.length === 0 && (
               <div className="empty-state">
@@ -193,21 +193,15 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                 <div className="empty-sub">Plugins register hooks when activated</div>
               </div>
             )}
-            <div style={{ padding: 16, background: "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-              border: "1px solid var(--border)", borderRadius: 10 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.2em",
-                color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 12 }}>
+            <div className="card">
+              <div className="text-[10px] tracking-widest text-gray-500 dark:text-gray-400 uppercase mb-3">
                 Event Hooks · خطافات
               </div>
               {hooks.map((hook, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
-                  borderRadius: 4, marginBottom: 4,
-                  background: "rgba(3,6,8,0.4)", border: "1px solid var(--border)" }}>
-                  <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--sapphire)",
-                    width: 160 }}>{hook.event}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-primary)" }}>{hook.plugin}</span>
-                  <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)" }}>
+                <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-800">
+                  <span className="text-[10px] font-mono text-blue-500 w-40">{hook.event}</span>
+                  <span className="text-[10px] text-gray-900 dark:text-gray-100">{hook.plugin}</span>
+                  <span className="ml-auto text-[9px] font-mono text-gray-500 dark:text-gray-400">
                     priority: {hook.priority}
                   </span>
                 </div>
@@ -218,62 +212,58 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
 
         {/* ===== CREATE PLUGIN ===== */}
         {activeTab === "create" && (
-          <div style={{ maxWidth: 600 }}>
-            <div style={{ padding: 16, background: "rgba(15,32,48,0.9)",
-              border: "1px solid var(--gold)", borderRadius: 10 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
+          <div className="max-w-[600px]">
+            <div className="card border-mizan-gold">
+              <div className="text-sm text-mizan-gold mb-3 font-semibold">
                 Create Plugin Scaffold · إنشاء
               </div>
-              <div className="form-group">
-                <label className="form-label">Plugin Name</label>
-                <input className="form-input" value={createForm.name}
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Plugin Name</label>
+                <input className="input w-full text-sm" value={createForm.name}
                   onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                   placeholder="my_custom_plugin" />
               </div>
-              <div className="form-group">
-                <label className="form-label">Description</label>
-                <input className="form-input" value={createForm.description}
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</label>
+                <input className="input w-full text-sm" value={createForm.description}
                   onChange={e => setCreateForm({ ...createForm, description: e.target.value })}
                   placeholder="What does this plugin do?" />
               </div>
-              <div className="form-group">
-                <label className="form-label">Plugin Type</label>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Plugin Type</label>
+                <div className="flex gap-1.5 flex-wrap">
                   {Object.entries(TYPE_LABELS).map(([type, label]) => (
                     <button key={type}
-                      className={`btn ${createForm.plugin_type === type ? "primary" : ""}`}
-                      style={{ flex: "1 0 30%", justifyContent: "center", padding: "8px" }}
+                      className={`${createForm.plugin_type === type ? "btn-primary" : "btn-secondary"} flex-[1_0_30%] justify-center py-2`}
                       onClick={() => setCreateForm({ ...createForm, plugin_type: type })}>
-                      <span style={{ fontSize: 10 }}>{label}</span>
+                      <span className="text-[10px]">{label}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Author</label>
-                <input className="form-input" value={createForm.author}
+              <div className="space-y-1.5 mb-4">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Author</label>
+                <input className="input w-full text-sm" value={createForm.author}
                   onChange={e => setCreateForm({ ...createForm, author: e.target.value })}
                   placeholder="Your name" />
               </div>
-              <button className="btn primary" style={{ width: "100%", justifyContent: "center", padding: 12 }}
+              <button className="btn-primary w-full justify-center py-3"
                 onClick={createPlugin}
                 disabled={!createForm.name || !createForm.description}>
                 Create Plugin Scaffold
               </button>
             </div>
 
-            <div style={{ marginTop: 16, padding: 16, background: "rgba(3,6,8,0.5)",
-              border: "1px solid var(--border)", borderRadius: 8 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 11, color: "var(--text-muted)",
-                letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>
+            <div className="card mt-4">
+              <div className="text-xs text-gray-500 dark:text-gray-400 tracking-wide uppercase mb-2">
                 Plugin Types
               </div>
               {Object.entries(TYPE_LABELS).map(([type, label]) => (
-                <div key={type} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%",
-                    background: TYPE_COLORS[type] }} />
-                  <span style={{ fontSize: 11, color: "var(--text-primary)" }}>{label}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                <div key={type} className="flex items-center gap-2 py-1">
+                  <span className="w-2 h-2 rounded-full"
+                    style={{ background: TYPE_COLORS[type] }} />
+                  <span className="text-xs text-gray-900 dark:text-gray-100">{label}</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">
                     {type === "ayah" ? "— Add new tool capabilities" :
                      type === "bab" ? "— New communication channels" :
                      type === "hafiz" ? "— Custom memory backends" :
@@ -294,87 +284,87 @@ function PluginCard({ plugin, onActivate, onDeactivate, onReload, onVerify }: Pl
   const [expanded, setExpanded] = useState<boolean>(false);
 
   return (
-    <div className="memory-item" style={{
-      borderLeft: `3px solid ${TYPE_COLORS[plugin.plugin_type] || "var(--text-muted)"}`,
-      cursor: "pointer" }}
+    <div className="card mb-3 cursor-pointer"
+      style={{ borderLeft: `3px solid ${TYPE_COLORS[plugin.plugin_type] || "#6b7280"}` }}
       onClick={() => setExpanded(!expanded)}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-          borderRadius: 3, background: `${TYPE_COLORS[plugin.plugin_type]}20`,
-          color: TYPE_COLORS[plugin.plugin_type],
-          border: `1px solid ${TYPE_COLORS[plugin.plugin_type]}30`,
-          textTransform: "uppercase" }}>
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-mono px-1.5 rounded uppercase"
+          style={{
+            background: `${TYPE_COLORS[plugin.plugin_type]}20`,
+            color: TYPE_COLORS[plugin.plugin_type],
+            border: `1px solid ${TYPE_COLORS[plugin.plugin_type]}30`,
+          }}>
           {TYPE_LABELS[plugin.plugin_type] || plugin.plugin_type}
         </span>
         {plugin.trust_level && (
-          <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-            borderRadius: 3, background: `${TRUST_COLORS[plugin.trust_level]}20`,
-            color: TRUST_COLORS[plugin.trust_level] }}>
+          <span className="text-[9px] font-mono px-1.5 rounded"
+            style={{
+              background: `${TRUST_COLORS[plugin.trust_level]}20`,
+              color: TRUST_COLORS[plugin.trust_level],
+            }}>
             {plugin.trust_level}
           </span>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "var(--font-mono)",
-          color: plugin.active ? "var(--emerald)" : "var(--text-muted)" }}>
+        <span className={`ml-auto text-[9px] font-mono ${plugin.active ? "text-emerald-500" : "text-gray-500 dark:text-gray-400"}`}>
           {plugin.active ? "ACTIVE" : "INACTIVE"}
         </span>
       </div>
 
-      <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500, marginTop: 6 }}>
+      <div className="text-xs text-gray-900 dark:text-gray-100 font-medium mt-1.5">
         {plugin.name}
-        <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginLeft: 8 }}>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal ml-2">
           v{plugin.version}
         </span>
       </div>
 
       {plugin.description && (
-        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
+        <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
           {plugin.description}
         </div>
       )}
 
       {plugin.quranic_reference && (
-        <div style={{ fontSize: 10, color: "var(--gold)", fontStyle: "italic", marginTop: 4 }}>
+        <div className="text-[10px] text-mizan-gold italic mt-1">
           {plugin.quranic_reference}
         </div>
       )}
 
       {expanded && (
-        <div style={{ marginTop: 8, padding: 8, background: "rgba(3,6,8,0.5)",
-          borderRadius: 4, border: "1px solid var(--border)" }}>
+        <div className="mt-2 p-2 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-200 dark:border-zinc-800">
           {plugin.author && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">
               Author: {plugin.author}
             </div>
           )}
           {(plugin.permissions?.length ?? 0) > 0 && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">
               Permissions: {plugin.permissions!.join(", ")}
             </div>
           )}
           {plugin.checksum && (
-            <div style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: 6 }}>
+            <div className="text-[9px] font-mono text-gray-500 dark:text-gray-400 mb-1.5">
               SHA-256: {plugin.checksum.slice(0, 16)}...
             </div>
           )}
-          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <div className="flex gap-1.5 mt-1.5">
             {plugin.active ? (
               <>
-                <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+                <button className="btn-secondary text-[10px] px-2 py-0.5"
                   onClick={e => { e.stopPropagation(); onDeactivate(plugin.name); }}>
                   Deactivate
                 </button>
-                <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+                <button className="btn-secondary text-[10px] px-2 py-0.5"
                   onClick={e => { e.stopPropagation(); onReload(plugin.name); }}>
                   Reload
                 </button>
               </>
             ) : (
-              <button className="btn primary" style={{ fontSize: 10, padding: "3px 8px" }}
+              <button className="btn-primary text-[10px] px-2 py-0.5"
                 onClick={e => { e.stopPropagation(); onActivate(plugin.name); }}>
                 Activate
               </button>
             )}
-            <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+            <button className="btn-secondary text-[10px] px-2 py-0.5"
               onClick={e => { e.stopPropagation(); onVerify(plugin.name); }}>
               Verify
             </button>

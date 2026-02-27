@@ -130,12 +130,11 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
 
   return (
     <>
-      <div className="panel-header">
-        <div className="panel-title">Skills · حِكْمَة (Hikmah)</div>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+        <h2 className="page-title">Skills · حِكْمَة (Hikmah)</h2>
+        <div className="flex gap-2">
           <input
-            className="form-input"
-            style={{ width: 200, padding: "5px 10px" }}
+            className="input w-[200px] text-sm px-2.5 py-1.5"
             placeholder="Search skills..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -143,14 +142,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "4px 16px 8px",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          fontStyle: "italic",
-        }}
-      >
+      <div className="px-4 pb-2 pt-1 text-xs text-gray-500 dark:text-gray-400 italic">
         "He gives wisdom (Hikmah) to whom He wills, and whoever has been given wisdom has
         certainly been given much good" — Quran 2:269
       </div>
@@ -173,141 +165,64 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       {loading && (
-        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <div className="p-4 text-xs text-gray-500 dark:text-gray-400 font-mono">
           Loading skills...
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-          gap: 12,
-          padding: 16,
-          overflow: "auto",
-          flex: 1,
-        }}
-      >
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 p-4 overflow-auto flex-1">
         {filteredSkills.map((skill) => {
           const catColor = CATEGORY_COLORS[skill.category] || "#c9a227";
 
           return (
             <div
               key={skill.name}
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-                border: `1px solid ${skill.installed ? catColor + "40" : "var(--border)"}`,
-                borderRadius: 10,
-                padding: 16,
-                position: "relative",
-              }}
+              className="card relative"
+              style={{ borderColor: skill.installed ? `${catColor}40` : undefined }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="flex items-start gap-3 mb-2.5">
                 <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center font-serif text-sm shrink-0"
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
                     background: `${catColor}15`,
                     border: `1px solid ${catColor}30`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 14,
                     color: catColor,
-                    flexShrink: 0,
                   }}
                 >
                   {skill.arabic}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: 13,
-                      color: "var(--text-primary)",
-                      fontWeight: 600,
-                    }}
-                  >
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                     {skill.display}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      marginTop: 2,
-                      lineHeight: 1.4,
-                    }}
-                  >
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
                     {skill.description}
                   </div>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="flex items-center gap-1.5 mb-2.5">
                 <span
+                  className="text-[9px] font-mono px-1.5 rounded uppercase tracking-wide"
                   style={{
-                    fontSize: 9,
-                    fontFamily: "var(--font-mono)",
-                    padding: "1px 6px",
-                    borderRadius: 3,
                     background: `${catColor}15`,
                     border: `1px solid ${catColor}30`,
                     color: catColor,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
                   }}
                 >
                   {skill.category}
                 </span>
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)",
-                  }}
-                >
+                <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
                   v{skill.version}
                 </span>
                 {skill.installed && (
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      fontSize: 9,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--emerald)",
-                    }}
-                  >
+                  <span className="ml-auto text-[9px] font-mono text-emerald-500">
                     INSTALLED
                   </span>
                 )}
               </div>
 
-              {/* Permissions */}
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="flex flex-wrap gap-1 mb-2.5">
                 {(skill.permissions || []).map((perm) => (
                   <span key={perm} className="tool-tag">
                     {perm}
@@ -316,8 +231,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
               </div>
 
               <button
-                className={`btn ${skill.installed ? "danger" : "primary"}`}
-                style={{ width: "100%", justifyContent: "center", fontSize: 10 }}
+                className={`${skill.installed ? "btn-danger" : "btn-primary"} w-full justify-center text-[10px]`}
                 onClick={() =>
                   skill.installed
                     ? uninstallSkill(skill.name)
@@ -331,7 +245,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         })}
 
         {filteredSkills.length === 0 && (
-          <div className="empty-state" style={{ gridColumn: "1/-1" }}>
+          <div className="empty-state col-span-full">
             <div className="empty-arabic">حكمة</div>
             <div className="empty-text">No skills found</div>
             <div className="empty-sub">Search or browse the MizanHub registry</div>
