@@ -1245,7 +1245,7 @@ function AppInner() {
         <div className="flex items-center gap-2.5">
           <div className="text-2xl leading-none select-none text-mizan-gold" style={{ fontFamily: "Georgia, serif" }}>&#1605;&#1610;&#1586;&#1575;&#1606;</div>
           <div className="flex flex-col">
-            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 tracking-wide">MIZAN</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-wide">MIZAN</span>
             <span className="text-xs text-gray-400 dark:text-gray-500 tracking-widest">v{appVersion}</span>
           </div>
         </div>
@@ -1273,7 +1273,7 @@ function AppInner() {
           <div className="flex-1 py-2">
             {navSections.map(section => (
               <div key={section.label} className="px-2 mb-1">
-                <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 py-2">
+                <div className="text-sm font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 py-2">
                   {section.label}
                 </div>
                 {section.items.map(item => (
@@ -1297,7 +1297,7 @@ function AppInner() {
 
           {selectedAgent && (
             <div className="px-3 py-3 border-t border-gray-200 dark:border-zinc-800">
-              <div className="text-xs uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">Active Agent</div>
+              <div className="text-sm uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">Active Agent</div>
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-mizan-gold text-xs font-semibold">
                   {selectedAgent.name[0]?.toUpperCase()}

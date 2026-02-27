@@ -144,7 +144,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                   </div>
                   <div>
                     <div className="font-medium text-gray-900 dark:text-gray-100">{provider.display}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
                       {provider.configured ? (
                         <span className="text-emerald-600 dark:text-emerald-400">Configured</span>
                       ) : (
@@ -161,7 +161,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                     {provider.models.slice(0, 3).map((m) => (
                       <div
                         key={m.id}
-                        className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors ${
+                        className={`text-sm px-2 py-1 rounded cursor-pointer transition-colors ${
                           selectedProvider === provider.name && selectedModel === m.id
                             ? "bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20"
                             : "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10"
@@ -210,7 +210,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
 
                 {/* Health result */}
                 {h && (
-                  <div className={`mt-2 px-2 py-1 rounded text-xs ${h.healthy
+                  <div className={`mt-2 px-2 py-1 rounded text-sm ${h.healthy
                     ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                     : "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400"
                   }`}>
@@ -270,7 +270,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
             </div>
             <div className="max-h-64 overflow-y-auto space-y-1 scrollbar-thin">
               {models[browseProvider].length === 0 ? (
-                <div className="text-xs text-gray-400 dark:text-gray-500 py-4 text-center">
+                <div className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
                   No models found. {browseProvider === "ollama" ? "Is Ollama running?" : "Check API key."}
                 </div>
               ) : (
@@ -288,7 +288,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                     }}
                   >
                     <div>
-                      <div className="text-xs font-mono text-gray-900 dark:text-gray-200">{m.id}</div>
+                      <div className="text-sm font-mono text-gray-900 dark:text-gray-200">{m.id}</div>
                       {m.name && m.name !== m.id && (
                         <div className="text-xs text-gray-500 dark:text-gray-400">{m.name}</div>
                       )}
@@ -310,8 +310,8 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
 
         {/* Setup Guide */}
         <div className="card">
-          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">Quick Setup</h3>
-          <div className="space-y-2 text-xs font-mono">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">Quick Setup</h3>
+          <div className="space-y-2 text-sm font-mono">
             <div>
               <span className="text-amber-600 dark:text-amber-400">Anthropic:</span>{" "}
               <span className="text-gray-600 dark:text-gray-400">ANTHROPIC_API_KEY=sk-ant-...</span>

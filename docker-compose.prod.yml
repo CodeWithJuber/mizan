@@ -45,6 +45,7 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
       - SECRET_KEY=${SECRET_KEY}
