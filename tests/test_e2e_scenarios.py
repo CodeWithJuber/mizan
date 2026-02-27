@@ -29,12 +29,12 @@ Scenario 8: Security Gauntlet
   Various attack attempts → all blocked → audit logged
 """
 
-import pytest
-import asyncio
-import tempfile
 import sys
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -43,12 +43,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 # SCENARIO 1: First-Time Setup (Doctor Self-Healing)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioFirstTimeSetup:
     """A new user installs MIZAN and runs the doctor."""
 
     def test_fresh_install_doctor_diagnosis(self):
         """Doctor should diagnose a fresh install and identify issues."""
-        from doctor import run_doctor, CheckStatus
+        from doctor import run_doctor
 
         report = run_doctor(auto_fix=False, check_only=True)
         assert len(report.checks) >= 10
@@ -57,7 +58,7 @@ class TestScenarioFirstTimeSetup:
 
     def test_doctor_auto_fixes_in_temp_dir(self):
         """Doctor should auto-fix data directory in a temp install."""
-        from doctor import check_data_directory, CheckStatus
+        from doctor import CheckStatus, check_data_directory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("doctor._get_project_root", return_value=Path(tmpdir)):
@@ -67,7 +68,7 @@ class TestScenarioFirstTimeSetup:
 
     def test_doctor_creates_env_from_template(self):
         """Doctor should create .env from .env.example."""
-        from doctor import check_env_file, CheckStatus
+        from doctor import CheckStatus, check_env_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
@@ -79,7 +80,7 @@ class TestScenarioFirstTimeSetup:
 
     def test_doctor_generates_secret_key(self):
         """Doctor should replace insecure default SECRET_KEY."""
-        from doctor import check_secret_key, CheckStatus
+        from doctor import CheckStatus, check_secret_key
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
@@ -92,7 +93,7 @@ class TestScenarioFirstTimeSetup:
 
     def test_doctor_report_json_format(self):
         """Doctor report should serialize to valid JSON."""
-        from doctor import run_doctor, report_to_dict
+        from doctor import report_to_dict, run_doctor
 
         report = run_doctor(check_only=True)
         d = report_to_dict(report)
@@ -103,7 +104,7 @@ class TestScenarioFirstTimeSetup:
 
     def test_doctor_plain_text_format(self):
         """Doctor report should format as readable plain text."""
-        from doctor import run_doctor, format_report_plain
+        from doctor import format_report_plain, run_doctor
 
         report = run_doctor(check_only=True)
         text = format_report_plain(report)
@@ -115,6 +116,7 @@ class TestScenarioFirstTimeSetup:
 # SCENARIO 2: Learning Session (No Duplication)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioLearningSession:
     """User teaches the system multiple facts. System learns without duplication."""
 
@@ -124,7 +126,7 @@ class TestScenarioLearningSession:
         net = MasalikNetwork()
 
         # Teach: "Python is great for data science"
-        result1 = net.encode("Python is great for data science", importance=0.8)
+        net.encode("Python is great for data science", importance=0.8)
         pathways_after_first = len(net.pathways)
         concepts_after_first = len(net.concepts)
 
@@ -170,6 +172,7 @@ class TestScenarioLearningSession:
 # SCENARIO 3: Recall & Association
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioRecallAssociation:
     """System learns multiple topics, user queries, finds cross-topic associations."""
 
@@ -186,7 +189,6 @@ class TestScenarioRecallAssociation:
 
         # Query about Python → should find web, Django, Flask associations
         results = net.recall("Python")
-        concepts = [r[0] for r in results]
         # Should find framework-related concepts through Python
         assert len(results) > 0
 
@@ -197,8 +199,9 @@ class TestScenarioRecallAssociation:
         net.encode("SQL databases store structured data", importance=0.8)
 
         # Get pathway weights before recall
-        weights_before = {k: p.weight for k, p in net.pathways.items()
-                         if p.pathway_type != "fitrah"}
+        weights_before = {
+            k: p.weight for k, p in net.pathways.items() if p.pathway_type != "fitrah"
+        }
 
         # Recall (Dhikr) — should strengthen
         net.recall("SQL databases")
@@ -216,13 +219,14 @@ class TestScenarioRecallAssociation:
 # SCENARIO 4: Agent Lifecycle
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioAgentLifecycle:
     """Create agent → work → evolve → deplete energy → rest → recover."""
 
     def test_full_agent_lifecycle(self):
+        from agents.specialized import create_agent
         from core.ruh_engine import RuhEngine
         from core.shukr import ShukrSystem
-        from agents.specialized import create_agent
 
         ruh = RuhEngine()
         shukr = ShukrSystem()
@@ -232,7 +236,11 @@ class TestScenarioAgentLifecycle:
         wali.validate_file_path.return_value = True
         wali.audit = MagicMock()
         izn = MagicMock()
-        izn.check_permission.return_value = {"allowed": True, "reason": "ok", "requires_approval": False}
+        izn.check_permission.return_value = {
+            "allowed": True,
+            "reason": "ok",
+            "requires_approval": False,
+        }
 
         # 1. Create agent
         agent = create_agent("general", name="Worker", wali=wali, izn=izn)
@@ -240,7 +248,7 @@ class TestScenarioAgentLifecycle:
 
         # 2. Agent works on tasks
         ruh.initialize_agent(agent.id)
-        for i in range(30):
+        for _i in range(30):
             # Simulate successful task
             ruh.consume_energy(agent.id, "moderate")
             agent.total_tasks += 1
@@ -270,6 +278,7 @@ class TestScenarioAgentLifecycle:
 # SCENARIO 5: Error Recovery (Tawbah)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioErrorRecovery:
     """Agent encounters error → Tawbah recovery → learns → succeeds next time."""
 
@@ -298,7 +307,8 @@ class TestScenarioErrorRecovery:
 
         # 5. Verify success
         tawbah.verify(
-            record, success=True,
+            record,
+            success=True,
             lesson="Always validate file paths before reading, create directories as needed",
         )
         assert record.success is True
@@ -336,11 +346,12 @@ class TestScenarioErrorRecovery:
 # SCENARIO 6: Emotional Intelligence
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioEmotionalIntelligence:
     """User goes through different emotions → Qalb adapts response tone."""
 
     def test_emotional_journey(self):
-        from core.qalb import QalbEngine, EmotionalState, ToneStyle
+        from core.qalb import EmotionalState, QalbEngine, ToneStyle
 
         qalb = QalbEngine()
         user_id = "user-frustrated-dev"
@@ -377,6 +388,7 @@ class TestScenarioEmotionalIntelligence:
 # SCENARIO 7: Long-Running Task with Sabr
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioLongRunningTask:
     """Complex task → Sabr decomposes → step-by-step execution → completion."""
 
@@ -400,7 +412,7 @@ class TestScenarioLongRunningTask:
             assert step is not None
             assert step.state == SabrTaskState.RUNNING
 
-            sabr.complete_step(wf.id, result=f"Completed step {i+1}")
+            sabr.complete_step(wf.id, result=f"Completed step {i + 1}")
 
         # 4. Verify completion
         assert wf.state == SabrTaskState.COMPLETED
@@ -410,9 +422,16 @@ class TestScenarioLongRunningTask:
         from core.sabr import SabrEngine, SabrTaskState
 
         sabr = SabrEngine()
-        wf = sabr.create_workflow("agent-1", "Long task", [
-            "Step 1", "Step 2", "Step 3", "Step 4",
-        ])
+        wf = sabr.create_workflow(
+            "agent-1",
+            "Long task",
+            [
+                "Step 1",
+                "Step 2",
+                "Step 3",
+                "Step 4",
+            ],
+        )
 
         # Execute first two steps
         sabr.start_step(wf.id)
@@ -442,18 +461,19 @@ class TestScenarioLongRunningTask:
 # SCENARIO 8: Security Gauntlet
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioSecurityGauntlet:
     """Various attack attempts → all should be caught and logged."""
 
     def test_command_injection_attacks(self):
-        from security.wali import WaliGuardian, SecurityConfig
+        from security.wali import SecurityConfig, WaliGuardian
 
         wali = WaliGuardian(config=SecurityConfig())
 
         attacks = [
             "rm -rf /",
             "rm -rf /*",
-            ":(){ :|:& };:",        # Fork bomb
+            ":(){ :|:& };:",  # Fork bomb
             "dd if=/dev/zero of=/dev/sda",
             "sudo rm -rf /tmp",
             "> /dev/sda",
@@ -462,11 +482,10 @@ class TestScenarioSecurityGauntlet:
         ]
 
         for attack in attacks:
-            assert wali.validate_command(attack) is False, \
-                f"Should have blocked: {attack}"
+            assert wali.validate_command(attack) is False, f"Should have blocked: {attack}"
 
     def test_ssrf_attacks(self):
-        from security.wali import WaliGuardian, SecurityConfig
+        from security.wali import SecurityConfig, WaliGuardian
 
         wali = WaliGuardian(config=SecurityConfig())
 
@@ -481,8 +500,7 @@ class TestScenarioSecurityGauntlet:
         ]
 
         for url in ssrf_attempts:
-            assert wali.validate_url(url) is False, \
-                f"Should have blocked SSRF: {url}"
+            assert wali.validate_url(url) is False, f"Should have blocked SSRF: {url}"
 
     def test_path_traversal_attacks(self):
         from security.validation import sanitize_path
@@ -495,8 +513,7 @@ class TestScenarioSecurityGauntlet:
 
         for path in traversals:
             sanitized = sanitize_path(path)
-            assert ".." not in sanitized, \
-                f"Path traversal not resolved: {path} → {sanitized}"
+            assert ".." not in sanitized, f"Path traversal not resolved: {path} → {sanitized}"
 
     def test_input_overflow_attacks(self):
         from security.validation import validate_text_input
@@ -524,7 +541,7 @@ class TestScenarioSecurityGauntlet:
             assert is_safe is False, f"Should have blocked: {pkg}"
 
     def test_audit_log_captures_attacks(self):
-        from security.wali import WaliGuardian, SecurityConfig
+        from security.wali import SecurityConfig, WaliGuardian
 
         wali = WaliGuardian(config=SecurityConfig())
 
@@ -542,6 +559,7 @@ class TestScenarioSecurityGauntlet:
 # ═══════════════════════════════════════════════════════════════════════════════
 # SCENARIO 9: QCA Full Pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestScenarioQCAPipeline:
     """User question flows through all QCA layers."""
@@ -591,7 +609,7 @@ class TestScenarioQCAPipeline:
         assert tag.confidence >= 0.9
 
     def test_cognitive_method_selection(self):
-        from qca.cognitive_methods import select_method, CognitiveMethod
+        from qca.cognitive_methods import CognitiveMethod, select_method
 
         # Different queries should route to different methods
         assert select_method("prove this theorem logically") == CognitiveMethod.ISTIDLAL
@@ -604,14 +622,16 @@ class TestScenarioQCAPipeline:
 # SCENARIO 10: Integrated Memory + Agent + QCA
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestScenarioIntegrated:
     """Test interactions between memory, agent, and QCA systems."""
 
     @pytest.mark.asyncio
     async def test_agent_learns_and_remembers(self):
         """Agent completes task → encodes to memory → recalls later."""
-        from memory.dhikr import DhikrMemorySystem
         import tempfile
+
+        from memory.dhikr import DhikrMemorySystem
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             memory = DhikrMemorySystem(db_path=f.name)
@@ -640,7 +660,9 @@ class TestScenarioIntegrated:
         # Train masalik with domain knowledge
         net = MasalikNetwork()
         net.encode("SQL injection attacks exploit user input validation gaps", importance=0.9)
-        net.encode("Prepared statements prevent SQL injection by parameterizing queries", importance=0.9)
+        net.encode(
+            "Prepared statements prevent SQL injection by parameterizing queries", importance=0.9
+        )
         net.encode("Input validation is critical for web security", importance=0.9)
 
         # Use QCA to reason

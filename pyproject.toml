@@ -108,12 +108,20 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "S101",  # assert usage (ok in tests)
+    "S104",  # hardcoded bind all interfaces (intentional for dev servers)
+    "S105",  # hardcoded password (false positives on field names)
+    "S108",  # hardcoded temp file (we use /tmp intentionally)
+    "S110",  # try-except-pass (used for optional feature detection)
+    "S112",  # try-except-continue (used for resilient iteration)
+    "S311",  # non-cryptographic random (used for non-security purposes)
+    "S602",  # subprocess shell=True (validated through Wali security layer)
     "S603",  # subprocess call (we validate commands)
     "S607",  # start process with partial path
+    "B008",  # function call in default argument (used by FastAPI Depends())
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S106"]
+"tests/**" = ["S101", "S106", "S108"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

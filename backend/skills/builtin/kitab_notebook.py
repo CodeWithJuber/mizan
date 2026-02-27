@@ -14,15 +14,15 @@ Like MolBook/Jupyter but with:
 - Multi-format cells: code, markdown, data, visualization
 """
 
+import importlib.util as _ilu
 import json
 import logging
 import os
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
-import importlib.util as _ilu
 # Direct file import to avoid triggering security/__init__.py which
 # pulls in heavy dependencies (jwt, cryptography) not needed here.
 _val_path = os.path.join(os.path.dirname(__file__), "..", "..", "security", "validation.py")
@@ -32,7 +32,7 @@ _spec.loader.exec_module(_val_mod)
 validate_command_safe = _val_mod.validate_command_safe
 del _ilu, _val_path, _spec, _val_mod
 
-from ..base import SkillBase, SkillManifest
+from ..base import SkillBase, SkillManifest  # noqa: E402
 
 logger = logging.getLogger("mizan.kitab")
 
@@ -45,22 +45,27 @@ NOTEBOOKS_DIR = "/tmp/mizan_notebooks"
 @dataclass
 class KitabCell:
     """A single cell — like an Ayah (verse) in the Book"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     cell_type: str = "code"
     source: str = ""
     outputs: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     execution_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     executed_at: str | None = None
     status: str = "idle"
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id, "cell_type": self.cell_type,
-            "source": self.source, "outputs": self.outputs,
-            "metadata": self.metadata, "execution_count": self.execution_count,
-            "created_at": self.created_at, "executed_at": self.executed_at,
+            "id": self.id,
+            "cell_type": self.cell_type,
+            "source": self.source,
+            "outputs": self.outputs,
+            "metadata": self.metadata,
+            "execution_count": self.execution_count,
+            "created_at": self.created_at,
+            "executed_at": self.executed_at,
             "status": self.status,
         }
 
@@ -71,34 +76,42 @@ class KitabNotebook:
     A Kitab notebook — inspired by Lawh Al-Mahfuz (اللوح المحفوظ)
     The Preserved Tablet: every change is recorded, nothing is lost.
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: str = "Untitled Kitab"
     description: str = ""
     cells: list[KitabCell] = field(default_factory=list)
     language: str = "python"
     tags: list[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     version: int = 1
     history: list[dict] = field(default_factory=list)
     owner: str | None = None
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id, "title": self.title,
+            "id": self.id,
+            "title": self.title,
             "description": self.description,
             "cells": [c.to_dict() for c in self.cells],
-            "cell_count": len(self.cells), "language": self.language,
-            "tags": self.tags, "created_at": self.created_at,
-            "updated_at": self.updated_at, "version": self.version,
+            "cell_count": len(self.cells),
+            "language": self.language,
+            "tags": self.tags,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "version": self.version,
         }
 
     def to_summary(self) -> dict:
         return {
-            "id": self.id, "title": self.title,
+            "id": self.id,
+            "title": self.title,
             "description": self.description,
-            "cell_count": len(self.cells), "language": self.language,
-            "tags": self.tags, "updated_at": self.updated_at,
+            "cell_count": len(self.cells),
+            "language": self.language,
+            "tags": self.tags,
+            "updated_at": self.updated_at,
             "version": self.version,
         }
 
@@ -110,11 +123,22 @@ class SandboxedExecutor:
     """
 
     BLOCKED_PATTERNS = [
-        "import socket", "import requests", "import urllib",
-        "open('/etc", "open('/root", "open('/home",
-        "os.remove", "os.unlink", "os.rmdir", "shutil.rmtree",
-        "__import__", "eval(", "exec(", "compile(",
-        "globals()", "locals()",
+        "import socket",
+        "import requests",
+        "import urllib",
+        "open('/etc",
+        "open('/root",
+        "open('/home",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "shutil.rmtree",
+        "__import__",
+        "eval(",
+        "exec(",
+        "compile(",
+        "globals()",
+        "locals()",
     ]
 
     def __init__(self):
@@ -152,16 +176,20 @@ finally:
             with open(script_path, "w") as f:
                 f.write(wrapped)
 
-            start = datetime.utcnow()
+            start = datetime.now(UTC)
             proc = subprocess.run(
                 ["python3", script_path],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
                 timeout=MAX_CODE_EXECUTION_TIME,
                 cwd=NOTEBOOKS_DIR,
-                env={"PATH": "/usr/bin:/usr/local/bin", "HOME": NOTEBOOKS_DIR,
-                     "PYTHONDONTWRITEBYTECODE": "1"},
+                env={
+                    "PATH": "/usr/bin:/usr/local/bin",
+                    "HOME": NOTEBOOKS_DIR,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                },
             )
-            elapsed = (datetime.utcnow() - start).total_seconds()
+            elapsed = (datetime.now(UTC) - start).total_seconds()
 
             try:
                 lines = proc.stdout.strip().split("\n")
@@ -180,7 +208,11 @@ finally:
                     "execution_time": elapsed,
                 }
         except subprocess.TimeoutExpired:
-            return {"output_type": "error", "text": f"Timeout ({MAX_CODE_EXECUTION_TIME}s)", "execution_time": MAX_CODE_EXECUTION_TIME}
+            return {
+                "output_type": "error",
+                "text": f"Timeout ({MAX_CODE_EXECUTION_TIME}s)",
+                "execution_time": MAX_CODE_EXECUTION_TIME,
+            }
         except Exception as e:
             return {"output_type": "error", "text": str(e), "execution_time": 0}
         finally:
@@ -198,12 +230,18 @@ finally:
 
         try:
             proc = subprocess.run(
-                command, shell=True, capture_output=True, text=True,
-                timeout=MAX_CODE_EXECUTION_TIME, cwd=NOTEBOOKS_DIR,
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=MAX_CODE_EXECUTION_TIME,
+                cwd=NOTEBOOKS_DIR,
             )
-            return {"output_type": "execute_result",
-                    "stdout": proc.stdout[:MAX_CELL_OUTPUT],
-                    "stderr": proc.stderr[:MAX_CELL_OUTPUT]}
+            return {
+                "output_type": "execute_result",
+                "stdout": proc.stdout[:MAX_CELL_OUTPUT],
+                "stderr": proc.stderr[:MAX_CELL_OUTPUT],
+            }
         except subprocess.TimeoutExpired:
             return {"output_type": "error", "text": "Command timed out"}
         except Exception as e:
@@ -220,9 +258,12 @@ class KitabNotebookSkill(SkillBase):
         name="kitab_notebook",
         version="1.0.0",
         description="Interactive computational notebooks with secure sandboxed execution. "
-                    "Create, edit, run code like Jupyter/MolBook.",
-        permissions=["sandbox_exec", "file:read:/tmp/mizan_notebooks/*",
-                     "file:write:/tmp/mizan_notebooks/*"],
+        "Create, edit, run code like Jupyter/MolBook.",
+        permissions=[
+            "sandbox_exec",
+            "file:read:/tmp/mizan_notebooks/*",
+            "file:write:/tmp/mizan_notebooks/*",
+        ],
         tags=["كتاب", "Notebook"],
     )
 
@@ -259,10 +300,12 @@ class KitabNotebookSkill(SkillBase):
             owner=params.get("user_id"),
         )
         # Bismillah intro cell
-        nb.cells.append(KitabCell(
-            cell_type="markdown",
-            source=f"# {nb.title}\n\nبسم الله الرحمن الرحيم\n\n{nb.description or ''}",
-        ))
+        nb.cells.append(
+            KitabCell(
+                cell_type="markdown",
+                source=f"# {nb.title}\n\nبسم الله الرحمن الرحيم\n\n{nb.description or ''}",
+            )
+        )
         self.notebooks[nb.id] = nb
         logger.info(f"[KITAB] Created: {nb.title}")
         return nb.to_dict()
@@ -284,7 +327,7 @@ class KitabNotebookSkill(SkillBase):
             nb.cells.insert(pos, cell)
         else:
             nb.cells.append(cell)
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.updated_at = datetime.now(UTC).isoformat()
         return {"cell": cell.to_dict(), "notebook_id": nb.id}
 
     async def update_cell(self, params: dict) -> dict:
@@ -297,7 +340,7 @@ class KitabNotebookSkill(SkillBase):
             return {"error": "Cell not found"}
         cell.source = params.get("source", cell.source)
         cell.cell_type = params.get("cell_type", cell.cell_type)
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.updated_at = datetime.now(UTC).isoformat()
         return {"cell": cell.to_dict()}
 
     async def execute_cell(self, params: dict) -> dict:
@@ -323,12 +366,18 @@ class KitabNotebookSkill(SkillBase):
             result = {"output_type": "error", "text": f"Unknown type: {cell.cell_type}"}
 
         cell.outputs = [result]
-        cell.executed_at = datetime.utcnow().isoformat()
+        cell.executed_at = datetime.now(UTC).isoformat()
         cell.status = "error" if result.get("output_type") == "error" else "success"
 
-        nb.history.append({"action": "execute", "cell_id": cell.id,
-                          "timestamp": cell.executed_at, "status": cell.status})
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.history.append(
+            {
+                "action": "execute",
+                "cell_id": cell.id,
+                "timestamp": cell.executed_at,
+                "status": cell.status,
+            }
+        )
+        nb.updated_at = datetime.now(UTC).isoformat()
         return {"cell": cell.to_dict()}
 
     async def execute_all(self, params: dict) -> dict:
@@ -402,36 +451,71 @@ class KitabNotebookSkill(SkillBase):
 
     def get_tool_schemas(self) -> list[dict]:
         return [
-            {"name": "notebook_create",
-             "description": "Create a new Kitab computational notebook",
-             "input_schema": {"type": "object", "properties": {
-                 "title": {"type": "string"}, "description": {"type": "string"},
-                 "language": {"type": "string", "enum": ["python", "shell"]},
-             }, "required": ["title"]}},
-            {"name": "notebook_add_cell",
-             "description": "Add a cell to a notebook",
-             "input_schema": {"type": "object", "properties": {
-                 "notebook_id": {"type": "string"},
-                 "cell_type": {"type": "string", "enum": ["code", "markdown", "shell"]},
-                 "source": {"type": "string"}, "position": {"type": "integer"},
-             }, "required": ["notebook_id", "source"]}},
-            {"name": "notebook_execute_cell",
-             "description": "Execute a specific cell",
-             "input_schema": {"type": "object", "properties": {
-                 "notebook_id": {"type": "string"}, "cell_id": {"type": "string"},
-             }, "required": ["notebook_id", "cell_id"]}},
-            {"name": "notebook_execute_all",
-             "description": "Execute all code cells sequentially",
-             "input_schema": {"type": "object", "properties": {
-                 "notebook_id": {"type": "string"},
-             }, "required": ["notebook_id"]}},
-            {"name": "notebook_list",
-             "description": "List all Kitab notebooks",
-             "input_schema": {"type": "object", "properties": {}}},
-            {"name": "notebook_export",
-             "description": "Export notebook to json, python, or markdown",
-             "input_schema": {"type": "object", "properties": {
-                 "notebook_id": {"type": "string"},
-                 "format": {"type": "string", "enum": ["json", "python", "markdown"]},
-             }, "required": ["notebook_id"]}},
+            {
+                "name": "notebook_create",
+                "description": "Create a new Kitab computational notebook",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "language": {"type": "string", "enum": ["python", "shell"]},
+                    },
+                    "required": ["title"],
+                },
+            },
+            {
+                "name": "notebook_add_cell",
+                "description": "Add a cell to a notebook",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "notebook_id": {"type": "string"},
+                        "cell_type": {"type": "string", "enum": ["code", "markdown", "shell"]},
+                        "source": {"type": "string"},
+                        "position": {"type": "integer"},
+                    },
+                    "required": ["notebook_id", "source"],
+                },
+            },
+            {
+                "name": "notebook_execute_cell",
+                "description": "Execute a specific cell",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "notebook_id": {"type": "string"},
+                        "cell_id": {"type": "string"},
+                    },
+                    "required": ["notebook_id", "cell_id"],
+                },
+            },
+            {
+                "name": "notebook_execute_all",
+                "description": "Execute all code cells sequentially",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "notebook_id": {"type": "string"},
+                    },
+                    "required": ["notebook_id"],
+                },
+            },
+            {
+                "name": "notebook_list",
+                "description": "List all Kitab notebooks",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "notebook_export",
+                "description": "Export notebook to json, python, or markdown",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "notebook_id": {"type": "string"},
+                        "format": {"type": "string", "enum": ["json", "python", "markdown"]},
+                    },
+                    "required": ["notebook_id"],
+                },
+            },
         ]

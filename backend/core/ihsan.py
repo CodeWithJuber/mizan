@@ -12,10 +12,9 @@ Ihsan mode enables agents to go beyond what is asked:
 - Transform reactive task execution into proactive assistance
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("mizan.ihsan")
 
@@ -23,16 +22,17 @@ logger = logging.getLogger("mizan.ihsan")
 @dataclass
 class IhsanSuggestion:
     """A proactive suggestion from Ihsan mode."""
+
     id: str
     agent_id: str
     task_context: str
     suggestion: str
     category: str  # improvement, prevention, optimization, learning
     confidence: float = 0.5
-    accepted: Optional[bool] = None
+    accepted: bool | None = None
     created_at: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "suggestion": self.suggestion,
@@ -63,7 +63,7 @@ class IhsanMode:
     MIN_NAFS_LEVEL = 3  # Mulhama (Inspired) or above
 
     def __init__(self):
-        self._suggestions: Dict[str, IhsanSuggestion] = {}
+        self._suggestions: dict[str, IhsanSuggestion] = {}
         self._acceptance_rate: float = 0.0
         self._total_suggested: int = 0
         self._total_accepted: int = 0
@@ -72,8 +72,9 @@ class IhsanMode:
         """Check if agent's Nafs level is high enough for Ihsan mode."""
         return nafs_level >= self.MIN_NAFS_LEVEL
 
-    def analyze_completion(self, agent_id: str, task: str,
-                           result: Dict, nafs_level: int = 1) -> List[IhsanSuggestion]:
+    def analyze_completion(
+        self, agent_id: str, task: str, result: dict, nafs_level: int = 1
+    ) -> list[IhsanSuggestion]:
         """
         Analyze a completed task and generate proactive suggestions.
         Only produces suggestions if agent is at Mulhama level or above.
@@ -87,47 +88,70 @@ class IhsanMode:
 
         # Pattern: coding tasks → suggest tests
         if success and any(w in task_lower for w in ["code", "implement", "write", "fix"]):
-            suggestions.append(self._create_suggestion(
-                agent_id, task, "Consider adding tests for the changes made",
-                "improvement", 0.7,
-            ))
+            suggestions.append(
+                self._create_suggestion(
+                    agent_id,
+                    task,
+                    "Consider adding tests for the changes made",
+                    "improvement",
+                    0.7,
+                )
+            )
 
         # Pattern: file operations → suggest backup
         if any(w in task_lower for w in ["delete", "modify", "overwrite", "update file"]):
-            suggestions.append(self._create_suggestion(
-                agent_id, task, "Consider creating a backup before modifying",
-                "prevention", 0.6,
-            ))
+            suggestions.append(
+                self._create_suggestion(
+                    agent_id,
+                    task,
+                    "Consider creating a backup before modifying",
+                    "prevention",
+                    0.6,
+                )
+            )
 
         # Pattern: research → suggest deeper analysis
         if success and any(w in task_lower for w in ["research", "analyze", "review"]):
-            suggestions.append(self._create_suggestion(
-                agent_id, task, "Related topics identified that may provide additional context",
-                "learning", 0.5,
-            ))
+            suggestions.append(
+                self._create_suggestion(
+                    agent_id,
+                    task,
+                    "Related topics identified that may provide additional context",
+                    "learning",
+                    0.5,
+                )
+            )
 
         # Pattern: slow execution → suggest optimization
         duration = result.get("duration_ms", 0)
         if success and duration > 10000:
-            suggestions.append(self._create_suggestion(
-                agent_id, task,
-                f"Task took {duration/1000:.1f}s — consider caching or parallel execution",
-                "optimization", 0.6,
-            ))
+            suggestions.append(
+                self._create_suggestion(
+                    agent_id,
+                    task,
+                    f"Task took {duration / 1000:.1f}s — consider caching or parallel execution",
+                    "optimization",
+                    0.6,
+                )
+            )
 
         # Pattern: errors occurred → suggest error handling
         if not success:
-            suggestions.append(self._create_suggestion(
-                agent_id, task,
-                "Consider adding error handling or input validation",
-                "prevention", 0.7,
-            ))
+            suggestions.append(
+                self._create_suggestion(
+                    agent_id,
+                    task,
+                    "Consider adding error handling or input validation",
+                    "prevention",
+                    0.7,
+                )
+            )
 
         return suggestions
 
-    def _create_suggestion(self, agent_id: str, task: str,
-                           suggestion: str, category: str,
-                           confidence: float) -> IhsanSuggestion:
+    def _create_suggestion(
+        self, agent_id: str, task: str, suggestion: str, category: str, confidence: float
+    ) -> IhsanSuggestion:
         self._total_suggested += 1
         sid = f"ihsan_{agent_id}_{self._total_suggested}"
         s = IhsanSuggestion(
@@ -157,12 +181,12 @@ class IhsanMode:
     def get_acceptance_rate(self) -> float:
         return self._acceptance_rate
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         return {
             "total_suggestions": self._total_suggested,
             "total_accepted": self._total_accepted,
             "acceptance_rate": round(self._acceptance_rate, 3),
-            "active_suggestions": len([
-                s for s in self._suggestions.values() if s.accepted is None
-            ]),
+            "active_suggestions": len(
+                [s for s in self._suggestions.values() if s.accepted is None]
+            ),
         }

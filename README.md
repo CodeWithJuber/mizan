@@ -73,7 +73,7 @@ make dev                   # Start backend + frontend
 # Frontend: http://localhost:3000 — API: http://localhost:8000/docs
 ```
 
-### What You Need
+### Requirements
 
 - **Python 3.11+** (auto-installed by the one-liner)
 - **At least one AI API key**: [Anthropic](https://console.anthropic.com/) (best), [OpenRouter](https://openrouter.ai/) (300+ models), [OpenAI](https://platform.openai.com/), or [Ollama](https://ollama.ai/) (free, local)
@@ -107,6 +107,7 @@ make dev                   # Start backend + frontend
 | **REST + WebSocket API** | Full API for building custom integrations |
 | **Multi-agent system** | Multiple AI agents collaborate on complex tasks |
 | **Security built-in** | JWT auth, rate limiting, sandboxing, audit logs |
+| **Self-healing diagnostics** | Built-in doctor system to detect and fix issues |
 
 ---
 
@@ -256,6 +257,35 @@ API Request ──►  Middleware  ──────► Handler
 
 ---
 
+## Self-Healing Doctor (Shifa)
+
+MIZAN includes a built-in diagnostic and self-healing system:
+
+```bash
+mizan doctor          # Full diagnostic + auto-fix
+mizan doctor --check  # Diagnose only (no fixes)
+```
+
+Or via the API:
+
+```bash
+curl http://localhost:8000/api/doctor       # Diagnose
+curl -X POST http://localhost:8000/api/doctor/fix  # Auto-fix
+```
+
+The doctor checks:
+- Python version and virtual environment
+- `.env` file and API key configuration
+- All dependencies and core module imports
+- Database connectivity and schema
+- Neural pathway memory (Masalik) initialization
+- Port availability (8000, 3000)
+- Provider connectivity (Anthropic, OpenRouter, etc.)
+
+Auto-fixes include creating `.env` from template, generating a secure `SECRET_KEY`, creating the data directory, and running database migrations.
+
+---
+
 ## Extensibility Points
 
 MIZAN has **5 ways** to extend it, from easiest to most powerful:
@@ -288,6 +318,13 @@ Create specialized agents with unique capabilities. See `backend/agents/speciali
 
 ## API Reference
 
+### Authentication
+```
+POST /api/auth/login       Authenticate and get JWT token
+POST /api/auth/register    Register a new user
+POST /api/auth/api-key     Create an API key (requires auth)
+```
+
 ### Agents
 ```
 GET  /api/agents              List all agents
@@ -300,6 +337,7 @@ DEL  /api/agents/{id}         Delete an agent
 ```
 POST /api/chat                Send a chat message
 GET  /api/chat/{session}      Get chat history
+GET  /api/chat/sessions/list  List active sessions
 POST /api/tasks               Execute a task (single or parallel)
 GET  /api/tasks/history       Get task history
 ```
@@ -339,14 +377,31 @@ GET  /api/skills              List available skills
 POST /api/skills/install      Install a skill
 POST /api/skills/execute      Execute a skill action
 POST /api/automation/jobs     Create cron job
+GET  /api/automation/jobs     List scheduled jobs
+DEL  /api/automation/jobs/{id}  Delete a job
 POST /api/automation/webhooks Create webhook trigger
+GET  /api/automation/webhooks List webhooks
 ```
 
-### System
+### System & Diagnostics
 ```
 GET  /api/status              System dashboard
+GET  /api/health              Health check (for monitoring/Docker)
+GET  /api/version             Version info and update check
+GET  /api/doctor              Run diagnostic checks
+POST /api/doctor/fix          Run diagnostics with auto-fix
+GET  /api/settings            Get system settings
+POST /api/settings            Update settings
 POST /api/shura               Multi-agent consultation
 WS   /ws/{client_id}          WebSocket connection
+```
+
+### Channels
+```
+POST /api/channels/{name}/start   Start a channel adapter
+POST /api/channels/{name}/stop    Stop a channel adapter
+GET  /api/channels/{name}/status  Get channel status
+POST /api/channels/{name}/test    Send a test message
 ```
 
 Full interactive docs at `http://localhost:8000/docs` (Swagger UI).
@@ -363,6 +418,7 @@ mizan chat --model claude-opus-4-6  # Use specific model
 mizan serve            # Start API server
 mizan serve --reload   # Start with auto-reload
 mizan status           # Show system status
+mizan doctor           # Self-healing diagnostics
 mizan version          # Show version
 ```
 
@@ -428,10 +484,6 @@ make update                # Via Makefile
 
 When you start MIZAN with `./start.sh start` or `make dev`, it automatically checks for updates and shows a notification if a new version is available. No action is taken unless you run the update command.
 
-### Frontend Update Panel
-
-The Settings/Developer page in the web UI shows your current version and lets you check for updates directly from the browser.
-
 ---
 
 ## Development
@@ -441,11 +493,13 @@ make setup        # Install everything
 make dev          # Start backend + frontend
 make update       # Update to latest version
 make test         # Run tests
+make test-cov     # Run tests with coverage
 make lint         # Lint code
 make format       # Format code
 make typecheck    # Type checking
 make check        # Run all checks (lint + typecheck + test)
 make docker       # Start with Docker
+make clean        # Clean build artifacts
 ```
 
 ---
@@ -465,9 +519,21 @@ mizan/
 │   │   ├── hooks.py             # Hook system — data transformation
 │   │   ├── plugins.py           # Plugin manager — extend without touching core
 │   │   ├── middleware.py         # Middleware pipeline
-│   │   └── ...                  # Quranic core systems
+│   │   ├── qalb.py              # Emotional intelligence engine
+│   │   ├── ruh_engine.py        # Energy/vitality management
+│   │   ├── tawbah.py            # Error recovery protocol
+│   │   ├── ihsan.py             # Proactive excellence suggestions
+│   │   ├── sabr.py              # Patience engine for long tasks
+│   │   └── shukr.py             # Strength reinforcement
+│   ├── qca/
+│   │   ├── engine.py            # 7-layer Quranic Cognitive Architecture
+│   │   ├── yaqin_engine.py      # Certainty/confidence tracking
+│   │   ├── cognitive_methods.py # Reasoning method selection
+│   │   └── roots.py             # Semantic root analysis (ISM layer)
 │   ├── providers.py             # Unified LLM provider (Claude/GPT/Ollama/300+)
-│   ├── memory/dhikr.py          # Three-tier persistent memory
+│   ├── memory/
+│   │   ├── dhikr.py             # Three-tier persistent memory
+│   │   └── masalik.py           # Neural pathway network (bio-inspired)
 │   ├── security/                # Auth, permissions, sandboxing
 │   ├── skills/                  # Extensible skill registry
 │   │   ├── base.py              # Skill base class
@@ -475,7 +541,8 @@ mizan/
 │   │   └── builtin/             # Built-in skills
 │   ├── gateway/channels/        # Telegram, Discord, Slack, WhatsApp adapters
 │   ├── automation/              # Cron scheduler + webhook triggers
-│   ├── settings.py              # Configuration (env vars)
+│   ├── doctor.py                # Self-healing diagnostic system
+│   ├── settings.py              # Configuration (env vars, pydantic-settings)
 │   └── cli.py                   # Terminal interface
 ├── frontend/src/
 │   ├── App.tsx                  # Main UI
@@ -486,7 +553,7 @@ mizan/
 │   ├── hello_world/             # Example plugin
 │   └── request_logger/          # Example monitoring plugin
 ├── docs/                        # Documentation site
-├── tests/                       # Test suite
+├── tests/                       # Test suite (484 tests)
 ├── docker/                      # Docker configs
 ├── pyproject.toml               # Python package config
 ├── Makefile                     # Development commands
@@ -559,6 +626,9 @@ A: Run `./update.sh` — it handles everything automatically (pulls code, rebuil
 
 **Q: How do I connect Telegram/Discord/Slack?**
 A: Set the bot token in your `.env` file (e.g., `TELEGRAM_BOT_TOKEN=your-token`). See the Channels page in the UI.
+
+**Q: Something is broken. How do I fix it?**
+A: Run `mizan doctor` — it automatically diagnoses and fixes common issues.
 
 ---
 

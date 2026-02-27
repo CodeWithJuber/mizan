@@ -7,7 +7,6 @@ Slack integration using slack-bolt.
 
 import asyncio
 import logging
-from typing import Dict, Optional
 
 from .base import ChannelAdapter, IncomingMessage
 
@@ -24,7 +23,7 @@ class SlackChannel(ChannelAdapter):
     - signing_secret: Slack signing secret
     """
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._app = None
         self._handler = None
@@ -39,8 +38,8 @@ class SlackChannel(ChannelAdapter):
             return
 
         try:
-            from slack_bolt.async_app import AsyncApp
             from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+            from slack_bolt.async_app import AsyncApp
 
             self._app = AsyncApp(token=bot_token)
 
@@ -93,8 +92,7 @@ class SlackChannel(ChannelAdapter):
             await self._handler.close_async()
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str,
-                            attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
         """Send a message via Slack"""
         if not self._app or not self.is_connected:
             return

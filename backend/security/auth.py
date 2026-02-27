@@ -10,15 +10,11 @@ JWT-based authentication with role-based access control.
 import os
 import time
 import uuid
-import hashlib
-import hmac
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import jwt
 from passlib.context import CryptContext
-
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -36,9 +32,10 @@ ROLES = {
 @dataclass
 class TokenPayload:
     """Decoded JWT token data"""
+
     user_id: str
     username: str
-    roles: List[str]
+    roles: list[str]
     exp: float
     iat: float
     jti: str  # Token ID for revocation
@@ -61,12 +58,13 @@ class TokenPayload:
 @dataclass
 class UserRecord:
     """User stored in memory/database"""
+
     id: str
     username: str
     password_hash: str
-    roles: List[str]
+    roles: list[str]
     created_at: str
-    api_keys: List[str]
+    api_keys: list[str]
     enabled: bool = True
 
 
@@ -82,9 +80,9 @@ class MizanAuth:
         self.algorithm = "HS256"
 
         # In-memory user store (later: move to DhikrMemorySystem)
-        self._users: Dict[str, UserRecord] = {}
+        self._users: dict[str, UserRecord] = {}
         self._revoked_tokens: set = set()
-        self._api_keys: Dict[str, str] = {}  # api_key -> user_id
+        self._api_keys: dict[str, str] = {}  # api_key -> user_id
 
         # Create default admin if no users exist
         self._ensure_default_admin()
@@ -97,8 +95,7 @@ class MizanAuth:
         if admin_pass and admin_user not in {u.username for u in self._users.values()}:
             self.create_user(admin_user, admin_pass, roles=["admin"])
 
-    def create_user(self, username: str, password: str,
-                    roles: List[str] = None) -> UserRecord:
+    def create_user(self, username: str, password: str, roles: list[str] = None) -> UserRecord:
         """Create a new user"""
         user_id = str(uuid.uuid4())
         user = UserRecord(
@@ -106,13 +103,13 @@ class MizanAuth:
             username=username,
             password_hash=pwd_context.hash(password),
             roles=roles or ["user"],
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             api_keys=[],
         )
         self._users[user_id] = user
         return user
 
-    def authenticate(self, username: str, password: str) -> Optional[UserRecord]:
+    def authenticate(self, username: str, password: str) -> UserRecord | None:
         """Authenticate user with username and password"""
         for user in self._users.values():
             if user.username == username and user.enabled:
@@ -133,11 +130,12 @@ class MizanAuth:
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
-    def verify_token(self, token: str) -> Optional[TokenPayload]:
+    def verify_token(self, token: str) -> TokenPayload | None:
         """Verify and decode JWT token"""
         try:
             payload = jwt.decode(
-                token, self.secret_key,
+                token,
+                self.secret_key,
                 algorithms=[self.algorithm],
             )
 
@@ -162,7 +160,7 @@ class MizanAuth:
         """Revoke a specific token"""
         self._revoked_tokens.add(jti)
 
-    def create_api_key(self, user_id: str) -> Optional[str]:
+    def create_api_key(self, user_id: str) -> str | None:
         """Create an API key for a user"""
         if user_id not in self._users:
             return None
@@ -172,7 +170,7 @@ class MizanAuth:
         self._users[user_id].api_keys.append(key)
         return key
 
-    def verify_api_key(self, key: str) -> Optional[TokenPayload]:
+    def verify_api_key(self, key: str) -> TokenPayload | None:
         """Verify an API key and return a token payload"""
         user_id = self._api_keys.get(key)
         if not user_id or user_id not in self._users:
@@ -191,8 +189,7 @@ class MizanAuth:
             jti=f"apikey_{key[:8]}",
         )
 
-    def extract_token(self, authorization: str = None,
-                      api_key: str = None) -> Optional[TokenPayload]:
+    def extract_token(self, authorization: str = None, api_key: str = None) -> TokenPayload | None:
         """
         Extract and verify token from various sources.
         Supports: Bearer token, API key, query param.
@@ -208,10 +205,10 @@ class MizanAuth:
 
         return None
 
-    def get_user(self, user_id: str) -> Optional[UserRecord]:
+    def get_user(self, user_id: str) -> UserRecord | None:
         return self._users.get(user_id)
 
-    def list_users(self) -> List[Dict]:
+    def list_users(self) -> list[dict]:
         return [
             {
                 "id": u.id,

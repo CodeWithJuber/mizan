@@ -9,12 +9,11 @@ Routes messages through the Quranic processing pipeline:
 Bab (Gate) → Sama' (Perception) → Fikr (Processing) → Amal (Action) → Bab (Response)
 """
 
-import asyncio
 import logging
 import uuid
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from .channels.base import ChannelAdapter, IncomingMessage
 
@@ -24,7 +23,8 @@ logger = logging.getLogger("mizan.gateway")
 @dataclass
 class GatewayConfig:
     """Gateway configuration"""
-    enabled_channels: List[str] = field(default_factory=lambda: ["webchat"])
+
+    enabled_channels: list[str] = field(default_factory=lambda: ["webchat"])
     max_sessions_per_channel: int = 1000
     session_timeout_hours: int = 24
     require_verification: bool = True
@@ -34,18 +34,19 @@ class GatewayConfig:
 @dataclass
 class GatewaySession:
     """Session for a user on a channel"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     channel: str = ""
     channel_user_id: str = ""
     verified: bool = False
-    verification_code: Optional[str] = None
+    verification_code: str | None = None
     trust_level: float = 0.0  # 0-1, Amanah trust score
-    history: List[Dict] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_active: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    agent_id: Optional[str] = None
+    history: list[dict] = field(default_factory=list)
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_active: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    agent_id: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "channel": self.channel,
@@ -81,7 +82,7 @@ class MessageRouter:
                 return role
         return "wakil"  # Default general agent
 
-    def select_agent(self, intent: str, agents: Dict, balancer=None) -> Optional[str]:
+    def select_agent(self, intent: str, agents: dict, balancer=None) -> str | None:
         """Select best agent for the intent"""
         # Try to find agent matching the role
         for agent_id, agent in agents.items():
@@ -115,11 +116,11 @@ class MizanGateway:
         self.wali = wali
         self.memory = memory
 
-        self.channels: Dict[str, ChannelAdapter] = {}
-        self.sessions: Dict[str, GatewaySession] = {}
+        self.channels: dict[str, ChannelAdapter] = {}
+        self.sessions: dict[str, GatewaySession] = {}
         self.router = MessageRouter()
         self._running = False
-        self._message_handler: Optional[Callable] = None
+        self._message_handler: Callable | None = None
 
     def register_channel(self, name: str, channel: ChannelAdapter):
         """Register a channel adapter"""
@@ -175,7 +176,9 @@ class MizanGateway:
             if self.config.require_verification and not session.verified:
                 code = str(uuid.uuid4())[:6].upper()
                 session.verification_code = code
-                logger.info(f"[BAB] New user {message.sender_id} on {message.channel}, verification: {code}")
+                logger.info(
+                    f"[BAB] New user {message.sender_id} on {message.channel}, verification: {code}"
+                )
 
                 # Send verification response through channel
                 channel = self.channels.get(message.channel)
@@ -212,20 +215,25 @@ class MizanGateway:
                 return
 
         # Update session
-        session.last_active = datetime.utcnow().isoformat()
-        session.history.append({
-            "role": "user",
-            "content": message.content,
-            "timestamp": datetime.utcnow().isoformat(),
-        })
+        session.last_active = datetime.now(UTC).isoformat()
+        session.history.append(
+            {
+                "role": "user",
+                "content": message.content,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
 
         # Audit log
         if self.wali:
-            self.wali.audit.log("channel_message", {
-                "channel": message.channel,
-                "sender": message.sender_id,
-                "length": len(message.content),
-            })
+            self.wali.audit.log(
+                "channel_message",
+                {
+                    "channel": message.channel,
+                    "sender": message.sender_id,
+                    "length": len(message.content),
+                },
+            )
 
         # Forward to message handler
         if self._message_handler:
@@ -236,23 +244,25 @@ class MizanGateway:
             if channel and response:
                 await channel.send_message(message.sender_id, response)
 
-                session.history.append({
-                    "role": "assistant",
-                    "content": response,
-                    "timestamp": datetime.utcnow().isoformat(),
-                })
+                session.history.append(
+                    {
+                        "role": "assistant",
+                        "content": response,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
 
                 # Increase trust over time
                 session.trust_level = min(1.0, session.trust_level + 0.01)
 
-    def get_sessions(self, channel: str = None) -> List[Dict]:
+    def get_sessions(self, channel: str = None) -> list[dict]:
         """Get active sessions, optionally filtered by channel"""
         sessions = self.sessions.values()
         if channel:
             sessions = [s for s in sessions if s.channel == channel]
         return [s.to_dict() for s in sessions]
 
-    def get_channel_status(self) -> List[Dict]:
+    def get_channel_status(self) -> list[dict]:
         """Get status of all channels"""
         return [
             {

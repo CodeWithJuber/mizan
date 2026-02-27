@@ -8,5 +8,7 @@ Multi-channel gateway routing messages through QuranicMessage format.
 Each channel is a Bab (gate) into the MIZAN system.
 """
 
-from .bab import MizanGateway, GatewayConfig
-from .channels.base import ChannelAdapter, IncomingMessage
+from .bab import GatewayConfig as GatewayConfig
+from .bab import MizanGateway as MizanGateway
+from .channels.base import ChannelAdapter as ChannelAdapter
+from .channels.base import IncomingMessage as IncomingMessage

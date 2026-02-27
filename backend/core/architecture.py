@@ -40,43 +40,43 @@ Core Principles:
 - Ihsan (إحسان): Excellence - Quality threshold enforcement
 """
 
-from enum import Enum
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Callable
-from datetime import datetime
-import asyncio
 import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any
 
 
 class QuranicLayer(Enum):
-    SAMA = "sama"       # Perception
-    FIKR = "fikr"       # Cognition
-    DHIKR = "dhikr"     # Memory
-    AQL = "aql"         # Reason
-    HIKMAH = "hikmah"   # Wisdom
-    AMAL = "amal"       # Action
+    SAMA = "sama"  # Perception
+    FIKR = "fikr"  # Cognition
+    DHIKR = "dhikr"  # Memory
+    AQL = "aql"  # Reason
+    HIKMAH = "hikmah"  # Wisdom
+    AMAL = "amal"  # Action
     TAFAKKUR = "tafakkur"  # Reflection
 
 
 class AgentRole(Enum):
-    RASUL = "rasul"       # Messenger/Communicator
-    WAKIL = "wakil"       # Delegator/Executor
-    HAFIZ = "hafiz"       # Memory Guardian
-    SHAHID = "shahid"     # Witness/Monitor
-    WALI = "wali"         # Security Guardian
-    MUBASHIR = "mubashir" # Browser/Discovery
-    MUNDHIR = "mundhir"   # Researcher/Analyzer
-    MUALLIM = "muallim"   # Teacher/Learner
+    RASUL = "rasul"  # Messenger/Communicator
+    WAKIL = "wakil"  # Delegator/Executor
+    HAFIZ = "hafiz"  # Memory Guardian
+    SHAHID = "shahid"  # Witness/Monitor
+    WALI = "wali"  # Security Guardian
+    MUBASHIR = "mubashir"  # Browser/Discovery
+    MUNDHIR = "mundhir"  # Researcher/Analyzer
+    MUALLIM = "muallim"  # Teacher/Learner
 
 
 class MizanState(Enum):
     """Agent states following the Quranic concept of states"""
-    RESTING = "resting"     # Sakina (سكينة) - Tranquility
-    THINKING = "thinking"   # Tafakkur (تفكر) - Reflection
-    ACTING = "acting"       # Amal (عمل) - Action
-    LEARNING = "learning"   # Taallum (تعلم) - Learning
+
+    RESTING = "resting"  # Sakina (سكينة) - Tranquility
+    THINKING = "thinking"  # Tafakkur (تفكر) - Reflection
+    ACTING = "acting"  # Amal (عمل) - Action
+    LEARNING = "learning"  # Taallum (تعلم) - Learning
     CONSULTING = "consulting"  # Shura (شورى) - Consultation
-    ERROR = "error"         # Khata (خطأ) - Error state
+    ERROR = "error"  # Khata (خطأ) - Error state
 
 
 @dataclass
@@ -122,8 +122,8 @@ class NafsProfile:
     name: str = ""
     role: AgentRole = AgentRole.WAKIL
     nafs_level: int = 1  # 1-7
-    capabilities: List[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    capabilities: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     total_tasks: int = 0
     success_rate: float = 0.0
     error_count: int = 0
@@ -175,16 +175,27 @@ class NafsProfile:
             threshold = self.EVOLUTION_THRESHOLDS.get(level)
             if not threshold:
                 break
-            if (self.success_rate >= threshold["success_rate"]
-                    and self.total_tasks >= threshold["min_tasks"]):
+            if (
+                self.success_rate >= threshold["success_rate"]
+                and self.total_tasks >= threshold["min_tasks"]
+            ):
                 # Check extra conditions
                 if "min_hikmah" in threshold and self.hikmah_count < threshold["min_hikmah"]:
                     break
-                if "min_hikmah_applied" in threshold and self.hikmah_applied < threshold["min_hikmah_applied"]:
+                if (
+                    "min_hikmah_applied" in threshold
+                    and self.hikmah_applied < threshold["min_hikmah_applied"]
+                ):
                     break
-                if "user_satisfaction" in threshold and self.user_satisfaction < threshold["user_satisfaction"]:
+                if (
+                    "user_satisfaction" in threshold
+                    and self.user_satisfaction < threshold["user_satisfaction"]
+                ):
                     break
-                if "min_reliability_days" in threshold and self.reliability_days < threshold["min_reliability_days"]:
+                if (
+                    "min_reliability_days" in threshold
+                    and self.reliability_days < threshold["min_reliability_days"]
+                ):
                     break
                 self.nafs_level = level
             else:
@@ -192,7 +203,7 @@ class NafsProfile:
 
         return self.nafs_level
 
-    def get_nafs_info(self) -> Dict:
+    def get_nafs_info(self) -> dict:
         """Get full info about current Nafs level."""
         info = self.NAFS_NAMES.get(self.nafs_level, ("Unknown", "?", "Unknown", ""))
         return {
@@ -214,15 +225,16 @@ class QuranicMessage:
     - Evidence (Bayyinah - بينة)
     - Action required (Taklif - تكليف)
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     sender_id: str = ""
     recipient_id: str = ""
-    maqsad: str = ""        # Intent/Goal
-    siyaq: Dict = field(default_factory=dict)  # Context
-    bayyinah: List = field(default_factory=list)  # Evidence/Data
-    taklif: Optional[str] = None  # Required action
-    priority: int = 5       # 1-10, Mizan scale
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    maqsad: str = ""  # Intent/Goal
+    siyaq: dict = field(default_factory=dict)  # Context
+    bayyinah: list = field(default_factory=list)  # Evidence/Data
+    taklif: str | None = None  # Required action
+    priority: int = 5  # 1-10, Mizan scale
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     channel: str = "internal"
 
 
@@ -232,13 +244,14 @@ class HikmahRecord:
     Wisdom record - learned knowledge (Hikmah - حكمة)
     Quran 2:269: "He gives wisdom to whom He wills"
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     pattern: str = ""
-    context: Dict = field(default_factory=dict)
+    context: dict = field(default_factory=dict)
     outcome: str = ""
     confidence: float = 0.0
     applications: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     source_agent: str = ""
 
 
@@ -246,14 +259,14 @@ class MizanBalancer:
     """
     Load balancer inspired by Mizan (ميزان - Balance)
     Quran 55:7-9: Balance in all things
-    
+
     Implements fair distribution (Adl - عدل)
     """
-    
+
     def __init__(self):
-        self.agents: Dict[str, Dict] = {}
-        self.load_weights: Dict[str, float] = {}
-    
+        self.agents: dict[str, dict] = {}
+        self.load_weights: dict[str, float] = {}
+
     def register(self, agent_id: str, capacity: int = 10):
         self.agents[agent_id] = {
             "capacity": capacity,
@@ -261,32 +274,33 @@ class MizanBalancer:
             "total_served": 0,
         }
         self.load_weights[agent_id] = 0.0
-    
-    def select_agent(self, role: AgentRole = None, min_capability: float = 0.0) -> Optional[str]:
+
+    def select_agent(self, role: AgentRole = None, min_capability: float = 0.0) -> str | None:
         """Select agent with least load (Adl - justice)"""
         eligible = {
-            aid: data for aid, data in self.agents.items()
+            aid: data
+            for aid, data in self.agents.items()
             if data["current_load"] < data["capacity"]
         }
         if not eligible:
             return None
         return min(eligible, key=lambda x: self.load_weights.get(x, 0))
-    
+
     def assign(self, agent_id: str):
         if agent_id in self.agents:
             self.agents[agent_id]["current_load"] += 1
             self.load_weights[agent_id] = (
-                self.agents[agent_id]["current_load"] /
-                self.agents[agent_id]["capacity"]
+                self.agents[agent_id]["current_load"] / self.agents[agent_id]["capacity"]
             )
-    
+
     def release(self, agent_id: str):
         if agent_id in self.agents:
-            self.agents[agent_id]["current_load"] = max(0, self.agents[agent_id]["current_load"] - 1)
+            self.agents[agent_id]["current_load"] = max(
+                0, self.agents[agent_id]["current_load"] - 1
+            )
             self.agents[agent_id]["total_served"] += 1
             self.load_weights[agent_id] = (
-                self.agents[agent_id]["current_load"] /
-                self.agents[agent_id]["capacity"]
+                self.agents[agent_id]["current_load"] / self.agents[agent_id]["capacity"]
             )
 
 
@@ -294,43 +308,46 @@ class ShuraCouncil:
     """
     Multi-agent consultation (Shura - شورى)
     Quran 42:38: "and whose affair is [determined by] consultation among themselves"
-    
+
     Implements consensus-based decision making
     """
-    
+
     def __init__(self):
-        self.members: Dict[str, Any] = {}
-        self.decisions: List[Dict] = []
-    
-    async def consult(self, question: str, context: Dict, agents: List[str]) -> Dict:
+        self.members: dict[str, Any] = {}
+        self.decisions: list[dict] = []
+
+    async def consult(self, question: str, context: dict, agents: list[str]) -> dict:
         """Gather opinions from multiple agents - Shura process"""
-        votes = {}
         opinions = []
-        
+
         for agent_id in agents:
             if agent_id in self.members:
                 agent = self.members[agent_id]
                 opinion = await agent.evaluate(question, context)
-                opinions.append({
-                    "agent": agent_id,
-                    "opinion": opinion.get("response"),
-                    "confidence": opinion.get("confidence", 0.5),
-                    "reasoning": opinion.get("reasoning", ""),
-                })
-        
+                opinions.append(
+                    {
+                        "agent": agent_id,
+                        "opinion": opinion.get("response"),
+                        "confidence": opinion.get("confidence", 0.5),
+                        "reasoning": opinion.get("reasoning", ""),
+                    }
+                )
+
         # Weighted consensus
         if opinions:
             consensus = self._build_consensus(opinions)
-            self.decisions.append({
-                "question": question,
-                "consensus": consensus,
-                "opinions": opinions,
-                "timestamp": datetime.utcnow().isoformat(),
-            })
+            self.decisions.append(
+                {
+                    "question": question,
+                    "consensus": consensus,
+                    "opinions": opinions,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
             return consensus
         return {"consensus": None, "confidence": 0}
-    
-    def _build_consensus(self, opinions: List[Dict]) -> Dict:
+
+    def _build_consensus(self, opinions: list[dict]) -> dict:
         """Build consensus with weights based on confidence"""
         if not opinions:
             return {}
@@ -350,19 +367,21 @@ class ShuraCouncil:
 # QCA Integration — Quranic Cognitive Architecture
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class QCALayer(Enum):
     """
     QCA 7-layer cognitive pipeline derived from Quran 16:78, 2:31, 55:7-9.
     Maps to MIZAN's architecture as the cognitive processing core.
     """
-    SAM = "sam"           # Sequential temporal perception (16:78)
-    BASAR = "basar"       # Structural pattern recognition (16:78)
-    FUAD = "fuad"         # Integration engine (16:78)
-    ISM = "ism"           # Root-Space semantic representation (2:31)
-    MIZAN_W = "mizan_w"   # Epistemic weighting (55:7-9)
-    AQL_B = "aql_b"       # Typed relationship binding (3:190)
-    LAWH = "lawh"         # 4-tier hierarchical memory (85:22)
-    FURQAN = "furqan"     # Discrimination + Bayan output (25:1, 55:4)
+
+    SAM = "sam"  # Sequential temporal perception (16:78)
+    BASAR = "basar"  # Structural pattern recognition (16:78)
+    FUAD = "fuad"  # Integration engine (16:78)
+    ISM = "ism"  # Root-Space semantic representation (2:31)
+    MIZAN_W = "mizan_w"  # Epistemic weighting (55:7-9)
+    AQL_B = "aql_b"  # Typed relationship binding (3:190)
+    LAWH = "lawh"  # 4-tier hierarchical memory (85:22)
+    FURQAN = "furqan"  # Discrimination + Bayan output (25:1, 55:4)
 
 
 class NafsTrustLevel(Enum):
@@ -373,13 +392,14 @@ class NafsTrustLevel(Enum):
     Quran 12:53 (Ammara), 75:2 (Lawwama), 91:8 (Mulhama),
     89:27 (Mutmainna), 89:28 (Radiya/Mardiyya), Sufi (Kamila)
     """
-    AMMARA = "ammara"         # Level 1: Commanding — untrusted, sandboxed
-    LAWWAMA = "lawwama"       # Level 2: Reproaching — self-correcting, limited trust
-    MULHAMA = "mulhama"       # Level 3: Inspired — creative, multi-tool chains
-    MUTMAINNA = "mutmainna"   # Level 4: Serene — full tool access, autonomous
-    RADIYA = "radiya"         # Level 5: Content — can create skills, cross-agent
-    MARDIYYA = "mardiyya"     # Level 6: Pleasing — system-level access
-    KAMILA = "kamila"         # Level 7: Perfect — governance role
+
+    AMMARA = "ammara"  # Level 1: Commanding — untrusted, sandboxed
+    LAWWAMA = "lawwama"  # Level 2: Reproaching — self-correcting, limited trust
+    MULHAMA = "mulhama"  # Level 3: Inspired — creative, multi-tool chains
+    MUTMAINNA = "mutmainna"  # Level 4: Serene — full tool access, autonomous
+    RADIYA = "radiya"  # Level 5: Content — can create skills, cross-agent
+    MARDIYYA = "mardiyya"  # Level 6: Pleasing — system-level access
+    KAMILA = "kamila"  # Level 7: Perfect — governance role
 
 
 class QCAMizanIntegrator:
@@ -410,21 +430,20 @@ class QCAMizanIntegrator:
 
     # Nafs trust level thresholds aligned with Mizan scale (7 levels)
     TRUST_THRESHOLDS = {
-        NafsTrustLevel.AMMARA: 0.0,       # Any agent starts here
-        NafsTrustLevel.LAWWAMA: 0.40,     # After Mizan-validated self-correction
-        NafsTrustLevel.MULHAMA: 0.55,     # After pattern recognition demonstrated
-        NafsTrustLevel.MUTMAINNA: 0.70,   # After sustained Yaqin-level accuracy
-        NafsTrustLevel.RADIYA: 0.80,      # After consistent user satisfaction
-        NafsTrustLevel.MARDIYYA: 0.90,    # After extended reliability
-        NafsTrustLevel.KAMILA: 0.97,      # Near-perfect sustained performance
+        NafsTrustLevel.AMMARA: 0.0,  # Any agent starts here
+        NafsTrustLevel.LAWWAMA: 0.40,  # After Mizan-validated self-correction
+        NafsTrustLevel.MULHAMA: 0.55,  # After pattern recognition demonstrated
+        NafsTrustLevel.MUTMAINNA: 0.70,  # After sustained Yaqin-level accuracy
+        NafsTrustLevel.RADIYA: 0.80,  # After consistent user satisfaction
+        NafsTrustLevel.MARDIYYA: 0.90,  # After extended reliability
+        NafsTrustLevel.KAMILA: 0.97,  # Near-perfect sustained performance
     }
 
-    def get_qca_layers(self, mizan_layer: QuranicLayer) -> List[QCALayer]:
+    def get_qca_layers(self, mizan_layer: QuranicLayer) -> list[QCALayer]:
         """Map a MIZAN architectural layer to its QCA cognitive components."""
         return self.LAYER_MAP.get(mizan_layer, [])
 
-    def compute_nafs_level(self, success_rate: float,
-                           error_rate: float) -> NafsTrustLevel:
+    def compute_nafs_level(self, success_rate: float, error_rate: float) -> NafsTrustLevel:
         """Determine Nafs trust level based on Mizan-weighted performance."""
         effective_score = success_rate * (1.0 - error_rate)
         # Walk thresholds from highest to lowest
@@ -433,13 +452,13 @@ class QCAMizanIntegrator:
                 return level
         return NafsTrustLevel.AMMARA
 
-    def validate_decision(self, confidence: float, claimed_level: str,
-                          evidence_level: str) -> Dict:
+    def validate_decision(self, confidence: float, claimed_level: str, evidence_level: str) -> dict:
         """
         Validate an agent's decision through QCA Mizan + Furqan layers.
         Prevents epistemic transgression (Tughyan).
         """
         from qca.engine import MizanLayer
+
         mizan = MizanLayer()
         is_tughyan, msg = mizan.check_tughyan(claimed_level, evidence_level)
         return {

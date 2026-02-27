@@ -29,9 +29,10 @@ EXAMPLE:
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
-from dataclasses import dataclass, field
 from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("mizan.hooks")
 
@@ -39,10 +40,11 @@ logger = logging.getLogger("mizan.hooks")
 @dataclass
 class HookHandler:
     """A registered hook handler."""
+
     callback: Callable
     hook_name: str
-    priority: int = 0      # Higher = runs first
-    source: str = ""       # Who registered (plugin name)
+    priority: int = 0  # Higher = runs first
+    source: str = ""  # Who registered (plugin name)
 
 
 class HookRegistry:
@@ -70,7 +72,7 @@ class HookRegistry:
     """
 
     def __init__(self):
-        self._hooks: Dict[str, List[HookHandler]] = defaultdict(list)
+        self._hooks: dict[str, list[HookHandler]] = defaultdict(list)
 
     def register(self, hook_name: str, priority: int = 0, source: str = ""):
         """
@@ -82,6 +84,7 @@ class HookRegistry:
                 data["content"] = data["content"].strip()
                 return data
         """
+
         def decorator(func):
             handler = HookHandler(
                 callback=func,
@@ -92,10 +95,10 @@ class HookRegistry:
             self._hooks[hook_name].append(handler)
             self._hooks[hook_name].sort(key=lambda h: h.priority, reverse=True)
             return func
+
         return decorator
 
-    def add_hook(self, hook_name: str, callback: Callable,
-                 priority: int = 0, source: str = ""):
+    def add_hook(self, hook_name: str, callback: Callable, priority: int = 0, source: str = ""):
         """Programmatic way to add a hook handler."""
         handler = HookHandler(
             callback=callback,
@@ -108,16 +111,12 @@ class HookRegistry:
 
     def remove_hook(self, hook_name: str, callback: Callable):
         """Remove a specific hook handler."""
-        self._hooks[hook_name] = [
-            h for h in self._hooks[hook_name] if h.callback != callback
-        ]
+        self._hooks[hook_name] = [h for h in self._hooks[hook_name] if h.callback != callback]
 
     def remove_all_from_source(self, source: str):
         """Remove all hooks registered by a specific source (e.g., a plugin being unloaded)."""
         for name in list(self._hooks.keys()):
-            self._hooks[name] = [
-                h for h in self._hooks[name] if h.source != source
-            ]
+            self._hooks[name] = [h for h in self._hooks[name] if h.source != source]
 
     async def apply(self, hook_name: str, data: Any) -> Any:
         """
@@ -144,16 +143,18 @@ class HookRegistry:
         """Check if any handlers are registered for a hook."""
         return bool(self._hooks.get(hook_name))
 
-    def list_hooks(self) -> List[Dict]:
+    def list_hooks(self) -> list[dict]:
         """List all registered hooks."""
         result = []
         for name, handlers in self._hooks.items():
             for h in handlers:
-                result.append({
-                    "hook": name,
-                    "source": h.source,
-                    "priority": h.priority,
-                })
+                result.append(
+                    {
+                        "hook": name,
+                        "source": h.source,
+                        "priority": h.priority,
+                    }
+                )
         return result
 
 
@@ -169,19 +170,15 @@ HOOKS = {
     "agent.response": "Modify agent response before returning",
     "agent.tool.before": "Modify tool parameters before execution",
     "agent.tool.after": "Modify tool results after execution",
-
     # Chat hooks
     "chat.input": "Modify user input before processing",
     "chat.output": "Modify output before sending to user",
-
     # API hooks
     "api.request": "Modify incoming API request data",
     "api.response": "Modify outgoing API response data",
-
     # Memory hooks
     "memory.before_store": "Modify memory data before storing",
     "memory.after_query": "Modify query results before returning",
-
     # Provider hooks
     "provider.before_call": "Modify LLM call parameters",
     "provider.after_call": "Modify LLM response",

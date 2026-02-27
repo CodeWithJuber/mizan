@@ -20,22 +20,23 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger("mizan.federation")
 
 
 class MessageType(Enum):
-    DISCOVER = "discover"         # Who can handle X?
-    OFFER = "offer"               # I can handle X
-    DELEGATE = "delegate"         # Please handle this task
-    ACCEPT = "accept"             # I accept the task
-    DECLINE = "decline"           # I cannot handle this
-    RESULT = "result"             # Task result
-    STATUS = "status"             # Progress update
-    LEARN = "learn"               # Share learned pattern
+    DISCOVER = "discover"  # Who can handle X?
+    OFFER = "offer"  # I can handle X
+    DELEGATE = "delegate"  # Please handle this task
+    ACCEPT = "accept"  # I accept the task
+    DECLINE = "decline"  # I cannot handle this
+    RESULT = "result"  # Task result
+    STATUS = "status"  # Progress update
+    LEARN = "learn"  # Share learned pattern
 
 
 class TaskPriority(Enum):
@@ -51,12 +52,13 @@ class RisalahMessage:
     Risalah (رسالة) — Inter-agent message.
     Every message carries its own certainty and context.
     """
+
     message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     msg_type: MessageType = MessageType.DISCOVER
     sender_id: str = ""
     recipient_id: str = ""  # Empty = broadcast
     task: str = ""
-    context: Dict = field(default_factory=dict)
+    context: dict = field(default_factory=dict)
     payload: Any = None
     priority: TaskPriority = TaskPriority.NORMAL
     yaqin_level: str = "ilm"  # ilm / ayn / haqq
@@ -65,7 +67,7 @@ class RisalahMessage:
     reply_to: str = ""  # ID of message being replied to
     ttl: int = 30  # Time to live in seconds
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "message_id": self.message_id,
             "type": self.msg_type.value,
@@ -82,22 +84,23 @@ class RisalahMessage:
 @dataclass
 class AgentCapability:
     """Registered capability of an agent."""
+
     agent_id: str = ""
     agent_name: str = ""
     role: str = ""
-    capabilities: List[str] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
     nafs_level: int = 1
     success_rate: float = 0.0
     current_load: int = 0
     max_capacity: int = 10
-    specializations: List[str] = field(default_factory=list)
+    specializations: list[str] = field(default_factory=list)
     last_heartbeat: float = field(default_factory=time.time)
 
     @property
     def available(self) -> bool:
         return self.current_load < self.max_capacity
 
-    def match_score(self, required_capabilities: List[str]) -> float:
+    def match_score(self, required_capabilities: list[str]) -> float:
         """Score how well this agent matches required capabilities."""
         if not required_capabilities:
             return 0.5
@@ -119,21 +122,25 @@ class AgentFederation:
     """
 
     def __init__(self):
-        self.registry: Dict[str, AgentCapability] = {}
-        self.message_bus: List[RisalahMessage] = []
-        self.pending_delegations: Dict[str, RisalahMessage] = {}
-        self.completed_delegations: List[Dict] = []
-        self._handlers: Dict[str, Callable] = {}
-        self._message_handlers: Dict[MessageType, List[Callable]] = {
-            mt: [] for mt in MessageType
-        }
+        self.registry: dict[str, AgentCapability] = {}
+        self.message_bus: list[RisalahMessage] = []
+        self.pending_delegations: dict[str, RisalahMessage] = {}
+        self.completed_delegations: list[dict] = []
+        self._handlers: dict[str, Callable] = {}
+        self._message_handlers: dict[MessageType, list[Callable]] = {mt: [] for mt in MessageType}
 
     # ─── Registration ───
 
-    def register_agent(self, agent_id: str, agent_name: str, role: str,
-                       capabilities: List[str], nafs_level: int = 1,
-                       success_rate: float = 0.0,
-                       specializations: List[str] = None) -> AgentCapability:
+    def register_agent(
+        self,
+        agent_id: str,
+        agent_name: str,
+        role: str,
+        capabilities: list[str],
+        nafs_level: int = 1,
+        success_rate: float = 0.0,
+        specializations: list[str] = None,
+    ) -> AgentCapability:
         """Register an agent's capabilities in the federation."""
         cap = AgentCapability(
             agent_id=agent_id,
@@ -145,7 +152,9 @@ class AgentFederation:
             specializations=specializations or [],
         )
         self.registry[agent_id] = cap
-        logger.info(f"[FEDERATION] Registered: {agent_name} ({role}) with {len(capabilities)} capabilities")
+        logger.info(
+            f"[FEDERATION] Registered: {agent_name} ({role}) with {len(capabilities)} capabilities"
+        )
         return cap
 
     def unregister_agent(self, agent_id: str):
@@ -162,9 +171,9 @@ class AgentFederation:
 
     # ─── Discovery ───
 
-    def discover(self, required_capabilities: List[str] = None,
-                 min_nafs: int = 1,
-                 exclude: Set[str] = None) -> List[AgentCapability]:
+    def discover(
+        self, required_capabilities: list[str] = None, min_nafs: int = 1, exclude: set[str] = None
+    ) -> list[AgentCapability]:
         """
         Discover agents matching criteria.
         Returns sorted by match score (best first).
@@ -187,9 +196,9 @@ class AgentFederation:
         candidates.sort(key=lambda x: -x[0])
         return [cap for _, cap in candidates]
 
-    def find_best_agent(self, task_type: str,
-                        required_capabilities: List[str] = None,
-                        min_nafs: int = 1) -> Optional[AgentCapability]:
+    def find_best_agent(
+        self, task_type: str, required_capabilities: list[str] = None, min_nafs: int = 1
+    ) -> AgentCapability | None:
         """Find the single best agent for a task."""
         # Map task types to capability hints
         type_hints = {
@@ -227,10 +236,14 @@ class AgentFederation:
 
     # ─── Delegation ───
 
-    async def delegate_task(self, from_agent: str, task: str,
-                            required_capabilities: List[str] = None,
-                            priority: TaskPriority = TaskPriority.NORMAL,
-                            context: Dict = None) -> Optional[Dict]:
+    async def delegate_task(
+        self,
+        from_agent: str,
+        task: str,
+        required_capabilities: list[str] = None,
+        priority: TaskPriority = TaskPriority.NORMAL,
+        context: dict = None,
+    ) -> dict | None:
         """
         Delegate a task to the best available agent.
 
@@ -265,9 +278,7 @@ class AgentFederation:
         # Update load
         best.current_load += 1
 
-        logger.info(
-            f"[FEDERATION] Delegated to {best.agent_name}: {task[:50]}"
-        )
+        logger.info(f"[FEDERATION] Delegated to {best.agent_name}: {task[:50]}")
 
         return {
             "delegation_id": msg.message_id,
@@ -276,10 +287,15 @@ class AgentFederation:
             "match_score": best.match_score(required_capabilities or []),
         }
 
-    async def report_result(self, delegation_id: str, agent_id: str,
-                            result: Any, success: bool,
-                            confidence: float = 0.5,
-                            yaqin_level: str = "ilm") -> Dict:
+    async def report_result(
+        self,
+        delegation_id: str,
+        agent_id: str,
+        result: Any,
+        success: bool,
+        confidence: float = 0.5,
+        yaqin_level: str = "ilm",
+    ) -> dict:
         """Report task result back to the delegating agent."""
         delegation = self.pending_delegations.pop(delegation_id, None)
 
@@ -288,9 +304,7 @@ class AgentFederation:
 
         # Update agent load
         if agent_id in self.registry:
-            self.registry[agent_id].current_load = max(
-                0, self.registry[agent_id].current_load - 1
-            )
+            self.registry[agent_id].current_load = max(0, self.registry[agent_id].current_load - 1)
 
         result_msg = RisalahMessage(
             msg_type=MessageType.RESULT,
@@ -325,11 +339,16 @@ class AgentFederation:
 
     # ─── Direct Delegation (Agent-to-Agent) ───
 
-    async def delegate(self, from_agent_id: str, target_agent_id: str,
-                       task: str, context: Dict = None,
-                       priority: TaskPriority = TaskPriority.NORMAL,
-                       timeout: float = 120.0,
-                       execute_fn: Callable = None) -> Dict:
+    async def delegate(
+        self,
+        from_agent_id: str,
+        target_agent_id: str,
+        task: str,
+        context: dict = None,
+        priority: TaskPriority = TaskPriority.NORMAL,
+        timeout: float = 120.0,
+        execute_fn: Callable = None,
+    ) -> dict:
         """
         Delegate a task directly from one agent to a specific target agent.
 
@@ -410,11 +429,19 @@ class AgentFederation:
                     execute_fn(target_agent_id, task, context or {}),
                     timeout=timeout,
                 )
-                success = result_payload.get("success", False) if isinstance(result_payload, dict) else True
-                confidence = result_payload.get("confidence", 0.7) if isinstance(result_payload, dict) else 0.7
+                success = (
+                    result_payload.get("success", False)
+                    if isinstance(result_payload, dict)
+                    else True
+                )
+                confidence = (
+                    result_payload.get("confidence", 0.7)
+                    if isinstance(result_payload, dict)
+                    else 0.7
+                )
                 if success:
                     yaqin_level = "ayn"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 result_payload = {"error": f"Delegation timed out after {timeout}s"}
                 success = False
             except Exception as exc:
@@ -451,8 +478,9 @@ class AgentFederation:
 
     # ─── Learning ───
 
-    async def share_learning(self, agent_id: str, pattern: str,
-                             outcome: str, confidence: float = 0.7):
+    async def share_learning(
+        self, agent_id: str, pattern: str, outcome: str, confidence: float = 0.7
+    ):
         """Share a learned pattern with all federation members."""
         msg = RisalahMessage(
             msg_type=MessageType.LEARN,
@@ -465,7 +493,7 @@ class AgentFederation:
 
     # ─── Status ───
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get federation status."""
         return {
             "registered_agents": len(self.registry),

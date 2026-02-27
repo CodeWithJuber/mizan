@@ -16,12 +16,10 @@ This module implements the complete 7-layer cognitive pipeline:
   Output:    Furqan + Bayan             → discrimination + articulation
 """
 
+import logging
 import re
 import time
-import logging
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
 
 from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
@@ -32,13 +30,56 @@ logger = logging.getLogger("mizan.qca")
 # LAYER 1+2+3: SAM' + BASAR + FU'AD — Dual Input Processing
 # ─────────────────────────────────────────────────────────────────────────────
 
-STOPWORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could", "of", "in", "on",
-    "at", "to", "for", "with", "by", "from", "and", "or", "but", "not",
-    "this", "that", "these", "those", "it", "its", "they", "their",
-})
+STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "from",
+        "and",
+        "or",
+        "but",
+        "not",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "their",
+    }
+)
 
 
 class DualInputProcessor:
@@ -48,14 +89,14 @@ class DualInputProcessor:
     Fu'ad: Integration engine combining both into unified understanding — Quran 16:78
     """
 
-    def process_sam(self, text: str) -> Dict:
+    def process_sam(self, text: str) -> dict:
         """Sequential processing — one token after another (temporal stream)."""
         tokens = text.lower().split()
         timeline = [(i, tok) for i, tok in enumerate(tokens)]
         bigrams = [(tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1)]
         return {"tokens": tokens, "timeline": timeline, "sequential_pairs": bigrams}
 
-    def process_basar(self, text: str) -> Dict:
+    def process_basar(self, text: str) -> dict:
         """Structural pattern — simultaneous view of whole text (spatial map)."""
         tokens = text.lower().split()
         freq = Counter(tokens)
@@ -70,7 +111,7 @@ class DualInputProcessor:
             "avg_sentence_length": len(tokens) / max(len(sentences), 1),
         }
 
-    def integrate_fuad(self, sam_result: Dict, basar_result: Dict) -> Dict:
+    def integrate_fuad(self, sam_result: dict, basar_result: dict) -> dict:
         """
         Fu'ad: Integrate sequential + structural into unified understanding.
         Produces both Zahir (surface) and Batin (deep structure) views.
@@ -89,7 +130,7 @@ class DualInputProcessor:
             "total_tokens": len(tokens),
         }
 
-    def process(self, text: str) -> Dict:
+    def process(self, text: str) -> dict:
         """Full dual-input processing pipeline."""
         sam = self.process_sam(text)
         basar = self.process_basar(text)
@@ -101,6 +142,7 @@ class DualInputProcessor:
 # LAYER 4: ISM — Root-Space Semantic Representation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class ISMLayer:
     """
     Root-space representation: every Arabic word = Root + Pattern.
@@ -111,33 +153,33 @@ class ISMLayer:
 
     # 16 Arabic morphological patterns (awzan)
     PATTERNS = {
-        "فَاعِل":      ("active agent",         "one actively doing root action"),
-        "مَفْعُول":    ("passive patient",       "entity receiving root action"),
-        "فِعَال":      ("intensive noun",        "primary instrument of action"),
-        "فَعِيل":      ("divine/intense attr",   "permanent intense quality"),
-        "مَفْعَل":     ("place/time",            "location where action occurs"),
-        "فُعْلَان":    ("overflow abundance",    "encompassing quality"),
-        "تَفْعِيل":    ("intensive verbal noun", "act of doing intensively"),
-        "اسْتِفْعَال": ("seeking verbal noun",   "act of seeking the quality"),
-        "تَفَعُّل":    ("self-reflexive",        "doing action to/for oneself"),
-        "مُفَعِّل":    ("active intensive agent", "one intensely doing action"),
-        "فُعُول":      ("completed action",      "full noun of the action"),
-        "أَفْعَال":    ("broken plural",         "plurality of root instances"),
-        "فَعَّلَ":     ("causative intensive",   "making others do root action"),
-        "تَفَاعُل":    ("mutual action",         "reciprocal doing of root"),
-        "انْفِعَال":   ("passive becoming",      "spontaneous self-change"),
-        "افْتِعَال":   ("self-directed action",  "doing action with effort"),
+        "فَاعِل": ("active agent", "one actively doing root action"),
+        "مَفْعُول": ("passive patient", "entity receiving root action"),
+        "فِعَال": ("intensive noun", "primary instrument of action"),
+        "فَعِيل": ("divine/intense attr", "permanent intense quality"),
+        "مَفْعَل": ("place/time", "location where action occurs"),
+        "فُعْلَان": ("overflow abundance", "encompassing quality"),
+        "تَفْعِيل": ("intensive verbal noun", "act of doing intensively"),
+        "اسْتِفْعَال": ("seeking verbal noun", "act of seeking the quality"),
+        "تَفَعُّل": ("self-reflexive", "doing action to/for oneself"),
+        "مُفَعِّل": ("active intensive agent", "one intensely doing action"),
+        "فُعُول": ("completed action", "full noun of the action"),
+        "أَفْعَال": ("broken plural", "plurality of root instances"),
+        "فَعَّلَ": ("causative intensive", "making others do root action"),
+        "تَفَاعُل": ("mutual action", "reciprocal doing of root"),
+        "انْفِعَال": ("passive becoming", "spontaneous self-change"),
+        "افْتِعَال": ("self-directed action", "doing action with effort"),
     }
 
-    def __init__(self, root_db: Dict = None):
+    def __init__(self, root_db: dict = None):
         self.root_db = root_db or ARABIC_ROOTS
 
-    def get_word_info(self, arabic_word: str) -> Optional[Dict]:
+    def get_word_info(self, arabic_word: str) -> dict | None:
         """Get full ISM info for an Arabic word."""
         clean = re.sub(r"[\u064B-\u0652]", "", arabic_word)
         return self.root_db.get(clean) or self.root_db.get(arabic_word)
 
-    def generalize_meaning(self, root: str, pattern: str) -> Optional[Dict]:
+    def generalize_meaning(self, root: str, pattern: str) -> dict | None:
         """
         ZERO-SHOT: predict meaning of unknown word from Root + Pattern alone.
         Impossible in standard NLP. Core QCA advantage.
@@ -151,15 +193,13 @@ class ISMLayer:
         )
         pat_func, pat_desc = pattern_entry
         return {
-            "predicted_zahir": "{}: one who/that which {}".format(pat_func, root_meaning),
-            "predicted_batin": "Root invariant: [{}] + Function: [{}]".format(
-                root_meaning, pat_desc
-            ),
+            "predicted_zahir": f"{pat_func}: one who/that which {root_meaning}",
+            "predicted_batin": f"Root invariant: [{root_meaning}] + Function: [{pat_desc}]",
             "confidence": min(0.95, root_entry.get("frequency", 10) / 900),
             "domain": root_entry.get("domain", "unknown"),
         }
 
-    def find_root_family(self, root: str) -> Dict:
+    def find_root_family(self, root: str) -> dict:
         """Get all words sharing a root — the family cluster."""
         entry = self.root_db.get(root, {})
         return entry.get("derivatives", {})
@@ -177,7 +217,7 @@ class ISMLayer:
             return 0.35
         return 0.75
 
-    def find_roots_in_text(self, text: str) -> List[Dict]:
+    def find_roots_in_text(self, text: str) -> list[dict]:
         """Find Arabic roots/concepts relevant to an English text."""
         words = text.lower().split()
         found_roots = []
@@ -189,19 +229,22 @@ class ISMLayer:
                 if root not in seen_roots:
                     seen_roots.add(root)
                     root_data = self.root_db.get(root, {})
-                    found_roots.append({
-                        "english_term": clean,
-                        "root": root,
-                        "meaning": root_data.get("meaning", ""),
-                        "domain": root_data.get("domain", ""),
-                        "derivatives": list(root_data.get("derivatives", {}).items())[:3],
-                    })
+                    found_roots.append(
+                        {
+                            "english_term": clean,
+                            "root": root,
+                            "meaning": root_data.get("meaning", ""),
+                            "domain": root_data.get("domain", ""),
+                            "derivatives": list(root_data.get("derivatives", {}).items())[:3],
+                        }
+                    )
         return found_roots
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LAYER 5: MIZAN — Epistemic Weighting
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class MizanLayer:
     """
@@ -214,21 +257,21 @@ class MizanLayer:
     """
 
     LEVELS = {
-        "yaqin":      1.00,   # certain — logical necessity, Quranic text
-        "zann_rajih": 0.75,   # strong probability — verified source
-        "zann":       0.50,   # conjecture — reasonable inference
-        "shakk":      0.25,   # doubt — some evidence but unclear
-        "wahm":       0.05,   # delusion — very weak or no basis
+        "yaqin": 1.00,  # certain — logical necessity, Quranic text
+        "zann_rajih": 0.75,  # strong probability — verified source
+        "zann": 0.50,  # conjecture — reasonable inference
+        "shakk": 0.25,  # doubt — some evidence but unclear
+        "wahm": 0.05,  # delusion — very weak or no basis
     }
 
     SOURCES = {
-        "quran":       1.00,
-        "mutawatir":   0.99,
-        "sahih":       0.85,
-        "hasan":       0.70,
-        "inference":   0.60,
-        "daif":        0.40,
-        "unknown":     0.15,
+        "quran": 1.00,
+        "mutawatir": 0.99,
+        "sahih": 0.85,
+        "hasan": 0.70,
+        "inference": 0.60,
+        "daif": 0.40,
+        "unknown": 0.15,
     }
 
     LEVEL_NAMES = {
@@ -239,15 +282,16 @@ class MizanLayer:
         0.05: "Wahm (Delusion)",
     }
 
-    def weigh(self, certainty_level: str, source: str = "inference",
-              contradictions: int = 0) -> float:
+    def weigh(
+        self, certainty_level: str, source: str = "inference", contradictions: int = 0
+    ) -> float:
         """Compute the Mizan weight for a claim."""
         base = self.LEVELS.get(certainty_level, 0.5)
         src = self.SOURCES.get(source, 0.5)
         weight = base * src - 0.15 * contradictions
         return max(0.0, min(1.0, weight))
 
-    def check_tughyan(self, claimed_level: str, evidence_level: str) -> Tuple[bool, str]:
+    def check_tughyan(self, claimed_level: str, evidence_level: str) -> tuple[bool, str]:
         """
         Detect transgression: claiming more certainty than evidence allows.
         "That you not transgress within the balance." — 55:8
@@ -256,8 +300,8 @@ class MizanLayer:
         actual = self.LEVELS.get(evidence_level, 0)
         if claimed > actual + 0.30:
             return True, (
-                "TUGHYAN: Claims {}({:.2f}) but evidence only supports "
-                "{}({:.2f})".format(claimed_level, claimed, evidence_level, actual)
+                f"TUGHYAN: Claims {claimed_level}({claimed:.2f}) but evidence only supports "
+                f"{evidence_level}({actual:.2f})"
             )
         return False, "Within Mizan bounds"
 
@@ -290,6 +334,7 @@ class MizanLayer:
 # LAYER 6: 'AQL — Typed Relationship Binding Engine
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class AqlLayer:
     """
     8 typed relationship categories derived from Quranic epistemology.
@@ -300,18 +345,18 @@ class AqlLayer:
     """
 
     BINDING_TYPES = {
-        "CAUSAL":       ("A directly causes B",                 "A -> B"),
-        "ESSENTIAL":    ("A is inseparable attribute of B",     "A in def(B)"),
-        "ACCIDENTAL":   ("A sometimes accompanies B",           "A ~ B (partial)"),
-        "NEGATION":     ("A and B mutually exclude each other", "not(A and B)"),
-        "HIERARCHICAL": ("A is a subset/instance of B",         "A subset B"),
-        "ANALOGICAL":   ("A resembles B in specific aspect X",  "A approx B [X]"),
-        "PURPOSE":      ("A exists for the purpose of B",       "purpose(A) = B"),
-        "CONTRAST":     ("A and B define each other by opposition", "A <-> not-A = B"),
+        "CAUSAL": ("A directly causes B", "A -> B"),
+        "ESSENTIAL": ("A is inseparable attribute of B", "A in def(B)"),
+        "ACCIDENTAL": ("A sometimes accompanies B", "A ~ B (partial)"),
+        "NEGATION": ("A and B mutually exclude each other", "not(A and B)"),
+        "HIERARCHICAL": ("A is a subset/instance of B", "A subset B"),
+        "ANALOGICAL": ("A resembles B in specific aspect X", "A approx B [X]"),
+        "PURPOSE": ("A exists for the purpose of B", "purpose(A) = B"),
+        "CONTRAST": ("A and B define each other by opposition", "A <-> not-A = B"),
     }
 
     def __init__(self):
-        self.graph: Dict[str, List[Dict]] = defaultdict(list)
+        self.graph: dict[str, list[dict]] = defaultdict(list)
         self._populate_from_quran()
 
     def _populate_from_quran(self):
@@ -363,24 +408,28 @@ class AqlLayer:
         for a, btype, b, cert, src in bindings:
             self.bind(a, btype, b, cert, src)
 
-    def bind(self, a: str, binding_type: str, b: str,
-             certainty: float = 1.0, source: str = "") -> None:
+    def bind(
+        self, a: str, binding_type: str, b: str, certainty: float = 1.0, source: str = ""
+    ) -> None:
         """Add a typed binding between two concepts."""
         entry = {
-            "from": a, "type": binding_type, "to": b,
-            "certainty": certainty, "source": source,
+            "from": a,
+            "type": binding_type,
+            "to": b,
+            "certainty": certainty,
+            "source": source,
             "logic": self.BINDING_TYPES.get(binding_type, ("?", "?"))[1],
         }
         self.graph[a].append(entry)
 
-    def query(self, concept: str, btype: str = None) -> List[Dict]:
+    def query(self, concept: str, btype: str = None) -> list[dict]:
         """Query all bindings for a concept, optionally filtered by type."""
         results = self.graph.get(concept, [])
         if btype:
             results = [r for r in results if r["type"] == btype]
         return results
 
-    def tadabbur_trace(self, start: str, depth: int = 4) -> List[str]:
+    def tadabbur_trace(self, start: str, depth: int = 4) -> list[str]:
         """
         Trace causal chain forward from a concept (Quranic Tadabbur mode).
         "Do they not then reflect upon the Quran?" — 4:82
@@ -401,7 +450,7 @@ class AqlLayer:
             current = nxt
         return chain
 
-    def get_all_bindings_summary(self) -> Tuple[int, Dict[str, int]]:
+    def get_all_bindings_summary(self) -> tuple[int, dict[str, int]]:
         """Get total bindings count and distribution by type."""
         total = sum(len(v) for v in self.graph.values())
         type_counts = Counter(b["type"] for v in self.graph.values() for b in v)
@@ -411,6 +460,7 @@ class AqlLayer:
 # ─────────────────────────────────────────────────────────────────────────────
 # LAYER 7: LAWH — 4-Tier Hierarchical Memory
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class LawhMemory:
     """
@@ -433,37 +483,30 @@ class LawhMemory:
     }
 
     def __init__(self):
-        self.tiers: Dict[int, Dict[str, Dict]] = {1: {}, 2: {}, 3: {}, 4: {}}
+        self.tiers: dict[int, dict[str, dict]] = {1: {}, 2: {}, 3: {}, 4: {}}
         self._init_tier1()
         self._init_tier2_roots()
 
     def _init_tier1(self):
         """Immutable axioms from Quran — cannot be overwritten."""
         axioms = {
-            "TRIADIC_INPUT": (
-                "Sam'+Basar+Fu'ad is the cognitive input triad", "16:78"
-            ),
-            "BAYAN_ORDER": (
-                "Knowledge structure precedes expression (Bayan)", "55:2-4"
-            ),
-            "MIZAN_COSMIC": (
-                "Mizan (balance) is a cosmic law — transgression is error", "55:7-9"
-            ),
+            "TRIADIC_INPUT": ("Sam'+Basar+Fu'ad is the cognitive input triad", "16:78"),
+            "BAYAN_ORDER": ("Knowledge structure precedes expression (Bayan)", "55:2-4"),
+            "MIZAN_COSMIC": ("Mizan (balance) is a cosmic law — transgression is error", "55:7-9"),
             "ISM_FOUNDATION": (
-                "Knowledge of Names (essences) is the foundation of cognition", "2:31"
+                "Knowledge of Names (essences) is the foundation of cognition",
+                "2:31",
             ),
-            "EPISTEMIC_DUTY": (
-                "Do not follow what you have no knowledge of", "17:36"
-            ),
+            "EPISTEMIC_DUTY": ("Do not follow what you have no knowledge of", "17:36"),
             "CONJECTURE_WARN": (
-                "Some conjecture is sin — never assert conjecture as certainty", "49:12"
+                "Some conjecture is sin — never assert conjecture as certainty",
+                "49:12",
             ),
             "LAWH_PRESERVATION": (
-                "All is preserved in the Lawh Mahfuz without corruption", "85:22"
+                "All is preserved in the Lawh Mahfuz without corruption",
+                "85:22",
             ),
-            "IQRA_CYCLE": (
-                "Read-Name-Write: the complete cognitive acquisition cycle", "96:1-5"
-            ),
+            "IQRA_CYCLE": ("Read-Name-Write: the complete cognitive acquisition cycle", "96:1-5"),
             "YAQIN_REQUIRED": (
                 "Only certain (Yaqin) knowledge deserves assertion without qualification",
                 "2:255",
@@ -471,15 +514,19 @@ class LawhMemory:
         }
         for key, (content, source) in axioms.items():
             self.tiers[1][key] = {
-                "content": content, "source": source, "certainty": 1.0,
-                "tier": 1, "mutable": False, "timestamp": time.time(),
+                "content": content,
+                "source": source,
+                "certainty": 1.0,
+                "tier": 1,
+                "mutable": False,
+                "timestamp": time.time(),
             }
 
     def _init_tier2_roots(self):
         """Load Arabic roots into Tier 2 as verified knowledge."""
         for root, data in ARABIC_ROOTS.items():
             if isinstance(data, dict) and data.get("meaning"):
-                self.tiers[2]["ROOT:{}".format(root)] = {
+                self.tiers[2][f"ROOT:{root}"] = {
                     "content": data["meaning"],
                     "source": "Arabic lexicon",
                     "certainty": 0.95,
@@ -487,7 +534,7 @@ class LawhMemory:
                     "timestamp": time.time(),
                 }
 
-    def load_quran_verses(self, quran_data: Dict):
+    def load_quran_verses(self, quran_data: dict):
         """Load downloaded Quran verses into Tier 2."""
         count = 0
         for snum, verses in quran_data.items():
@@ -505,20 +552,24 @@ class LawhMemory:
                     count += 1
         return count
 
-    def store(self, key: str, content: str, certainty: float,
-              source: str = "inference", tier: int = None) -> bool:
+    def store(
+        self, key: str, content: str, certainty: float, source: str = "inference", tier: int = None
+    ) -> bool:
         """Store knowledge in the appropriate tier."""
         if tier is None:
             tier = 2 if certainty >= 0.85 else 3 if certainty >= 0.45 else 4
         if tier == 1 and key in self.tiers[1]:
             return False  # Cannot overwrite Tier 1
         self.tiers[tier][key] = {
-            "content": content, "source": source, "certainty": certainty,
-            "tier": tier, "timestamp": time.time(),
+            "content": content,
+            "source": source,
+            "certainty": certainty,
+            "tier": tier,
+            "timestamp": time.time(),
         }
         return True
 
-    def retrieve(self, key: str) -> Optional[Dict]:
+    def retrieve(self, key: str) -> dict | None:
         """Retrieve knowledge by key, searching from highest to lowest tier."""
         for t in [1, 2, 3, 4]:
             if key in self.tiers[t]:
@@ -528,15 +579,31 @@ class LawhMemory:
                 return e
         return None
 
-    def search(self, query_text: str, top_k: int = 5,
-               tiers: List[int] = None) -> List[Tuple[int, str, Dict]]:
+    def search(
+        self, query_text: str, top_k: int = 5, tiers: list[int] = None
+    ) -> list[tuple[int, str, dict]]:
         """Keyword search across tiers."""
         if tiers is None:
             tiers = [2, 3]
         query_words = set(query_text.lower().split())
         query_words -= {
-            "the", "a", "an", "is", "are", "was", "in", "of", "to",
-            "and", "or", "what", "how", "why", "when", "where", "who",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "in",
+            "of",
+            "to",
+            "and",
+            "or",
+            "what",
+            "how",
+            "why",
+            "when",
+            "where",
+            "who",
         }
         results = []
         for tier in tiers:
@@ -564,7 +631,7 @@ class LawhMemory:
                 pruned += 1
         return {"consolidated": True, "pruned": pruned}
 
-    def stats(self) -> Dict[int, int]:
+    def stats(self) -> dict[int, int]:
         """Get entry counts per tier."""
         return {t: len(self.tiers[t]) for t in [1, 2, 3, 4]}
 
@@ -572,6 +639,7 @@ class LawhMemory:
 # ─────────────────────────────────────────────────────────────────────────────
 # OUTPUT: FURQAN + BAYAN — Discrimination & Articulation
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class FurqanBayan:
     """
@@ -604,8 +672,9 @@ class FurqanBayan:
         "YAQIN_REQUIRED": ["certain", "yaqin", "assertion", "qualification", "knowledge"],
     }
 
-    def validate_and_express(self, claim: str, confidence: float,
-                             source: str = "inference") -> Dict:
+    def validate_and_express(
+        self, claim: str, confidence: float, source: str = "inference"
+    ) -> dict:
         """Validate a claim through Furqan checks and produce Bayan output."""
         report = {
             "passed": True,
@@ -643,17 +712,17 @@ class FurqanBayan:
                 axiom_entry = self.lawh.tiers[1].get(key)
                 if not axiom_entry:
                     continue
-                axiom_content = axiom_entry["content"].lower()
-
                 # Check if claim contradicts axiom via negation + concept overlap
-                claim_words = set(claim_lower.split())
                 negation_near_concept = False
                 for concept in concepts:
                     if concept in claim_lower:
                         # Look for negation within 5 words of the concept
                         idx = claim_lower.find(concept)
-                        window = claim_lower[max(0, idx - 40):idx + len(concept) + 40]
-                        if any(neg in window for neg in ["not ", "no ", "never ", "cannot ", "isn't ", "doesn't "]):
+                        window = claim_lower[max(0, idx - 40) : idx + len(concept) + 40]
+                        if any(
+                            neg in window
+                            for neg in ["not ", "no ", "never ", "cannot ", "isn't ", "doesn't "]
+                        ):
                             negation_near_concept = True
                             break
 
@@ -690,6 +759,7 @@ class FurqanBayan:
 # QCA ENGINE — Unified 7-Layer Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class QCAEngine:
     """
     The unified QCA Engine that orchestrates all 7 layers.
@@ -715,7 +785,7 @@ class QCAEngine:
             self.aql.get_all_bindings_summary()[0],
         )
 
-    def process_input(self, text: str) -> Dict:
+    def process_input(self, text: str) -> dict:
         """
         Process text through all input layers (Sam' + Basar + Fu'ad + ISM).
         Returns a comprehensive analysis.
@@ -728,13 +798,19 @@ class QCAEngine:
 
         # Store in Tier 3 working memory
         self.lawh.store(
-            "CURRENT_INPUT", text[:500], certainty=1.0,
-            source="user_input", tier=3,
+            "CURRENT_INPUT",
+            text[:500],
+            certainty=1.0,
+            source="user_input",
+            tier=3,
         )
         key_terms = perception["fuad"].get("key_terms", [])
         self.lawh.store(
-            "CURRENT_TERMS", str(key_terms), certainty=1.0,
-            source="fuad_analysis", tier=3,
+            "CURRENT_TERMS",
+            str(key_terms),
+            certainty=1.0,
+            source="fuad_analysis",
+            tier=3,
         )
 
         return {
@@ -745,7 +821,7 @@ class QCAEngine:
             "batin": perception["fuad"]["batin"],
         }
 
-    def reason(self, question: str, context_text: str = None) -> Dict:
+    def reason(self, question: str, context_text: str = None) -> dict:
         """
         Full QCA reasoning pipeline for answering a question.
         Routes through all 7 layers.
@@ -767,8 +843,20 @@ class QCAEngine:
 
         # Layer 1+2+3: Find relevant sentences in context
         q_words = set(question.lower().split()) - {
-            "what", "how", "why", "is", "are", "the", "a", "an", "in", "of",
-            "to", "does", "do", "did",
+            "what",
+            "how",
+            "why",
+            "is",
+            "are",
+            "the",
+            "a",
+            "an",
+            "in",
+            "of",
+            "to",
+            "does",
+            "do",
+            "did",
         }
         relevant_sentences = []
         for sent in sentences:
@@ -780,13 +868,13 @@ class QCAEngine:
 
         if relevant_sentences:
             best_sent = relevant_sentences[0][1]
-            answer_parts.append('From the text: "{}"'.format(best_sent))
+            answer_parts.append(f'From the text: "{best_sent}"')
             confidence_scores.append(0.85)
             sources.append("paragraph_direct")
         elif current_terms:
-            answer_parts.append("Context discusses: {}".format(
-                current_terms.get("content", "")[:200]
-            ))
+            answer_parts.append(
+                "Context discusses: {}".format(current_terms.get("content", "")[:200])
+            )
             confidence_scores.append(0.5)
             sources.append("fuad_inference")
 
@@ -802,9 +890,7 @@ class QCAEngine:
                     )
                     root_insights.append(insight)
             if root_insights:
-                answer_parts.append(
-                    "QCA Root Analysis: " + " | ".join(root_insights)
-                )
+                answer_parts.append("QCA Root Analysis: " + " | ".join(root_insights))
                 confidence_scores.append(0.9)
                 sources.append("ism_root_analysis")
 
@@ -820,9 +906,7 @@ class QCAEngine:
                     quran_refs.append(ref_text)
                     sources.append("lawh_tier{}".format(entry["tier"]))
         if quran_refs:
-            answer_parts.append(
-                "Quranic references: " + " | ".join(quran_refs[:2])
-            )
+            answer_parts.append("Quranic references: " + " | ".join(quran_refs[:2]))
             confidence_scores.append(0.95)
 
         # Layer 6: 'Aql — tadabbur trace
@@ -833,9 +917,7 @@ class QCAEngine:
                 chain = self.aql.tadabbur_trace(concept_key, depth=3)
                 if len(chain) > 1:
                     answer_parts.append(
-                        "'Aql Tadabbur trace: {}".format(
-                            " ".join(str(c) for c in chain)
-                        )
+                        "'Aql Tadabbur trace: {}".format(" ".join(str(c) for c in chain))
                     )
                     confidence_scores.append(0.7)
                     sources.append("aql_tadabbur")
@@ -855,7 +937,7 @@ class QCAEngine:
 
         # Store result in Tier 3 memory
         self.lawh.store(
-            "REASONING_{}".format(int(time.time())),
+            f"REASONING_{int(time.time())}",
             question + " -> " + (answer_parts[0] if answer_parts else "no answer"),
             certainty=overall_confidence,
             source="qca_reasoning",
@@ -874,22 +956,20 @@ class QCAEngine:
             "lawh_stats": self.lawh.stats(),
         }
 
-    def weigh_claim(self, claim: str, certainty_level: str,
-                    source: str = "inference") -> Dict:
+    def weigh_claim(self, claim: str, certainty_level: str, source: str = "inference") -> dict:
         """Weigh a claim through the Mizan layer."""
         weight = self.mizan.weigh(certainty_level, source)
         report = self.furqan.validate_and_express(claim, weight, source)
         return report
 
-    def trace_concept(self, concept: str, depth: int = 4) -> List[str]:
+    def trace_concept(self, concept: str, depth: int = 4) -> list[str]:
         """Trace causal chain through 'Aql bindings."""
         return self.aql.tadabbur_trace(concept, depth)
 
-    def remember(self, key: str, content: str, certainty: float,
-                 source: str = "agent") -> bool:
+    def remember(self, key: str, content: str, certainty: float, source: str = "agent") -> bool:
         """Store knowledge in Lawh memory."""
         return self.lawh.store(key, content, certainty, source)
 
-    def recall(self, query: str, top_k: int = 5) -> List:
+    def recall(self, query: str, top_k: int = 5) -> list:
         """Search Lawh memory."""
         return self.lawh.search(query, top_k, tiers=[1, 2, 3])

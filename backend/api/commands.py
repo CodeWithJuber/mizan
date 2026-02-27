@@ -1,15 +1,15 @@
 """In-chat command handlers for MIZAN"""
-import json
-from datetime import datetime
 
 COMMANDS = {}
 
 
 def command(name, description):
     """Decorator to register a command"""
+
     def decorator(func):
         COMMANDS[name] = {"handler": func, "description": description}
         return func
+
     return decorator
 
 
@@ -71,7 +71,7 @@ async def cmd_agents(active_agents=None, **kwargs):
     if not active_agents:
         return "No agents available."
     lines = ["**Available Agents:**", ""]
-    for aid, agent in active_agents.items():
+    for _aid, agent in active_agents.items():
         lines.append(f"  **{agent.name}** ({agent.role}) — {agent.state}")
     return "\n".join(lines)
 
@@ -85,12 +85,12 @@ async def cmd_compact(session_id=None, sessions=None, **kwargs):
         return "Session too short to compact (need at least 6 messages)."
     # Keep last 4 messages, summarize the rest
     older = history[:-4]
-    summary = f"[Previous conversation: {len(older)} messages about: " + ", ".join(
-        set(m.get("content", "")[:30] + "..." for m in older[:5] if m.get("content"))
-    ) + "]"
-    sessions[session_id]["history"] = [
-        {"role": "system", "content": summary}
-    ] + history[-4:]
+    summary = (
+        f"[Previous conversation: {len(older)} messages about: "
+        + ", ".join(set(m.get("content", "")[:30] + "..." for m in older[:5] if m.get("content")))
+        + "]"
+    )
+    sessions[session_id]["history"] = [{"role": "system", "content": summary}] + history[-4:]
     return f"Compacted {len(older)} older messages into summary. Context preserved."
 
 
@@ -106,7 +106,7 @@ async def handle_command(content: str, **context) -> dict:
     if cmd_name not in COMMANDS:
         return {
             "is_command": True,
-            "response": f"Unknown command: `{cmd_name}`. Type `/help` for available commands."
+            "response": f"Unknown command: `{cmd_name}`. Type `/help` for available commands.",
         }
 
     handler = COMMANDS[cmd_name]["handler"]

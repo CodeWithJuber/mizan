@@ -7,11 +7,9 @@ All settings are loaded from environment variables or .env file.
 """
 
 from pathlib import Path
-from typing import List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -43,9 +41,7 @@ class Settings(BaseSettings):
     # ── Server ───────────────────────────────────────────────
     host: str = "0.0.0.0"
     port: int = 8000
-    allowed_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173"]
-    )
+    allowed_origins: list[str] = Field(default=["http://localhost:3000", "http://localhost:5173"])
 
     # ── Database ─────────────────────────────────────────────
     db_path: str = str(PROJECT_ROOT / "data" / "mizan.db")

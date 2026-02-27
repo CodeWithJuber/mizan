@@ -12,39 +12,40 @@ When an agent cannot handle a task, Tawakkul provides:
 - No silent failures — always communicate transparently
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger("mizan.tawakkul")
 
 
 class DelegationReason(Enum):
     """Why delegation is needed."""
-    CAPABILITY_MISSING = "capability_missing"    # Agent lacks the skill
-    ENERGY_LOW = "energy_low"                    # Ruh depleted
-    NAFS_INSUFFICIENT = "nafs_insufficient"      # Permission level too low
-    CONFIDENCE_LOW = "confidence_low"            # Not sure enough to proceed
-    OVERLOADED = "overloaded"                    # Too many concurrent tasks
-    ERROR_RECURRING = "error_recurring"          # Same error keeps happening
-    HUMAN_REQUIRED = "human_required"            # Needs human judgment
+
+    CAPABILITY_MISSING = "capability_missing"  # Agent lacks the skill
+    ENERGY_LOW = "energy_low"  # Ruh depleted
+    NAFS_INSUFFICIENT = "nafs_insufficient"  # Permission level too low
+    CONFIDENCE_LOW = "confidence_low"  # Not sure enough to proceed
+    OVERLOADED = "overloaded"  # Too many concurrent tasks
+    ERROR_RECURRING = "error_recurring"  # Same error keeps happening
+    HUMAN_REQUIRED = "human_required"  # Needs human judgment
 
 
 @dataclass
 class DelegationRecord:
     """Record of a task delegation."""
+
     id: str
     from_agent: str
-    to_agent: Optional[str]  # None = escalated to human
+    to_agent: str | None  # None = escalated to human
     task: str
     reason: DelegationReason
-    success: Optional[bool] = None
+    success: bool | None = None
     created_at: float = field(default_factory=time.time)
-    resolved_at: Optional[float] = None
+    resolved_at: float | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "from_agent": self.from_agent,
@@ -73,13 +74,18 @@ class TawakkulProtocol:
     """
 
     def __init__(self):
-        self._records: Dict[str, DelegationRecord] = {}
+        self._records: dict[str, DelegationRecord] = {}
         self._delegation_count: int = 0
 
-    def should_delegate(self, agent_id: str, task: str,
-                        energy: float = 100, nafs_level: int = 1,
-                        error_count: int = 0,
-                        confidence: float = 1.0) -> Optional[DelegationReason]:
+    def should_delegate(
+        self,
+        agent_id: str,
+        task: str,
+        energy: float = 100,
+        nafs_level: int = 1,
+        error_count: int = 0,
+        confidence: float = 1.0,
+    ) -> DelegationReason | None:
         """
         Determine if an agent should delegate a task.
         Returns the reason for delegation, or None if the agent should proceed.
@@ -95,17 +101,26 @@ class TawakkulProtocol:
 
         # Check task complexity vs nafs level
         task_lower = task.lower()
-        requires_high_nafs = any(w in task_lower for w in [
-            "system config", "delete", "deploy", "production",
-            "sensitive", "credential", "admin",
-        ])
+        requires_high_nafs = any(
+            w in task_lower
+            for w in [
+                "system config",
+                "delete",
+                "deploy",
+                "production",
+                "sensitive",
+                "credential",
+                "admin",
+            ]
+        )
         if requires_high_nafs and nafs_level < 4:
             return DelegationReason.NAFS_INSUFFICIENT
 
         return None
 
-    def find_delegate(self, task: str, available_agents: Dict,
-                      ruh_engine=None, shukr_system=None) -> Optional[str]:
+    def find_delegate(
+        self, task: str, available_agents: dict, ruh_engine=None, shukr_system=None
+    ) -> str | None:
         """
         Find the best agent to delegate to.
         Uses Ruh (energy) and Shukr (strength tracking) if available.
@@ -145,8 +160,9 @@ class TawakkulProtocol:
 
         return None
 
-    def delegate(self, from_agent: str, to_agent: str,
-                 task: str, reason: DelegationReason) -> DelegationRecord:
+    def delegate(
+        self, from_agent: str, to_agent: str, task: str, reason: DelegationReason
+    ) -> DelegationRecord:
         """Record a delegation from one agent to another."""
         self._delegation_count += 1
         record_id = f"tawakkul_{self._delegation_count}"
@@ -158,12 +174,16 @@ class TawakkulProtocol:
             reason=reason,
         )
         self._records[record_id] = record
-        logger.info("[TAWAKKUL] Delegated from %s to %s: %s (%s)",
-                    from_agent, to_agent, task[:50], reason.value)
+        logger.info(
+            "[TAWAKKUL] Delegated from %s to %s: %s (%s)",
+            from_agent,
+            to_agent,
+            task[:50],
+            reason.value,
+        )
         return record
 
-    def escalate_to_human(self, from_agent: str, task: str,
-                          reason: str = "") -> DelegationRecord:
+    def escalate_to_human(self, from_agent: str, task: str, reason: str = "") -> DelegationRecord:
         """Escalate to human when no agent can handle the task."""
         self._delegation_count += 1
         record_id = f"tawakkul_{self._delegation_count}"
@@ -175,8 +195,9 @@ class TawakkulProtocol:
             reason=DelegationReason.HUMAN_REQUIRED,
         )
         self._records[record_id] = record
-        logger.warning("[TAWAKKUL] Escalated to human from %s: %s — %s",
-                       from_agent, task[:50], reason)
+        logger.warning(
+            "[TAWAKKUL] Escalated to human from %s: %s — %s", from_agent, task[:50], reason
+        )
         return record
 
     def resolve(self, record_id: str, success: bool):
@@ -185,12 +206,9 @@ class TawakkulProtocol:
             self._records[record_id].success = success
             self._records[record_id].resolved_at = time.time()
 
-    def get_pending_escalations(self) -> List[DelegationRecord]:
+    def get_pending_escalations(self) -> list[DelegationRecord]:
         """Get tasks escalated to human that are still pending."""
-        return [
-            r for r in self._records.values()
-            if r.to_agent is None and r.success is None
-        ]
+        return [r for r in self._records.values() if r.to_agent is None and r.success is None]
 
     def _classify_task_category(self, task: str) -> str:
         task_lower = task.lower()
@@ -204,7 +222,7 @@ class TawakkulProtocol:
             return "communication"
         return "general"
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         total = len(self._records)
         resolved = [r for r in self._records.values() if r.success is not None]
         successful = sum(1 for r in resolved if r.success)

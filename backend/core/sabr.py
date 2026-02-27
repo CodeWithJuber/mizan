@@ -13,21 +13,22 @@ Manages long-running tasks with:
 - Persistent state for resumable workflows
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("mizan.sabr")
 
 
 class SabrTaskState(Enum):
     """States of a long-running task."""
+
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
-    WAITING = "waiting"    # Waiting for external input/resource
+    WAITING = "waiting"  # Waiting for external input/resource
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -36,15 +37,16 @@ class SabrTaskState(Enum):
 @dataclass
 class SabrStep:
     """A single step in a decomposed long-running task."""
+
     index: int
     description: str
     state: SabrTaskState = SabrTaskState.PENDING
     result: Any = None
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
-    error: Optional[str] = None
+    started_at: float | None = None
+    completed_at: float | None = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "index": self.index,
             "description": self.description,
@@ -57,19 +59,20 @@ class SabrStep:
 @dataclass
 class SabrWorkflow:
     """A long-running workflow managed by the Sabr engine."""
+
     id: str
     agent_id: str
     task: str
-    steps: List[SabrStep] = field(default_factory=list)
+    steps: list[SabrStep] = field(default_factory=list)
     state: SabrTaskState = SabrTaskState.PENDING
     current_step: int = 0
     created_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
+    started_at: float | None = None
+    completed_at: float | None = None
     progress: float = 0.0  # 0.0 to 1.0
-    metadata: Dict = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "agent_id": self.agent_id,
@@ -109,16 +112,14 @@ class SabrEngine:
     """
 
     def __init__(self):
-        self._workflows: Dict[str, SabrWorkflow] = {}
+        self._workflows: dict[str, SabrWorkflow] = {}
 
-    def create_workflow(self, agent_id: str, task: str,
-                        step_descriptions: List[str]) -> SabrWorkflow:
+    def create_workflow(
+        self, agent_id: str, task: str, step_descriptions: list[str]
+    ) -> SabrWorkflow:
         """Create a new long-running workflow with defined steps."""
         workflow_id = f"sabr_{agent_id}_{int(time.time())}"
-        steps = [
-            SabrStep(index=i, description=desc)
-            for i, desc in enumerate(step_descriptions)
-        ]
+        steps = [SabrStep(index=i, description=desc) for i, desc in enumerate(step_descriptions)]
         workflow = SabrWorkflow(
             id=workflow_id,
             agent_id=agent_id,
@@ -129,7 +130,7 @@ class SabrEngine:
         logger.info("[SABR] Created workflow %s with %d steps", workflow_id, len(steps))
         return workflow
 
-    def decompose_task(self, task: str) -> List[str]:
+    def decompose_task(self, task: str) -> list[str]:
         """
         Decompose a complex task into manageable steps.
         Uses heuristics — can be enhanced with LLM decomposition.
@@ -174,7 +175,7 @@ class SabrEngine:
             "Verify results",
         ]
 
-    def start_step(self, workflow_id: str) -> Optional[SabrStep]:
+    def start_step(self, workflow_id: str) -> SabrStep | None:
         """Start the current step of a workflow."""
         wf = self._workflows.get(workflow_id)
         if not wf or wf.current_step >= len(wf.steps):
@@ -188,12 +189,14 @@ class SabrEngine:
         step.state = SabrTaskState.RUNNING
         step.started_at = time.time()
 
-        logger.info("[SABR] Step %d/%d: %s", wf.current_step + 1,
-                     len(wf.steps), step.description[:50])
+        logger.info(
+            "[SABR] Step %d/%d: %s", wf.current_step + 1, len(wf.steps), step.description[:50]
+        )
         return step
 
-    def complete_step(self, workflow_id: str, result: Any = None,
-                      error: str = None) -> Optional[SabrWorkflow]:
+    def complete_step(
+        self, workflow_id: str, result: Any = None, error: str = None
+    ) -> SabrWorkflow | None:
         """Complete the current step and advance."""
         wf = self._workflows.get(workflow_id)
         if not wf or wf.current_step >= len(wf.steps):
@@ -234,7 +237,7 @@ class SabrEngine:
             return True
         return False
 
-    def resume(self, workflow_id: str) -> Optional[SabrWorkflow]:
+    def resume(self, workflow_id: str) -> SabrWorkflow | None:
         """Resume a paused workflow."""
         wf = self._workflows.get(workflow_id)
         if wf and wf.state == SabrTaskState.PAUSED:
@@ -252,23 +255,23 @@ class SabrEngine:
             return True
         return False
 
-    def get_workflow(self, workflow_id: str) -> Optional[SabrWorkflow]:
+    def get_workflow(self, workflow_id: str) -> SabrWorkflow | None:
         return self._workflows.get(workflow_id)
 
-    def get_active_workflows(self, agent_id: str = None) -> List[SabrWorkflow]:
+    def get_active_workflows(self, agent_id: str = None) -> list[SabrWorkflow]:
         """Get all active (non-completed) workflows."""
         active = [
-            wf for wf in self._workflows.values()
+            wf
+            for wf in self._workflows.values()
             if wf.state in (SabrTaskState.RUNNING, SabrTaskState.PAUSED, SabrTaskState.WAITING)
         ]
         if agent_id:
             active = [wf for wf in active if wf.agent_id == agent_id]
         return active
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         total = len(self._workflows)
-        completed = sum(1 for wf in self._workflows.values()
-                        if wf.state == SabrTaskState.COMPLETED)
+        completed = sum(1 for wf in self._workflows.values() if wf.state == SabrTaskState.COMPLETED)
         return {
             "total_workflows": total,
             "completed": completed,

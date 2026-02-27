@@ -5,9 +5,7 @@ WhatsApp Channel (Bab WhatsApp)
 WhatsApp integration via WhatsApp Business API / Cloud API.
 """
 
-import asyncio
 import logging
-from typing import Dict, Optional
 
 import httpx
 
@@ -31,7 +29,7 @@ class WhatsAppChannel(ChannelAdapter):
 
     BASE_URL = "https://graph.facebook.com"
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: dict = None):
         super().__init__(config)
         self._webhook_callback = None
 
@@ -51,8 +49,7 @@ class WhatsAppChannel(ChannelAdapter):
         """Disconnect"""
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str,
-                            attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
         """Send a WhatsApp message"""
         access_token = self.config.get("access_token")
         phone_id = self.config.get("phone_number_id")
@@ -85,7 +82,7 @@ class WhatsAppChannel(ChannelAdapter):
         except Exception as e:
             logger.error(f"[WHATSAPP] Send failed: {e}")
 
-    async def handle_webhook(self, payload: Dict) -> Optional[IncomingMessage]:
+    async def handle_webhook(self, payload: dict) -> IncomingMessage | None:
         """
         Handle incoming WhatsApp webhook.
         Called from the API webhook endpoint.
@@ -124,7 +121,7 @@ class WhatsAppChannel(ChannelAdapter):
             logger.error(f"[WHATSAPP] Webhook parse error: {e}")
             return None
 
-    def verify_webhook(self, mode: str, token: str, challenge: str) -> Optional[str]:
+    def verify_webhook(self, mode: str, token: str, challenge: str) -> str | None:
         """Verify WhatsApp webhook subscription"""
         verify_token = self.config.get("verify_token", "")
         if mode == "subscribe" and token == verify_token:

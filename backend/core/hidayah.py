@@ -12,36 +12,37 @@ Hidayah provides personalized, context-aware guidance:
 - Adapts communication style to user maturity
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("mizan.hidayah")
 
 
 class GuidanceType(Enum):
     """Categories of guidance the system can provide."""
-    NUDGE = "nudge"              # Gentle suggestion
+
+    NUDGE = "nudge"  # Gentle suggestion
     RECOMMENDATION = "recommendation"  # Action recommendation
-    WARNING = "warning"          # Ethical/spiritual warning
-    MILESTONE = "milestone"      # Achievement recognition
-    LEARNING = "learning"        # Knowledge resource
+    WARNING = "warning"  # Ethical/spiritual warning
+    MILESTONE = "milestone"  # Achievement recognition
+    LEARNING = "learning"  # Knowledge resource
 
 
 @dataclass
 class GuidanceEntry:
     """A single piece of guidance offered to the user."""
+
     id: str
     guidance_type: GuidanceType
     message: str
-    context: str = ""           # What triggered this guidance
-    nafs_level: int = 1         # Target Nafs level
-    accepted: Optional[bool] = None
+    context: str = ""  # What triggered this guidance
+    nafs_level: int = 1  # Target Nafs level
+    accepted: bool | None = None
     created_at: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "type": self.guidance_type.value,
@@ -73,38 +74,46 @@ class HidayahEngine:
     """
 
     def __init__(self):
-        self._history: Dict[str, List[GuidanceEntry]] = {}
+        self._history: dict[str, list[GuidanceEntry]] = {}
         self._counter: int = 0
-        self._user_preferences: Dict[str, Dict] = {}
+        self._user_preferences: dict[str, dict] = {}
 
-    def generate_guidance(self, user_id: str, current_nafs: int = 1,
-                          recent_actions: Optional[List[str]] = None,
-                          current_energy: float = 100.0,
-                          error_count: int = 0) -> List[GuidanceEntry]:
+    def generate_guidance(
+        self,
+        user_id: str,
+        current_nafs: int = 1,
+        recent_actions: list[str] | None = None,
+        current_energy: float = 100.0,
+        error_count: int = 0,
+    ) -> list[GuidanceEntry]:
         """
         Generate context-appropriate guidance entries.
         Does not force — suggests and lets the user choose.
         """
-        entries: List[GuidanceEntry] = []
+        entries: list[GuidanceEntry] = []
         recent_actions = recent_actions or []
 
         # Energy-based guidance
         if current_energy < 20:
-            entries.append(self._create_entry(
-                GuidanceType.NUDGE,
-                "Energy is low. Consider taking a break — rest is part of productivity.",
-                context="low_energy",
-                nafs_level=current_nafs,
-            ))
+            entries.append(
+                self._create_entry(
+                    GuidanceType.NUDGE,
+                    "Energy is low. Consider taking a break — rest is part of productivity.",
+                    context="low_energy",
+                    nafs_level=current_nafs,
+                )
+            )
 
         # Error recovery guidance
         if error_count >= 3:
-            entries.append(self._create_entry(
-                GuidanceType.RECOMMENDATION,
-                "Multiple errors detected. Would you like to try a different approach?",
-                context="recurring_errors",
-                nafs_level=current_nafs,
-            ))
+            entries.append(
+                self._create_entry(
+                    GuidanceType.RECOMMENDATION,
+                    "Multiple errors detected. Would you like to try a different approach?",
+                    context="recurring_errors",
+                    nafs_level=current_nafs,
+                )
+            )
 
         # Nafs progression guidance
         nafs_guidance = self._nafs_level_guidance(current_nafs, recent_actions)
@@ -140,24 +149,36 @@ class HidayahEngine:
         accepted = sum(1 for e in responded if e.accepted)
         return accepted / len(responded)
 
-    def _nafs_level_guidance(self, nafs_level: int,
-                             recent_actions: List[str]) -> Optional[GuidanceEntry]:
+    def _nafs_level_guidance(
+        self, nafs_level: int, recent_actions: list[str]
+    ) -> GuidanceEntry | None:
         """Provide guidance appropriate to the user's Nafs level."""
         guidance_map = {
-            1: ("You're at the beginning of your journey. Start with small, "
-                "focused tasks to build momentum."),
-            2: ("Good awareness! You're recognizing patterns. Try reflecting "
-                "on what triggers mistakes."),
-            3: ("You're developing self-regulation. Consider setting intentional "
-                "goals for each session."),
-            4: ("Strong progress — your consistency shows growth. Look for "
-                "opportunities to help others."),
-            5: ("Mashallah — you've reached a level of contentment. Your calm "
-                "approach inspires those around you."),
-            6: ("Your dedication is remarkable. Focus on refining the subtleties "
-                "of your craft."),
-            7: ("You've achieved a rare level of mastery and inner peace. "
-                "Share your wisdom with the community."),
+            1: (
+                "You're at the beginning of your journey. Start with small, "
+                "focused tasks to build momentum."
+            ),
+            2: (
+                "Good awareness! You're recognizing patterns. Try reflecting "
+                "on what triggers mistakes."
+            ),
+            3: (
+                "You're developing self-regulation. Consider setting intentional "
+                "goals for each session."
+            ),
+            4: (
+                "Strong progress — your consistency shows growth. Look for "
+                "opportunities to help others."
+            ),
+            5: (
+                "Mashallah — you've reached a level of contentment. Your calm "
+                "approach inspires those around you."
+            ),
+            6: ("Your dedication is remarkable. Focus on refining the subtleties of your craft."),
+            7: (
+                "You've achieved a rare level of mastery and inner peace. "
+                "Share your wisdom with the community."
+            ),
         }
 
         message = guidance_map.get(nafs_level)
@@ -174,8 +195,7 @@ class HidayahEngine:
             )
         return None
 
-    def _check_milestones(self, user_id: str,
-                          recent_actions: List[str]) -> Optional[GuidanceEntry]:
+    def _check_milestones(self, user_id: str, recent_actions: list[str]) -> GuidanceEntry | None:
         """Recognize user achievements."""
         history = self._history.get(user_id, [])
         total_accepted = sum(1 for e in history if e.accepted)
@@ -189,13 +209,15 @@ class HidayahEngine:
         for threshold, msg in milestones.items():
             if total_accepted == threshold:
                 return self._create_entry(
-                    GuidanceType.MILESTONE, msg,
+                    GuidanceType.MILESTONE,
+                    msg,
                     context=f"milestone_{threshold}",
                 )
         return None
 
-    def _create_entry(self, guidance_type: GuidanceType, message: str,
-                      context: str = "", nafs_level: int = 1) -> GuidanceEntry:
+    def _create_entry(
+        self, guidance_type: GuidanceType, message: str, context: str = "", nafs_level: int = 1
+    ) -> GuidanceEntry:
         self._counter += 1
         return GuidanceEntry(
             id=f"hidayah_{self._counter}",
@@ -205,7 +227,7 @@ class HidayahEngine:
             nafs_level=nafs_level,
         )
 
-    def stats(self, user_id: Optional[str] = None) -> Dict:
+    def stats(self, user_id: str | None = None) -> dict:
         if user_id:
             entries = self._history.get(user_id, [])
         else:

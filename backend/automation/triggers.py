@@ -5,11 +5,11 @@ Event Triggers
 Webhook receivers and event-driven automation.
 """
 
-import uuid
 import logging
-from typing import Callable, Dict, List, Optional
-from datetime import datetime
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 logger = logging.getLogger("mizan.triggers")
 
@@ -17,18 +17,19 @@ logger = logging.getLogger("mizan.triggers")
 @dataclass
 class WebhookTrigger:
     """A webhook trigger configuration"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     path: str = ""  # URL path for the webhook
     task_template: str = ""  # Task to execute when triggered
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     enabled: bool = True
-    secret: Optional[str] = None  # Optional HMAC secret
-    last_triggered: Optional[str] = None
+    secret: str | None = None  # Optional HMAC secret
+    last_triggered: str | None = None
     trigger_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
@@ -45,14 +46,15 @@ class TriggerManager:
     """Manages webhook and event triggers"""
 
     def __init__(self):
-        self.webhooks: Dict[str, WebhookTrigger] = {}
-        self._executor: Optional[Callable] = None
+        self.webhooks: dict[str, WebhookTrigger] = {}
+        self._executor: Callable | None = None
 
     def set_executor(self, executor: Callable):
         self._executor = executor
 
-    async def register_webhook(self, name: str, task_template: str,
-                                agent_id: str = None, secret: str = None) -> WebhookTrigger:
+    async def register_webhook(
+        self, name: str, task_template: str, agent_id: str = None, secret: str = None
+    ) -> WebhookTrigger:
         """Register a new webhook trigger"""
         webhook = WebhookTrigger(
             name=name,
@@ -65,7 +67,7 @@ class TriggerManager:
         logger.info(f"[TRIGGER] Webhook registered: {name} at {webhook.path}")
         return webhook
 
-    async def handle_webhook(self, webhook_id: str, payload: Dict) -> Dict:
+    async def handle_webhook(self, webhook_id: str, payload: dict) -> dict:
         """Handle an incoming webhook"""
         webhook = self.webhooks.get(webhook_id)
         if not webhook or not webhook.enabled:
@@ -76,7 +78,7 @@ class TriggerManager:
         for key, value in payload.items():
             task = task.replace(f"{{{key}}}", str(value))
 
-        webhook.last_triggered = datetime.utcnow().isoformat()
+        webhook.last_triggered = datetime.now(UTC).isoformat()
         webhook.trigger_count += 1
 
         # Execute
@@ -89,5 +91,5 @@ class TriggerManager:
 
         return {"error": "No executor configured"}
 
-    def list_webhooks(self) -> List[Dict]:
+    def list_webhooks(self) -> list[dict]:
         return [w.to_dict() for w in self.webhooks.values()]
