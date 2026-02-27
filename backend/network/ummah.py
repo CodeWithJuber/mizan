@@ -17,15 +17,12 @@ Architecture:
   - Consensus via Shura voting on disputed knowledge
 """
 
-import asyncio
 import hashlib
-import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("mizan.ummah")
 
@@ -40,15 +37,17 @@ class NodeStatus(Enum):
 
 class SharingLevel(Enum):
     """How much knowledge a node shares — tied to trust."""
-    NONE = "none"           # No sharing (untrusted / Ammara)
-    METADATA = "metadata"   # Share only topic labels, no content
-    SUMMARY = "summary"     # Share summarized/aggregated insights
-    FULL = "full"           # Share full knowledge entries (high trust)
+
+    NONE = "none"  # No sharing (untrusted / Ammara)
+    METADATA = "metadata"  # Share only topic labels, no content
+    SUMMARY = "summary"  # Share summarized/aggregated insights
+    FULL = "full"  # Share full knowledge entries (high trust)
 
 
 @dataclass
 class UmmahNode:
     """A single MIZAN instance in the federation."""
+
     node_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     address: str = ""  # host:port
@@ -63,7 +62,7 @@ class UmmahNode:
     sync_count: int = 0
     failed_syncs: int = 0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "node_id": self.node_id,
             "name": self.name,
@@ -84,6 +83,7 @@ class KnowledgeShard:
     A shareable piece of knowledge — privacy-preserving representation.
     Never shares raw user data; only derived insights and patterns.
     """
+
     shard_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     topic: str = ""
     summary: str = ""
@@ -100,7 +100,7 @@ class KnowledgeShard:
         self.hash_fingerprint = hashlib.sha256(content.encode()).hexdigest()[:16]
         return self.hash_fingerprint
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "shard_id": self.shard_id,
             "topic": self.topic,
@@ -143,16 +143,15 @@ class UmmahNetwork:
     def __init__(self, instance_id: str = None, instance_name: str = "MIZAN"):
         self.instance_id = instance_id or str(uuid.uuid4())
         self.instance_name = instance_name
-        self.nodes: Dict[str, UmmahNode] = {}
-        self.knowledge_pool: Dict[str, KnowledgeShard] = {}
-        self.pending_syncs: List[Dict] = []
-        self.sync_history: List[Dict] = []
+        self.nodes: dict[str, UmmahNode] = {}
+        self.knowledge_pool: dict[str, KnowledgeShard] = {}
+        self.pending_syncs: list[dict] = []
+        self.sync_history: list[dict] = []
         self._running = False
 
     # ─── Salam: Discovery ───
 
-    async def salam_handshake(self, remote_address: str,
-                              remote_info: Dict) -> Optional[UmmahNode]:
+    async def salam_handshake(self, remote_address: str, remote_info: dict) -> UmmahNode | None:
         """
         Salam (سلام) — Peace greeting / discovery handshake.
         Exchange basic info to establish connection.
@@ -211,8 +210,7 @@ class UmmahNetwork:
 
     # ─── Risalah: Knowledge Exchange ───
 
-    async def share_knowledge(self, node_id: str,
-                              shards: List[KnowledgeShard]) -> Dict:
+    async def share_knowledge(self, node_id: str, shards: list[KnowledgeShard]) -> dict:
         """
         Risalah (رسالة) — Share knowledge with a specific node.
         Respects the node's sharing level permissions.
@@ -262,18 +260,19 @@ class UmmahNetwork:
 
         self.update_trust(node_id, True)
 
-        self.sync_history.append({
-            "node_id": node_id,
-            "direction": "outbound",
-            "shards_shared": shared_count,
-            "timestamp": time.time(),
-        })
+        self.sync_history.append(
+            {
+                "node_id": node_id,
+                "direction": "outbound",
+                "shards_shared": shared_count,
+                "timestamp": time.time(),
+            }
+        )
 
         logger.info(f"[RISALAH] Shared {shared_count} shards with {node.name}")
         return {"shared": shared_count, "node": node_id}
 
-    async def receive_knowledge(self, source_node_id: str,
-                                shards: List[Dict]) -> Dict:
+    async def receive_knowledge(self, source_node_id: str, shards: list[dict]) -> dict:
         """Receive knowledge shards from another node."""
         node = self.nodes.get(source_node_id)
         if not node:
@@ -303,19 +302,21 @@ class UmmahNetwork:
         self.update_trust(source_node_id, True)
         node.knowledge_count += received
 
-        self.sync_history.append({
-            "node_id": source_node_id,
-            "direction": "inbound",
-            "shards_received": received,
-            "timestamp": time.time(),
-        })
+        self.sync_history.append(
+            {
+                "node_id": source_node_id,
+                "direction": "inbound",
+                "shards_received": received,
+                "timestamp": time.time(),
+            }
+        )
 
         logger.info(f"[RISALAH] Received {received} shards from {node.name}")
         return {"received": received, "source": source_node_id}
 
     # ─── Shura: Consensus ───
 
-    async def shura_verify(self, shard_id: str) -> Dict:
+    async def shura_verify(self, shard_id: str) -> dict:
         """
         Shura (شورى) — Request consensus on a disputed knowledge shard.
         Multiple nodes vote on validity.
@@ -329,7 +330,7 @@ class UmmahNetwork:
         votes_against = 0
         voters = 0
 
-        for node_id, node in self.nodes.items():
+        for _node_id, node in self.nodes.items():
             if node.status != NodeStatus.ACTIVE:
                 continue
             if node.trust_score < 0.3:
@@ -369,7 +370,7 @@ class UmmahNetwork:
 
     # ─── Hisab: Periodic Accounting ───
 
-    async def hisab_audit(self) -> Dict:
+    async def hisab_audit(self) -> dict:
         """
         Hisab (حساب) — Periodic trust accounting.
         Reviews all nodes, demotes inactive ones, prunes stale knowledge.
@@ -406,33 +407,26 @@ class UmmahNetwork:
             "demoted": demoted,
             "pruned_nodes": pruned_nodes,
             "pruned_shards": pruned_shards,
-            "active_nodes": sum(
-                1 for n in self.nodes.values() if n.status == NodeStatus.ACTIVE
-            ),
+            "active_nodes": sum(1 for n in self.nodes.values() if n.status == NodeStatus.ACTIVE),
             "total_knowledge": len(self.knowledge_pool),
         }
 
     # ─── Network Status ───
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get full Ummah network status."""
         return {
             "instance_id": self.instance_id,
             "instance_name": self.instance_name,
             "nodes": {
                 "total": len(self.nodes),
-                "active": sum(
-                    1 for n in self.nodes.values() if n.status == NodeStatus.ACTIVE
-                ),
-                "offline": sum(
-                    1 for n in self.nodes.values() if n.status == NodeStatus.OFFLINE
-                ),
+                "active": sum(1 for n in self.nodes.values() if n.status == NodeStatus.ACTIVE),
+                "offline": sum(1 for n in self.nodes.values() if n.status == NodeStatus.OFFLINE),
             },
             "knowledge_pool": {
                 "total_shards": len(self.knowledge_pool),
                 "verified": sum(
-                    1 for s in self.knowledge_pool.values()
-                    if s.verification_count > 0
+                    1 for s in self.knowledge_pool.values() if s.verification_count > 0
                 ),
                 "by_yaqin": {
                     "ilm": sum(1 for s in self.knowledge_pool.values() if s.yaqin_level == "ilm"),
@@ -443,11 +437,11 @@ class UmmahNetwork:
             "sync_history_count": len(self.sync_history),
         }
 
-    def list_nodes(self) -> List[Dict]:
+    def list_nodes(self) -> list[dict]:
         """List all known nodes."""
         return [node.to_dict() for node in self.nodes.values()]
 
-    def search_knowledge(self, query: str, top_k: int = 10) -> List[Dict]:
+    def search_knowledge(self, query: str, top_k: int = 10) -> list[dict]:
         """Search federated knowledge pool."""
         query_words = set(query.lower().split())
         results = []

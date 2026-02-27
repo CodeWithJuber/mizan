@@ -10,12 +10,12 @@ Progress is tracked, and failures trigger re-planning.
 """
 
 import json
-import uuid
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger("mizan.planner")
 
@@ -31,18 +31,19 @@ class SubTaskStatus(Enum):
 @dataclass
 class SubTask:
     """A single sub-task in a plan"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     description: str = ""
     agent_role: str = "wakil"  # Preferred agent role
-    agent_id: Optional[str] = None  # Assigned agent
+    agent_id: str | None = None  # Assigned agent
     status: SubTaskStatus = SubTaskStatus.PENDING
-    result: Optional[Any] = None
-    error: Optional[str] = None
-    dependencies: List[str] = field(default_factory=list)  # IDs of tasks this depends on
+    result: Any | None = None
+    error: str | None = None
+    dependencies: list[str] = field(default_factory=list)  # IDs of tasks this depends on
     priority: int = 5  # 1-10
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "description": self.description,
@@ -59,11 +60,12 @@ class SubTask:
 @dataclass
 class Plan:
     """A complete plan with sub-tasks"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     goal: str = ""
-    subtasks: List[SubTask] = field(default_factory=list)
+    subtasks: list[SubTask] = field(default_factory=list)
     status: str = "active"  # active | completed | failed
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def progress(self) -> float:
@@ -73,16 +75,17 @@ class Plan:
         return completed / len(self.subtasks)
 
     @property
-    def next_tasks(self) -> List[SubTask]:
+    def next_tasks(self) -> list[SubTask]:
         """Get tasks that are ready to execute (pending with all dependencies met)"""
         completed_ids = {t.id for t in self.subtasks if t.status == SubTaskStatus.COMPLETED}
         return [
-            t for t in self.subtasks
+            t
+            for t in self.subtasks
             if t.status == SubTaskStatus.PENDING
             and all(dep in completed_ids for dep in t.dependencies)
         ]
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "goal": self.goal,
@@ -118,9 +121,9 @@ class TafakkurPlanner:
     }
 
     def __init__(self):
-        self._active_plans: Dict[str, Plan] = {}
+        self._active_plans: dict[str, Plan] = {}
 
-    async def decompose(self, goal: str, agent, context: Dict = None) -> Plan:
+    async def decompose(self, goal: str, agent, context: dict = None) -> Plan:
         """
         Decompose a complex goal into sub-tasks using AI.
         """
@@ -128,10 +131,12 @@ class TafakkurPlanner:
 
         if not agent.ai_client:
             # Simple fallback: single task
-            plan.subtasks.append(SubTask(
-                description=goal,
-                agent_role=self._classify_role(goal),
-            ))
+            plan.subtasks.append(
+                SubTask(
+                    description=goal,
+                    agent_role=self._classify_role(goal),
+                )
+            )
             self._active_plans[plan.id] = plan
             return plan
 
@@ -148,7 +153,9 @@ Return a JSON array of objects with fields:
 - "depends_on": array of indices (0-based) of tasks this depends on
 
 Return ONLY the JSON array, no other text.""",
-                messages=[{"role": "user", "content": f"Decompose this goal into sub-tasks:\n\n{goal}"}],
+                messages=[
+                    {"role": "user", "content": f"Decompose this goal into sub-tasks:\n\n{goal}"}
+                ],
             )
 
             text = ""
@@ -158,7 +165,7 @@ Return ONLY the JSON array, no other text.""",
             text = text.strip()
             # Extract JSON from response
             if "[" in text:
-                json_str = text[text.index("["):text.rindex("]") + 1]
+                json_str = text[text.index("[") : text.rindex("]") + 1]
                 tasks_data = json.loads(json_str)
 
                 subtask_ids = []
@@ -173,7 +180,8 @@ Return ONLY the JSON array, no other text.""",
                     # Map dependencies from indices to IDs
                     deps = td.get("depends_on", [])
                     subtask.dependencies = [
-                        subtask_ids[d] for d in deps
+                        subtask_ids[d]
+                        for d in deps
                         if isinstance(d, int) and 0 <= d < len(subtask_ids)
                     ]
 
@@ -181,15 +189,17 @@ Return ONLY the JSON array, no other text.""",
 
         except Exception as e:
             logger.error(f"[TAFAKKUR] Plan decomposition failed: {e}")
-            plan.subtasks.append(SubTask(
-                description=goal,
-                agent_role=self._classify_role(goal),
-            ))
+            plan.subtasks.append(
+                SubTask(
+                    description=goal,
+                    agent_role=self._classify_role(goal),
+                )
+            )
 
         self._active_plans[plan.id] = plan
         return plan
 
-    def delegate(self, subtask: SubTask, agents: Dict) -> Optional[str]:
+    def delegate(self, subtask: SubTask, agents: dict) -> str | None:
         """
         Assign a sub-task to the most appropriate agent.
         Returns the agent_id.
@@ -208,7 +218,7 @@ Return ONLY the JSON array, no other text.""",
 
         return None
 
-    async def execute_plan(self, plan: Plan, agents: Dict, stream_callback=None) -> Dict:
+    async def execute_plan(self, plan: Plan, agents: dict, stream_callback=None) -> dict:
         """Execute a plan by running sub-tasks in dependency order"""
         from .aql_engine import AqlEngine
 
@@ -236,7 +246,8 @@ Return ONLY the JSON array, no other text.""",
 
                 # Execute through AqlEngine
                 result = await engine.reason_to_completion(
-                    subtask.description, agent,
+                    subtask.description,
+                    agent,
                     stream_callback=stream_callback,
                 )
 
@@ -247,18 +258,19 @@ Return ONLY the JSON array, no other text.""",
                     subtask.status = SubTaskStatus.FAILED
                     subtask.error = result.get("error", "Unknown error")
 
-                results.append({
-                    "subtask_id": subtask.id,
-                    "description": subtask.description,
-                    "agent": agent.name,
-                    "success": result.get("success", False),
-                    "response": str(result.get("response", ""))[:500],
-                })
+                results.append(
+                    {
+                        "subtask_id": subtask.id,
+                        "description": subtask.description,
+                        "agent": agent.name,
+                        "success": result.get("success", False),
+                        "response": str(result.get("response", ""))[:500],
+                    }
+                )
 
         # Determine overall plan status
         all_done = all(
-            t.status in (SubTaskStatus.COMPLETED, SubTaskStatus.SKIPPED)
-            for t in plan.subtasks
+            t.status in (SubTaskStatus.COMPLETED, SubTaskStatus.SKIPPED) for t in plan.subtasks
         )
         plan.status = "completed" if all_done else "failed"
 
@@ -269,7 +281,7 @@ Return ONLY the JSON array, no other text.""",
             "results": results,
         }
 
-    def get_plan(self, plan_id: str) -> Optional[Plan]:
+    def get_plan(self, plan_id: str) -> Plan | None:
         return self._active_plans.get(plan_id)
 
     def _classify_role(self, text: str) -> str:

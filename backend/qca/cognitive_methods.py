@@ -14,35 +14,37 @@ Each method corresponds to a different problem-solving strategy.
 The QCA engine routes queries to the most appropriate method.
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("mizan.cognitive_methods")
 
 
 class CognitiveMethod(Enum):
     """The five Quranic cognitive methods."""
-    TAFAKKUR = "tafakkur"      # Deep analytical thinking
-    TADABBUR = "tadabbur"      # Contextual contemplation
-    ISTIDLAL = "istidlal"      # Logical deduction
-    QIYAS = "qiyas"            # Analogical reasoning
-    IJMA = "ijma"              # Consensus / ensemble
+
+    TAFAKKUR = "tafakkur"  # Deep analytical thinking
+    TADABBUR = "tadabbur"  # Contextual contemplation
+    ISTIDLAL = "istidlal"  # Logical deduction
+    QIYAS = "qiyas"  # Analogical reasoning
+    IJMA = "ijma"  # Consensus / ensemble
 
 
 @dataclass
 class CognitiveResult:
     """Result from applying a cognitive method."""
+
     method: CognitiveMethod
     conclusion: str
-    confidence: float          # 0.0 - 1.0
-    reasoning_chain: List[str] = field(default_factory=list)
+    confidence: float  # 0.0 - 1.0
+    reasoning_chain: list[str] = field(default_factory=list)
     processing_time_ms: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "method": self.method.value,
             "conclusion": self.conclusion,
@@ -62,7 +64,7 @@ class TafakkurEngine:
     then synthesizes a comprehensive understanding.
     """
 
-    def process(self, query: str, context: Optional[Dict] = None) -> CognitiveResult:
+    def process(self, query: str, context: dict | None = None) -> CognitiveResult:
         start = time.time()
         context = context or {}
 
@@ -88,7 +90,7 @@ class TafakkurEngine:
             processing_time_ms=elapsed,
         )
 
-    def _decompose(self, query: str) -> List[str]:
+    def _decompose(self, query: str) -> list[str]:
         """Break query into logical components."""
         # Split on sentence boundaries and conjunctions
         parts = []
@@ -98,7 +100,7 @@ class TafakkurEngine:
                 return parts[:5]  # Cap at 5 components
         return [query]
 
-    def _analyze_component(self, component: str, context: Dict) -> str:
+    def _analyze_component(self, component: str, context: dict) -> str:
         """Analyze a single component through keyword extraction and structure detection."""
         words = component.lower().split()
         # Identify question type
@@ -109,8 +111,28 @@ class TafakkurEngine:
                 break
 
         # Extract key nouns (non-stopword, longer words)
-        stopwords = {"the", "a", "an", "is", "are", "was", "were", "be", "to", "of",
-                     "in", "on", "at", "for", "with", "and", "or", "but", "not", "it"}
+        stopwords = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "to",
+            "of",
+            "in",
+            "on",
+            "at",
+            "for",
+            "with",
+            "and",
+            "or",
+            "but",
+            "not",
+            "it",
+        }
         key_terms = [w for w in words if w not in stopwords and len(w) > 3][:5]
 
         # Check context for relevant facts
@@ -122,7 +144,7 @@ class TafakkurEngine:
             analysis += f" | Relevant context: {relevant_facts[0][:80]}"
         return analysis
 
-    def _synthesize(self, analyses: List[str]) -> str:
+    def _synthesize(self, analyses: list[str]) -> str:
         """Synthesize multiple component analyses into a unified understanding."""
         if not analyses:
             return "No components to synthesize"
@@ -132,7 +154,11 @@ class TafakkurEngine:
         for analysis in analyses:
             if "Key concepts:" in analysis:
                 concepts_part = analysis.split("Key concepts:")[1].split("|")[0].strip()
-                all_concepts.extend(c.strip() for c in concepts_part.split(",") if c.strip() and c.strip() != "general")
+                all_concepts.extend(
+                    c.strip()
+                    for c in concepts_part.split(",")
+                    if c.strip() and c.strip() != "general"
+                )
 
         # Deduplicate while preserving order
         seen = set()
@@ -156,7 +182,7 @@ class TadabburEngine:
     Considers historical context, user intent, and broader implications.
     """
 
-    def process(self, query: str, context: Optional[Dict] = None) -> CognitiveResult:
+    def process(self, query: str, context: dict | None = None) -> CognitiveResult:
         start = time.time()
         context = context or {}
 
@@ -192,10 +218,18 @@ class TadabburEngine:
             return query[:100]
 
         # Detect query intent from first meaningful word
-        intent_words = {"what": "definition", "how": "method", "why": "causation",
-                       "when": "timing", "where": "location", "who": "agent",
-                       "can": "capability", "should": "recommendation",
-                       "is": "verification", "does": "confirmation"}
+        intent_words = {
+            "what": "definition",
+            "how": "method",
+            "why": "causation",
+            "when": "timing",
+            "where": "location",
+            "who": "agent",
+            "can": "capability",
+            "should": "recommendation",
+            "is": "verification",
+            "does": "confirmation",
+        }
         intent = "request"
         for w in words[:3]:
             if w in intent_words:
@@ -204,7 +238,7 @@ class TadabburEngine:
 
         return f"Surface intent ({intent}): {query[:100]}"
 
-    def _extract_deeper(self, query: str, context: Dict) -> str:
+    def _extract_deeper(self, query: str, context: dict) -> str:
         """Extract the deeper contextual meaning considering conversation history."""
         user_history = context.get("history", [])
         facts = context.get("facts", [])
@@ -232,9 +266,9 @@ class TadabburEngine:
         elif any(w in q_lower for w in ["understand", "explain", "clarify"]):
             parts.append("Implicit need: deeper comprehension")
 
-        return " | ".join(parts) if parts else f"Direct query without additional context"
+        return " | ".join(parts) if parts else "Direct query without additional context"
 
-    def _derive_implications(self, query: str, context: Dict) -> str:
+    def _derive_implications(self, query: str, context: dict) -> str:
         """Derive broader implications and follow-up considerations."""
         implications = []
         q_lower = query.lower()
@@ -253,7 +287,9 @@ class TadabburEngine:
         if any(w in q_lower for w in ["learn", "understand", "study"]):
             implications.append("Knowledge-building — consider providing references")
 
-        return "; ".join(implications) if implications else "Standard implications — proceed normally"
+        return (
+            "; ".join(implications) if implications else "Standard implications — proceed normally"
+        )
 
 
 class IstidlalEngine:
@@ -264,7 +300,7 @@ class IstidlalEngine:
     Applies formal logical reasoning: premises → deduction → conclusion.
     """
 
-    def process(self, query: str, context: Optional[Dict] = None) -> CognitiveResult:
+    def process(self, query: str, context: dict | None = None) -> CognitiveResult:
         start = time.time()
         context = context or {}
 
@@ -290,13 +326,13 @@ class IstidlalEngine:
             processing_time_ms=elapsed,
         )
 
-    def _extract_premises(self, query: str, context: Dict) -> List[str]:
+    def _extract_premises(self, query: str, context: dict) -> list[str]:
         facts = context.get("facts", [])
         premises = list(facts[:5])
         premises.append(f"Query: {query[:80]}")
         return premises
 
-    def _deduce(self, premises: List[str]) -> List[str]:
+    def _deduce(self, premises: list[str]) -> list[str]:
         """Apply logical deduction rules to premises."""
         deductions = []
         for i, premise in enumerate(premises):
@@ -315,16 +351,29 @@ class IstidlalEngine:
 
             # Transitivity: "A implies B" + "B implies C" -> "A implies C"
             if " implies " in p_lower or " leads to " in p_lower or " causes " in p_lower:
-                separator = " implies " if " implies " in p_lower else " leads to " if " leads to " in p_lower else " causes "
+                separator = (
+                    " implies "
+                    if " implies " in p_lower
+                    else " leads to "
+                    if " leads to " in p_lower
+                    else " causes "
+                )
                 parts = p_lower.split(separator, 1)
                 if len(parts) == 2:
-                    deductions.append(f"Identified causal chain: {parts[0].strip()} -> {parts[1].strip()}")
+                    deductions.append(
+                        f"Identified causal chain: {parts[0].strip()} -> {parts[1].strip()}"
+                    )
 
             # Contradiction detection
             if any(neg in p_lower for neg in ["not ", "never ", "cannot ", "impossible"]):
                 for other in premises:
                     # Simple contradiction: premise negates something another asserts
-                    core = p_lower.replace("not ", "").replace("never ", "").replace("cannot ", "").strip()
+                    core = (
+                        p_lower.replace("not ", "")
+                        .replace("never ", "")
+                        .replace("cannot ", "")
+                        .strip()
+                    )
                     if core in other.lower() and other != premise:
                         deductions.append(f"Contradiction detected between premises {i} and others")
                         break
@@ -337,7 +386,7 @@ class IstidlalEngine:
 
         return deductions[:5]
 
-    def _conclude(self, deductions: List[str]) -> str:
+    def _conclude(self, deductions: list[str]) -> str:
         """Derive a conclusion from deduction steps."""
         if not deductions:
             return "Insufficient premises for logical conclusion"
@@ -369,18 +418,20 @@ class QiyasEngine:
     """
 
     def __init__(self):
-        self._pattern_bank: List[Dict] = []
+        self._pattern_bank: list[dict] = []
 
     def add_pattern(self, pattern: str, outcome: str, category: str = "general"):
         """Register a known pattern for future analogical reasoning."""
-        self._pattern_bank.append({
-            "pattern": pattern,
-            "outcome": outcome,
-            "category": category,
-            "added_at": time.time(),
-        })
+        self._pattern_bank.append(
+            {
+                "pattern": pattern,
+                "outcome": outcome,
+                "category": category,
+                "added_at": time.time(),
+            }
+        )
 
-    def process(self, query: str, context: Optional[Dict] = None) -> CognitiveResult:
+    def process(self, query: str, context: dict | None = None) -> CognitiveResult:
         start = time.time()
         context = context or {}
 
@@ -407,7 +458,7 @@ class QiyasEngine:
             processing_time_ms=elapsed,
         )
 
-    def _find_analogies(self, query: str) -> List[Dict]:
+    def _find_analogies(self, query: str) -> list[dict]:
         query_words = set(query.lower().split())
         scored = []
         for pattern in self._pattern_bank:
@@ -418,7 +469,7 @@ class QiyasEngine:
         scored.sort(key=lambda x: -x[0])
         return [p for _, p in scored[:5]]
 
-    def _map_analogy(self, query: str, analogies: List[Dict]) -> Dict:
+    def _map_analogy(self, query: str, analogies: list[dict]) -> dict:
         """Map analogous patterns to the current query, identifying shared structure."""
         if not analogies:
             return {"query": query, "analogies": [], "shared_aspects": [], "strength": 0.0}
@@ -431,12 +482,14 @@ class QiyasEngine:
             pattern_words = set(analogy["pattern"].lower().split())
             overlap = query_words & pattern_words
             if overlap:
-                shared_aspects.append({
-                    "pattern": analogy["pattern"][:60],
-                    "outcome": analogy["outcome"][:60],
-                    "shared_terms": list(overlap)[:5],
-                    "category": analogy.get("category", "general"),
-                })
+                shared_aspects.append(
+                    {
+                        "pattern": analogy["pattern"][:60],
+                        "outcome": analogy["outcome"][:60],
+                        "shared_terms": list(overlap)[:5],
+                        "category": analogy.get("category", "general"),
+                    }
+                )
                 total_overlap += len(overlap)
 
         strength = min(1.0, total_overlap / max(len(query_words), 1))
@@ -448,7 +501,7 @@ class QiyasEngine:
             "strength": round(strength, 3),
         }
 
-    def _apply_analogy(self, mapping: Dict) -> str:
+    def _apply_analogy(self, mapping: dict) -> str:
         """Apply the mapped analogy to derive a conclusion for the current query."""
         shared = mapping.get("shared_aspects", [])
         strength = mapping.get("strength", 0)
@@ -490,8 +543,9 @@ class IjmaEngine:
         self.istidlal = IstidlalEngine()
         self.qiyas = QiyasEngine()
 
-    def process(self, query: str, context: Optional[Dict] = None,
-                methods: Optional[List[CognitiveMethod]] = None) -> CognitiveResult:
+    def process(
+        self, query: str, context: dict | None = None, methods: list[CognitiveMethod] | None = None
+    ) -> CognitiveResult:
         """
         Run multiple methods and build consensus.
         If methods is None, runs all four base methods.
@@ -505,7 +559,7 @@ class IjmaEngine:
             CognitiveMethod.QIYAS,
         ]
 
-        results: List[CognitiveResult] = []
+        results: list[CognitiveResult] = []
         engine_map = {
             CognitiveMethod.TAFAKKUR: self.tafakkur,
             CognitiveMethod.TADABBUR: self.tadabbur,
@@ -536,7 +590,7 @@ class IjmaEngine:
         )
 
 
-def select_method(query: str, context: Optional[Dict] = None) -> CognitiveMethod:
+def select_method(query: str, context: dict | None = None) -> CognitiveMethod:
     """
     Route a query to the most appropriate cognitive method.
 

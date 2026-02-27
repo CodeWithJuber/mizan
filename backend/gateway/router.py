@@ -6,9 +6,8 @@ Routes incoming messages from all channels to the appropriate agent,
 manages per-channel sessions, and handles response delivery.
 """
 
-import asyncio
 import logging
-from typing import Callable, Dict, Optional
+from collections.abc import Callable
 
 from gateway.channels.base import ChannelAdapter, IncomingMessage
 
@@ -30,17 +29,15 @@ class ChannelRouter:
     """
 
     def __init__(self, memory=None):
-        self._adapters: Dict[str, ChannelAdapter] = {}
-        self._message_handler: Optional[Callable] = None
+        self._adapters: dict[str, ChannelAdapter] = {}
+        self._message_handler: Callable | None = None
         self.memory = memory
         self._running = False
 
     def register(self, name: str, adapter: ChannelAdapter):
         """Register a channel adapter."""
         self._adapters[name] = adapter
-        adapter.set_message_callback(
-            lambda msg: self._on_message(name, msg)
-        )
+        adapter.set_message_callback(lambda msg: self._on_message(name, msg))
         logger.info(f"[ROUTER] Registered channel: {name}")
 
     def set_handler(self, handler: Callable):
@@ -96,7 +93,7 @@ class ChannelRouter:
             logger.error(f"[ROUTER] Error stopping {name}: {e}")
             return False
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get status of all channels."""
         statuses = {}
         for name, adapter in self._adapters.items():
@@ -106,7 +103,7 @@ class ChannelRouter:
             }
         return statuses
 
-    def get_channel_status(self, name: str) -> Optional[Dict]:
+    def get_channel_status(self, name: str) -> dict | None:
         """Get status of a specific channel."""
         adapter = self._adapters.get(name)
         if not adapter:
@@ -117,8 +114,7 @@ class ChannelRouter:
             "config_keys": list(adapter.config.keys()),
         }
 
-    async def send_to_channel(self, channel: str, recipient_id: str,
-                               content: str) -> bool:
+    async def send_to_channel(self, channel: str, recipient_id: str, content: str) -> bool:
         """Send a message to a specific channel, handling chunking."""
         adapter = self._adapters.get(channel)
         if not adapter or not adapter.is_connected:
@@ -146,8 +142,7 @@ class ChannelRouter:
             session_key = f"{channel}:{message.group_id}:{message.sender_id}"
 
         logger.info(
-            f"[ROUTER] Message from {channel}/{message.sender_name}: "
-            f"{message.content[:50]}..."
+            f"[ROUTER] Message from {channel}/{message.sender_name}: {message.content[:50]}..."
         )
 
         try:
@@ -158,14 +153,13 @@ class ChannelRouter:
                 session_key=session_key,
             )
             if response:
-                await self.send_to_channel(
-                    channel, message.sender_id, response
-                )
+                await self.send_to_channel(channel, message.sender_id, response)
         except Exception as e:
             logger.error(f"[ROUTER] Handler error: {e}")
             await self.send_to_channel(
-                channel, message.sender_id,
-                "I encountered an error processing your message. Please try again."
+                channel,
+                message.sender_id,
+                "I encountered an error processing your message. Please try again.",
             )
 
     @property
@@ -198,8 +192,8 @@ def _chunk_message(text: str, max_length: int) -> list:
                 if cut < max_length // 2:
                     cut = max_length - 1
 
-        chunk = remaining[:cut + 1].rstrip()
+        chunk = remaining[: cut + 1].rstrip()
         chunks.append(chunk)
-        remaining = remaining[cut + 1:].lstrip()
+        remaining = remaining[cut + 1 :].lstrip()
 
     return chunks

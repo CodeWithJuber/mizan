@@ -9,5 +9,6 @@ that agents can learn and use. Better than OpenClaw's ClawHub:
 every skill is Wali-guarded and Izn-permissioned.
 """
 
-from .base import SkillBase, SkillManifest
-from .registry import SkillRegistry
+from .base import SkillBase as SkillBase
+from .base import SkillManifest as SkillManifest
+from .registry import SkillRegistry as SkillRegistry

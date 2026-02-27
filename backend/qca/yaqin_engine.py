@@ -16,19 +16,19 @@ This engine prevents hallucination by forcing agents to distinguish
 what they infer vs. what they have actually verified.
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("mizan.yaqin")
 
 
 class YaqinLevel(Enum):
     """Three levels of epistemic certainty from the Quran."""
-    ILM_AL_YAQIN = "ilm_al_yaqin"    # Inferential — from reasoning/training
-    AYN_AL_YAQIN = "ayn_al_yaqin"    # Witnessed — verified through tools/tests
+
+    ILM_AL_YAQIN = "ilm_al_yaqin"  # Inferential — from reasoning/training
+    AYN_AL_YAQIN = "ayn_al_yaqin"  # Witnessed — verified through tools/tests
     HAQQ_AL_YAQIN = "haqq_al_yaqin"  # Embodied — proven through repeated success
 
 
@@ -49,15 +49,16 @@ YAQIN_NAMES = {
 @dataclass
 class YaqinTag:
     """A certainty tag attached to any knowledge claim or response."""
+
     level: YaqinLevel
     confidence: float
-    source: str = ""             # What produced this knowledge
-    evidence: List[str] = field(default_factory=list)  # Evidence trail
-    verified_at: Optional[float] = None  # Timestamp of verification
+    source: str = ""  # What produced this knowledge
+    evidence: list[str] = field(default_factory=list)  # Evidence trail
+    verified_at: float | None = None  # Timestamp of verification
     verification_count: int = 0  # Times independently verified
-    pattern_id: Optional[str] = None  # If from Haqq, the pattern it matches
+    pattern_id: str | None = None  # If from Haqq, the pattern it matches
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         name_info = YAQIN_NAMES[self.level]
         return {
             "level": self.level.value,
@@ -99,9 +100,9 @@ class YaqinEngine:
 
     def __init__(self):
         # Track proven patterns for Haqq al-Yaqin
-        self._proven_patterns: Dict[str, Dict] = {}
+        self._proven_patterns: dict[str, dict] = {}
         # Track verification history
-        self._verification_log: List[Dict] = []
+        self._verification_log: list[dict] = []
 
     def classify(self, confidence: float) -> YaqinLevel:
         """Classify a confidence score into a Yaqin level."""
@@ -111,8 +112,9 @@ class YaqinEngine:
             return YaqinLevel.AYN_AL_YAQIN
         return YaqinLevel.ILM_AL_YAQIN
 
-    def tag_inference(self, claim: str, confidence: float = 0.45,
-                      source: str = "reasoning") -> YaqinTag:
+    def tag_inference(
+        self, claim: str, confidence: float = 0.45, source: str = "reasoning"
+    ) -> YaqinTag:
         """
         Tag knowledge as Ilm al-Yaqin — inferential.
         Used when the agent reasons without direct verification.
@@ -126,9 +128,9 @@ class YaqinEngine:
             evidence=[f"Inference: {claim[:200]}"],
         )
 
-    def tag_observation(self, claim: str, confidence: float = 0.75,
-                        source: str = "tool",
-                        evidence: List[str] = None) -> YaqinTag:
+    def tag_observation(
+        self, claim: str, confidence: float = 0.75, source: str = "tool", evidence: list[str] = None
+    ) -> YaqinTag:
         """
         Tag knowledge as Ayn al-Yaqin — witnessed/observed.
         Used when the agent has verified through tools, tests, or direct observation.
@@ -143,16 +145,19 @@ class YaqinEngine:
             verified_at=time.time(),
             verification_count=1,
         )
-        self._verification_log.append({
-            "claim": claim[:200],
-            "level": "ayn",
-            "source": source,
-            "timestamp": time.time(),
-        })
+        self._verification_log.append(
+            {
+                "claim": claim[:200],
+                "level": "ayn",
+                "source": source,
+                "timestamp": time.time(),
+            }
+        )
         return tag
 
-    def tag_proven(self, claim: str, pattern_id: str,
-                   count: int = 1, confidence: float = 0.95) -> YaqinTag:
+    def tag_proven(
+        self, claim: str, pattern_id: str, count: int = 1, confidence: float = 0.95
+    ) -> YaqinTag:
         """
         Tag knowledge as Haqq al-Yaqin — embodied truth.
         Used when the agent has proven this pattern through repeated success.
@@ -182,8 +187,7 @@ class YaqinEngine:
             pattern_id=pattern_id,
         )
 
-    def promote(self, tag: YaqinTag, new_evidence: str,
-                source: str = "verification") -> YaqinTag:
+    def promote(self, tag: YaqinTag, new_evidence: str, source: str = "verification") -> YaqinTag:
         """
         Promote a Yaqin tag to a higher level based on new evidence.
         Ilm -> Ayn (when verified), Ayn -> Haqq (when proven repeatedly).
@@ -235,11 +239,11 @@ class YaqinEngine:
             return f"[{name} — verified via {tag.source}, {tag.confidence:.0%}] "
         return f"[{name} — proven ({tag.verification_count}x), {tag.confidence:.0%}] "
 
-    def get_proven_patterns(self) -> Dict[str, Dict]:
+    def get_proven_patterns(self) -> dict[str, dict]:
         """Get all proven patterns (Haqq al-Yaqin registry)."""
         return dict(self._proven_patterns)
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         """Engine statistics."""
         return {
             "proven_patterns": len(self._proven_patterns),

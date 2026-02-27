@@ -12,7 +12,6 @@ Preserves the most important context.
 
 import json
 import logging
-from typing import Dict, List, Tuple
 
 logger = logging.getLogger("mizan.context")
 
@@ -29,7 +28,7 @@ class ContextManager:
     def __init__(self, max_tokens: int = 100000):
         self.max_tokens = max_tokens
 
-    def estimate_tokens(self, messages: List[Dict]) -> int:
+    def estimate_tokens(self, messages: list[dict]) -> int:
         """Rough token estimate for a message list"""
         total_chars = 0
         for msg in messages:
@@ -42,11 +41,11 @@ class ContextManager:
                         total_chars += len(json.dumps(block))
         return total_chars // self.CHARS_PER_TOKEN
 
-    def needs_compaction(self, messages: List[Dict]) -> bool:
+    def needs_compaction(self, messages: list[dict]) -> bool:
         """Check if messages need compaction"""
         return self.estimate_tokens(messages) > (self.max_tokens * 0.75)
 
-    def compact(self, messages: List[Dict], agent=None) -> List[Dict]:
+    def compact(self, messages: list[dict], agent=None) -> list[dict]:
         """
         Compact messages to fit within context window.
 
@@ -86,10 +85,12 @@ class ContextManager:
         # Build compacted messages
         compacted = [first]
         if summary_text:
-            compacted.append({
-                "role": "user",
-                "content": f"[Previous conversation summary]\n{summary_text}\n[End summary]",
-            })
+            compacted.append(
+                {
+                    "role": "user",
+                    "content": f"[Previous conversation summary]\n{summary_text}\n[End summary]",
+                }
+            )
         compacted.extend(recent)
 
         logger.info(
@@ -99,8 +100,7 @@ class ContextManager:
 
         return compacted
 
-    def inject_memory(self, messages: List[Dict],
-                      memories: List[Dict]) -> List[Dict]:
+    def inject_memory(self, messages: list[dict], memories: list[dict]) -> list[dict]:
         """
         Inject relevant memories into the context.
         Adds a system-like context block with important memories.
@@ -114,10 +114,12 @@ class ContextManager:
 
         # Insert after the first message
         enhanced = [messages[0]]
-        enhanced.append({
-            "role": "user",
-            "content": f"[Context from Dhikr memory]\n{memory_text}",
-        })
+        enhanced.append(
+            {
+                "role": "user",
+                "content": f"[Context from Dhikr memory]\n{memory_text}",
+            }
+        )
         enhanced.extend(messages[1:])
 
         return enhanced

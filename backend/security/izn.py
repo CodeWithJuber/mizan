@@ -8,29 +8,28 @@ Per-tool, per-agent permission model.
 Solves OpenClaw's skill data exfiltration problem.
 """
 
-import os
-from datetime import datetime
-from typing import Dict, List, Optional, Set
-from dataclasses import dataclass, field
-from enum import Enum
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
 
 logger = logging.getLogger("mizan.izn")
 
 
 class PermissionLevel(Enum):
     """Permission levels for tool access"""
-    DENIED = "denied"           # Tool blocked entirely
+
+    DENIED = "denied"  # Tool blocked entirely
     APPROVAL_REQUIRED = "approval_required"  # Needs human approval each time
-    RESTRICTED = "restricted"   # Allowed with constraints
-    ALLOWED = "allowed"         # Fully allowed
+    RESTRICTED = "restricted"  # Allowed with constraints
+    ALLOWED = "allowed"  # Fully allowed
 
 
 # ── 7-Level Nafs Permission Mapping ──────────────────────────────
 # Each Nafs level unlocks progressively more capabilities.
 # Agents must earn trust through performance to access higher permissions.
 
-NAFS_PERMISSION_TIERS: Dict[int, Dict[str, "PermissionLevel"]] = {
+NAFS_PERMISSION_TIERS: dict[int, dict[str, "PermissionLevel"]] = {
     1: {  # Ammara — Raw, untrained
         "bash": PermissionLevel.DENIED,
         "http_get": PermissionLevel.RESTRICTED,
@@ -93,10 +92,11 @@ NAFS_PERMISSION_TIERS: Dict[int, Dict[str, "PermissionLevel"]] = {
 @dataclass
 class ToolPermission:
     """Permission definition for a specific tool"""
+
     tool_name: str
     level: PermissionLevel = PermissionLevel.RESTRICTED
-    allowed_params: Dict[str, List[str]] = field(default_factory=dict)
-    blocked_params: Dict[str, List[str]] = field(default_factory=dict)
+    allowed_params: dict[str, list[str]] = field(default_factory=dict)
+    blocked_params: dict[str, list[str]] = field(default_factory=dict)
     max_calls_per_minute: int = 30
     description: str = ""
 
@@ -107,12 +107,13 @@ class IznPolicy:
     Permission policy for an agent or skill.
     Defines what tools can be used and with what constraints.
     """
+
     id: str = ""
     name: str = ""
-    tool_permissions: Dict[str, ToolPermission] = field(default_factory=dict)
-    allowed_file_paths: List[str] = field(default_factory=list)
-    allowed_urls: List[str] = field(default_factory=list)
-    blocked_urls: List[str] = field(default_factory=list)
+    tool_permissions: dict[str, ToolPermission] = field(default_factory=dict)
+    allowed_file_paths: list[str] = field(default_factory=list)
+    allowed_urls: list[str] = field(default_factory=list)
+    blocked_urls: list[str] = field(default_factory=list)
     max_memory_mb: int = 100
     max_execution_seconds: int = 60
     can_create_files: bool = True
@@ -187,9 +188,9 @@ class IznPermission:
     }
 
     def __init__(self):
-        self._policies: Dict[str, IznPolicy] = {}
-        self._call_counts: Dict[str, Dict[str, List[float]]] = {}
-        self._pending_approvals: Dict[str, Dict] = {}
+        self._policies: dict[str, IznPolicy] = {}
+        self._call_counts: dict[str, dict[str, list[float]]] = {}
+        self._pending_approvals: dict[str, dict] = {}
 
     def get_policy(self, agent_id: str, agent_role: str = "wakil") -> IznPolicy:
         """Get or create policy for an agent"""
@@ -212,8 +213,9 @@ class IznPermission:
         self._policies[agent_id] = policy
         return policy
 
-    def check_permission(self, agent_id: str, agent_role: str,
-                         tool_name: str, params: Dict = None) -> Dict:
+    def check_permission(
+        self, agent_id: str, agent_role: str, tool_name: str, params: dict = None
+    ) -> dict:
         """
         Check if an agent has permission to use a tool.
 
@@ -239,7 +241,7 @@ class IznPermission:
                     "agent_id": agent_id,
                     "tool": tool_name,
                     "params": params,
-                    "requested_at": datetime.utcnow().isoformat(),
+                    "requested_at": datetime.now(UTC).isoformat(),
                 }
             return {
                 "allowed": False,
@@ -280,14 +282,14 @@ class IznPermission:
             return True
         return False
 
-    def get_pending_approvals(self) -> List[Dict]:
+    def get_pending_approvals(self) -> list[dict]:
         """Get all pending approvals"""
         return list(self._pending_approvals.values())
 
-    def _check_tool_rate(self, agent_id: str, tool_name: str,
-                         max_per_minute: int) -> bool:
+    def _check_tool_rate(self, agent_id: str, tool_name: str, max_per_minute: int) -> bool:
         """Check tool-specific rate limit"""
         import time
+
         now = time.time()
         key = f"{agent_id}:{tool_name}"
 
@@ -295,10 +297,7 @@ class IznPermission:
             self._call_counts[key] = []
 
         # Remove calls older than 60 seconds
-        self._call_counts[key] = [
-            t for t in self._call_counts[key]
-            if now - t < 60
-        ]
+        self._call_counts[key] = [t for t in self._call_counts[key] if now - t < 60]
 
         if len(self._call_counts[key]) >= max_per_minute:
             return False
@@ -310,8 +309,9 @@ class IznPermission:
         """Override policy for an agent"""
         self._policies[agent_id] = policy
 
-    def grant_tool(self, agent_id: str, tool_name: str,
-                   level: PermissionLevel = PermissionLevel.ALLOWED):
+    def grant_tool(
+        self, agent_id: str, tool_name: str, level: PermissionLevel = PermissionLevel.ALLOWED
+    ):
         """Grant a specific tool permission"""
         if agent_id not in self._policies:
             self._policies[agent_id] = IznPolicy(id=agent_id)
@@ -328,7 +328,7 @@ class IznPermission:
                 level=PermissionLevel.DENIED,
             )
 
-    def check_nafs_permission(self, nafs_level: int, tool_name: str) -> Dict:
+    def check_nafs_permission(self, nafs_level: int, tool_name: str) -> dict:
         """
         Check permission based on agent's Nafs level (1-7).
         Higher Nafs levels unlock more tool capabilities.
@@ -357,11 +357,16 @@ class IznPermission:
             "nafs_level": nafs_level,
         }
 
-    def get_nafs_tier_info(self, nafs_level: int) -> Dict:
+    def get_nafs_tier_info(self, nafs_level: int) -> dict:
         """Get permission summary for a given Nafs level."""
         names = {
-            1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
-            5: "Radiya", 6: "Mardiyya", 7: "Kamila",
+            1: "Ammara",
+            2: "Lawwama",
+            3: "Mulhama",
+            4: "Mutmainna",
+            5: "Radiya",
+            6: "Mardiyya",
+            7: "Kamila",
         }
         tier = NAFS_PERMISSION_TIERS.get(nafs_level, NAFS_PERMISSION_TIERS[1])
         return {

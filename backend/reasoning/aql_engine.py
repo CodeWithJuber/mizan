@@ -18,11 +18,11 @@ and QCA epistemic weighting through all 7 cognitive layers.
 """
 
 import json
-import time
 import logging
-from datetime import datetime
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("mizan.aql")
 
@@ -30,13 +30,14 @@ logger = logging.getLogger("mizan.aql")
 @dataclass
 class ReasoningStep:
     """A single step in the reasoning process"""
+
     type: str  # "thinking", "tool_call", "tool_result", "lawwama", "final", "error"
     content: str = ""
-    tool_name: Optional[str] = None
-    tool_input: Optional[Dict] = None
-    tool_result: Optional[Any] = None
+    tool_name: str | None = None
+    tool_input: dict | None = None
+    tool_result: Any | None = None
     iteration: int = 0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class AqlEngine:
@@ -64,6 +65,7 @@ class AqlEngine:
         if self._qca is None:
             try:
                 from qca.engine import QCAEngine
+
                 self._qca = QCAEngine()
             except ImportError:
                 self._qca = None
@@ -73,7 +75,7 @@ class AqlEngine:
         self,
         task: str,
         agent,
-        context: Dict = None,
+        context: dict = None,
         stream_callback: Callable = None,
     ) -> AsyncGenerator[ReasoningStep, None]:
         """
@@ -142,12 +144,14 @@ class AqlEngine:
                         await stream_callback(f"\n[Using tool: {block.name}]\n")
 
                     # Execute tool through agent's security layer
-                    tool_result = await agent._execute_tool_safe(
-                        block.name, block.input
-                    )
+                    tool_result = await agent._execute_tool_safe(block.name, block.input)
 
                     # Yield the tool result
-                    result_str = json.dumps(tool_result) if isinstance(tool_result, dict) else str(tool_result)
+                    result_str = (
+                        json.dumps(tool_result)
+                        if isinstance(tool_result, dict)
+                        else str(tool_result)
+                    )
                     yield ReasoningStep(
                         type="tool_result",
                         tool_name=block.name,
@@ -160,18 +164,24 @@ class AqlEngine:
                         await stream_callback(f"\n[Result: {result_str[:500]}]\n")
 
                     # Build follow-up message with tool result
-                    messages.append({
-                        "role": "assistant",
-                        "content": assistant_content,
-                    })
-                    messages.append({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result_str[:5000],
-                        }],
-                    })
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": result_str[:5000],
+                                }
+                            ],
+                        }
+                    )
 
             # If no tool use, we're done
             if response.stop_reason == "end_turn" or not has_tool_use:
@@ -201,9 +211,9 @@ class AqlEngine:
         self,
         task: str,
         agent,
-        context: Dict = None,
+        context: dict = None,
         stream_callback: Callable = None,
-    ) -> Dict:
+    ) -> dict:
         """
         Run reasoning loop to completion and return full result.
         Collects all thinking text as the final response.
@@ -216,10 +226,12 @@ class AqlEngine:
             if step.type == "thinking":
                 full_text += step.content
             elif step.type == "tool_call":
-                tool_calls.append({
-                    "tool": step.tool_name,
-                    "input": step.tool_input,
-                })
+                tool_calls.append(
+                    {
+                        "tool": step.tool_name,
+                        "input": step.tool_input,
+                    }
+                )
             elif step.type == "tool_result":
                 tool_calls[-1]["result"] = step.content if step.content else str(step.tool_result)
             elif step.type == "error":
@@ -277,7 +289,7 @@ class AqlEngine:
 
         return result
 
-    def _build_initial_messages(self, task: str, context: Dict = None) -> List[Dict]:
+    def _build_initial_messages(self, task: str, context: dict = None) -> list[dict]:
         """Build initial message list"""
         messages = []
 

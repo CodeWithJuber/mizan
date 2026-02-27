@@ -30,30 +30,27 @@ QCA Integration:
 """
 
 import json
-import hashlib
-import asyncio
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field, asdict
 import sqlite3
-import pickle
-import os
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 
 @dataclass
 class Memory:
     """Base memory unit"""
+
     id: str = ""
     content: Any = None
     memory_type: str = "episodic"  # episodic | semantic | procedural
-    importance: float = 0.5        # 0-1 Mizan scale
-    recency: datetime = field(default_factory=datetime.utcnow)
+    importance: float = 0.5  # 0-1 Mizan scale
+    recency: datetime = field(default_factory=lambda: datetime.now(UTC))
     access_count: int = 0
     agent_id: str = ""
-    tags: List[str] = field(default_factory=list)
-    embeddings: Optional[List[float]] = None
-    related_ids: List[str] = field(default_factory=list)
-    
+    tags: list[str] = field(default_factory=list)
+    embeddings: list[float] | None = None
+    related_ids: list[str] = field(default_factory=list)
+
     def decay(self, hours_elapsed: float) -> float:
         """
         Memory decay following Quranic pattern:
@@ -83,23 +80,24 @@ class DhikrMemorySystem:
         self.db_path = db_path
         # For in-memory databases, keep a persistent connection
         # since each sqlite3.connect(":memory:") creates a new database
-        self._persistent_conn: Optional[sqlite3.Connection] = None
+        self._persistent_conn: sqlite3.Connection | None = None
         if db_path == ":memory:":
             self._persistent_conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._init_db()
 
         # ── Masalik: Neural pathway network (the real memory) ──
         from memory.masalik import MasalikNetwork
+
         self.masalik = MasalikNetwork()
 
         # Working memory (short-term) - like immediate consciousness
-        self.working_memory: Dict[str, Memory] = {}
+        self.working_memory: dict[str, Memory] = {}
         self.working_capacity = 7  # Miller's Law meets Quranic pattern (7 heavens)
 
         # Long-term memory tiers (legacy caches — kept for compatibility)
-        self._episodic_cache: Dict[str, Memory] = {}
-        self._semantic_cache: Dict[str, Memory] = {}
-        self._procedural_cache: Dict[str, Memory] = {}
+        self._episodic_cache: dict[str, Memory] = {}
+        self._semantic_cache: dict[str, Memory] = {}
+        self._procedural_cache: dict[str, Memory] = {}
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get a database connection. Reuses persistent connection for :memory: DBs."""
@@ -211,15 +209,21 @@ class DhikrMemorySystem:
         conn.commit()
         self._release_conn(conn)
 
-    async def remember(self, content: Any, memory_type: str = "episodic",
-                       importance: float = 0.5, agent_id: str = "",
-                       tags: List[str] = None) -> str:
+    async def remember(
+        self,
+        content: Any,
+        memory_type: str = "episodic",
+        importance: float = 0.5,
+        agent_id: str = "",
+        tags: list[str] = None,
+    ) -> str:
         """
         Store a new memory — dual pathway:
         1. Masalik: Encode into neural pathways (strengthens, never duplicates)
         2. SQLite: Persist record for audit/retrieval
         """
         import uuid
+
         mem_id = str(uuid.uuid4())
 
         memory = Memory(
@@ -250,26 +254,28 @@ class DhikrMemorySystem:
         cache[mem_id] = memory
 
         return mem_id
-    
+
     def _add_to_working(self, memory: Memory):
         """Add to working memory with capacity management"""
         if len(self.working_memory) >= self.working_capacity:
             # Remove least important
-            least_important = min(self.working_memory, 
-                                   key=lambda k: self.working_memory[k].importance)
+            least_important = min(
+                self.working_memory, key=lambda k: self.working_memory[k].importance
+            )
             del self.working_memory[least_important]
         self.working_memory[memory.id] = memory
-    
-    def _get_cache(self, memory_type: str) -> Dict:
+
+    def _get_cache(self, memory_type: str) -> dict:
         caches = {
             "episodic": self._episodic_cache,
             "semantic": self._semantic_cache,
             "procedural": self._procedural_cache,
         }
         return caches.get(memory_type, self._episodic_cache)
-    
-    async def recall(self, query: str, memory_type: str = None,
-                     agent_id: str = None, limit: int = 10) -> List[Memory]:
+
+    async def recall(
+        self, query: str, memory_type: str = None, agent_id: str = None, limit: int = 10
+    ) -> list[Memory]:
         """
         Recall memories — dual pathway:
         1. Masalik: Spreading activation finds associated concepts (Dhikr)
@@ -280,7 +286,7 @@ class DhikrMemorySystem:
         """
         # ── Masalik: Spreading activation (this IS remembering) ──
         # Side effect: strengthens the recalled pathways (Dhikr reinforcement)
-        pathway_context = self.masalik.recall_context(query, top_k=8)
+        self.masalik.recall_context(query, top_k=8)
 
         # ── SQLite: Record search ──
         conn = self._get_conn()
@@ -316,16 +322,18 @@ class DhikrMemorySystem:
             except Exception:
                 content = row[1]
 
-            memories.append(Memory(
-                id=row[0],
-                content=content,
-                memory_type=row[2],
-                importance=row[3],
-                recency=datetime.fromisoformat(row[4]) if row[4] else datetime.utcnow(),
-                access_count=row[5],
-                agent_id=row[6],
-                tags=json.loads(row[7]) if row[7] else [],
-            ))
+            memories.append(
+                Memory(
+                    id=row[0],
+                    content=content,
+                    memory_type=row[2],
+                    importance=row[3],
+                    recency=datetime.fromisoformat(row[4]) if row[4] else datetime.now(UTC),
+                    access_count=row[5],
+                    agent_id=row[6],
+                    tags=json.loads(row[7]) if row[7] else [],
+                )
+            )
 
         # Update access count for recalled memories
         for mem in memories:
@@ -339,35 +347,42 @@ class DhikrMemorySystem:
         Use this for agent system prompts where you need semantic context.
         """
         return self.masalik.recall_context(query, top_k=top_k)
-    
+
     async def _persist(self, memory: Memory):
         """Persist memory to database"""
         conn = self._get_conn()
         c = conn.cursor()
-        
+
         try:
-            content_str = json.dumps(memory.content) if not isinstance(memory.content, str) else memory.content
-        except:
+            content_str = (
+                json.dumps(memory.content)
+                if not isinstance(memory.content, str)
+                else memory.content
+            )
+        except (TypeError, ValueError):
             content_str = str(memory.content)
-        
-        c.execute("""
-            INSERT OR REPLACE INTO memories 
+
+        c.execute(
+            """
+            INSERT OR REPLACE INTO memories
             (id, content, memory_type, importance, recency, access_count, agent_id, tags, related_ids)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            memory.id,
-            content_str,
-            memory.memory_type,
-            memory.importance,
-            memory.recency.isoformat(),
-            memory.access_count,
-            memory.agent_id,
-            json.dumps(memory.tags),
-            json.dumps(memory.related_ids),
-        ))
+        """,
+            (
+                memory.id,
+                content_str,
+                memory.memory_type,
+                memory.importance,
+                memory.recency.isoformat(),
+                memory.access_count,
+                memory.agent_id,
+                json.dumps(memory.tags),
+                json.dumps(memory.related_ids),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
-    
+
     async def consolidate(self, agent_id: str = None):
         """
         Memory consolidation — two processes:
@@ -388,7 +403,7 @@ class DhikrMemorySystem:
         nisyan_result = self.masalik.apply_nisyan()
 
         # ── SQLite: Prune old low-importance records ──
-        cutoff = datetime.utcnow() - timedelta(days=30)
+        cutoff = datetime.now(UTC) - timedelta(days=30)
         conn = self._get_conn()
         c = conn.cursor()
 
@@ -414,186 +429,264 @@ class DhikrMemorySystem:
             "nisyan": nisyan_result,
             "records_pruned": deleted,
         }
-    
-    async def save_agent_profile(self, profile: Dict):
+
+    async def save_agent_profile(self, profile: dict):
         """Save agent profile"""
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
-            INSERT OR REPLACE INTO agent_profiles 
-            (id, name, role, nafs_level, capabilities, created_at, total_tasks, 
+        c.execute(
+            """
+            INSERT OR REPLACE INTO agent_profiles
+            (id, name, role, nafs_level, capabilities, created_at, total_tasks,
              success_rate, error_count, learning_iterations, config)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            profile.get("id"),
-            profile.get("name"),
-            profile.get("role"),
-            profile.get("nafs_level", 1),
-            json.dumps(profile.get("capabilities", [])),
-            profile.get("created_at", datetime.utcnow().isoformat()),
-            profile.get("total_tasks", 0),
-            profile.get("success_rate", 0.0),
-            profile.get("error_count", 0),
-            profile.get("learning_iterations", 0),
-            json.dumps(profile.get("config", {})),
-        ))
+        """,
+            (
+                profile.get("id"),
+                profile.get("name"),
+                profile.get("role"),
+                profile.get("nafs_level", 1),
+                json.dumps(profile.get("capabilities", [])),
+                profile.get("created_at", datetime.now(UTC).isoformat()),
+                profile.get("total_tasks", 0),
+                profile.get("success_rate", 0.0),
+                profile.get("error_count", 0),
+                profile.get("learning_iterations", 0),
+                json.dumps(profile.get("config", {})),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
-    
-    async def get_all_agents(self) -> List[Dict]:
+
+    async def get_all_agents(self) -> list[dict]:
         """Get all agent profiles"""
         conn = self._get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM agent_profiles")
         rows = c.fetchall()
         self._release_conn(conn)
-        
+
         agents = []
         for row in rows:
-            agents.append({
-                "id": row[0],
-                "name": row[1],
-                "role": row[2],
-                "nafs_level": row[3],
-                "capabilities": json.loads(row[4]) if row[4] else [],
-                "created_at": row[5],
-                "total_tasks": row[6],
-                "success_rate": row[7],
-                "error_count": row[8],
-                "learning_iterations": row[9],
-                "config": json.loads(row[10]) if row[10] else {},
-            })
+            agents.append(
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "role": row[2],
+                    "nafs_level": row[3],
+                    "capabilities": json.loads(row[4]) if row[4] else [],
+                    "created_at": row[5],
+                    "total_tasks": row[6],
+                    "success_rate": row[7],
+                    "error_count": row[8],
+                    "learning_iterations": row[9],
+                    "config": json.loads(row[10]) if row[10] else {},
+                }
+            )
         return agents
-    
-    async def save_message(self, session_id: str, role: str, content: str, 
-                            agent_id: str = "", metadata: Dict = None) -> str:
+
+    async def save_message(
+        self, session_id: str, role: str, content: str, agent_id: str = "", metadata: dict = None
+    ) -> str:
         """Save chat message"""
         import uuid
+
         msg_id = str(uuid.uuid4())
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
+        c.execute(
+            """
             INSERT INTO agent_messages (id, session_id, role, content, agent_id, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            msg_id, session_id, role, content, agent_id,
-            datetime.utcnow().isoformat(),
-            json.dumps(metadata or {})
-        ))
+        """,
+            (
+                msg_id,
+                session_id,
+                role,
+                content,
+                agent_id,
+                datetime.now(UTC).isoformat(),
+                json.dumps(metadata or {}),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
         return msg_id
-    
-    async def get_messages(self, session_id: str, limit: int = 50) -> List[Dict]:
+
+    async def get_messages(self, session_id: str, limit: int = 50) -> list[dict]:
         """Get messages for a session"""
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
+        c.execute(
+            """
             SELECT id, session_id, role, content, agent_id, created_at, metadata
             FROM agent_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?
-        """, (session_id, limit))
+        """,
+            (session_id, limit),
+        )
         rows = c.fetchall()
         self._release_conn(conn)
-        
-        return [{
-            "id": r[0], "session_id": r[1], "role": r[2],
-            "content": r[3], "agent_id": r[4], "created_at": r[5],
-            "metadata": json.loads(r[6]) if r[6] else {}
-        } for r in rows]
-    
-    async def save_task(self, agent_id: str, task: str, result: str, 
-                         success: bool, duration_ms: float, metadata: Dict = None) -> str:
+
+        return [
+            {
+                "id": r[0],
+                "session_id": r[1],
+                "role": r[2],
+                "content": r[3],
+                "agent_id": r[4],
+                "created_at": r[5],
+                "metadata": json.loads(r[6]) if r[6] else {},
+            }
+            for r in rows
+        ]
+
+    async def save_task(
+        self,
+        agent_id: str,
+        task: str,
+        result: str,
+        success: bool,
+        duration_ms: float,
+        metadata: dict = None,
+    ) -> str:
         """Save task history"""
         import uuid
+
         task_id = str(uuid.uuid4())
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
+        c.execute(
+            """
             INSERT INTO task_history (id, agent_id, task, result, success, duration_ms, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            task_id, agent_id, task, result, int(success), duration_ms,
-            datetime.utcnow().isoformat(), json.dumps(metadata or {})
-        ))
+        """,
+            (
+                task_id,
+                agent_id,
+                task,
+                result,
+                int(success),
+                duration_ms,
+                datetime.now(UTC).isoformat(),
+                json.dumps(metadata or {}),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
         return task_id
-    
-    async def get_task_history(self, agent_id: str = None, limit: int = 100) -> List[Dict]:
+
+    async def get_task_history(self, agent_id: str = None, limit: int = 100) -> list[dict]:
         """Get task history"""
         conn = self._get_conn()
         c = conn.cursor()
-        
+
         if agent_id:
-            c.execute("SELECT * FROM task_history WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?", 
-                       (agent_id, limit))
+            c.execute(
+                "SELECT * FROM task_history WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?",
+                (agent_id, limit),
+            )
         else:
             c.execute("SELECT * FROM task_history ORDER BY created_at DESC LIMIT ?", (limit,))
-        
+
         rows = c.fetchall()
         self._release_conn(conn)
-        
-        return [{
-            "id": r[0], "agent_id": r[1], "task": r[2], "result": r[3],
-            "success": bool(r[4]), "duration_ms": r[5], "created_at": r[6],
-            "metadata": json.loads(r[7]) if r[7] else {}
-        } for r in rows]
-    
-    async def save_integration(self, integration: Dict) -> str:
+
+        return [
+            {
+                "id": r[0],
+                "agent_id": r[1],
+                "task": r[2],
+                "result": r[3],
+                "success": bool(r[4]),
+                "duration_ms": r[5],
+                "created_at": r[6],
+                "metadata": json.loads(r[7]) if r[7] else {},
+            }
+            for r in rows
+        ]
+
+    async def save_integration(self, integration: dict) -> str:
         """Save integration config"""
         import uuid
+
         int_id = integration.get("id") or str(uuid.uuid4())
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
+        c.execute(
+            """
             INSERT OR REPLACE INTO integrations (id, name, type, config, enabled, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            int_id, integration.get("name"), integration.get("type"),
-            json.dumps(integration.get("config", {})),
-            int(integration.get("enabled", True)),
-            datetime.utcnow().isoformat()
-        ))
+        """,
+            (
+                int_id,
+                integration.get("name"),
+                integration.get("type"),
+                json.dumps(integration.get("config", {})),
+                int(integration.get("enabled", True)),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
         return int_id
-    
-    async def get_integrations(self) -> List[Dict]:
+
+    async def get_integrations(self) -> list[dict]:
         """Get all integrations"""
         conn = self._get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM integrations")
         rows = c.fetchall()
         self._release_conn(conn)
-        return [{
-            "id": r[0], "name": r[1], "type": r[2],
-            "config": json.loads(r[3]) if r[3] else {},
-            "enabled": bool(r[4]), "created_at": r[5]
-        } for r in rows]
+        return [
+            {
+                "id": r[0],
+                "name": r[1],
+                "type": r[2],
+                "config": json.loads(r[3]) if r[3] else {},
+                "enabled": bool(r[4]),
+                "created_at": r[5],
+            }
+            for r in rows
+        ]
 
     # ── Audit Log Persistence ────────────────────────────────────────────
 
-    async def log_audit(self, event_type: str, severity: str = "info",
-                        user_id: str = "", ip_address: str = "",
-                        resource: str = "", details: dict = None,
-                        success: bool = True):
+    async def log_audit(
+        self,
+        event_type: str,
+        severity: str = "info",
+        user_id: str = "",
+        ip_address: str = "",
+        resource: str = "",
+        details: dict = None,
+        success: bool = True,
+    ):
         """Persist an audit log entry to SQLite."""
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute("""
+        c.execute(
+            """
             INSERT INTO audit_log (timestamp, event_type, severity, user_id,
                                    ip_address, resource, details, success)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            datetime.utcnow().isoformat(), event_type, severity,
-            user_id, ip_address, resource,
-            json.dumps(details or {}), int(success)
-        ))
+        """,
+            (
+                datetime.now(UTC).isoformat(),
+                event_type,
+                severity,
+                user_id,
+                ip_address,
+                resource,
+                json.dumps(details or {}),
+                int(success),
+            ),
+        )
         conn.commit()
         self._release_conn(conn)
 
-    async def get_audit_logs(self, limit: int = 100, severity: str = None,
-                             event_type: str = None) -> List[Dict]:
+    async def get_audit_logs(
+        self, limit: int = 100, severity: str = None, event_type: str = None
+    ) -> list[dict]:
         """Query audit logs with optional filtering."""
         conn = self._get_conn()
         c = conn.cursor()
@@ -613,11 +706,20 @@ class DhikrMemorySystem:
         c.execute(query, params)
         rows = c.fetchall()
         self._release_conn(conn)
-        cols = ["id", "timestamp", "event_type", "severity", "user_id",
-                "ip_address", "resource", "details", "success"]
+        cols = [
+            "id",
+            "timestamp",
+            "event_type",
+            "severity",
+            "user_id",
+            "ip_address",
+            "resource",
+            "details",
+            "success",
+        ]
         results = []
         for r in rows:
-            entry = dict(zip(cols, r))
+            entry = dict(zip(cols, r, strict=False))
             if entry.get("details"):
                 try:
                     entry["details"] = json.loads(entry["details"])
@@ -627,7 +729,7 @@ class DhikrMemorySystem:
             results.append(entry)
         return results
 
-    async def get_audit_summary(self) -> Dict:
+    async def get_audit_summary(self) -> dict:
         """Get audit log summary statistics."""
         conn = self._get_conn()
         c = conn.cursor()
@@ -657,14 +759,20 @@ class DhikrMemorySystem:
         """
         try:
             from qca.engine import LawhMemory
+
             return LawhMemory()
         except ImportError:
             return None
 
-    async def remember_with_mizan(self, content: Any, memory_type: str = "episodic",
-                                  importance: float = 0.5, agent_id: str = "",
-                                  tags: List[str] = None,
-                                  certainty_level: str = "zann") -> str:
+    async def remember_with_mizan(
+        self,
+        content: Any,
+        memory_type: str = "episodic",
+        importance: float = 0.5,
+        agent_id: str = "",
+        tags: list[str] = None,
+        certainty_level: str = "zann",
+    ) -> str:
         """
         Store a new memory with QCA Mizan-weighted importance.
         The certainty_level maps to QCA epistemic scale:
@@ -676,12 +784,13 @@ class DhikrMemorySystem:
         """
         # Map certainty to importance boost
         mizan_weights = {
-            "yaqin": 1.0, "zann_rajih": 0.75, "zann": 0.5,
-            "shakk": 0.25, "wahm": 0.05,
+            "yaqin": 1.0,
+            "zann_rajih": 0.75,
+            "zann": 0.5,
+            "shakk": 0.25,
+            "wahm": 0.05,
         }
         mizan_factor = mizan_weights.get(certainty_level, 0.5)
         adjusted_importance = min(1.0, importance * (0.5 + mizan_factor * 0.5))
 
-        return await self.remember(
-            content, memory_type, adjusted_importance, agent_id, tags
-        )
+        return await self.remember(content, memory_type, adjusted_importance, agent_id, tags)

@@ -12,30 +12,31 @@ Real use cases:
   - Package name injection → blocked
 """
 
-import time
-import pytest
 import sys
+import time
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from security.wali import WaliGuardian, SecurityConfig, RateLimiter, AuditLog
 from security.validation import (
-    sanitize_path,
-    validate_path_in_sandbox,
-    sanitize_command,
-    validate_command_safe,
-    validate_url,
-    validate_text_input,
-    validate_package_name,
-    escape_sql_like,
     InputValidator,
+    escape_sql_like,
+    sanitize_command,
+    sanitize_path,
+    validate_command_safe,
+    validate_package_name,
+    validate_path_in_sandbox,
+    validate_text_input,
+    validate_url,
 )
-
+from security.wali import AuditLog, RateLimiter, SecurityConfig, WaliGuardian
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RATE LIMITER
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestRateLimiterPositive:
     def test_allows_within_limit(self):
@@ -76,6 +77,7 @@ class TestRateLimiterNegative:
 # AUDIT LOG
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAuditLog:
     def test_log_and_retrieve(self):
         audit = AuditLog()
@@ -112,6 +114,7 @@ class TestAuditLog:
 # ═══════════════════════════════════════════════════════════════════════════════
 # WALI GUARDIAN
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestWaliGuardianPositive:
     @pytest.fixture
@@ -217,6 +220,7 @@ class TestWaliGuardianNegative:
 # ═══════════════════════════════════════════════════════════════════════════════
 # INPUT VALIDATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestCommandValidation:
     def test_safe_commands(self):

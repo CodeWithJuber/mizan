@@ -15,28 +15,29 @@ Error recovery protocol that transforms failures into learning:
 Errors are not failures — they are opportunities for Tazkiyah (purification).
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger("mizan.tawbah")
 
 
 class TawbahStage(Enum):
     """Stages of the error recovery process."""
-    ACKNOWLEDGE = "acknowledge"   # Detect and admit the error
-    ANALYZE = "analyze"           # Find root cause
-    PLAN = "plan"                 # Create correction plan
-    APPLY = "apply"               # Execute the fix
-    VERIFY = "verify"             # Confirm success
-    COMPLETE = "complete"         # Recovery finished
+
+    ACKNOWLEDGE = "acknowledge"  # Detect and admit the error
+    ANALYZE = "analyze"  # Find root cause
+    PLAN = "plan"  # Create correction plan
+    APPLY = "apply"  # Execute the fix
+    VERIFY = "verify"  # Confirm success
+    COMPLETE = "complete"  # Recovery finished
 
 
 @dataclass
 class TawbahRecord:
     """Record of an error recovery process."""
+
     id: str
     agent_id: str
     error_type: str
@@ -49,11 +50,11 @@ class TawbahRecord:
     verified: bool = False
     success: bool = False
     started_at: float = field(default_factory=time.time)
-    completed_at: Optional[float] = None
+    completed_at: float | None = None
     attempts: int = 1
     lessons_learned: str = ""
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "agent_id": self.agent_id,
@@ -92,12 +93,11 @@ class TawbahProtocol:
     MAX_ATTEMPTS = 3
 
     def __init__(self):
-        self._records: Dict[str, TawbahRecord] = {}
-        self._lessons: List[Dict] = []
-        self._error_patterns: Dict[str, int] = {}
+        self._records: dict[str, TawbahRecord] = {}
+        self._lessons: list[dict] = []
+        self._error_patterns: dict[str, int] = {}
 
-    def acknowledge(self, agent_id: str, error: Exception | str,
-                    task: str) -> TawbahRecord:
+    def acknowledge(self, agent_id: str, error: Exception | str, task: str) -> TawbahRecord:
         """
         Stage 1: Acknowledge the error.
         "The first step of repentance is recognition."
@@ -151,8 +151,7 @@ class TawbahProtocol:
         logger.info("[TAWBAH] Fix applied: %s", fix_description[:100])
         return record
 
-    def verify(self, record: TawbahRecord, success: bool,
-               lesson: str = "") -> TawbahRecord:
+    def verify(self, record: TawbahRecord, success: bool, lesson: str = "") -> TawbahRecord:
         """
         Stage 5: Verify the fix.
         "Confirm the correction has taken hold."
@@ -164,52 +163,59 @@ class TawbahProtocol:
 
         if success:
             record.lessons_learned = lesson or f"Fixed {record.error_type}: {record.root_cause}"
-            self._lessons.append({
-                "error_type": record.error_type,
-                "root_cause": record.root_cause,
-                "fix": record.fix_applied,
-                "lesson": record.lessons_learned,
-                "timestamp": time.time(),
-            })
+            self._lessons.append(
+                {
+                    "error_type": record.error_type,
+                    "root_cause": record.root_cause,
+                    "fix": record.fix_applied,
+                    "lesson": record.lessons_learned,
+                    "timestamp": time.time(),
+                }
+            )
             logger.info("[TAWBAH] Verified SUCCESS: %s", record.lessons_learned[:100])
         else:
             record.attempts += 1
             if record.attempts < self.MAX_ATTEMPTS:
                 record.stage = TawbahStage.ANALYZE  # Re-analyze
-                logger.warning("[TAWBAH] Verification failed, attempt %d/%d",
-                               record.attempts, self.MAX_ATTEMPTS)
+                logger.warning(
+                    "[TAWBAH] Verification failed, attempt %d/%d",
+                    record.attempts,
+                    self.MAX_ATTEMPTS,
+                )
             else:
                 record.stage = TawbahStage.COMPLETE
-                record.lessons_learned = f"UNRESOLVED after {self.MAX_ATTEMPTS} attempts: {record.error_type}"
+                record.lessons_learned = (
+                    f"UNRESOLVED after {self.MAX_ATTEMPTS} attempts: {record.error_type}"
+                )
                 logger.error("[TAWBAH] Max attempts reached for %s", record.id)
 
         return record
 
-    def get_lessons(self, error_type: str = None) -> List[Dict]:
+    def get_lessons(self, error_type: str = None) -> list[dict]:
         """Get lessons learned from past error recoveries."""
         if error_type:
-            return [l for l in self._lessons if l["error_type"] == error_type]
+            return [lesson for lesson in self._lessons if lesson["error_type"] == error_type]
         return list(self._lessons)
 
-    def get_pattern_frequency(self) -> Dict[str, int]:
+    def get_pattern_frequency(self) -> dict[str, int]:
         """Get frequency of error patterns (for systemic issue detection)."""
         return dict(self._error_patterns)
 
-    def has_prior_fix(self, error_type: str) -> Optional[Dict]:
+    def has_prior_fix(self, error_type: str) -> dict | None:
         """Check if we have a prior fix for this error type."""
         for lesson in reversed(self._lessons):
             if lesson["error_type"] == error_type:
                 return lesson
         return None
 
-    def get_active_recoveries(self, agent_id: str = None) -> List[TawbahRecord]:
+    def get_active_recoveries(self, agent_id: str = None) -> list[TawbahRecord]:
         """Get active (uncompleted) recovery records."""
         records = self._records.values()
         if agent_id:
             records = [r for r in records if r.agent_id == agent_id]
         return [r for r in records if r.stage != TawbahStage.COMPLETE]
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         total = len(self._records)
         successful = sum(1 for r in self._records.values() if r.success)
         return {

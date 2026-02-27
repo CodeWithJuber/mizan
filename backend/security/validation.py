@@ -8,14 +8,12 @@ Purifies all input before it enters the system.
 Prevents injection attacks, path traversal, and overflow.
 """
 
-import re
 import os
-import shlex
-from typing import Optional
+import re
 from urllib.parse import urlparse
 
-
 # === Path Validation ===
+
 
 def sanitize_path(path: str) -> str:
     """
@@ -38,6 +36,7 @@ def validate_path_in_sandbox(path: str, allowed_dirs: list) -> bool:
 
 
 # === Command Validation ===
+
 
 def sanitize_command(command: str) -> str:
     """
@@ -66,31 +65,32 @@ def validate_command_safe(command: str) -> tuple:
 
     # Critical: block destructive patterns
     destructive_patterns = [
-        r"rm\s+(-\w+\s+)?/",           # rm -rf /
-        r">\s*/dev/",                     # > /dev/sda
-        r"dd\s+.*of=/dev/",              # dd of=/dev/
-        r"mkfs\.",                        # mkfs.ext4
-        r":\(\)\{",                       # fork bomb
-        r"chmod\s+777\s+/",              # chmod 777 /
-        r"curl.*\|\s*(ba)?sh",           # curl | sh
-        r"wget.*\|\s*(ba)?sh",           # wget | sh
-        r"sudo\s",                        # sudo
-        r"\bsu\s+",                       # su
-        r"shutdown\b",                    # shutdown
-        r"reboot\b",                      # reboot
-        r"init\s+[06]",                   # init 0/6
-        r"kill\s+-9\s+1\b",              # kill init
-        r"echo\s+.*>\s*/etc/",           # write to /etc
+        r"rm\s+(-\w+\s+)?/",  # rm -rf /
+        r">\s*/dev/",  # > /dev/sda
+        r"dd\s+.*of=/dev/",  # dd of=/dev/
+        r"mkfs\.",  # mkfs.ext4
+        r":\(\)\{",  # fork bomb
+        r"chmod\s+777\s+/",  # chmod 777 /
+        r"curl.*\|\s*(ba)?sh",  # curl | sh
+        r"wget.*\|\s*(ba)?sh",  # wget | sh
+        r"sudo\s",  # sudo
+        r"\bsu\s+",  # su
+        r"shutdown\b",  # shutdown
+        r"reboot\b",  # reboot
+        r"init\s+[06]",  # init 0/6
+        r"kill\s+-9\s+1\b",  # kill init
+        r"echo\s+.*>\s*/etc/",  # write to /etc
     ]
 
     for pattern in destructive_patterns:
         if re.search(pattern, cmd_lower):
-            return False, f"Blocked: matches destructive pattern"
+            return False, "Blocked: matches destructive pattern"
 
     return True, "OK"
 
 
 # === SQL Validation ===
+
 
 def escape_sql_like(query: str) -> str:
     """Escape special LIKE characters to prevent wildcard injection"""
@@ -98,6 +98,7 @@ def escape_sql_like(query: str) -> str:
 
 
 # === URL Validation ===
+
 
 def validate_url(url: str) -> tuple:
     """
@@ -121,10 +122,29 @@ def validate_url(url: str) -> tuple:
 
     # Block private/internal networks
     private_prefixes = [
-        "localhost", "127.", "0.0.0.0", "10.", "172.16.", "172.17.",
-        "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.",
-        "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
-        "172.30.", "172.31.", "192.168.", "169.254.", "[::1]",
+        "localhost",
+        "127.",
+        "0.0.0.0",
+        "10.",
+        "172.16.",
+        "172.17.",
+        "172.18.",
+        "172.19.",
+        "172.20.",
+        "172.21.",
+        "172.22.",
+        "172.23.",
+        "172.24.",
+        "172.25.",
+        "172.26.",
+        "172.27.",
+        "172.28.",
+        "172.29.",
+        "172.30.",
+        "172.31.",
+        "192.168.",
+        "169.254.",
+        "[::1]",
     ]
 
     for prefix in private_prefixes:
@@ -140,8 +160,8 @@ def validate_url(url: str) -> tuple:
 
 # === Input Text Validation ===
 
-def validate_text_input(text: str, max_length: int = 50000,
-                        field_name: str = "input") -> tuple:
+
+def validate_text_input(text: str, max_length: int = 50000, field_name: str = "input") -> tuple:
     """
     Validate text input.
     Returns (is_valid: bool, reason: str, sanitized: str).
@@ -166,6 +186,7 @@ def validate_text_input(text: str, max_length: int = 50000,
 
 # === Package Name Validation ===
 
+
 def validate_package_name(package: str) -> tuple:
     """
     Validate package name for pip/npm install.
@@ -176,7 +197,10 @@ def validate_package_name(package: str) -> tuple:
         return False, "Empty package name"
 
     # Only allow alphanumeric, hyphens, underscores, dots, and version specifiers
-    if not re.match(r'^[a-zA-Z0-9][\w\-\.]*(\[[\w,\-]+\])?(([<>=!~]+[\d\.\*]+)(,\s*([<>=!~]+[\d\.\*]+))*)?$', package):
+    if not re.match(
+        r"^[a-zA-Z0-9][\w\-\.]*(\[[\w,\-]+\])?(([<>=!~]+[\d\.\*]+)(,\s*([<>=!~]+[\d\.\*]+))*)?$",
+        package,
+    ):
         return False, "Invalid package name format"
 
     return True, "OK"
@@ -203,7 +227,7 @@ class InputValidator:
     def validate_path(self, path: str, allowed_dirs: list = None) -> tuple:
         resolved = sanitize_path(path)
         if allowed_dirs and not validate_path_in_sandbox(path, allowed_dirs):
-            return False, f"Path outside allowed directories", resolved
+            return False, "Path outside allowed directories", resolved
         return True, "OK", resolved
 
     def validate_command(self, command: str) -> tuple:

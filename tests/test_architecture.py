@@ -3,13 +3,12 @@ Tests for the Quranic Architecture (Core + QCA)
 """
 
 import pytest
+
 from core.architecture import (
     MizanBalancer,
-    ShuraCouncil,
-    QuranicLayer,
-    AgentRole,
     NafsProfile,
     QCAMizanIntegrator,
+    QuranicLayer,
 )
 
 
@@ -58,16 +57,24 @@ class TestNafsProfile:
 
     def test_evolves_to_lawwama(self):
         profile = NafsProfile(
-            name="Test", success_rate=0.75, total_tasks=30,
-            self_correction_count=1, error_count=1, learning_iterations=10,
+            name="Test",
+            success_rate=0.75,
+            total_tasks=30,
+            self_correction_count=1,
+            error_count=1,
+            learning_iterations=10,
         )
         profile.evolve_nafs()
         assert profile.nafs_level == 2
 
     def test_evolves_to_mulhama(self):
         profile = NafsProfile(
-            name="Test", success_rate=0.80, total_tasks=110,
-            self_correction_count=5, error_count=5, learning_iterations=150,
+            name="Test",
+            success_rate=0.80,
+            total_tasks=110,
+            self_correction_count=5,
+            error_count=5,
+            learning_iterations=150,
         )
         profile.evolve_nafs()
         assert profile.nafs_level == 3

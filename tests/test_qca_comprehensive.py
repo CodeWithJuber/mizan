@@ -13,37 +13,37 @@ Real use cases:
   - Edge cases: empty input, huge input, special characters
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from backend.qca.engine import (
-    DualInputProcessor,
-    ISMLayer,
-    MizanLayer,
-    AqlLayer,
-    LawhMemory,
-    FurqanBayan,
-    QCAEngine,
-)
-from backend.qca.yaqin_engine import YaqinEngine, YaqinLevel, YaqinTag
 from backend.qca.cognitive_methods import (
-    TafakkurEngine,
-    TadabburEngine,
+    CognitiveMethod,
+    IjmaEngine,
     IstidlalEngine,
     QiyasEngine,
-    IjmaEngine,
-    CognitiveMethod,
+    TadabburEngine,
+    TafakkurEngine,
     select_method,
 )
-
+from backend.qca.engine import (
+    AqlLayer,
+    DualInputProcessor,
+    FurqanBayan,
+    LawhMemory,
+    MizanLayer,
+    QCAEngine,
+)
+from backend.qca.yaqin_engine import YaqinEngine, YaqinLevel
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DUAL INPUT PROCESSOR (Sam' + Basar + Fu'ad)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestDualInputPositive:
     """Positive tests — normal, expected inputs."""
@@ -125,6 +125,7 @@ class TestDualInputNegative:
 # MIZAN LAYER (Epistemic Weighting)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMizanLayerPositive:
     @pytest.fixture
     def mizan(self):
@@ -187,6 +188,7 @@ class TestMizanLayerNegative:
 # AQL LAYER (Typed Relationships)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAqlLayerPositive:
     @pytest.fixture
     def aql(self):
@@ -224,6 +226,7 @@ class TestAqlLayerNegative:
 # LAWH MEMORY (4-Tier Hierarchical)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestLawhMemoryPositive:
     @pytest.fixture
     def lawh(self):
@@ -242,7 +245,7 @@ class TestLawhMemoryPositive:
         lawh.store("VLOW", "guess", 0.15)
 
         assert lawh.retrieve("HIGH")["tier"] == 2  # Kitab
-        assert lawh.retrieve("MED")["tier"] == 3   # Zann
+        assert lawh.retrieve("MED")["tier"] == 3  # Zann
         assert lawh.retrieve("VLOW")["tier"] == 4  # Wahm
 
     def test_search_finds_content(self, lawh):
@@ -291,6 +294,7 @@ class TestLawhMemoryNegative:
 # FURQAN BAYAN (Output Discrimination)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestFurqanBayanPositive:
     @pytest.fixture
     def furqan(self):
@@ -330,6 +334,7 @@ class TestFurqanBayanNegative:
 # ═══════════════════════════════════════════════════════════════════════════════
 # QCA ENGINE (Unified Pipeline)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestQCAEnginePositive:
     @pytest.fixture
@@ -394,6 +399,7 @@ class TestQCAEngineNegative:
 # YAQIN ENGINE (Three Levels of Certainty)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestYaqinEnginePositive:
     @pytest.fixture
     def yaqin(self):
@@ -421,7 +427,6 @@ class TestYaqinEnginePositive:
 
     def test_promote_ilm_to_ayn(self, yaqin):
         tag = yaqin.tag_inference("Hypothesis A")
-        original_level = tag.level
         yaqin.promote(tag, "Verified through testing")
         assert tag.level == YaqinLevel.AYN_AL_YAQIN
         assert tag.verification_count >= 1
@@ -486,6 +491,7 @@ class TestYaqinEngineNegative:
 # COGNITIVE METHODS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestCognitiveMethodsPositive:
     """Test all five cognitive methods work correctly."""
 
@@ -504,19 +510,25 @@ class TestCognitiveMethodsPositive:
 
     def test_istidlal_deduces(self):
         engine = IstidlalEngine()
-        result = engine.process("If A then B. A is true.", context={
-            "facts": ["If bugs exist then tests should fail", "Bugs exist in module X"],
-        })
+        result = engine.process(
+            "If A then B. A is true.",
+            context={
+                "facts": ["If bugs exist then tests should fail", "Bugs exist in module X"],
+            },
+        )
         assert result.method == CognitiveMethod.ISTIDLAL
         assert result.confidence > 0
 
     def test_istidlal_detects_contradiction(self):
         engine = IstidlalEngine()
-        result = engine.process("Is this consistent?", context={
-            "facts": ["The system is working", "The system is not working"],
-        })
+        result = engine.process(
+            "Is this consistent?",
+            context={
+                "facts": ["The system is working", "The system is not working"],
+            },
+        )
         # Should detect contradiction in premises
-        has_contradiction = any("contradiction" in step.lower() for step in result.reasoning_chain)
+        any("contradiction" in step.lower() for step in result.reasoning_chain)
         # The engine should handle contradictory premises gracefully
         assert result.confidence > 0
 

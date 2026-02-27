@@ -11,27 +11,27 @@ Real use cases:
   - Specialized agents → browser, research, code, communication
 """
 
-import pytest
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from agents.base import BaseAgent
 from agents.specialized import (
     BrowserAgent,
-    ResearchAgent,
     CodeAgent,
     CommunicationAgent,
+    ResearchAgent,
     create_agent,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.fixture
 def mock_wali():
@@ -72,15 +72,19 @@ def make_agent(agent_type, name="TestAgent", wali=None, izn=None, memory=None, c
     if izn is None:
         izn = MagicMock()
         izn.check_permission.return_value = {
-            "allowed": True, "reason": "Test", "requires_approval": False,
+            "allowed": True,
+            "reason": "Test",
+            "requires_approval": False,
         }
-    return create_agent(agent_type, name=name, wali=wali, izn=izn,
-                        memory=memory, config=config or {})
+    return create_agent(
+        agent_type, name=name, wali=wali, izn=izn, memory=memory, config=config or {}
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AGENT CREATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestAgentFactory:
     """Test creating all agent types through the factory."""
@@ -131,6 +135,7 @@ class TestAgentFactory:
 # ═══════════════════════════════════════════════════════════════════════════════
 # BASE AGENT ATTRIBUTES
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestBaseAgentAttributes:
     def test_initial_state(self, mock_wali, mock_izn):
@@ -184,6 +189,7 @@ class TestBaseAgentAttributes:
 # ═══════════════════════════════════════════════════════════════════════════════
 # NAFS EVOLUTION (7 Levels of Spiritual Growth)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestNafsEvolution:
     """Test the 7-level Nafs model based on agent performance."""
@@ -246,6 +252,7 @@ class TestNafsEvolution:
 # AGENT SECURITY BOUNDARIES
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAgentSecurity:
     """Test security enforcement during tool execution."""
 
@@ -278,6 +285,7 @@ class TestAgentSecurity:
 # SPECIALIZED AGENT TOOLS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestBrowserAgentTools:
     @pytest.fixture
     def agent(self, mock_wali, mock_izn):
@@ -285,9 +293,13 @@ class TestBrowserAgentTools:
 
     def test_has_browser_tools(self, agent):
         browser_tools = [
-            "browse_url", "navigate", "search_web",
-            "extract_content", "take_screenshot",
-            "click_element", "fill_form",
+            "browse_url",
+            "navigate",
+            "search_web",
+            "extract_content",
+            "take_screenshot",
+            "click_element",
+            "fill_form",
         ]
         for tool in browser_tools:
             assert tool in agent.tools
@@ -306,15 +318,20 @@ class TestResearchAgentTools:
 
     def test_has_research_tools(self, agent):
         research_tools = [
-            "analyze_text", "synthesize_sources",
-            "fact_check", "generate_report", "arxiv_search",
+            "analyze_text",
+            "synthesize_sources",
+            "fact_check",
+            "generate_report",
+            "arxiv_search",
         ]
         for tool in research_tools:
             assert tool in agent.tools
 
     @pytest.mark.asyncio
     async def test_analyze_text(self, agent):
-        result = await agent._tool_analyze_text("The quick brown fox jumps over the lazy dog. Testing analysis.")
+        result = await agent._tool_analyze_text(
+            "The quick brown fox jumps over the lazy dog. Testing analysis."
+        )
         assert "word_count" in result
         assert result["word_count"] > 0
         assert "key_terms" in result
@@ -345,8 +362,11 @@ class TestCodeAgentTools:
 
     def test_has_code_tools(self, agent):
         code_tools = [
-            "generate_code", "run_tests", "lint_code",
-            "git_operation", "install_package",
+            "generate_code",
+            "run_tests",
+            "lint_code",
+            "git_operation",
+            "install_package",
         ]
         for tool in code_tools:
             assert tool in agent.tools
@@ -396,16 +416,19 @@ class TestCommunicationAgentTools:
 # AGENT FEDERATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAgentFederation:
     """Test inter-agent communication and task delegation."""
 
     def test_federation_imports(self):
-        from agents.federation import AgentFederation, RisalahMessage, MessageType
+        from agents.federation import AgentFederation
+
         fed = AgentFederation()
         assert fed is not None
 
     def test_register_and_discover(self):
         from agents.federation import AgentFederation
+
         fed = AgentFederation()
         fed.register_agent("agent-1", "Agent1", "katib", ["coding", "testing"])
         fed.register_agent("agent-2", "Agent2", "mundhir", ["research", "analysis"])
@@ -415,6 +438,7 @@ class TestAgentFederation:
 
     def test_find_best_agent(self):
         from agents.federation import AgentFederation
+
         fed = AgentFederation()
         fed.register_agent("code-agent", "Coder", "katib", ["coding", "testing"])
         fed.register_agent("research-agent", "Researcher", "mundhir", ["research", "analysis"])
@@ -423,7 +447,8 @@ class TestAgentFederation:
         assert best is not None
 
     def test_delegation_flow(self):
-        from agents.federation import AgentFederation, MessageType
+        from agents.federation import AgentFederation
+
         fed = AgentFederation()
         fed.register_agent("manager", "Manager", "general", ["management"])
         fed.register_agent("coder", "Coder", "katib", ["coding", "testing"])
@@ -436,7 +461,8 @@ class TestAgentFederation:
         assert result["delegated_to"] == "coder"
 
     def test_message_sending(self):
-        from agents.federation import AgentFederation, RisalahMessage, MessageType
+        from agents.federation import AgentFederation, MessageType, RisalahMessage
+
         fed = AgentFederation()
         fed.register_agent("sender", "Sender", "general", ["general"])
         fed.register_agent("receiver", "Receiver", "general", ["general"])
@@ -460,6 +486,7 @@ class TestAgentFederation:
 
     def test_unregister_agent(self):
         from agents.federation import AgentFederation
+
         fed = AgentFederation()
         fed.register_agent("temp", "Temp", "general", ["testing"])
         fed.unregister_agent("temp")
@@ -468,6 +495,7 @@ class TestAgentFederation:
 
     def test_federation_status(self):
         from agents.federation import AgentFederation
+
         fed = AgentFederation()
         fed.register_agent("agent-1", "Agent1", "katib", ["coding"])
         status = fed.get_status()
