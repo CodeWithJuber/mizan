@@ -39,6 +39,11 @@ install_backend() {
 }
 
 install_frontend() {
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        echo -e "${GOLD}⚠ Frontend directory not found at $FRONTEND_DIR${NC}"
+        echo -e "${GOLD}  Backend-only mode. Use 'mizan serve' for API access.${NC}"
+        return 0
+    fi
     echo -e "${BLUE}Installing frontend dependencies...${NC}"
     cd "$FRONTEND_DIR"
     npm install --silent
@@ -48,23 +53,42 @@ install_frontend() {
 start_backend() {
     echo -e "${BLUE}Starting MIZAN Backend (AQL Engine)...${NC}"
     cd "$BACKEND_DIR"
-    
+
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
     fi
-    
-    # Load .env if exists
+
+    # Load .env if exists (filter comments and blank lines safely)
     if [ -f "$MIZAN_DIR/.env" ]; then
-        export $(grep -v '^#' "$MIZAN_DIR/.env" | xargs)
+        set -a
+        while IFS='=' read -r key value; do
+            # Skip comments and blank lines
+            [[ "$key" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$key" ]] && continue
+            # Only export if key looks like a valid env var name
+            if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                export "$key=$value"
+            fi
+        done < "$MIZAN_DIR/.env"
+        set +a
+    else
+        echo -e "${GOLD}⚠ No .env file found. Run: cp .env.example .env && edit .env${NC}"
+        echo -e "${GOLD}  Or run: mizan setup${NC}"
     fi
-    
-    uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload &
+
+    # Run from project root so 'backend.api.main:app' resolves correctly
+    cd "$MIZAN_DIR"
+    python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload &
     BACKEND_PID=$!
     echo -e "${GREEN}✓ Backend running on http://localhost:8000 (PID: $BACKEND_PID)${NC}"
     echo $BACKEND_PID > /tmp/mizan-backend.pid
 }
 
 start_frontend() {
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        echo -e "${GOLD}⚠ Frontend not available. Backend-only mode.${NC}"
+        return 0
+    fi
     echo -e "${BLUE}Starting MIZAN Frontend (Sama' Layer)...${NC}"
     cd "$FRONTEND_DIR"
     npm run dev &
@@ -77,6 +101,7 @@ stop_all() {
     echo -e "${BLUE}Stopping MIZAN...${NC}"
     [ -f /tmp/mizan-backend.pid ] && kill $(cat /tmp/mizan-backend.pid) 2>/dev/null || true
     [ -f /tmp/mizan-frontend.pid ] && kill $(cat /tmp/mizan-frontend.pid) 2>/dev/null || true
+    pkill -f "uvicorn backend.api.main" 2>/dev/null || true
     pkill -f "uvicorn api.main" 2>/dev/null || true
     pkill -f "vite" 2>/dev/null || true
     rm -f /tmp/mizan-*.pid
