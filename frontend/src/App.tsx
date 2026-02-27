@@ -281,7 +281,7 @@ const AgentCard = ({ agent, selected, onClick }: { agent: Agent; selected: boole
             <span className={`block font-mono text-sm ${s.color === false ? "text-red-500" : s.color ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100"}`}>
               {s.value}
             </span>
-            <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">{s.label}</span>
+            <span className="block text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">{s.label}</span>
           </div>
         ))}
       </div>
@@ -289,10 +289,10 @@ const AgentCard = ({ agent, selected, onClick }: { agent: Agent; selected: boole
       {(agent.tools || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
           {(agent.tools || []).slice(0, 4).map(t => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
+            <span key={t} className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
           ))}
           {(agent.tools || []).length > 4 && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-gray-400 font-mono">+{(agent.tools || []).length - 4}</span>
+            <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-gray-400 font-mono">+{(agent.tools || []).length - 4}</span>
           )}
         </div>
       )}
@@ -869,13 +869,13 @@ function AppInner() {
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400">
                             <path d="M7 9l3 3-3 3M13 15h4" /><rect x="3" y="4" width="18" height="16" rx="2"/>
                           </svg>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
                             System
                           </span>
                         </div>
                         <div className="whitespace-pre-wrap">{msg.content}</div>
                       </div>
-                      <div className="text-[10px] text-amber-400 dark:text-amber-500/60 mt-1 px-1 font-mono text-center">
+                      <div className="text-xs text-amber-400 dark:text-amber-500/60 mt-1 px-1 font-mono text-center">
                         {msg.ts}
                       </div>
                     </div>
@@ -899,7 +899,7 @@ function AppInner() {
                             {msg.content}
                           </div>
                         )}
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
                           {msg.role === "assistant" ? msg.agent : "You"} &middot; {msg.ts}
                         </div>
                       </div>
@@ -961,7 +961,7 @@ function AppInner() {
                   ref={commandMenuRef}
                   className="absolute bottom-full left-4 right-4 mb-1 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden z-50"
                 >
-                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-zinc-700">
+                  <div className="px-3 py-1.5 text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-zinc-700">
                     Commands
                   </div>
                   {filteredCommands.map((cmd, i) => (
@@ -1067,7 +1067,7 @@ function AppInner() {
                   <div className="w-3 h-3 rounded-full bg-emerald-500"/>
                 </div>
                 <span className="text-xs font-mono text-gray-400 ml-2">mizan ~ %</span>
-                <span className="ml-auto text-[10px] text-gray-500">
+                <span className="ml-auto text-xs text-gray-500">
                   Agent: {selectedAgent?.name || "None"}
                 </span>
               </div>
@@ -1146,10 +1146,10 @@ function AppInner() {
                       mem.type === "episodic" ? "badge-info" :
                       mem.type === "semantic" ? "badge-warning" : "badge-success"
                     }`}>{mem.type}</span>
-                    <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                    <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
                       {mem.agent_id ? `Agent: ${mem.agent_id.substring(0, 8)}` : "System"}
                     </span>
-                    <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
                       Importance: {(mem.importance * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -1159,7 +1159,7 @@ function AppInner() {
                   {(mem.tags?.length ?? 0) > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {mem.tags!.map(t => (
-                        <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
+                        <span key={t} className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono">{t}</span>
                       ))}
                     </div>
                   )}
@@ -1246,7 +1246,7 @@ function AppInner() {
           <div className="text-2xl leading-none select-none text-mizan-gold" style={{ fontFamily: "Georgia, serif" }}>&#1605;&#1610;&#1586;&#1575;&#1606;</div>
           <div className="flex flex-col">
             <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 tracking-wide">MIZAN</span>
-            <span className="text-[10px] text-gray-400 dark:text-gray-500 tracking-widest">v{appVersion}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 tracking-widest">v{appVersion}</span>
           </div>
         </div>
 
@@ -1273,7 +1273,7 @@ function AppInner() {
           <div className="flex-1 py-2">
             {navSections.map(section => (
               <div key={section.label} className="px-2 mb-1">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 py-2">
                   {section.label}
                 </div>
                 {section.items.map(item => (
@@ -1297,14 +1297,14 @@ function AppInner() {
 
           {selectedAgent && (
             <div className="px-3 py-3 border-t border-gray-200 dark:border-zinc-800">
-              <div className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">Active Agent</div>
+              <div className="text-xs uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">Active Agent</div>
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-mizan-gold text-xs font-semibold">
                   {selectedAgent.name[0]?.toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{selectedAgent.name}</div>
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+                  <div className="text-xs text-gray-400 dark:text-gray-500 font-mono">
                     Level {selectedAgent.nafs_level} — {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
                   </div>
                 </div>
