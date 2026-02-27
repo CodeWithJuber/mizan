@@ -11,24 +11,24 @@ Real use cases:
   - Repeated success → Shukr builds confidence → identifies strengths
 """
 
-import time
-import pytest
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from core.ruh_engine import RuhEngine, RuhState
-from core.qalb import QalbEngine, EmotionalState, ToneStyle, QalbReading
-from core.tawbah import TawbahProtocol, TawbahStage
 from core.ihsan import IhsanMode
+from core.qalb import EmotionalState, QalbEngine, QalbReading, ToneStyle
+from core.ruh_engine import RuhEngine
 from core.sabr import SabrEngine, SabrTaskState
 from core.shukr import ShukrSystem
-
+from core.tawbah import TawbahProtocol, TawbahStage
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUH ENGINE — Agent Energy System
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestRuhEnginePositive:
     @pytest.fixture
@@ -142,6 +142,7 @@ class TestRuhEngineNegative:
 # QALB ENGINE — Emotional Intelligence
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestQalbEnginePositive:
     @pytest.fixture
     def qalb(self):
@@ -230,7 +231,7 @@ class TestQalbEngineNegative:
         assert reading.state in (EmotionalState.FRUSTRATED, EmotionalState.ANXIOUS)
 
     def test_history_limit(self, qalb):
-        for i in range(150):
+        for _i in range(150):
             reading = QalbReading(
                 state=EmotionalState.NEUTRAL,
                 confidence=0.5,
@@ -243,6 +244,7 @@ class TestQalbEngineNegative:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAWBAH PROTOCOL — Error Recovery
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestTawbahProtocolPositive:
     @pytest.fixture
@@ -357,6 +359,7 @@ class TestTawbahProtocolNegative:
 # IHSAN MODE — Proactive Excellence
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestIhsanModePositive:
     @pytest.fixture
     def ihsan(self):
@@ -372,36 +375,49 @@ class TestIhsanModePositive:
 
     def test_coding_task_suggests_tests(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "implement the login feature",
-            {"success": True}, nafs_level=3,
+            "agent-1",
+            "implement the login feature",
+            {"success": True},
+            nafs_level=3,
         )
         assert len(suggestions) > 0
         assert any("test" in s.suggestion.lower() for s in suggestions)
 
     def test_delete_task_suggests_backup(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "delete the old config file",
-            {"success": True}, nafs_level=3,
+            "agent-1",
+            "delete the old config file",
+            {"success": True},
+            nafs_level=3,
         )
         assert any("backup" in s.suggestion.lower() for s in suggestions)
 
     def test_failed_task_suggests_error_handling(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "process data",
-            {"success": False}, nafs_level=3,
+            "agent-1",
+            "process data",
+            {"success": False},
+            nafs_level=3,
         )
         assert any("error" in s.suggestion.lower() for s in suggestions)
 
     def test_slow_task_suggests_optimization(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "analyze the dataset",
-            {"success": True, "duration_ms": 15000}, nafs_level=3,
+            "agent-1",
+            "analyze the dataset",
+            {"success": True, "duration_ms": 15000},
+            nafs_level=3,
         )
-        assert any("optimization" in s.category or "cach" in s.suggestion.lower() for s in suggestions)
+        assert any(
+            "optimization" in s.category or "cach" in s.suggestion.lower() for s in suggestions
+        )
 
     def test_feedback_updates_acceptance(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "write code", {"success": True}, nafs_level=3,
+            "agent-1",
+            "write code",
+            {"success": True},
+            nafs_level=3,
         )
         ihsan.record_feedback(suggestions[0].id, accepted=True)
         assert ihsan.get_acceptance_rate() > 0
@@ -419,15 +435,19 @@ class TestIhsanModeNegative:
 
     def test_low_nafs_no_suggestions(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "implement feature",
-            {"success": True}, nafs_level=1,
+            "agent-1",
+            "implement feature",
+            {"success": True},
+            nafs_level=1,
         )
         assert len(suggestions) == 0
 
     def test_generic_task_may_have_no_suggestions(self, ihsan):
         suggestions = ihsan.analyze_completion(
-            "agent-1", "hello world",
-            {"success": True, "duration_ms": 100}, nafs_level=3,
+            "agent-1",
+            "hello world",
+            {"success": True, "duration_ms": 100},
+            nafs_level=3,
         )
         # Generic task with fast execution — may produce 0 suggestions
         assert isinstance(suggestions, list)
@@ -437,15 +457,23 @@ class TestIhsanModeNegative:
 # SABR ENGINE — Long-Running Task Management
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSabrEnginePositive:
     @pytest.fixture
     def sabr(self):
         return SabrEngine()
 
     def test_create_workflow(self, sabr):
-        wf = sabr.create_workflow("agent-1", "Build website", [
-            "Design layout", "Write HTML", "Add CSS", "Test",
-        ])
+        wf = sabr.create_workflow(
+            "agent-1",
+            "Build website",
+            [
+                "Design layout",
+                "Write HTML",
+                "Add CSS",
+                "Test",
+            ],
+        )
         assert len(wf.steps) == 4
         assert wf.state == SabrTaskState.PENDING
 
@@ -512,7 +540,7 @@ class TestSabrEnginePositive:
         wf1 = sabr.create_workflow("agent-1", "Task1", ["Step"])
         sabr.start_step(wf1.id)
         # Use a different agent_id to avoid timestamp collision in IDs
-        wf2 = sabr.create_workflow("agent-2", "Task2", ["Step"])
+        sabr.create_workflow("agent-2", "Task2", ["Step"])
 
         active = sabr.get_active_workflows("agent-1")
         assert len(active) == 1  # Only wf1 is RUNNING
@@ -569,6 +597,7 @@ class TestSabrEngineNegative:
 # SHUKR SYSTEM — Positive Reinforcement
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestShukrSystemPositive:
     @pytest.fixture
     def shukr(self):
@@ -600,7 +629,7 @@ class TestShukrSystemPositive:
         assert boost > 0
 
     def test_gratitude_milestones(self, shukr):
-        for i in range(10):
+        for _i in range(10):
             shukr.record_success("agent-1", "coding", "refactoring", 1000)
 
         milestones = shukr.get_gratitude_milestones("agent-1")

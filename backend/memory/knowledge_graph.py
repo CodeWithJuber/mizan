@@ -9,11 +9,10 @@ Enables graph-based reasoning and "what do I know about X?" queries.
 """
 
 import json
-import uuid
 import logging
 import sqlite3
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timezone
+import uuid
+from datetime import UTC, datetime
 
 logger = logging.getLogger("mizan.knowledge")
 
@@ -65,8 +64,9 @@ class KnowledgeGraph:
         conn.commit()
         conn.close()
 
-    async def add_entity(self, name: str, entity_type: str = "concept",
-                         properties: Dict = None) -> str:
+    async def add_entity(
+        self, name: str, entity_type: str = "concept", properties: dict = None
+    ) -> str:
         """Add or update an entity"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
@@ -75,7 +75,7 @@ class KnowledgeGraph:
         c.execute("SELECT id FROM kg_entities WHERE name = ? AND type = ?", (name, entity_type))
         row = c.fetchone()
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         if row:
             entity_id = row[0]
             c.execute(
@@ -93,9 +93,14 @@ class KnowledgeGraph:
         conn.close()
         return entity_id
 
-    async def add_relationship(self, source_name: str, target_name: str,
-                                rel_type: str, confidence: float = 0.5,
-                                properties: Dict = None) -> str:
+    async def add_relationship(
+        self,
+        source_name: str,
+        target_name: str,
+        rel_type: str,
+        confidence: float = 0.5,
+        properties: dict = None,
+    ) -> str:
         """Add a relationship between two entities (creating them if needed)"""
         source_id = await self.add_entity(source_name)
         target_id = await self.add_entity(target_name)
@@ -108,16 +113,22 @@ class KnowledgeGraph:
             """INSERT INTO kg_relationships
             (id, source_id, target_id, type, properties, confidence, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (rel_id, source_id, target_id, rel_type,
-             json.dumps(properties or {}), confidence,
-             datetime.now(timezone.utc).isoformat()),
+            (
+                rel_id,
+                source_id,
+                target_id,
+                rel_type,
+                json.dumps(properties or {}),
+                confidence,
+                datetime.now(UTC).isoformat(),
+            ),
         )
 
         conn.commit()
         conn.close()
         return rel_id
 
-    async def query_entity(self, name: str) -> Dict:
+    async def query_entity(self, name: str) -> dict:
         """Get everything known about an entity"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
@@ -134,27 +145,27 @@ class KnowledgeGraph:
         entity_id = entity[0]
 
         # Find relationships
-        c.execute("""
+        c.execute(
+            """
             SELECT r.type, e.name, r.confidence, r.properties
             FROM kg_relationships r
             JOIN kg_entities e ON r.target_id = e.id
             WHERE r.source_id = ?
-        """, (entity_id,))
-        outgoing = [
-            {"relation": r[0], "target": r[1], "confidence": r[2]}
-            for r in c.fetchall()
-        ]
+        """,
+            (entity_id,),
+        )
+        outgoing = [{"relation": r[0], "target": r[1], "confidence": r[2]} for r in c.fetchall()]
 
-        c.execute("""
+        c.execute(
+            """
             SELECT r.type, e.name, r.confidence, r.properties
             FROM kg_relationships r
             JOIN kg_entities e ON r.source_id = e.id
             WHERE r.target_id = ?
-        """, (entity_id,))
-        incoming = [
-            {"relation": r[0], "source": r[1], "confidence": r[2]}
-            for r in c.fetchall()
-        ]
+        """,
+            (entity_id,),
+        )
+        incoming = [{"relation": r[0], "source": r[1], "confidence": r[2]} for r in c.fetchall()]
 
         conn.close()
 
@@ -167,7 +178,7 @@ class KnowledgeGraph:
             "incoming": incoming,
         }
 
-    async def get_stats(self) -> Dict:
+    async def get_stats(self) -> dict:
         """Get knowledge graph statistics"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()

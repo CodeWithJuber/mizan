@@ -10,8 +10,6 @@ Enables meaning-based retrieval rather than keyword matching.
 
 import logging
 import uuid
-from typing import Dict, List, Optional
-from datetime import datetime
 
 logger = logging.getLogger("mizan.vector")
 
@@ -22,8 +20,9 @@ class VectorStore:
     Falls back gracefully if ChromaDB is not available.
     """
 
-    def __init__(self, chroma_url: str = "http://localhost:8100",
-                 collection_name: str = "mizan_dhikr"):
+    def __init__(
+        self, chroma_url: str = "http://localhost:8100", collection_name: str = "mizan_dhikr"
+    ):
         self.chroma_url = chroma_url
         self.collection_name = collection_name
         self._client = None
@@ -35,9 +34,12 @@ class VectorStore:
         """Initialize ChromaDB client"""
         try:
             import chromadb
+
             self._client = chromadb.HttpClient(
                 host=self.chroma_url.replace("http://", "").split(":")[0],
-                port=int(self.chroma_url.split(":")[-1]) if ":" in self.chroma_url.split("//")[-1] else 8100,
+                port=int(self.chroma_url.split(":")[-1])
+                if ":" in self.chroma_url.split("//")[-1]
+                else 8100,
             )
             self._collection = self._client.get_or_create_collection(
                 name=self.collection_name,
@@ -54,8 +56,7 @@ class VectorStore:
     def is_available(self) -> bool:
         return self._available
 
-    async def store(self, content: str, memory_id: str = None,
-                    metadata: Dict = None) -> Optional[str]:
+    async def store(self, content: str, memory_id: str = None, metadata: dict = None) -> str | None:
         """Store content with auto-generated embedding"""
         if not self._available:
             return None
@@ -73,8 +74,7 @@ class VectorStore:
             logger.error(f"[VECTOR] Store failed: {e}")
             return None
 
-    async def search(self, query: str, limit: int = 10,
-                     filters: Dict = None) -> List[Dict]:
+    async def search(self, query: str, limit: int = 10, filters: dict = None) -> list[dict]:
         """Semantic similarity search"""
         if not self._available:
             return []
@@ -90,12 +90,18 @@ class VectorStore:
             items = []
             if results and results.get("documents"):
                 for i, doc in enumerate(results["documents"][0]):
-                    items.append({
-                        "id": results["ids"][0][i],
-                        "content": doc,
-                        "distance": results["distances"][0][i] if results.get("distances") else None,
-                        "metadata": results["metadatas"][0][i] if results.get("metadatas") else {},
-                    })
+                    items.append(
+                        {
+                            "id": results["ids"][0][i],
+                            "content": doc,
+                            "distance": results["distances"][0][i]
+                            if results.get("distances")
+                            else None,
+                            "metadata": results["metadatas"][0][i]
+                            if results.get("metadatas")
+                            else {},
+                        }
+                    )
 
             return items
         except Exception as e:

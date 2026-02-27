@@ -11,19 +11,17 @@ and DhikrMemorySystem for persistent storage.
 "Say, are those who know equal to those who do not know?" — Quran 39:9
 """
 
+import logging
 import re
 import time
-import logging
-from typing import Any, Dict, List, Optional
 
 from qca.engine import (
-    QCAEngine,
-    DualInputProcessor,
-    ISMLayer,
-    MizanLayer,
     AqlLayer,
-    LawhMemory,
     FurqanBayan,
+    ISMLayer,
+    LawhMemory,
+    MizanLayer,
+    QCAEngine,
 )
 
 logger = logging.getLogger("mizan.qca.answer")
@@ -45,7 +43,7 @@ class QCAAnswerEngine:
         self.qca = qca or QCAEngine()
         self.current_paragraph = ""
         self.paragraph_analysis = {}
-        self.session_memory: List[Dict] = []
+        self.session_memory: list[dict] = []
 
     @property
     def lawh(self) -> LawhMemory:
@@ -67,7 +65,7 @@ class QCAAnswerEngine:
     def furqan(self) -> FurqanBayan:
         return self.qca.furqan
 
-    def load_paragraph(self, text: str) -> Dict:
+    def load_paragraph(self, text: str) -> dict:
         """Process a paragraph through all QCA input layers."""
         self.current_paragraph = text
         analysis = self.qca.process_input(text)
@@ -80,7 +78,7 @@ class QCAAnswerEngine:
         }
         return analysis["perception"]["fuad"]
 
-    def answer(self, question: str, paragraph: str = None) -> Dict:
+    def answer(self, question: str, paragraph: str = None) -> dict:
         """
         Full QCA pipeline answer to a question. All 7 layers invoked.
 
@@ -109,8 +107,20 @@ class QCAAnswerEngine:
 
         # ── LAYER 1+2+3: Find relevant sentences in paragraph ──
         q_words = set(question.lower().split()) - {
-            "what", "how", "why", "is", "are", "the", "a",
-            "an", "in", "of", "to", "does", "do", "did",
+            "what",
+            "how",
+            "why",
+            "is",
+            "are",
+            "the",
+            "a",
+            "an",
+            "in",
+            "of",
+            "to",
+            "does",
+            "do",
+            "did",
         }
         relevant_sentences = []
         for sent in sentences:
@@ -122,13 +132,11 @@ class QCAAnswerEngine:
 
         if relevant_sentences:
             best_sent = relevant_sentences[0][1]
-            answer_parts.append('From the text: "{}"'.format(best_sent))
+            answer_parts.append(f'From the text: "{best_sent}"')
             confidence_scores.append(0.85)
             sources.append("paragraph_direct")
         else:
-            answer_parts.append("The paragraph discusses: {}.".format(
-                ", ".join(key_terms[:5])
-            ))
+            answer_parts.append("The paragraph discusses: {}.".format(", ".join(key_terms[:5])))
             confidence_scores.append(0.5)
             sources.append("fuad_inference")
 
@@ -144,9 +152,7 @@ class QCAAnswerEngine:
                     )
                     root_insights.append(insight)
             if root_insights:
-                answer_parts.append(
-                    "QCA Root Analysis: " + " | ".join(root_insights)
-                )
+                answer_parts.append("QCA Root Analysis: " + " | ".join(root_insights))
                 confidence_scores.append(0.9)
                 sources.append("ism_root_analysis")
 
@@ -162,9 +168,7 @@ class QCAAnswerEngine:
                     quran_refs_used.append(ref_text)
                     sources.append("lawh_tier{}".format(entry["tier"]))
         if quran_refs_used:
-            answer_parts.append(
-                "Quranic references: " + " | ".join(quran_refs_used[:2])
-            )
+            answer_parts.append("Quranic references: " + " | ".join(quran_refs_used[:2]))
             confidence_scores.append(0.95)
 
         # ── LAYER 6: 'AQL BINDING TRACE ──────────────────────
@@ -175,9 +179,7 @@ class QCAAnswerEngine:
                 chain = self.aql.tadabbur_trace(concept_key, depth=3)
                 if len(chain) > 1:
                     answer_parts.append(
-                        "'Aql Tadabbur trace: {}".format(
-                            " ".join(str(c) for c in chain)
-                        )
+                        "'Aql Tadabbur trace: {}".format(" ".join(str(c) for c in chain))
                     )
                     confidence_scores.append(0.7)
                     sources.append("aql_tadabbur")
@@ -203,7 +205,7 @@ class QCAAnswerEngine:
         }
         self.session_memory.append(session_entry)
         self.lawh.store(
-            "SESSION_Q{}".format(len(self.session_memory)),
+            f"SESSION_Q{len(self.session_memory)}",
             question + " -> " + (answer_parts[0] if answer_parts else "no answer"),
             certainty=overall_confidence,
             source="session",
@@ -222,27 +224,22 @@ class QCAAnswerEngine:
             "lawh_stats": self.lawh.stats(),
         }
 
-    def batch_answer(self, questions: List[str],
-                     paragraph: str = None) -> List[Dict]:
+    def batch_answer(self, questions: list[str], paragraph: str = None) -> list[dict]:
         """Answer multiple questions about the same paragraph."""
         if paragraph:
             self.load_paragraph(paragraph)
         return [self.answer(q) for q in questions]
 
-    def get_session_summary(self) -> Dict:
+    def get_session_summary(self) -> dict:
         """Get a summary of the current session's Q&A history."""
         if not self.session_memory:
             return {"questions_asked": 0, "avg_confidence": 0}
-        avg_conf = sum(
-            e["confidence"] for e in self.session_memory
-        ) / len(self.session_memory)
+        avg_conf = sum(e["confidence"] for e in self.session_memory) / len(self.session_memory)
         return {
             "questions_asked": len(self.session_memory),
             "avg_confidence": avg_conf,
             "epistemic_label": self.mizan.rate_confidence_string(avg_conf),
-            "sources_used": list(set(
-                s for e in self.session_memory for s in e.get("sources", [])
-            )),
+            "sources_used": list(set(s for e in self.session_memory for s in e.get("sources", []))),
             "lawh_stats": self.lawh.stats(),
         }
 

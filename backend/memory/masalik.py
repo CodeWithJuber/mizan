@@ -21,13 +21,12 @@ Quranic Foundation:
   LAWH (لوح):       The preserved network — nothing duplicated, everything in place
 """
 
-import math
-import time
-import re
 import logging
+import math
+import re
+import time
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
 
 logger = logging.getLogger("mizan.masalik")
 
@@ -35,6 +34,7 @@ logger = logging.getLogger("mizan.masalik")
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA STRUCTURES
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class Mafhum:
@@ -44,12 +44,13 @@ class Mafhum:
     Like a neuron: has a resting potential, fires when activated,
     and its baseline rises with repeated activation (long-term potentiation).
     """
+
     id: str
-    activation: float = 0.0        # Current activation (decays quickly)
-    resting_level: float = 0.0     # Baseline from repeated use (rises slowly)
-    last_activated: float = 0.0    # Timestamp of last activation
-    total_activations: int = 0     # Lifetime activation count
-    is_fitrah: bool = False        # Pre-wired innate concept (cannot be pruned)
+    activation: float = 0.0  # Current activation (decays quickly)
+    resting_level: float = 0.0  # Baseline from repeated use (rises slowly)
+    last_activated: float = 0.0  # Timestamp of last activation
+    total_activations: int = 0  # Lifetime activation count
+    is_fitrah: bool = False  # Pre-wired innate concept (cannot be pruned)
 
     def fire(self, strength: float = 1.0):
         """Activate this concept. Each activation raises resting level."""
@@ -58,9 +59,7 @@ class Mafhum:
         self.total_activations += 1
         # Long-term potentiation: resting level rises slowly with use
         # Diminishing returns — asymptotes at 0.95
-        self.resting_level = min(
-            0.95, self.resting_level + 0.02 * (1.0 - self.resting_level)
-        )
+        self.resting_level = min(0.95, self.resting_level + 0.02 * (1.0 - self.resting_level))
 
     def get_current_activation(self) -> float:
         """Get activation with temporal decay. Recent = strong, old = weak."""
@@ -85,12 +84,13 @@ class Silah:
     Like a synapse: strengthens when both ends fire together,
     weakens from disuse. NEVER duplicated — only one pathway per pair.
     """
+
     source: str
     target: str
-    weight: float = 0.1              # Pathway strength (0-1)
-    pathway_type: str = "association" # association, causal, tafakkur, contrast, fitrah
+    weight: float = 0.1  # Pathway strength (0-1)
+    pathway_type: str = "association"  # association, causal, tafakkur, contrast, fitrah
     last_activated: float = 0.0
-    co_activations: int = 0          # Times both ends fired together
+    co_activations: int = 0  # Times both ends fired together
 
     def strengthen(self, amount: float = 0.1):
         """
@@ -112,7 +112,7 @@ class Silah:
         if self.is_hikmah:
             return  # Wisdom is permanent
         # Half-life scales with strength²: weight=0.1→24h, weight=0.9→720h(30d)
-        half_life_hours = 24.0 + (self.weight ** 2) * 700.0
+        half_life_hours = 24.0 + (self.weight**2) * 700.0
         decay_factor = 0.5 ** (elapsed_hours / half_life_hours)
         self.weight *= decay_factor
 
@@ -126,45 +126,165 @@ class Silah:
 # CONCEPT EXTRACTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-_STOPWORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could", "of", "in", "on",
-    "at", "to", "for", "with", "by", "from", "and", "or", "but", "not",
-    "this", "that", "these", "those", "it", "its", "they", "their",
-    "what", "how", "why", "when", "where", "who", "which", "i", "you",
-    "we", "he", "she", "my", "your", "our", "me", "us", "him", "her",
-    "if", "then", "so", "as", "like", "just", "also", "very", "really",
-    "about", "into", "through", "during", "before", "after", "above",
-    "over", "under", "between", "out", "up", "down", "off",
-    "there", "here", "some", "any", "all", "each", "every", "both",
-    "more", "most", "other", "than", "too", "only", "own", "same",
-    "been", "being", "such", "no", "nor", "get", "got", "let",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "from",
+        "and",
+        "or",
+        "but",
+        "not",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "their",
+        "what",
+        "how",
+        "why",
+        "when",
+        "where",
+        "who",
+        "which",
+        "i",
+        "you",
+        "we",
+        "he",
+        "she",
+        "my",
+        "your",
+        "our",
+        "me",
+        "us",
+        "him",
+        "her",
+        "if",
+        "then",
+        "so",
+        "as",
+        "like",
+        "just",
+        "also",
+        "very",
+        "really",
+        "about",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "over",
+        "under",
+        "between",
+        "out",
+        "up",
+        "down",
+        "off",
+        "there",
+        "here",
+        "some",
+        "any",
+        "all",
+        "each",
+        "every",
+        "both",
+        "more",
+        "most",
+        "other",
+        "than",
+        "too",
+        "only",
+        "own",
+        "same",
+        "such",
+        "no",
+        "nor",
+        "get",
+        "got",
+        "let",
+    }
+)
 
 # Common suffixes for basic stemming (reduce near-duplicates)
 _SUFFIXES = [
-    "tion", "sion", "ment", "ness", "able", "ible", "ance", "ence",
-    "ious", "eous", "ous", "ive", "ful", "less", "ally", "ity",
-    "ing", "ies", "ied", "ed", "er", "ly", "es", "al",
+    "tion",
+    "sion",
+    "ment",
+    "ness",
+    "able",
+    "ible",
+    "ance",
+    "ence",
+    "ious",
+    "eous",
+    "ous",
+    "ive",
+    "ful",
+    "less",
+    "ally",
+    "ity",
+    "ing",
+    "ies",
+    "ied",
+    "ed",
+    "er",
+    "ly",
+    "es",
+    "al",
 ]
 
 
-def extract_concepts(text: str) -> List[str]:
+def extract_concepts(text: str) -> list[str]:
     """
     Extract meaningful concepts from text.
     Basic stemming prevents near-duplicates ("learn" vs "learning").
     """
-    words = re.findall(r'[a-z]+', text.lower())
+    words = re.findall(r"[a-z]+", text.lower())
     meaningful = [w for w in words if w not in _STOPWORDS and len(w) > 2]
 
     normalized = []
-    seen: Set[str] = set()
+    seen: set[str] = set()
     for w in meaningful:
         stem = w
         for suffix in _SUFFIXES:
             if len(w) > len(suffix) + 3 and w.endswith(suffix):
-                stem = w[:-len(suffix)]
+                stem = w[: -len(suffix)]
                 break
         if stem not in seen:
             seen.add(stem)
@@ -175,6 +295,7 @@ def extract_concepts(text: str) -> List[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # MASALIK NETWORK — The Neural Pathway System
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class MasalikNetwork:
     """
@@ -193,9 +314,9 @@ class MasalikNetwork:
     """
 
     def __init__(self):
-        self.concepts: Dict[str, Mafhum] = {}
-        self.pathways: Dict[str, Silah] = {}
-        self._activation_history: List[Set[str]] = []
+        self.concepts: dict[str, Mafhum] = {}
+        self.pathways: dict[str, Silah] = {}
+        self._activation_history: list[set[str]] = []
         self._last_decay: float = time.time()
 
         self._init_fitrah()
@@ -209,9 +330,21 @@ class MasalikNetwork:
          [Adhere to] the fitrah of Allah upon which He has created people." — 30:30
         """
         fitrah_concepts = [
-            "truth", "justice", "knowledge", "balance", "creation",
-            "cause", "effect", "good", "harm", "evidence", "reason",
-            "pattern", "change", "time", "purpose",
+            "truth",
+            "justice",
+            "knowledge",
+            "balance",
+            "creation",
+            "cause",
+            "effect",
+            "good",
+            "harm",
+            "evidence",
+            "reason",
+            "pattern",
+            "change",
+            "time",
+            "purpose",
         ]
         for c in fitrah_concepts:
             node = self._get_or_create(c)
@@ -234,9 +367,12 @@ class MasalikNetwork:
         for src, tgt, weight, ptype in fitrah_pathways:
             key = self._pathway_key(src, tgt)
             self.pathways[key] = Silah(
-                source=min(src, tgt), target=max(src, tgt),
-                weight=weight, pathway_type=ptype,
-                last_activated=now, co_activations=5,
+                source=min(src, tgt),
+                target=max(src, tgt),
+                weight=weight,
+                pathway_type=ptype,
+                last_activated=now,
+                co_activations=5,
             )
 
     def _get_or_create(self, concept_id: str) -> Mafhum:
@@ -251,7 +387,7 @@ class MasalikNetwork:
 
     # ─── ENCODE: Learning ────────────────────────────────────────────────
 
-    def encode(self, text: str, importance: float = 0.5) -> Dict:
+    def encode(self, text: str, importance: float = 0.5) -> dict:
         """
         ENCODE — Learn from input by strengthening pathways.
 
@@ -281,13 +417,16 @@ class MasalikNetwork:
 
         # Hebbian: strengthen pathways between ALL co-occurring concepts
         for i, a in enumerate(concepts):
-            for b in concepts[i + 1:]:
+            for b in concepts[i + 1 :]:
                 key = self._pathway_key(a, b)
                 if key not in self.pathways:
                     self.pathways[key] = Silah(
-                        source=min(a, b), target=max(a, b),
-                        weight=strength, pathway_type="association",
-                        last_activated=time.time(), co_activations=1,
+                        source=min(a, b),
+                        target=max(a, b),
+                        weight=strength,
+                        pathway_type="association",
+                        last_activated=time.time(),
+                        co_activations=1,
                     )
                     new_pathways += 1
                 else:
@@ -308,7 +447,7 @@ class MasalikNetwork:
 
     # ─── RECALL: Spreading Activation (Dhikr) ───────────────────────────
 
-    def recall(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
+    def recall(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
         """
         RECALL — Activate query concepts and spread through network.
 
@@ -325,7 +464,7 @@ class MasalikNetwork:
             return []
 
         # Phase 1: Directly activate query concepts
-        activations: Dict[str, float] = {}
+        activations: dict[str, float] = {}
         for c in query_concepts:
             if c in self.concepts:
                 self.concepts[c].fire(strength=1.0)
@@ -334,12 +473,12 @@ class MasalikNetwork:
         # Phase 2: Two waves of spreading activation
         for wave in range(2):
             spread_factor = 0.6 if wave == 0 else 0.3
-            new_activations: Dict[str, float] = {}
+            new_activations: dict[str, float] = {}
 
             for concept, act_level in list(activations.items()):
                 if act_level < 0.05:
                     continue
-                for key, pathway in self.pathways.items():
+                for _key, pathway in self.pathways.items():
                     other = None
                     if pathway.source == concept:
                         other = pathway.target
@@ -395,7 +534,7 @@ class MasalikNetwork:
 
     # ─── NISYAN: Forgetting (Pruning) ────────────────────────────────────
 
-    def apply_nisyan(self, force_hours: float = None) -> Dict:
+    def apply_nisyan(self, force_hours: float = None) -> dict:
         """
         NISYAN (نسيان) — Forgetting as mercy and optimization.
 
@@ -427,7 +566,7 @@ class MasalikNetwork:
             pruned_pathways += 1
 
         # Prune orphan concepts (no pathways, low resting level)
-        connected: Set[str] = set()
+        connected: set[str] = set()
         for pathway in self.pathways.values():
             connected.add(pathway.source)
             connected.add(pathway.target)
@@ -447,14 +586,15 @@ class MasalikNetwork:
         if pruned_pathways > 0 or pruned_concepts > 0:
             logger.info(
                 "Nisyan: pruned %d pathways, %d concepts",
-                pruned_pathways, pruned_concepts,
+                pruned_pathways,
+                pruned_concepts,
             )
 
         return {"pruned_pathways": pruned_pathways, "pruned_concepts": pruned_concepts}
 
     # ─── TAFAKKUR: Reflective Consolidation ──────────────────────────────
 
-    def tafakkur(self) -> Dict:
+    def tafakkur(self) -> dict:
         """
         TAFAKKUR (تفكّر) — Deep reflection that creates NEW connections.
 
@@ -470,11 +610,11 @@ class MasalikNetwork:
             return {"new_connections": 0, "strengthened": 0}
 
         # Count co-activation frequency for each concept pair
-        pair_counts: Dict[str, int] = defaultdict(int)
+        pair_counts: dict[str, int] = defaultdict(int)
         for activation_set in self._activation_history:
             concepts = sorted(activation_set)
             for i, a in enumerate(concepts):
-                for b in concepts[i + 1:]:
+                for b in concepts[i + 1 :]:
                     pair_counts[self._pathway_key(a, b)] += 1
 
         new_connections = 0
@@ -490,16 +630,15 @@ class MasalikNetwork:
             if key not in self.pathways:
                 # NEW insight — frequently co-occurring but no direct pathway
                 self.pathways[key] = Silah(
-                    source=a, target=b,
+                    source=a,
+                    target=b,
                     weight=min(0.3, count * 0.05),
                     pathway_type="tafakkur",
                     last_activated=time.time(),
                     co_activations=count,
                 )
                 new_connections += 1
-                logger.info(
-                    "Tafakkur insight: %s <-> %s (co-occurred %dx)", a, b, count
-                )
+                logger.info("Tafakkur insight: %s <-> %s (co-occurred %dx)", a, b, count)
             else:
                 self.pathways[key].strengthen(0.05 * count)
                 strengthened += 1
@@ -508,12 +647,13 @@ class MasalikNetwork:
 
     # ─── INTROSPECTION ───────────────────────────────────────────────────
 
-    def get_strongest_pathways(self, top_k: int = 10) -> List[Dict]:
+    def get_strongest_pathways(self, top_k: int = 10) -> list[dict]:
         """Get the strongest pathways — the core of what's been learned."""
         sorted_paths = sorted(self.pathways.values(), key=lambda p: -p.weight)
         return [
             {
-                "from": p.source, "to": p.target,
+                "from": p.source,
+                "to": p.target,
                 "weight": round(p.weight, 3),
                 "type": p.pathway_type,
                 "uses": p.co_activations,
@@ -522,11 +662,12 @@ class MasalikNetwork:
             for p in sorted_paths[:top_k]
         ]
 
-    def get_hikmah(self) -> List[Dict]:
+    def get_hikmah(self) -> list[dict]:
         """Get all wisdom pathways — permanent knowledge from deep learning."""
         return [
             {
-                "from": p.source, "to": p.target,
+                "from": p.source,
+                "to": p.target,
                 "weight": round(p.weight, 3),
                 "uses": p.co_activations,
             }
@@ -534,14 +675,12 @@ class MasalikNetwork:
             if p.is_hikmah
         ]
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         """Network statistics."""
         hikmah_pathways = sum(1 for p in self.pathways.values() if p.is_hikmah)
         hikmah_concepts = sum(1 for c in self.concepts.values() if c.is_hikmah)
         fitrah_count = sum(1 for c in self.concepts.values() if c.is_fitrah)
-        avg_weight = (
-            sum(p.weight for p in self.pathways.values()) / max(len(self.pathways), 1)
-        )
+        avg_weight = sum(p.weight for p in self.pathways.values()) / max(len(self.pathways), 1)
         return {
             "total_concepts": len(self.concepts),
             "total_pathways": len(self.pathways),

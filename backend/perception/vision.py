@@ -8,10 +8,9 @@ Image understanding via multimodal LLM APIs.
 Supports Anthropic Claude Vision, OpenAI GPT-4o Vision, and OpenRouter.
 """
 
-import os
 import base64
 import logging
-from typing import Optional
+import os
 
 from providers import create_provider, get_default_model
 
@@ -29,12 +28,19 @@ class VisionProcessor:
         provider_name = os.getenv("LLM_PROVIDER", "") or None
         model = os.getenv("DEFAULT_MODEL", "claude-opus-4-6")
         self._provider = create_provider(provider=provider_name, model=model)
-        self._model = model if model else (
-            get_default_model(self._provider.provider_name) if self._provider else "claude-opus-4-6"
+        self._model = (
+            model
+            if model
+            else (
+                get_default_model(self._provider.provider_name)
+                if self._provider
+                else "claude-opus-4-6"
+            )
         )
 
-    async def analyze_image(self, image_bytes: bytes, prompt: str = "Describe this image",
-                             media_type: str = "image/png") -> str:
+    async def analyze_image(
+        self, image_bytes: bytes, prompt: str = "Describe this image", media_type: str = "image/png"
+    ) -> str:
         """Analyze an image using the configured LLM provider's vision capabilities."""
         if not self._provider:
             return "Vision processing unavailable: no API key configured"
@@ -47,23 +53,25 @@ class VisionProcessor:
                 model=self._model,
                 max_tokens=2048,
                 system="You are a vision analysis assistant. Describe what you see accurately.",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_b64,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_b64,
+                                },
                             },
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt,
-                        },
-                    ],
-                }],
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ],
+                    }
+                ],
             )
 
             # Extract text from normalized response
@@ -81,6 +89,7 @@ class VisionProcessor:
         """Analyze an image from a URL"""
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(url)
                 if response.status_code == 200:

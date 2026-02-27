@@ -12,17 +12,17 @@ Tests that memory works like a human brain, not a filing cabinet:
 - Fitrah (innate pre-wired pathways)
 """
 
-import time
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from memory.masalik import MasalikNetwork, Mafhum, Silah, extract_concepts
-
+from memory.masalik import Mafhum, MasalikNetwork, Silah, extract_concepts
 
 # ─── Concept Extraction ─────────────────────────────────────────────────────
+
 
 class TestConceptExtraction:
     def test_extracts_meaningful_words(self):
@@ -50,6 +50,7 @@ class TestConceptExtraction:
 
 
 # ─── Mafhum (Concept Node) ──────────────────────────────────────────────────
+
 
 class TestMafhum:
     def test_fire_increases_resting_level(self):
@@ -82,6 +83,7 @@ class TestMafhum:
 
 
 # ─── Silah (Pathway) ────────────────────────────────────────────────────────
+
 
 class TestSilah:
     def test_strengthen_increases_weight(self):
@@ -128,6 +130,7 @@ class TestSilah:
 
 # ─── MasalikNetwork — Core Operations ───────────────────────────────────────
 
+
 class TestMasalikEncode:
     def test_encode_creates_concepts(self):
         net = MasalikNetwork()
@@ -145,7 +148,7 @@ class TestMasalikEncode:
     def test_no_duplication(self):
         """Same input twice should strengthen pathways, not create duplicates."""
         net = MasalikNetwork()
-        r1 = net.encode("Python programming language")
+        net.encode("Python programming language")
         pathways_after_first = len(net.pathways)
 
         r2 = net.encode("Python programming language")
@@ -164,10 +167,8 @@ class TestMasalikEncode:
         net2.encode("machine learning algorithms", importance=0.9)
 
         # Higher importance → stronger pathways
-        weights1 = [p.weight for p in net1.pathways.values()
-                     if p.pathway_type != "fitrah"]
-        weights2 = [p.weight for p in net2.pathways.values()
-                     if p.pathway_type != "fitrah"]
+        weights1 = [p.weight for p in net1.pathways.values() if p.pathway_type != "fitrah"]
+        weights2 = [p.weight for p in net2.pathways.values() if p.pathway_type != "fitrah"]
         if weights1 and weights2:
             assert max(weights2) > max(weights1)
 
@@ -179,8 +180,6 @@ class TestMasalikRecall:
         net.encode("Python data science libraries include pandas numpy")
 
         results = net.recall("Python")
-        concepts = [c for c, _ in results]
-
         # Should find concepts associated with Python
         assert len(results) > 0
 
@@ -190,8 +189,9 @@ class TestMasalikRecall:
         net.encode("knowledge leads to truth through evidence")
 
         # Get initial pathway weights
-        initial_weights = {k: p.weight for k, p in net.pathways.items()
-                          if p.pathway_type != "fitrah"}
+        initial_weights = {
+            k: p.weight for k, p in net.pathways.items() if p.pathway_type != "fitrah"
+        }
 
         # Recall (dhikr)
         net.recall("knowledge truth")
@@ -246,7 +246,8 @@ class TestMasalikNisyan:
 
         # Find a non-fitrah pathway
         strong_keys = [
-            k for k, p in net.pathways.items()
+            k
+            for k, p in net.pathways.items()
             if p.pathway_type != "fitrah" and p.co_activations >= 10
         ]
 
@@ -355,14 +356,16 @@ class TestMasalikStats:
 
 # ─── Integration with DhikrMemorySystem ──────────────────────────────────────
 
+
 class TestDhikrMasalikIntegration:
     @pytest.fixture
     def dhikr(self):
         from memory.dhikr import DhikrMemorySystem
+
         return DhikrMemorySystem(db_path=":memory:")
 
     def test_dhikr_has_masalik(self, dhikr):
-        assert hasattr(dhikr, 'masalik')
+        assert hasattr(dhikr, "masalik")
         assert isinstance(dhikr.masalik, MasalikNetwork)
 
     @pytest.mark.asyncio

@@ -8,17 +8,16 @@ Encrypts sensitive configuration (API keys, tokens) at rest.
 Addresses OpenClaw's critical weakness: plaintext credential storage.
 """
 
-import base64
 import json
 import logging
 import os
-from typing import Optional
 
 logger = logging.getLogger("mizan.vault")
 
 # Use Fernet symmetric encryption (from cryptography library)
 try:
     from cryptography.fernet import Fernet, InvalidToken
+
     HAS_CRYPTO = True
 except ImportError:
     HAS_CRYPTO = False
@@ -39,7 +38,7 @@ class SecretVault:
         self.key_path = key_path or os.path.join(
             os.path.dirname(os.path.dirname(__file__)), ".vault.key"
         )
-        self._fernet: Optional[object] = None
+        self._fernet: object | None = None
         self._secrets: dict = {}
         self._init_vault()
 
@@ -66,7 +65,7 @@ class SecretVault:
         # Load existing vault
         if os.path.exists(self.vault_path):
             try:
-                with open(self.vault_path, "r") as f:
+                with open(self.vault_path) as f:
                     encrypted_data = json.load(f)
                 for name, enc_value in encrypted_data.items():
                     try:
@@ -74,16 +73,16 @@ class SecretVault:
                         self._secrets[name] = decrypted
                     except InvalidToken:
                         logger.error(f"[VAULT] Failed to decrypt secret: {name}")
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.error(f"[VAULT] Failed to load vault: {e}")
 
     def _load_plaintext(self):
         """Fallback: load secrets from plaintext file."""
         if os.path.exists(self.vault_path):
             try:
-                with open(self.vault_path, "r") as f:
+                with open(self.vault_path) as f:
                     self._secrets = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 self._secrets = {}
 
     def _save(self):
@@ -105,7 +104,7 @@ class SecretVault:
         logger.info(f"[VAULT] Stored secret: {name}")
         return True
 
-    def retrieve(self, name: str) -> Optional[str]:
+    def retrieve(self, name: str) -> str | None:
         """Retrieve a secret by name."""
         return self._secrets.get(name)
 
@@ -126,7 +125,7 @@ class SecretVault:
         """Check if a secret exists."""
         return name in self._secrets
 
-    def get_or_env(self, name: str, env_var: str = None) -> Optional[str]:
+    def get_or_env(self, name: str, env_var: str = None) -> str | None:
         """
         Get secret from vault, falling back to environment variable.
         This is the recommended way to retrieve API keys.

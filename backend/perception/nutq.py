@@ -14,8 +14,7 @@ Nutq goes beyond raw TTS/STT — it provides articulate communication:
 
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Dict, Optional
+from dataclasses import dataclass
 
 from perception.voice import VoiceProcessor
 
@@ -25,13 +24,14 @@ logger = logging.getLogger("mizan.nutq")
 @dataclass
 class NutqUtterance:
     """A structured speech output."""
+
     text: str
-    audio_bytes: Optional[bytes] = None
-    tone: str = "standard"        # "standard", "warm", "patient", "focused"
+    audio_bytes: bytes | None = None
+    tone: str = "standard"  # "standard", "warm", "patient", "focused"
     language: str = "en"
     duration_ms: float = 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "text": self.text[:200],
             "tone": self.tone,
@@ -44,13 +44,14 @@ class NutqUtterance:
 @dataclass
 class NutqTranscription:
     """A structured speech input."""
+
     text: str
     confidence: float = 0.9
     detected_language: str = "en"
     detected_intent: str = "statement"  # "question", "command", "statement"
     processing_time_ms: float = 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "text": self.text[:500],
             "confidence": round(self.confidence, 2),
@@ -79,8 +80,9 @@ class NutqEngine:
     def __init__(self):
         self._voice = VoiceProcessor()
 
-    async def speak(self, text: str, tone: str = "standard",
-                    voice: str = "default") -> NutqUtterance:
+    async def speak(
+        self, text: str, tone: str = "standard", voice: str = "default"
+    ) -> NutqUtterance:
         """Generate speech with tone calibration."""
         start = time.time()
 
@@ -130,9 +132,21 @@ class NutqEngine:
         text_stripped = text.strip()
         if text_stripped.endswith("?"):
             return "question"
-        if any(text_stripped.lower().startswith(w) for w in [
-            "do", "run", "create", "delete", "open", "close",
-            "find", "search", "show", "tell", "help",
-        ]):
+        if any(
+            text_stripped.lower().startswith(w)
+            for w in [
+                "do",
+                "run",
+                "create",
+                "delete",
+                "open",
+                "close",
+                "find",
+                "search",
+                "show",
+                "tell",
+                "help",
+            ]
+        ):
             return "command"
         return "statement"

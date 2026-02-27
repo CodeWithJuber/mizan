@@ -14,20 +14,20 @@ Real use cases:
   - Chat history → stored and ordered correctly
 """
 
-import pytest
-import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from memory.masalik import MasalikNetwork, Mafhum, Silah, extract_concepts
 from memory.dhikr import DhikrMemorySystem, Memory
-
+from memory.masalik import Mafhum, MasalikNetwork, Silah, extract_concepts
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONCEPT EXTRACTION
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestConceptExtraction:
     def test_extracts_meaningful_words(self):
@@ -75,6 +75,7 @@ class TestConceptExtraction:
 # MAFHUM (Concept Node)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMafhum:
     def test_fire_increases_resting_level(self):
         node = Mafhum(id="test")
@@ -113,6 +114,7 @@ class TestMafhum:
 
     def test_current_activation_decays(self):
         import time
+
         node = Mafhum(id="test")
         node.fire(1.0)
         # Immediately after firing, activation should be high
@@ -137,6 +139,7 @@ class TestMafhum:
 # ═══════════════════════════════════════════════════════════════════════════════
 # SILAH (Pathway/Synapse)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestSilah:
     def test_strengthen_increases_weight(self):
@@ -184,6 +187,7 @@ class TestSilah:
 # MASALIK NETWORK — Encoding (Learning)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMasalikEncode:
     @pytest.fixture
     def network(self):
@@ -200,8 +204,7 @@ class TestMasalikEncode:
 
     def test_no_duplication(self, network):
         """Encoding same text twice should strengthen, not duplicate."""
-        result1 = network.encode("neural networks are powerful")
-        pathways_after_first = len(network.pathways)
+        network.encode("neural networks are powerful")
         result2 = network.encode("neural networks are powerful")
         assert result2["new_pathways"] == 0
         assert result2["pathways_strengthened"] > 0
@@ -230,6 +233,7 @@ class TestMasalikEncode:
 # MASALIK NETWORK — Recall (Spreading Activation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMasalikRecall:
     @pytest.fixture
     def trained_network(self):
@@ -244,8 +248,10 @@ class TestMasalikRecall:
         assert len(results) > 0
         concept_names = [r[0] for r in results]
         # Should find concepts associated with Python
-        assert any("program" in c or "learn" in c or "machin" in c or "language" in c
-                    for c in concept_names)
+        assert any(
+            "program" in c or "learn" in c or "machin" in c or "language" in c
+            for c in concept_names
+        )
 
     def test_recall_strengthens_pathways(self, trained_network):
         """Dhikr — remembering should strengthen pathways."""
@@ -282,6 +288,7 @@ class TestMasalikRecall:
 # MASALIK NETWORK — Nisyan (Forgetting)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMasalikNisyan:
     def test_weak_pathways_pruned(self):
         net = MasalikNetwork()
@@ -298,7 +305,7 @@ class TestMasalikNisyan:
             net.encode("permanent knowledge here", importance=1.0)
 
         # Get non-fitrah pathway count
-        non_fitrah_before = sum(1 for p in net.pathways.values() if p.pathway_type != "fitrah")
+        sum(1 for p in net.pathways.values() if p.pathway_type != "fitrah")
         net.apply_nisyan(force_hours=100)
         non_fitrah_after = sum(1 for p in net.pathways.values() if p.pathway_type != "fitrah")
         # Strong pathways should survive
@@ -325,6 +332,7 @@ class TestMasalikNisyan:
 # MASALIK NETWORK — Tafakkur (Reflective Consolidation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMasalikTafakkur:
     def test_creates_new_connections(self):
         net = MasalikNetwork()
@@ -350,6 +358,7 @@ class TestMasalikTafakkur:
 # MASALIK NETWORK — Fitrah (Innate Knowledge)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMasalikFitrah:
     def test_fitrah_concepts_exist(self):
         net = MasalikNetwork()
@@ -369,8 +378,18 @@ class TestMasalikFitrah:
 
     def test_specific_fitrah_concepts(self):
         net = MasalikNetwork()
-        expected = ["truth", "justice", "knowledge", "balance", "creation",
-                    "cause", "effect", "good", "harm", "evidence"]
+        expected = [
+            "truth",
+            "justice",
+            "knowledge",
+            "balance",
+            "creation",
+            "cause",
+            "effect",
+            "good",
+            "harm",
+            "evidence",
+        ]
         for concept in expected:
             assert concept in net.concepts, f"Missing fitrah concept: {concept}"
             assert net.concepts[concept].is_fitrah
@@ -386,6 +405,7 @@ class TestMasalikFitrah:
 # ═══════════════════════════════════════════════════════════════════════════════
 # MASALIK NETWORK — Hikmah (Wisdom)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestMasalikHikmah:
     def test_hikmah_forms_from_repetition(self):
@@ -409,6 +429,7 @@ class TestMasalikHikmah:
 # ═══════════════════════════════════════════════════════════════════════════════
 # MASALIK NETWORK — Stats & Introspection
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestMasalikStats:
     def test_stats_structure(self):
@@ -434,6 +455,7 @@ class TestMasalikStats:
 # ═══════════════════════════════════════════════════════════════════════════════
 # DHIKR MEMORY SYSTEM (SQLite + Masalik)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestDhikrMemorySystem:
     @pytest.fixture
@@ -509,7 +531,7 @@ class TestDhikrMemorySystem:
         assert len(history) == 2
         # Ordered by created_at DESC — most recent first
         assert history[0]["success"] is False  # broken task is most recent
-        assert history[1]["success"] is True   # analyze data was first
+        assert history[1]["success"] is True  # analyze data was first
 
     @pytest.mark.asyncio
     async def test_masalik_integration(self, memory):
@@ -542,6 +564,7 @@ class TestDhikrMemorySystem:
 # ═══════════════════════════════════════════════════════════════════════════════
 # MEMORY DECAY MODEL
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestMemoryDecayModel:
     def test_high_importance_decays_slower(self):

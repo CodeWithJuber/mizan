@@ -17,17 +17,18 @@ HYPOTHESIS (UGRL):
 "And say: My Lord, increase me in knowledge." — Quran 20:114
 """
 
-import re
-import random
 import logging
-from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+import random
+import re
+from collections import Counter
+from typing import Any
 
 logger = logging.getLogger("mizan.qca.training")
 
 # Optional numpy import
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -36,6 +37,7 @@ except ImportError:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PHASE B: UGRL — Universal Genomic Root Law Trainer
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class UGRLTrainer:
     """
@@ -48,80 +50,225 @@ class UGRLTrainer:
 
     # Seed: 15 universal concepts x 10 languages
     SEED_ALIGNMENTS = {
-        "KNOW":     {"ar": "\u0639\u0644\u0645", "en": "know", "he": "\u05d9\u05d3\u05e2",
-                     "tr": "bil", "sw": "jua", "fr": "sav", "de": "wiss",
-                     "ur": "\u062c\u0627\u0646", "es": "sab", "fa": "\u062f\u0627\u0646"},
-        "SEE":      {"ar": "\u0628\u0635\u0631", "en": "see", "he": "\u05e8\u05d0\u05d4",
-                     "tr": "gor", "sw": "ona", "fr": "voir", "de": "seh",
-                     "ur": "\u062f\u06cc\u06a9", "es": "ver", "fa": "\u062f\u06cc\u062f"},
-        "HEAR":     {"ar": "\u0633\u0645\u0639", "en": "hear", "he": "\u05e9\u05de\u05e2",
-                     "tr": "duy", "sw": "sik", "fr": "ent", "de": "hor",
-                     "ur": "\u0633\u0646", "es": "oir", "fa": "\u0634\u0646\u0648"},
-        "SPEAK":    {"ar": "\u0642\u0648\u0644", "en": "say", "he": "\u05d3\u05d1\u05e8",
-                     "tr": "soy", "sw": "sem", "fr": "par", "de": "spr",
-                     "ur": "\u0628\u0648\u0644", "es": "hab", "fa": "\u06af\u0648"},
-        "WRITE":    {"ar": "\u0643\u062a\u0628", "en": "writ", "he": "\u05db\u05ea\u05d1",
-                     "tr": "yaz", "sw": "and", "fr": "ecr", "de": "sch",
-                     "ur": "\u0644\u06a9\u06be", "es": "esc", "fa": "\u0646\u0648\u0634"},
-        "GUIDE":    {"ar": "\u0647\u062f\u0649", "en": "guid", "he": "\u05d4\u05d3\u05e8",
-                     "tr": "reh", "sw": "ong", "fr": "gui", "de": "fuh",
-                     "ur": "\u0631\u06c1", "es": "gui", "fa": "\u0631\u0627\u0647"},
-        "CREATE":   {"ar": "\u062e\u0644\u0642", "en": "crea", "he": "\u05d1\u05e8\u05d0",
-                     "tr": "yar", "sw": "umb", "fr": "cre", "de": "sch",
-                     "ur": "\u0628\u0646\u0627", "es": "cre", "fa": "\u0622\u0641\u0631"},
-        "JUDGE":    {"ar": "\u062d\u0643\u0645", "en": "judg", "he": "\u05e9\u05e4\u05d8",
-                     "tr": "huk", "sw": "huk", "fr": "jug", "de": "ric",
-                     "ur": "\u062d\u06a9\u0645", "es": "juz", "fa": "\u062f\u0627\u0648"},
-        "MERCY":    {"ar": "\u0631\u062d\u0645", "en": "merc", "he": "\u05e8\u05d7\u05dd",
-                     "tr": "mer", "sw": "hur", "fr": "mis", "de": "bar",
-                     "ur": "\u0631\u062d\u0645", "es": "mis", "fa": "\u0631\u062d\u0645"},
-        "BALANCE":  {"ar": "\u0648\u0632\u0646", "en": "bal", "he": "\u05e9\u05e7\u05dc",
-                     "tr": "den", "sw": "usa", "fr": "equ", "de": "gle",
-                     "ur": "\u062a\u0648\u0632", "es": "equ", "fa": "\u062a\u0631\u0627"},
-        "REMEMBER": {"ar": "\u0630\u0643\u0631", "en": "rem", "he": "\u05d6\u05db\u05e8",
-                     "tr": "hat", "sw": "kum", "fr": "sou", "de": "eri",
-                     "ur": "\u06cc\u0627\u062f", "es": "rec", "fa": "\u06cc\u0627\u062f"},
-        "PROTECT":  {"ar": "\u062d\u0641\u0638", "en": "pro", "he": "\u05e9\u05de\u05e8",
-                     "tr": "kor", "sw": "hif", "fr": "pro", "de": "scu",
-                     "ur": "\u062d\u0641\u0638", "es": "pro", "fa": "\u062d\u0641\u0638"},
-        "TRUTH":    {"ar": "\u0635\u062f\u0642", "en": "tru", "he": "\u05d0\u05de\u05ea",
-                     "tr": "ger", "sw": "kwl", "fr": "ver", "de": "wah",
-                     "ur": "\u0633\u0686", "es": "ver", "fa": "\u0631\u0627\u0633"},
-        "LIGHT":    {"ar": "\u0646\u0648\u0631", "en": "ligh", "he": "\u05d0\u05d5\u05e8",
-                     "tr": "isi", "sw": "nur", "fr": "lum", "de": "lic",
-                     "ur": "\u0646\u0648\u0631", "es": "luz", "fa": "\u0646\u0648\u0631"},
-        "SEND":     {"ar": "\u0631\u0633\u0644", "en": "send", "he": "\u05e9\u05dc\u05d7",
-                     "tr": "gon", "sw": "tum", "fr": "env", "de": "sen",
-                     "ur": "\u0628\u06be\u06cc", "es": "env", "fa": "\u0641\u0631\u0633"},
+        "KNOW": {
+            "ar": "\u0639\u0644\u0645",
+            "en": "know",
+            "he": "\u05d9\u05d3\u05e2",
+            "tr": "bil",
+            "sw": "jua",
+            "fr": "sav",
+            "de": "wiss",
+            "ur": "\u062c\u0627\u0646",
+            "es": "sab",
+            "fa": "\u062f\u0627\u0646",
+        },
+        "SEE": {
+            "ar": "\u0628\u0635\u0631",
+            "en": "see",
+            "he": "\u05e8\u05d0\u05d4",
+            "tr": "gor",
+            "sw": "ona",
+            "fr": "voir",
+            "de": "seh",
+            "ur": "\u062f\u06cc\u06a9",
+            "es": "ver",
+            "fa": "\u062f\u06cc\u062f",
+        },
+        "HEAR": {
+            "ar": "\u0633\u0645\u0639",
+            "en": "hear",
+            "he": "\u05e9\u05de\u05e2",
+            "tr": "duy",
+            "sw": "sik",
+            "fr": "ent",
+            "de": "hor",
+            "ur": "\u0633\u0646",
+            "es": "oir",
+            "fa": "\u0634\u0646\u0648",
+        },
+        "SPEAK": {
+            "ar": "\u0642\u0648\u0644",
+            "en": "say",
+            "he": "\u05d3\u05d1\u05e8",
+            "tr": "soy",
+            "sw": "sem",
+            "fr": "par",
+            "de": "spr",
+            "ur": "\u0628\u0648\u0644",
+            "es": "hab",
+            "fa": "\u06af\u0648",
+        },
+        "WRITE": {
+            "ar": "\u0643\u062a\u0628",
+            "en": "writ",
+            "he": "\u05db\u05ea\u05d1",
+            "tr": "yaz",
+            "sw": "and",
+            "fr": "ecr",
+            "de": "sch",
+            "ur": "\u0644\u06a9\u06be",
+            "es": "esc",
+            "fa": "\u0646\u0648\u0634",
+        },
+        "GUIDE": {
+            "ar": "\u0647\u062f\u0649",
+            "en": "guid",
+            "he": "\u05d4\u05d3\u05e8",
+            "tr": "reh",
+            "sw": "ong",
+            "fr": "gui",
+            "de": "fuh",
+            "ur": "\u0631\u06c1",
+            "es": "gui",
+            "fa": "\u0631\u0627\u0647",
+        },
+        "CREATE": {
+            "ar": "\u062e\u0644\u0642",
+            "en": "crea",
+            "he": "\u05d1\u05e8\u05d0",
+            "tr": "yar",
+            "sw": "umb",
+            "fr": "cre",
+            "de": "sch",
+            "ur": "\u0628\u0646\u0627",
+            "es": "cre",
+            "fa": "\u0622\u0641\u0631",
+        },
+        "JUDGE": {
+            "ar": "\u062d\u0643\u0645",
+            "en": "judg",
+            "he": "\u05e9\u05e4\u05d8",
+            "tr": "huk",
+            "sw": "huk",
+            "fr": "jug",
+            "de": "ric",
+            "ur": "\u062d\u06a9\u0645",
+            "es": "juz",
+            "fa": "\u062f\u0627\u0648",
+        },
+        "MERCY": {
+            "ar": "\u0631\u062d\u0645",
+            "en": "merc",
+            "he": "\u05e8\u05d7\u05dd",
+            "tr": "mer",
+            "sw": "hur",
+            "fr": "mis",
+            "de": "bar",
+            "ur": "\u0631\u062d\u0645",
+            "es": "mis",
+            "fa": "\u0631\u062d\u0645",
+        },
+        "BALANCE": {
+            "ar": "\u0648\u0632\u0646",
+            "en": "bal",
+            "he": "\u05e9\u05e7\u05dc",
+            "tr": "den",
+            "sw": "usa",
+            "fr": "equ",
+            "de": "gle",
+            "ur": "\u062a\u0648\u0632",
+            "es": "equ",
+            "fa": "\u062a\u0631\u0627",
+        },
+        "REMEMBER": {
+            "ar": "\u0630\u0643\u0631",
+            "en": "rem",
+            "he": "\u05d6\u05db\u05e8",
+            "tr": "hat",
+            "sw": "kum",
+            "fr": "sou",
+            "de": "eri",
+            "ur": "\u06cc\u0627\u062f",
+            "es": "rec",
+            "fa": "\u06cc\u0627\u062f",
+        },
+        "PROTECT": {
+            "ar": "\u062d\u0641\u0638",
+            "en": "pro",
+            "he": "\u05e9\u05de\u05e8",
+            "tr": "kor",
+            "sw": "hif",
+            "fr": "pro",
+            "de": "scu",
+            "ur": "\u062d\u0641\u0638",
+            "es": "pro",
+            "fa": "\u062d\u0641\u0638",
+        },
+        "TRUTH": {
+            "ar": "\u0635\u062f\u0642",
+            "en": "tru",
+            "he": "\u05d0\u05de\u05ea",
+            "tr": "ger",
+            "sw": "kwl",
+            "fr": "ver",
+            "de": "wah",
+            "ur": "\u0633\u0686",
+            "es": "ver",
+            "fa": "\u0631\u0627\u0633",
+        },
+        "LIGHT": {
+            "ar": "\u0646\u0648\u0631",
+            "en": "ligh",
+            "he": "\u05d0\u05d5\u05e8",
+            "tr": "isi",
+            "sw": "nur",
+            "fr": "lum",
+            "de": "lic",
+            "ur": "\u0646\u0648\u0631",
+            "es": "luz",
+            "fa": "\u0646\u0648\u0631",
+        },
+        "SEND": {
+            "ar": "\u0631\u0633\u0644",
+            "en": "send",
+            "he": "\u05e9\u05dc\u05d7",
+            "tr": "gon",
+            "sw": "tum",
+            "fr": "env",
+            "de": "sen",
+            "ur": "\u0628\u06be\u06cc",
+            "es": "env",
+            "fa": "\u0641\u0631\u0633",
+        },
     }
 
     CONCEPT_DOMAINS = {
-        "KNOW": "epistemology", "SEE": "perception", "HEAR": "perception",
-        "SPEAK": "communication", "WRITE": "communication", "GUIDE": "epistemology",
-        "CREATE": "creation", "JUDGE": "judgment", "MERCY": "emotion",
-        "BALANCE": "judgment", "REMEMBER": "epistemology", "PROTECT": "existence",
-        "TRUTH": "epistemology", "LIGHT": "perception", "SEND": "movement",
+        "KNOW": "epistemology",
+        "SEE": "perception",
+        "HEAR": "perception",
+        "SPEAK": "communication",
+        "WRITE": "communication",
+        "GUIDE": "epistemology",
+        "CREATE": "creation",
+        "JUDGE": "judgment",
+        "MERCY": "emotion",
+        "BALANCE": "judgment",
+        "REMEMBER": "epistemology",
+        "PROTECT": "existence",
+        "TRUTH": "epistemology",
+        "LIGHT": "perception",
+        "SEND": "movement",
     }
 
     DOMAIN_VECS = {
         "epistemology": [1, 0, 0, 0, 0],
-        "perception":   [0, 1, 0, 0, 0],
-        "creation":     [0, 0, 1, 0, 0],
+        "perception": [0, 1, 0, 0, 0],
+        "creation": [0, 0, 1, 0, 0],
         "communication": [0, 0, 0, 1, 0],
-        "judgment":     [0, 0, 0, 0, 1],
-        "emotion":      [0.5, 0, 0, 0.5, 0],
-        "movement":     [0, 0.5, 0.5, 0, 0],
-        "existence":    [0, 0, 0.5, 0.5, 0],
+        "judgment": [0, 0, 0, 0, 1],
+        "emotion": [0.5, 0, 0, 0.5, 0],
+        "movement": [0, 0.5, 0.5, 0, 0],
+        "existence": [0, 0, 0.5, 0.5, 0],
     }
 
     def __init__(self):
-        self.root_vectors: Dict[str, Any] = {}
+        self.root_vectors: dict[str, Any] = {}
         if HAS_NUMPY:
             self.alignment = np.eye(15)
         else:
             self.alignment = None
 
-    def build_seed_vectors(self, root_db: Dict = None):
+    def build_seed_vectors(self, root_db: dict = None):
         """Build seed root vectors (15 concepts x 10 languages)."""
         if not HAS_NUMPY:
             logger.warning("numpy not available — UGRL vectors not built")
@@ -136,14 +283,12 @@ class UGRLTrainer:
             )
             vec = vec / (np.linalg.norm(vec) + 1e-8)
             for lang, root in lang_roots.items():
-                key = "{}:{}".format(lang, root)
+                key = f"{lang}:{root}"
                 self.root_vectors[key] = vec
                 # Enrich root_db if provided
                 if root_db is not None and root not in root_db:
                     root_db[root] = {
-                        "meaning": "{} — cross-language root (UGRL)".format(
-                            concept.lower()
-                        ),
+                        "meaning": f"{concept.lower()} — cross-language root (UGRL)",
                         "domain": dom,
                         "frequency": 10,
                         "derivatives": {},
@@ -158,7 +303,7 @@ class UGRLTrainer:
             len(set(k.split(":")[0] for k in self.root_vectors)),
         )
 
-    def learn_alignment(self, parallel_corpus: Dict) -> Any:
+    def learn_alignment(self, parallel_corpus: dict) -> Any:
         """
         Learn cross-language alignment from parallel text.
         Full version: contrastive learning on aligned sentence pairs.
@@ -170,22 +315,22 @@ class UGRLTrainer:
         langs = list(set(k.split(":")[0] for k in self.root_vectors))
         logger.info(
             "UGRL alignment: %d languages, %d parallel corpus languages",
-            len(langs), len(parallel_corpus),
+            len(langs),
+            len(parallel_corpus),
         )
         return self.alignment
 
-    def predict_equiv(self, root: str, src_lang: str,
-                      tgt_lang: str) -> Tuple[Optional[str], float]:
+    def predict_equiv(self, root: str, src_lang: str, tgt_lang: str) -> tuple[str | None, float]:
         """Predict cross-language root equivalent."""
         if not HAS_NUMPY:
             return None, 0.0
-        src_key = "{}:{}".format(src_lang, root)
+        src_key = f"{src_lang}:{root}"
         src_vec = self.root_vectors.get(src_key)
         if src_vec is None:
             return None, 0.0
         best_root, best_score = None, -1.0
         for key, vec in self.root_vectors.items():
-            if not key.startswith("{}:".format(tgt_lang)):
+            if not key.startswith(f"{tgt_lang}:"):
                 continue
             score = float(np.dot(src_vec, self.alignment @ vec))
             if score > best_score:
@@ -193,7 +338,7 @@ class UGRLTrainer:
                 best_root = key.split(":", 1)[1]
         return best_root, best_score
 
-    def coverage(self) -> Dict:
+    def coverage(self) -> dict:
         """Get UGRL coverage stats."""
         langs = sorted(set(k.split(":")[0] for k in self.root_vectors))
         return {
@@ -207,6 +352,7 @@ class UGRLTrainer:
 # PHASE C: MIZAN CALIBRATION TRAINER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class MizanCalibrationTrainer:
     """
     Trains a certainty classifier on natural language claims.
@@ -217,46 +363,91 @@ class MizanCalibrationTrainer:
     """
 
     CERTAINTY_LEVELS = [
-        ("yaqin",  1.00),
-        ("rajih",  0.75),
-        ("zann",   0.50),
-        ("shakk",  0.25),
-        ("wahm",   0.05),
+        ("yaqin", 1.00),
+        ("rajih", 0.75),
+        ("zann", 0.50),
+        ("shakk", 0.25),
+        ("wahm", 0.05),
     ]
 
     # Linguistic hedges correlating with certainty level
     MARKERS = {
         "yaqin": [
-            "is proven", "verified", "confirmed", "the quran states", "allah said",
-            "certainly", "without doubt", "experimentally confirmed", "established fact",
-            "peer-reviewed", "meta-analysis shows", "it is certain",
+            "is proven",
+            "verified",
+            "confirmed",
+            "the quran states",
+            "allah said",
+            "certainly",
+            "without doubt",
+            "experimentally confirmed",
+            "established fact",
+            "peer-reviewed",
+            "meta-analysis shows",
+            "it is certain",
         ],
         "rajih": [
-            "studies suggest", "evidence indicates", "likely", "probably",
-            "researchers found", "data shows", "strong evidence", "tends to",
-            "most experts agree", "the balance of evidence",
+            "studies suggest",
+            "evidence indicates",
+            "likely",
+            "probably",
+            "researchers found",
+            "data shows",
+            "strong evidence",
+            "tends to",
+            "most experts agree",
+            "the balance of evidence",
         ],
         "zann": [
-            "might", "could", "some argue", "possibly", "perhaps", "one theory",
-            "it is thought", "believed by some", "may be", "there is reason to think",
+            "might",
+            "could",
+            "some argue",
+            "possibly",
+            "perhaps",
+            "one theory",
+            "it is thought",
+            "believed by some",
+            "may be",
+            "there is reason to think",
         ],
         "shakk": [
-            "unclear", "contested", "mixed evidence", "some say", "anecdotally",
-            "reportedly", "not peer-reviewed", "conflicting findings", "debated",
+            "unclear",
+            "contested",
+            "mixed evidence",
+            "some say",
+            "anecdotally",
+            "reportedly",
+            "not peer-reviewed",
+            "conflicting findings",
+            "debated",
         ],
         "wahm": [
-            "obviously", "everyone knows", "clearly", "secret", "they hide",
-            "conspiracy", "it is obvious", "fake news", "blind faith claim",
+            "obviously",
+            "everyone knows",
+            "clearly",
+            "secret",
+            "they hide",
+            "conspiracy",
+            "it is obvious",
+            "fake news",
+            "blind faith claim",
         ],
     }
 
     SOURCE_WEIGHTS = {
-        "quran": 1.00, "mutawatir": 0.99, "sahih_hadith": 0.90,
-        "peer_reviewed": 0.85, "textbook": 0.80, "news": 0.60,
-        "blog": 0.45, "social_media": 0.30, "anonymous": 0.15, "unknown": 0.20,
+        "quran": 1.00,
+        "mutawatir": 0.99,
+        "sahih_hadith": 0.90,
+        "peer_reviewed": 0.85,
+        "textbook": 0.80,
+        "news": 0.60,
+        "blog": 0.45,
+        "social_media": 0.30,
+        "anonymous": 0.15,
+        "unknown": 0.20,
     }
 
-    def generate_training_data(self, n_per_class: int = 200) -> List[Dict]:
+    def generate_training_data(self, n_per_class: int = 200) -> list[dict]:
         """
         Generate labelled training data for Mizan classification.
         Full training: replace with real annotated corpora.
@@ -313,15 +504,17 @@ class MizanCalibrationTrainer:
             tmpls = templates[level]
             for i in range(n_per_class):
                 text = _fill(tmpls[i % len(tmpls)])
-                data.append({
-                    "text": text,
-                    "level": level,
-                    "confidence": score,
-                    "label": self.CERTAINTY_LEVELS.index((level, score)),
-                })
+                data.append(
+                    {
+                        "text": text,
+                        "level": level,
+                        "confidence": score,
+                        "label": self.CERTAINTY_LEVELS.index((level, score)),
+                    }
+                )
         return data
 
-    def predict(self, text: str, source: str = "unknown") -> Dict:
+    def predict(self, text: str, source: str = "unknown") -> dict:
         """
         Rule-based Mizan prediction — production-ready without GPU.
         Neural version trains on generate_training_data() output.
@@ -333,10 +526,13 @@ class MizanCalibrationTrainer:
         }
         sw = self.SOURCE_WEIGHTS.get(source, 0.5)
         best = max(scores, key=scores.get) if any(scores.values()) else "zann"
-        base = dict(zip(
-            [l for l, _ in self.CERTAINTY_LEVELS],
-            [s for _, s in self.CERTAINTY_LEVELS],
-        ))[best]
+        base = dict(
+            zip(
+                [level for level, _ in self.CERTAINTY_LEVELS],
+                [s for _, s in self.CERTAINTY_LEVELS],
+                strict=False,
+            )
+        )[best]
         return {
             "level": best,
             "score": round(base * sw, 3),
@@ -348,6 +544,7 @@ class MizanCalibrationTrainer:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PHASE D: AQL RELATION EXTRACTION
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class AqlRelationExtractor:
     """
@@ -389,23 +586,49 @@ class AqlRelationExtractor:
         ],
     }
 
-    STOPS = frozenset({
-        "the", "a", "an", "this", "that", "it", "its", "is", "are", "was",
-        "of", "in", "on", "at", "to", "for", "and", "or", "by", "from",
-        "with", "not",
-    })
+    STOPS = frozenset(
+        {
+            "the",
+            "a",
+            "an",
+            "this",
+            "that",
+            "it",
+            "its",
+            "is",
+            "are",
+            "was",
+            "of",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "and",
+            "or",
+            "by",
+            "from",
+            "with",
+            "not",
+        }
+    )
 
     def __init__(self):
-        self.new_bindings: List[Dict] = []
+        self.new_bindings: list[dict] = []
         self.stats: Counter = Counter()
 
     def _clean(self, txt: str) -> str:
         words = [w for w in txt.strip().split() if w.lower() not in self.STOPS]
         return " ".join(words[:4]).strip(".,:;!?")
 
-    def extract(self, text: str, source: str = "corpus",
-                lang: str = "en", certainty: float = 0.65,
-                aql_layer=None) -> List[Dict]:
+    def extract(
+        self,
+        text: str,
+        source: str = "corpus",
+        lang: str = "en",
+        certainty: float = 0.65,
+        aql_layer=None,
+    ) -> list[dict]:
         """Extract typed bindings from text."""
         found = []
         for btype, patterns in self.PATTERNS.items():
@@ -416,8 +639,11 @@ class AqlRelationExtractor:
                         b = self._clean(m.group(2))
                         if len(a) > 2 and len(b) > 2 and a.lower() != b.lower():
                             binding = {
-                                "from": a, "type": btype, "to": b,
-                                "certainty": certainty, "source": source,
+                                "from": a,
+                                "type": btype,
+                                "to": b,
+                                "certainty": certainty,
+                                "source": source,
                                 "lang": lang,
                             }
                             found.append(binding)
@@ -429,23 +655,20 @@ class AqlRelationExtractor:
         self.new_bindings.extend(found)
         return found
 
-    def extract_corpus(self, docs: List, lang: str = "en",
-                       sample: int = 200, aql_layer=None) -> int:
+    def extract_corpus(
+        self, docs: list, lang: str = "en", sample: int = 200, aql_layer=None
+    ) -> int:
         """Extract bindings from a corpus of documents."""
         total = 0
         for doc in docs[:sample]:
             txt = doc.get("text", "") if isinstance(doc, dict) else str(doc)
             src = doc.get("source", "corpus") if isinstance(doc, dict) else "corpus"
-            total += len(
-                self.extract(txt, source=src, lang=lang, aql_layer=aql_layer)
-            )
+            total += len(self.extract(txt, source=src, lang=lang, aql_layer=aql_layer))
         return total
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get extraction statistics."""
         return {
             "total_new": len(self.new_bindings),
-            "type_distribution": dict(sorted(
-                self.stats.items(), key=lambda x: -x[1]
-            )),
+            "type_distribution": dict(sorted(self.stats.items(), key=lambda x: -x[1])),
         }

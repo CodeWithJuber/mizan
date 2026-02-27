@@ -13,10 +13,10 @@ import logging
 import os
 import sys
 import uuid
-from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Any, List
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from fastapi import (
     BackgroundTasks,
@@ -35,41 +35,45 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from _version import __version__
+from agents.federation import AgentFederation
 from agents.specialized import create_agent
-from providers import (
-    get_provider_status, fetch_openrouter_models, fetch_ollama_models,
-    check_provider_health, create_provider, get_default_model,
-)
-from core.events import event_bus, EVENTS
-from core.hooks import hook_registry, HOOKS
-from core.plugins import plugin_manager
-from core.middleware import middleware_pipeline
+from api.commands import handle_command
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from core.architecture import MizanBalancer, ShuraCouncil
+from core.events import EVENTS, event_bus
+from core.hooks import HOOKS, hook_registry
+from core.middleware import middleware_pipeline
+from core.plugins import plugin_manager
+from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
+from providers import (
+    check_provider_health,
+    create_provider,
+    fetch_ollama_models,
+    fetch_openrouter_models,
+    get_provider_status,
+)
+from qca.cognitive_methods import select_method
+
+# New Quranic systems
+from qca.yaqin_engine import YaqinEngine
 from security.auth import MizanAuth, TokenPayload
-from security.izn import IznPermission, NAFS_PERMISSION_TIERS
+from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
-from api.commands import handle_command
-
-# New Quranic systems
-from qca.yaqin_engine import YaqinEngine, YaqinLevel
-from qca.cognitive_methods import CognitiveMethod, TafakkurEngine, select_method
-from core.qalb import QalbEngine
-from core.ruh_engine import RuhEngine
-from agents.federation import AgentFederation
 
 logger = logging.getLogger("mizan.api")
 
 # ===== LIFESPAN =====
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown logic."""
     import time as _time
+
     app.state.start_time = _time.time()
     logger.info("MIZAN (ميزان) Starting...")
     logger.info("   'And the heaven He raised and imposed the balance' - 55:7")
@@ -99,14 +103,16 @@ async def lifespan(app: FastAPI):
             balancer.register(agent.id)
             shura.members[agent.id] = agent
 
-            await memory.save_agent_profile({
-                "id": agent.id,
-                "name": agent.name,
-                "role": da["type"],
-                "nafs_level": 1,
-                "capabilities": list(agent.tools.keys()),
-                "config": {"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
-            })
+            await memory.save_agent_profile(
+                {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "role": da["type"],
+                    "nafs_level": 1,
+                    "capabilities": list(agent.tools.keys()),
+                    "config": {"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                }
+            )
     else:
         for profile in existing:
             agent = create_agent(
@@ -154,11 +160,14 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Plugin loading: {e}")
 
     # Emit system startup event
-    await event_bus.emit("system.startup", {
-        "agents": len(active_agents),
-        "skills": len(skill_registry.list_skills()),
-        "plugins": len(plugin_manager.list_plugins()),
-    })
+    await event_bus.emit(
+        "system.startup",
+        {
+            "agents": len(active_agents),
+            "skills": len(skill_registry.list_skills()),
+            "plugins": len(plugin_manager.list_plugins()),
+        },
+    )
 
     logger.info("MIZAN ready - Bismillah!")
 
@@ -218,6 +227,7 @@ federation = AgentFederation()
 
 # ===== RATE LIMIT MIDDLEWARE =====
 
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limiting via Wali Guardian with proper headers"""
@@ -241,6 +251,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # ===== SECURITY HEADERS MIDDLEWARE =====
 
+
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses"""
@@ -259,7 +270,9 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     # Content Security Policy
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    )
 
     # Referrer policy
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -272,18 +285,24 @@ async def security_headers_middleware(request: Request, call_next):
 
 # ===== GLOBAL EXCEPTION HANDLER =====
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - never expose stack traces"""
     import traceback
+
     logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc) if os.getenv("DEBUG") else "An unexpected error occurred"},
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if os.getenv("DEBUG") else "An unexpected error occurred",
+        },
     )
 
 
 # ===== AUTH DEPENDENCY =====
+
 
 async def get_current_user(
     authorization: str | None = Header(None),
@@ -311,9 +330,13 @@ async def require_auth(
 
 # ===== PYDANTIC MODELS (with validation) =====
 
+
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    type: str = Field(default="general", pattern=r"^(general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$")
+    type: str = Field(
+        default="general",
+        pattern=r"^(general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
+    )
     model: str = Field(default="claude-opus-4-6", max_length=100)
     system_prompt: str | None = Field(None, max_length=10000)
     capabilities: list[str] = []
@@ -380,11 +403,11 @@ class WebhookCreateRequest(BaseModel):
 class SkillInstallRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
-
     # NOTE: Startup and shutdown logic is handled by the lifespan context manager above.
 
 
 # ===== WEBSOCKET MANAGER =====
+
 
 class ConnectionManager:
     def __init__(self, max_connections: int = 50):
@@ -420,10 +443,12 @@ class ConnectionManager:
         for ws_id in disconnected:
             self.disconnect(ws_id)
 
+
 manager = ConnectionManager(max_connections=security_config.ws_max_connections)
 
 
 # ===== AUTH ROUTES =====
+
 
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
@@ -465,6 +490,7 @@ async def create_api_key(user: TokenPayload = Depends(require_auth)):
 
 # ===== ROUTES =====
 
+
 @app.get("/")
 async def root():
     return {
@@ -478,6 +504,7 @@ async def root():
 
 # === AGENTS ===
 
+
 @app.get("/api/agents")
 async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
     """List all agents with their Nafs profile"""
@@ -490,8 +517,7 @@ async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/agents")
-async def create_new_agent(req: AgentCreate,
-                            user: TokenPayload | None = Depends(get_current_user)):
+async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
     """Create a new agent"""
     config = {
         "model": req.model,
@@ -499,30 +525,41 @@ async def create_new_agent(req: AgentCreate,
     }
 
     agent = create_agent(
-        req.type, name=req.name, memory=memory, config=config,
-        wali=wali, izn=izn,
-        skill_registry=skill_registry, plugin_manager=plugin_manager,
+        req.type,
+        name=req.name,
+        memory=memory,
+        config=config,
+        wali=wali,
+        izn=izn,
+        skill_registry=skill_registry,
+        plugin_manager=plugin_manager,
     )
     active_agents[agent.id] = agent
     balancer.register(agent.id)
     shura.members[agent.id] = agent
 
-    await memory.save_agent_profile({
-        "id": agent.id,
-        "name": agent.name,
-        "role": req.type,
-        "nafs_level": 1,
-        "capabilities": list(agent.tools.keys()),
-        "config": config,
-    })
+    await memory.save_agent_profile(
+        {
+            "id": agent.id,
+            "name": agent.name,
+            "role": req.type,
+            "nafs_level": 1,
+            "capabilities": list(agent.tools.keys()),
+            "config": config,
+        }
+    )
 
-    await manager.broadcast({
-        "type": "agent_created",
-        "agent": agent.to_dict(),
-    })
+    await manager.broadcast(
+        {
+            "type": "agent_created",
+            "agent": agent.to_dict(),
+        }
+    )
 
     wali.audit.log("agent_created", {"agent_id": agent.id, "name": agent.name, "type": req.type})
-    await event_bus.emit("agent.created", {"agent_id": agent.id, "name": agent.name, "type": req.type})
+    await event_bus.emit(
+        "agent.created", {"agent_id": agent.id, "name": agent.name, "type": req.type}
+    )
     return agent.to_dict()
 
 
@@ -534,8 +571,7 @@ async def get_agent(agent_id: str):
 
 
 @app.delete("/api/agents/{agent_id}")
-async def delete_agent(agent_id: str,
-                       user: TokenPayload | None = Depends(get_current_user)):
+async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_current_user)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     del active_agents[agent_id]
@@ -548,9 +584,13 @@ async def delete_agent(agent_id: str,
 
 # === TASKS ===
 
+
 @app.post("/api/tasks")
-async def run_task(req: TaskRequest, background_tasks: BackgroundTasks,
-                   user: TokenPayload | None = Depends(get_current_user)):
+async def run_task(
+    req: TaskRequest,
+    background_tasks: BackgroundTasks,
+    user: TokenPayload | None = Depends(get_current_user),
+):
     """Execute a task - single or parallel"""
 
     if req.parallel and not req.agent_id:
@@ -565,15 +605,14 @@ async def run_task(req: TaskRequest, background_tasks: BackgroundTasks,
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            await manager.broadcast({
-                "type": "task_complete",
-                "task_id": task_id,
-                "parallel": True,
-                "results": [
-                    r if isinstance(r, dict) else {"error": str(r)}
-                    for r in results
-                ],
-            })
+            await manager.broadcast(
+                {
+                    "type": "task_complete",
+                    "task_id": task_id,
+                    "parallel": True,
+                    "results": [r if isinstance(r, dict) else {"error": str(r)} for r in results],
+                }
+            )
 
         background_tasks.add_task(run_parallel)
         return {"task_id": task_id, "mode": "parallel", "agents": agent_ids}
@@ -591,30 +630,37 @@ async def run_task(req: TaskRequest, background_tasks: BackgroundTasks,
 
     async def run_single():
         try:
+
             async def stream_cb(chunk: str):
-                await manager.broadcast({
-                    "type": "task_stream",
-                    "task_id": task_id,
-                    "agent_id": agent_id,
-                    "chunk": chunk,
-                })
+                await manager.broadcast(
+                    {
+                        "type": "task_stream",
+                        "task_id": task_id,
+                        "agent_id": agent_id,
+                        "chunk": chunk,
+                    }
+                )
 
             result = await agent.execute(req.task, req.context, stream_callback=stream_cb)
             balancer.release(agent_id)
 
-            await manager.broadcast({
-                "type": "task_complete",
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "result": result,
-            })
+            await manager.broadcast(
+                {
+                    "type": "task_complete",
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "result": result,
+                }
+            )
         except Exception as e:
             balancer.release(agent_id)
-            await manager.broadcast({
-                "type": "task_error",
-                "task_id": task_id,
-                "error": str(e),
-            })
+            await manager.broadcast(
+                {
+                    "type": "task_error",
+                    "task_id": task_id,
+                    "error": str(e),
+                }
+            )
 
     background_tasks.add_task(run_single)
     return {"task_id": task_id, "agent_id": agent_id, "status": "running"}
@@ -629,9 +675,13 @@ async def get_task_history(agent_id: str | None = None, limit: int = 50):
 
 # === CHAT ===
 
+
 @app.post("/api/chat")
-async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
-               user: TokenPayload | None = Depends(get_current_user)):
+async def chat(
+    req: ChatMessage,
+    background_tasks: BackgroundTasks,
+    user: TokenPayload | None = Depends(get_current_user),
+):
     """Chat with an agent"""
     session = active_sessions.get(req.session_id, {"history": []})
     active_sessions[req.session_id] = session
@@ -652,12 +702,19 @@ async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
         active_agents=active_agents,
     )
     if cmd_result.get("is_command"):
-        await manager.broadcast({
-            "type": "command_result",
+        await manager.broadcast(
+            {
+                "type": "command_result",
+                "session_id": req.session_id,
+                "content": cmd_result["response"],
+            }
+        )
+        return {
+            "message_id": str(uuid.uuid4()),
             "session_id": req.session_id,
-            "content": cmd_result["response"],
-        })
-        return {"message_id": str(uuid.uuid4()), "session_id": req.session_id, "status": "command", "response": cmd_result["response"]}
+            "status": "command",
+            "response": cmd_result["response"],
+        }
 
     if not agent_id or agent_id not in active_agents:
         raise HTTPException(503, "No agents available")
@@ -667,12 +724,14 @@ async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
 
     async def process_chat():
         # Send typing indicator before starting agent execution
-        await manager.broadcast({
-            "type": "typing",
-            "session_id": req.session_id,
-            "message_id": message_id,
-            "agent": agent.name,
-        })
+        await manager.broadcast(
+            {
+                "type": "typing",
+                "session_id": req.session_id,
+                "message_id": message_id,
+                "agent": agent.name,
+            }
+        )
 
         response = ""
 
@@ -681,20 +740,24 @@ async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
             # Handle tool_use events from agent
             chunk_type = kwargs.get("chunk_type", "text")
             if chunk_type == "tool_use":
-                await manager.broadcast({
-                    "type": "tool_use",
-                    "tool_name": kwargs.get("tool_name", "unknown"),
-                    "session_id": req.session_id,
-                    "message_id": message_id,
-                })
+                await manager.broadcast(
+                    {
+                        "type": "tool_use",
+                        "tool_name": kwargs.get("tool_name", "unknown"),
+                        "session_id": req.session_id,
+                        "message_id": message_id,
+                    }
+                )
                 return
             response += chunk
-            await manager.broadcast({
-                "type": "chat_stream",
-                "session_id": req.session_id,
-                "message_id": message_id,
-                "chunk": chunk,
-            })
+            await manager.broadcast(
+                {
+                    "type": "chat_stream",
+                    "session_id": req.session_id,
+                    "message_id": message_id,
+                    "chunk": chunk,
+                }
+            )
 
         result = await agent.execute(
             req.content,
@@ -709,13 +772,15 @@ async def chat(req: ChatMessage, background_tasks: BackgroundTasks,
         await memory.save_message(req.session_id, "assistant", str(final_response), agent_id)
         session["history"].append({"role": "assistant", "content": str(final_response)})
 
-        await manager.broadcast({
-            "type": "chat_complete",
-            "session_id": req.session_id,
-            "message_id": message_id,
-            "response": str(final_response),
-            "agent": agent.name,
-        })
+        await manager.broadcast(
+            {
+                "type": "chat_complete",
+                "session_id": req.session_id,
+                "message_id": message_id,
+                "response": str(final_response),
+                "agent": agent.name,
+            }
+        )
 
     background_tasks.add_task(process_chat)
     return {"message_id": message_id, "session_id": req.session_id, "status": "processing"}
@@ -733,6 +798,7 @@ async def list_sessions():
 
 
 # === MEMORY ===
+
 
 @app.post("/api/memory/query")
 async def query_memory(req: MemoryQuery):
@@ -769,6 +835,7 @@ async def consolidate_memory():
 
 # === PROVIDERS (Ruh al-Ilm - روح العلم) ===
 
+
 @app.get("/api/providers")
 async def list_providers():
     """
@@ -793,6 +860,7 @@ async def list_provider_models(provider_name: str):
         return {"provider": "ollama", "models": models}
     else:
         from providers import PROVIDER_MODELS
+
         return {
             "provider": provider_name,
             "models": PROVIDER_MODELS.get(provider_name, []),
@@ -815,8 +883,9 @@ class ProviderSwitchRequest(BaseModel):
 
 
 @app.post("/api/providers/switch")
-async def switch_provider(req: ProviderSwitchRequest,
-                          user: TokenPayload | None = Depends(get_current_user)):
+async def switch_provider(
+    req: ProviderSwitchRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """
     Switch the active LLM provider and model for all agents.
     This updates agents in memory — does not persist to .env.
@@ -832,12 +901,14 @@ async def switch_provider(req: ProviderSwitchRequest,
         agent.ai_model = req.model
         switched += 1
 
-    await manager.broadcast({
-        "type": "provider_switched",
-        "provider": req.provider,
-        "model": req.model,
-        "agents_updated": switched,
-    })
+    await manager.broadcast(
+        {
+            "type": "provider_switched",
+            "provider": req.provider,
+            "model": req.model,
+            "agents_updated": switched,
+        }
+    )
 
     wali.audit.log("provider_switched", {"provider": req.provider, "model": req.model})
     await event_bus.emit("provider.switched", {"provider": req.provider, "model": req.model})
@@ -850,6 +921,7 @@ async def switch_provider(req: ProviderSwitchRequest,
 
 # === INTEGRATIONS ===
 
+
 @app.get("/api/integrations")
 async def list_integrations():
     integrations = await memory.get_integrations()
@@ -857,21 +929,24 @@ async def list_integrations():
 
 
 @app.post("/api/integrations")
-async def add_integration(req: IntegrationCreate,
-                           user: TokenPayload | None = Depends(get_current_user)):
-    int_id = await memory.save_integration({
-        "name": req.name,
-        "type": req.type,
-        "config": req.config,
-        "enabled": req.enabled,
-    })
+async def add_integration(
+    req: IntegrationCreate, user: TokenPayload | None = Depends(get_current_user)
+):
+    int_id = await memory.save_integration(
+        {
+            "name": req.name,
+            "type": req.type,
+            "config": req.config,
+            "enabled": req.enabled,
+        }
+    )
     return {"id": int_id, "name": req.name, "type": req.type}
 
 
 @app.delete("/api/integrations/{int_id}")
-async def delete_integration(int_id: str,
-                              user: TokenPayload | None = Depends(get_current_user)):
+async def delete_integration(int_id: str, user: TokenPayload | None = Depends(get_current_user)):
     import sqlite3
+
     conn = sqlite3.connect(memory.db_path)
     conn.execute("DELETE FROM integrations WHERE id = ?", (int_id,))
     conn.commit()
@@ -880,6 +955,7 @@ async def delete_integration(int_id: str,
 
 
 # === SECURITY STATUS ===
+
 
 @app.get("/api/security/audit")
 async def security_audit(user: TokenPayload = Depends(require_auth)):
@@ -899,15 +975,18 @@ async def list_permissions(user: TokenPayload = Depends(require_auth)):
 
 # === SYSTEM STATUS ===
 
+
 @app.get("/api/status")
 async def system_status():
     """Full system status - Mizan dashboard"""
     agent_stats = []
     for agent in active_agents.values():
-        agent_stats.append({
-            **agent.to_dict(),
-            "load": balancer.load_weights.get(agent.id, 0),
-        })
+        agent_stats.append(
+            {
+                **agent.to_dict(),
+                "load": balancer.load_weights.get(agent.id, 0),
+            }
+        )
 
     task_history = await memory.get_task_history(limit=10)
 
@@ -915,7 +994,7 @@ async def system_status():
         "system": "MIZAN",
         "version": __version__,
         "status": "active",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "agents": {
             "total": len(active_agents),
             "active": sum(1 for a in active_agents.values() if a.state == "acting"),
@@ -941,6 +1020,7 @@ async def system_status():
 async def version_info():
     """Version info and update check"""
     import subprocess
+
     result = {
         "version": __version__,
         "system": "MIZAN",
@@ -951,23 +1031,37 @@ async def version_info():
 
     try:
         # Check if we're in a git repo
-        subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True, check=True, cwd=str(Path(__file__).resolve().parent.parent.parent))
+        subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            check=True,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+        )
         result["can_check"] = True
 
         # Fetch latest (quick, non-blocking)
-        subprocess.run(["git", "fetch", "origin", "--quiet"], capture_output=True, timeout=10, cwd=str(Path(__file__).resolve().parent.parent.parent))
+        subprocess.run(
+            ["git", "fetch", "origin", "--quiet"],
+            capture_output=True,
+            timeout=10,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+        )
 
         # Get current branch
         branch_result = subprocess.run(
             ["git", "branch", "--show-current"],
-            capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
         )
         branch = branch_result.stdout.strip() or "main"
 
         # Count commits behind
         behind_result = subprocess.run(
             ["git", "rev-list", "--count", f"HEAD..origin/{branch}"],
-            capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
         )
         behind = int(behind_result.stdout.strip() or "0")
         result["updates_available"] = behind
@@ -976,7 +1070,9 @@ async def version_info():
         if behind > 0:
             log_result = subprocess.run(
                 ["git", "log", "--oneline", f"origin/{branch}", "-1"],
-                capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent.parent)
+                capture_output=True,
+                text=True,
+                cwd=str(Path(__file__).resolve().parent.parent.parent),
             )
             result["latest_commit"] = log_result.stdout.strip()[:80]
 
@@ -988,10 +1084,12 @@ async def version_info():
 
 # === HEALTH CHECK ===
 
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for monitoring and Docker"""
     import time
+
     checks = {
         "database": False,
         "memory": False,
@@ -999,7 +1097,7 @@ async def health_check():
     }
     try:
         # Check database
-        agents = await memory.get_all_agents()
+        await memory.get_all_agents()
         checks["database"] = True
         checks["memory"] = True
     except Exception:
@@ -1016,13 +1114,16 @@ async def health_check():
         content={
             "status": "ok" if all_healthy else "degraded",
             "version": __version__,
-            "uptime": int(time.time() - app.state.start_time) if hasattr(app.state, "start_time") else 0,
+            "uptime": int(time.time() - app.state.start_time)
+            if hasattr(app.state, "start_time")
+            else 0,
             "checks": checks,
         },
     )
 
 
 # === DOCTOR (SELF-HEALING DIAGNOSTIC) ===
+
 
 @app.get("/api/doctor")
 async def doctor_check():
@@ -1031,7 +1132,8 @@ async def doctor_check():
     "And We send down of the Quran that which is a healing (shifa)" — 17:82
     """
     try:
-        from doctor import run_doctor, report_to_dict
+        from doctor import report_to_dict, run_doctor
+
         report = run_doctor(auto_fix=False, check_only=True)
         return report_to_dict(report)
     except Exception as e:
@@ -1042,7 +1144,8 @@ async def doctor_check():
 async def doctor_fix():
     """Run doctor with auto-fix enabled."""
     try:
-        from doctor import run_doctor, report_to_dict
+        from doctor import report_to_dict, run_doctor
+
         report = run_doctor(auto_fix=True)
         return report_to_dict(report)
     except Exception as e:
@@ -1050,6 +1153,7 @@ async def doctor_fix():
 
 
 # === SETTINGS API ===
+
 
 class SettingsUpdate(BaseModel):
     section: str
@@ -1062,7 +1166,7 @@ class SettingsUpdate(BaseModel):
 @app.get("/api/settings")
 async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
     """Get all settings (secrets masked)"""
-    provider_info = get_provider_status()
+    get_provider_status()
 
     # Build providers list
     providers = []
@@ -1087,17 +1191,20 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
     channels = []
     for ch_name, env_var in channel_tokens.items():
         has_token = bool(os.getenv(env_var))
-        channels.append({
-            "name": ch_name,
-            "enabled": has_token,
-            "connected": False,
-            "has_token": has_token,
-        })
+        channels.append(
+            {
+                "name": ch_name,
+                "enabled": has_token,
+                "connected": False,
+                "has_token": has_token,
+            }
+        )
 
     # Vault status
     vault_status = {"encrypted": False, "secrets_count": 0, "secret_names": []}
     try:
         from security.vault import SecretVault
+
         vault = SecretVault()
         vault_status = vault.get_status()
     except Exception:
@@ -1121,14 +1228,16 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/settings")
-async def update_settings(req: SettingsUpdate,
-                          user: TokenPayload | None = Depends(get_current_user)):
+async def update_settings(
+    req: SettingsUpdate, user: TokenPayload | None = Depends(get_current_user)
+):
     """Update a setting (API key, config value, etc.)"""
     if req.section == "provider" and req.provider and req.api_key:
         env_key = f"{req.provider.upper()}_API_KEY"
         # Store in vault if available
         try:
             from security.vault import SecretVault
+
             vault = SecretVault()
             vault.store(env_key, req.api_key)
         except Exception:
@@ -1151,11 +1260,14 @@ async def update_settings(req: SettingsUpdate,
             lines.append(f"{env_key}={req.api_key}")
         env_path.write_text("\n".join(lines) + "\n")
 
-        wali.audit.log("settings_updated", {
-            "section": "provider",
-            "provider": req.provider,
-            "field": "api_key",
-        })
+        wali.audit.log(
+            "settings_updated",
+            {
+                "section": "provider",
+                "provider": req.provider,
+                "field": "api_key",
+            },
+        )
         return {"status": "saved", "message": f"API key for {req.provider} saved"}
 
     elif req.section == "channel" and req.provider and req.api_key:
@@ -1190,9 +1302,9 @@ async def update_settings(req: SettingsUpdate,
 
 # === CHANNEL MANAGEMENT ===
 
+
 @app.post("/api/channels/{name}/start")
-async def start_channel(name: str,
-                        user: TokenPayload | None = Depends(get_current_user)):
+async def start_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Start a channel adapter"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -1211,8 +1323,7 @@ async def start_channel(name: str,
 
 
 @app.post("/api/channels/{name}/stop")
-async def stop_channel(name: str,
-                       user: TokenPayload | None = Depends(get_current_user)):
+async def stop_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Stop a channel adapter"""
     wali.audit.log("channel_stop", {"channel": name})
     return {"status": "stopped", "channel": name}
@@ -1239,8 +1350,7 @@ async def channel_status(name: str):
 
 
 @app.post("/api/channels/{name}/test")
-async def test_channel(name: str,
-                       user: TokenPayload | None = Depends(get_current_user)):
+async def test_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Send a test message through a channel"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -1256,14 +1366,14 @@ async def test_channel(name: str,
 
 
 @app.post("/api/shura")
-async def shura_consult(req: ShuraRequest,
-                        user: TokenPayload | None = Depends(get_current_user)):
+async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(get_current_user)):
     """Multi-agent Shura consultation"""
     result = await shura.consult(req.question, req.context, list(active_agents.keys()))
     return result
 
 
 # === AUTOMATION (Qadr) ===
+
 
 @app.get("/api/automation/jobs")
 async def list_jobs(user: TokenPayload | None = Depends(get_current_user)):
@@ -1272,8 +1382,9 @@ async def list_jobs(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/jobs")
-async def create_job(req: ScheduleJobRequest,
-                     user: TokenPayload | None = Depends(get_current_user)):
+async def create_job(
+    req: ScheduleJobRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Create a new scheduled job"""
     job = await scheduler.add_job(req.name, req.cron, req.task, req.agent_id)
     wali.audit.log("job_created", {"name": req.name, "cron": req.cron})
@@ -1281,8 +1392,7 @@ async def create_job(req: ScheduleJobRequest,
 
 
 @app.delete("/api/automation/jobs/{job_id}")
-async def delete_job(job_id: str,
-                     user: TokenPayload | None = Depends(get_current_user)):
+async def delete_job(job_id: str, user: TokenPayload | None = Depends(get_current_user)):
     """Remove a scheduled job"""
     removed = await scheduler.remove_job(job_id)
     if not removed:
@@ -1297,11 +1407,13 @@ async def list_webhooks(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/webhooks")
-async def create_webhook(req: WebhookCreateRequest,
-                         user: TokenPayload | None = Depends(get_current_user)):
+async def create_webhook(
+    req: WebhookCreateRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Create a new webhook trigger"""
     webhook = await trigger_manager.register_webhook(
-        req.name, req.task_template, req.agent_id, req.secret)
+        req.name, req.task_template, req.agent_id, req.secret
+    )
     wali.audit.log("webhook_created", {"name": req.name})
     return webhook.to_dict()
 
@@ -1319,6 +1431,7 @@ async def trigger_webhook(webhook_id: str, request: Request):
 
 # === SKILLS (Hikmah) ===
 
+
 @app.get("/api/skills")
 async def list_skills(user: TokenPayload | None = Depends(get_current_user)):
     """List all available skills"""
@@ -1326,8 +1439,9 @@ async def list_skills(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/skills/install")
-async def install_skill(req: SkillInstallRequest,
-                        user: TokenPayload | None = Depends(get_current_user)):
+async def install_skill(
+    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Install a skill"""
     result = skill_registry.install_skill(req.name)
     if result:
@@ -1337,8 +1451,9 @@ async def install_skill(req: SkillInstallRequest,
 
 
 @app.post("/api/skills/uninstall")
-async def uninstall_skill(req: SkillInstallRequest,
-                          user: TokenPayload | None = Depends(get_current_user)):
+async def uninstall_skill(
+    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Uninstall a skill"""
     result = skill_registry.uninstall_skill(req.name)
     if result:
@@ -1355,8 +1470,9 @@ class SkillExecuteRequest(BaseModel):
 
 
 @app.post("/api/skills/execute")
-async def execute_skill(req: SkillExecuteRequest,
-                        user: TokenPayload | None = Depends(get_current_user)):
+async def execute_skill(
+    req: SkillExecuteRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Execute a skill action — routes to the appropriate built-in skill"""
     skill = skill_registry.get_skill(req.skill)
     if not skill:
@@ -1368,10 +1484,11 @@ async def execute_skill(req: SkillExecuteRequest,
         result = await skill.execute(params)
         return result
     except Exception as e:
-        raise HTTPException(500, f"Skill execution error: {str(e)}")
+        raise HTTPException(500, f"Skill execution error: {str(e)}") from e
 
 
 # === GATEWAY (Bab) ===
+
 
 @app.get("/api/gateway/status")
 async def gateway_status(user: TokenPayload | None = Depends(get_current_user)):
@@ -1388,26 +1505,52 @@ async def gateway_status(user: TokenPayload | None = Depends(get_current_user)):
 async def list_channels(user: TokenPayload | None = Depends(get_current_user)):
     """List all channel adapters"""
     channels = [
-        {"id": "webchat", "type": "webchat", "name": "WebChat",
-         "status": "connected", "connected_users": len(manager.connections),
-         "messages_processed": 0},
-        {"id": "telegram", "type": "telegram", "name": "Telegram",
-         "status": "disconnected" if not os.getenv("TELEGRAM_BOT_TOKEN") else "connected",
-         "connected_users": 0, "messages_processed": 0},
-        {"id": "discord", "type": "discord", "name": "Discord",
-         "status": "disconnected" if not os.getenv("DISCORD_BOT_TOKEN") else "connected",
-         "connected_users": 0, "messages_processed": 0},
-        {"id": "slack", "type": "slack", "name": "Slack",
-         "status": "disconnected" if not os.getenv("SLACK_APP_TOKEN") else "connected",
-         "connected_users": 0, "messages_processed": 0},
-        {"id": "whatsapp", "type": "whatsapp", "name": "WhatsApp",
-         "status": "disconnected" if not os.getenv("WHATSAPP_TOKEN") else "connected",
-         "connected_users": 0, "messages_processed": 0},
+        {
+            "id": "webchat",
+            "type": "webchat",
+            "name": "WebChat",
+            "status": "connected",
+            "connected_users": len(manager.connections),
+            "messages_processed": 0,
+        },
+        {
+            "id": "telegram",
+            "type": "telegram",
+            "name": "Telegram",
+            "status": "disconnected" if not os.getenv("TELEGRAM_BOT_TOKEN") else "connected",
+            "connected_users": 0,
+            "messages_processed": 0,
+        },
+        {
+            "id": "discord",
+            "type": "discord",
+            "name": "Discord",
+            "status": "disconnected" if not os.getenv("DISCORD_BOT_TOKEN") else "connected",
+            "connected_users": 0,
+            "messages_processed": 0,
+        },
+        {
+            "id": "slack",
+            "type": "slack",
+            "name": "Slack",
+            "status": "disconnected" if not os.getenv("SLACK_APP_TOKEN") else "connected",
+            "connected_users": 0,
+            "messages_processed": 0,
+        },
+        {
+            "id": "whatsapp",
+            "type": "whatsapp",
+            "name": "WhatsApp",
+            "status": "disconnected" if not os.getenv("WHATSAPP_TOKEN") else "connected",
+            "connected_users": 0,
+            "messages_processed": 0,
+        },
     ]
     return {"channels": channels}
 
 
 # ===== NAFS 7-LEVEL ENDPOINTS =====
+
 
 @app.get("/api/nafs/tiers")
 async def get_nafs_tiers():
@@ -1424,8 +1567,15 @@ async def get_nafs_status(agent_id: str):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     agent = active_agents[agent_id]
-    names = {1: "Ammara", 2: "Lawwama", 3: "Mulhama", 4: "Mutmainna",
-             5: "Radiya", 6: "Mardiyya", 7: "Kamila"}
+    names = {
+        1: "Ammara",
+        2: "Lawwama",
+        3: "Mulhama",
+        4: "Mutmainna",
+        5: "Radiya",
+        6: "Mardiyya",
+        7: "Kamila",
+    }
     return {
         "agent_id": agent_id,
         "nafs_level": agent.nafs_level,
@@ -1440,17 +1590,21 @@ async def get_nafs_status(agent_id: str):
 
 # ===== YAQIN CERTAINTY ENDPOINTS =====
 
+
 class YaqinTagRequest(BaseModel):
     content: str
     source: str = "inference"  # inference | observation | proven
     confidence: float = 0.5
     pattern_id: str = ""
 
+
 @app.post("/api/yaqin/tag")
 async def tag_with_yaqin(req: YaqinTagRequest):
     """Tag a piece of knowledge with its Yaqin certainty level."""
     if req.source == "proven":
-        tag = yaqin_engine.tag_proven(req.content, req.pattern_id or "api", confidence=req.confidence)
+        tag = yaqin_engine.tag_proven(
+            req.content, req.pattern_id or "api", confidence=req.confidence
+        )
     elif req.source == "observation":
         tag = yaqin_engine.tag_observation(req.content, confidence=req.confidence)
     else:
@@ -1466,9 +1620,11 @@ async def yaqin_stats():
 
 # ===== COGNITIVE METHOD ENDPOINTS =====
 
+
 class CognitiveRouteRequest(BaseModel):
     query: str
     context: str = ""
+
 
 @app.post("/api/cognitive/route")
 async def route_cognitive_method(req: CognitiveRouteRequest):
@@ -1488,9 +1644,11 @@ async def route_cognitive_method(req: CognitiveRouteRequest):
 
 # ===== QALB EMOTIONAL INTELLIGENCE ENDPOINTS =====
 
+
 class QalbAnalyzeRequest(BaseModel):
     message: str
     user_id: str = ""
+
 
 @app.post("/api/qalb/analyze")
 async def analyze_emotion(req: QalbAnalyzeRequest):
@@ -1510,19 +1668,26 @@ async def emotional_trend(user_id: str):
 
 # ===== FEDERATION ENDPOINTS =====
 
+
 @app.get("/api/federation/status")
 async def federation_status():
     """Get federation network status."""
     # Register active agents with federation
     for aid, agent in active_agents.items():
-        federation.register_agent(aid, agent.name, agent.role,
-                                  list(agent.tools.keys()),
-                                  agent.nafs_level, agent.success_rate)
+        federation.register_agent(
+            aid,
+            agent.name,
+            agent.role,
+            list(agent.tools.keys()),
+            agent.nafs_level,
+            agent.success_rate,
+        )
     return federation.get_status()
 
 
 class DiscoverRequest(BaseModel):
-    capabilities: List[str] = []
+    capabilities: list[str] = []
+
 
 @app.post("/api/federation/discover")
 async def discover_agents(req: DiscoverRequest):
@@ -1532,6 +1697,7 @@ async def discover_agents(req: DiscoverRequest):
 
 
 # ===== RUH ENERGY ENDPOINTS =====
+
 
 @app.get("/api/ruh/{agent_id}")
 async def get_ruh_energy(agent_id: str):
@@ -1549,6 +1715,7 @@ async def get_ruh_energy(agent_id: str):
 
 
 # === PLUGINS (Wasilah - وسيلة) ===
+
 
 @app.get("/api/plugins")
 async def list_plugins(user: TokenPayload | None = Depends(get_current_user)):
@@ -1589,15 +1756,18 @@ async def list_plugin_tools():
     tools = []
     for plugin in plugin_manager._loaded.values():
         for name, info in plugin.get_tools().items():
-            tools.append({
-                "name": name,
-                "plugin": plugin.manifest.name,
-                "schema": info["schema"],
-            })
+            tools.append(
+                {
+                    "name": name,
+                    "plugin": plugin.manifest.name,
+                    "schema": info["schema"],
+                }
+            )
     return {"tools": tools}
 
 
 # === EVENTS (Nida' - نداء) ===
+
 
 @app.get("/api/events")
 async def list_events():
@@ -1618,6 +1788,7 @@ async def event_history(event_name: str = None, limit: int = 50):
 
 # === HOOKS (Ta'liq - تعليق) ===
 
+
 @app.get("/api/hooks")
 async def list_hooks():
     """List all standard hooks and registered handlers."""
@@ -1629,6 +1800,7 @@ async def list_hooks():
 
 # === MIDDLEWARE (Silsilah - سلسلة) ===
 
+
 @app.get("/api/middleware")
 async def list_middleware():
     """List all registered middleware pipelines."""
@@ -1636,6 +1808,7 @@ async def list_middleware():
 
 
 # === EXTENSIBILITY STATUS ===
+
 
 @app.get("/api/extensibility")
 async def extensibility_status():
@@ -1667,6 +1840,7 @@ async def extensibility_status():
 
 # === WEBSOCKET ===
 
+
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | None = None):
     # Accept WebSocket connection
@@ -1678,10 +1852,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         try:
             user = auth.verify_token(token)
             if user and user.is_expired:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Token expired. Please reconnect with a valid token.",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": "Token expired. Please reconnect with a valid token.",
+                    }
+                )
                 await websocket.close()
                 return
         except Exception:
@@ -1695,29 +1871,37 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         manager.disconnect(client_id)
         connected = False
     if not connected:
-        await websocket.send_json({
-            "type": "error",
-            "message": "Connection limit reached",
-        })
+        await websocket.send_json(
+            {
+                "type": "error",
+                "message": "Connection limit reached",
+            }
+        )
         await websocket.close()
         return
 
-    wali.audit.log("ws_connected", {
-        "client_id": client_id,
-        "authenticated": user is not None,
-        "user_id": user.user_id if user else None
-    })
+    wali.audit.log(
+        "ws_connected",
+        {
+            "client_id": client_id,
+            "authenticated": user is not None,
+            "user_id": user.user_id if user else None,
+        },
+    )
 
     provider_info = get_provider_status()
-    await manager.send(client_id, {
-        "type": "connected",
-        "message": "بسم الله - Connected to MIZAN",
-        "agents": len(active_agents),
-        "authenticated": user is not None,
-        "provider": provider_info["active"],
-        "model": provider_info["default_model"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await manager.send(
+        client_id,
+        {
+            "type": "connected",
+            "message": "بسم الله - Connected to MIZAN",
+            "agents": len(active_agents),
+            "authenticated": user is not None,
+            "provider": provider_info["active"],
+            "model": provider_info["default_model"],
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
 
     try:
         while True:
@@ -1726,10 +1910,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             # Rate limit WebSocket messages
             rl = wali.check_rate_limit(f"ws:{client_id}")
             if not rl["allowed"]:
-                await manager.send(client_id, {
-                    "type": "error",
-                    "message": f"Rate limit exceeded. Retry in {rl['retry_after']}s",
-                })
+                await manager.send(
+                    client_id,
+                    {
+                        "type": "error",
+                        "message": f"Rate limit exceeded. Retry in {rl['retry_after']}s",
+                    },
+                )
                 continue
 
             msg_type = data.get("type", "chat")
@@ -1744,10 +1931,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                 # Validate input
                 if not content or len(content) > 50000:
-                    await manager.send(client_id, {
-                        "type": "error",
-                        "message": "Invalid message content",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "error",
+                            "message": "Invalid message content",
+                        },
+                    )
                     continue
 
                 # Check for in-chat commands
@@ -1766,11 +1956,14 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     active_agents=active_agents,
                 )
                 if cmd_result.get("is_command"):
-                    await manager.send(client_id, {
-                        "type": "command_result",
-                        "session_id": session_id,
-                        "content": cmd_result["response"],
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "command_result",
+                            "session_id": session_id,
+                            "content": cmd_result["response"],
+                        },
+                    )
                     continue
 
                 agent = None
@@ -1789,34 +1982,42 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     message_id = str(uuid.uuid4())
 
                     # Send typing indicator before starting
-                    await manager.send(client_id, {
-                        "type": "typing",
-                        "agent": agent.name,
-                        "session_id": session_id,
-                        "message_id": message_id,
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "typing",
+                            "agent": agent.name,
+                            "session_id": session_id,
+                            "message_id": message_id,
+                        },
+                    )
 
                     response_text = ""
 
-                    async def ws_stream(chunk, **kwargs):
+                    async def ws_stream(chunk, _sid=session_id, _mid=message_id, **kwargs):
                         nonlocal response_text
-                        # Handle tool_use events from agent
                         chunk_type = kwargs.get("chunk_type", "text")
                         if chunk_type == "tool_use":
-                            await manager.send(client_id, {
-                                "type": "tool_use",
-                                "tool_name": kwargs.get("tool_name", "unknown"),
-                                "session_id": session_id,
-                                "message_id": message_id,
-                            })
+                            await manager.send(
+                                client_id,
+                                {
+                                    "type": "tool_use",
+                                    "tool_name": kwargs.get("tool_name", "unknown"),
+                                    "session_id": _sid,
+                                    "message_id": _mid,
+                                },
+                            )
                             return
                         response_text += chunk
-                        await manager.send(client_id, {
-                            "type": "chat_stream",
-                            "chunk": chunk,
-                            "session_id": session_id,
-                            "message_id": message_id,
-                        })
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "chat_stream",
+                                "chunk": chunk,
+                                "session_id": _sid,
+                                "message_id": _mid,
+                            },
+                        )
 
                     result = await agent.execute(
                         content,
@@ -1831,76 +2032,100 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     await memory.save_message(session_id, "assistant", str(final), agent.id)
                     session["history"].append({"role": "assistant", "content": str(final)})
 
-                    await manager.send(client_id, {
-                        "type": "chat_complete",
-                        "response": str(final),
-                        "content": str(final),
-                        "agent": agent.name,
-                        "session_id": session_id,
-                        "message_id": message_id,
-                        "success": result.get("success", True),
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "chat_complete",
+                            "response": str(final),
+                            "content": str(final),
+                            "agent": agent.name,
+                            "session_id": session_id,
+                            "message_id": message_id,
+                            "success": result.get("success", True),
+                        },
+                    )
 
             elif msg_type == "task":
                 task = data.get("task", "")
                 agent_id = data.get("agent_id")
 
                 if not task or len(task) > 50000:
-                    await manager.send(client_id, {
-                        "type": "error",
-                        "message": "Invalid task",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "error",
+                            "message": "Invalid task",
+                        },
+                    )
                     continue
 
                 agent_id = agent_id or balancer.select_agent()
                 if agent_id and agent_id in active_agents:
                     agent = active_agents[agent_id]
 
-                    await manager.send(client_id, {
-                        "type": "task_started",
-                        "task": task,
-                        "agent": agent.name,
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "task_started",
+                            "task": task,
+                            "agent": agent.name,
+                        },
+                    )
 
                     async def task_stream(chunk):
                         await manager.send(client_id, {"type": "task_stream", "chunk": chunk})
 
                     result = await agent.execute(task, stream_callback=task_stream)
 
-                    await manager.send(client_id, {
-                        "type": "task_done",
-                        "result": result,
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "task_done",
+                            "result": result,
+                        },
+                    )
 
             elif msg_type == "command":
                 cmd = data.get("command", "").strip()
                 if cmd == "/status" or cmd == "status":
                     provider_info = get_provider_status()
-                    await manager.send(client_id, {
-                        "type": "command_result",
-                        "command": cmd,
-                        "result": f"Agents: {len(active_agents)} | Provider: {provider_info['active']} | Model: {provider_info['default_model']}",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "command_result",
+                            "command": cmd,
+                            "result": f"Agents: {len(active_agents)} | Provider: {provider_info['active']} | Model: {provider_info['default_model']}",
+                        },
+                    )
                 elif cmd == "/new" or cmd == "new":
                     session_id = data.get("session_id", client_id)
                     active_sessions[session_id] = {"history": []}
-                    await manager.send(client_id, {
-                        "type": "command_result",
-                        "command": cmd,
-                        "result": "New session started",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "command_result",
+                            "command": cmd,
+                            "result": "New session started",
+                        },
+                    )
                 elif cmd == "/help" or cmd == "help":
-                    await manager.send(client_id, {
-                        "type": "command_result",
-                        "command": cmd,
-                        "result": "Commands: /status, /new, /help",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "command_result",
+                            "command": cmd,
+                            "result": "Commands: /status, /new, /help",
+                        },
+                    )
                 else:
-                    await manager.send(client_id, {
-                        "type": "command_result",
-                        "command": cmd,
-                        "result": f"Unknown command: {cmd}. Try /help",
-                    })
+                    await manager.send(
+                        client_id,
+                        {
+                            "type": "command_result",
+                            "command": cmd,
+                            "result": f"Unknown command: {cmd}. Try /help",
+                        },
+                    )
 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
@@ -1909,4 +2134,5 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

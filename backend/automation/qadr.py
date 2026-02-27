@@ -8,11 +8,12 @@ Cron-like task scheduler that executes through the full agent pipeline.
 """
 
 import asyncio
-import uuid
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Callable, Dict, List, Optional
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Optional
 
 logger = logging.getLogger("mizan.qadr")
 
@@ -20,18 +21,19 @@ logger = logging.getLogger("mizan.qadr")
 @dataclass
 class ScheduledJob:
     """A scheduled job"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
-    cron: str = ""              # Cron expression (e.g., "0 9 * * *")
-    task: str = ""              # Task description for agent
-    agent_id: Optional[str] = None
+    cron: str = ""  # Cron expression (e.g., "0 9 * * *")
+    task: str = ""  # Task description for agent
+    agent_id: str | None = None
     enabled: bool = True
-    last_run: Optional[str] = None
-    next_run: Optional[str] = None
+    last_run: str | None = None
+    next_run: str | None = None
     run_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
@@ -52,17 +54,16 @@ class QadrScheduler:
     """
 
     def __init__(self):
-        self.jobs: Dict[str, ScheduledJob] = {}
+        self.jobs: dict[str, ScheduledJob] = {}
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._executor: Optional[Callable] = None
+        self._task: asyncio.Task | None = None
+        self._executor: Callable | None = None
 
     def set_executor(self, executor: Callable):
         """Set the function to execute scheduled tasks"""
         self._executor = executor
 
-    async def add_job(self, name: str, cron: str, task: str,
-                      agent_id: str = None) -> ScheduledJob:
+    async def add_job(self, name: str, cron: str, task: str, agent_id: str = None) -> ScheduledJob:
         """Add a new scheduled job"""
         job = ScheduledJob(
             name=name,
@@ -104,7 +105,7 @@ class QadrScheduler:
         """Main scheduler loop — checks every 60 seconds"""
         while self._running:
             try:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
 
                 for job in list(self.jobs.values()):
                     if not job.enabled or not job.next_run:
@@ -131,23 +132,23 @@ class QadrScheduler:
 
             await asyncio.sleep(60)  # Check every minute
 
-    def _next_run_time(self, cron: str) -> Optional[str]:
+    def _next_run_time(self, cron: str) -> str | None:
         """Calculate next run time from cron expression"""
         try:
             from croniter import croniter
-            now = datetime.now(timezone.utc)
+
+            now = datetime.now(UTC)
             cron_iter = croniter(cron, now)
             next_time = cron_iter.get_next(datetime)
             return next_time.isoformat()
         except ImportError:
             logger.warning("[QADR] croniter not installed, using 1-hour interval")
-            return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            return (datetime.now(UTC) + timedelta(hours=1)).isoformat()
         except Exception as e:
             logger.error(f"[QADR] Invalid cron: {cron}: {e}")
             return None
 
-    def add_heartbeat(self, interval_minutes: int = 5,
-                      callback: Optional[Callable] = None):
+    def add_heartbeat(self, interval_minutes: int = 5, callback: Callable | None = None):
         """Add a heartbeat that runs alongside cron jobs.
 
         The heartbeat fires every *interval_minutes* and invokes *callback*
@@ -159,12 +160,10 @@ class QadrScheduler:
             callback=callback,
             scheduler=self,
         )
-        logger.info(
-            f"[QADR] Heartbeat attached (interval={interval_minutes}m)"
-        )
+        logger.info(f"[QADR] Heartbeat attached (interval={interval_minutes}m)")
         return self._heartbeat
 
-    def list_jobs(self) -> List[Dict]:
+    def list_jobs(self) -> list[dict]:
         """List all scheduled jobs"""
         return [job.to_dict() for job in self.jobs.values()]
 
@@ -173,13 +172,15 @@ class QadrScheduler:
 # Heartbeat Scheduler
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class HeartbeatEntry:
     """Audit record for a single heartbeat tick."""
+
     timestamp: str
     pending_jobs: int
     due_jobs_executed: int
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class HeartbeatScheduler:
@@ -198,15 +199,15 @@ class HeartbeatScheduler:
     def __init__(
         self,
         interval_minutes: int = 5,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         scheduler: Optional["QadrScheduler"] = None,
     ):
         self.interval_minutes = interval_minutes
         self._callback = callback
         self._scheduler = scheduler
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._audit_log: List[HeartbeatEntry] = []
+        self._task: asyncio.Task | None = None
+        self._audit_log: list[HeartbeatEntry] = []
 
     # -- public API ---------------------------------------------------------
 
@@ -217,9 +218,7 @@ class HeartbeatScheduler:
             return
         self._running = True
         self._task = asyncio.create_task(self._loop())
-        logger.info(
-            f"[HEARTBEAT] Started (every {self.interval_minutes}m)"
-        )
+        logger.info(f"[HEARTBEAT] Started (every {self.interval_minutes}m)")
 
     async def stop(self):
         """Stop the heartbeat loop gracefully."""
@@ -237,7 +236,7 @@ class HeartbeatScheduler:
     def is_running(self) -> bool:
         return self._running
 
-    def get_audit_log(self) -> List[Dict]:
+    def get_audit_log(self) -> list[dict]:
         """Return the heartbeat audit trail as a list of dicts."""
         return [
             {
@@ -272,10 +271,10 @@ class HeartbeatScheduler:
 
             await asyncio.sleep(interval_seconds)
 
-    async def _tick(self) -> Dict:
+    async def _tick(self) -> dict:
         """Execute a single heartbeat tick."""
-        now = datetime.now(timezone.utc)
-        errors: List[str] = []
+        now = datetime.now(UTC)
+        errors: list[str] = []
         due_executed = 0
         pending_count = 0
 
@@ -291,14 +290,10 @@ class HeartbeatScheduler:
 
                 if now >= next_run:
                     # Job is due — execute it
-                    logger.info(
-                        f"[HEARTBEAT] Executing due job: {job.name}"
-                    )
+                    logger.info(f"[HEARTBEAT] Executing due job: {job.name}")
                     if self._scheduler._executor:
                         try:
-                            await self._scheduler._executor(
-                                job.task, job.agent_id
-                            )
+                            await self._scheduler._executor(job.task, job.agent_id)
                             due_executed += 1
                         except Exception as exc:
                             msg = f"Job {job.name} failed: {exc}"

@@ -6,30 +6,26 @@ Tests for MIZAN Doctor — Self-Healing Diagnostic System
 import os
 import sys
 import tempfile
-import shutil
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from doctor import (
-    run_doctor,
-    check_python_version,
-    check_venv,
-    check_env_file,
-    check_api_keys,
-    check_secret_key,
-    check_data_directory,
-    check_dependencies,
-    check_core_imports,
-    check_masalik_memory,
-    check_database,
-    check_port,
     CheckStatus,
     DoctorReport,
+    check_core_imports,
+    check_data_directory,
+    check_database,
+    check_dependencies,
+    check_env_file,
+    check_masalik_memory,
+    check_port,
+    check_python_version,
+    check_secret_key,
     format_report_plain,
     report_to_dict,
+    run_doctor,
 )
 
 

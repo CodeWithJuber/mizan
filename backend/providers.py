@@ -18,33 +18,36 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("mizan.providers")
 
 
 # ───── Normalized Response Types ─────
 
+
 @dataclass
 class ContentBlock:
     """A single block in an LLM response (text or tool_use)."""
+
     type: str  # "text" or "tool_use"
     text: str = ""
-    id: str = ""           # tool_use block id
-    name: str = ""         # tool name
-    input: Dict = field(default_factory=dict)  # tool input params
+    id: str = ""  # tool_use block id
+    name: str = ""  # tool name
+    input: dict = field(default_factory=dict)  # tool input params
 
 
 @dataclass
 class LLMResponse:
     """Normalized response from any LLM provider."""
-    content: List[ContentBlock]
+
+    content: list[ContentBlock]
     stop_reason: str = "end_turn"  # "end_turn" or "tool_use"
     model: str = ""
-    usage: Dict = field(default_factory=dict)
+    usage: dict = field(default_factory=dict)
 
 
 # ───── Provider Interface ─────
+
 
 class BaseLLMProvider:
     """Base class for all LLM providers."""
@@ -56,8 +59,8 @@ class BaseLLMProvider:
         model: str,
         max_tokens: int,
         system: str,
-        messages: List[Dict],
-        tools: List[Dict] = None,
+        messages: list[dict],
+        tools: list[dict] = None,
     ) -> LLMResponse:
         raise NotImplementedError
 
@@ -66,13 +69,14 @@ class BaseLLMProvider:
         model: str,
         max_tokens: int,
         system: str,
-        messages: List[Dict],
+        messages: list[dict],
     ):
         """Streaming interface for chat (no tools). Returns a context manager."""
         raise NotImplementedError
 
 
 # ───── Anthropic Provider ─────
+
 
 class AnthropicProvider(BaseLLMProvider):
     """Native Anthropic Claude API with tool_use support."""
@@ -81,6 +85,7 @@ class AnthropicProvider(BaseLLMProvider):
 
     def __init__(self, api_key: str):
         import anthropic
+
         self._client = anthropic.Anthropic(api_key=api_key)
 
     def create(self, model, max_tokens, system, messages, tools=None):
@@ -100,12 +105,14 @@ class AnthropicProvider(BaseLLMProvider):
             if block.type == "text":
                 blocks.append(ContentBlock(type="text", text=block.text))
             elif block.type == "tool_use":
-                blocks.append(ContentBlock(
-                    type="tool_use",
-                    id=block.id,
-                    name=block.name,
-                    input=block.input,
-                ))
+                blocks.append(
+                    ContentBlock(
+                        type="tool_use",
+                        id=block.id,
+                        name=block.name,
+                        input=block.input,
+                    )
+                )
 
         return LLMResponse(
             content=blocks,
@@ -125,15 +132,22 @@ class AnthropicProvider(BaseLLMProvider):
 
 # ───── OpenAI-Compatible Provider (OpenAI + OpenRouter) ─────
 
+
 class OpenAICompatibleProvider(BaseLLMProvider):
     """
     OpenAI-compatible API provider.
     Works with OpenAI, OpenRouter, and any OpenAI-compatible endpoint.
     """
 
-    def __init__(self, api_key: str, base_url: str = None,
-                 default_headers: Dict = None, provider_name: str = "openai"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = None,
+        default_headers: dict = None,
+        provider_name: str = "openai",
+    ):
         from openai import OpenAI
+
         kwargs = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
@@ -142,21 +156,25 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self._client = OpenAI(**kwargs)
         self.provider_name = provider_name
 
-    def _convert_tools_to_openai(self, tools: List[Dict]) -> List[Dict]:
+    def _convert_tools_to_openai(self, tools: list[dict]) -> list[dict]:
         """Convert Anthropic tool schemas to OpenAI function calling format."""
         openai_tools = []
         for tool in tools:
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool.get("description", ""),
-                    "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
-                },
-            })
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get(
+                            "input_schema", {"type": "object", "properties": {}}
+                        ),
+                    },
+                }
+            )
         return openai_tools
 
-    def _convert_messages_to_openai(self, system: str, messages: List[Dict]) -> List[Dict]:
+    def _convert_messages_to_openai(self, system: str, messages: list[dict]) -> list[dict]:
         """Convert Anthropic-style messages to OpenAI format."""
         openai_messages = [{"role": "system", "content": system}]
 
@@ -171,11 +189,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 for block in content:
                     if isinstance(block, dict):
                         if block.get("type") == "tool_result":
-                            openai_messages.append({
-                                "role": "tool",
-                                "tool_call_id": block.get("tool_use_id", ""),
-                                "content": block.get("content", ""),
-                            })
+                            openai_messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": block.get("tool_use_id", ""),
+                                    "content": block.get("content", ""),
+                                }
+                            )
                         elif block.get("type") == "text":
                             openai_messages.append({"role": role, "content": block.get("text", "")})
                     else:
@@ -184,17 +204,21 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             if block.type == "text":
                                 openai_messages.append({"role": role, "content": block.text})
                             elif block.type == "tool_use":
-                                openai_messages.append({
-                                    "role": "assistant",
-                                    "tool_calls": [{
-                                        "id": block.id,
-                                        "type": "function",
-                                        "function": {
-                                            "name": block.name,
-                                            "arguments": json.dumps(block.input),
-                                        },
-                                    }],
-                                })
+                                openai_messages.append(
+                                    {
+                                        "role": "assistant",
+                                        "tool_calls": [
+                                            {
+                                                "id": block.id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": block.name,
+                                                    "arguments": json.dumps(block.input),
+                                                },
+                                            }
+                                        ],
+                                    }
+                                )
             else:
                 openai_messages.append({"role": role, "content": str(content)})
 
@@ -228,12 +252,14 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
                     args = {}
-                blocks.append(ContentBlock(
-                    type="tool_use",
-                    id=tc.id,
-                    name=tc.function.name,
-                    input=args,
-                ))
+                blocks.append(
+                    ContentBlock(
+                        type="tool_use",
+                        id=tc.id,
+                        name=tc.function.name,
+                        input=args,
+                    )
+                )
 
         # Map finish_reason
         stop_reason = "end_turn"
@@ -289,6 +315,7 @@ class _OpenAIStreamWrapper:
 
 # ───── Ollama Provider ─────
 
+
 class OllamaProvider(BaseLLMProvider):
     """Local Ollama API provider."""
 
@@ -296,6 +323,7 @@ class OllamaProvider(BaseLLMProvider):
 
     def __init__(self, base_url: str = "http://localhost:11434"):
         from openai import OpenAI
+
         # Ollama exposes an OpenAI-compatible API
         self._client = OpenAI(
             api_key="ollama",
@@ -320,10 +348,11 @@ class OllamaProvider(BaseLLMProvider):
 
 # ───── Provider Factory ─────
 
+
 def create_provider(
     provider: str = None,
     model: str = None,
-) -> Optional[BaseLLMProvider]:
+) -> BaseLLMProvider | None:
     """
     Create the appropriate LLM provider based on config.
 
@@ -374,7 +403,9 @@ def create_provider(
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
             default_headers={
-                "HTTP-Referer": os.getenv("OPENROUTER_REFERER", "https://github.com/CodeWithJuber/mizan"),
+                "HTTP-Referer": os.getenv(
+                    "OPENROUTER_REFERER", "https://github.com/CodeWithJuber/mizan"
+                ),
                 "X-Title": "MIZAN",
             },
             provider_name="openrouter",
@@ -417,8 +448,18 @@ def get_default_model(provider_name: str) -> str:
 PROVIDER_MODELS = {
     "anthropic": [
         {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "context": 200000, "vision": True},
-        {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "context": 200000, "vision": True},
-        {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "context": 200000, "vision": True},
+        {
+            "id": "claude-sonnet-4-20250514",
+            "name": "Claude Sonnet 4",
+            "context": 200000,
+            "vision": True,
+        },
+        {
+            "id": "claude-haiku-4-5-20251001",
+            "name": "Claude Haiku 4.5",
+            "context": 200000,
+            "vision": True,
+        },
     ],
     "openai": [
         {"id": "gpt-4o", "name": "GPT-4o", "context": 128000, "vision": True},
@@ -430,7 +471,7 @@ PROVIDER_MODELS = {
 }
 
 
-def get_provider_status() -> Dict:
+def get_provider_status() -> dict:
     """
     Get status of all configured providers.
     Returns which providers have API keys set and are available.
@@ -439,44 +480,52 @@ def get_provider_status() -> Dict:
 
     # Anthropic
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    providers.append({
-        "name": "anthropic",
-        "display": "Anthropic (Claude)",
-        "configured": bool(anthropic_key and anthropic_key != "sk-ant-your-key-here"),
-        "models": PROVIDER_MODELS["anthropic"],
-        "default_model": "claude-sonnet-4-20250514",
-    })
+    providers.append(
+        {
+            "name": "anthropic",
+            "display": "Anthropic (Claude)",
+            "configured": bool(anthropic_key and anthropic_key != "sk-ant-your-key-here"),
+            "models": PROVIDER_MODELS["anthropic"],
+            "default_model": "claude-sonnet-4-20250514",
+        }
+    )
 
     # OpenRouter
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
-    providers.append({
-        "name": "openrouter",
-        "display": "OpenRouter (300+ models)",
-        "configured": bool(openrouter_key),
-        "models": PROVIDER_MODELS["openrouter"],
-        "default_model": "anthropic/claude-sonnet-4",
-    })
+    providers.append(
+        {
+            "name": "openrouter",
+            "display": "OpenRouter (300+ models)",
+            "configured": bool(openrouter_key),
+            "models": PROVIDER_MODELS["openrouter"],
+            "default_model": "anthropic/claude-sonnet-4",
+        }
+    )
 
     # OpenAI
     openai_key = os.getenv("OPENAI_API_KEY", "")
-    providers.append({
-        "name": "openai",
-        "display": "OpenAI",
-        "configured": bool(openai_key and openai_key != "sk-your-openai-key-here"),
-        "models": PROVIDER_MODELS["openai"],
-        "default_model": "gpt-4o",
-    })
+    providers.append(
+        {
+            "name": "openai",
+            "display": "OpenAI",
+            "configured": bool(openai_key and openai_key != "sk-your-openai-key-here"),
+            "models": PROVIDER_MODELS["openai"],
+            "default_model": "gpt-4o",
+        }
+    )
 
     # Ollama
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    providers.append({
-        "name": "ollama",
-        "display": "Ollama (Local)",
-        "configured": True,  # Always "configured" — just may not be running
-        "base_url": ollama_url,
-        "models": PROVIDER_MODELS["ollama"],
-        "default_model": "llama3.2",
-    })
+    providers.append(
+        {
+            "name": "ollama",
+            "display": "Ollama (Local)",
+            "configured": True,  # Always "configured" — just may not be running
+            "base_url": ollama_url,
+            "models": PROVIDER_MODELS["ollama"],
+            "default_model": "llama3.2",
+        }
+    )
 
     # Determine active provider
     active = os.getenv("LLM_PROVIDER", "")
@@ -493,7 +542,7 @@ def get_provider_status() -> Dict:
     }
 
 
-async def fetch_openrouter_models(limit: int = 50) -> List[Dict]:
+async def fetch_openrouter_models(limit: int = 50) -> list[dict]:
     """
     Fetch available models from OpenRouter's public API.
     Returns a curated list of popular models.
@@ -512,15 +561,17 @@ async def fetch_openrouter_models(limit: int = 50) -> List[Dict]:
             # Sort by popularity and return curated list
             models = []
             for m in models_raw[:limit]:
-                models.append({
-                    "id": m.get("id", ""),
-                    "name": m.get("name", m.get("id", "")),
-                    "context": m.get("context_length", 0),
-                    "pricing": {
-                        "prompt": m.get("pricing", {}).get("prompt", "0"),
-                        "completion": m.get("pricing", {}).get("completion", "0"),
-                    },
-                })
+                models.append(
+                    {
+                        "id": m.get("id", ""),
+                        "name": m.get("name", m.get("id", "")),
+                        "context": m.get("context_length", 0),
+                        "pricing": {
+                            "prompt": m.get("pricing", {}).get("prompt", "0"),
+                            "completion": m.get("pricing", {}).get("completion", "0"),
+                        },
+                    }
+                )
 
             return models
     except Exception as e:
@@ -528,7 +579,7 @@ async def fetch_openrouter_models(limit: int = 50) -> List[Dict]:
         return []
 
 
-async def fetch_ollama_models() -> List[Dict]:
+async def fetch_ollama_models() -> list[dict]:
     """Fetch locally available Ollama models."""
     import httpx
 
@@ -542,18 +593,20 @@ async def fetch_ollama_models() -> List[Dict]:
             data = resp.json()
             models = []
             for m in data.get("models", []):
-                models.append({
-                    "id": m.get("name", ""),
-                    "name": m.get("name", ""),
-                    "size": m.get("size", 0),
-                    "context": 0,
-                })
+                models.append(
+                    {
+                        "id": m.get("name", ""),
+                        "name": m.get("name", ""),
+                        "size": m.get("size", 0),
+                        "context": 0,
+                    }
+                )
             return models
     except Exception:
         return []
 
 
-async def check_provider_health(provider_name: str) -> Dict:
+async def check_provider_health(provider_name: str) -> dict:
     """
     Quick health check for a provider — verifies the API key works
     by making a minimal request.
