@@ -387,8 +387,16 @@ class BaseAgent:
                 ):
                     yield chunk
             except Exception as e:
+                err_str = str(e)
                 logger.error(f"[FIKR] Thinking error for {self.name}: {e}")
-                yield f"[Thinking error: {str(e)}]"
+                if "Connection" in err_str or "connect" in err_str.lower():
+                    yield (
+                        f"Could not reach the AI provider. "
+                        f"Please check your API key and network connection in .env "
+                        f"(ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY)."
+                    )
+                else:
+                    yield f"[Error: {err_str}]"
         else:
             yield await self._structured_reasoning(task, context)
 
