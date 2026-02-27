@@ -6,20 +6,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { PageProps, ScanReport, ScanFinding, ScanHistoryItem, ScanSeverity } from "../types";
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#dc2626",
-  high: "#ef4444",
-  medium: "#f59e0b",
-  low: "#3b82f6",
-  info: "#6b7280",
+const SEVERITY_STYLES: Record<string, { text: string; bg: string; border: string }> = {
+  critical: { text: "text-red-600 dark:text-red-400", bg: "bg-red-500/15", border: "border-red-500/30" },
+  high: { text: "text-red-500 dark:text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
+  medium: { text: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
+  low: { text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+  info: { text: "text-gray-500 dark:text-gray-400", bg: "bg-gray-500/10", border: "border-gray-500/20" },
 };
 
-const SEVERITY_BG: Record<string, string> = {
-  critical: "rgba(220,38,38,0.15)",
-  high: "rgba(239,68,68,0.15)",
-  medium: "rgba(245,158,11,0.15)",
-  low: "rgba(59,130,246,0.15)",
-  info: "rgba(107,114,128,0.15)",
+const SEVERITY_BORDER_LEFT: Record<string, string> = {
+  critical: "border-l-red-600",
+  high: "border-l-red-500",
+  medium: "border-l-amber-500",
+  low: "border-l-blue-500",
+  info: "border-l-gray-400",
 };
 
 export default function ScannerPage({ api, addTerminalLine }: PageProps) {
@@ -61,11 +61,15 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
   };
 
   return (
-    <>
-      <div className="panel-header">
-        <div className="panel-title">Security Scanner · رَقِيب (Raqib)</div>
+    <div className="page-wrapper">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Security Scanner</h2>
+          <p className="page-description">رَقِيب (Raqib) — Vulnerability detection</p>
+        </div>
       </div>
-      <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+
+      <div className="quran-quote">
         "Not a word does he utter but there is a watcher (Raqib) ready" — Quran 50:18
       </div>
 
@@ -82,9 +86,9 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="page-body">
         {activeTab === "scan" && (
-          <div style={{ maxWidth: 600 }}>
+          <div className="max-w-xl space-y-4">
             <div className="form-group">
               <label className="form-label">Target Path</label>
               <input className="form-input" value={scanPath}
@@ -94,7 +98,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
 
             <div className="form-group">
               <label className="form-label">Scan Type</label>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: "full", label: "Full Scan", desc: "All checks combined" },
                   { id: "secrets", label: "Secret Scan", desc: "Leaked credentials" },
@@ -104,17 +108,20 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                   { id: "docker", label: "Docker Scan", desc: "Dockerfile issues" },
                 ].map(st => (
                   <button key={st.id}
-                    className={`btn ${scanType === st.id ? "primary" : ""}`}
-                    style={{ flex: "1 0 45%", justifyContent: "center", flexDirection: "column", alignItems: "center", padding: "10px 12px" }}
+                    className={`flex flex-col items-center p-2.5 rounded-lg border text-center transition-colors cursor-pointer
+                      ${scanType === st.id
+                        ? "bg-mizan-gold/10 border-mizan-gold/30 text-mizan-gold"
+                        : "bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700"
+                      }`}
                     onClick={() => setScanType(st.id)}>
-                    <span style={{ fontSize: 11 }}>{st.label}</span>
-                    <span style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>{st.desc}</span>
+                    <span className="text-xs font-medium">{st.label}</span>
+                    <span className="text-micro text-gray-400 dark:text-gray-500 mt-0.5">{st.desc}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <button className="btn primary" style={{ width: "100%", justifyContent: "center", padding: "12px", marginTop: 12 }}
+            <button className="btn-gold w-full py-3 mt-3"
               onClick={runScan} disabled={scanning || !scanPath}>
               {scanning ? "Scanning..." : "Start Raqib Scan"}
             </button>
@@ -123,112 +130,91 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "results" && report && (
           <>
-            {/* Summary */}
             {report.summary && (
-              <div style={{ marginBottom: 16, padding: 16,
-                background: "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-                border: "1px solid var(--border)", borderRadius: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: "var(--gold)" }}>رقيب</div>
-                  <div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--text-primary)" }}>
+              <div className="card">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="text-3xl font-arabic text-mizan-gold">رقيب</div>
+                  <div className="flex-1">
+                    <div className="text-base font-semibold text-gray-900 dark:text-gray-100">
                       Scan Report
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                    <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
                       {report.scan_type} · {report.target}
                     </div>
                   </div>
-                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 24,
-                      color: (report.summary.risk_score || 0) > 50 ? "var(--ruby)" :
-                             (report.summary.risk_score || 0) > 20 ? "var(--amber)" : "var(--emerald)" }}>
+                  <div className="text-right">
+                    <div className={`text-2xl font-mono font-bold
+                      ${(report.summary.risk_score || 0) > 50 ? "text-red-500" :
+                        (report.summary.risk_score || 0) > 20 ? "text-amber-500" : "text-emerald-500"}`}>
                       {(report.summary.risk_score || 0).toFixed(0)}
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>RISK SCORE</div>
+                    <div className="text-micro text-gray-400 dark:text-gray-500 uppercase">Risk Score</div>
                   </div>
                 </div>
 
-                {/* Verdict */}
                 {report.summary.verdict && (
-                  <div style={{ padding: "8px 12px", background: "rgba(201,162,39,0.05)",
-                    border: "1px solid rgba(201,162,39,0.15)", borderRadius: 6,
-                    fontSize: 12, color: "var(--gold)", fontStyle: "italic", marginBottom: 12 }}>
+                  <div className="bg-mizan-gold/5 border border-mizan-gold/15 rounded-md px-3 py-2 text-xs text-mizan-gold italic mb-3">
                     {report.summary.verdict}
                   </div>
                 )}
 
-                {/* Severity breakdown */}
-                <div style={{ display: "flex", gap: 8 }}>
-                  {Object.entries(report.summary.by_severity || {}).map(([sev, count]) => (
-                    <div key={sev} style={{ flex: 1, textAlign: "center", padding: "8px",
-                      background: count > 0 ? SEVERITY_BG[sev] : "rgba(6,12,16,0.5)",
-                      borderRadius: 6, border: `1px solid ${count > 0 ? SEVERITY_COLORS[sev] + "40" : "rgba(30,58,85,0.3)"}` }}>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 18,
-                        color: count > 0 ? SEVERITY_COLORS[sev] : "var(--text-muted)" }}>{count}</div>
-                      <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em",
-                        color: "var(--text-muted)" }}>{sev}</div>
-                    </div>
-                  ))}
+                <div className="flex gap-2">
+                  {Object.entries(report.summary.by_severity || {}).map(([sev, count]) => {
+                    const style = SEVERITY_STYLES[sev] || SEVERITY_STYLES.info;
+                    return (
+                      <div key={sev} className={`flex-1 text-center p-2 rounded-md border ${count > 0 ? `${style.bg} ${style.border}` : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700/50"}`}>
+                        <div className={`text-lg font-mono ${count > 0 ? style.text : "text-gray-400 dark:text-gray-500"}`}>{count}</div>
+                        <div className="text-micro uppercase tracking-wider text-gray-400 dark:text-gray-500">{sev}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Findings */}
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.2em",
-              color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>
+            <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
               Findings ({(report.findings || []).length})
             </div>
 
-            {(report.findings || []).map((finding, i) => (
-              <div key={finding.id || i} className="memory-item" style={{
-                borderLeft: `3px solid ${SEVERITY_COLORS[finding.severity] || "var(--text-muted)"}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: SEVERITY_BG[finding.severity],
-                    color: SEVERITY_COLORS[finding.severity],
-                    border: `1px solid ${SEVERITY_COLORS[finding.severity]}30`,
-                    textTransform: "uppercase" }}>
-                    {finding.severity}
-                  </span>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: "rgba(30,58,85,0.4)", color: "var(--text-muted)",
-                    border: "1px solid var(--border)" }}>
-                    {finding.category}
-                  </span>
-                  {finding.cwe_id && (
-                    <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-                      {finding.cwe_id}
+            {(report.findings || []).map((finding, i) => {
+              const style = SEVERITY_STYLES[finding.severity] || SEVERITY_STYLES.info;
+              const borderL = SEVERITY_BORDER_LEFT[finding.severity] || "border-l-gray-400";
+              return (
+                <div key={finding.id || i} className={`memory-item border-l-4 ${borderL}`}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className={`text-micro font-mono px-1.5 py-0.5 rounded ${style.bg} ${style.text} border ${style.border} uppercase`}>
+                      {finding.severity}
                     </span>
+                    <span className="tool-tag">{finding.category}</span>
+                    {finding.cwe_id && (
+                      <span className="text-micro font-mono text-gray-400 dark:text-gray-500">{finding.cwe_id}</span>
+                    )}
+                  </div>
+
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+                    {finding.title}
+                  </div>
+
+                  {finding.file_path && (
+                    <div className="text-2xs font-mono text-blue-500 dark:text-blue-400 mb-1">
+                      {finding.file_path}{finding.line_number ? `:${finding.line_number}` : ""}
+                    </div>
+                  )}
+
+                  {finding.code_snippet && (
+                    <pre className="detail-panel font-mono text-2xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap my-1">
+                      {finding.code_snippet}
+                    </pre>
+                  )}
+
+                  {finding.recommendation && (
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 px-2 py-1 bg-emerald-500/5 border border-emerald-500/10 rounded">
+                      Fix: {finding.recommendation}
+                    </div>
                   )}
                 </div>
-
-                <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500, marginBottom: 4 }}>
-                  {finding.title}
-                </div>
-
-                {finding.file_path && (
-                  <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--sapphire)", marginBottom: 4 }}>
-                    {finding.file_path}{finding.line_number ? `:${finding.line_number}` : ""}
-                  </div>
-                )}
-
-                {finding.code_snippet && (
-                  <pre style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-secondary)",
-                    background: "rgba(3,6,8,0.5)", padding: "4px 8px", borderRadius: 4,
-                    whiteSpace: "pre-wrap", margin: "4px 0" }}>
-                    {finding.code_snippet}
-                  </pre>
-                )}
-
-                {finding.recommendation && (
-                  <div style={{ fontSize: 11, color: "var(--emerald)", marginTop: 4,
-                    padding: "4px 8px", background: "rgba(16,185,129,0.05)", borderRadius: 4,
-                    border: "1px solid rgba(16,185,129,0.1)" }}>
-                    Fix: {finding.recommendation}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {(report.findings || []).length === 0 && (
               <div className="empty-state">
@@ -258,16 +244,16 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
             )}
             {history.map(scan => (
               <div key={scan.id} className="memory-item">
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="flex items-center gap-2">
                   <span className="memory-type-badge type-semantic">{scan.scan_type}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-primary)" }}>{scan.target}</span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                  <span className="text-xs text-gray-900 dark:text-gray-100">{scan.target}</span>
+                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500">
                     {scan.finding_count} findings
                   </span>
                   {scan.summary?.risk_score != null && (
-                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)",
-                      color: scan.summary.risk_score > 50 ? "var(--ruby)" :
-                             scan.summary.risk_score > 20 ? "var(--amber)" : "var(--emerald)" }}>
+                    <span className={`text-2xs font-mono
+                      ${scan.summary.risk_score > 50 ? "text-red-500" :
+                        scan.summary.risk_score > 20 ? "text-amber-500" : "text-emerald-500"}`}>
                       Risk: {scan.summary.risk_score.toFixed(0)}
                     </span>
                   )}
@@ -277,6 +263,6 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }

@@ -111,11 +111,13 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="page-wrapper">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
-        <h2 className="page-title">Security</h2>
-        <p className="page-description">Authentication, access control, and security settings</p>
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Security</h2>
+          <p className="page-description">Authentication, access control, and security settings</p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -136,7 +138,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="page-body">
         {/* Localhost Banner */}
         {local && (
           <div className="bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 rounded-lg p-4 flex items-start gap-3">

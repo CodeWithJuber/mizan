@@ -7,14 +7,14 @@
 import { useState, useEffect, useCallback } from "react";
 import type { PageProps, MajlisAgent, MajlisNafsLevel, MajlisAgentStatus, Halaqah, KnowledgeItem } from "../types";
 
-const NAFS_COLORS: Record<string, string> = {
-  ammara: "#ef4444",
-  lawwama: "#f97316",
-  mulhama: "#f59e0b",
-  mutmainna: "#84cc16",
-  radiya: "#10b981",
-  mardiyya: "#06b6d4",
-  kamila: "#a78bfa",
+const NAFS_STYLES: Record<string, { text: string; bg: string; border: string; borderL: string }> = {
+  ammara:    { text: "text-red-500",     bg: "bg-red-500/10",     border: "border-red-500/30",     borderL: "border-l-red-500" },
+  lawwama:   { text: "text-orange-500",  bg: "bg-orange-500/10",  border: "border-orange-500/30",  borderL: "border-l-orange-500" },
+  mulhama:   { text: "text-amber-500",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   borderL: "border-l-amber-500" },
+  mutmainna: { text: "text-lime-500",    bg: "bg-lime-500/10",    border: "border-lime-500/30",    borderL: "border-l-lime-500" },
+  radiya:    { text: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30", borderL: "border-l-emerald-500" },
+  mardiyya:  { text: "text-cyan-500",    bg: "bg-cyan-500/10",    border: "border-cyan-500/30",    borderL: "border-l-cyan-500" },
+  kamila:    { text: "text-violet-400",  bg: "bg-violet-400/10",  border: "border-violet-400/30",  borderL: "border-l-violet-400" },
 };
 
 const NAFS_LABELS: Record<string, string> = {
@@ -27,11 +27,11 @@ const NAFS_LABELS: Record<string, string> = {
   kamila: "كاملة · Kamila",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "#10b981",
-  idle: "#f59e0b",
-  busy: "#ef4444",
-  offline: "#6b7280",
+const STATUS_DOT: Record<string, string> = {
+  active: "status-dot-active",
+  idle: "status-dot-idle",
+  busy: "status-dot-busy",
+  offline: "status-dot-offline",
 };
 
 interface LeaderboardAgent {
@@ -142,11 +142,15 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
   };
 
   return (
-    <>
-      <div className="panel-header">
-        <div className="panel-title">Agent Majlis · مَجْلِس</div>
+    <div className="page-wrapper">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Agent Majlis</h2>
+          <p className="page-description">مَجْلِس — Agent collaboration</p>
+        </div>
       </div>
-      <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+
+      <div className="quran-quote">
         "And cooperate in righteousness and piety" — Quran 5:2
       </div>
 
@@ -164,23 +168,20 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="page-body">
 
         {activeTab === "agents" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button className="btn primary" onClick={() => setShowRegister(true)}>
+            <div className="flex gap-2 mb-3">
+              <button className="btn-gold btn-sm" onClick={() => setShowRegister(true)}>
                 Register Agent
               </button>
-              <button className="btn" onClick={loadAgents}>Refresh</button>
+              <button className="btn-secondary btn-sm" onClick={loadAgents}>Refresh</button>
             </div>
 
             {showRegister && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
-                  Register New Agent · تسجيل
-                </div>
+              <div className="form-panel">
+                <div className="form-panel-title">Register New Agent · تسجيل</div>
                 <div className="form-group">
                   <label className="form-label">Agent Name</label>
                   <input className="form-input" value={regForm.name}
@@ -199,10 +200,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                     onChange={e => setRegForm({ ...regForm, capabilities: e.target.value })}
                     placeholder="coding, research, analysis" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={registerAgent}
+                <div className="flex gap-2">
+                  <button className="btn-gold btn-sm" onClick={registerAgent}
                     disabled={!regForm.name}>Register</button>
-                  <button className="btn" onClick={() => setShowRegister(false)}>Cancel</button>
+                  <button className="btn-secondary btn-sm" onClick={() => setShowRegister(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -214,97 +215,87 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 <div className="empty-sub">Register agents to begin collaboration</div>
               </div>
             )}
-            {agents.map(agent => (
-              <div key={agent.agent_id} className="memory-item"
-                style={{ borderLeft: `3px solid ${NAFS_COLORS[agent.nafs_level] || "#6b7280"}`,
-                  cursor: "pointer" }}
-                onClick={() => setSelectedAgent(selectedAgent?.agent_id === agent.agent_id ? null : agent)}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%",
-                    background: STATUS_COLORS[agent.status] || STATUS_COLORS.offline }} />
-                  <div style={{ fontFamily: "Georgia, serif", fontSize: 16, color: "var(--gold)" }}>
-                    {agent.arabic_name || "عميل"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
-                    {agent.name}
-                  </div>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: `${NAFS_COLORS[agent.nafs_level]}20`,
-                    color: NAFS_COLORS[agent.nafs_level],
-                    border: `1px solid ${NAFS_COLORS[agent.nafs_level]}30` }}>
-                    {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
-                  </span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--amber)" }}>
-                    ★ {(agent.reputation_score || 0).toFixed(1)}
-                  </span>
-                </div>
 
-                {agent.capabilities && (
-                  <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
-                    {agent.capabilities.map((cap, i) => (
-                      <span key={i} style={{ fontSize: 9, fontFamily: "var(--font-mono)",
-                        padding: "1px 5px", borderRadius: 3,
-                        background: "rgba(30,58,85,0.4)", color: "var(--text-muted)",
-                        border: "1px solid var(--border)" }}>
-                        {cap}
-                      </span>
-                    ))}
-                  </div>
-                )}
+            {agents.map(agent => {
+              const nafs = NAFS_STYLES[agent.nafs_level] || { text: "text-gray-500", bg: "bg-gray-500/10", border: "border-gray-500/30", borderL: "border-l-gray-400" };
+              const statusDot = STATUS_DOT[agent.status] || "status-dot-offline";
 
-                {selectedAgent?.agent_id === agent.agent_id && (
-                  <div style={{ marginTop: 10, padding: 10, background: "rgba(3,6,8,0.5)",
-                    borderRadius: 6, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: 6 }}>
-                      ID: {agent.agent_id}
-                    </div>
-                    {agent.verified && (
-                      <div style={{ fontSize: 10, color: "var(--emerald)", marginBottom: 6 }}>
-                        ✓ Verified Agent
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      <input className="form-input" style={{ flex: 1, fontSize: 11 }}
-                        value={messageText}
-                        onChange={e => setMessageText(e.target.value)}
-                        placeholder="Send a message..."
-                        onKeyDown={e => e.key === "Enter" && sendMessage(agent.agent_id)} />
-                      <button className="btn" style={{ fontSize: 10 }}
-                        onClick={() => sendMessage(agent.agent_id)}>Send</button>
-                    </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 4 }}>Rate:</span>
-                      {[1, 2, 3, 4, 5].map(s => (
-                        <button key={s} className="btn" style={{ padding: "2px 6px", fontSize: 10,
-                          minWidth: 0 }}
-                          onClick={e => { e.stopPropagation(); rateAgent(agent.agent_id, s); }}>
-                          {"★".repeat(s)}
-                        </button>
+              return (
+                <div key={agent.agent_id}
+                  className={`memory-item border-l-4 ${nafs.borderL} cursor-pointer`}
+                  onClick={() => setSelectedAgent(selectedAgent?.agent_id === agent.agent_id ? null : agent)}>
+                  <div className="flex items-center gap-2">
+                    <div className={`status-dot ${statusDot}`} />
+                    <span className="font-arabic text-lg text-mizan-gold">
+                      {agent.arabic_name || "عميل"}
+                    </span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {agent.name}
+                    </span>
+                    <span className={`text-micro font-mono px-1.5 py-0.5 rounded ${nafs.bg} ${nafs.text} border ${nafs.border}`}>
+                      {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
+                    </span>
+                    <span className="ml-auto text-2xs font-mono text-amber-500">
+                      ★ {(agent.reputation_score || 0).toFixed(1)}
+                    </span>
+                  </div>
+
+                  {agent.capabilities && (
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {agent.capabilities.map((cap, i) => (
+                        <span key={i} className="tool-tag">{cap}</span>
                       ))}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+
+                  {selectedAgent?.agent_id === agent.agent_id && (
+                    <div className="detail-panel mt-2.5" onClick={e => e.stopPropagation()}>
+                      <div className="text-2xs font-mono text-gray-400 dark:text-gray-500 mb-1.5">
+                        ID: {agent.agent_id}
+                      </div>
+                      {agent.verified && (
+                        <div className="text-2xs text-emerald-500 mb-1.5">
+                          ✓ Verified Agent
+                        </div>
+                      )}
+                      <div className="flex gap-2 mb-2">
+                        <input className="form-input flex-1 text-xs"
+                          value={messageText}
+                          onChange={e => setMessageText(e.target.value)}
+                          placeholder="Send a message..."
+                          onKeyDown={e => e.key === "Enter" && sendMessage(agent.agent_id)} />
+                        <button className="btn-secondary btn-sm"
+                          onClick={() => sendMessage(agent.agent_id)}>Send</button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-2xs text-gray-400 dark:text-gray-500 mr-1">Rate:</span>
+                        {[1, 2, 3, 4, 5].map(s => (
+                          <button key={s} className="btn-secondary btn-sm text-micro px-1.5 py-0.5"
+                            onClick={() => rateAgent(agent.agent_id, s)}>
+                            {"★".repeat(s)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
 
         {activeTab === "halaqahs" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button className="btn primary" onClick={() => setShowHalaqah(true)}>
+            <div className="flex gap-2 mb-3">
+              <button className="btn-gold btn-sm" onClick={() => setShowHalaqah(true)}>
                 Create Halaqah
               </button>
-              <button className="btn" onClick={loadHalaqahs}>Refresh</button>
+              <button className="btn-secondary btn-sm" onClick={loadHalaqahs}>Refresh</button>
             </div>
 
             {showHalaqah && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
-                  Create Study Circle · حلقة
-                </div>
+              <div className="form-panel">
+                <div className="form-panel-title">Create Study Circle · حلقة</div>
                 <div className="form-group">
                   <label className="form-label">Name</label>
                   <input className="form-input" value={halaqahForm.name}
@@ -323,10 +314,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                     onChange={e => setHalaqahForm({ ...halaqahForm, description: e.target.value })}
                     placeholder="What is this circle about?" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={createHalaqah}
+                <div className="flex gap-2">
+                  <button className="btn-gold btn-sm" onClick={createHalaqah}
                     disabled={!halaqahForm.name || !halaqahForm.topic}>Create</button>
-                  <button className="btn" onClick={() => setShowHalaqah(false)}>Cancel</button>
+                  <button className="btn-secondary btn-sm" onClick={() => setShowHalaqah(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -338,24 +329,24 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 <div className="empty-sub">Create a Halaqah for agents to collaborate</div>
               </div>
             )}
+
             {halaqahs.map(h => (
               <div key={h.halaqah_id} className="memory-item">
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontFamily: "Georgia, serif", fontSize: 14, color: "var(--gold)" }}>حلقة</span>
-                  <span style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>{h.name}</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-arabic text-base text-mizan-gold">حلقة</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{h.name}</span>
                   <span className="memory-type-badge type-semantic">{h.topic}</span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)" }}>
+                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500">
                     {h.member_count || 0} members
                   </span>
                 </div>
                 {h.description && (
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {h.description}
                   </div>
                 )}
-                <div style={{ marginTop: 6 }}>
-                  <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+                <div className="mt-2">
+                  <button className="btn-secondary btn-sm"
                     onClick={async () => {
                       await exec("join_halaqah", { halaqah_id: h.halaqah_id });
                       addTerminalLine?.(`Joined halaqah: ${h.name}`, "gold");
@@ -371,24 +362,21 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "knowledge" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <input className="form-input" style={{ flex: 1 }}
+            <div className="flex gap-2 mb-3">
+              <input className="form-input flex-1"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search shared knowledge..."
                 onKeyDown={e => e.key === "Enter" && searchKnowledgeBase()} />
-              <button className="btn" onClick={searchKnowledgeBase}>Search</button>
-              <button className="btn primary" onClick={() => setShowShare(true)}>
+              <button className="btn-secondary btn-sm" onClick={searchKnowledgeBase}>Search</button>
+              <button className="btn-gold btn-sm" onClick={() => setShowShare(true)}>
                 Share Knowledge
               </button>
             </div>
 
             {showShare && (
-              <div style={{ marginBottom: 16, padding: 16, background: "rgba(15,32,48,0.9)",
-                border: "1px solid var(--gold)", borderRadius: 10 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--gold)", marginBottom: 12 }}>
-                  Share Knowledge · علم
-                </div>
+              <div className="form-panel">
+                <div className="form-panel-title">Share Knowledge · علم</div>
                 <div className="form-group">
                   <label className="form-label">Topic</label>
                   <input className="form-input" value={shareForm.topic}
@@ -397,7 +385,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Knowledge Content</label>
-                  <textarea className="form-input" rows={4} value={shareForm.content}
+                  <textarea className="form-input min-h-[80px] resize-y" value={shareForm.content}
                     onChange={e => setShareForm({ ...shareForm, content: e.target.value })}
                     placeholder="Share what you've learned..." />
                 </div>
@@ -407,10 +395,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                     onChange={e => setShareForm({ ...shareForm, source: e.target.value })}
                     placeholder="Where did you learn this?" />
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn primary" onClick={shareKnowledge}
+                <div className="flex gap-2">
+                  <button className="btn-gold btn-sm" onClick={shareKnowledge}
                     disabled={!shareForm.topic || !shareForm.content}>Share</button>
-                  <button className="btn" onClick={() => setShowShare(false)}>Cancel</button>
+                  <button className="btn-secondary btn-sm" onClick={() => setShowShare(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -422,23 +410,23 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 <div className="empty-sub">Search or share knowledge with the Majlis</div>
               </div>
             )}
+
             {knowledge.map((k, i) => (
               <div key={k.knowledge_id || i} className="memory-item">
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div className="flex items-center gap-2 mb-1">
                   <span className="memory-type-badge type-semantic">{k.topic}</span>
                   {k.verified && (
-                    <span style={{ fontSize: 9, color: "var(--emerald)" }}>✓ verified</span>
+                    <span className="text-micro text-emerald-500">✓ verified</span>
                   )}
-                  <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--font-mono)",
-                    color: "var(--text-muted)" }}>
+                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500">
                     {k.quality_score ? `★ ${k.quality_score.toFixed(1)}` : ""}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
+                <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                   {k.content}
                 </div>
                 {k.source && (
-                  <div style={{ fontSize: 10, color: "var(--sapphire)", marginTop: 4 }}>
+                  <div className="text-2xs text-blue-500 dark:text-blue-400 mt-1">
                     Source: {k.source}
                   </div>
                 )}
@@ -449,60 +437,59 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
         {activeTab === "leaderboard" && (
           <>
-            <div style={{ marginBottom: 12 }}>
-              <button className="btn" onClick={loadLeaderboard}>Refresh</button>
+            <div className="mb-3">
+              <button className="btn-secondary btn-sm" onClick={loadLeaderboard}>Refresh</button>
             </div>
-            <div style={{ padding: 16,
-              background: "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-              border: "1px solid var(--border)", borderRadius: 10, marginBottom: 16 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 12, letterSpacing: "0.2em",
-                color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 12 }}>
+
+            <div className="card">
+              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">
                 Agent Leaderboard · لوحة الشرف
               </div>
+
               {leaderboard.length === 0 && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: 20 }}>
+                <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-5">
                   No agents ranked yet
                 </div>
               )}
-              {leaderboard.map((agent, i) => (
-                <div key={agent.agent_id || i} style={{ display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 12px", borderRadius: 6, marginBottom: 4,
-                  background: i === 0 ? "rgba(201,162,39,0.08)" :
-                             i === 1 ? "rgba(192,192,192,0.06)" :
-                             i === 2 ? "rgba(205,127,50,0.06)" : "transparent",
-                  border: i < 3 ? "1px solid rgba(201,162,39,0.15)" : "1px solid transparent" }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 14,
-                    color: i === 0 ? "var(--gold)" : i < 3 ? "var(--amber)" : "var(--text-muted)",
-                    width: 24, textAlign: "center", fontWeight: 600 }}>
-                    {i + 1}
-                  </div>
-                  <div style={{ fontFamily: "Georgia, serif", fontSize: 14, color: "var(--gold)", width: 30 }}>
-                    {agent.arabic_name ? agent.arabic_name.charAt(0) : ""}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
-                      {agent.name}
+
+              {leaderboard.map((agent, i) => {
+                const nafs = NAFS_STYLES[agent.nafs_level] || { text: "text-gray-500", bg: "bg-gray-500/10", border: "border-gray-500/30", borderL: "" };
+                const rankBg = i === 0 ? "bg-mizan-gold/5 border-mizan-gold/15" :
+                               i === 1 ? "bg-gray-200/30 dark:bg-gray-600/10 border-gray-300/30 dark:border-gray-600/20" :
+                               i === 2 ? "bg-amber-700/5 border-amber-700/15" :
+                               "border-transparent";
+
+                return (
+                  <div key={agent.agent_id || i}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-md mb-1 border ${rankBg}`}>
+                    <div className={`font-mono text-base font-semibold w-6 text-center
+                      ${i === 0 ? "text-mizan-gold" : i < 3 ? "text-amber-500" : "text-gray-400 dark:text-gray-500"}`}>
+                      {i + 1}
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                      {agent.capabilities?.slice(0, 3).join(", ")}
+                    <div className="font-arabic text-base text-mizan-gold w-8">
+                      {agent.arabic_name ? agent.arabic_name.charAt(0) : ""}
                     </div>
-                  </div>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", padding: "1px 6px",
-                    borderRadius: 3, background: `${NAFS_COLORS[agent.nafs_level]}20`,
-                    color: NAFS_COLORS[agent.nafs_level] }}>
-                    {agent.nafs_level}
-                  </span>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--amber)" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {agent.name}
+                      </div>
+                      <div className="text-micro text-gray-400 dark:text-gray-500">
+                        {agent.capabilities?.slice(0, 3).join(", ")}
+                      </div>
+                    </div>
+                    <span className={`text-micro font-mono px-1.5 py-0.5 rounded ${nafs.bg} ${nafs.text}`}>
+                      {agent.nafs_level}
+                    </span>
+                    <div className="text-base font-mono text-amber-500">
                       ★ {(agent.reputation_score || 0).toFixed(1)}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }
