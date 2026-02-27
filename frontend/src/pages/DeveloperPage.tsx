@@ -120,11 +120,13 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="page-wrapper">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
-        <h2 className="page-title">Developer</h2>
-        <p className="page-description">Extend MIZAN with plugins, events, and hooks — no core code changes needed</p>
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Developer</h2>
+          <p className="page-description">Extend MIZAN with plugins, events, and hooks — no core code changes needed</p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -140,7 +142,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div className="page-body">
         {/* System Tab */}
         {activeTab === "system" && (
           <div className="space-y-5">
@@ -304,17 +306,17 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                         {p.loaded ? (
                           <>
                             <button onClick={() => handlePluginAction(p.name, "reload")}
-                              className="btn text-xs">
+                              className="btn-secondary btn-sm">
                               Reload
                             </button>
                             <button onClick={() => handlePluginAction(p.name, "unload")}
-                              className="btn danger text-xs">
+                              className="btn-danger btn-sm">
                               Unload
                             </button>
                           </>
                         ) : (
                           <button onClick={() => handlePluginAction(p.name, "load")}
-                            className="btn primary text-xs">
+                            className="btn-gold btn-sm">
                             Load
                           </button>
                         )}

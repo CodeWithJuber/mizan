@@ -6,12 +6,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { PageProps, Channel, ChannelInfo, GatewayStatus, Integration } from "../types";
 
-const CHANNEL_TYPES: Record<string, ChannelInfo> = {
-  webchat: { name: "WebChat", arabic: "محادثة", color: "#3b82f6", icon: "💬" },
-  telegram: { name: "Telegram", arabic: "تلغرام", color: "#0088cc", icon: "✈️" },
-  discord: { name: "Discord", arabic: "ديسكورد", color: "#5865F2", icon: "🎮" },
-  slack: { name: "Slack", arabic: "سلاك", color: "#4A154B", icon: "💼" },
-  whatsapp: { name: "WhatsApp", arabic: "واتساب", color: "#25D366", icon: "📱" },
+const CHANNEL_TYPES: Record<string, ChannelInfo & { tw: { text: string; bg: string; border: string } }> = {
+  webchat: { name: "WebChat", arabic: "محادثة", color: "#3b82f6", icon: "💬", tw: { text: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/30" } },
+  telegram: { name: "Telegram", arabic: "تلغرام", color: "#0088cc", icon: "✈️", tw: { text: "text-sky-500", bg: "bg-sky-500/10", border: "border-sky-500/30" } },
+  discord: { name: "Discord", arabic: "ديسكورد", color: "#5865F2", icon: "🎮", tw: { text: "text-indigo-500", bg: "bg-indigo-500/10", border: "border-indigo-500/30" } },
+  slack: { name: "Slack", arabic: "سلاك", color: "#4A154B", icon: "💼", tw: { text: "text-purple-600", bg: "bg-purple-600/10", border: "border-purple-600/30" } },
+  whatsapp: { name: "WhatsApp", arabic: "واتساب", color: "#25D366", icon: "📱", tw: { text: "text-green-500", bg: "bg-green-500/10", border: "border-green-500/30" } },
 };
 
 export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
@@ -70,7 +70,6 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
 
   const toggleChannel = async (channelId: string) => {
     try {
-      // Check if there's a matching integration to toggle
       const integration = integrations.find((i) => i.type === channelId);
       if (integration) {
         await api.post("/integrations", {
@@ -91,266 +90,118 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   };
 
   return (
-    <>
-      <div className="panel-header">
-        <div className="panel-title">Channels · أبواب (Bab)</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontFamily: "var(--font-mono)",
-              color: gatewayStatus?.status === "online" ? "var(--emerald)" : "var(--ruby)",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background:
-                  gatewayStatus?.status === "online" ? "var(--emerald)" : "var(--ruby)",
-              }}
-            />
-            Gateway {gatewayStatus?.status || "offline"}
-          </div>
+    <div className="page-wrapper">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Channels</h2>
+          <p className="page-description">أبواب (Bab) — Gateway management</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-2xs font-mono ${gatewayStatus?.status === "online" ? "text-emerald-500" : "text-red-500"}`}>
+          <div className={`status-dot ${gatewayStatus?.status === "online" ? "status-dot-active" : "status-dot-busy"}`} />
+          Gateway {gatewayStatus?.status || "offline"}
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "4px 16px 8px",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          fontStyle: "italic",
-        }}
-      >
+      <div className="quran-quote">
         "Enter upon them through the gate (Bab)" — Quran 5:23
       </div>
 
-      {loading && (
-        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-          Loading channels...
+      {loading && <div className="loading-text">Loading channels...</div>}
+
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="card-grid">
+          {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
+            const channel = channels.find((c) => c.type === type) || {} as Partial<Channel>;
+            const integration = integrations.find((i) => i.type === type);
+            const isConnected = channel.status === "connected" || (integration?.enabled === true);
+            const tw = info.tw;
+
+            return (
+              <div key={type} className={`card ${isConnected ? tw.border : ""}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-10 h-10 rounded-full ${tw.bg} border ${tw.border} flex items-center justify-center text-lg`}>
+                    {info.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {info.name}
+                    </div>
+                    <div className={`text-xs font-arabic ${tw.text} opacity-60`}>
+                      {info.arabic}
+                    </div>
+                  </div>
+                  <span className={`badge text-2xs ${isConnected ? "badge-success" : "badge-warning"}`}>
+                    {isConnected ? "ACTIVE" : "IDLE"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="stat">
+                    <span className="stat-value">{channel.connected_users || 0}</span>
+                    <span className="stat-label">Users</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-value">{channel.messages_processed || 0}</span>
+                    <span className="stat-label">Messages</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm`}
+                    onClick={() => toggleChannel(type)}
+                  >
+                    {isConnected ? "Disconnect" : "Connect"}
+                  </button>
+                  <button
+                    className="btn-secondary btn-sm"
+                    onClick={() => setShowConfig(showConfig === type ? null : type)}
+                  >
+                    Config
+                  </button>
+                </div>
+
+                {showConfig === type && (
+                  <div className="detail-panel mt-3">
+                    <div className="text-xs font-mono text-gray-500 dark:text-gray-400 mb-2">
+                      Configuration for {info.name}
+                    </div>
+                    {type === "telegram" && (
+                      <div>
+                        <label className="form-label">Bot Token</label>
+                        <input className="form-input" type="password" placeholder="Enter Telegram bot token..." />
+                      </div>
+                    )}
+                    {type === "discord" && (
+                      <div>
+                        <label className="form-label">Bot Token</label>
+                        <input className="form-input" type="password" placeholder="Enter Discord bot token..." />
+                      </div>
+                    )}
+                    {type === "slack" && (
+                      <div>
+                        <label className="form-label">Slack App Token</label>
+                        <input className="form-input" type="password" placeholder="Enter Slack app token..." />
+                      </div>
+                    )}
+                    {type === "whatsapp" && (
+                      <div>
+                        <label className="form-label">Cloud API Token</label>
+                        <input className="form-input" type="password" placeholder="Enter WhatsApp API token..." />
+                      </div>
+                    )}
+                    {type === "webchat" && (
+                      <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
+                        WebChat is built-in via WebSocket at ws://localhost:8000/ws
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: 12,
-          padding: 16,
-          overflow: "auto",
-          flex: 1,
-        }}
-      >
-        {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
-          const channel = channels.find((c) => c.type === type) || {} as Partial<Channel>;
-          const integration = integrations.find((i) => i.type === type);
-          const isConnected = channel.status === "connected" || (integration?.enabled === true);
-
-          return (
-            <div
-              key={type}
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(15,32,48,0.9) 0%, rgba(10,21,32,0.9) 100%)",
-                border: `1px solid ${isConnected ? info.color + "40" : "var(--border)"}`,
-                borderRadius: 10,
-                padding: 16,
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 2,
-                  background: `linear-gradient(90deg, transparent, ${info.color}, transparent)`,
-                  opacity: isConnected ? 1 : 0.2,
-                }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    background: `${info.color}15`,
-                    border: `1px solid ${info.color}30`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 18,
-                  }}
-                >
-                  {info.icon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: 13,
-                      color: "var(--text-primary)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {info.name}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: "Georgia, serif",
-                      fontSize: 12,
-                      color: `${info.color}80`,
-                    }}
-                  >
-                    {info.arabic}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 10,
-                    fontFamily: "var(--font-mono)",
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                    background: isConnected
-                      ? "rgba(16,185,129,0.15)"
-                      : "rgba(74,104,128,0.2)",
-                    color: isConnected ? "var(--emerald)" : "var(--text-muted)",
-                    border: `1px solid ${isConnected ? "rgba(16,185,129,0.3)" : "rgba(74,104,128,0.3)"}`,
-                  }}
-                >
-                  {isConnected ? "ACTIVE" : "IDLE"}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 6,
-                  marginBottom: 12,
-                }}
-              >
-                <div className="stat">
-                  <span className="stat-value">{channel.connected_users || 0}</span>
-                  <span className="stat-label">Users</span>
-                </div>
-                <div className="stat">
-                  <span className="stat-value">{channel.messages_processed || 0}</span>
-                  <span className="stat-label">Messages</span>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  className={`btn ${isConnected ? "" : "primary"}`}
-                  style={{ flex: 1, justifyContent: "center", fontSize: 10 }}
-                  onClick={() => toggleChannel(type)}
-                >
-                  {isConnected ? "Disconnect" : "Connect"}
-                </button>
-                <button
-                  className="btn"
-                  style={{ fontSize: 10 }}
-                  onClick={() => setShowConfig(showConfig === type ? null : type)}
-                >
-                  Config
-                </button>
-              </div>
-
-              {showConfig === type && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: 10,
-                    background: "rgba(6,12,16,0.6)",
-                    borderRadius: 6,
-                    border: "1px solid rgba(30,58,85,0.3)",
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  <div style={{ marginBottom: 6, fontFamily: "var(--font-mono)" }}>
-                    Configuration for {info.name}
-                  </div>
-                  {type === "telegram" && (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Bot Token</label>
-                      <input
-                        className="form-input"
-                        type="password"
-                        placeholder="Enter Telegram bot token..."
-                        style={{ fontSize: 11 }}
-                      />
-                    </div>
-                  )}
-                  {type === "discord" && (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Bot Token</label>
-                      <input
-                        className="form-input"
-                        type="password"
-                        placeholder="Enter Discord bot token..."
-                        style={{ fontSize: 11 }}
-                      />
-                    </div>
-                  )}
-                  {type === "slack" && (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Slack App Token</label>
-                      <input
-                        className="form-input"
-                        type="password"
-                        placeholder="Enter Slack app token..."
-                        style={{ fontSize: 11 }}
-                      />
-                    </div>
-                  )}
-                  {type === "whatsapp" && (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Cloud API Token</label>
-                      <input
-                        className="form-input"
-                        type="password"
-                        placeholder="Enter WhatsApp API token..."
-                        style={{ fontSize: 11 }}
-                      />
-                    </div>
-                  )}
-                  {type === "webchat" && (
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        color: "var(--emerald)",
-                      }}
-                    >
-                      WebChat is built-in via WebSocket at ws://localhost:8000/ws
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
-    </>
+    </div>
   );
 }
