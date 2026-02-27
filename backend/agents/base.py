@@ -40,8 +40,10 @@ from core.tawbah import TawbahProtocol
 from core.ihsan import IhsanMode
 from core.sabr import SabrEngine
 from core.shukr import ShukrSystem
-from core.qalb import QalbEngine
+from core.qalb import QalbEngine, EmotionalState, ToneStyle
 from qca.yaqin_engine import YaqinEngine
+from qca.engine import QCAEngine
+from qca.cognitive_methods import select_method, IjmaEngine, CognitiveMethod
 
 logger = logging.getLogger("mizan.agent")
 
@@ -107,6 +109,8 @@ class BaseAgent(ABC):
         self.shukr = ShukrSystem()          # Strength reinforcement
         self.qalb = QalbEngine()            # Emotional intelligence
         self.yaqin = YaqinEngine()          # Certainty/confidence tracking
+        self.qca = QCAEngine()              # 7-layer cognitive architecture
+        self.cognitive = IjmaEngine()       # Cognitive reasoning methods
 
         # LLM provider — unified interface for Anthropic, OpenRouter, OpenAI, Ollama
         self.ai_model = config.get("model", "claude-opus-4-6") if config else "claude-opus-4-6"
@@ -307,7 +311,8 @@ class BaseAgent(ABC):
     MAX_TOOL_TURNS = 15
 
     async def think(self, task: str, context: Dict = None,
-                    stream: bool = False) -> AsyncGenerator[str, None]:
+                    stream: bool = False,
+                    qalb_reading=None) -> AsyncGenerator[str, None]:
         """
         Fikr (فكر) - Deep cognitive processing with full agentic loop.
 
@@ -317,14 +322,32 @@ class BaseAgent(ABC):
         """
         self.state = "thinking"
 
-        system_prompt = self._build_system_prompt()
+        system_prompt = self._build_system_prompt(qalb_reading=qalb_reading)
         messages = self._build_messages(task, context)
         tool_schemas = self.get_tool_schemas()
+
+        # QCA Layer 1-4: Process input through Sam'+Basar+Fu'ad+ISM
+        qca_input = self.qca.process_input(task[:500])
+        if qca_input.get("roots_identified"):
+            root_context = "Semantic roots: " + ", ".join(
+                f"{r['english_term']}→{r['root']}({r['meaning'][:30]})"
+                for r in qca_input["roots_identified"][:5]
+            )
+            messages[-1]["content"] += f"\n\n[QCA Context: {root_context}]"
+
+        # QCA Layer 7: Check Lawh memory for relevant prior knowledge
+        memory_hits = self.qca.lawh.search(task, top_k=3, tiers=[1, 2, 3])
+        if memory_hits:
+            mem_context = " | ".join(
+                f"{key}: {entry.get('content', '')[:60]}"
+                for _score, key, entry in memory_hits[:3]
+            )
+            messages[-1]["content"] += f"\n[Lawh Memory: {mem_context}]"
 
         if self.ai_client:
             try:
                 async for chunk in self._agentic_loop(
-                    system_prompt, messages, tool_schemas, stream
+                    system_prompt, messages, tool_schemas, stream, task
                 ):
                     yield chunk
             except Exception as e:
@@ -338,6 +361,7 @@ class BaseAgent(ABC):
     async def _agentic_loop(
         self, system_prompt: str, messages: List[Dict],
         tool_schemas: List[Dict], stream: bool = False,
+        original_task: str = "",
     ) -> AsyncGenerator[str, None]:
         """
         Full agentic loop — the core of MIZAN's reasoning engine.
@@ -347,9 +371,19 @@ class BaseAgent(ABC):
         with no further tool calls (stop_reason == 'end_turn') or we hit
         the safety limit of MAX_TOOL_TURNS.
 
+        QCA Integration (7-layer cognitive pipeline):
+        - Yaqin: Tag tool results with certainty level (Ilm/Ayn/Haqq)
+        - Mizan: Weigh confidence of each reasoning turn
+        - Lawh: Store tool results in working memory (Tier 3)
+        - Furqan: Validate final output before delivery
+        - Lawwama: Self-correction checkpoints every 3 turns
+
         Uses the unified provider interface (providers.py) so this works
         identically with Anthropic, OpenRouter, OpenAI, and Ollama.
         """
+        accumulated_text = ""
+        tool_count = 0
+
         for turn in range(self.MAX_TOOL_TURNS):
             # Call the model via unified provider
             response = self.ai_client.create(
@@ -366,15 +400,35 @@ class BaseAgent(ABC):
 
             for block in response.content:
                 if block.type == "text":
+                    accumulated_text += block.text
                     yield block.text
                 elif block.type == "tool_use":
                     has_tool_use = True
+                    tool_count += 1
 
                     # Execute through security layer
                     tool_result = await self._execute_tool_safe(
                         block.name, block.input
                     )
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
+
+                    # Yaqin: Tag tool result as Ayn al-Yaqin (observed/verified)
+                    tool_summary = f"{block.name}: {json.dumps(tool_result)[:200]}"
+                    yaqin_tag = self.yaqin.tag_observation(
+                        tool_summary,
+                        confidence=0.8,
+                        source=block.name,
+                        evidence=[f"Tool output from {block.name}"],
+                    )
+
+                    # Lawh: Store tool result in Tier 3 (working memory)
+                    self.qca.lawh.store(
+                        f"TOOL:{block.name}:{turn}",
+                        tool_summary[:300],
+                        certainty=yaqin_tag.confidence,
+                        source=f"tool:{block.name}",
+                        tier=3,
+                    )
 
                     tool_results.append({
                         "type": "tool_result",
@@ -384,11 +438,43 @@ class BaseAgent(ABC):
 
             # If no tool calls were made, the agent is done
             if not has_tool_use or response.stop_reason == "end_turn":
+                # Furqan: Validate final output before delivery
+                if accumulated_text:
+                    overall_confidence = min(0.95, 0.5 + 0.1 * tool_count)
+                    furqan_report = self.qca.furqan.validate_and_express(
+                        accumulated_text[:200],
+                        overall_confidence,
+                        source="agentic_reasoning",
+                    )
+                    # Store reasoning result in Lawh Tier 3
+                    self.qca.lawh.store(
+                        f"RESULT:{original_task[:50]}",
+                        accumulated_text[:500],
+                        certainty=overall_confidence,
+                        source="agentic_loop",
+                        tier=3,
+                    )
+                    # Log Furqan validation
+                    if furqan_report.get("checks"):
+                        logger.info(
+                            "[FURQAN] Validation flags for %s: %s",
+                            self.name, furqan_report["checks"],
+                        )
                 return
 
             # Feed tool results back for the next iteration
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
+
+            # Lawwama self-correction checkpoint every 3 turns
+            if turn > 0 and turn % 3 == 0:
+                lawwama_prompt = (
+                    f"[Lawwama checkpoint — turn {turn}/{self.MAX_TOOL_TURNS}] "
+                    "Pause and self-assess: Are you making progress toward the goal? "
+                    "Is there a more efficient approach? Correct course if needed."
+                )
+                messages.append({"role": "user", "content": lawwama_prompt})
+                logger.info("[LAWWAMA] Self-correction checkpoint at turn %d for %s", turn, self.name)
 
         logger.warning(
             f"[FIKR] Agent {self.name} hit MAX_TOOL_TURNS ({self.MAX_TOOL_TURNS})"
@@ -453,17 +539,45 @@ class BaseAgent(ABC):
         """Fallback reasoning without AI"""
         return f"Task received: {task}\nContext: {json.dumps(context or {}, indent=2)}\nStatus: Processing without AI provider configured."
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, qalb_reading=None) -> str:
         hikmah_str = "\n".join([f"- {h['pattern']}: {h['outcome']}" for h in self.hikmah[-5:]])
 
         nafs_name = self.NAFS_NAMES.get(self.nafs_level, "Ammara")
         ruh_energy = self.ruh.get_state(self.id).energy if self.ruh else 100
+
+        # Qalb — emotional tone guidance
+        tone_guidance = ""
+        if qalb_reading and qalb_reading.state != EmotionalState.NEUTRAL:
+            tone = qalb_reading.recommended_tone.value
+            prefix = self.qalb.suggest_response_prefix(qalb_reading)
+            tone_guidance = f"\nUser Emotional State: {qalb_reading.state.value} (tone: {tone})"
+            if prefix:
+                tone_guidance += f"\nSuggested approach: {prefix}"
+
+        # Ruh — fatigue awareness
+        fatigue_label = self.ruh.get_fatigue_label(self.id)
+        ruh_note = ""
+        if ruh_energy < 20:
+            ruh_note = "\n[WARNING: Energy critically low — keep responses focused and efficient]"
+        elif ruh_energy < 50:
+            ruh_note = "\n[Note: Energy moderate — balance thoroughness with efficiency]"
+
+        # Lawh — memory context summary
+        lawh_stats = self.qca.lawh.stats()
+        lawh_note = f"Memory: {lawh_stats[2]} active items, {lawh_stats[1]} verified entries"
+
+        # Yaqin — epistemic discipline
+        yaqin_stats = self.yaqin.stats()
+        yaqin_note = f"Proven patterns: {yaqin_stats['proven_patterns']}, Verifications: {yaqin_stats['total_verifications']}"
+
         return f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) AGI system.
 
 Role: {self.role}
 Nafs Level: {self.nafs_level}/7 ({nafs_name})
-Ruh Energy: {ruh_energy:.0f}%
+Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})
 Success Rate: {self.success_rate:.1%}
+{lawh_note}
+{yaqin_note}{tone_guidance}{ruh_note}
 
 You have access to tools. Use them when needed to complete tasks.
 
@@ -475,6 +589,11 @@ Core Principles:
 - Amanah (أمانة): Be trustworthy and accurate
 - Adl (عدل): Be fair and balanced in analysis
 - Tawadu (تواضع): Acknowledge limitations honestly
+
+Epistemic Discipline (Mizan — ميزان):
+- Tag certainty: distinguish inference (Ilm) from verified knowledge (Ayn) from proven truth (Haqq)
+- Never claim certainty beyond what evidence supports (avoid Tughyan — transgression)
+- Qualify uncertain claims with appropriate hedging
 
 Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوامة)."""
 
@@ -499,27 +618,51 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         Niyyah → Sama' → Fikr → Amal → Tafakkur
 
         Integrated systems:
-        - Ruh: energy check before execution
-        - Qalb: emotional tone detection from context
+        - Ruh: energy gate + consumption before execution
+        - Qalb: emotional tone detection → modifies system prompt
+        - QCA: 7-layer cognitive pipeline (ISM, Mizan, Aql, Lawh, Furqan)
+        - Yaqin: certainty tagging on results
         - Tawbah: structured error recovery on failure
         - Ihsan: proactive suggestions after success
         - Shukr: strength reinforcement on success
+        - Cognitive Methods: route to appropriate reasoning strategy
         """
         start_time = time.time()
         self.state = "acting"
         self.current_task = task
         self.total_tasks += 1
 
-        # Ruh energy check — consume energy based on task complexity
+        # Ruh energy gate — check if agent can handle this task
         complexity = self.ruh.classify_task_complexity(task)
+        if not self.ruh.can_handle_task(self.id, complexity):
+            ruh_state = self.ruh.get_state(self.id)
+            logger.warning(
+                "[RUH] Agent %s energy too low (%.1f%%) for %s task, triggering rest",
+                self.name, ruh_state.energy, complexity,
+            )
+            self.ruh.rest(self.id)
+            # After rest trigger, re-check — if still too low, warn in result
+            if not self.ruh.can_handle_task(self.id, complexity):
+                return {
+                    "success": False,
+                    "error": f"Agent energy depleted ({ruh_state.energy:.0f}%). Task complexity '{complexity}' requires more energy. Agent is resting.",
+                    "duration_ms": 0,
+                    "agent": self.name,
+                    "ruh_energy": ruh_state.energy,
+                    "ruh_fatigue": self.ruh.get_fatigue_label(self.id),
+                }
         self.ruh.consume_energy(self.id, complexity)
 
         # Qalb — detect user emotional state from task text
         qalb_reading = self.qalb.analyze(task)
 
+        # Cognitive method selection — route to best reasoning strategy
+        cognitive_method = select_method(task, context)
+        logger.info("[COGNITIVE] Selected method %s for task: %s", cognitive_method.value, task[:80])
+
         try:
             full_response = ""
-            async for chunk in self.think(task, context, stream=bool(stream_callback)):
+            async for chunk in self.think(task, context, stream=bool(stream_callback), qalb_reading=qalb_reading):
                 # Check if this is a tool_use marker from _agentic_loop
                 if chunk.startswith("\n[Tool:") and stream_callback:
                     # Extract tool name and send tool_use event
@@ -538,15 +681,31 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             await self._tafakkur(task, full_response, True, duration_ms)
 
+            # Yaqin — tag the result with certainty level
+            yaqin_tag = self.yaqin.tag_inference(
+                full_response[:200], confidence=0.5, source="agentic_reasoning"
+            )
+
             # Shukr — reinforce this success pattern
             task_type = self._classify_task(task)
             self.shukr.record_success(self.id, task_type, task[:100], duration_ms)
+
+            # If this task type has been successful before, promote Yaqin
+            strengths = self.shukr.get_strengths(self.id)
+            if any(s.get("type") == task_type and s.get("count", 0) >= 5 for s in strengths):
+                yaqin_tag = self.yaqin.promote(yaqin_tag, f"Proven pattern: {task_type}")
+
+            # Cognitive method enrichment — run symbolic analysis
+            cognitive_result = self.cognitive.tafakkur.process(task, context)
 
             # Ihsan — generate proactive suggestions
             ihsan_suggestions = self.ihsan.analyze_completion(
                 self.id, task, {"success": True, "duration_ms": duration_ms},
                 self.nafs_level,
             )
+
+            # Mizan — final epistemic label
+            mizan_label = self.qca.mizan.rate_confidence_string(yaqin_tag.confidence)
 
             if self.memory:
                 await self.memory.save_task(
@@ -568,6 +727,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "nafs_name": self.NAFS_NAMES.get(self.nafs_level, "Ammara"),
                 "ruh_energy": self.ruh.get_state(self.id).energy,
                 "qalb": qalb_reading.to_dict(),
+                "yaqin": yaqin_tag.to_dict(),
+                "mizan_label": mizan_label,
+                "cognitive_method": cognitive_method.value,
             }
             if ihsan_suggestions:
                 result["ihsan_suggestions"] = [s.to_dict() for s in ihsan_suggestions]
@@ -580,6 +742,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             # Tawbah — structured error recovery (acknowledge stage)
             recovery = self.tawbah.acknowledge(self.id, str(e), task)
+
+            # Yaqin — demote certainty on error
+            error_tag = self.yaqin.tag_inference(str(e)[:200], confidence=0.2, source="error")
 
             # Shukr — record failure for pattern analysis
             self.shukr.record_failure(self.id, self._classify_task(task), task[:100])
@@ -598,6 +763,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "duration_ms": duration_ms,
                 "agent": self.name,
                 "tawbah": recovery.to_dict() if hasattr(recovery, "to_dict") else str(recovery),
+                "yaqin": error_tag.to_dict(),
             }
 
     async def _tafakkur(self, task: str, result: Any, success: bool, duration_ms: float):
@@ -1061,8 +1227,12 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "nafs_level": self.nafs_level,
             "nafs_name": self.NAFS_NAMES.get(self.nafs_level, "Ammara"),
             "ruh_energy": self.ruh.get_state(self.id).energy,
+            "ruh_fatigue": self.ruh.get_fatigue_label(self.id),
             "ihsan_eligible": self.ihsan.is_eligible(self.nafs_level),
             "shukr_strengths": len(self.shukr.get_strengths(self.id)),
             "tools": self._get_all_available_tool_names(),
             "hikmah_count": len(self.hikmah),
+            "yaqin": self.yaqin.stats(),
+            "lawh_memory": self.qca.lawh.stats(),
+            "aql_bindings": self.qca.aql.get_all_bindings_summary()[0],
         }

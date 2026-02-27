@@ -591,6 +591,19 @@ class FurqanBayan:
         self.mizan = mizan or MizanLayer()
         self.lawh = lawh
 
+    # Axiom keywords for semantic matching against Tier 1
+    _AXIOM_CONCEPTS = {
+        "TRIADIC_INPUT": ["perception", "hearing", "sight", "heart", "input", "cognitive"],
+        "BAYAN_ORDER": ["expression", "knowledge", "structure", "language", "bayan"],
+        "MIZAN_COSMIC": ["balance", "mizan", "proportion", "transgression", "tughyan"],
+        "ISM_FOUNDATION": ["names", "essence", "cognition", "foundation", "ism"],
+        "EPISTEMIC_DUTY": ["knowledge", "follow", "evidence", "certainty", "epistemic"],
+        "CONJECTURE_WARN": ["conjecture", "certainty", "assertion", "zann", "wahm"],
+        "LAWH_PRESERVATION": ["preservation", "lawh", "memory", "corruption", "preserved"],
+        "IQRA_CYCLE": ["read", "write", "name", "cognitive", "acquisition"],
+        "YAQIN_REQUIRED": ["certain", "yaqin", "assertion", "qualification", "knowledge"],
+    }
+
     def validate_and_express(self, claim: str, confidence: float,
                              source: str = "inference") -> Dict:
         """Validate a claim through Furqan checks and produce Bayan output."""
@@ -605,21 +618,56 @@ class FurqanBayan:
         cert_level = self.mizan.classify_confidence(confidence)
         report["certainty_level"] = cert_level
 
-        # Check 2: Tier 1 axiom consistency (simplified check)
+        # Check 2: Tughyan detection — claiming more certainty than evidence supports
+        claim_lower = claim.lower()
+        certainty_markers = ["certainly", "definitely", "absolutely", "always", "proven fact"]
+        hedging_markers = ["possibly", "might", "perhaps", "likely", "seems"]
+        has_strong_claim = any(m in claim_lower for m in certainty_markers)
+        has_hedging = any(m in claim_lower for m in hedging_markers)
+
+        if has_strong_claim and confidence < 0.75:
+            is_tughyan, msg = self.mizan.check_tughyan("yaqin", cert_level)
+            if is_tughyan:
+                report["checks"].append(f"tughyan_detected: {msg}")
+                report["passed"] = False
+                # Auto-downgrade confidence to prevent transgression
+                confidence = min(confidence, 0.6)
+                report["confidence"] = confidence
+                report["epistemic_label"] = self.mizan.rate_confidence_string(confidence)
+                cert_level = self.mizan.classify_confidence(confidence)
+                report["certainty_level"] = cert_level
+
+        # Check 3: Tier 1 axiom consistency (semantic matching)
         if self.lawh:
-            for key, axiom in self.lawh.tiers[1].items():
-                negation_markers = [
-                    "not", "never", "cannot", "impossible", "false", "wrong",
-                ]
-                if any(m in claim.lower() for m in negation_markers):
+            for key, concepts in self._AXIOM_CONCEPTS.items():
+                axiom_entry = self.lawh.tiers[1].get(key)
+                if not axiom_entry:
+                    continue
+                axiom_content = axiom_entry["content"].lower()
+
+                # Check if claim contradicts axiom via negation + concept overlap
+                claim_words = set(claim_lower.split())
+                negation_near_concept = False
+                for concept in concepts:
+                    if concept in claim_lower:
+                        # Look for negation within 5 words of the concept
+                        idx = claim_lower.find(concept)
+                        window = claim_lower[max(0, idx - 40):idx + len(concept) + 40]
+                        if any(neg in window for neg in ["not ", "no ", "never ", "cannot ", "isn't ", "doesn't "]):
+                            negation_near_concept = True
+                            break
+
+                if negation_near_concept:
                     report["checks"].append(
-                        "axiom_review_flagged: {} may contradict axioms".format(
-                            claim[:50]
+                        "axiom_conflict: Claim may contradict '{}' ({})".format(
+                            key, axiom_entry["content"][:60]
                         )
                     )
 
-        # Check 3: Epistemic prefix (Bayan clarity)
-        if confidence < 0.5:
+        # Check 4: Epistemic prefix (Bayan clarity)
+        if confidence < 0.3:
+            prefix = "[WAHM — very uncertain] "
+        elif confidence < 0.5:
             prefix = "[CONJECTURE — low certainty] "
         elif confidence < 0.75:
             prefix = "[Probable inference] "
@@ -627,6 +675,11 @@ class FurqanBayan:
             prefix = "[Verified] "
         else:
             prefix = ""
+
+        # If claim already has appropriate hedging, acknowledge it
+        if has_hedging and confidence < 0.75:
+            report["checks"].append("bayan_appropriate: Claim uses proportional hedging")
+
         report["bayan_prefix"] = prefix
         report["final_output"] = prefix + claim
 
