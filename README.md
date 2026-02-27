@@ -63,6 +63,19 @@ docker compose up -d       # Start everything
 # Open http://localhost:3000
 ```
 
+**Common Docker Commands:**
+
+| What you want to do | Command |
+|---------------------|---------|
+| Start MIZAN | `docker compose up -d` |
+| Stop MIZAN | `docker compose down` |
+| Restart MIZAN | `docker compose restart` |
+| View logs | `docker compose logs -f` |
+| Update & rebuild | `git pull && docker compose up -d --build` |
+| Rebuild from scratch | `docker compose down && docker compose up -d --build` |
+| Start with Ollama (free local AI) | `docker compose --profile ollama up -d --build` |
+| Start everything (all services) | `docker compose --profile ollama --profile vector up -d --build` |
+
 ### From Source (for developers)
 
 ```bash
@@ -441,9 +454,34 @@ Switch providers anytime from the UI or API — no restart needed.
 
 ## Updating MIZAN
 
-MIZAN has a built-in one-command updater. No manual git commands needed.
+### Quick Reference
 
-### One-Command Update
+| Your setup | Update command |
+|-----------|----------------|
+| **Docker** | `git pull && docker compose up -d --build` |
+| **pip install** | `pip install --upgrade mizan` |
+| **From source** | `./update.sh` or `make update` |
+| **Production server** | `./deploy.sh --update` |
+
+### Docker Update
+
+```bash
+cd mizan                              # Go to your mizan folder
+git pull                              # Get latest code
+docker compose up -d --build          # Rebuild and restart
+```
+
+To update only the frontend:
+```bash
+docker compose build frontend && docker compose up -d frontend
+```
+
+To update only the backend:
+```bash
+docker compose build backend && docker compose up -d backend
+```
+
+### Source Install Update
 
 ```bash
 ./update.sh                # Update everything automatically
@@ -473,16 +511,50 @@ make update                # Via Makefile
 ./update.sh --version      # Show current version
 ```
 
-### Docker Deployments
+### Production Deployments
 
 ```bash
-./update.sh                # Auto-detects Docker, rebuilds containers
-./deploy.sh --update       # Production deployment update
+./deploy.sh --update       # Update existing production deployment
+./deploy.sh --status       # Check service status
+./deploy.sh --logs         # View production logs
 ```
 
 ### Auto-Update Notifications
 
 When you start MIZAN with `./start.sh start` or `make dev`, it automatically checks for updates and shows a notification if a new version is available. No action is taken unless you run the update command.
+
+---
+
+## Common Tasks
+
+### Check if MIZAN is running
+
+```bash
+docker compose ps                              # Docker users
+curl http://localhost:8000/api/health          # Any setup
+```
+
+### View logs
+
+```bash
+docker compose logs -f                  # All services
+docker compose logs -f backend          # Backend only
+docker compose logs -f frontend         # Frontend only
+```
+
+### Reset everything (start fresh)
+
+```bash
+docker compose down -v         # Stop and remove all data
+docker compose up -d --build   # Rebuild from scratch
+```
+
+### Fix common issues
+
+```bash
+mizan doctor                                           # Source install
+curl -X POST http://localhost:8000/api/doctor/fix      # Docker / any setup
+```
 
 ---
 
@@ -498,8 +570,15 @@ make lint         # Lint code
 make format       # Format code
 make typecheck    # Type checking
 make check        # Run all checks (lint + typecheck + test)
-make docker       # Start with Docker
 make clean        # Clean build artifacts
+```
+
+### Docker via Makefile
+
+```bash
+make docker          # Start with Docker (builds + starts)
+make docker-full     # Start with Ollama + ChromaDB
+make docker-down     # Stop all Docker services
 ```
 
 ---
