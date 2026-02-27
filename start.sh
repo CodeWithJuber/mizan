@@ -128,6 +128,18 @@ show_status() {
     curl -s http://localhost:8000/ | python3 -m json.tool 2>/dev/null || echo "Backend not running"
 }
 
+run_doctor() {
+    echo -e "${BLUE}Running MIZAN Doctor (شفاء - Shifa)...${NC}"
+    cd "$BACKEND_DIR"
+
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+
+    cd "$MIZAN_DIR"
+    python -m backend.cli doctor "$@"
+}
+
 show_help() {
     echo "Usage: ./start.sh [command]"
     echo ""
@@ -136,6 +148,7 @@ show_help() {
     echo "  stop        - Stop all processes"
     echo "  install     - Install dependencies only"
     echo "  update      - Update MIZAN to the latest version"
+    echo "  doctor      - Self-healing diagnostic (auto-fix issues)"
     echo "  docker      - Start with Docker Compose"
     echo "  status      - Show system status"
     echo "  backend     - Start backend only"
@@ -201,6 +214,10 @@ case "${1:-start}" in
         else
             echo -e "${RED}update.sh not found. Run: git pull origin main${NC}"
         fi
+        ;;
+    doctor)
+        shift
+        run_doctor "$@"
         ;;
     status)
         show_status
