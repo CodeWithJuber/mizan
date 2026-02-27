@@ -238,17 +238,38 @@ class AqlEngine:
             "iterations": iterations,
         }
 
-        # QCA cognitive enrichment: add epistemic analysis
+        # QCA cognitive enrichment: epistemic analysis + memory storage
         if self.qca and full_text:
             try:
                 qca_analysis = self.qca.process_input(full_text[:500])
-                mizan_label = self.qca.mizan.rate_confidence_string(
-                    0.7 if iterations < 3 else 0.85
+                # Confidence scales with tool verification
+                base_confidence = 0.5
+                if tool_calls:
+                    base_confidence = min(0.9, 0.5 + 0.1 * len(tool_calls))
+                mizan_label = self.qca.mizan.rate_confidence_string(base_confidence)
+                cert_level = self.qca.mizan.classify_confidence(base_confidence)
+
+                # Furqan validation on final output
+                furqan_report = self.qca.furqan.validate_and_express(
+                    full_text[:200], base_confidence, source="aql_reasoning"
                 )
+
+                # Store reasoning result in Lawh Tier 3
+                self.qca.lawh.store(
+                    f"AQL_RESULT:{task[:50]}",
+                    full_text[:500],
+                    certainty=base_confidence,
+                    source="aql_engine",
+                    tier=3,
+                )
+
                 result["qca_enrichment"] = {
                     "roots_identified": qca_analysis.get("roots_identified", []),
                     "key_terms": qca_analysis.get("key_terms", []),
                     "epistemic_label": mizan_label,
+                    "certainty_level": cert_level,
+                    "furqan_passed": furqan_report.get("passed", True),
+                    "furqan_checks": furqan_report.get("checks", []),
                     "lawh_stats": self.qca.lawh.stats(),
                 }
             except Exception:
