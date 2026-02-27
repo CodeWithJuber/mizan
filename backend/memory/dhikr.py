@@ -4,19 +4,22 @@ DHIKR Memory System (ذكر - Remembrance)
 
 "And We have certainly made the Quran easy for remembrance" - 54:17
 
-Three Memory Types from Quranic Epistemology:
+Two memory subsystems working together:
 
-1. EPISODIC (Qisas - قصص): Event/episode memory - Stories & experiences
-   "We relate to you the best of stories" - 12:3
+A) MASALIK (مسالك - Pathways) — Neural pathway network
+   How humans actually remember. No duplication. Priority by pathway strength.
+   Learning strengthens paths. Forgetting prunes weak ones.
 
-2. SEMANTIC (Ilm - علم): Conceptual knowledge - Facts & relationships
-   "And He taught Adam the names of all things" - 2:31
+B) RECORDS (سجلات - Sijillat) — Transactional storage
+   Message history, task logs, audit trails. These are records, not memory.
+   Kept in SQLite for persistence and querying.
 
-3. PROCEDURAL (Sunnah - سنة): How-to / skill memory - Ways of doing
-   "You will not find in Our way any change" - 35:43
-
-Memory consolidation follows Tafakkur cycle (تفكر - deep reflection)
-Forgetting follows Nisyan principle (نسيان) - selective forgetting for optimization
+Quranic Memory Architecture:
+  DHIKR (ذكر):     Re-activation that strengthens — not mere retrieval
+  NISYAN (نسيان):   Pruning weak pathways — forgetting as mercy
+  TAFAKKUR (تفكّر): Reflection creating new connections — insight
+  HIKMAH (حكمة):    Pathways used so often they become permanent wisdom
+  FITRAH (فطرة):    Innate pre-wired pathways — born knowing these
 
 QCA Integration:
   The Dhikr system maps to QCA's 4-tier Lawh memory (85:22):
@@ -65,8 +68,15 @@ class Memory:
 
 class DhikrMemorySystem:
     """
-    Three-tier Quranic memory architecture
-    Inspired by: Luh Mahfuz (لوح محفوظ) - The Preserved Tablet (85:22)
+    Quranic memory architecture with two subsystems:
+
+    1. MASALIK — Neural pathway network (how humans actually remember)
+       No duplication. Pathways strengthen with use, decay from neglect.
+
+    2. RECORDS — SQLite transactional storage (message history, task logs)
+       These are records (sijillat), not memory. Stored for audit/retrieval.
+
+    Inspired by: Lawh al-Mahfuz (لوح المحفوظ) - The Preserved Tablet (85:22)
     """
 
     def __init__(self, db_path: str = "mizan_memory.db"):
@@ -78,11 +88,15 @@ class DhikrMemorySystem:
             self._persistent_conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._init_db()
 
+        # ── Masalik: Neural pathway network (the real memory) ──
+        from memory.masalik import MasalikNetwork
+        self.masalik = MasalikNetwork()
+
         # Working memory (short-term) - like immediate consciousness
         self.working_memory: Dict[str, Memory] = {}
         self.working_capacity = 7  # Miller's Law meets Quranic pattern (7 heavens)
 
-        # Long-term memory tiers
+        # Long-term memory tiers (legacy caches — kept for compatibility)
         self._episodic_cache: Dict[str, Memory] = {}
         self._semantic_cache: Dict[str, Memory] = {}
         self._procedural_cache: Dict[str, Memory] = {}
@@ -200,10 +214,14 @@ class DhikrMemorySystem:
     async def remember(self, content: Any, memory_type: str = "episodic",
                        importance: float = 0.5, agent_id: str = "",
                        tags: List[str] = None) -> str:
-        """Store a new memory"""
+        """
+        Store a new memory — dual pathway:
+        1. Masalik: Encode into neural pathways (strengthens, never duplicates)
+        2. SQLite: Persist record for audit/retrieval
+        """
         import uuid
         mem_id = str(uuid.uuid4())
-        
+
         memory = Memory(
             id=mem_id,
             content=content,
@@ -212,18 +230,25 @@ class DhikrMemorySystem:
             agent_id=agent_id,
             tags=tags or [],
         )
-        
+
+        # ── Masalik: Encode into neural pathways ──
+        # This is the real learning — strengthens pathways, no duplication
+        text = str(content) if not isinstance(content, str) else content
+        if tags:
+            text += " " + " ".join(tags)
+        self.masalik.encode(text, importance=importance)
+
         # Add to working memory (if important enough)
         if importance > 0.6:
             self._add_to_working(memory)
-        
-        # Persist to database
+
+        # Persist record to database
         await self._persist(memory)
-        
+
         # Update appropriate cache
         cache = self._get_cache(memory_type)
         cache[mem_id] = memory
-        
+
         return mem_id
     
     def _add_to_working(self, memory: Memory):
@@ -245,13 +270,25 @@ class DhikrMemorySystem:
     
     async def recall(self, query: str, memory_type: str = None,
                      agent_id: str = None, limit: int = 10) -> List[Memory]:
-        """Recall memories by query"""
+        """
+        Recall memories — dual pathway:
+        1. Masalik: Spreading activation finds associated concepts (Dhikr)
+        2. SQLite: Keyword search finds stored records
+
+        The masalik recall also STRENGTHENS the recalled pathways —
+        this is real Dhikr, not just retrieval.
+        """
+        # ── Masalik: Spreading activation (this IS remembering) ──
+        # Side effect: strengthens the recalled pathways (Dhikr reinforcement)
+        pathway_context = self.masalik.recall_context(query, top_k=8)
+
+        # ── SQLite: Record search ──
         conn = self._get_conn()
         c = conn.cursor()
 
         sql = "SELECT * FROM memories WHERE 1=1"
         params = []
-        
+
         if memory_type:
             sql += " AND memory_type = ?"
             params.append(memory_type)
@@ -259,16 +296,15 @@ class DhikrMemorySystem:
             sql += " AND agent_id = ?"
             params.append(agent_id)
         if query:
-            # Split query into words and match each one (AND logic)
             words = query.strip().split()
             for word in words:
                 escaped_word = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                 sql += " AND (content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
                 params.extend([f"%{escaped_word}%", f"%{escaped_word}%"])
-        
+
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
         params.append(limit)
-        
+
         c.execute(sql, params)
         rows = c.fetchall()
         self._release_conn(conn)
@@ -277,9 +313,9 @@ class DhikrMemorySystem:
         for row in rows:
             try:
                 content = json.loads(row[1]) if row[1] else None
-            except:
+            except Exception:
                 content = row[1]
-            
+
             memories.append(Memory(
                 id=row[0],
                 content=content,
@@ -290,12 +326,19 @@ class DhikrMemorySystem:
                 agent_id=row[6],
                 tags=json.loads(row[7]) if row[7] else [],
             ))
-        
+
         # Update access count for recalled memories
         for mem in memories:
             mem.access_count += 1
-        
+
         return memories
+
+    def recall_pathways(self, query: str, top_k: int = 8) -> str:
+        """
+        Pure pathway recall — returns associated concepts from the neural network.
+        Use this for agent system prompts where you need semantic context.
+        """
+        return self.masalik.recall_context(query, top_k=top_k)
     
     async def _persist(self, memory: Memory):
         """Persist memory to database"""
@@ -327,19 +370,31 @@ class DhikrMemorySystem:
     
     async def consolidate(self, agent_id: str = None):
         """
-        Memory consolidation - Tafakkur process
-        Removes low-importance, old memories (Nisyan)
-        Strengthens important, frequently accessed memories
+        Memory consolidation — two processes:
+
+        1. TAFAKKUR (تفكّر): Reflection creates new pathway connections
+           between concepts that were frequently co-activated.
+
+        2. NISYAN (نسيان): Prune weak pathways and old SQL records.
+           Forgetting is mercy — keeps the mind efficient.
+
+        "Those who remember Allah standing, sitting, and on their sides
+         and reflect (yatafakkaruna) on the creation..." — 3:191
         """
+        # ── Masalik: Tafakkur (create new connections from co-activation) ──
+        tafakkur_result = self.masalik.tafakkur()
+
+        # ── Masalik: Nisyan (prune weak pathways) ──
+        nisyan_result = self.masalik.apply_nisyan()
+
+        # ── SQLite: Prune old low-importance records ──
         cutoff = datetime.utcnow() - timedelta(days=30)
-        
         conn = self._get_conn()
         c = conn.cursor()
-        
-        # Delete low-importance old memories
+
         sql = """
-            DELETE FROM memories 
-            WHERE importance < 0.3 
+            DELETE FROM memories
+            WHERE importance < 0.3
             AND recency < ?
             AND access_count < 3
         """
@@ -347,13 +402,18 @@ class DhikrMemorySystem:
         if agent_id:
             sql += " AND agent_id = ?"
             params.append(agent_id)
-        
+
         c.execute(sql, params)
         deleted = c.rowcount
         conn.commit()
         self._release_conn(conn)
-        
-        return {"consolidated": True, "pruned": deleted}
+
+        return {
+            "consolidated": True,
+            "tafakkur": tafakkur_result,
+            "nisyan": nisyan_result,
+            "records_pruned": deleted,
+        }
     
     async def save_agent_profile(self, profile: Dict):
         """Save agent profile"""
