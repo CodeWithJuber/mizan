@@ -132,7 +132,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
               >
                 {/* Active badge */}
                 {isActive && (
-                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20">
+                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-bold bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20">
                     ACTIVE
                   </div>
                 )}
@@ -290,10 +290,10 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                     <div>
                       <div className="text-xs font-mono text-gray-900 dark:text-gray-200">{m.id}</div>
                       {m.name && m.name !== m.id && (
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400">{m.name}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{m.name}</div>
                       )}
                     </div>
-                    <div className="text-right text-[10px] text-gray-400 dark:text-gray-500">
+                    <div className="text-right text-xs text-gray-400 dark:text-gray-500">
                       {m.context ? `${(m.context / 1000).toFixed(0)}k` : ""}
                       {m.pricing && (
                         <div>

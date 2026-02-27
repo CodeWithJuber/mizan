@@ -2130,6 +2130,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
         wali.audit.log("ws_disconnected", {"client_id": client_id})
+    except RuntimeError:
+        # Client disconnected before receive_json could read
+        manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for {client_id}: {e}")
+        manager.disconnect(client_id)
 
 
 if __name__ == "__main__":

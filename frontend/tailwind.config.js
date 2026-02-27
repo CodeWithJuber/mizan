@@ -21,9 +21,9 @@ export default {
         mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
-        'micro': '9px',
-        '2xs': '10px',
-        'xxs': '11px',
+        'micro': '11px',
+        '2xs': '12px',
+        'xxs': '13px',
       },
     },
   },
