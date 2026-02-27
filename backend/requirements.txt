@@ -1,34 +1,45 @@
-# Core
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-websockets==12.0
-pydantic==2.9.2
-anthropic==0.34.0
-httpx==0.27.2
-python-multipart==0.0.12
-aiofiles==24.1.0
-python-dotenv==1.0.1
+# MIZAN Core Dependencies
+# Synced with pyproject.toml — install with: pip install -r requirements.txt
 
-# Security (Wali Layer)
-PyJWT==2.9.0
-passlib[bcrypt]==1.7.4
-cryptography==43.0.0
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+python-multipart>=0.0.12
 
-# Memory (Dhikr Enhancement)
-chromadb==0.5.0
+# AI Providers
+anthropic>=0.34.0
+openai>=1.40.0
+httpx>=0.27.0
 
-# Gateway Channels (Bab Layer)
-python-telegram-bot==21.5
-discord.py==2.3.2
-slack-bolt==1.20.0
+# Database & Async
+aiosqlite>=0.20.0
+aiofiles>=24.1.0
 
-# Automation (Qadr Layer)
-croniter==2.0.7
+# Configuration
+python-dotenv>=1.0.0
 
-# Voice/Perception (Sama' Layer)
-elevenlabs==1.5.0
+# Security
+PyJWT>=2.9.0
+passlib[bcrypt]>=1.7.4
+cryptography>=43.0.0
 
-# Testing
-pytest==8.3.0
-pytest-asyncio==0.24.0
-pytest-cov==5.0.0
+# Automation
+croniter>=2.0.7
+
+# CLI
+click>=8.1.0
+rich>=13.7.0
+
+# Optional: Gateway Channels
+# python-telegram-bot>=21.5
+# discord.py>=2.3.2
+# slack-bolt>=1.20.0
+
+# Optional: Vector Memory
+# chromadb>=0.5.0
+
+# Optional: Voice
+# elevenlabs>=1.5.0
