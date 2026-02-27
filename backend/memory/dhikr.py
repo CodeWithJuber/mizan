@@ -32,7 +32,7 @@ QCA Integration:
 import json
 import hashlib
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import sqlite3
@@ -47,7 +47,7 @@ class Memory:
     content: Any = None
     memory_type: str = "episodic"  # episodic | semantic | procedural
     importance: float = 0.5        # 0-1 Mizan scale
-    recency: datetime = field(default_factory=datetime.utcnow)
+    recency: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     access_count: int = 0
     agent_id: str = ""
     tags: List[str] = field(default_factory=list)
@@ -321,7 +321,7 @@ class DhikrMemorySystem:
                 content=content,
                 memory_type=row[2],
                 importance=row[3],
-                recency=datetime.fromisoformat(row[4]) if row[4] else datetime.utcnow(),
+                recency=datetime.fromisoformat(row[4]) if row[4] else datetime.now(timezone.utc),
                 access_count=row[5],
                 agent_id=row[6],
                 tags=json.loads(row[7]) if row[7] else [],
@@ -388,7 +388,7 @@ class DhikrMemorySystem:
         nisyan_result = self.masalik.apply_nisyan()
 
         # ── SQLite: Prune old low-importance records ──
-        cutoff = datetime.utcnow() - timedelta(days=30)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         conn = self._get_conn()
         c = conn.cursor()
 
@@ -430,7 +430,7 @@ class DhikrMemorySystem:
             profile.get("role"),
             profile.get("nafs_level", 1),
             json.dumps(profile.get("capabilities", [])),
-            profile.get("created_at", datetime.utcnow().isoformat()),
+            profile.get("created_at", datetime.now(timezone.utc).isoformat()),
             profile.get("total_tasks", 0),
             profile.get("success_rate", 0.0),
             profile.get("error_count", 0),
@@ -477,7 +477,7 @@ class DhikrMemorySystem:
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             msg_id, session_id, role, content, agent_id,
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             json.dumps(metadata or {})
         ))
         conn.commit()
@@ -513,7 +513,7 @@ class DhikrMemorySystem:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             task_id, agent_id, task, result, int(success), duration_ms,
-            datetime.utcnow().isoformat(), json.dumps(metadata or {})
+            datetime.now(timezone.utc).isoformat(), json.dumps(metadata or {})
         ))
         conn.commit()
         self._release_conn(conn)
@@ -552,7 +552,7 @@ class DhikrMemorySystem:
             int_id, integration.get("name"), integration.get("type"),
             json.dumps(integration.get("config", {})),
             int(integration.get("enabled", True)),
-            datetime.utcnow().isoformat()
+            datetime.now(timezone.utc).isoformat()
         ))
         conn.commit()
         self._release_conn(conn)
@@ -585,7 +585,7 @@ class DhikrMemorySystem:
                                    ip_address, resource, details, success)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            datetime.utcnow().isoformat(), event_type, severity,
+            datetime.now(timezone.utc).isoformat(), event_type, severity,
             user_id, ip_address, resource,
             json.dumps(details or {}), int(success)
         ))

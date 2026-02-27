@@ -8,7 +8,7 @@ Webhook receivers and event-driven automation.
 import uuid
 import logging
 from typing import Callable, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("mizan.triggers")
@@ -26,7 +26,7 @@ class WebhookTrigger:
     secret: Optional[str] = None  # Optional HMAC secret
     last_triggered: Optional[str] = None
     trigger_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -76,7 +76,7 @@ class TriggerManager:
         for key, value in payload.items():
             task = task.replace(f"{{{key}}}", str(value))
 
-        webhook.last_triggered = datetime.utcnow().isoformat()
+        webhook.last_triggered = datetime.now(timezone.utc).isoformat()
         webhook.trigger_count += 1
 
         # Execute

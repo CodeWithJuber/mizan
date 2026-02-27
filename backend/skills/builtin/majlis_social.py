@@ -30,7 +30,7 @@ import hmac
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -65,11 +65,11 @@ class AgentProfile:
     capabilities: List[str] = field(default_factory=list)
     nafs_level: int = NAFS_AMMARA
     reputation_score: float = REPUTATION_INITIAL
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     public_key: str = ""
     verified: bool = False
     status: str = "active"  # active, idle, busy, offline
-    last_heartbeat: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    last_heartbeat: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     biography: str = ""
     tasks_completed: int = 0
     tasks_failed: int = 0
@@ -109,7 +109,7 @@ class SignedMessage:
     message_type: str = "text"   # text, task_request, task_response, knowledge_share, shura_call
     content: str = ""
     metadata: Dict = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     signature: str = ""          # HMAC-SHA256
 
     def to_dict(self) -> Dict:
@@ -132,7 +132,7 @@ class Halaqah:
     moderator_id: str = ""
     members: List[str] = field(default_factory=list)
     messages: List[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -156,7 +156,7 @@ class KnowledgeEntry:
     verified: bool = False
     verification_votes: int = 0
     quality_score: float = 0.0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -259,7 +259,7 @@ class MoltBookBridge:
         """Shahid (شاهد) audit log — witness of all bridge activity."""
         entry = {
             "action": action, "agent_id": agent_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "details": details or {},
         }
         self._audit_log.append(entry)
@@ -293,7 +293,7 @@ class MoltBookBridge:
 
         self._linked_agents[agent_id] = {
             "moltbook_id": moltbook_id,
-            "linked_at": datetime.utcnow().isoformat(),
+            "linked_at": datetime.now(timezone.utc).isoformat(),
             "status": "active",
             "sync_count": 0,
         }
@@ -511,7 +511,7 @@ class MajlisSocialSkill(SkillBase):
             last_active = datetime.fromisoformat(agent.last_heartbeat)
         except (ValueError, TypeError):
             return
-        days_inactive = (datetime.utcnow() - last_active).total_seconds() / 86400
+        days_inactive = (datetime.now(timezone.utc) - last_active).total_seconds() / 86400
         if days_inactive > REPUTATION_DECAY_GRACE_DAYS:
             decay = (days_inactive - REPUTATION_DECAY_GRACE_DAYS) * REPUTATION_DECAY_RATE
             agent.reputation_score = max(0.0, agent.reputation_score - decay)
@@ -692,7 +692,7 @@ class MajlisSocialSkill(SkillBase):
             "sender_id": sender_id, "recipient_id": target_id,
             "content": task_description, "message_type": "task_request",
             "metadata": {"capability": required_capability,
-                         "delegated_at": datetime.utcnow().isoformat()},
+                         "delegated_at": datetime.now(timezone.utc).isoformat()},
         })
         if result.get("error"):
             return result
@@ -761,7 +761,7 @@ class MajlisSocialSkill(SkillBase):
         if status not in valid_statuses:
             return {"error": f"Invalid status. Must be one of: {valid_statuses}"}
 
-        heartbeat_payload = f"{agent_id}:{status}:{datetime.utcnow().strftime('%Y-%m-%d')}"
+        heartbeat_payload = f"{agent_id}:{status}:{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         if not signature:
             signature = self._sign_message(agent_id, heartbeat_payload)
         if not self._verify_signature(agent_id, heartbeat_payload, signature):
@@ -769,7 +769,7 @@ class MajlisSocialSkill(SkillBase):
             return {"error": "Heartbeat signature failed. Spoofing attempt blocked."}
 
         agent.status = status
-        agent.last_heartbeat = datetime.utcnow().isoformat()
+        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
         self._apply_reputation_decay(agent)
 
         return {

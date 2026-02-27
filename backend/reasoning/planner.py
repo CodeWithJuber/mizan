@@ -12,7 +12,7 @@ Progress is tracked, and failures trigger re-planning.
 import json
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -40,7 +40,7 @@ class SubTask:
     error: Optional[str] = None
     dependencies: List[str] = field(default_factory=list)  # IDs of tasks this depends on
     priority: int = 5  # 1-10
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         return {
@@ -63,7 +63,7 @@ class Plan:
     goal: str = ""
     subtasks: List[SubTask] = field(default_factory=list)
     status: str = "active"  # active | completed | failed
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def progress(self) -> float:

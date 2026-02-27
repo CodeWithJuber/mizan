@@ -30,7 +30,7 @@ import hmac
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -65,7 +65,7 @@ class SurahPackage:
     rating: float = 0.0
     rating_count: int = 0
     tags: List[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     # Security scan results
     scan_status: str = "pending"             # pending, clean, warning, rejected
     scan_findings: int = 0
@@ -139,7 +139,7 @@ class ClawHubBridge:
     def _audit(self, action: str, details: Dict = None) -> None:
         entry = {
             "action": action,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "details": details or {},
         }
         self._audit_log.append(entry)
@@ -231,7 +231,7 @@ class ClawHubBridge:
             "clawhub_author": self.sanitize_clawhub_content(
                 clawhub_skill.get("author", "unknown")),
             "clawhub_rating": clawhub_skill.get("rating", 0),
-            "quarantined_at": datetime.utcnow().isoformat(),
+            "quarantined_at": datetime.now(timezone.utc).isoformat(),
             "status": "quarantined",  # quarantined, approved, rejected
         }
 

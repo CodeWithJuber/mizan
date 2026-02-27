@@ -20,7 +20,7 @@ import os
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 import importlib.util as _ilu
 # Direct file import to avoid triggering security/__init__.py which
@@ -51,7 +51,7 @@ class KitabCell:
     outputs: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     execution_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     executed_at: str | None = None
     status: str = "idle"
 
@@ -77,8 +77,8 @@ class KitabNotebook:
     cells: list[KitabCell] = field(default_factory=list)
     language: str = "python"
     tags: list[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     version: int = 1
     history: list[dict] = field(default_factory=list)
     owner: str | None = None
@@ -152,7 +152,7 @@ finally:
             with open(script_path, "w") as f:
                 f.write(wrapped)
 
-            start = datetime.utcnow()
+            start = datetime.now(timezone.utc)
             proc = subprocess.run(
                 ["python3", script_path],
                 capture_output=True, text=True,
@@ -161,7 +161,7 @@ finally:
                 env={"PATH": "/usr/bin:/usr/local/bin", "HOME": NOTEBOOKS_DIR,
                      "PYTHONDONTWRITEBYTECODE": "1"},
             )
-            elapsed = (datetime.utcnow() - start).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
             try:
                 lines = proc.stdout.strip().split("\n")
@@ -284,7 +284,7 @@ class KitabNotebookSkill(SkillBase):
             nb.cells.insert(pos, cell)
         else:
             nb.cells.append(cell)
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.updated_at = datetime.now(timezone.utc).isoformat()
         return {"cell": cell.to_dict(), "notebook_id": nb.id}
 
     async def update_cell(self, params: dict) -> dict:
@@ -297,7 +297,7 @@ class KitabNotebookSkill(SkillBase):
             return {"error": "Cell not found"}
         cell.source = params.get("source", cell.source)
         cell.cell_type = params.get("cell_type", cell.cell_type)
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.updated_at = datetime.now(timezone.utc).isoformat()
         return {"cell": cell.to_dict()}
 
     async def execute_cell(self, params: dict) -> dict:
@@ -323,12 +323,12 @@ class KitabNotebookSkill(SkillBase):
             result = {"output_type": "error", "text": f"Unknown type: {cell.cell_type}"}
 
         cell.outputs = [result]
-        cell.executed_at = datetime.utcnow().isoformat()
+        cell.executed_at = datetime.now(timezone.utc).isoformat()
         cell.status = "error" if result.get("output_type") == "error" else "success"
 
         nb.history.append({"action": "execute", "cell_id": cell.id,
                           "timestamp": cell.executed_at, "status": cell.status})
-        nb.updated_at = datetime.utcnow().isoformat()
+        nb.updated_at = datetime.now(timezone.utc).isoformat()
         return {"cell": cell.to_dict()}
 
     async def execute_all(self, params: dict) -> dict:

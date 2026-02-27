@@ -12,7 +12,7 @@ Bab (Gate) → Sama' (Perception) → Fikr (Processing) → Amal (Action) → Ba
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -41,8 +41,8 @@ class GatewaySession:
     verification_code: Optional[str] = None
     trust_level: float = 0.0  # 0-1, Amanah trust score
     history: List[Dict] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_active: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_active: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     agent_id: Optional[str] = None
 
     def to_dict(self) -> Dict:
@@ -212,11 +212,11 @@ class MizanGateway:
                 return
 
         # Update session
-        session.last_active = datetime.utcnow().isoformat()
+        session.last_active = datetime.now(timezone.utc).isoformat()
         session.history.append({
             "role": "user",
             "content": message.content,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
         # Audit log
@@ -239,7 +239,7 @@ class MizanGateway:
                 session.history.append({
                     "role": "assistant",
                     "content": response,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 
                 # Increase trust over time

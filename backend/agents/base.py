@@ -22,7 +22,7 @@ import os
 import shlex
 import subprocess
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Callable, AsyncGenerator
 from abc import ABC
 from dataclasses import dataclass, field
@@ -794,7 +794,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             "task_type": self._classify_task(task),
             "success": success,
             "duration_ms": duration_ms,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if success and duration_ms < 5000:

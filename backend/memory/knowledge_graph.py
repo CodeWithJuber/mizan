@@ -13,7 +13,7 @@ import uuid
 import logging
 import sqlite3
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger("mizan.knowledge")
 
@@ -75,7 +75,7 @@ class KnowledgeGraph:
         c.execute("SELECT id FROM kg_entities WHERE name = ? AND type = ?", (name, entity_type))
         row = c.fetchone()
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         if row:
             entity_id = row[0]
             c.execute(
@@ -110,7 +110,7 @@ class KnowledgeGraph:
             VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (rel_id, source_id, target_id, rel_type,
              json.dumps(properties or {}), confidence,
-             datetime.utcnow().isoformat()),
+             datetime.now(timezone.utc).isoformat()),
         )
 
         conn.commit()

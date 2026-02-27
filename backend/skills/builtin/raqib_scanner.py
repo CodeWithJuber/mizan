@@ -22,7 +22,7 @@ import os
 import re
 import logging
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 
@@ -73,7 +73,7 @@ class ScanReport:
     scan_type: str = ""
     target: str = ""
     findings: List[SecurityFinding] = field(default_factory=list)
-    started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     completed_at: Optional[str] = None
     summary: Dict = field(default_factory=dict)
 
@@ -280,7 +280,7 @@ class RaqibScannerSkill(SkillBase):
             for f in config_results.get("findings", [])
         ])
 
-        report.completed_at = datetime.utcnow().isoformat()
+        report.completed_at = datetime.now(timezone.utc).isoformat()
 
         # Summary — Hisab (accounting)
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
