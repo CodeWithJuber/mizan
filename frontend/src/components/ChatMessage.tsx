@@ -51,6 +51,16 @@ function parseChatContent(text: string): ContentBlock[] {
   return blocks;
 }
 
+export function TypingIndicator() {
+  return (
+    <span className="inline-flex gap-1 items-center py-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+    </span>
+  );
+}
+
 export function ChatMessageContent({ content }: { content: string }) {
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
   const blocks = useMemo(() => parseChatContent(content), [content]);
@@ -390,83 +400,107 @@ export function ChatMessageBubble({
   msg,
   selectedAgent,
 }: ChatMessageBubbleProps) {
-  return (
-    <div
-      className={`flex gap-4 ${
-        msg.role === "user"
-          ? "flex-row-reverse"
-          : msg.role === "system"
-            ? "justify-center"
-            : ""
-      } animate-fade-in`}
-    >
-      {msg.role === "system" ? (
-        <div className="max-w-[85%] w-full">
-          <div
-            className="px-4 py-3 rounded-lg text-sm leading-relaxed italic
-            bg-amber-50/60 dark:bg-amber-500/5 border border-amber-200/60 dark:border-amber-500/15
-            text-amber-900 dark:text-amber-200/90"
-            style={{
-              fontFamily:
-                "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1.5 not-italic">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400"
-                aria-hidden="true"
-              >
-                <path d="M7 9l3 3-3 3M13 15h4" />
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-              </svg>
-              <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                System
-              </span>
-            </div>
-            <div className="whitespace-pre-wrap">{msg.content}</div>
-          </div>
-          <div className="text-xs text-amber-400 dark:text-amber-500/60 mt-1 px-1 font-mono text-center">
-            {msg.ts}
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (msg.role === "system") {
+    return (
+      <div className="chat-message-row">
+        <div className="chat-message-container flex justify-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50/80 dark:bg-amber-500/5 border border-amber-200/40 dark:border-amber-500/10 text-xs text-amber-700 dark:text-amber-300/80">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3" aria-hidden="true">
+              <path d="M7 9l3 3-3 3M13 15h4" />
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+            </svg>
+            <span>{msg.content}</span>
           </div>
         </div>
-      ) : (
-        <>
-          <div
-            className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-medium ${
-              msg.role === "user"
-                ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
-                : "bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700"
-            }`}
-          >
-            {msg.role === "user"
-              ? "You"
-              : selectedAgent?.name?.[0] || msg.agent?.[0] || "AI"}
-          </div>
-          <div
-            className={msg.role === "assistant" ? "max-w-[85%]" : "max-w-[75%]"}
-          >
-            {msg.role === "assistant" ? (
-              <div className="prose px-5 py-3.5 rounded-2xl text-sm leading-relaxed bg-white/80 dark:bg-mizan-dark-surface/80 backdrop-blur-md border border-white/50 dark:border-white/5 text-gray-800 dark:text-gray-200 rounded-tl-sm shadow-sm transition-all hover:shadow-md">
-                <ChatMessageContent content={msg.content} />
-              </div>
-            ) : (
-              <div className="px-5 py-3.5 rounded-2xl text-sm leading-relaxed bg-gradient-to-br from-blue-500 to-blue-600 border border-blue-400/50 text-white rounded-tr-sm shadow-md">
-                {msg.content}
-              </div>
-            )}
-            {msg.role === "assistant" && msg.cognitive && (
-              <CognitiveBar cognitive={msg.cognitive} />
-            )}
-            <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
-              {msg.role === "assistant" ? msg.agent : "You"} &middot; {msg.ts}
+      </div>
+    );
+  }
+
+  if (msg.role === "user") {
+    return (
+      <div className="chat-message-row">
+        <div className="chat-message-container flex justify-end">
+          <div className="max-w-[80%] lg:max-w-[70%]">
+            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm">
+              {msg.content}
+            </div>
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right font-mono px-1">
+              {msg.ts}
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant message — full-width like ChatGPT/Claude
+  return (
+    <div className="chat-message-row group/msg">
+      <div className="chat-message-container">
+        <div className="flex gap-3.5">
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm">
+            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+              <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
+            </svg>
+          </div>
+
+          {/* Body */}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[13px] font-semibold text-gray-900 dark:text-gray-100">
+                {msg.agent || selectedAgent?.name || "MIZAN"}
+              </span>
+              {msg.model && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400">
+                  {msg.model}
+                </span>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="prose">
+              <ChatMessageContent content={msg.content} />
+            </div>
+
+            {/* Cognitive bar */}
+            {msg.cognitive && <CognitiveBar cognitive={msg.cognitive} />}
+
+            {/* Action buttons — hover reveal */}
+            <div className="flex items-center gap-1 mt-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
+              <button
+                onClick={handleCopy}
+                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                title="Copy"
+              >
+                {copied ? (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-green-500">
+                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
+                    <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
+                  </svg>
+                )}
+              </button>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">
+                {msg.ts}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
