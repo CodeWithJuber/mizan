@@ -1,0 +1,15 @@
+# MIZAN Code Owners
+# These users will be automatically requested for review on PRs.
+
+# Default owner for everything
+* @CodeWithJuber
+
+# Backend core
+/backend/core/ @CodeWithJuber
+/backend/security/ @CodeWithJuber
+/backend/api/main.py @CodeWithJuber
+
+# Infrastructure
+/docker-compose.yml @CodeWithJuber
+/.github/workflows/ @CodeWithJuber
+/scripts/ @CodeWithJuber
