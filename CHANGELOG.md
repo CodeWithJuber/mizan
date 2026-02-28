@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multimodal perception pipeline: Basirah (vision) + Nutq (voice) wired into QCA engine
+- Auditory-first processing (Sam' before Basar) per Quran 16:78/17:36
+- Perception-Qalb integration: emotional context modulates vision and voice analysis
+- `POST /api/perception/analyze` endpoint for multimodal analysis
+- WebSocket `multimodal` message type for real-time perception
+- DNA-inspired quaternary encoding module (`backend/memory/quaternary.py`)
+- Quaternary checksum as 4th integrity layer in Lawh al-Mahfuz
+- VectorStore (ChromaDB) integration in Living Memory novelty gate
+- Hybrid text + semantic similarity in Living Memory `_find_best_match()`
+- `search_entities()` method in KnowledgeGraph (fixes MemoryPyramid layer 4)
+- Perception page in frontend UI with image/audio upload
+- Image and audio attachment support in chat interface
+- `BasirahEngine` and `NutqEngine` exports in perception `__init__.py`
+- NutqEngine: language detection (Arabic, Urdu, English) via Unicode analysis
+- NutqEngine: 8+ intent types (question, command, greeting, farewell, confirmation, negation, request, statement)
+
 ### Fixed
+- BasirahEngine: JSON-structured LLM output parsing (was returning empty extracted_text/key_elements)
+- BasirahEngine: category detection bug (`"error" in raw_lower and "text"` evaluated boolean inside list)
+- NutqEngine: `_adjust_for_tone()` was a no-op, now implements warm/patient/focused text transforms
+- KnowledgeGraph: missing `search_entities()` caused MemoryPyramid layer 4 to silently fail
 - Replace deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)` across all modules
 - Fix Pydantic `class Config` deprecation in `SkillExecuteRequest` (use `model_config` dict)
 - Fix `check_provider_health()` called without `await` in settings endpoint
