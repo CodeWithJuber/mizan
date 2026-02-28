@@ -7,19 +7,45 @@
 
 export interface ApiClient {
   get: (path: string) => Promise<Record<string, unknown>>;
-  post: (path: string, body?: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  post: (
+    path: string,
+    body?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  put: (
+    path: string,
+    body?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
   del: (path: string) => Promise<Record<string, unknown>>;
   API_URL: string;
 }
 
 // ===== Agent Types =====
 
-export type AgentState = "resting" | "thinking" | "acting" | "learning" | "error";
+export type AgentState =
+  | "resting"
+  | "thinking"
+  | "acting"
+  | "learning"
+  | "error";
 export type NafsLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export type NafsName = "Ammara" | "Lawwama" | "Mulhama" | "Mutmainna" | "Radiya" | "Mardiyya" | "Kamila";
+export type NafsName =
+  | "Ammara"
+  | "Lawwama"
+  | "Mulhama"
+  | "Mutmainna"
+  | "Radiya"
+  | "Mardiyya"
+  | "Kamila";
 export type AgentRole =
-  | "rasul" | "wakil" | "hafiz" | "shahid"
-  | "wali" | "mubashir" | "mundhir" | "katib" | "muallim";
+  | "rasul"
+  | "wakil"
+  | "hafiz"
+  | "shahid"
+  | "wali"
+  | "mubashir"
+  | "mundhir"
+  | "katib"
+  | "muallim";
 
 export interface Agent {
   id: string;
@@ -35,6 +61,9 @@ export interface Agent {
   success_rate: number;
   hikmah_count: number;
   tools: string[];
+  model?: string;
+  provider?: string;
+  system_prompt?: string;
 }
 
 // ===== Yaqin Certainty Types =====
@@ -50,12 +79,30 @@ export interface YaqinTag {
 
 // ===== Cognitive Method Types =====
 
-export type CognitiveMethod = "tafakkur" | "tadabbur" | "istidlal" | "qiyas" | "ijma";
+export type CognitiveMethod =
+  | "tafakkur"
+  | "tadabbur"
+  | "istidlal"
+  | "qiyas"
+  | "ijma";
 
 // ===== Qalb Emotional Types =====
 
-export type EmotionalState = "neutral" | "positive" | "frustrated" | "anxious" | "confused" | "determined" | "fatigued";
-export type ToneStyle = "standard" | "encouraging" | "patient" | "concise" | "warm" | "focused";
+export type EmotionalState =
+  | "neutral"
+  | "positive"
+  | "frustrated"
+  | "anxious"
+  | "confused"
+  | "determined"
+  | "fatigued";
+export type ToneStyle =
+  | "standard"
+  | "encouraging"
+  | "patient"
+  | "concise"
+  | "warm"
+  | "focused";
 
 export interface QalbReading {
   state: EmotionalState;
@@ -74,7 +121,14 @@ export interface RuhState {
 
 // ===== Majlis Agent Types =====
 
-export type MajlisNafsLevel = "ammara" | "lawwama" | "mulhama" | "mutmainna" | "radiya" | "mardiyya" | "kamila";
+export type MajlisNafsLevel =
+  | "ammara"
+  | "lawwama"
+  | "mulhama"
+  | "mutmainna"
+  | "radiya"
+  | "mardiyya"
+  | "kamila";
 export type MajlisAgentStatus = "active" | "idle" | "busy" | "offline";
 
 export interface MajlisAgent {
@@ -105,6 +159,25 @@ export interface KnowledgeItem {
   quality_score?: number;
 }
 
+// ===== Cognitive Metadata (QALB-7 Pipeline) =====
+
+export interface CognitiveMetadata {
+  nafs_level?: NafsLevel;
+  nafs_name?: NafsName;
+  ruh_energy?: number;
+  qalb?: QalbReading;
+  yaqin?: YaqinTag;
+  mizan_label?: string;
+  cognitive_method?: CognitiveMethod;
+  lubb?: { quality: string; coherence_score: number; bias_flags: string[] };
+  lawwama?: {
+    health: number;
+    hallucination_score: number;
+    repair_level: number;
+    errors: number;
+  };
+}
+
 // ===== Chat Types =====
 
 export interface ChatMessage {
@@ -112,7 +185,9 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   agent?: string;
+  model?: string;
   ts: string;
+  cognitive?: CognitiveMetadata;
 }
 
 // ===== Memory Types =====
@@ -185,7 +260,14 @@ export interface Webhook {
 // ===== Plugin Types =====
 
 export type PluginType = "ayah" | "bab" | "hafiz" | "ruh" | "muaddib";
-export type TrustLevel = "ammara" | "lawwama" | "mulhama" | "mutmainna" | "radiya" | "mardiyya" | "kamila";
+export type TrustLevel =
+  | "ammara"
+  | "lawwama"
+  | "mulhama"
+  | "mutmainna"
+  | "radiya"
+  | "mardiyya"
+  | "kamila";
 
 export interface Plugin {
   name: string;
@@ -295,6 +377,7 @@ export interface ProviderModel {
   vision?: boolean;
   pricing?: { prompt: string; completion: string };
   size?: number;
+  free?: boolean;
 }
 
 export interface ProviderInfo {
@@ -348,7 +431,12 @@ export interface PageProps {
 
 // ===== WebSocket Types =====
 
-export type WsConnectionStatus = "connected" | "connecting" | "reconnecting" | "disconnected" | "error";
+export type WsConnectionStatus =
+  | "connected"
+  | "connecting"
+  | "reconnecting"
+  | "disconnected"
+  | "error";
 
 export interface WsMessage {
   type: string;

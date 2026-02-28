@@ -23,7 +23,7 @@ class KnowledgeGraph:
     Stores entities and their relationships.
     """
 
-    def __init__(self, db_path: str = "/tmp/mizan_memory.db"):
+    def __init__(self, db_path: str = "/data/mizan_memory.db"):
         self.db_path = db_path
         self._init_tables()
 

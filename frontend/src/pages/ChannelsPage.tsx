@@ -4,20 +4,82 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import type { PageProps, Channel, ChannelInfo, GatewayStatus, Integration } from "../types";
+import type {
+  PageProps,
+  Channel,
+  ChannelInfo,
+  GatewayStatus,
+  Integration,
+} from "../types";
+import { SkeletonCard } from "../components/Skeleton";
 
-const CHANNEL_TYPES: Record<string, ChannelInfo & { tw: { text: string; bg: string; border: string } }> = {
-  webchat: { name: "WebChat", arabic: "محادثة", color: "#3b82f6", icon: "💬", tw: { text: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/30" } },
-  telegram: { name: "Telegram", arabic: "تلغرام", color: "#0088cc", icon: "✈️", tw: { text: "text-sky-500", bg: "bg-sky-500/10", border: "border-sky-500/30" } },
-  discord: { name: "Discord", arabic: "ديسكورد", color: "#5865F2", icon: "🎮", tw: { text: "text-indigo-500", bg: "bg-indigo-500/10", border: "border-indigo-500/30" } },
-  slack: { name: "Slack", arabic: "سلاك", color: "#4A154B", icon: "💼", tw: { text: "text-purple-600", bg: "bg-purple-600/10", border: "border-purple-600/30" } },
-  whatsapp: { name: "WhatsApp", arabic: "واتساب", color: "#25D366", icon: "📱", tw: { text: "text-green-500", bg: "bg-green-500/10", border: "border-green-500/30" } },
+const CHANNEL_TYPES: Record<
+  string,
+  ChannelInfo & { tw: { text: string; bg: string; border: string } }
+> = {
+  webchat: {
+    name: "WebChat",
+    arabic: "محادثة",
+    color: "#3b82f6",
+    icon: "💬",
+    tw: {
+      text: "text-blue-500",
+      bg: "bg-blue-500/10",
+      border: "border-blue-500/30",
+    },
+  },
+  telegram: {
+    name: "Telegram",
+    arabic: "تلغرام",
+    color: "#0088cc",
+    icon: "✈️",
+    tw: {
+      text: "text-sky-500",
+      bg: "bg-sky-500/10",
+      border: "border-sky-500/30",
+    },
+  },
+  discord: {
+    name: "Discord",
+    arabic: "ديسكورد",
+    color: "#5865F2",
+    icon: "🎮",
+    tw: {
+      text: "text-indigo-500",
+      bg: "bg-indigo-500/10",
+      border: "border-indigo-500/30",
+    },
+  },
+  slack: {
+    name: "Slack",
+    arabic: "سلاك",
+    color: "#4A154B",
+    icon: "💼",
+    tw: {
+      text: "text-purple-600",
+      bg: "bg-purple-600/10",
+      border: "border-purple-600/30",
+    },
+  },
+  whatsapp: {
+    name: "WhatsApp",
+    arabic: "واتساب",
+    color: "#25D366",
+    icon: "📱",
+    tw: {
+      text: "text-green-500",
+      bg: "bg-green-500/10",
+      border: "border-green-500/30",
+    },
+  },
 };
 
 export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(
+    null,
+  );
   const [showConfig, setShowConfig] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -96,8 +158,12 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
           <h2 className="page-title">Channels</h2>
           <p className="page-description">أبواب (Bab) — Gateway management</p>
         </div>
-        <div className={`flex items-center gap-1.5 text-2xs font-mono ${gatewayStatus?.status === "online" ? "text-emerald-500" : "text-red-500"}`}>
-          <div className={`status-dot ${gatewayStatus?.status === "online" ? "status-dot-active" : "status-dot-busy"}`} />
+        <div
+          className={`flex items-center gap-1.5 text-2xs font-mono ${gatewayStatus?.status === "online" ? "text-emerald-500" : "text-red-500"}`}
+        >
+          <div
+            className={`status-dot ${gatewayStatus?.status === "online" ? "status-dot-active" : "status-dot-busy"}`}
+          />
           Gateway {gatewayStatus?.status || "offline"}
         </div>
       </div>
@@ -106,42 +172,63 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
         "Enter upon them through the gate (Bab)" — Quran 5:23
       </div>
 
-      {loading && <div className="loading-text">Loading channels...</div>}
+      {loading && (
+        <div className="p-5" aria-live="polite">
+          <div className="card-grid">
+            <SkeletonCard count={5} />
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-5">
         <div className="card-grid">
           {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
-            const channel = channels.find((c) => c.type === type) || {} as Partial<Channel>;
+            const channel =
+              channels.find((c) => c.type === type) || ({} as Partial<Channel>);
             const integration = integrations.find((i) => i.type === type);
-            const isConnected = channel.status === "connected" || (integration?.enabled === true);
+            const isConnected =
+              channel.status === "connected" || integration?.enabled === true;
             const tw = info.tw;
 
             return (
-              <div key={type} className={`card ${isConnected ? tw.border : ""}`}>
+              <div
+                key={type}
+                className={`card ${isConnected ? tw.border : ""}`}
+              >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-10 h-10 rounded-full ${tw.bg} border ${tw.border} flex items-center justify-center text-lg`}>
+                  <div
+                    className={`w-10 h-10 rounded-full ${tw.bg} border ${tw.border} flex items-center justify-center text-lg`}
+                  >
                     {info.icon}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                       {info.name}
                     </div>
-                    <div className={`text-xs font-arabic ${tw.text} opacity-60`}>
+                    <div
+                      className={`text-xs font-arabic ${tw.text} opacity-60`}
+                    >
                       {info.arabic}
                     </div>
                   </div>
-                  <span className={`badge text-2xs ${isConnected ? "badge-success" : "badge-warning"}`}>
+                  <span
+                    className={`badge text-2xs ${isConnected ? "badge-success" : "badge-warning"}`}
+                  >
                     {isConnected ? "ACTIVE" : "IDLE"}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="stat">
-                    <span className="stat-value">{channel.connected_users || 0}</span>
+                    <span className="stat-value">
+                      {channel.connected_users || 0}
+                    </span>
                     <span className="stat-label">Users</span>
                   </div>
                   <div className="stat">
-                    <span className="stat-value">{channel.messages_processed || 0}</span>
+                    <span className="stat-value">
+                      {channel.messages_processed || 0}
+                    </span>
                     <span className="stat-label">Messages</span>
                   </div>
                 </div>
@@ -155,7 +242,9 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                   </button>
                   <button
                     className="btn-secondary btn-sm"
-                    onClick={() => setShowConfig(showConfig === type ? null : type)}
+                    onClick={() =>
+                      setShowConfig(showConfig === type ? null : type)
+                    }
                   >
                     Config
                   </button>
@@ -168,31 +257,60 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                     </div>
                     {type === "telegram" && (
                       <div>
-                        <label className="form-label">Bot Token</label>
-                        <input className="form-input" type="password" placeholder="Enter Telegram bot token..." />
+                        <label className="form-label" htmlFor="telegram-token">
+                          Bot Token
+                        </label>
+                        <input
+                          id="telegram-token"
+                          className="form-input"
+                          type="password"
+                          placeholder="Enter Telegram bot token..."
+                        />
                       </div>
                     )}
                     {type === "discord" && (
                       <div>
-                        <label className="form-label">Bot Token</label>
-                        <input className="form-input" type="password" placeholder="Enter Discord bot token..." />
+                        <label className="form-label" htmlFor="discord-token">
+                          Bot Token
+                        </label>
+                        <input
+                          id="discord-token"
+                          className="form-input"
+                          type="password"
+                          placeholder="Enter Discord bot token..."
+                        />
                       </div>
                     )}
                     {type === "slack" && (
                       <div>
-                        <label className="form-label">Slack App Token</label>
-                        <input className="form-input" type="password" placeholder="Enter Slack app token..." />
+                        <label className="form-label" htmlFor="slack-token">
+                          Slack App Token
+                        </label>
+                        <input
+                          id="slack-token"
+                          className="form-input"
+                          type="password"
+                          placeholder="Enter Slack app token..."
+                        />
                       </div>
                     )}
                     {type === "whatsapp" && (
                       <div>
-                        <label className="form-label">Cloud API Token</label>
-                        <input className="form-input" type="password" placeholder="Enter WhatsApp API token..." />
+                        <label className="form-label" htmlFor="whatsapp-token">
+                          Cloud API Token
+                        </label>
+                        <input
+                          id="whatsapp-token"
+                          className="form-input"
+                          type="password"
+                          placeholder="Enter WhatsApp API token..."
+                        />
                       </div>
                     )}
                     {type === "webchat" && (
                       <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
-                        WebChat is built-in via WebSocket at ws://localhost:8000/ws
+                        WebChat is built-in via WebSocket at
+                        ws://localhost:8000/ws
                       </div>
                     )}
                   </div>

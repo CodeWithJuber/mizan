@@ -27,6 +27,24 @@ from typing import Any
 logger = logging.getLogger("mizan.aql")
 
 
+def _lazy_causal_engine():
+    """Lazy-load CausalEngine to avoid circular imports."""
+    try:
+        from reasoning.causal_engine import CausalEngine
+        return CausalEngine()
+    except ImportError:
+        return None
+
+
+def _lazy_fuad_engine():
+    """Lazy-load FuadEngine to avoid circular imports."""
+    try:
+        from core.fuad import FuadEngine
+        return FuadEngine()
+    except ImportError:
+        return None
+
+
 @dataclass
 class ReasoningStep:
     """A single step in the reasoning process"""
@@ -58,6 +76,8 @@ class AqlEngine:
     def __init__(self, max_iterations: int = 10):
         self.max_iterations = max_iterations
         self._qca = None
+        self._causal = None
+        self._fuad = None
 
     @property
     def qca(self):
@@ -65,11 +85,24 @@ class AqlEngine:
         if self._qca is None:
             try:
                 from qca.engine import QCAEngine
-
                 self._qca = QCAEngine()
             except ImportError:
                 self._qca = None
         return self._qca
+
+    @property
+    def causal(self):
+        """Lazy-load CausalEngine."""
+        if self._causal is None:
+            self._causal = _lazy_causal_engine()
+        return self._causal
+
+    @property
+    def fuad(self):
+        """Lazy-load FuadEngine."""
+        if self._fuad is None:
+            self._fuad = _lazy_fuad_engine()
+        return self._fuad
 
     async def reason(
         self,
@@ -284,6 +317,35 @@ class AqlEngine:
                     "furqan_checks": furqan_report.get("checks", []),
                     "lawh_stats": self.qca.lawh.stats(),
                 }
+            except Exception:
+                pass
+
+        # Causal reasoning — analyze task through Pearl's 3-rung ladder
+        if self.causal and tool_calls:
+            try:
+                causal_result = self.causal.analyze_query(task, {})
+                result["causal_analysis"] = {
+                    "rung": causal_result.get("rung", 1),
+                    "query_type": causal_result.get("type", "observation"),
+                    "answer": str(causal_result.get("result", ""))[:300],
+                }
+            except Exception:
+                pass
+
+        # Fu'ad conviction formation — evaluate evidence from tool calls
+        if self.fuad and tool_calls:
+            try:
+                sources = [tc["tool"] for tc in tool_calls if tc.get("result")]
+                if sources:
+                    conviction = self.fuad.evaluate_evidence(
+                        claim=task[:200],
+                        sources=sources,
+                    )
+                    result["conviction"] = {
+                        "level": conviction.level.value,
+                        "confidence": round(conviction.confidence, 3),
+                        "source_count": conviction.source_count,
+                    }
             except Exception:
                 pass
 

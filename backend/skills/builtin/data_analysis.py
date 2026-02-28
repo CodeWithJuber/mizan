@@ -38,8 +38,11 @@ class DataAnalysisSkill(SkillBase):
             return await self.analyze_json(params.get("data", ""))
         return {"error": f"Unknown action: {action}"}
 
-    async def analyze_csv(self, data: str) -> dict:
+    async def analyze_csv(self, data: str | dict = "") -> dict:
         """Analyze CSV data"""
+        # Defensive: handle dict input from invoke system
+        if isinstance(data, dict):
+            data = data.get("data", "")
         try:
             reader = csv.DictReader(io.StringIO(data))
             rows = list(reader)
@@ -77,8 +80,11 @@ class DataAnalysisSkill(SkillBase):
         except Exception as e:
             return {"error": str(e)}
 
-    async def analyze_json(self, data: str) -> dict:
+    async def analyze_json(self, data: str | dict = "") -> dict:
         """Analyze JSON data"""
+        # Defensive: handle dict input from invoke system
+        if isinstance(data, dict) and "data" in data:
+            data = data.get("data", "")
         try:
             parsed = json.loads(data)
 

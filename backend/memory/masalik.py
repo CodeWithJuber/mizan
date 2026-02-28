@@ -21,8 +21,10 @@ Quranic Foundation:
   LAWH (لوح):       The preserved network — nothing duplicated, everything in place
 """
 
+import json
 import logging
 import math
+import os
 import re
 import time
 from collections import defaultdict
@@ -309,17 +311,36 @@ class MasalikNetwork:
     - Heavily-used pathways become permanent wisdom (Hikmah)
     - Some pathways are innate/pre-wired (Fitrah)
 
+    Persistence: Network state is saved to disk periodically and on shutdown.
+    On startup, the previously saved state is restored so memory survives restarts.
+
     "And We have certainly made the Quran easy for remembrance (Dhikr).
      So is there any who will remember?" — 54:17
     """
 
-    def __init__(self):
+    # Default persistence path (inside data/ volume in Docker)
+    DEFAULT_PERSIST_PATH = "/data/masalik_network.json"
+
+    def __init__(self, persist_path: str | None = None):
         self.concepts: dict[str, Mafhum] = {}
         self.pathways: dict[str, Silah] = {}
         self._activation_history: list[set[str]] = []
         self._last_decay: float = time.time()
 
-        self._init_fitrah()
+        # Use environment DB_PATH directory if available, else fallback
+        if persist_path:
+            self._persist_path = persist_path
+        else:
+            db_dir = os.path.dirname(os.environ.get("DB_PATH", "/data/mizan_memory.db"))
+            self._persist_path = os.path.join(db_dir, "masalik_network.json")
+
+        self._encode_count_since_save = 0
+        self._save_every_n = 10  # Auto-save every N encodes
+
+        # Try to restore from disk first
+        restored = self._load_from_disk()
+        if not restored:
+            self._init_fitrah()
 
     def _init_fitrah(self):
         """
@@ -437,6 +458,9 @@ class MasalikNetwork:
         self._activation_history.append(set(concepts))
         if len(self._activation_history) > 100:
             self._activation_history = self._activation_history[-50:]
+
+        # Auto-save periodically to persist across restarts
+        self._maybe_auto_save()
 
         return {
             "encoded": len(concepts),
@@ -688,4 +712,110 @@ class MasalikNetwork:
             "hikmah_pathways": hikmah_pathways,
             "hikmah_concepts": hikmah_concepts,
             "avg_pathway_weight": round(avg_weight, 3),
+            "persisted": self._persist_path,
         }
+
+    # ─── PERSISTENCE: Save/Load to Disk ──────────────────────────────────
+
+    def save_to_disk(self) -> bool:
+        """
+        Persist the neural network to disk as JSON.
+        Called periodically and on shutdown to survive restarts.
+        """
+        try:
+            os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
+
+            state = {
+                "version": 1,
+                "saved_at": time.time(),
+                "concepts": {
+                    cid: {
+                        "activation": c.activation,
+                        "resting_level": c.resting_level,
+                        "last_activated": c.last_activated,
+                        "total_activations": c.total_activations,
+                        "is_fitrah": c.is_fitrah,
+                    }
+                    for cid, c in self.concepts.items()
+                },
+                "pathways": {
+                    key: {
+                        "source": p.source,
+                        "target": p.target,
+                        "weight": p.weight,
+                        "pathway_type": p.pathway_type,
+                        "last_activated": p.last_activated,
+                        "co_activations": p.co_activations,
+                    }
+                    for key, p in self.pathways.items()
+                },
+            }
+
+            # Write atomically (write to temp, then rename)
+            tmp_path = self._persist_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                json.dump(state, f)
+            os.replace(tmp_path, self._persist_path)
+
+            logger.info(
+                "Masalik saved: %d concepts, %d pathways → %s",
+                len(self.concepts),
+                len(self.pathways),
+                self._persist_path,
+            )
+            return True
+        except Exception as e:
+            logger.error("Masalik save failed: %s", e)
+            return False
+
+    def _load_from_disk(self) -> bool:
+        """
+        Restore neural network state from disk.
+        Returns True if successfully loaded, False if no saved state.
+        """
+        if not os.path.exists(self._persist_path):
+            return False
+
+        try:
+            with open(self._persist_path) as f:
+                state = json.load(f)
+
+            # Restore concepts
+            for cid, cdata in state.get("concepts", {}).items():
+                self.concepts[cid] = Mafhum(
+                    id=cid,
+                    activation=cdata.get("activation", 0.0),
+                    resting_level=cdata.get("resting_level", 0.0),
+                    last_activated=cdata.get("last_activated", 0.0),
+                    total_activations=cdata.get("total_activations", 0),
+                    is_fitrah=cdata.get("is_fitrah", False),
+                )
+
+            # Restore pathways
+            for key, pdata in state.get("pathways", {}).items():
+                self.pathways[key] = Silah(
+                    source=pdata["source"],
+                    target=pdata["target"],
+                    weight=pdata.get("weight", 0.1),
+                    pathway_type=pdata.get("pathway_type", "association"),
+                    last_activated=pdata.get("last_activated", 0.0),
+                    co_activations=pdata.get("co_activations", 0),
+                )
+
+            logger.info(
+                "Masalik restored: %d concepts, %d pathways from %s",
+                len(self.concepts),
+                len(self.pathways),
+                self._persist_path,
+            )
+            return True
+        except Exception as e:
+            logger.error("Masalik load failed: %s — starting fresh", e)
+            return False
+
+    def _maybe_auto_save(self):
+        """Auto-save after N encode operations."""
+        self._encode_count_since_save += 1
+        if self._encode_count_since_save >= self._save_every_n:
+            self._encode_count_since_save = 0
+            self.save_to_disk()
