@@ -671,9 +671,332 @@ class CommunicationAgent(BaseAgent):
         return {"error": f"Unknown notification channel: {channel}"}
 
 
+class SuperAgent(BrowserAgent, ResearchAgent, CodeAgent, CommunicationAgent):
+    """
+    Khalifah (خليفة) - Universal Agent
+    "I will create a vicegerent (Khalifah) on earth" - Quran 2:30
+
+    All tools. All capabilities. One agent.
+    Combines browser, research, code, and communication into a single agent.
+    """
+
+    # Tool schemas for all specialized tools — exposed to LLM via get_tool_schemas()
+    TOOL_SCHEMAS: list[dict] = [
+        # ── Browser tools ──
+        {
+            "name": "browse_url",
+            "description": "Browse a URL and return its text content, title, and links.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to browse"},
+                },
+                "required": ["url"],
+            },
+        },
+        {
+            "name": "navigate",
+            "description": "Navigate to a URL with optional JS rendering (Playwright) or httpx fallback.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to navigate to"},
+                    "wait_for": {
+                        "type": "string",
+                        "description": "CSS selector to wait for before returning",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+        {
+            "name": "search_web",
+            "description": "Search the web using DuckDuckGo and return results.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "extract_content",
+            "description": "Extract specific content from a URL, optionally using a CSS selector.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to extract from"},
+                    "selector": {
+                        "type": "string",
+                        "description": "Optional CSS selector to target specific elements",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+        {
+            "name": "take_screenshot",
+            "description": "Take a screenshot of a web page (requires Playwright or system browser).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to screenshot"},
+                },
+                "required": ["url"],
+            },
+        },
+        {
+            "name": "click_element",
+            "description": "Click an element on a web page by CSS selector.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The page URL"},
+                    "selector": {"type": "string", "description": "CSS selector of the element to click"},
+                },
+                "required": ["url", "selector"],
+            },
+        },
+        {
+            "name": "fill_form",
+            "description": "Fill form fields on a web page. Keys are CSS selectors, values are text to fill.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The page URL"},
+                    "fields": {
+                        "type": "object",
+                        "description": "Mapping of CSS selector → value to fill",
+                    },
+                },
+                "required": ["url", "fields"],
+            },
+        },
+        # ── Research tools ──
+        {
+            "name": "analyze_text",
+            "description": "Analyze text for word count, key terms, and insights.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The text to analyze"},
+                    "aspect": {
+                        "type": "string",
+                        "description": "Analysis aspect (e.g., general, sentiment, key_points)",
+                        "default": "general",
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+        {
+            "name": "synthesize_sources",
+            "description": "Synthesize information from multiple text sources.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "sources": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of text sources to synthesize",
+                    },
+                },
+                "required": ["sources"],
+            },
+        },
+        {
+            "name": "fact_check",
+            "description": "Check a factual claim for accuracy.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string", "description": "The claim to verify"},
+                },
+                "required": ["claim"],
+            },
+        },
+        {
+            "name": "generate_report",
+            "description": "Generate a structured report template on a topic.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "The report topic"},
+                    "format": {
+                        "type": "string",
+                        "description": "Report format (markdown, html, text)",
+                        "default": "markdown",
+                    },
+                },
+                "required": ["topic"],
+            },
+        },
+        {
+            "name": "arxiv_search",
+            "description": "Search ArXiv for academic papers.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query for papers"},
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+        # ── Code tools ──
+        {
+            "name": "generate_code",
+            "description": "Generate code from a specification.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "spec": {"type": "string", "description": "Code specification/requirements"},
+                    "language": {
+                        "type": "string",
+                        "description": "Programming language",
+                        "default": "python",
+                    },
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "run_tests",
+            "description": "Run tests in a directory using a test framework.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the test directory"},
+                    "framework": {
+                        "type": "string",
+                        "description": "Test framework (pytest, jest, etc.)",
+                        "default": "pytest",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+        {
+            "name": "lint_code",
+            "description": "Lint code at the given path.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File or directory path to lint"},
+                },
+                "required": ["path"],
+            },
+        },
+        {
+            "name": "git_operation",
+            "description": "Run a git operation (status, log, diff, branch, add, commit, push, pull, clone).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": "Git operation to run (e.g., status, log, diff)",
+                    },
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Repository path",
+                        "default": ".",
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Additional arguments",
+                        "default": "",
+                    },
+                },
+                "required": ["operation"],
+            },
+        },
+        {
+            "name": "install_package",
+            "description": "Install a package using pip or npm.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "package": {"type": "string", "description": "Package name to install"},
+                    "manager": {
+                        "type": "string",
+                        "description": "Package manager (pip or npm)",
+                        "default": "pip",
+                    },
+                },
+                "required": ["package"],
+            },
+        },
+        # ── Communication tools ──
+        {
+            "name": "send_webhook",
+            "description": "Send a webhook POST request with a JSON payload.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Webhook URL"},
+                    "payload": {"type": "object", "description": "JSON payload to send"},
+                },
+                "required": ["url", "payload"],
+            },
+        },
+        {
+            "name": "check_email",
+            "description": "Check an IMAP email inbox for recent messages.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "IMAP server hostname"},
+                    "user": {"type": "string", "description": "Email username"},
+                    "password": {"type": "string", "description": "Email password"},
+                    "folder": {"type": "string", "description": "Folder to check", "default": "INBOX"},
+                    "limit": {"type": "integer", "description": "Max messages to return", "default": 10},
+                },
+                "required": ["host", "user", "password"],
+            },
+        },
+        {
+            "name": "send_notification",
+            "description": "Send a notification message via a channel (currently supports 'log').",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "Notification message"},
+                    "channel": {
+                        "type": "string",
+                        "description": "Notification channel",
+                        "default": "log",
+                    },
+                },
+                "required": ["message"],
+            },
+        },
+    ]
+
+    def __init__(self, **kwargs):
+        # Call BaseAgent directly to skip MRO chain —
+        # each parent __init__ passes its own role kwarg which conflicts.
+        BaseAgent.__init__(self, role="khalifah", **kwargs)
+        self._playwright_available: bool | None = None
+        # Khalifah starts at Mudghah (structured) — all tools, delegation enabled
+        self.nafs_level = 3
+        # Register all specialized tool sets
+        self._register_browser_tools()
+        self._register_research_tools()
+        self._register_code_tools()
+        self._register_comm_tools()
+
+
 def create_agent(agent_type: str, **kwargs) -> BaseAgent:
     """Factory for creating Quranic agents"""
     agents = {
+        "super": SuperAgent,
+        "khalifah": SuperAgent,
         "browser": BrowserAgent,
         "mubashir": BrowserAgent,
         "research": ResearchAgent,

@@ -38,6 +38,14 @@ data/
 .DS_Store
 Thumbs.db
 
+# Claude Code
+.claude/
+.claude.local.md
+
+# Secrets / local config
+backend/.vault.key
+.mcp.json
+
 # IDE
 .vscode/
 .idea/

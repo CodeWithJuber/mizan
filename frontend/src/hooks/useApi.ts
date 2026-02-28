@@ -3,7 +3,7 @@
  * Centralized API calls with auth support
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { ApiClient } from "../types";
 import { config } from "../config";
 
@@ -21,7 +21,9 @@ export function useApi(): ApiClient {
 
   const get = useCallback(
     async (path: string) => {
-      const res = await fetch(`${config.API_URL}${path}`, { headers: headers() });
+      const res = await fetch(`${config.API_URL}${path}`, {
+        headers: headers(),
+      });
       return res.json();
     },
     [headers],
@@ -31,6 +33,18 @@ export function useApi(): ApiClient {
     async (path: string, body?: Record<string, unknown>) => {
       const res = await fetch(`${config.API_URL}${path}`, {
         method: "POST",
+        headers: headers(),
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    },
+    [headers],
+  );
+
+  const put = useCallback(
+    async (path: string, body?: Record<string, unknown>) => {
+      const res = await fetch(`${config.API_URL}${path}`, {
+        method: "PUT",
         headers: headers(),
         body: JSON.stringify(body),
       });
@@ -50,5 +64,8 @@ export function useApi(): ApiClient {
     [headers],
   );
 
-  return { get, post, del, API_URL: config.API_URL };
+  return useMemo(
+    () => ({ get, post, put, del, API_URL: config.API_URL }),
+    [get, post, put, del],
+  );
 }

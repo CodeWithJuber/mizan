@@ -249,7 +249,7 @@
 
     <div class="nav-section">Architecture</div>
     <a class="nav-item" onclick="showSection('architecture')">System Design</a>
-    <a class="nav-item" onclick="showSection('qca')">Cognitive Architecture</a>
+    <a class="nav-item" onclick="showSection('qca')">QALB-7 Architecture</a>
     <a class="nav-item" onclick="showSection('project-structure')">Project Structure</a>
   </nav>
 
@@ -1046,23 +1046,130 @@ make update                # Via Makefile
 
     <!-- ==================== QCA ==================== -->
     <div id="qca" class="section">
-      <h1>Quranic Cognitive Architecture (QCA)</h1>
-      <p>MIZAN's reasoning engine is built on a 7-layer cognitive architecture inspired by Quranic epistemology.</p>
+      <h1>QALB-7 Cognitive Architecture</h1>
+      <p>Every MIZAN agent processes tasks through a 7-layer cognitive pipeline inspired by Quranic psychology. Each layer transforms the task before it reaches the LLM, and post-processes the response.</p>
 
-      <h3>Cognitive Layers</h3>
+      <h3>QALB-7 Pipeline</h3>
+      <p>Each layer runs in sequence on every agent task:</p>
       <table>
-        <thead><tr><th>Layer</th><th>Arabic</th><th>Function</th></tr></thead>
+        <thead><tr><th>#</th><th>Module</th><th>Arabic</th><th>Purpose</th><th>File</th></tr></thead>
         <tbody>
-          <tr><td><strong>Sam'</strong></td><td>سمع</td><td>Sequential temporal input processing</td></tr>
-          <tr><td><strong>Basar</strong></td><td>بصر</td><td>Structural pattern recognition</td></tr>
-          <tr><td><strong>Fu'ad</strong></td><td>فؤاد</td><td>Integration engine combining inputs</td></tr>
-          <tr><td><strong>ISM</strong></td><td>اسم</td><td>Deep semantic root-space representation</td></tr>
-          <tr><td><strong>Mizan</strong></td><td>ميزان</td><td>Epistemic weighting and truth calibration</td></tr>
-          <tr><td><strong>'Aql</strong></td><td>عقل</td><td>Typed relationship binding engine</td></tr>
-          <tr><td><strong>Lawh</strong></td><td>لوح</td><td>4-tier hierarchical memory</td></tr>
-          <tr><td><strong>Furqan</strong></td><td>فرقان</td><td>Discrimination and articulation output</td></tr>
+          <tr><td>1</td><td><strong>Fitrah</strong></td><td>فطرة</td><td>Innate ethical guardrails (NO_HARM, TRUTH, JUSTICE)</td><td><code>core/fitrah.py</code></td></tr>
+          <tr><td>2</td><td><strong>Nafs Triad</strong></td><td>نفس</td><td>Three competing inner voices deliberate on approach</td><td><code>core/nafs_triad.py</code></td></tr>
+          <tr><td>3</td><td><strong>Qalb Processor</strong></td><td>قلب</td><td>Cardiac oscillation — modulates LLM temperature &amp; token limits</td><td><code>core/qalb_processor.py</code></td></tr>
+          <tr><td>4</td><td><strong>Fu'ad</strong></td><td>فؤاد</td><td>Bayesian conviction engine — evidence accumulation</td><td><code>core/fuad.py</code></td></tr>
+          <tr><td>5</td><td><strong>Lubb</strong></td><td>لبّ</td><td>Metacognition — compress, check coherence, detect bias</td><td><code>core/lubb.py</code></td></tr>
+          <tr><td>6</td><td><strong>Developmental Gate</strong></td><td>أطوار</td><td>Progressive capability gating (7 stages)</td><td><code>core/developmental_stages.py</code></td></tr>
+          <tr><td>7</td><td><strong>Causal Engine</strong></td><td>سببية</td><td>Pearl's causal ladder (observe/intervene/counterfactual)</td><td><code>reasoning/causal_engine.py</code></td></tr>
         </tbody>
       </table>
+
+      <h3>Layer 1: Fitrah — Innate Ethics</h3>
+      <p>Before any tool executes, Fitrah checks three non-negotiable axioms:</p>
+      <ul>
+        <li><strong>NO_HARM</strong> — Blocks destructive commands (<code>rm -rf</code>, <code>DROP TABLE</code>)</li>
+        <li><strong>TRUTH</strong> — Prevents fabricating data or claiming certainty without evidence</li>
+        <li><strong>JUSTICE</strong> — Guards against disproportionate impact actions</li>
+      </ul>
+      <p>On initialization, Fitrah axioms are loaded into QCA Lawh Tier 1 as immutable truths with certainty 1.0.</p>
+
+      <h3>Layer 2: Nafs Triad — Inner Deliberation</h3>
+      <p>Three competing "inner voices" deliberate on every task. The winner injects behavioral guidance into the system prompt:</p>
+      <table>
+        <thead><tr><th>Voice</th><th>Arabic</th><th>Bias</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Ammara</strong></td><td>أمّارة</td><td>Drive</td><td>Push to act quickly, take risks</td></tr>
+          <tr><td><strong>Lawwama</strong></td><td>لوّامة</td><td>Caution</td><td>Question assumptions, double-check</td></tr>
+          <tr><td><strong>Mutmainna</strong></td><td>مطمئنة</td><td>Balance</td><td>Seek harmony, measured approach</td></tr>
+        </tbody>
+      </table>
+      <p>Voice weights shift with the agent's Nafs level: Level 1-2 Ammara dominates (drive), Level 3-4 Lawwama dominates (critical), Level 5-7 Mutmainna dominates (wise).</p>
+
+      <h3>Layer 3: Qalb Processor — Cardiac Oscillation</h3>
+      <p>The Qalb models a "heartbeat" that alternates between contraction and expansion, directly modulating LLM parameters:</p>
+      <table>
+        <thead><tr><th>State</th><th>Arabic</th><th>Temperature</th><th>Max Tokens</th><th>When</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Qabd</strong></td><td>قبض</td><td>0.3</td><td>2048</td><td>Focused, analytical tasks</td></tr>
+          <tr><td><strong>Bast</strong></td><td>بسط</td><td>0.8</td><td>4096</td><td>Creative, exploratory tasks</td></tr>
+          <tr><td><strong>Khushu</strong></td><td>خشوع</td><td>0.2</td><td>6144</td><td>Deep focus (nafs ≥ 4 + complex task)</td></tr>
+        </tbody>
+      </table>
+      <p>The oscillation phase advances 0.02 per interaction. Emotional overrides: Frustrated → force Qabd; Positive → allow Bast.</p>
+
+      <h3>Layer 4: Fu'ad — Conviction Formation</h3>
+      <p>Bayesian evidence accumulation across three conviction levels:</p>
+      <table>
+        <thead><tr><th>Level</th><th>Requirement</th><th>Confidence</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Impression</strong></td><td>Single source</td><td>0.0 – 0.50</td></tr>
+          <tr><td><strong>Belief</strong></td><td>2+ independent sources</td><td>0.50 – 0.78</td></tr>
+          <tr><td><strong>Conviction</strong></td><td>3+ sources + temporal consistency</td><td>0.78 – 1.0</td></tr>
+        </tbody>
+      </table>
+      <p>Each source closes 35% of the remaining confidence gap: <code>confidence = 1 - (0.65 ^ source_count)</code></p>
+
+      <h3>Layer 5: Lubb — Metacognition</h3>
+      <p>After response generation, Lubb performs three evaluations:</p>
+      <ul>
+        <li><strong>Compress</strong> — Information Bottleneck: keeps decisions + tool results + key facts (~20% of input)</li>
+        <li><strong>Check Coherence</strong> — Verify conclusions follow from premises (score 0.0–1.0)</li>
+        <li><strong>Detect Bias</strong> — Flag confirmation bias, anchoring, availability bias</li>
+      </ul>
+      <p>Output: quality label (<code>confident</code> | <code>hedged</code> | <code>uncertain</code>), coherence score, and bias flags. If coherence &lt; 0.5, a caveat is appended to the response.</p>
+
+      <h3>Layer 6: Developmental Gate — 7 Embryological Stages</h3>
+      <p>Agents grow through seven stages, each unlocking new capabilities:</p>
+      <table>
+        <thead><tr><th>Level</th><th>Stage</th><th>Arabic</th><th>Max Turns</th><th>Key Unlocks</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>Nutfah</strong></td><td>نطفة</td><td>5</td><td>bash, read_file, recall_memory</td></tr>
+          <tr><td>2</td><td><strong>Alaqah</strong></td><td>علقة</td><td>8</td><td>+ write_file, http_get</td></tr>
+          <tr><td>3</td><td><strong>Mudghah</strong></td><td>مضغة</td><td>10</td><td>+ python_exec, http_post, delegation</td></tr>
+          <tr><td>4</td><td><strong>Izham</strong></td><td>عظام</td><td>12</td><td>+ create_agent, causal rung 2</td></tr>
+          <tr><td>5</td><td><strong>Lahm</strong></td><td>لحم</td><td>15</td><td>All tools, causal rung 3, Lubb metacognition</td></tr>
+          <tr><td>6</td><td><strong>Nafkh</strong></td><td>نفخ</td><td>20</td><td>Full metacognition</td></tr>
+          <tr><td>7</td><td><strong>Khalq Akhar</strong></td><td>خلق آخر</td><td>25</td><td>Full autonomy</td></tr>
+        </tbody>
+      </table>
+      <p>Promotion criteria: sustained success rate + task count + hikmah threshold (managed by <code>DevelopmentalGate.check_upgrade_readiness()</code>).</p>
+
+      <h3>Layer 7: Causal Engine — Pearl's Causal Ladder</h3>
+      <table>
+        <thead><tr><th>Rung</th><th>Type</th><th>Question</th><th>Method</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>Observation</strong></td><td>"What is?"</td><td>P(Y|X) — correlational analysis</td></tr>
+          <tr><td>2</td><td><strong>Intervention</strong></td><td>"What if I do X?"</td><td>P(Y|do(X)) — do-calculus</td></tr>
+          <tr><td>3</td><td><strong>Counterfactual</strong></td><td>"What if I had done X instead?"</td><td>P(Y_x|X', Y') — alt. history</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Extension Modules</h3>
+      <table>
+        <thead><tr><th>Module</th><th>Arabic</th><th>Purpose</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Self-Healing</strong></td><td>لوّامة</td><td>Immune memory, health metrics, adaptive checkpoints</td><td><code>core/self_healing.py</code></td></tr>
+          <tr><td><strong>Parallel Agents</strong></td><td>—</td><td>Concurrent task scheduling + skill transfer</td><td><code>core/parallel_agents.py</code></td></tr>
+          <tr><td><strong>Imagination</strong></td><td>تصوير</td><td>Predictive coding — simulate before acting</td><td><code>core/imagination.py</code></td></tr>
+          <tr><td><strong>Creativity</strong></td><td>إبداع</td><td>5 creative modes + fitness landscape math</td><td><code>core/creativity.py</code></td></tr>
+          <tr><td><strong>Dream Engine</strong></td><td>منام</td><td>Offline memory consolidation (NREM+REM)</td><td><code>core/dream_engine.py</code></td></tr>
+          <tr><td><strong>Shura Council</strong></td><td>شورى</td><td>Multi-agent consultation for complex decisions</td><td><code>agents/shura_council.py</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>5-Layer Memory Pyramid</h3>
+      <p>All memory layers are queried through a unified <code>MemoryPyramid</code>:</p>
+      <table>
+        <thead><tr><th>Layer</th><th>Module</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Dhikr</strong></td><td><code>memory/dhikr.py</code></td><td>Three-tier persistent memory (episodic, semantic, procedural)</td></tr>
+          <tr><td><strong>Masalik</strong></td><td><code>memory/masalik.py</code></td><td>Neural pathways with spreading activation</td></tr>
+          <tr><td><strong>Lawh al-Mahfuz</strong></td><td><code>memory/lawh_mahfuz.py</code></td><td>Immutable memory with triple-checksum integrity (SHA-256 + CRC-32 + length)</td></tr>
+          <tr><td><strong>VectorStore</strong></td><td><code>memory/vector_store.py</code></td><td>Semantic embedding search (ChromaDB)</td></tr>
+          <tr><td><strong>KnowledgeGraph</strong></td><td><code>memory/knowledge_graph.py</code></td><td>Entity-relationship graph (SQLite)</td></tr>
+        </tbody>
+      </table>
+      <p>Unified query: <code>memory/memory_pyramid.py</code> merges, deduplicates, and ranks by <code>relevance × certainty × recency</code>.</p>
 
       <h3>Yaqin Certainty Engine</h3>
       <p>Every piece of knowledge is tagged with its certainty level:</p>
@@ -1075,20 +1182,17 @@ make update                # Via Makefile
         </tbody>
       </table>
 
-      <h3>Nafs Evolution (Agent Growth)</h3>
-      <p>Agents evolve through 7 levels based on their performance:</p>
-      <table>
-        <thead><tr><th>Level</th><th>Name</th><th>Requirements</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>Ammara (Commanding)</td><td>Starting level</td></tr>
-          <tr><td>2</td><td>Lawwama (Self-Reproaching)</td><td>60% success, 25+ tasks</td></tr>
-          <tr><td>3</td><td>Mulhama (Inspired)</td><td>75% success, 100+ tasks</td></tr>
-          <tr><td>4</td><td>Mutmainna (Tranquil)</td><td>85% success, 250+ tasks</td></tr>
-          <tr><td>5</td><td>Radiya (Pleased)</td><td>90% success, 500+ tasks</td></tr>
-          <tr><td>6</td><td>Mardiyya (Pleasing)</td><td>95% success, 1000+ tasks</td></tr>
-          <tr><td>7</td><td>Kamila (Complete)</td><td>97% success, 2000+ tasks</td></tr>
-        </tbody>
-      </table>
+      <h3>Cognitive Metadata in the UI</h3>
+      <p>Every assistant response includes a <strong>CognitiveBar</strong> showing real-time cognitive state:</p>
+      <ul>
+        <li><strong>Qalb</strong> state (Qabd/Bast/Khushu) with confidence</li>
+        <li><strong>Yaqin</strong> certainty level with confidence bar</li>
+        <li><strong>Lubb</strong> quality (confident / hedged / uncertain)</li>
+        <li><strong>Ruh</strong> energy percentage</li>
+        <li><strong>Nafs</strong> level and name badge</li>
+        <li><strong>Lawwama</strong> repair indicator (when self-healing is active)</li>
+      </ul>
+      <p>Expandable for detailed signals, bias flags, and evidence lists.</p>
 
       <h3>QCA API Endpoints</h3>
       <pre><code>POST /api/yaqin/tag         Tag knowledge with certainty level
@@ -1134,34 +1238,66 @@ POST /api/federation/discover  Discover agents by capability</code></pre>
       <h1>Project Structure</h1>
       <pre><code>mizan/
 +-- backend/
-|   +-- api/main.py              # FastAPI server + all routes
+|   +-- api/main.py                  # FastAPI server + all routes
 |   +-- agents/
-|   |   +-- base.py              # Base agent + agentic loop
-|   |   +-- specialized.py       # Browser, Research, Code agents
-|   |   +-- federation.py        # Agent-to-agent communication
+|   |   +-- base.py                  # Base agent with QALB-7 agentic loop
+|   |   +-- specialized.py           # Browser, Research, Code, SuperAgent (Khalifah)
+|   |   +-- federation.py            # Agent-to-agent communication
+|   |   +-- shura_council.py         # Multi-agent consultation
+|   |   +-- perpetual_rotation.py    # Agent rotation &amp; load balancing
 |   +-- core/
-|   |   +-- events.py            # Event bus (Nida')
-|   |   +-- hooks.py             # Hook system (Ta'liq)
-|   |   +-- plugins.py           # Plugin manager (Wasilah)
-|   |   +-- middleware.py         # Middleware pipeline (Silsilah)
-|   +-- providers.py             # LLM providers (Claude/GPT/Ollama/300+)
-|   +-- memory/dhikr.py          # 3-tier memory
-|   +-- security/                # Auth, permissions, sandbox
-|   +-- skills/                  # Skill registry + builtins
-|   +-- gateway/channels/        # Telegram, Discord, Slack, WhatsApp
-|   +-- automation/              # Cron jobs + webhooks
-|   +-- settings.py              # Configuration
-|   +-- cli.py                   # Terminal interface
+|   |   +-- fitrah.py                # Innate ethical guardrails
+|   |   +-- nafs_triad.py            # 3-voice deliberation (Ammara/Lawwama/Mutmainna)
+|   |   +-- qalb_processor.py        # Cardiac oscillation → LLM param modulation
+|   |   +-- fuad.py                  # Bayesian conviction formation
+|   |   +-- lubb.py                  # Metacognition: compress, cohere, debias
+|   |   +-- developmental_stages.py  # 7-stage capability gating
+|   |   +-- self_healing.py          # Lawwama immune system + health metrics
+|   |   +-- parallel_agents.py       # Concurrent task scheduling
+|   |   +-- imagination.py           # Predictive coding engine
+|   |   +-- creativity.py            # 5 creative modes + landscape math
+|   |   +-- dream_engine.py          # Offline memory consolidation
+|   |   +-- qalb.py                  # Emotional intelligence (sentiment)
+|   |   +-- ruh_engine.py            # Energy/vitality management
+|   |   +-- events.py                # Event bus (Nida')
+|   |   +-- hooks.py                 # Hook system (Ta'liq)
+|   |   +-- plugins.py               # Plugin manager (Wasilah)
+|   |   +-- middleware.py             # Middleware pipeline (Silsilah)
+|   +-- providers.py                 # LLM providers (Claude/GPT/Ollama/300+)
+|   +-- memory/
+|   |   +-- dhikr.py                 # 3-tier persistent memory
+|   |   +-- masalik.py               # Neural pathways (spreading activation)
+|   |   +-- lawh_mahfuz.py           # Immutable memory (triple-checksum)
+|   |   +-- memory_pyramid.py        # Unified 5-layer query engine
+|   |   +-- vector_store.py          # Semantic embeddings (ChromaDB)
+|   |   +-- knowledge_graph.py       # Entity-relationship graph
+|   |   +-- living_memory.py         # Adaptive memory lifecycle
+|   +-- reasoning/
+|   |   +-- aql_engine.py            # Arabic Query Language reasoning
+|   |   +-- causal_engine.py         # Pearl's 3-rung causal ladder
+|   |   +-- planner.py               # Task planning
+|   |   +-- context_manager.py       # Context window management
+|   +-- security/                    # Auth, permissions, sandbox
+|   +-- skills/                      # Skill registry + builtins
+|   +-- knowledge/                   # Knowledge base management
+|   +-- gateway/channels/            # Telegram, Discord, Slack, WhatsApp
+|   +-- automation/                  # Cron jobs + webhooks
+|   +-- settings.py                  # Configuration
+|   +-- cli.py                       # Terminal interface
 +-- frontend/src/
-|   +-- App.tsx                  # Main UI
-|   +-- pages/                   # Feature pages
-|   +-- hooks/                   # React hooks
-+-- plugins/                     # Your plugins go here!
-+-- docs/                        # This documentation
-+-- tests/                       # Test suite
-+-- docker/                      # Docker configs
-+-- pyproject.toml               # Package config
-+-- Makefile                     # Dev commands</code></pre>
+|   +-- App.tsx                      # Main UI + WebSocket handler
+|   +-- components/
+|   |   +-- ChatMessage.tsx          # Chat bubbles + CognitiveBar pills
+|   |   +-- AgentCard.tsx            # Agent card (Nafs + Ruh bars)
+|   +-- pages/                       # Feature pages
+|   +-- hooks/                       # React hooks
+|   +-- types.ts                     # TypeScript types (CognitiveMetadata)
++-- plugins/                         # Your plugins go here!
++-- docs/                            # This documentation
++-- tests/                           # Test suite
++-- docker/                          # Docker configs
++-- pyproject.toml                   # Package config
++-- Makefile                         # Dev commands</code></pre>
     </div>
 
   </main>
