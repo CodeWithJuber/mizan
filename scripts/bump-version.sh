@@ -35,7 +35,8 @@ CURRENT=$(cat "$VERSION_FILE" | tr -d '[:space:]')
 echo -e "\n  ${BOLD}Current version:${NC} ${GOLD}$CURRENT${NC}"
 
 # ───── Parse current version ─────
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+BASE_CURRENT=$(echo "$CURRENT" | sed 's/-.*//')
+IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_CURRENT"
 
 # ───── Calculate new version ─────
 case "${1:-}" in
@@ -48,20 +49,46 @@ case "${1:-}" in
     major)
         NEW_VERSION="$((MAJOR + 1)).0.0"
         ;;
+    beta)
+        # Parse base version (strip any existing pre-release suffix)
+        BASE_VER=$(echo "$CURRENT" | sed 's/-.*//')
+        IFS='.' read -r BM BMI BP <<< "$BASE_VER"
+        NEXT_MINOR="$BM.$((BMI + 1)).0"
+        if echo "$CURRENT" | grep -q "beta"; then
+            BETA_NUM=$(echo "$CURRENT" | grep -oP 'beta\.\K[0-9]+' || echo "0")
+            NEW_VERSION="${NEXT_MINOR}-beta.$((BETA_NUM + 1))"
+        else
+            NEW_VERSION="${NEXT_MINOR}-beta.1"
+        fi
+        ;;
+    rc)
+        BASE_VER=$(echo "$CURRENT" | sed 's/-.*//')
+        if echo "$CURRENT" | grep -q "rc"; then
+            RC_NUM=$(echo "$CURRENT" | grep -oP 'rc\.\K[0-9]+' || echo "0")
+            NEW_VERSION="${BASE_VER}-rc.$((RC_NUM + 1))"
+        elif echo "$CURRENT" | grep -q "beta"; then
+            BASE_VER=$(echo "$CURRENT" | sed 's/-.*//')
+            NEW_VERSION="${BASE_VER}-rc.1"
+        else
+            NEW_VERSION="${CURRENT}-rc.1"
+        fi
+        ;;
     "")
         echo ""
-        echo "Usage: $0 <patch|minor|major|X.Y.Z>"
+        echo "Usage: $0 <patch|minor|major|beta|rc|X.Y.Z[-beta.N]>"
         echo ""
         echo "  patch   $CURRENT → $MAJOR.$MINOR.$((PATCH + 1))"
         echo "  minor   $CURRENT → $MAJOR.$((MINOR + 1)).0"
         echo "  major   $CURRENT → $((MAJOR + 1)).0.0"
+        echo "  beta    $CURRENT → $MAJOR.$((MINOR + 1)).0-beta.1"
+        echo "  rc      $CURRENT → X.Y.Z-rc.1"
         echo "  X.Y.Z   Set exact version"
         exit 0
         ;;
     *)
-        # Validate semver format
-        if [[ ! "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            error "Invalid version format: $1 (expected X.Y.Z)"
+        # Validate semver format (with optional pre-release)
+        if [[ ! "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            error "Invalid version format: $1 (expected X.Y.Z or X.Y.Z-beta.N)"
         fi
         NEW_VERSION="$1"
         ;;
@@ -92,18 +119,16 @@ sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" "$ROOT_DIR/fronten
 success "frontend/package.json"
 
 # 5. backend/cli.py — banner and version command
-SHORT_VER="$MAJOR.$MINOR"
-if [ "$1" = "patch" ] || [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    IFS='.' read -r NM NMI NP <<< "$NEW_VERSION"
-    SHORT_VER="$NM.$NMI"
-fi
+NEW_BASE=$(echo "$NEW_VERSION" | sed 's/-.*//')
+IFS='.' read -r NM NMI NP <<< "$NEW_BASE"
+SHORT_VER="$NM.$NMI"
 sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$SHORT_VER/" "$ROOT_DIR/backend/cli.py"
 sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$NEW_VERSION/" "$ROOT_DIR/backend/cli.py"
 success "backend/cli.py"
 
 # 6. backend/api/main.py — FastAPI version and API responses
-sed -i "s/\"version\": \"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\"/\"version\": \"$NEW_VERSION\"/g" "$ROOT_DIR/backend/api/main.py"
-sed -i "s/version=\"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\"/version=\"$NEW_VERSION\"/" "$ROOT_DIR/backend/api/main.py"
+sed -i "s/\"version\": \"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^\"]*\"/\"version\": \"$NEW_VERSION\"/g" "$ROOT_DIR/backend/api/main.py"
+sed -i "s/version=\"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^\"]*\"/version=\"$NEW_VERSION\"/" "$ROOT_DIR/backend/api/main.py"
 success "backend/api/main.py"
 
 # ───── Summary ─────
