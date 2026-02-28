@@ -90,6 +90,40 @@ class DhikrMemorySystem:
 
         self.masalik = MasalikNetwork()
 
+        # ── KnowledgeGraph: Entity + relationship store ──
+        try:
+            from memory.knowledge_graph import KnowledgeGraph
+            self.knowledge_graph = KnowledgeGraph(db_path=self.db_path)
+        except Exception:
+            self.knowledge_graph = None
+
+        # ── LawhMahfuz: Immutable preserved memory ──
+        try:
+            import os
+            from memory.lawh_mahfuz import LawhMahfuz
+            lawh_dir = os.path.dirname(self.db_path) if self.db_path != ":memory:" else "/tmp"
+            lawh_db = (
+                os.path.join(lawh_dir, "lawh_mahfuz.db")
+                if self.db_path != ":memory:"
+                else ":memory:"
+            )
+            self.lawh_mahfuz = LawhMahfuz(db_path=lawh_db)
+        except Exception:
+            self.lawh_mahfuz = None
+
+        # ── MemoryPyramid: Unified 5-layer query ──
+        try:
+            from memory.memory_pyramid import MemoryPyramid
+            self.pyramid = MemoryPyramid(
+                dhikr=self,
+                masalik=self.masalik,
+                lawh_mahfuz=self.lawh_mahfuz,
+                vector_store=None,
+                knowledge_graph=self.knowledge_graph,
+            )
+        except Exception:
+            self.pyramid = None
+
         # Working memory (short-term) - like immediate consciousness
         self.working_memory: dict[str, Memory] = {}
         self.working_capacity = 7  # Miller's Law meets Quranic pattern (7 heavens)
@@ -199,6 +233,13 @@ class DhikrMemorySystem:
                 success INTEGER DEFAULT 1
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         # Performance indexes
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
@@ -303,10 +344,14 @@ class DhikrMemorySystem:
             params.append(agent_id)
         if query:
             words = query.strip().split()
-            for word in words:
-                escaped_word = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                sql += " AND (content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
-                params.extend([f"%{escaped_word}%", f"%{escaped_word}%"])
+            if words:
+                # Use OR across words so partial matches still return results
+                word_clauses = []
+                for word in words:
+                    escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    word_clauses.append("(content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')")
+                    params.extend([f"%{escaped}%", f"%{escaped}%"])
+                sql += " AND (" + " OR ".join(word_clauses) + ")"
 
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
         params.append(limit)
@@ -347,6 +392,25 @@ class DhikrMemorySystem:
         Use this for agent system prompts where you need semantic context.
         """
         return self.masalik.recall_context(query, top_k=top_k)
+
+    def recall_unified(self, query: str, top_k: int = 10) -> list:
+        """
+        Unified recall across all 5 memory layers via MemoryPyramid.
+        Returns list of MemoryHit objects ranked by (relevance × certainty × recency).
+        Falls back to standard dhikr recall if pyramid not available.
+        """
+        if self.pyramid:
+            return self.pyramid.query(query, top_k=top_k)
+        return []
+
+    def recall_unified_for_prompt(self, query: str, top_k: int = 5) -> str:
+        """
+        Recall unified memory and format for system prompt injection.
+        Returns empty string if nothing relevant found.
+        """
+        if self.pyramid:
+            return self.pyramid.format_for_prompt(query, top_k=top_k)
+        return self.recall_pathways(query, top_k=top_k)
 
     async def _persist(self, memory: Memory):
         """Persist memory to database"""
@@ -539,6 +603,154 @@ class DhikrMemorySystem:
             }
             for r in rows
         ]
+
+    async def list_sessions(self, limit: int = 20) -> list[dict]:
+        """List recent chat sessions with metadata"""
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT m.session_id,
+                   MIN(m.created_at) as started_at,
+                   MAX(m.created_at) as last_message_at,
+                   COUNT(*) as message_count,
+                   (SELECT content FROM agent_messages
+                    WHERE session_id = m.session_id AND role = 'user'
+                    ORDER BY created_at LIMIT 1) as first_message
+            FROM agent_messages m
+            GROUP BY m.session_id
+            ORDER BY MAX(m.created_at) DESC
+            LIMIT ?
+        """,
+            (limit,),
+        )
+        rows = c.fetchall()
+        self._release_conn(conn)
+
+        return [
+            {
+                "session_id": r[0],
+                "started_at": r[1],
+                "last_message_at": r[2],
+                "message_count": r[3],
+                "first_message": (r[4] or "")[:80] if len(r) > 4 else "",
+            }
+            for r in rows
+        ]
+
+    # ── Preferences ─────────────────────────────────────────────
+
+    # ── Hikmah (Wisdom Patterns) ─────────────────────────────────
+
+    async def store_hikmah(
+        self,
+        pattern: str,
+        context: str,
+        outcome: str,
+        confidence: float = 0.5,
+        source_agent: str = "",
+    ) -> str:
+        """Persist a learned wisdom pattern to the hikmah table."""
+        import uuid as _uuid
+
+        hikmah_id = str(_uuid.uuid4())
+        conn = self._get_conn()
+        c = conn.cursor()
+        # Avoid duplicates: if same pattern+context exists, update confidence
+        c.execute(
+            "SELECT id, applications, confidence FROM hikmah WHERE pattern = ? AND context = ?",
+            (pattern[:500], context[:500]),
+        )
+        existing = c.fetchone()
+        if existing:
+            new_apps = (existing[1] or 0) + 1
+            new_conf = min(1.0, existing[2] + 0.05)
+            c.execute(
+                "UPDATE hikmah SET applications = ?, confidence = ? WHERE id = ?",
+                (new_apps, new_conf, existing[0]),
+            )
+            hikmah_id = existing[0]
+        else:
+            c.execute(
+                """INSERT INTO hikmah (id, pattern, context, outcome, confidence, applications, created_at, source_agent)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    hikmah_id,
+                    pattern[:500],
+                    context[:500],
+                    outcome[:1000],
+                    confidence,
+                    1,
+                    datetime.now(UTC).isoformat(),
+                    source_agent,
+                ),
+            )
+        conn.commit()
+        self._release_conn(conn)
+        return hikmah_id
+
+    async def load_hikmah(self, agent_id: str = "", limit: int = 20) -> list[dict]:
+        """Load learned wisdom patterns from the hikmah table."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        if agent_id:
+            c.execute(
+                """SELECT pattern, context, outcome, confidence, applications
+                   FROM hikmah WHERE source_agent = ?
+                   ORDER BY confidence DESC, applications DESC LIMIT ?""",
+                (agent_id, limit),
+            )
+        else:
+            c.execute(
+                """SELECT pattern, context, outcome, confidence, applications
+                   FROM hikmah ORDER BY confidence DESC, applications DESC LIMIT ?""",
+                (limit,),
+            )
+        rows = c.fetchall()
+        self._release_conn(conn)
+        return [
+            {
+                "pattern": r[0],
+                "context": r[1],
+                "outcome": r[2],
+                "confidence": r[3],
+                "applications": r[4],
+            }
+            for r in rows
+        ]
+
+    async def get_preference(self, key: str, default: str = "") -> str:
+        """Read a persisted preference by key."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("SELECT value FROM preferences WHERE key = ?", (key,))
+        row = c.fetchone()
+        self._release_conn(conn)
+        return row[0] if row else default
+
+    async def set_preference(self, key: str, value: str) -> None:
+        """Upsert a persisted preference."""
+        from datetime import datetime, UTC
+
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute(
+            """INSERT INTO preferences (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (key, value, datetime.now(UTC).isoformat()),
+        )
+        conn.commit()
+        self._release_conn(conn)
+
+    async def get_all_preferences(self) -> dict[str, str]:
+        """Read all persisted preferences as a dict."""
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("SELECT key, value FROM preferences")
+        rows = c.fetchall()
+        self._release_conn(conn)
+        return {r[0]: r[1] for r in rows}
 
     async def save_task(
         self,

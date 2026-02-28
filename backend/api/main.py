@@ -9,6 +9,7 @@ Secured with Wali Guardian, Izn Permissions, and Input Validation
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -47,12 +48,16 @@ from core.middleware import middleware_pipeline
 from core.plugins import plugin_manager
 from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
+from memory.knowledge_graph import KnowledgeGraph
+from reasoning.context_manager import ContextManager
+from reasoning.planner import TafakkurPlanner
 from providers import (
     check_provider_health,
     create_provider,
     fetch_ollama_models,
     fetch_openrouter_models,
     get_provider_status,
+    set_active_state,
 )
 from qca.cognitive_methods import select_method
 
@@ -82,7 +87,7 @@ async def lifespan(app: FastAPI):
     existing = await memory.get_all_agents()
     if not existing:
         default_agents = [
-            {"name": "Hafiz", "type": "general", "role": "Preserver"},
+            {"name": "Khalifah", "type": "super", "role": "Universal"},
             {"name": "Mubashir", "type": "browser", "role": "Browser"},
             {"name": "Mundhir", "type": "research", "role": "Researcher"},
             {"name": "Katib", "type": "code", "role": "Coder"},
@@ -98,6 +103,9 @@ async def lifespan(app: FastAPI):
                 izn=izn,
                 skill_registry=skill_registry,
                 plugin_manager=plugin_manager,
+                knowledge_graph=knowledge_graph,
+                context_manager=context_manager,
+                planner=planner,
             )
             active_agents[agent.id] = agent
             balancer.register(agent.id)
@@ -125,6 +133,9 @@ async def lifespan(app: FastAPI):
                 izn=izn,
                 skill_registry=skill_registry,
                 plugin_manager=plugin_manager,
+                knowledge_graph=knowledge_graph,
+                context_manager=context_manager,
+                planner=planner,
             )
             agent.total_tasks = profile.get("total_tasks", 0)
             agent.learning_iterations = profile.get("learning_iterations", 0)
@@ -133,6 +144,27 @@ async def lifespan(app: FastAPI):
             shura.members[agent.id] = agent
 
     logger.info(f"{len(active_agents)} agents initialized")
+
+    # Inject global registry references into agents
+    for agent in active_agents.values():
+        agent._agent_registry = active_agents
+        agent._balancer = balancer
+        agent._shura = shura
+
+    # Restore persisted provider/model choice
+    try:
+        saved_provider = await memory.get_preference("active_provider")
+        saved_model = await memory.get_preference("active_model")
+        if saved_provider and saved_model:
+            restored = create_provider(provider=saved_provider, model=saved_model)
+            if restored:
+                for agent in active_agents.values():
+                    agent.ai_client = restored
+                    agent.ai_model = saved_model
+                set_active_state(saved_provider, saved_model)
+                logger.info(f"Restored provider: {saved_provider}/{saved_model}")
+    except Exception as exc:
+        logger.warning(f"Could not restore provider preference: {exc}")
 
     # Initialize scheduler executor
     async def execute_scheduled_task(task: str, agent_id: str = None):
@@ -175,6 +207,34 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     await event_bus.emit("system.shutdown", {})
+
+    # Persist Masalik neural pathways to disk before shutdown
+    try:
+        if hasattr(memory, "masalik"):
+            memory.masalik.save_to_disk()
+            logger.info("[MASALIK] Neural pathways persisted to disk")
+    except Exception as e:
+        logger.warning(f"[MASALIK] Failed to save pathways: {e}")
+
+    # Persist agent profiles
+    try:
+        for agent in active_agents.values():
+            await memory.save_agent_profile({
+                "id": agent.id,
+                "name": agent.name,
+                "role": agent.role,
+                "nafs_level": agent.nafs_level,
+                "capabilities": list(agent.tools.keys()),
+                "total_tasks": agent.total_tasks,
+                "success_rate": agent.success_rate,
+                "error_count": agent.error_count,
+                "learning_iterations": agent.learning_iterations,
+                "config": agent.config or {},
+            })
+        logger.info(f"[AGENTS] {len(active_agents)} agent profiles persisted")
+    except Exception as e:
+        logger.warning(f"[AGENTS] Failed to persist profiles: {e}")
+
     await plugin_manager.unload_all()
     await scheduler.stop()
     logger.info("MIZAN shutdown complete")
@@ -210,7 +270,10 @@ app.add_middleware(
 )
 
 # ===== GLOBAL STATE =====
-memory = DhikrMemorySystem(db_path=os.getenv("DB_PATH", "/tmp/mizan_memory.db"))
+memory = DhikrMemorySystem(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
+knowledge_graph = KnowledgeGraph(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
+context_manager = ContextManager()
+planner = TafakkurPlanner()
 balancer = MizanBalancer()
 shura = ShuraCouncil()
 active_agents: dict[str, Any] = {}
@@ -223,30 +286,6 @@ skill_registry = SkillRegistry()
 yaqin_engine = YaqinEngine()
 qalb_engine = QalbEngine()
 federation = AgentFederation()
-
-
-# ===== RATE LIMIT MIDDLEWARE =====
-
-
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Rate limiting via Wali Guardian with proper headers"""
-    client_ip = request.client.host if request.client else "unknown"
-    rl = wali.check_rate_limit(client_ip)
-    if not rl["allowed"]:
-        return JSONResponse(
-            status_code=429,
-            content={"error": "Rate limit exceeded. Please slow down."},
-            headers={
-                "Retry-After": str(rl["retry_after"]),
-                "X-RateLimit-Limit": str(rl["limit"]),
-                "X-RateLimit-Remaining": "0",
-            },
-        )
-    response = await call_next(request)
-    response.headers["X-RateLimit-Limit"] = str(rl["limit"])
-    response.headers["X-RateLimit-Remaining"] = str(rl["remaining"])
-    return response
 
 
 # ===== SECURITY HEADERS MIDDLEWARE =====
@@ -334,12 +373,18 @@ async def require_auth(
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: str = Field(
-        default="general",
-        pattern=r"^(general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
+        default="super",
+        pattern=r"^(super|khalifah|general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
     )
     model: str = Field(default="claude-opus-4-6", max_length=100)
     system_prompt: str | None = Field(None, max_length=10000)
     capabilities: list[str] = []
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    model: str | None = Field(None, max_length=200)
+    system_prompt: str | None = Field(None, max_length=10000)
 
 
 class TaskRequest(BaseModel):
@@ -353,6 +398,7 @@ class ChatMessage(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=50000)
     agent_id: str | None = None
+    model_override: str | None = Field(None, max_length=200)
 
 
 class IntegrationCreate(BaseModel):
@@ -582,6 +628,74 @@ async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_cu
     return {"deleted": agent_id}
 
 
+@app.put("/api/agents/{agent_id}")
+async def update_agent(
+    agent_id: str,
+    req: AgentUpdate,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Update an existing agent's name, model, or system prompt."""
+    agent = active_agents.get(agent_id)
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+
+    if req.name is not None:
+        agent.name = req.name
+    if req.system_prompt is not None:
+        agent.config["system_prompt"] = req.system_prompt
+    if req.model is not None:
+        agent.ai_model = req.model
+        provider_obj = create_provider(model=req.model)
+        if provider_obj:
+            agent.ai_client = provider_obj
+
+    await memory.save_agent_profile({
+        "id": agent.id,
+        "name": agent.name,
+        "role": agent.role,
+        "nafs_level": agent.nafs_level,
+        "capabilities": list(agent.tools.keys()),
+        "config": agent.config,
+    })
+
+    await manager.broadcast({"type": "agent_updated", "agent": agent.to_dict()})
+    return agent.to_dict()
+
+
+class AgentModelRequest(BaseModel):
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    model: str = Field(..., min_length=1, max_length=200)
+
+
+@app.post("/api/agents/{agent_id}/model")
+async def set_agent_model(
+    agent_id: str,
+    req: AgentModelRequest,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Set model for a specific agent (does not affect other agents)."""
+    agent = active_agents.get(agent_id)
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    provider = create_provider(provider=req.provider, model=req.model)
+    if not provider:
+        raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
+
+    agent.ai_client = provider
+    agent.ai_model = req.model
+
+    await manager.broadcast({
+        "type": "agent_model_changed",
+        "agent_id": agent_id,
+        "provider": req.provider,
+        "model": req.model,
+    })
+
+    wali.audit.log("agent_model_changed", {"agent_id": agent_id, "model": req.model})
+    return {"agent_id": agent_id, "provider": req.provider, "model": req.model}
+
+
 # === TASKS ===
 
 
@@ -683,7 +797,23 @@ async def chat(
     user: TokenPayload | None = Depends(get_current_user),
 ):
     """Chat with an agent"""
-    session = active_sessions.get(req.session_id, {"history": []})
+    session = active_sessions.get(req.session_id)
+
+    # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
+    if session is None:
+        db_messages = await memory.get_messages(req.session_id, limit=50)
+        restored_history = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in db_messages
+        ]
+        session = {"history": restored_history}
+        if restored_history:
+            logger.info(
+                "[SESSION] Restored %d messages for session %s from DB",
+                len(restored_history),
+                req.session_id[:12],
+            )
+
     active_sessions[req.session_id] = session
 
     await memory.save_message(req.session_id, "user", req.content)
@@ -723,6 +853,18 @@ async def chat(
     message_id = str(uuid.uuid4())
 
     async def process_chat():
+        # Per-message model override: temporarily swap agent's model
+        # TODO(concurrency): use per-request LLM client instead of mutating agent
+        original_model = None
+        original_client = None
+        if req.model_override and req.model_override != agent.ai_model:
+            override_provider = create_provider(model=req.model_override)
+            if override_provider:
+                original_model = agent.ai_model
+                original_client = agent.ai_client
+                agent.ai_model = req.model_override
+                agent.ai_client = override_provider
+
         # Send typing indicator before starting agent execution
         await manager.broadcast(
             {
@@ -759,11 +901,17 @@ async def chat(
                 }
             )
 
-        result = await agent.execute(
-            req.content,
-            {"history": session["history"][-10:]},
-            stream_callback=stream_cb,
-        )
+        try:
+            result = await agent.execute(
+                req.content,
+                {"history": session["history"][-agent.max_tool_turns:]},
+                stream_callback=stream_cb,
+            )
+        finally:
+            # Restore original model after per-message override
+            if original_model is not None:
+                agent.ai_model = original_model
+                agent.ai_client = original_client
 
         final_response = result.get("result", response) if result.get("success") else response
         if isinstance(final_response, dict):
@@ -772,6 +920,12 @@ async def chat(
         await memory.save_message(req.session_id, "assistant", str(final_response), agent_id)
         session["history"].append({"role": "assistant", "content": str(final_response)})
 
+        # Extract cognitive metadata from QALB-7 pipeline
+        cognitive = {k: result.get(k) for k in (
+            "nafs_level", "nafs_name", "ruh_energy", "qalb", "yaqin",
+            "mizan_label", "cognitive_method", "lubb", "lawwama",
+        ) if result.get(k) is not None}
+
         await manager.broadcast(
             {
                 "type": "chat_complete",
@@ -779,6 +933,7 @@ async def chat(
                 "message_id": message_id,
                 "response": str(final_response),
                 "agent": agent.name,
+                "cognitive": cognitive,
             }
         )
 
@@ -794,7 +949,66 @@ async def get_chat_history(session_id: str):
 
 @app.get("/api/chat/sessions/list")
 async def list_sessions():
-    return {"sessions": list(active_sessions.keys())}
+    """List recent chat sessions from DB with metadata"""
+    db_sessions = await memory.list_sessions(limit=20)
+    return {"sessions": db_sessions}
+
+
+# === PLANNER (Tafakkur — تفكر) ===
+
+
+class PlanRequest(BaseModel):
+    goal: str = Field(..., description="The complex goal to decompose")
+    agent_id: str | None = None
+
+
+@app.post("/api/plan")
+async def create_plan(
+    req: PlanRequest,
+    background_tasks: BackgroundTasks,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Decompose a complex goal into sub-tasks using TafakkurPlanner"""
+    agent_id = req.agent_id or (list(active_agents.keys())[0] if active_agents else None)
+    if not agent_id or agent_id not in active_agents:
+        raise HTTPException(503, "No agents available")
+
+    agent = active_agents[agent_id]
+    plan = await planner.decompose(req.goal, agent)
+
+    return {"plan": plan.to_dict()}
+
+
+@app.post("/api/plan/{plan_id}/execute")
+async def execute_plan(
+    plan_id: str,
+    background_tasks: BackgroundTasks,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Execute a previously created plan"""
+    plan = planner.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(404, f"Plan {plan_id} not found")
+
+    async def run_plan():
+        result = await planner.execute_plan(plan, active_agents)
+        await manager.broadcast({
+            "type": "plan_complete",
+            "plan_id": plan_id,
+            "result": result,
+        })
+
+    background_tasks.add_task(run_plan)
+    return {"status": "executing", "plan_id": plan_id}
+
+
+@app.get("/api/plan/{plan_id}")
+async def get_plan(plan_id: str):
+    """Get status of a plan"""
+    plan = planner.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(404, f"Plan {plan_id} not found")
+    return {"plan": plan.to_dict()}
 
 
 # === MEMORY ===
@@ -833,6 +1047,182 @@ async def consolidate_memory():
     return result
 
 
+@app.get("/api/memory/list")
+async def list_memories(memory_type: str | None = None, limit: int = 30):
+    """List recent memories without search filtering."""
+    conn = memory._get_conn()
+    c = conn.cursor()
+    sql = "SELECT * FROM memories WHERE 1=1"
+    params: list = []
+    if memory_type:
+        sql += " AND memory_type = ?"
+        params.append(memory_type)
+    sql += " ORDER BY recency DESC LIMIT ?"
+    params.append(limit)
+    c.execute(sql, params)
+    rows = c.fetchall()
+    memory._release_conn(conn)
+
+    results = []
+    for row in rows:
+        try:
+            content = json.loads(row[1]) if row[1] else None
+        except Exception:
+            content = row[1]
+        results.append({
+            "id": row[0],
+            "content": str(content)[:500] if content else "",
+            "type": row[2],
+            "importance": row[3] or 0,
+            "recency": row[4] or "",
+            "access_count": row[5] or 0,
+            "agent_id": row[6],
+            "tags": json.loads(row[7]) if row[7] else [],
+        })
+    return {"results": results, "total": len(results)}
+
+
+# === KNOWLEDGE INGESTION (Ilm - عِلْم) ===
+
+
+class KnowledgeIngest(BaseModel):
+    source: str = Field(..., min_length=1, max_length=5000)
+    source_type: str = Field(default="auto", pattern=r"^(auto|url|pdf|youtube)$")
+
+
+@app.post("/api/knowledge/ingest")
+async def ingest_knowledge(req: KnowledgeIngest):
+    """Ingest knowledge from a URL or YouTube video into memory."""
+    from knowledge.ingest import (
+        chunk_content,
+        detect_source_type,
+        extract_url,
+        extract_youtube,
+    )
+
+    source_type = req.source_type
+    if source_type == "auto":
+        source_type = detect_source_type(req.source)
+
+    if source_type == "youtube":
+        result = await extract_youtube(req.source)
+    elif source_type == "url":
+        result = await extract_url(req.source)
+    else:
+        raise HTTPException(400, f"Use /api/knowledge/upload for file uploads. Got source_type: {source_type}")
+
+    if "error" in result:
+        raise HTTPException(422, result["error"])
+
+    content = result.get("content", "")
+    if not content:
+        raise HTTPException(422, "No content extracted from source")
+
+    chunks = chunk_content(content)
+    stored_ids = []
+    for idx, chunk in enumerate(chunks):
+        mem_id = await memory.remember(
+            content=chunk,
+            memory_type="semantic",
+            importance=0.8,
+            tags=["knowledge", source_type, result.get("title", "")[:50]],
+        )
+        stored_ids.append(mem_id)
+
+    # Encode full content into Masalik pathways
+    if hasattr(memory, "masalik"):
+        memory.masalik.encode(content[:5000], importance=0.8)
+
+    return {
+        "success": True,
+        "title": result.get("title", ""),
+        "source": req.source,
+        "source_type": source_type,
+        "chunks_stored": len(stored_ids),
+        "char_count": result.get("char_count", len(content)),
+    }
+
+
+@app.post("/api/knowledge/upload")
+async def upload_knowledge(request: Request):
+    """Upload a PDF file and ingest its content into memory."""
+    from knowledge.ingest import chunk_content, extract_pdf
+
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(400, "No file provided. Send a multipart form with 'file' field.")
+
+    filename = getattr(file, "filename", "upload.pdf")
+    file_bytes = await file.read()
+
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files are supported for upload")
+
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Maximum 20MB.")
+
+    result = extract_pdf(file_bytes, filename)
+    if "error" in result:
+        raise HTTPException(422, result["error"])
+
+    content = result.get("content", "")
+    if not content:
+        raise HTTPException(422, "No text content extracted from PDF")
+
+    chunks = chunk_content(content)
+    stored_ids = []
+    for chunk in chunks:
+        mem_id = await memory.remember(
+            content=chunk,
+            memory_type="semantic",
+            importance=0.8,
+            tags=["knowledge", "pdf", filename[:50]],
+        )
+        stored_ids.append(mem_id)
+
+    if hasattr(memory, "masalik"):
+        memory.masalik.encode(content[:5000], importance=0.8)
+
+    return {
+        "success": True,
+        "title": result.get("title", ""),
+        "source": filename,
+        "source_type": "pdf",
+        "page_count": result.get("page_count", 0),
+        "chunks_stored": len(stored_ids),
+        "char_count": result.get("char_count", len(content)),
+    }
+
+
+@app.get("/api/knowledge/sources")
+async def list_knowledge_sources():
+    """List ingested knowledge sources."""
+    conn = memory._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT DISTINCT json_extract(tags, '$[2]') as source_title, "
+        "json_extract(tags, '$[1]') as source_type, "
+        "COUNT(*) as chunk_count, "
+        "MAX(recency) as last_updated "
+        "FROM memories WHERE json_extract(tags, '$[0]') = 'knowledge' "
+        "GROUP BY source_title ORDER BY last_updated DESC LIMIT 50"
+    )
+    rows = cursor.fetchall()
+    memory._release_conn(conn)
+
+    sources = [
+        {
+            "title": row[0] or "Unknown",
+            "type": row[1] or "unknown",
+            "chunks": row[2],
+            "last_updated": row[3] or "",
+        }
+        for row in rows
+    ]
+    return {"sources": sources, "total": len(sources)}
+
+
 # === PROVIDERS (Ruh al-Ilm - روح العلم) ===
 
 
@@ -846,15 +1236,23 @@ async def list_providers():
 
 
 @app.get("/api/providers/{provider_name}/models")
-async def list_provider_models(provider_name: str):
+async def list_provider_models(
+    provider_name: str,
+    limit: int = 50,
+    offset: int = 0,
+    search: str = "",
+    free_only: bool = False,
+):
     """
     List available models for a specific provider.
-    For OpenRouter: fetches the live catalog from their API.
+    For OpenRouter: fetches the live catalog with search/filter/pagination.
     For Ollama: fetches locally installed models.
     """
     if provider_name == "openrouter":
-        models = await fetch_openrouter_models(limit=50)
-        return {"provider": "openrouter", "models": models}
+        result = await fetch_openrouter_models(
+            limit=limit, offset=offset, search=search, free_only=free_only,
+        )
+        return {"provider": "openrouter", **result}
     elif provider_name == "ollama":
         models = await fetch_ollama_models()
         return {"provider": "ollama", "models": models}
@@ -888,7 +1286,7 @@ async def switch_provider(
 ):
     """
     Switch the active LLM provider and model for all agents.
-    This updates agents in memory — does not persist to .env.
+    Persists choice to database so it survives restarts.
     """
     provider = create_provider(provider=req.provider, model=req.model)
     if not provider:
@@ -900,6 +1298,12 @@ async def switch_provider(
         agent.ai_client = provider
         agent.ai_model = req.model
         switched += 1
+
+    set_active_state(req.provider, req.model)
+
+    # Persist to DB so choice survives restart
+    await memory.set_preference("active_provider", req.provider)
+    await memory.set_preference("active_model", req.model)
 
     await manager.broadcast(
         {
@@ -917,6 +1321,28 @@ async def switch_provider(
         "model": req.model,
         "agents_updated": switched,
     }
+
+
+# === PREFERENCES (persisted across restarts) ===
+
+
+@app.get("/api/preferences")
+async def get_preferences():
+    """Return all persisted user preferences."""
+    prefs = await memory.get_all_preferences()
+    return {"preferences": prefs}
+
+
+@app.post("/api/preferences")
+async def save_preferences(req: dict):
+    """Save one or more preferences. Body: {"key": "value", ...}"""
+    saved = []
+    for key, value in req.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            continue
+        await memory.set_preference(key, value)
+        saved.append(key)
+    return {"saved": saved}
 
 
 # === INTEGRATIONS ===
@@ -1009,7 +1435,7 @@ async def system_status():
         "provider": get_provider_status(),
         "security": {
             "auth_enabled": True,
-            "rate_limiting": True,
+            "rate_limiting": False,
             "wali_active": True,
             "izn_active": True,
         },
@@ -1696,6 +2122,68 @@ async def discover_agents(req: DiscoverRequest):
     return {"agents": [m.to_dict() for m in matches]}
 
 
+class FederationTaskRequest(BaseModel):
+    task: str = Field(..., description="Task to route to best agent")
+    session_id: str = ""
+
+
+@app.post("/api/federation/route")
+async def federation_route_task(
+    req: FederationTaskRequest,
+    background_tasks: BackgroundTasks,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Route a task to the best agent via Federation intelligence.
+
+    Uses agent capabilities, success rates, and energy levels to select
+    the optimal agent, then executes the task.
+    """
+    # Register all agents with federation first
+    for aid, agent in active_agents.items():
+        federation.register_agent(
+            aid, agent.name, agent.role,
+            list(agent.tools.keys()),
+            agent.nafs_level, agent.success_rate,
+        )
+
+    # Discover best agent for this task
+    task_lower = req.task.lower()
+    capabilities = []
+    if any(w in task_lower for w in ["code", "script", "python"]):
+        capabilities = ["python_exec", "write_file", "bash"]
+    elif any(w in task_lower for w in ["search", "browse", "web"]):
+        capabilities = ["web_search", "web_browse", "http_get"]
+    elif any(w in task_lower for w in ["analyze", "research"]):
+        capabilities = ["web_search", "read_file", "python_exec"]
+    else:
+        capabilities = ["bash", "http_get"]
+
+    matches = federation.discover(capabilities)
+    if not matches:
+        # Fallback to first available agent
+        agent_id = list(active_agents.keys())[0] if active_agents else None
+    else:
+        agent_id = matches[0].agent_id
+
+    if not agent_id or agent_id not in active_agents:
+        raise HTTPException(503, "No suitable agent found")
+
+    agent = active_agents[agent_id]
+    session_id = req.session_id or str(uuid.uuid4())
+
+    result = await agent.execute(req.task, {"history": []})
+    if result.get("success"):
+        await memory.save_message(session_id, "user", req.task)
+        await memory.save_message(session_id, "assistant", str(result.get("result", ""))[:5000], agent_id)
+
+    return {
+        "routed_to": agent.name,
+        "agent_id": agent_id,
+        "session_id": session_id,
+        "result": result,
+    }
+
+
 # ===== RUH ENERGY ENDPOINTS =====
 
 
@@ -2021,7 +2509,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                     result = await agent.execute(
                         content,
-                        {"history": session["history"][-10:]},
+                        {"history": session["history"][-agent.max_tool_turns:]},
                         stream_callback=ws_stream,
                     )
 
@@ -2031,6 +2519,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                     await memory.save_message(session_id, "assistant", str(final), agent.id)
                     session["history"].append({"role": "assistant", "content": str(final)})
+
+                    # Extract cognitive metadata from QALB-7 pipeline
+                    cognitive = {k: result.get(k) for k in (
+                        "nafs_level", "nafs_name", "ruh_energy", "qalb", "yaqin",
+                        "mizan_label", "cognitive_method", "lubb", "lawwama",
+                    ) if result.get(k) is not None}
 
                     await manager.send(
                         client_id,
@@ -2042,6 +2536,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "session_id": session_id,
                             "message_id": message_id,
                             "success": result.get("success", True),
+                            "cognitive": cognitive,
                         },
                     )
 

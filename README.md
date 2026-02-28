@@ -27,7 +27,7 @@ MIZAN is a **personal AI assistant** you can run on your own computer. Unlike Ch
 - **Anyone can extend it** — add new abilities with simple plugins
 - **Works with any AI** — Anthropic Claude, OpenAI, OpenRouter (300+ models), or local Ollama
 
-> Think of it as your personal AI employee that can use tools, remember things, and get better over time.
+> Think of it as your personal AI employee that can use tools, remember things, and get better over time — powered by a 7-layer Quranic Cognitive Architecture (QALB-7).
 
 ---
 
@@ -113,14 +113,16 @@ make dev                   # Start backend + frontend
 
 | Feature | What It Means |
 |---------|---------------|
+| **QALB-7 Cognitive Pipeline** | 7-layer architecture: ethics → deliberation → emotion → conviction → metacognition |
+| **Developmental Stages** | Agents grow from Nutfah (5 tools, 5 turns) to Khalq Akhar (all tools, 25 turns) |
+| **5-Layer Memory Pyramid** | Unified query across episodic, semantic, neural pathways, vectors, and knowledge graph |
+| **Causal Reasoning** | Pearl's 3-rung causal ladder: observation, intervention, counterfactual |
 | **Plugin system** | Add new abilities with a simple Python file |
-| **Event bus** | Modules communicate without knowing about each other |
-| **Hook system** | Modify any data flowing through the system |
-| **Middleware pipeline** | Intercept and process requests/responses |
-| **REST + WebSocket API** | Full API for building custom integrations |
-| **Multi-agent system** | Multiple AI agents collaborate on complex tasks |
-| **Security built-in** | JWT auth, rate limiting, sandboxing, audit logs |
-| **Self-healing diagnostics** | Built-in doctor system to detect and fix issues |
+| **Event bus + Hooks** | Decoupled communication — modify data at any point in the pipeline |
+| **REST + WebSocket API** | Full API with cognitive metadata streamed in real-time |
+| **Multi-agent Shura** | Agents consult via Shura Council for complex decisions |
+| **Self-healing (Lawwama)** | Immune memory, adaptive checkpoints, auto-package-install |
+| **Security (Wali)** | JWT auth, rate limiting, sandboxing, SSRF block, audit logs |
 
 ---
 
@@ -203,53 +205,132 @@ See the [Plugin Development Guide](docs/) for the full reference.
 
 ## Architecture
 
+MIZAN implements a **7-layer Quranic Cognitive Architecture (QALB-7)** — a bio-inspired AI system where each cognitive module maps to a concept from Islamic psychology.
+
+### System Overview
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MIZAN Architecture                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   YOU (Browser/Terminal/Telegram/Discord/Slack/WhatsApp)          │
-│    │                                                             │
-│    ▼                                                             │
-│   ┌──────────────────────────────────────────────────────────┐   │
-│   │             Gateway (REST API + WebSocket)                │   │
-│   │    Auth · Rate Limiting · Input Validation · CORS        │   │
-│   └────────────────────────┬─────────────────────────────────┘   │
-│                            │                                     │
-│   ┌────────────────────────▼─────────────────────────────────┐   │
-│   │                  Plugin System                            │   │
-│   │   Events (Nida') · Hooks (Ta'liq) · Middleware (Silsilah) │   │
-│   │   Any plugin can listen, modify, or extend               │   │
-│   └────────────────────────┬─────────────────────────────────┘   │
-│                            │                                     │
-│   ┌────────────────────────▼─────────────────────────────────┐   │
-│   │              Agent System (Multi-Agent)                   │   │
-│   │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌────────┐         │   │
-│   │  │ Hafiz  │ │ Mubashir │ │ Mundhir │ │ Katib  │  + Any  │   │
-│   │  │General │ │ Browser  │ │Research │ │  Code  │  Custom  │   │
-│   │  └───┬────┘ └────┬─────┘ └────┬────┘ └───┬────┘         │   │
-│   │      └──────┬────┘────────────┘───────────┘              │   │
-│   │             ▼                                            │   │
-│   │  ┌──────────────────────────────────────────────┐        │   │
-│   │  │  Agentic Loop (Think → Use Tools → Repeat)   │        │   │
-│   │  │  Up to 15 autonomous iterations per task     │        │   │
-│   │  └──────────────────────────────────────────────┘        │   │
-│   └──────────────────────────────────────────────────────────┘   │
-│                            │                                     │
-│   ┌───────────┬────────────▼──────────┬──────────────────────┐   │
-│   │  Memory   │  LLM Providers        │  Skills & Tools      │   │
-│   │  SQLite   │  Claude/GPT/Gemini/   │  Web Browse, Code,   │   │
-│   │  3-tier   │  Llama/300+ models    │  File, HTTP + Custom │   │
-│   └───────────┴───────────────────────┴──────────────────────┘   │
-│                                                                  │
-│   ┌──────────────────────────────────────────────────────────┐   │
-│   │              Security Layer (Wali Guardian)               │   │
-│   │   JWT Auth · Rate Limit · Sandbox · SSRF Block · Audit   │   │
-│   └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        MIZAN Architecture                         │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  YOU (Browser / Terminal / Telegram / Discord / Slack / WhatsApp) │
+│   │                                                               │
+│   ▼                                                               │
+│  ┌───────────────────────────────────────────────────────────┐    │
+│  │            Gateway (REST API + WebSocket)                  │    │
+│  │   Auth · Rate Limiting · Input Validation · CORS           │    │
+│  └──────────────────────┬────────────────────────────────────┘    │
+│                         │                                         │
+│  ┌──────────────────────▼────────────────────────────────────┐    │
+│  │               Plugin System (Decoupled)                    │    │
+│  │  Events (Nida') · Hooks (Ta'liq) · Middleware (Silsilah)   │    │
+│  └──────────────────────┬────────────────────────────────────┘    │
+│                         │                                         │
+│  ┌──────────────────────▼────────────────────────────────────┐    │
+│  │             QALB-7 Cognitive Pipeline                      │    │
+│  │                                                            │    │
+│  │  Fitrah ──► Nafs Triad ──► Qalb Processor ──► Fu'ad ──►   │    │
+│  │  (Ethics)  (Deliberate)   (Modulate LLM)   (Convict)      │    │
+│  │                                                            │    │
+│  │  ──► Lubb ──► Developmental Gate ──► Causal Engine         │    │
+│  │    (Meta)    (Capability Gate)      (Why/What-if)          │    │
+│  └──────────────────────┬────────────────────────────────────┘    │
+│                         │                                         │
+│  ┌──────────────────────▼────────────────────────────────────┐    │
+│  │          Agent System (Multi-Agent + Shura Council)        │    │
+│  │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌────────────────┐   │    │
+│  │  │ Hafiz  │ │ Mubashir │ │ Mundhir │ │ Khalifah       │   │    │
+│  │  │General │ │ Browser  │ │Research │ │ SuperAgent     │   │    │
+│  │  └───┬────┘ └────┬─────┘ └────┬────┘ └───┬────────────┘   │    │
+│  │      └───────┬────┘───────────┘───────────┘                │    │
+│  │              ▼                                              │    │
+│  │  ┌──────────────────────────────────────────────────┐      │    │
+│  │  │  Agentic Loop (Think → Tool → Lawwama → Repeat)  │      │    │
+│  │  │  5–25 turns (gated by Developmental Stage)       │      │    │
+│  │  └──────────────────────────────────────────────────┘      │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                         │                                         │
+│  ┌──────────┬───────────▼────────────┬────────────────────────┐   │
+│  │ Memory   │  LLM Providers         │  Skills & Tools        │   │
+│  │ Pyramid  │  Claude / GPT / Gemini │  Web, Code, File,     │   │
+│  │ (5-layer)│  Llama / 300+ models   │  SSH, HTTP + Custom   │   │
+│  └──────────┴────────────────────────┴────────────────────────┘   │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │             Security Layer (Wali Guardian)                  │   │
+│  │  JWT Auth · Rate Limit · Sandbox · SSRF Block · Audit Log  │   │
+│  └────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### How Everything Connects (No Coupling!)
+### QALB-7 Cognitive Modules
+
+Each agent processes every task through these cognitive layers:
+
+| # | Module | Arabic | Purpose | File |
+|---|--------|--------|---------|------|
+| 1 | **Fitrah** | فطرة | Innate ethical guardrails (NO_HARM, TRUTH, JUSTICE) | `core/fitrah.py` |
+| 2 | **Nafs Triad** | نفس | Three competing inner voices (Ammara/Lawwama/Mutmainna) deliberate on approach | `core/nafs_triad.py` |
+| 3 | **Qalb Processor** | قلب | Cardiac oscillation — alternates between focused (Qabd) and creative (Bast) states, modulating LLM temperature and token limits | `core/qalb_processor.py` |
+| 4 | **Fu'ad** | فؤاد | Bayesian conviction engine — evidence accumulation from impression to conviction | `core/fuad.py` |
+| 5 | **Lubb** | لبّ | Metacognition — compresses reasoning traces, checks coherence, detects cognitive bias | `core/lubb.py` |
+| 6 | **Developmental Gate** | أطوار | Progressive capability gating (7 stages from Nutfah to Khalq Akhar) — controls tools, turn limits, autonomy | `core/developmental_stages.py` |
+| 7 | **Causal Engine** | سببية | Pearl's causal ladder — observation, intervention ("what if I do X?"), counterfactual reasoning | `reasoning/causal_engine.py` |
+
+### Extension Modules
+
+| Module | Arabic | Purpose | File |
+|--------|--------|---------|------|
+| **Lawwama Self-Healing** | لوّامة | Immune memory, health metrics, adaptive checkpoint intervals | `core/self_healing.py` |
+| **Parallel Agents** | — | Concurrent task scheduling + skill transfer between agents | `core/parallel_agents.py` |
+| **Imagination** | تصوير | Predictive coding — simulate outcomes before acting | `core/imagination.py` |
+| **Creativity** | إبداع | 5 creative modes + fitness landscape mathematics | `core/creativity.py` |
+| **Dream Engine** | منام | Offline memory consolidation (NREM replay + REM recombination) | `core/dream_engine.py` |
+| **Shura Council** | شورى | Multi-agent consultation for complex decisions | `agents/shura_council.py` |
+| **Perpetual Rotation** | دورة | Agent rotation and load balancing | `agents/perpetual_rotation.py` |
+
+### Memory Architecture (5-Layer Pyramid)
+
+All memory layers are queried through a unified `MemoryPyramid`:
+
+| Layer | Module | Purpose |
+|-------|--------|---------|
+| **Dhikr** | `memory/dhikr.py` | Three-tier persistent memory (episodic, semantic, procedural) |
+| **Masalik** | `memory/masalik.py` | Neural pathway network with spreading activation |
+| **Lawh al-Mahfuz** | `memory/lawh_mahfuz.py` | Immutable core memory with triple-checksum integrity |
+| **VectorStore** | `memory/vector_store.py` | Semantic embedding search (ChromaDB) |
+| **KnowledgeGraph** | `memory/knowledge_graph.py` | Entity-relationship graph (SQLite) |
+
+Unified query: `memory/memory_pyramid.py` merges, deduplicates, and ranks results by relevance x certainty x recency.
+
+### Developmental Stages (Nafs Levels 1–7)
+
+Agents grow through seven stages, each unlocking new capabilities:
+
+| Level | Stage | Max Turns | Key Unlocks |
+|-------|-------|-----------|-------------|
+| 1 | **Nutfah** (نطفة) | 5 | Basic tools: bash, read_file, recall_memory |
+| 2 | **Alaqah** (علقة) | 8 | + write_file, http_get |
+| 3 | **Mudghah** (مضغة) | 10 | + python_exec, http_post, delegation |
+| 4 | **Izham** (عظام) | 12 | + create_agent, causal reasoning (rung 2) |
+| 5 | **Lahm** (لحم) | 15 | All tools, causal rung 3, Lubb metacognition |
+| 6 | **Nafkh** (نفخ) | 20 | Full metacognition |
+| 7 | **Khalq Akhar** (خلق آخر) | 25 | Full autonomy |
+
+### Cognitive Metadata in the UI
+
+Every assistant response includes a **CognitiveBar** showing:
+- **Qalb** state (Qabd/Bast/Khushu) with confidence
+- **Yaqin** certainty level (ʿIlm al-Yaqin / ʿAyn al-Yaqin / Ḥaqq al-Yaqin)
+- **Lubb** quality assessment (confident / hedged / uncertain)
+- **Ruh** energy percentage
+- **Nafs** level and name badge
+- **Lawwama** repair indicator (when self-healing is active)
+
+Expandable for detailed signals, bias flags, and evidence lists.
+
+### Decoupled Communication
 
 ```
 Plugin A ──────►  Event Bus  ◄────── Plugin B
@@ -588,55 +669,82 @@ make docker-down     # Stop all Docker services
 ```
 mizan/
 ├── backend/
-│   ├── api/main.py              # FastAPI server + WebSocket + all routes
+│   ├── api/main.py                  # FastAPI server + WebSocket + all routes
 │   ├── agents/
-│   │   ├── base.py              # Base agent with agentic loop (Think → Tool → Repeat)
-│   │   ├── specialized.py       # Browser, Research, Code agents
-│   │   └── federation.py        # Agent-to-agent communication
+│   │   ├── base.py                  # Base agent with QALB-7 agentic loop
+│   │   ├── specialized.py           # Browser, Research, Code, SuperAgent (Khalifah)
+│   │   ├── federation.py            # Agent-to-agent communication
+│   │   ├── shura_council.py         # Multi-agent consultation
+│   │   └── perpetual_rotation.py    # Agent rotation & load balancing
 │   ├── core/
-│   │   ├── events.py            # Event bus — decoupled communication
-│   │   ├── hooks.py             # Hook system — data transformation
-│   │   ├── plugins.py           # Plugin manager — extend without touching core
-│   │   ├── middleware.py         # Middleware pipeline
-│   │   ├── qalb.py              # Emotional intelligence engine
-│   │   ├── ruh_engine.py        # Energy/vitality management
-│   │   ├── tawbah.py            # Error recovery protocol
-│   │   ├── ihsan.py             # Proactive excellence suggestions
-│   │   ├── sabr.py              # Patience engine for long tasks
-│   │   └── shukr.py             # Strength reinforcement
+│   │   ├── fitrah.py                # Innate ethical guardrails
+│   │   ├── nafs_triad.py            # 3-voice deliberation (Ammara/Lawwama/Mutmainna)
+│   │   ├── qalb_processor.py        # Cardiac oscillation → LLM param modulation
+│   │   ├── fuad.py                  # Bayesian conviction formation
+│   │   ├── lubb.py                  # Metacognition: compress, cohere, debias
+│   │   ├── developmental_stages.py  # 7-stage capability gating (Nutfah→Khalq Akhar)
+│   │   ├── self_healing.py          # Lawwama immune system + health metrics
+│   │   ├── parallel_agents.py       # Concurrent task scheduling + skill transfer
+│   │   ├── imagination.py           # Predictive coding engine
+│   │   ├── creativity.py            # 5 creative modes + landscape math
+│   │   ├── dream_engine.py          # Offline memory consolidation (NREM+REM)
+│   │   ├── qalb.py                  # Emotional intelligence (sentiment)
+│   │   ├── ruh_engine.py            # Energy/vitality management
+│   │   ├── tawbah.py                # Error recovery protocol
+│   │   ├── ihsan.py                 # Proactive excellence suggestions
+│   │   ├── sabr.py                  # Patience engine for long tasks
+│   │   ├── shukr.py                 # Strength reinforcement
+│   │   ├── events.py                # Event bus — decoupled communication
+│   │   ├── hooks.py                 # Hook system — data transformation
+│   │   ├── plugins.py               # Plugin manager
+│   │   └── middleware.py            # Middleware pipeline
 │   ├── qca/
-│   │   ├── engine.py            # 7-layer Quranic Cognitive Architecture
-│   │   ├── yaqin_engine.py      # Certainty/confidence tracking
-│   │   ├── cognitive_methods.py # Reasoning method selection
-│   │   └── roots.py             # Semantic root analysis (ISM layer)
-│   ├── providers.py             # Unified LLM provider (Claude/GPT/Ollama/300+)
+│   │   ├── engine.py                # 7-layer QCA integration
+│   │   ├── yaqin_engine.py          # Certainty/confidence tracking
+│   │   ├── cognitive_methods.py     # Reasoning method selection
+│   │   └── roots.py                 # Semantic root analysis (ISM layer)
+│   ├── providers.py                 # Unified LLM provider (Claude/GPT/Ollama/300+)
 │   ├── memory/
-│   │   ├── dhikr.py             # Three-tier persistent memory
-│   │   └── masalik.py           # Neural pathway network (bio-inspired)
-│   ├── security/                # Auth, permissions, sandboxing
-│   ├── skills/                  # Extensible skill registry
-│   │   ├── base.py              # Skill base class
-│   │   ├── registry.py          # Skill discovery & loading
-│   │   └── builtin/             # Built-in skills
-│   ├── gateway/channels/        # Telegram, Discord, Slack, WhatsApp adapters
-│   ├── automation/              # Cron scheduler + webhook triggers
-│   ├── doctor.py                # Self-healing diagnostic system
-│   ├── settings.py              # Configuration (env vars, pydantic-settings)
-│   └── cli.py                   # Terminal interface
+│   │   ├── dhikr.py                 # Three-tier persistent memory
+│   │   ├── masalik.py               # Neural pathway network (spreading activation)
+│   │   ├── lawh_mahfuz.py           # Immutable memory (triple-checksum)
+│   │   ├── memory_pyramid.py        # Unified 5-layer query engine
+│   │   ├── vector_store.py          # Semantic embeddings (ChromaDB)
+│   │   ├── knowledge_graph.py       # Entity-relationship graph
+│   │   └── living_memory.py         # Adaptive memory lifecycle
+│   ├── reasoning/
+│   │   ├── aql_engine.py            # Arabic Query Language reasoning
+│   │   ├── causal_engine.py         # Pearl's 3-rung causal ladder
+│   │   ├── planner.py               # Task planning
+│   │   └── context_manager.py       # Context window management
+│   ├── security/                    # Auth, permissions, sandboxing
+│   ├── skills/                      # Extensible skill registry
+│   │   ├── builtin/                 # Built-in skills (web, code, SSH, cloud)
+│   │   ├── base.py                  # Skill base class
+│   │   └── registry.py              # Skill discovery & loading
+│   ├── knowledge/                   # Knowledge base management
+│   ├── gateway/channels/            # Telegram, Discord, Slack, WhatsApp adapters
+│   ├── automation/                  # Cron scheduler + webhook triggers
+│   ├── doctor.py                    # Self-healing diagnostic system
+│   ├── settings.py                  # Configuration (env vars, pydantic-settings)
+│   └── cli.py                       # Terminal interface
 ├── frontend/src/
-│   ├── App.tsx                  # Main UI
-│   ├── pages/                   # Feature pages (Plugins, Providers, Developer, etc.)
-│   ├── hooks/                   # API & WebSocket hooks
-│   └── types.ts                 # TypeScript types
-├── plugins/                     # Your custom plugins go here!
-│   ├── hello_world/             # Example plugin
-│   └── request_logger/          # Example monitoring plugin
-├── docs/                        # Documentation site
-├── tests/                       # Test suite (484 tests)
-├── docker/                      # Docker configs
-├── pyproject.toml               # Python package config
-├── Makefile                     # Development commands
-└── docker-compose.yml           # Full-stack deployment
+│   ├── App.tsx                      # Main UI + WebSocket handler
+│   ├── components/
+│   │   ├── ChatMessage.tsx          # Chat bubbles + CognitiveBar pills
+│   │   ├── AgentCard.tsx            # Agent card with Nafs + Ruh bars
+│   │   ├── Sidebar.tsx              # Navigation sidebar
+│   │   └── ...                      # Toast, Markdown, Icons, etc.
+│   ├── pages/                       # Feature pages (Plugins, Providers, Settings, etc.)
+│   ├── hooks/                       # API & WebSocket hooks
+│   └── types.ts                     # TypeScript types (CognitiveMetadata, etc.)
+├── plugins/                         # Your custom plugins go here!
+├── docs/                            # Documentation
+├── tests/                           # Test suite
+├── docker/                          # Docker configs
+├── pyproject.toml                   # Python package config
+├── Makefile                         # Development commands
+└── docker-compose.yml               # Full-stack deployment
 ```
 
 ---

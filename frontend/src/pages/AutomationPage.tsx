@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { PageProps, ScheduledJob, Webhook } from "../types";
+import { SkeletonCard } from "../components/Skeleton";
 
 export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   const [activeTab, setActiveTab] = useState("jobs");
@@ -12,8 +13,17 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [showAddJob, setShowAddJob] = useState(false);
   const [showAddWebhook, setShowAddWebhook] = useState(false);
-  const [newJob, setNewJob] = useState({ name: "", cron: "0 9 * * *", task: "", agent_id: "" });
-  const [newWebhook, setNewWebhook] = useState({ name: "", task_template: "", agent_id: "" });
+  const [newJob, setNewJob] = useState({
+    name: "",
+    cron: "0 9 * * *",
+    task: "",
+    agent_id: "",
+  });
+  const [newWebhook, setNewWebhook] = useState({
+    name: "",
+    task_template: "",
+    agent_id: "",
+  });
   const [loading, setLoading] = useState(true);
 
   const loadJobs = useCallback(async () => {
@@ -87,13 +97,21 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Automation</h2>
-          <p className="page-description">قَدَر (Qadr) — Scheduling and webhooks</p>
+          <p className="page-description">
+            قَدَر (Qadr) — Scheduling and webhooks
+          </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-gold btn-sm" onClick={() => setShowAddJob(true)}>
+          <button
+            className="btn-gold btn-sm"
+            onClick={() => setShowAddJob(true)}
+          >
             + Add Job
           </button>
-          <button className="btn-secondary btn-sm" onClick={() => setShowAddWebhook(true)}>
+          <button
+            className="btn-secondary btn-sm"
+            onClick={() => setShowAddWebhook(true)}
+          >
             + Add Webhook
           </button>
         </div>
@@ -108,17 +126,23 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
           { id: "jobs", label: "Scheduled Jobs" },
           { id: "webhooks", label: "Webhooks" },
         ].map((tab) => (
-          <div
+          <button
             key={tab.id}
             className={`tab ${activeTab === tab.id ? "active" : ""}`}
             onClick={() => setActiveTab(tab.id)}
+            aria-selected={activeTab === tab.id}
+            role="tab"
           >
             {tab.label}
-          </div>
+          </button>
         ))}
       </div>
 
-      {loading && <div className="loading-text">Loading automation data...</div>}
+      {loading && (
+        <div className="p-5" aria-live="polite">
+          <SkeletonCard count={2} />
+        </div>
+      )}
 
       <div className="page-body">
         {activeTab === "jobs" && (
@@ -127,16 +151,20 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               <div className="empty-state">
                 <div className="empty-arabic">قدر</div>
                 <div className="empty-text">No scheduled jobs</div>
-                <div className="empty-sub">Create cron-like schedules for automated tasks</div>
+                <div className="empty-sub">
+                  Create cron-like schedules for automated tasks
+                </div>
               </div>
             )}
             {jobs.map((job) => (
               <div key={job.id} className="memory-item">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
-                    ${job.enabled
-                      ? "bg-emerald-500/15 border border-emerald-500/30"
-                      : "bg-gray-200 dark:bg-zinc-700 border border-gray-300 dark:border-zinc-600"
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
+                    ${
+                      job.enabled
+                        ? "bg-emerald-500/15 border border-emerald-500/30"
+                        : "bg-gray-200 dark:bg-zinc-700 border border-gray-300 dark:border-zinc-600"
                     }`}
                   >
                     {job.enabled ? "⏱" : "⏸"}
@@ -154,10 +182,16 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       Runs: {job.run_count}
                     </div>
                     <div className="text-2xs font-mono text-gray-400 dark:text-gray-500">
-                      Next: {job.next_run ? new Date(job.next_run).toLocaleString() : "—"}
+                      Next:{" "}
+                      {job.next_run
+                        ? new Date(job.next_run).toLocaleString()
+                        : "—"}
                     </div>
                   </div>
-                  <button className="btn-danger btn-sm" onClick={() => removeJob(job.id)}>
+                  <button
+                    className="btn-danger btn-sm"
+                    onClick={() => removeJob(job.id)}
+                  >
                     Remove
                   </button>
                 </div>
@@ -175,7 +209,9 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
               <div className="empty-state">
                 <div className="empty-arabic">خطاف</div>
                 <div className="empty-text">No webhooks configured</div>
-                <div className="empty-sub">Create webhook endpoints for event-driven automation</div>
+                <div className="empty-sub">
+                  Create webhook endpoints for event-driven automation
+                </div>
               </div>
             )}
             {webhooks.map((wh) => (
@@ -204,15 +240,23 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
 
       {showAddJob && (
         <div className="modal-overlay" onClick={() => setShowAddJob(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-title">
               <span className="font-arabic text-2xl text-mizan-gold">قدر</span>
               Schedule New Job
             </div>
 
             <div className="form-group">
-              <label className="form-label">Job Name</label>
+              <label className="form-label" htmlFor="job-name">
+                Job Name
+              </label>
               <input
+                id="job-name"
                 className="form-input"
                 placeholder="e.g., Morning Briefing"
                 value={newJob.name}
@@ -221,8 +265,11 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Cron Schedule</label>
+              <label className="form-label" htmlFor="job-cron">
+                Cron Schedule
+              </label>
               <input
+                id="job-cron"
                 className="form-input"
                 placeholder="0 9 * * *"
                 value={newJob.cron}
@@ -242,8 +289,11 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Task Description</label>
+              <label className="form-label" htmlFor="job-task">
+                Task Description
+              </label>
               <textarea
+                id="job-task"
                 className="form-input min-h-[60px] resize-y"
                 placeholder="What should the agent do?"
                 value={newJob.task}
@@ -252,8 +302,17 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowAddJob(false)}>Cancel</button>
-              <button className="btn-gold" onClick={addJob} disabled={!newJob.name || !newJob.task}>
+              <button
+                className="btn-secondary"
+                onClick={() => setShowAddJob(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-gold"
+                onClick={addJob}
+                disabled={!newJob.name || !newJob.task}
+              >
                 Create Job
               </button>
             </div>
@@ -263,29 +322,47 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
 
       {showAddWebhook && (
         <div className="modal-overlay" onClick={() => setShowAddWebhook(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-title">
               <span className="font-arabic text-2xl text-mizan-gold">خطاف</span>
               Create Webhook
             </div>
 
             <div className="form-group">
-              <label className="form-label">Webhook Name</label>
+              <label className="form-label" htmlFor="webhook-name">
+                Webhook Name
+              </label>
               <input
+                id="webhook-name"
                 className="form-input"
                 placeholder="e.g., GitHub Push Handler"
                 value={newWebhook.name}
-                onChange={(e) => setNewWebhook({ ...newWebhook, name: e.target.value })}
+                onChange={(e) =>
+                  setNewWebhook({ ...newWebhook, name: e.target.value })
+                }
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Task Template</label>
+              <label className="form-label" htmlFor="webhook-task">
+                Task Template
+              </label>
               <textarea
+                id="webhook-task"
                 className="form-input min-h-[60px] resize-y"
-                placeholder='e.g., Process push event from {repo} by {sender}'
+                placeholder="e.g., Process push event from {repo} by {sender}"
                 value={newWebhook.task_template}
-                onChange={(e) => setNewWebhook({ ...newWebhook, task_template: e.target.value })}
+                onChange={(e) =>
+                  setNewWebhook({
+                    ...newWebhook,
+                    task_template: e.target.value,
+                  })
+                }
               />
               <div className="text-2xs text-gray-400 dark:text-gray-500 mt-1">
                 Use {"{key}"} placeholders for webhook payload values
@@ -293,7 +370,12 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowAddWebhook(false)}>Cancel</button>
+              <button
+                className="btn-secondary"
+                onClick={() => setShowAddWebhook(false)}
+              >
+                Cancel
+              </button>
               <button
                 className="btn-gold"
                 onClick={addWebhookHandler}
