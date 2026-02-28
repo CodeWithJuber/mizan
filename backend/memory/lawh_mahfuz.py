@@ -37,6 +37,7 @@ class LawhEntry:
     length: int       # len(content) in bytes
     certainty: float = 1.0
     category: str = "general"
+    quaternary_checksum: str = ""  # DNA-inspired quaternary checksum (ACGT)
 
     def to_dict(self) -> dict:
         return {
@@ -46,6 +47,7 @@ class LawhEntry:
             "certainty": self.certainty,
             "category": self.category,
             "stored_at": self.stored_at,
+            "quaternary_checksum": self.quaternary_checksum,
         }
 
 
@@ -108,6 +110,11 @@ class LawhMahfuz:
                     quarantined_at REAL
                 )
             """)
+            # Migration: add quaternary_checksum column if not present
+            try:
+                c.execute("ALTER TABLE lawh_entries ADD COLUMN quaternary_checksum TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             conn.commit()
         finally:
             conn.close()
@@ -119,11 +126,13 @@ class LawhMahfuz:
             c = conn.cursor()
             c.execute("SELECT * FROM lawh_entries")
             for row in c.fetchall():
-                key, content, source, stored_at, sha256, crc32, length, certainty, category = row
+                key, content, source, stored_at, sha256, crc32, length, certainty, category = row[:9]
+                quat_checksum = row[9] if len(row) > 9 else ""
                 entry = LawhEntry(
                     key=key, content=content, source=source, stored_at=stored_at,
                     sha256=sha256, crc32=crc32, length=length,
                     certainty=certainty, category=category,
+                    quaternary_checksum=quat_checksum or "",
                 )
                 self._cache[key] = entry
             logger.info("[LAWH] Loaded %d entries from preserved tablet", len(self._cache))
@@ -152,10 +161,19 @@ class LawhMahfuz:
         length = len(content.encode("utf-8"))
         now = time.time()
 
+        # Compute quaternary checksum (DNA-inspired integrity layer)
+        quat_checksum = ""
+        try:
+            from memory.quaternary import quaternary_checksum
+            quat_checksum = quaternary_checksum(content)
+        except ImportError:
+            pass
+
         entry = LawhEntry(
             key=key, content=content, source=source, stored_at=now,
             sha256=sha, crc32=crc, length=length,
             certainty=certainty, category=category,
+            quaternary_checksum=quat_checksum,
         )
 
         conn = self._get_conn()
@@ -163,16 +181,16 @@ class LawhMahfuz:
             c = conn.cursor()
             c.execute(
                 """INSERT OR IGNORE INTO lawh_entries
-                   (key, content, source, stored_at, sha256, crc32, length, certainty, category)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (key, content, source, now, sha, crc, length, certainty, category),
+                   (key, content, source, stored_at, sha256, crc32, length, certainty, category, quaternary_checksum)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (key, content, source, now, sha, crc, length, certainty, category, quat_checksum),
             )
             conn.commit()
         finally:
             conn.close()
 
         self._cache[key] = entry
-        logger.debug("[LAWH] Stored '%s' (len=%d sha=%s...)", key, length, sha[:8])
+        logger.debug("[LAWH] Stored '%s' (len=%d sha=%s... quat=%s...)", key, length, sha[:8], quat_checksum[:8] if quat_checksum else "n/a")
         return key
 
     def verify_integrity(self, key: str) -> bool:
@@ -202,6 +220,20 @@ class LawhMahfuz:
         if actual_len != entry.length:
             self._quarantine_entry(key, f"Length mismatch: {actual_len}≠{entry.length}")
             return False
+
+        # 4th check: Quaternary checksum (DNA-inspired, when present)
+        if entry.quaternary_checksum:
+            try:
+                from memory.quaternary import hamming_distance, quaternary_checksum
+                actual_quat = quaternary_checksum(entry.content)
+                dist = hamming_distance(actual_quat, entry.quaternary_checksum)
+                if dist > 0:
+                    self._quarantine_entry(
+                        key, f"Quaternary checksum drift: hamming_distance={dist}"
+                    )
+                    return False
+            except ImportError:
+                pass  # Quaternary module not available; skip this check
 
         return True
 
