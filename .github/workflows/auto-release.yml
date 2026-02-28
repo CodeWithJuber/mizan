@@ -1,0 +1,268 @@
+name: Auto Release
+
+# Automatically creates a release when a PR is merged to main/master.
+# Determines version bump from PR labels or commit messages:
+#   - Label "release:major" or commit with "BREAKING CHANGE" → major bump
+#   - Label "release:minor" or commit with "feat:" → minor bump
+#   - Label "release:patch" or commit with "fix:" → patch bump
+#   - Label "release:beta" → beta pre-release
+#   - Label "release:skip" → skip release entirely
+#
+# Can also be triggered manually via workflow_dispatch.
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - beta
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  determine-release:
+    name: Determine release type
+    runs-on: ubuntu-latest
+    # Skip release commits to avoid infinite loops
+    if: "!startsWith(github.event.head_commit.message, 'chore: release v')"
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      bump_type: ${{ steps.check.outputs.bump_type }}
+      is_prerelease: ${{ steps.check.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release type
+        id: check
+        env:
+          MANUAL_BUMP: ${{ github.event.inputs.bump_type }}
+        run: |
+          BUMP=""
+          IS_PRE="false"
+
+          # Manual trigger takes priority
+          if [ -n "$MANUAL_BUMP" ]; then
+            if [ "$MANUAL_BUMP" = "beta" ]; then
+              BUMP="beta"
+              IS_PRE="true"
+            else
+              BUMP="$MANUAL_BUMP"
+            fi
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=$BUMP" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check merged PR labels
+          PR_NUMBER=$(gh pr list --state merged --base main --json number,mergedAt --jq 'sort_by(.mergedAt) | last | .number' 2>/dev/null || echo "")
+          if [ -n "$PR_NUMBER" ]; then
+            LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+
+            if echo "$LABELS" | grep -q "release:skip"; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "bump_type=" >> "$GITHUB_OUTPUT"
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if echo "$LABELS" | grep -q "release:major"; then BUMP="major"; fi
+            if echo "$LABELS" | grep -q "release:minor"; then BUMP="minor"; fi
+            if echo "$LABELS" | grep -q "release:patch"; then BUMP="patch"; fi
+            if echo "$LABELS" | grep -q "release:beta"; then BUMP="beta"; IS_PRE="true"; fi
+          fi
+
+          # Fallback: detect from commit messages
+          if [ -z "$BUMP" ]; then
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              COMMITS=$(git log "$LAST_TAG..HEAD" --pretty=format:"%s" --no-merges)
+            else
+              COMMITS=$(git log --pretty=format:"%s" --no-merges -20)
+            fi
+
+            if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|^feat!:"; then
+              BUMP="major"
+            elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+              BUMP="minor"
+            elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+              BUMP="patch"
+            fi
+          fi
+
+          # Default: no auto-release unless there's a clear signal
+          if [ -z "$BUMP" ]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "bump_type=" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=$BUMP" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  auto-release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: determine-release
+    if: needs.determine-release.outputs.should_release == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          BUMP_TYPE="${{ needs.determine-release.outputs.bump_type }}"
+          IS_PRE="${{ needs.determine-release.outputs.is_prerelease }}"
+          CURRENT=$(cat VERSION | tr -d '[:space:]')
+
+          if [ "$BUMP_TYPE" = "beta" ]; then
+            # Parse current version
+            BASE=$(echo "$CURRENT" | sed 's/-.*//')
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+            NEXT_MINOR="$MAJOR.$((MINOR + 1)).0"
+
+            # Check if already in beta
+            if echo "$CURRENT" | grep -q "beta"; then
+              BETA_NUM=$(echo "$CURRENT" | grep -oP 'beta\.\K[0-9]+')
+              NEW_VERSION="${NEXT_MINOR}-beta.$((BETA_NUM + 1))"
+            else
+              NEW_VERSION="${NEXT_MINOR}-beta.1"
+            fi
+          else
+            # Standard semantic version bump
+            BASE=$(echo "$CURRENT" | sed 's/-.*//')
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+            case "$BUMP_TYPE" in
+              patch) NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+              minor) NEW_VERSION="$MAJOR.$((MINOR + 1)).0" ;;
+              major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
+            esac
+          fi
+
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT → $NEW_VERSION"
+
+          # Update all version files
+          echo "$NEW_VERSION" > VERSION
+
+          cat > backend/_version.py << PYEOF
+          """Single source of truth for MIZAN version — auto-generated"""
+
+          __version__ = "$NEW_VERSION"
+          PYEOF
+
+          # Clean indentation from heredoc
+          sed -i 's/^          //' backend/_version.py
+
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
+          sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+
+          # CLI version
+          IFS='.' read -r NM NMI NP <<< "$(echo "$NEW_VERSION" | sed 's/-.*//')"
+          SHORT_VER="$NM.$NMI"
+          sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$SHORT_VER/" backend/cli.py
+          sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$NEW_VERSION/" backend/cli.py
+
+          # API version
+          sed -i "s/\"version\": \"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^\"]*\"/\"version\": \"$NEW_VERSION\"/g" backend/api/main.py
+          sed -i "s/version=\"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^\"]*\"/version=\"$NEW_VERSION\"/" backend/api/main.py
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          DATE=$(date +%Y-%m-%d)
+
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log "$LAST_TAG..HEAD" --pretty=format:"- %s" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges -20)
+          fi
+
+          # Categorize
+          FEATURES=$(echo "$COMMITS" | grep -iE "^- (feat|add|new)" || true)
+          FIXES=$(echo "$COMMITS" | grep -iE "^- (fix|bug|patch|hotfix)" || true)
+          CHANGES=$(echo "$COMMITS" | grep -iE "^- (refactor|update|improve|enhance|chore|docs|style|perf)" || true)
+
+          # Build entry
+          ENTRY="## [v$NEW_VERSION] — $DATE"
+          if [ -n "$FEATURES" ]; then
+            ENTRY="$ENTRY
+
+          ### Added
+          $FEATURES"
+          fi
+          if [ -n "$FIXES" ]; then
+            ENTRY="$ENTRY
+
+          ### Fixed
+          $FIXES"
+          fi
+          if [ -n "$CHANGES" ]; then
+            ENTRY="$ENTRY
+
+          ### Changed
+          $CHANGES"
+          fi
+
+          # Save for release notes
+          echo "$ENTRY" > /tmp/release_notes.md
+
+          # Prepend to CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            HEADER=$(head -3 CHANGELOG.md)
+            BODY=$(tail -n +4 CHANGELOG.md)
+            printf "%s\n\n%s\n\n%s" "$HEADER" "$ENTRY" "$BODY" > CHANGELOG.md
+          fi
+
+      - name: Commit and tag
+        run: |
+          git add -A
+          git commit -m "chore: release v${{ steps.bump.outputs.new_version }}
+
+          Bump version ${{ steps.bump.outputs.current }} → ${{ steps.bump.outputs.new_version }} and update CHANGELOG.
+
+          [skip ci]"
+          git tag -a "v${{ steps.bump.outputs.new_version }}" -m "Release v${{ steps.bump.outputs.new_version }}"
+          git push origin HEAD
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.new_version }}"
+          name: "MIZAN v${{ steps.bump.outputs.new_version }}"
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: ${{ needs.determine-release.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
