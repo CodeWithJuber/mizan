@@ -21,6 +21,7 @@ import type {
   Memory,
   Integration,
   SystemStatus,
+  PerceptionResult,
 } from "./types";
 import { config } from "./config";
 import { useApi } from "./hooks/useApi";
@@ -133,6 +134,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const ChannelsPage = lazy(() => import("./pages/ChannelsPage"));
+const PerceptionPage = lazy(() => import("./pages/PerceptionPage"));
 const SkillsPage = lazy(() => import("./pages/SkillsPage"));
 const SecurityPage = lazy(() => import("./pages/SecurityPage"));
 const AutomationPage = lazy(() => import("./pages/AutomationPage"));
@@ -144,6 +146,19 @@ const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
 const DeveloperPage = lazy(() => import("./pages/DeveloperPage"));
 const WelcomePage = lazy(() => import("./pages/WelcomePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 // ===== MAIN APP INNER =====
 function AppInner() {
@@ -220,6 +235,7 @@ function AppInner() {
     }[]
   >([]);
   const [showSessionHistory, setShowSessionHistory] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const CHAT_COMMANDS = [
     { name: "/help", description: "Show available commands" },
@@ -413,6 +429,26 @@ function AppInner() {
         case "task_done":
           addTerminalLine("Task completed", "gold");
           loadAgents();
+          break;
+        case "perception_result":
+          setStreaming(false);
+          setStreamingText("");
+          setTypingIndicator(false);
+          setToolStatus("");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              role: "assistant" as const,
+              content:
+                (data.result as PerceptionResult)?.batin ||
+                "Perception analysis complete",
+              agent: "Basirah",
+              ts: new Date().toLocaleTimeString(),
+              perception: data.result as PerceptionResult,
+            },
+          ]);
+          addTerminalLine("Perception analysis complete", "gold");
           break;
         case "agent_created":
           addTerminalLine(
@@ -677,12 +713,21 @@ function AppInner() {
   }, []);
 
   const sendMessage = async () => {
-    if (!input.trim() || streaming) return;
+    if ((!input.trim() && attachedFiles.length === 0) || streaming) return;
     const content = input;
+    const files = [...attachedFiles];
+    const hasMedia = files.some(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("audio/"),
+    );
+
     const userMsg: ChatMessage = {
       id: Date.now(),
       role: "user",
-      content,
+      content:
+        content +
+        (files.length > 0
+          ? ` [${files.map((f) => f.name).join(", ")}]`
+          : ""),
       ts: new Date().toLocaleTimeString(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -691,11 +736,39 @@ function AppInner() {
     setTypingIndicator(true);
     setToolStatus("");
     setInput("");
+    setAttachedFiles([]);
     // Reset textarea height after clearing
     if (chatTextareaRef.current) {
       chatTextareaRef.current.style.height = "auto";
     }
     addTerminalLine(`> ${content.substring(0, 60)}...`, "info");
+
+    // If media files attached, send as multimodal via WebSocket
+    if (hasMedia && ws) {
+      try {
+        const payload: Record<string, unknown> = {
+          type: "multimodal",
+          text: content,
+          agent_id: selectedAgent?.id,
+          session_id: sessionId,
+        };
+        for (const file of files) {
+          const b64 = await fileToBase64(file);
+          if (file.type.startsWith("image/")) {
+            payload.image_base64 = b64;
+            payload.media_type = file.type;
+          } else if (file.type.startsWith("audio/")) {
+            payload.audio_base64 = b64;
+          }
+        }
+        ws.send(JSON.stringify(payload));
+      } catch {
+        setStreaming(false);
+        setTypingIndicator(false);
+        addTerminalLine("Failed to process media files", "error");
+      }
+      return;
+    }
 
     // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
     // Fall back to WebSocket direct send if HTTP fails
@@ -865,6 +938,12 @@ function AppInner() {
     {
       label: "Tools",
       items: [
+        {
+          id: "perception",
+          label: "Perception",
+          desc: "Vision & voice analysis",
+          icon: <Icons.Eye />,
+        },
         {
           id: "memory",
           label: "Memory",
@@ -1335,22 +1414,62 @@ function AppInner() {
 
                 {/* Input box */}
                 <div className="chat-input-box">
+                  {/* Attached files preview */}
+                  {attachedFiles.length > 0 && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-wrap gap-2 px-3">
+                      {attachedFiles.map((file, idx) => (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-xs"
+                        >
+                          {file.type.startsWith("image/") ? (
+                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-amber-500">
+                              <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81V14.75c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.06l-2.22-2.22a.75.75 0 00-1.06 0L9.72 14.72a.75.75 0 01-1.06 0l-1.94-1.94a.75.75 0 00-1.06 0L2.5 11.06zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-indigo-500">
+                              <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                              <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+                            </svg>
+                          )}
+                          <span className="text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
+                            {file.name}
+                          </span>
+                          <button
+                            className="text-gray-400 hover:text-red-500 transition-colors"
+                            onClick={() =>
+                              setAttachedFiles((prev) =>
+                                prev.filter((_, i) => i !== idx),
+                              )
+                            }
+                          >
+                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Left action buttons */}
                   <div className="flex items-center shrink-0 self-end">
                     {/* Attach / Upload button */}
                     <button
                       className="chat-input-btn"
-                      title="Attach file"
+                      title="Attach image or audio"
                       onClick={() => {
                         const fileInput = document.createElement('input');
                         fileInput.type = 'file';
                         fileInput.multiple = true;
-                        fileInput.accept = '*/*';
+                        fileInput.accept = 'image/*,audio/*';
                         fileInput.onchange = (e) => {
                           const files = (e.target as HTMLInputElement).files;
                           if (files && files.length > 0) {
-                            const names = Array.from(files).map(f => f.name).join(', ');
-                            setInput((prev) => prev + (prev ? ' ' : '') + `[Attached: ${names}]`);
+                            setAttachedFiles((prev) => [
+                              ...prev,
+                              ...Array.from(files),
+                            ]);
                           }
                         };
                         fileInput.click();
@@ -1448,7 +1567,7 @@ function AppInner() {
                       <button
                         className="chat-send-btn"
                         onClick={sendMessage}
-                        disabled={!input.trim() || !ws}
+                        disabled={(!input.trim() && attachedFiles.length === 0) || !ws}
                         aria-label="Send message"
                       >
                         <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -1906,6 +2025,8 @@ function AppInner() {
           </div>
         );
 
+      case "perception":
+        return <PerceptionPage api={api} addTerminalLine={addTerminalLine} />;
       case "skills":
         return <SkillsPage api={api} addTerminalLine={addTerminalLine} />;
       case "security":
