@@ -108,3 +108,6 @@ release-major: ## Full release: bump major, changelog, tag, push
 
 release-dry: ## Dry run of a patch release (no changes)
 	./scripts/release.sh patch --dry-run
+
+protect: ## Setup GitHub branch protection rules for main
+	./scripts/setup-branch-protection.sh
