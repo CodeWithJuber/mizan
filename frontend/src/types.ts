@@ -188,6 +188,7 @@ export interface ChatMessage {
   model?: string;
   ts: string;
   cognitive?: CognitiveMetadata;
+  perception?: PerceptionResult;
 }
 
 // ===== Memory Types =====
@@ -427,6 +428,41 @@ export interface SystemStatus {
 export interface PageProps {
   api: ApiClient;
   addTerminalLine?: (text: string, type: string) => void;
+}
+
+// ===== Perception Types =====
+
+export interface BasirahInsight {
+  description: string;
+  category: "text" | "diagram" | "screenshot" | "photo" | "document";
+  confidence: number;
+  extracted_text: string;
+  key_elements: string[];
+  processing_time_ms: number;
+}
+
+export interface NutqTranscription {
+  text: string;
+  confidence: number;
+  language: string;
+  intent: string;
+  processing_time_ms: number;
+}
+
+export interface PerceptionResult {
+  perception: {
+    sam: Record<string, unknown>;
+    basar: Record<string, unknown>;
+    fuad: Record<string, unknown>;
+    nutq: NutqTranscription | null;
+    basirah: BasirahInsight | null;
+  };
+  roots_identified: Record<string, unknown>;
+  key_terms: string[];
+  zahir: string;
+  batin: string;
+  has_vision?: boolean;
+  has_audio?: boolean;
 }
 
 // ===== WebSocket Types =====

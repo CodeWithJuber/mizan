@@ -1148,6 +1148,9 @@ make update                # Via Makefile
       <table>
         <thead><tr><th>Module</th><th>Arabic</th><th>Purpose</th><th>File</th></tr></thead>
         <tbody>
+          <tr><td><strong>Multimodal Perception</strong></td><td>سمع+بصر</td><td>Sam' (hearing) first, then Basar (sight), Qalb-aware context modulation</td><td><code>perception/basirah.py</code>, <code>perception/nutq.py</code></td></tr>
+          <tr><td><strong>Living Memory</strong></td><td>ذاكرة حية</td><td>Novelty gate + hybrid text/vector similarity + Dhikr maintenance daemon</td><td><code>memory/living_memory.py</code></td></tr>
+          <tr><td><strong>Quaternary Encoding</strong></td><td>تشفير رباعي</td><td>DNA-inspired ACGT checksums with codon chunking and Hamming verification</td><td><code>memory/quaternary.py</code></td></tr>
           <tr><td><strong>Self-Healing</strong></td><td>لوّامة</td><td>Immune memory, health metrics, adaptive checkpoints</td><td><code>core/self_healing.py</code></td></tr>
           <tr><td><strong>Parallel Agents</strong></td><td>—</td><td>Concurrent task scheduling + skill transfer</td><td><code>core/parallel_agents.py</code></td></tr>
           <tr><td><strong>Imagination</strong></td><td>تصوير</td><td>Predictive coding — simulate before acting</td><td><code>core/imagination.py</code></td></tr>
@@ -1157,19 +1160,21 @@ make update                # Via Makefile
         </tbody>
       </table>
 
-      <h3>5-Layer Memory Pyramid</h3>
+      <h3>Memory Architecture (6-Layer Pyramid)</h3>
       <p>All memory layers are queried through a unified <code>MemoryPyramid</code>:</p>
       <table>
         <thead><tr><th>Layer</th><th>Module</th><th>Purpose</th></tr></thead>
         <tbody>
+          <tr><td><strong>Living Memory</strong></td><td><code>memory/living_memory.py</code></td><td>Novelty gate with hybrid text + vector similarity, importance scoring, Dhikr daemon</td></tr>
           <tr><td><strong>Dhikr</strong></td><td><code>memory/dhikr.py</code></td><td>Three-tier persistent memory (episodic, semantic, procedural)</td></tr>
           <tr><td><strong>Masalik</strong></td><td><code>memory/masalik.py</code></td><td>Neural pathways with spreading activation</td></tr>
-          <tr><td><strong>Lawh al-Mahfuz</strong></td><td><code>memory/lawh_mahfuz.py</code></td><td>Immutable memory with triple-checksum integrity (SHA-256 + CRC-32 + length)</td></tr>
-          <tr><td><strong>VectorStore</strong></td><td><code>memory/vector_store.py</code></td><td>Semantic embedding search (ChromaDB)</td></tr>
-          <tr><td><strong>KnowledgeGraph</strong></td><td><code>memory/knowledge_graph.py</code></td><td>Entity-relationship graph (SQLite)</td></tr>
+          <tr><td><strong>VectorStore</strong></td><td><code>memory/vector_store.py</code></td><td>Semantic embedding search (ChromaDB) — also used by Living Memory</td></tr>
+          <tr><td><strong>KnowledgeGraph</strong></td><td><code>memory/knowledge_graph.py</code></td><td>Entity-relationship graph with full-text entity search (SQLite)</td></tr>
+          <tr><td><strong>Lawh al-Mahfuz</strong></td><td><code>memory/lawh_mahfuz.py</code></td><td>Immutable memory with 4-layer integrity: SHA-256 + CRC-32 + length + quaternary checksum</td></tr>
         </tbody>
       </table>
       <p>Unified query: <code>memory/memory_pyramid.py</code> merges, deduplicates, and ranks by <code>relevance × certainty × recency</code>.</p>
+      <p><strong>Quaternary Encoding:</strong> DNA-inspired error detection using a 4-symbol alphabet (A, C, G, T). Data is encoded as quaternary strings, chunked into codons (triplets mapping to 64 semantic categories), and verified using XOR parity and Hamming distance checks.</p>
 
       <h3>Yaqin Certainty Engine</h3>
       <p>Every piece of knowledge is tagged with its certainty level:</p>

@@ -88,6 +88,12 @@ export const Icons = {
       <path d="M10 8V6a2 2 0 114 0v2M8 14h-2a2 2 0 100 4h2" />
     </svg>
   ),
+  Eye: () => (
+    <svg {...svgProps}>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
   Sun: () => <Sun className="w-5 h-5" aria-hidden="true" />,
   Moon: () => <Moon className="w-5 h-5" aria-hidden="true" />,
   Monitor: () => <Monitor className="w-5 h-5" aria-hidden="true" />,
