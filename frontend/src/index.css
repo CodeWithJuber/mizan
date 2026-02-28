@@ -103,6 +103,88 @@
     @apply p-5 text-xs text-gray-400 dark:text-gray-500 font-mono;
   }
 
+  /* ===== CHAT LAYOUT (ChatGPT / Claude style) ===== */
+
+  .chat-layout {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    @apply flex items-center border-b border-gray-200/70 dark:border-zinc-800 bg-white dark:bg-[#0B0C10] z-10 px-4 py-2;
+  }
+
+  .chat-header-inner {
+    @apply flex items-center justify-between w-full max-w-4xl mx-auto;
+  }
+
+  .chat-scroll-area {
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .chat-message-row {
+    @apply flex justify-center px-4 py-2;
+  }
+
+  .chat-message-container {
+    @apply w-full max-w-3xl mx-auto;
+  }
+
+  .chat-input-area {
+    @apply px-4 pb-4 pt-3 bg-white dark:bg-[#0B0C10] border-t border-gray-100 dark:border-zinc-800/50 z-10;
+  }
+
+  .chat-scroll-to-bottom {
+    @apply absolute bottom-3 left-1/2 -translate-x-1/2 z-20
+    w-9 h-9 rounded-full flex items-center justify-center
+    bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600
+    shadow-lg shadow-black/10 dark:shadow-black/30
+    text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200
+    hover:bg-gray-50 dark:hover:bg-zinc-700
+    transition-all duration-200 cursor-pointer
+    opacity-0 translate-y-2 pointer-events-none;
+  }
+
+  .chat-scroll-to-bottom.visible {
+    @apply opacity-100 translate-y-0 pointer-events-auto;
+  }
+
+  .chat-input-container {
+    @apply relative max-w-3xl mx-auto;
+  }
+
+  .chat-input-box {
+    @apply flex items-end gap-0 rounded-2xl border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 shadow-sm transition-all duration-200
+    focus-within:border-amber-400 dark:focus-within:border-amber-500/40 focus-within:shadow-md focus-within:shadow-amber-500/5 focus-within:bg-white dark:focus-within:bg-zinc-900;
+    padding: 8px 8px 8px 4px;
+  }
+
+  .chat-textarea {
+    @apply flex-1 resize-none bg-transparent border-none outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .chat-input-btn {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
+    text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
+  }
+
+  .chat-send-btn {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    bg-amber-500 hover:bg-amber-600 text-white shadow-sm
+    disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
+  }
+
+  .chat-stop-btn {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    bg-red-500 hover:bg-red-600 text-white shadow-sm;
+  }
+
   /* ===== CARDS ===== */
 
   .card {
@@ -353,79 +435,284 @@
   }
 }
 
-/* Prose / markdown content */
+/* ===================================================================
+   PROSE / MARKDOWN CONTENT — Rich formatting for chat responses
+   Supports: GFM tables, task lists, math (KaTeX), syntax highlighting,
+   headings, lists, blockquotes, links, images, horizontal rules
+   =================================================================== */
+
 .prose {
-  @apply text-gray-700 dark:text-gray-300 leading-relaxed;
+  @apply text-gray-700 dark:text-gray-300 leading-relaxed text-sm;
+  word-break: break-word;
 }
 
-.prose code {
-  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono text-amber-700 dark:text-[#D4AF37];
+.prose > *:first-child { margin-top: 0; }
+.prose > *:last-child { margin-bottom: 0; }
+
+/* --- Paragraphs --- */
+.prose p {
+  @apply my-2;
 }
 
+/* --- Inline code --- */
+.prose .inline-code,
+.prose code:not([class]) {
+  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[13px] font-mono
+         text-amber-700 dark:text-[#D4AF37] border border-gray-200/60 dark:border-zinc-700/60;
+}
+
+/* --- Code blocks (pre) --- */
 .prose pre {
-  @apply bg-gray-100 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg p-4 overflow-x-auto;
+  @apply bg-[#0d1117] dark:bg-[#0d1117] border border-gray-200 dark:border-zinc-800
+         rounded-lg overflow-x-auto text-[13px] leading-relaxed my-3;
+  padding: 1rem 1.25rem;
 }
 
 .prose pre code {
-  @apply bg-transparent p-0 text-gray-800 dark:text-gray-300;
+  @apply bg-transparent p-0 font-mono text-gray-200 border-none;
+  white-space: pre;
+  font-size: inherit;
 }
 
+/* --- Links --- */
 .prose a {
-  @apply text-blue-600 dark:text-blue-400 hover:underline;
+  @apply text-blue-600 dark:text-blue-400 underline decoration-blue-600/30 dark:decoration-blue-400/30
+         hover:decoration-blue-600 dark:hover:decoration-blue-400 transition-colors;
 }
 
-.prose h1,
-.prose h2,
+/* --- Headings --- */
+.prose h1 {
+  @apply text-lg font-bold text-gray-900 dark:text-gray-100 mt-5 mb-2 pb-1.5 border-b border-gray-200 dark:border-zinc-700;
+}
+
+.prose h2 {
+  @apply text-base font-bold text-gray-900 dark:text-gray-100 mt-4 mb-2 pb-1 border-b border-gray-200/50 dark:border-zinc-700/50;
+}
+
 .prose h3 {
-  @apply text-gray-900 dark:text-gray-100 font-semibold;
+  @apply text-sm font-bold text-gray-900 dark:text-gray-100 mt-3 mb-1.5;
 }
 
+.prose h4,
+.prose h5,
+.prose h6 {
+  @apply text-sm font-semibold text-gray-800 dark:text-gray-200 mt-3 mb-1;
+}
+
+/* --- Lists --- */
 .prose ul,
 .prose ol {
-  @apply pl-6 my-1;
+  @apply pl-6 my-2;
 }
 
 .prose ul {
   list-style-type: disc;
 }
 
+.prose ul ul {
+  list-style-type: circle;
+}
+
+.prose ul ul ul {
+  list-style-type: square;
+}
+
 .prose ol {
   list-style-type: decimal;
 }
 
+.prose ol ol {
+  list-style-type: lower-alpha;
+}
+
 .prose li {
-  @apply mb-1;
+  @apply mb-1 leading-relaxed;
 }
 
+.prose li > p {
+  @apply my-1;
+}
+
+/* --- Task list (GFM) --- */
+.prose li:has(.task-checkbox) {
+  list-style: none;
+  margin-left: -1.25rem;
+}
+
+.task-checkbox {
+  @apply mr-2 rounded border-gray-300 dark:border-zinc-600 cursor-default;
+  accent-color: #D4AF37;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+/* --- Blockquote --- */
 .prose blockquote {
-  @apply border-l-2 border-gray-300 dark:border-zinc-600 pl-3 my-2 italic text-gray-500 dark:text-gray-400;
+  @apply border-l-4 border-amber-400/70 dark:border-[#D4AF37]/50 pl-4 my-3
+         text-gray-500 dark:text-gray-400 bg-amber-50/30 dark:bg-amber-900/5
+         rounded-r-lg py-2 pr-3 italic;
 }
 
+.prose blockquote p:first-child { margin-top: 0; }
+.prose blockquote p:last-child { margin-bottom: 0; }
+
+/* --- Horizontal rule --- */
 .prose hr {
-  @apply my-3 border-gray-200 dark:border-zinc-700;
+  @apply my-4 border-gray-200 dark:border-zinc-700;
 }
 
-/* Code block wrapper with copy button */
+/* --- Images --- */
+.prose img {
+  @apply rounded-lg max-w-full h-auto my-3 shadow-sm;
+}
+
+/* --- Strong / Em / Del --- */
+.prose strong {
+  @apply font-semibold text-gray-900 dark:text-gray-100;
+}
+
+.prose em {
+  @apply italic;
+}
+
+.prose del {
+  @apply line-through text-gray-400 dark:text-gray-500;
+}
+
+/* ===================================================================
+   TABLES (GFM)
+   =================================================================== */
+.table-wrapper {
+  @apply overflow-x-auto my-3 rounded-lg border border-gray-200 dark:border-zinc-700;
+}
+
+.prose table {
+  @apply w-full text-xs border-collapse;
+}
+
+.prose thead {
+  @apply bg-gray-50 dark:bg-zinc-800/80;
+}
+
+.prose th {
+  @apply px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-300
+         border-b border-gray-200 dark:border-zinc-700 whitespace-nowrap;
+}
+
+.prose td {
+  @apply px-3 py-2 text-xs text-gray-600 dark:text-gray-400
+         border-b border-gray-100 dark:border-zinc-800;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prose tbody tr:hover {
+  @apply bg-gray-50/50 dark:bg-zinc-800/30;
+}
+
+/* Alternating row colors */
+.prose tbody tr:nth-child(even) {
+  @apply bg-gray-50/30 dark:bg-zinc-800/20;
+}
+
+/* ===================================================================
+   CODE BLOCK WRAPPER (with header, lang label, copy button)
+   =================================================================== */
 .code-block-wrapper {
   position: relative;
-  margin: 0.5rem 0;
+  margin: 0.75rem 0;
+  @apply rounded-lg overflow-hidden border border-gray-200 dark:border-zinc-800;
+}
+
+.code-block-header {
+  @apply flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-zinc-800;
+  min-height: 32px;
 }
 
 .code-block-wrapper pre {
-  @apply bg-gray-100 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg p-4 overflow-x-auto text-xs;
+  @apply bg-[#0d1117] overflow-x-auto text-[13px] leading-relaxed m-0 border-none rounded-none;
+  padding: 1rem 1.25rem;
 }
 
 .code-block-wrapper pre code {
-  @apply bg-transparent p-0 font-mono text-gray-800 dark:text-gray-300;
+  @apply bg-transparent p-0 font-mono text-gray-200 border-none;
   white-space: pre;
 }
 
 .code-block-wrapper .code-lang {
-  @apply absolute top-2 left-3 text-xs font-mono text-gray-400 dark:text-gray-500;
+  @apply text-xs font-mono text-gray-400 uppercase tracking-wide;
+  font-size: 11px;
 }
 
+/* Hide the absolute copy button when header is used */
 .code-block-wrapper .code-copy-btn {
-  @apply absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-zinc-600 transition-colors cursor-pointer;
+  @apply px-2 py-0.5 text-xs rounded bg-zinc-700/60 text-gray-300 hover:bg-zinc-600 transition-colors cursor-pointer;
+}
+
+/* ===================================================================
+   HIGHLIGHT.JS OVERRIDES — ensure dark theme works in both modes
+   =================================================================== */
+.prose pre code.hljs {
+  @apply bg-transparent p-0;
+}
+
+/* Override highlight.js background so it blends with our code block */
+.hljs {
+  background: transparent !important;
+  color: #c9d1d9 !important;
+}
+
+/* ===================================================================
+   KATEX / MATH OVERRIDES
+   =================================================================== */
+.prose .katex-display {
+  @apply my-3 overflow-x-auto py-2;
+}
+
+.prose .katex-display > .katex {
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+.prose .katex {
+  font-size: 1em;
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+/* Inline math */
+.prose .katex:not(.katex-display .katex) {
+  @apply px-0.5;
+}
+
+/* Math block container */
+.prose .math-display {
+  @apply bg-gray-50/50 dark:bg-zinc-800/30 rounded-lg px-4 py-2 my-3 overflow-x-auto;
+}
+
+/* ===================================================================
+   DEFINITION LIST (bonus)
+   =================================================================== */
+.prose dt {
+  @apply font-semibold text-gray-800 dark:text-gray-200 mt-2;
+}
+
+.prose dd {
+  @apply ml-4 mb-1 text-gray-600 dark:text-gray-400;
+}
+
+/* ===================================================================
+   FOOTNOTES (GFM)
+   =================================================================== */
+.prose .footnotes {
+  @apply mt-4 pt-3 border-t border-gray-200 dark:border-zinc-700 text-xs text-gray-500 dark:text-gray-400;
+}
+
+.prose .footnotes ol {
+  @apply pl-4;
 }
 
 /* Scrollbar thin variant for specific sections */

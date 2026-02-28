@@ -32,6 +32,7 @@ import { AgentCard, NAFS_LEVELS } from "./components/AgentCard";
 import {
   ChatMessageContent,
   ChatMessageBubble,
+  TypingIndicator,
 } from "./components/ChatMessage";
 import { Sidebar } from "./components/Sidebar";
 import { MobileNav } from "./components/MobileNav";
@@ -244,7 +245,10 @@ function AppInner() {
 
   const api = useApi();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const commandMenuRef = useRef<HTMLDivElement>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const clientId = useRef(`client_${Date.now()}`);
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
@@ -653,6 +657,17 @@ function AppInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollDown(distanceFromBottom > 150);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
   const startNewSession = useCallback(() => {
     const newId = `session_${Date.now()}`;
     setSessionId(newId);
@@ -676,6 +691,10 @@ function AppInner() {
     setTypingIndicator(true);
     setToolStatus("");
     setInput("");
+    // Reset textarea height after clearing
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = "auto";
+    }
     addTerminalLine(`> ${content.substring(0, 60)}...`, "info");
 
     // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
@@ -1017,501 +1036,440 @@ function AppInner() {
 
       case "chat":
         return (
-          <div className="flex-1 flex flex-col overflow-hidden relative">
-            <div className="flex items-center gap-3 px-6 py-3.5 border-b border-white/50 dark:border-white/5 bg-white/60 dark:bg-mizan-dark-surface/40 backdrop-blur-md z-10 shadow-sm transition-all duration-300">
-              <Icons.Chat />
-              <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                Chat
-              </span>
-
-              {/* Agent picker pill */}
-              <div className="relative">
-                <button
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-sm transition-all duration-300 ${
-                    showAgentPicker
-                      ? "bg-mizan-gold/10 border-mizan-gold/30 text-mizan-gold shadow-md"
-                      : "bg-white/60 dark:bg-mizan-dark-surface/40 border-white/50 dark:border-white/10 hover:border-mizan-gold/40 hover:shadow-md hover:-translate-y-0.5"
-                  }`}
-                  onClick={() => setShowAgentPicker(!showAgentPicker)}
-                >
-                  <div className="w-6 h-6 rounded-full bg-mizan-gold/10 border border-mizan-gold/30 flex items-center justify-center text-xs text-mizan-gold font-semibold">
-                    {selectedAgent?.name?.[0]?.toUpperCase() || "?"}
-                  </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {selectedAgent?.name || "Select Agent"}
-                  </span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">
-                    {selectedAgent?.role || ""}
-                  </span>
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="w-3.5 h-3.5 text-gray-400"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </button>
-
-                {/* Agent picker dropdown */}
-                {showAgentPicker && (
-                  <div className="absolute top-full left-0 mt-2 w-72 bg-white/90 dark:bg-mizan-dark-surface/90 backdrop-blur-xl border border-white/50 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
-                    {agents.map((agent) => {
-                      const roleLabels: Record<string, string> = {
-                        general: "General Purpose",
-                        hafiz: "General Purpose",
-                        wakil: "General Purpose",
-                        browser: "Web Browsing",
-                        mubashir: "Web Browsing",
-                        research: "Deep Research",
-                        mundhir: "Deep Research",
-                        code: "Code Generation",
-                        katib: "Code Generation",
-                        communication: "Communication",
-                        rasul: "Communication",
-                      };
-                      return (
-                        <button
-                          key={agent.id}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                            selectedAgent?.id === agent.id
-                              ? "bg-mizan-gold/10 text-mizan-gold"
-                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700/50"
-                          }`}
-                          onClick={() => {
-                            setSelectedAgent(agent);
-                            setShowAgentPicker(false);
-                          }}
-                        >
-                          <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 flex items-center justify-center text-xs font-semibold text-mizan-gold shrink-0">
-                            {agent.name[0]?.toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">
-                              {agent.name}
-                            </div>
-                            <div className="text-xs text-gray-400 dark:text-gray-500">
-                              {roleLabels[agent.role] || agent.role}
-                            </div>
-                          </div>
-                          {selectedAgent?.id === agent.id && (
-                            <span className="text-xs text-mizan-gold font-mono">
-                              ACTIVE
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                {selectedAgent && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-                    Level {selectedAgent.nafs_level} —{" "}
-                    {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
-                  </span>
-                )}
-
-                {/* Session history dropdown */}
+          <div className="chat-layout bg-white dark:bg-[#0B0C10]">
+            {/* ===== Chat Header — clean, minimal ===== */}
+            <div className="chat-header">
+              <div className="chat-header-inner">
+                {/* Left: Agent picker */}
                 <div className="relative">
                   <button
-                    className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                    onClick={() => {
-                      setShowSessionHistory(!showSessionHistory);
-                      if (!showSessionHistory) loadChatSessions();
-                    }}
-                    title="Chat history"
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border transition-all duration-200 ${
+                      showAgentPicker
+                        ? "bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 shadow-sm"
+                        : "bg-transparent border-transparent hover:bg-gray-100 dark:hover:bg-zinc-800"
+                    }`}
+                    onClick={() => setShowAgentPicker(!showAgentPicker)}
                   >
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
-                        clipRule="evenodd"
-                      />
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                      <svg viewBox="0 0 20 20" fill="white" className="w-3 h-3">
+                        <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM5.05 3.05a.75.75 0 011.06 0l1.062 1.06a.75.75 0 11-1.06 1.06L5.05 4.11a.75.75 0 010-1.06zm9.9 0a.75.75 0 010 1.06l-1.06 1.062a.75.75 0 01-1.062-1.061l1.061-1.06a.75.75 0 011.06 0zM10 7a3 3 0 100 6 3 3 0 000-6z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {selectedAgent?.name || "MIZAN"}
+                    </span>
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-gray-400">
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                     </svg>
                   </button>
-                  {showSessionHistory && (
-                    <div className="absolute top-full right-0 mt-2 w-80 bg-white/90 dark:bg-mizan-dark-surface/90 backdrop-blur-xl border border-white/50 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
-                      <div className="px-4 py-3 border-b border-white/50 dark:border-white/10 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest bg-gray-50/50 dark:bg-mizan-dark/50">
-                        Recent Sessions
+
+                  {showAgentPicker && (
+                    <div className="absolute top-full left-0 mt-1.5 w-72 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
+                      <div className="px-3 py-2 border-b border-gray-100 dark:border-zinc-800">
+                        <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Select Agent</span>
                       </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        {chatSessions.length === 0 && (
-                          <div className="px-3 py-4 text-center text-xs text-gray-400">
-                            No previous sessions
-                          </div>
-                        )}
-                        {chatSessions.map((s) => (
+                      {agents.map((agent) => {
+                        const roleLabels: Record<string, string> = {
+                          general: "General", hafiz: "General", wakil: "General",
+                          browser: "Browser", mubashir: "Browser",
+                          research: "Research", mundhir: "Research",
+                          code: "Code", katib: "Code",
+                          communication: "Comms", rasul: "Comms",
+                        };
+                        return (
                           <button
-                            key={s.session_id}
-                            className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
-                              sessionId === s.session_id
-                                ? "bg-mizan-gold/10 text-mizan-gold"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                            key={agent.id}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                              selectedAgent?.id === agent.id
+                                ? "bg-amber-50 dark:bg-amber-500/10"
+                                : "hover:bg-gray-50 dark:hover:bg-zinc-800"
                             }`}
-                            onClick={() => switchSession(s.session_id)}
+                            onClick={() => { setSelectedAgent(agent); setShowAgentPicker(false); }}
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs font-medium truncate">
-                                {s.first_message ||
-                                  s.session_id.slice(0, 24) + "..."}
-                              </div>
-                              <div className="text-micro text-gray-400 dark:text-gray-500">
-                                {s.message_count} msgs
-                                {s.last_message_at &&
-                                  ` · ${new Date(s.last_message_at).toLocaleDateString()}`}
-                              </div>
+                            <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-semibold text-amber-600 dark:text-amber-400 shrink-0">
+                              {agent.name[0]?.toUpperCase()}
                             </div>
-                            {sessionId === s.session_id && (
-                              <span className="text-micro text-mizan-gold font-mono shrink-0">
-                                CURRENT
-                              </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{agent.name}</div>
+                              <div className="text-[11px] text-gray-400 dark:text-gray-500">{roleLabels[agent.role] || agent.role}</div>
+                            </div>
+                            {selectedAgent?.id === agent.id && (
+                              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-500 shrink-0">
+                                <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                              </svg>
                             )}
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
-                {/* New chat button */}
-                <button
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-gray-200 dark:border-zinc-700 transition-colors"
-                  onClick={startNewSession}
-                  title="New chat"
-                >
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="w-3.5 h-3.5"
+                {/* Right: Session controls */}
+                <div className="flex items-center gap-1">
+                  {selectedAgent && (
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 hidden sm:inline mr-2 font-mono">
+                      L{selectedAgent.nafs_level} {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
+                    </span>
+                  )}
+
+                  {/* Session history */}
+                  <div className="relative">
+                    <button
+                      className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                      onClick={() => { setShowSessionHistory(!showSessionHistory); if (!showSessionHistory) loadChatSessions(); }}
+                      title="Chat history"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    {showSessionHistory && (
+                      <div className="absolute top-full right-0 mt-1.5 w-80 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
+                        <div className="px-3 py-2 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">History</span>
+                        </div>
+                        <div className="max-h-72 overflow-y-auto">
+                          {chatSessions.length === 0 && (
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">No previous sessions</div>
+                          )}
+                          {chatSessions.map((s) => (
+                            <button
+                              key={s.session_id}
+                              className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                                sessionId === s.session_id ? "bg-amber-50 dark:bg-amber-500/10" : "hover:bg-gray-50 dark:hover:bg-zinc-800"
+                              }`}
+                              onClick={() => switchSession(s.session_id)}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                                  {s.first_message || s.session_id.slice(0, 24) + "..."}
+                                </div>
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                  {s.message_count} msgs{s.last_message_at && ` · ${new Date(s.last_message_at).toLocaleDateString()}`}
+                                </div>
+                              </div>
+                              {sessionId === s.session_id && (
+                                <span className="text-[10px] text-amber-500 font-mono shrink-0">ACTIVE</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* New chat */}
+                  <button
+                    className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                    onClick={startNewSession}
+                    title="New chat"
                   >
-                    <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                  </svg>
-                  New
-                </button>
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
+                      <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
+                      <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-              {messages.length === 0 && !streaming && (
-                <div className="flex-1 flex flex-col items-center justify-center py-12 gap-8">
-                  <div className="text-center space-y-3">
-                    <div
-                      className="text-5xl text-mizan-gold/30 select-none"
-                      style={{ fontFamily: "Amiri, Georgia, serif" }}
-                    >
-                      &#1605;&#1610;&#1586;&#1575;&#1606;
+            {/* ===== Chat Messages Area ===== */}
+            <div className="chat-scroll-area relative" ref={chatScrollRef} onScroll={handleChatScroll}>
+              {messages.length === 0 && !streaming ? (
+                /* ===== Empty state — centered like ChatGPT ===== */
+                <div className="flex flex-col items-center justify-center h-full px-4">
+                  <div className="text-center space-y-4 mb-8">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
+                      <svg viewBox="0 0 24 24" fill="white" className="w-7 h-7">
+                        <path d="M12 2a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V2.75A.75.75 0 0112 2zM6.05 4.05a.75.75 0 011.06 0l1.59 1.59a.75.75 0 11-1.06 1.06L6.05 5.11a.75.75 0 010-1.06zm11.9 0a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zM12 8a4 4 0 100 8 4 4 0 000-8zM4 12.75a.75.75 0 01-.75-.75 .75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H4zm13.75-.75a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H18.5a.75.75 0 01-.75-.75zM7.7 16.3a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zm8.6 0a.75.75 0 011.06 0l1.59 1.59a.75.75 0 01-1.06 1.06l-1.59-1.59a.75.75 0 010-1.06zM12 18a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18z" />
+                      </svg>
                     </div>
-                    <h2 className="text-xl font-display font-semibold text-gray-900 dark:text-gray-100">
-                      How can I help?
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                      Start a conversation, ask a question, or try one of these
-                      suggestions.
-                    </p>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        How can I help you today?
+                      </h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">
+                        Ask anything, run code, browse the web, or try a suggestion below.
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 max-w-lg w-full px-4">
+                  <div className="grid grid-cols-2 gap-2.5 max-w-lg w-full">
                     {[
-                      {
-                        label: "Write code",
-                        desc: "Generate, debug, or refactor",
-                        prompt: "Help me write a Python script that ",
-                      },
-                      {
-                        label: "Analyze data",
-                        desc: "Explore patterns and insights",
-                        prompt: "Analyze this data and help me understand ",
-                      },
-                      {
-                        label: "Research topic",
-                        desc: "Deep dive into any subject",
-                        prompt: "Research and summarize the key points about ",
-                      },
-                      {
-                        label: "Brainstorm ideas",
-                        desc: "Creative thinking together",
-                        prompt: "Help me brainstorm ideas for ",
-                      },
+                      { label: "Write code", desc: "Generate or debug code", prompt: "Help me write a Python script that " },
+                      { label: "Analyze data", desc: "Find patterns and insights", prompt: "Analyze this data and help me understand " },
+                      { label: "Research topic", desc: "Deep dive into any subject", prompt: "Research and summarize the key points about " },
+                      { label: "Brainstorm", desc: "Creative thinking together", prompt: "Help me brainstorm ideas for " },
                     ].map((action) => (
                       <button
                         key={action.label}
-                        className="card-hover text-left p-4 group cursor-pointer"
-                        onClick={() => {
-                          setInput(action.prompt);
-                        }}
+                        className="text-left p-3.5 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group cursor-pointer"
+                        onClick={() => setInput(action.prompt)}
                       >
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-mizan-gold transition-colors">
+                        <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
                           {action.label}
                         </div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          {action.desc}
-                        </div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{action.desc}</div>
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
+              ) : (
+                /* ===== Messages list ===== */
+                <div className="py-4 space-y-0">
+                  {messages.map((msg) => (
+                    <ChatMessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      selectedAgent={selectedAgent}
+                    />
+                  ))}
 
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex gap-4 ${
-                    msg.role === "user"
-                      ? "flex-row-reverse"
-                      : msg.role === "system"
-                        ? "justify-center"
-                        : ""
-                  } animate-fade-in`}
-                >
-                  {msg.role === "system" ? (
-                    <div className="max-w-[85%] w-full">
-                      <div
-                        className="px-4 py-3 rounded-lg text-sm leading-relaxed italic
-                        bg-amber-50/60 dark:bg-amber-500/5 border border-amber-200/60 dark:border-amber-500/15
-                        text-amber-900 dark:text-amber-200/90"
-                        style={{
-                          fontFamily:
-                            "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-                        }}
-                      >
-                        <div className="flex items-center gap-2 mb-1.5 not-italic">
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400"
-                          >
-                            <path d="M7 9l3 3-3 3M13 15h4" />
-                            <rect x="3" y="4" width="18" height="16" rx="2" />
-                          </svg>
-                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                            System
-                          </span>
+                  {/* Typing indicator */}
+                  {streaming && !streamingText && typingIndicator && (
+                    <div className="chat-message-row">
+                      <div className="chat-message-container">
+                        <div className="flex gap-3.5">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                              <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                              {selectedAgent?.name || "MIZAN"}
+                            </div>
+                            <TypingIndicator />
+                          </div>
                         </div>
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
-                      </div>
-                      <div className="text-xs text-amber-400 dark:text-amber-500/60 mt-1 px-1 font-mono text-center">
-                        {msg.ts}
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div
-                        className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-medium ${
-                          msg.role === "user"
-                            ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
-                            : "bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700"
-                        }`}
-                      >
-                        {msg.role === "user" ? "You" : msg.agent?.[0] || "AI"}
-                      </div>
-                      <div
-                        className={
-                          msg.role === "assistant"
-                            ? "max-w-[85%]"
-                            : "max-w-[75%]"
-                        }
-                      >
-                        {msg.role === "assistant" ? (
-                          <div className="prose px-5 py-3.5 rounded-2xl text-sm leading-relaxed bg-white/80 dark:bg-mizan-dark-surface/80 backdrop-blur-md border border-white/50 dark:border-white/5 text-gray-800 dark:text-gray-200 rounded-tl-sm shadow-sm transition-all hover:shadow-md">
-                            <ChatMessageContent content={msg.content} />
-                          </div>
-                        ) : (
-                          <div className="px-5 py-3.5 rounded-2xl text-sm leading-relaxed bg-gradient-to-br from-blue-500 to-blue-600 border border-blue-400/50 text-white rounded-tr-sm shadow-md">
-                            {msg.content}
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 px-1 font-mono">
-                          {msg.role === "assistant" ? msg.agent : "You"}{" "}
-                          &middot; {msg.ts}
-                        </div>
-                      </div>
-                    </>
                   )}
-                </div>
-              ))}
 
-              {/* Typing indicator - shown before first token arrives */}
-              {streaming && !streamingText && typingIndicator && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700">
-                    {selectedAgent?.name?.[0] || "AI"}
-                  </div>
-                  <div className="max-w-[75%]">
-                    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl rounded-tl-sm text-sm leading-relaxed text-gray-400 dark:text-gray-500">
-                      <span className="inline-flex gap-1 items-center">
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-                          style={{ animationDelay: "0ms" }}
-                        />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-                          style={{ animationDelay: "150ms" }}
-                        />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-                          style={{ animationDelay: "300ms" }}
-                        />
-                      </span>
+                  {/* Tool status */}
+                  {streaming && toolStatus && (
+                    <div className="chat-message-row">
+                      <div className="chat-message-container">
+                        <div className="flex gap-3.5 items-center">
+                          <div className="w-7 h-7 shrink-0" />
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-200/60 dark:border-blue-500/20">
+                            <svg className="w-3.5 h-3.5 text-blue-500 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M7.76 7.76L4.93 4.93" />
+                            </svg>
+                            <span className="text-xs font-medium text-blue-600 dark:text-blue-400">{toolStatus}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* Tool status indicator */}
-              {streaming && toolStatus && (
-                <div className="flex gap-3 items-center">
-                  <div className="w-8 h-8 shrink-0" />
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-200/60 dark:border-blue-500/20 animate-pulse">
-                    <svg
-                      className="w-3.5 h-3.5 text-blue-500 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M7.76 7.76L4.93 4.93" />
-                    </svg>
-                    <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                      {toolStatus}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Streaming text with markdown and blinking cursor */}
-              {streaming && streamingText && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs bg-gray-100 dark:bg-zinc-800 text-mizan-gold border border-gray-200 dark:border-zinc-700">
-                    {selectedAgent?.name?.[0] || "AI"}
-                  </div>
-                  <div className="max-w-[75%]">
-                    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl rounded-tl-sm text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                      <ChatMessageContent content={streamingText} />
-                      <span className="inline-block w-0.5 h-4 bg-mizan-gold ml-0.5 align-middle animate-pulse" />
+                  {/* Streaming text */}
+                  {streaming && streamingText && (
+                    <div className="chat-message-row group/msg">
+                      <div className="chat-message-container">
+                        <div className="flex gap-3.5">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                              <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
+                            </svg>
+                          </div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                              {selectedAgent?.name || "MIZAN"}
+                            </div>
+                            <div className="prose">
+                              <ChatMessageContent content={streamingText} />
+                              <span className="inline-block w-0.5 h-4 bg-amber-500 ml-0.5 align-middle animate-pulse rounded-full" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
                 </div>
               )}
 
-              <div ref={messagesEndRef} />
+              {/* Scroll to bottom arrow */}
+              <button
+                className={`chat-scroll-to-bottom ${showScrollDown ? "visible" : ""}`}
+                onClick={scrollToBottom}
+                aria-label="Scroll to bottom"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
 
-            <div className="relative px-6 py-4 border-t border-white/50 dark:border-white/5 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl shadow-[0_-4px_24px_rgba(0,0,0,0.02)] z-dropdown transition-all duration-200 focus-within:shadow-[0_-4px_24px_rgba(212,175,55,0.08)]">
-              {/* Command autocomplete dropdown */}
-              {showCommandMenu && filteredCommands.length > 0 && (
-                <div
-                  ref={commandMenuRef}
-                  className="absolute bottom-full left-4 right-4 mb-1 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden z-50"
-                >
-                  <div className="px-3 py-1.5 text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-zinc-700">
-                    Commands
+            {/* ===== Chat Input — anchored bottom, ChatGPT-style ===== */}
+            <div className="chat-input-area">
+              <div className="chat-input-container">
+                {/* Command autocomplete */}
+                {showCommandMenu && filteredCommands.length > 0 && (
+                  <div
+                    ref={commandMenuRef}
+                    className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden z-50"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-zinc-800">
+                      Commands
+                    </div>
+                    {filteredCommands.map((cmd, i) => (
+                      <button
+                        key={cmd.name}
+                        className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm transition-colors ${
+                          i === commandMenuIndex
+                            ? "bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                        }`}
+                        onMouseEnter={() => setCommandMenuIndex(i)}
+                        onClick={() => { setInput(cmd.name + " "); setShowCommandMenu(false); setCommandMenuIndex(0); }}
+                      >
+                        <span className="font-mono font-semibold text-amber-600 dark:text-amber-400 shrink-0">{cmd.name}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs truncate">{cmd.description}</span>
+                      </button>
+                    ))}
                   </div>
-                  {filteredCommands.map((cmd, i) => (
+                )}
+
+                {/* Input box */}
+                <div className="chat-input-box">
+                  {/* Left action buttons */}
+                  <div className="flex items-center shrink-0 self-end">
+                    {/* Attach / Upload button */}
                     <button
-                      key={cmd.name}
-                      className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm transition-colors ${
-                        i === commandMenuIndex
-                          ? "bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700/50"
-                      }`}
-                      onMouseEnter={() => setCommandMenuIndex(i)}
+                      className="chat-input-btn"
+                      title="Attach file"
                       onClick={() => {
-                        setInput(cmd.name + " ");
-                        setShowCommandMenu(false);
-                        setCommandMenuIndex(0);
+                        const fileInput = document.createElement('input');
+                        fileInput.type = 'file';
+                        fileInput.multiple = true;
+                        fileInput.accept = '*/*';
+                        fileInput.onchange = (e) => {
+                          const files = (e.target as HTMLInputElement).files;
+                          if (files && files.length > 0) {
+                            const names = Array.from(files).map(f => f.name).join(', ');
+                            setInput((prev) => prev + (prev ? ' ' : '') + `[Attached: ${names}]`);
+                          }
+                        };
+                        fileInput.click();
                       }}
                     >
-                      <span className="font-mono font-semibold text-amber-600 dark:text-amber-400 shrink-0">
-                        {cmd.name}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                        {cmd.description}
-                      </span>
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
+                        <path d="M10 5a.75.75 0 01.75.75v3.5h3.5a.75.75 0 010 1.5h-3.5v3.5a.75.75 0 01-1.5 0v-3.5h-3.5a.75.75 0 010-1.5h3.5v-3.5A.75.75 0 0110 5z" />
+                      </svg>
                     </button>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2 items-end">
-                <textarea
-                  className="input flex-1 resize-none min-h-[38px] max-h-[120px]"
-                  placeholder="Type your message... (/ for commands, Enter to send)"
-                  value={input}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setInput(val);
-                    if (val.startsWith("/") && !val.includes(" ")) {
-                      setShowCommandMenu(true);
-                      setCommandMenuIndex(0);
-                    } else {
-                      setShowCommandMenu(false);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (showCommandMenu && filteredCommands.length > 0) {
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setCommandMenuIndex(
-                          (prev) => (prev + 1) % filteredCommands.length,
-                        );
-                        return;
+
+                    {/* Web search button */}
+                    <button
+                      className="chat-input-btn"
+                      title="Web search"
+                      onClick={() => setInput((prev) => prev + (prev ? ' ' : '') + '/web_search ')}
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0c0-.738.402-1.381 1-1.726a5.994 5.994 0 01.98 2.65l-.02.018a.998.998 0 01-.592.29A6.003 6.003 0 0110 16a6.004 6.004 0 01-5.668-7.973z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Textarea */}
+                  <textarea
+                    ref={chatTextareaRef}
+                    className="chat-textarea"
+                    placeholder="Message MIZAN..."
+                    value={input}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setInput(val);
+                      if (val.startsWith("/") && !val.includes(" ")) {
+                        setShowCommandMenu(true);
+                        setCommandMenuIndex(0);
+                      } else {
+                        setShowCommandMenu(false);
                       }
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setCommandMenuIndex(
-                          (prev) =>
-                            (prev - 1 + filteredCommands.length) %
-                            filteredCommands.length,
-                        );
-                        return;
+                      // Auto-resize
+                      e.target.style.height = "auto";
+                      e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+                    }}
+                    onKeyDown={(e) => {
+                      if (showCommandMenu && filteredCommands.length > 0) {
+                        if (e.key === "ArrowDown") { e.preventDefault(); setCommandMenuIndex((prev) => (prev + 1) % filteredCommands.length); return; }
+                        if (e.key === "ArrowUp") { e.preventDefault(); setCommandMenuIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length); return; }
+                        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                          e.preventDefault();
+                          const selected = filteredCommands[commandMenuIndex];
+                          if (selected) { setInput(selected.name + " "); setShowCommandMenu(false); setCommandMenuIndex(0); }
+                          return;
+                        }
+                        if (e.key === "Escape") { e.preventDefault(); setShowCommandMenu(false); return; }
                       }
-                      if (
-                        e.key === "Tab" ||
-                        (e.key === "Enter" && !e.shiftKey)
-                      ) {
-                        e.preventDefault();
-                        const selected = filteredCommands[commandMenuIndex];
-                        if (selected) {
-                          setInput(selected.name + " ");
-                          setShowCommandMenu(false);
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+                    }}
+                    onBlur={() => { setTimeout(() => setShowCommandMenu(false), 150); }}
+                    rows={1}
+                  />
+
+                  {/* Right action buttons */}
+                  <div className="flex items-center gap-0.5 shrink-0 self-end">
+                    {/* Commands button */}
+                    <button
+                      className="chat-input-btn"
+                      title="Commands (/)"
+                      onClick={() => {
+                        if (!input.startsWith('/')) {
+                          setInput('/');
+                          setShowCommandMenu(true);
                           setCommandMenuIndex(0);
                         }
-                        return;
-                      }
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        setShowCommandMenu(false);
-                        return;
-                      }
-                    }
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  onBlur={() => {
-                    // Delay hiding so clicks on menu items register
-                    setTimeout(() => setShowCommandMenu(false), 150);
-                  }}
-                  rows={1}
-                />
-                <button
-                  className="w-10 h-10 rounded-lg bg-mizan-gold hover:bg-mizan-gold-light text-black flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
-                  onClick={sendMessage}
-                  disabled={streaming || !input.trim() || !ws}
-                >
-                  <Icons.Send />
-                </button>
+                      }}
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path fillRule="evenodd" d="M14.5 10a4.5 4.5 0 004.284-5.882c-.105-.324-.51-.391-.752-.15L15.34 6.66a.454.454 0 01-.493.101 3.046 3.046 0 01-1.607-1.607.454.454 0 01.1-.493l2.693-2.692c.24-.241.174-.647-.15-.752a4.5 4.5 0 00-5.873 4.575c.055.873-.128 1.808-.8 2.368l-7.23 6.024a2.724 2.724 0 103.837 3.837l6.024-7.23c.56-.672 1.495-.855 2.368-.8.096.007.193.01.291.01zM5 16a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+
+                    {/* Send or Stop button */}
+                    {streaming ? (
+                      <button
+                        className="chat-stop-btn"
+                        onClick={() => {
+                          // Signal stop — close and reconnect WS
+                          if (ws) { ws.close(); }
+                        }}
+                        title="Stop generating"
+                        aria-label="Stop generating"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                          <rect x="5" y="5" width="10" height="10" rx="1.5" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        className="chat-send-btn"
+                        onClick={sendMessage}
+                        disabled={!input.trim() || !ws}
+                        aria-label="Send message"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-2 px-1">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+                    <span className="hidden sm:inline">Enter to send · Shift+Enter for new line · / for commands</span>
+                    <span className="sm:hidden">Enter to send</span>
+                  </span>
+                  {wsStatus !== 'connected' && (
+                    <span className="text-[10px] text-red-400 font-mono flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+                      Disconnected
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2028,7 +1986,7 @@ function AppInner() {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
+    <div className="h-dvh flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
       {/* Connection banner */}
       <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
 
@@ -2076,7 +2034,7 @@ function AppInner() {
         />
 
         {/* Content */}
-        <main className="flex-1 overflow-hidden flex flex-col bg-transparent relative z-0 pb-16 md:pb-0">
+        <main className={`flex-1 overflow-hidden flex flex-col bg-transparent relative z-0 ${activeTab === "chat" ? "pb-0" : "pb-16 md:pb-0"}`}>
           <ErrorBoundary>
             <Suspense
               fallback={
@@ -2093,8 +2051,10 @@ function AppInner() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      {/* Mobile bottom nav — hidden on chat tab since chat has its own input area */}
+      {activeTab !== "chat" && (
+        <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      )}
 
       {/* Create / Edit Agent Modal */}
       {showCreateAgent && (
