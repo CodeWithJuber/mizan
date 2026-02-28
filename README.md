@@ -102,6 +102,7 @@ make dev                   # Start backend + frontend
 |---------|---------------|
 | **Chat** | Talk to your AI in the browser or terminal |
 | **Browse the web** | AI can search Google, read websites, extract information |
+| **Analyze images & voice** | Upload images for vision analysis, audio for transcription |
 | **Run code** | AI writes and executes Python, bash scripts |
 | **Manage files** | Read, write, organize files on your computer |
 | **Remember things** | Remembers your conversations and preferences |
@@ -114,8 +115,11 @@ make dev                   # Start backend + frontend
 | Feature | What It Means |
 |---------|---------------|
 | **QALB-7 Cognitive Pipeline** | 7-layer architecture: ethics → deliberation → emotion → conviction → metacognition |
+| **Multimodal Perception** | Sam' (hearing) + Basar (sight) → Fu'ad integration, with Qalb-aware context |
 | **Developmental Stages** | Agents grow from Nutfah (5 tools, 5 turns) to Khalq Akhar (all tools, 25 turns) |
+| **Living Memory** | Novelty gate with hybrid text+vector similarity — never re-stores 1+1=2 |
 | **5-Layer Memory Pyramid** | Unified query across episodic, semantic, neural pathways, vectors, and knowledge graph |
+| **DNA Integrity** | Quaternary (ACGT) checksums with Hamming distance verification in Lawh al-Mahfuz |
 | **Causal Reasoning** | Pearl's 3-rung causal ladder: observation, intervention, counterfactual |
 | **Plugin system** | Add new abilities with a simple Python file |
 | **Event bus + Hooks** | Decoupled communication — modify data at any point in the pipeline |
@@ -282,6 +286,9 @@ Each agent processes every task through these cognitive layers:
 
 | Module | Arabic | Purpose | File |
 |--------|--------|---------|------|
+| **Multimodal Perception** | سمع+بصر | Sam' (hearing) first, then Basar (sight), Qalb-aware context | `perception/basirah.py`, `perception/nutq.py` |
+| **Living Memory** | ذاكرة حية | Novelty gate + hybrid text/vector similarity + Dhikr daemon | `memory/living_memory.py` |
+| **Quaternary Encoding** | تشفير رباعي | DNA-inspired ACGT checksums with Hamming distance verification | `memory/quaternary.py` |
 | **Lawwama Self-Healing** | لوّامة | Immune memory, health metrics, adaptive checkpoint intervals | `core/self_healing.py` |
 | **Parallel Agents** | — | Concurrent task scheduling + skill transfer between agents | `core/parallel_agents.py` |
 | **Imagination** | تصوير | Predictive coding — simulate outcomes before acting | `core/imagination.py` |
@@ -296,13 +303,18 @@ All memory layers are queried through a unified `MemoryPyramid`:
 
 | Layer | Module | Purpose |
 |-------|--------|---------|
+| **Living Memory** | `memory/living_memory.py` | Novelty gate (hybrid text + vector similarity), importance scoring, Dhikr daemon |
 | **Dhikr** | `memory/dhikr.py` | Three-tier persistent memory (episodic, semantic, procedural) |
 | **Masalik** | `memory/masalik.py` | Neural pathway network with spreading activation |
-| **Lawh al-Mahfuz** | `memory/lawh_mahfuz.py` | Immutable core memory with triple-checksum integrity |
-| **VectorStore** | `memory/vector_store.py` | Semantic embedding search (ChromaDB) |
-| **KnowledgeGraph** | `memory/knowledge_graph.py` | Entity-relationship graph (SQLite) |
+| **VectorStore** | `memory/vector_store.py` | Semantic embedding search (ChromaDB) — also used by Living Memory |
+| **KnowledgeGraph** | `memory/knowledge_graph.py` | Entity-relationship graph with full-text search (SQLite) |
+| **Lawh al-Mahfuz** | `memory/lawh_mahfuz.py` | Immutable memory with 4-layer integrity: SHA-256 + CRC-32 + length + quaternary checksum |
 
 Unified query: `memory/memory_pyramid.py` merges, deduplicates, and ranks results by relevance x certainty x recency.
+
+**Living Memory** solves the 1+1=2 problem: seeing the same information again doesn't create a new trace — it activates the existing one. New information enriches existing traces, related info gets linked, and only genuinely novel content is stored.
+
+**Quaternary Encoding** (`memory/quaternary.py`) provides DNA-inspired error detection: binary data is encoded using a 4-symbol alphabet (A, C, G, T), chunked into codons (triplets), and verified using XOR parity and Hamming distance.
 
 ### Developmental Stages (Nafs Levels 1–7)
 
@@ -441,6 +453,45 @@ GET  /api/tasks/history       Get task history
 POST /api/memory/query        Search memories
 POST /api/memory/store        Store a memory
 POST /api/memory/consolidate  Prune old memories
+GET  /api/memory/list         List recent memories
+```
+
+### Perception (Sam' + Basar)
+```
+POST /api/perception/analyze  Multimodal analysis (text + base64 image + base64 audio)
+```
+
+Accepts `MultimodalInput` with fields: `text`, `image_base64`, `audio_base64`, `media_type`, `qalb_state`.
+Processes Sam' (audio) first, then Basar (image), integrates via Fu'ad.
+
+### Cognitive Pipeline
+```
+POST /api/qalb/analyze          Analyze emotional state from text
+GET  /api/qalb/trend/{user_id}  Get emotional trend over time
+POST /api/cognitive/route        Route to best cognitive method
+POST /api/yaqin/tag              Tag knowledge with certainty level
+GET  /api/yaqin/stats            Get Yaqin statistics
+```
+
+### Federation
+```
+GET  /api/federation/status    Federation network status
+POST /api/federation/discover  Discover agents by capability
+POST /api/federation/route     Route task to best agent
+```
+
+### Nafs & Ruh
+```
+GET  /api/nafs/tiers           Get all 7 Nafs tier definitions
+GET  /api/nafs/{agent_id}      Get agent Nafs level and progress
+GET  /api/ruh/{agent_id}       Get agent Ruh energy level
+```
+
+### Knowledge
+```
+POST /api/knowledge/ingest     Ingest from URL or YouTube
+POST /api/knowledge/upload     Upload PDF for knowledge extraction
+GET  /api/knowledge/sources    List ingested knowledge sources
 ```
 
 ### Plugins & Extensibility
@@ -489,6 +540,10 @@ POST /api/settings            Update settings
 POST /api/shura               Multi-agent consultation
 WS   /ws/{client_id}          WebSocket connection
 ```
+
+**WebSocket message types**: `chat`, `task`, `command`, `multimodal`, `ping`
+
+The `multimodal` type accepts: `{ type: "multimodal", content: "text", image_base64: "...", audio_base64: "...", media_type: "image/png", qalb_state: "neutral" }` and returns a `perception_result` message with full QCA analysis.
 
 ### Channels
 ```

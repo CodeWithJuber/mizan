@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import type {
   ChatMessage as ChatMessageType,
   CognitiveMetadata,
+  PerceptionResult,
 } from "../types";
 import { Markdown } from "./Markdown";
 
@@ -391,6 +392,133 @@ function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
   );
 }
 
+const PERCEPTION_CATEGORY_COLORS: Record<string, string> = {
+  text: "bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  diagram: "bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400",
+  screenshot: "bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
+  photo: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  document: "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
+};
+
+function PerceptionCard({ perception }: { perception: PerceptionResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const basirah = perception.perception?.basirah;
+  const nutq = perception.perception?.nutq;
+
+  return (
+    <div className="mt-2 animate-fade-in">
+      <button
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex flex-wrap items-center gap-1.5 cursor-pointer group"
+        aria-expanded={expanded}
+        aria-label="Perception results"
+      >
+        {/* Vision pill */}
+        {basirah && (
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${PERCEPTION_CATEGORY_COLORS[basirah.category] || PERCEPTION_CATEGORY_COLORS.text}`}
+            title={`Basirah: ${basirah.category} (${(basirah.confidence * 100).toFixed(0)}%)`}
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" aria-hidden="true">
+              <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+              <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+            </svg>
+            {basirah.category}
+          </span>
+        )}
+
+        {/* Audio pill */}
+        {nutq && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400"
+            title={`Nutq: ${nutq.intent} (${nutq.language})`}
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" aria-hidden="true">
+              <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+              <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+            </svg>
+            {nutq.intent}
+          </span>
+        )}
+
+        {/* Key terms pills */}
+        {perception.key_terms?.slice(0, 3).map((term, i) => (
+          <span
+            key={i}
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200/40 dark:border-amber-500/15"
+          >
+            {term}
+          </span>
+        ))}
+
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        >
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
+          {basirah && (
+            <div className="space-y-1">
+              <div className="font-medium text-gray-700 dark:text-gray-300">Vision (Basirah)</div>
+              <p className="text-gray-500 dark:text-gray-400">{basirah.description}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">Confidence</span>
+                <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-zinc-700 overflow-hidden">
+                  <div className="h-full rounded-full bg-amber-500" style={{ width: `${(basirah.confidence * 100).toFixed(0)}%` }} />
+                </div>
+                <span className="font-mono text-gray-400 w-8 text-right">{(basirah.confidence * 100).toFixed(0)}%</span>
+              </div>
+              {basirah.extracted_text && (
+                <div className="text-gray-500 dark:text-gray-400">
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Text: </span>
+                  {basirah.extracted_text.substring(0, 200)}
+                  {basirah.extracted_text.length > 200 && "..."}
+                </div>
+              )}
+              {basirah.key_elements?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {basirah.key_elements.map((el, i) => (
+                    <span key={i} className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400 text-[10px]">
+                      {el}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {nutq && (
+            <div className="space-y-1">
+              <div className="font-medium text-gray-700 dark:text-gray-300">Voice (Nutq)</div>
+              <p className="text-gray-500 dark:text-gray-400">{nutq.text}</p>
+              <div className="text-gray-500 dark:text-gray-400">
+                <span className="font-medium text-gray-700 dark:text-gray-300">Intent: </span>{nutq.intent}
+                {" · "}
+                <span className="font-medium text-gray-700 dark:text-gray-300">Lang: </span>{nutq.language}
+              </div>
+            </div>
+          )}
+          {perception.zahir && (
+            <div className="text-gray-500 dark:text-gray-400">
+              <span className="font-medium text-gray-700 dark:text-gray-300">Zahir: </span>{perception.zahir}
+            </div>
+          )}
+          {perception.batin && (
+            <div className="text-gray-500 dark:text-gray-400">
+              <span className="font-medium text-gray-700 dark:text-gray-300">Batin: </span>{perception.batin}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ChatMessageBubbleProps {
   msg: ChatMessageType;
   selectedAgent?: { name: string } | null;
@@ -475,6 +603,9 @@ export function ChatMessageBubble({
 
             {/* Cognitive bar */}
             {msg.cognitive && <CognitiveBar cognitive={msg.cognitive} />}
+
+            {/* Perception card */}
+            {msg.perception && <PerceptionCard perception={msg.perception} />}
 
             {/* Action buttons — hover reveal */}
             <div className="flex items-center gap-1 mt-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
