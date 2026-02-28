@@ -30,8 +30,8 @@ class SecurityConfig:
     )
 
     # Rate limiting
-    rate_limit_per_minute: int = 60
-    rate_limit_burst: int = 10
+    rate_limit_per_minute: int = 200
+    rate_limit_burst: int = 30
     ws_max_connections: int = 50
 
     # File system sandbox

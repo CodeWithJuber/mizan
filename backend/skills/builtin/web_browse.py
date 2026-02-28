@@ -60,8 +60,11 @@ class WebBrowseSkill(SkillBase):
             return await self.search(params.get("query", ""))
         return {"error": f"Unknown action: {action}"}
 
-    async def browse(self, url: str) -> dict:
+    async def browse(self, url: str | dict = "") -> dict:
         """Browse a URL and extract text content"""
+        # Defensive: handle dict input from invoke system
+        if isinstance(url, dict):
+            url = url.get("url", "")
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 response = await client.get(
@@ -80,11 +83,14 @@ class WebBrowseSkill(SkillBase):
         except Exception as e:
             return {"error": str(e), "url": url}
 
-    async def search(self, query: str) -> dict:
+    async def search(self, query: str | dict = "") -> dict:
         """Search the web using DuckDuckGo"""
         import urllib.parse
 
-        encoded = urllib.parse.quote(query)
+        # Defensive: handle dict input from invoke system
+        if isinstance(query, dict):
+            query = query.get("query", "")
+        encoded = urllib.parse.quote(str(query))
         url = f"https://duckduckgo.com/html/?q={encoded}"
 
         try:

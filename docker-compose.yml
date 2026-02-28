@@ -18,6 +18,8 @@ services:
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY environment variable is required}
+      - DB_PATH=/data/mizan_memory.db
+      - LINODE_API_TOKEN=${LINODE_API_TOKEN:-}
     volumes:
       - mizan-data:/data
       - mizan-plugins:/app/plugins
