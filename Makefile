@@ -106,6 +106,12 @@ release-minor: ## Full release: bump minor, changelog, tag, push
 release-major: ## Full release: bump major, changelog, tag, push
 	./scripts/release.sh major
 
+release-beta: ## Full release: create beta pre-release
+	./scripts/release.sh beta
+
+release-rc: ## Full release: create release candidate
+	./scripts/release.sh rc
+
 release-dry: ## Dry run of a patch release (no changes)
 	./scripts/release.sh patch --dry-run
 
