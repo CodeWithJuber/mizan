@@ -137,6 +137,73 @@ class DualInputProcessor:
         fuad = self.integrate_fuad(sam, basar)
         return {"sam": sam, "basar": basar, "fuad": fuad}
 
+    async def process_multimodal(
+        self,
+        text: str = "",
+        image_bytes: bytes | None = None,
+        audio_bytes: bytes | None = None,
+        media_type: str = "image/png",
+        context: str = "",
+        qalb_state: str = "",
+    ) -> dict:
+        """
+        Full multimodal processing: Sam' (hearing) first, then Basar (sight),
+        following the Quranic ordering of 16:78 and 17:36.
+
+        "And Allah brought you out from the wombs of your mothers while you knew
+        nothing, and He gave you hearing (sam'), sight (basar), and hearts (af'ida)
+        that perhaps you would be grateful." — Quran 16:78
+        """
+        from perception.basirah import BasirahEngine
+        from perception.nutq import NutqEngine
+
+        results: dict = {"sam": {}, "basar": {}, "fuad": {}, "nutq": None, "basirah": None}
+
+        # ── Step 1: Sam' — auditory input first (hearing precedes sight) ──
+        nutq_text = ""
+        if audio_bytes:
+            try:
+                nutq = NutqEngine()
+                transcription = await nutq.listen(audio_bytes)
+                results["nutq"] = transcription.to_dict()
+                nutq_text = transcription.text
+            except Exception as e:
+                logger.warning("[QCA] Nutq (audio) processing failed: %s", e)
+
+        # Combine text sources: explicit text + transcribed speech
+        combined_text = " ".join(filter(None, [text, nutq_text]))
+
+        # ── Step 2: Basar — visual input second ──
+        if image_bytes:
+            try:
+                basirah = BasirahEngine()
+                insight = await basirah.analyze(
+                    image_bytes, context=context, media_type=media_type,
+                    qalb_state=qalb_state,
+                )
+                results["basirah"] = insight.to_dict()
+                # Append extracted text from vision to combined text
+                if insight.extracted_text:
+                    combined_text += " " + insight.extracted_text
+            except Exception as e:
+                logger.warning("[QCA] Basirah (vision) processing failed: %s", e)
+
+        # ── Step 3: Fu'ad — standard text integration on combined input ──
+        if combined_text.strip():
+            sam = self.process_sam(combined_text)
+            basar = self.process_basar(combined_text)
+            fuad = self.integrate_fuad(sam, basar)
+            results["sam"] = sam
+            results["basar"] = basar
+            results["fuad"] = fuad
+        else:
+            results["fuad"] = {
+                "zahir": "", "batin": "", "key_terms": [],
+                "vocabulary_richness": 0, "sequential_pairs": [], "total_tokens": 0,
+            }
+
+        return results
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LAYER 4: ISM — Root-Space Semantic Representation
@@ -819,6 +886,71 @@ class QCAEngine:
             "key_terms": key_terms,
             "zahir": perception["fuad"]["zahir"],
             "batin": perception["fuad"]["batin"],
+        }
+
+    async def process_input_multimodal(
+        self,
+        text: str = "",
+        image_bytes: bytes | None = None,
+        audio_bytes: bytes | None = None,
+        media_type: str = "image/png",
+        context: str = "",
+        qalb_state: str = "",
+    ) -> dict:
+        """
+        Process multimodal input through perception layers + ISM.
+
+        Follows Quranic ordering: Sam' (hearing) first, then Basar (sight).
+        Falls back to text-only process_input() if no multimodal data present.
+        """
+        if not image_bytes and not audio_bytes:
+            return self.process_input(text)
+
+        perception = await self.dual_input.process_multimodal(
+            text=text,
+            image_bytes=image_bytes,
+            audio_bytes=audio_bytes,
+            media_type=media_type,
+            context=context,
+            qalb_state=qalb_state,
+        )
+
+        # Combine all text sources for root analysis
+        combined_text = text
+        nutq_result = perception.get("nutq")
+        if nutq_result and nutq_result.get("text"):
+            combined_text += " " + nutq_result["text"]
+        basirah_result = perception.get("basirah")
+        if basirah_result and basirah_result.get("extracted_text"):
+            combined_text += " " + basirah_result["extracted_text"]
+
+        roots = self.ism.find_roots_in_text(combined_text) if combined_text.strip() else {}
+
+        # Store in Tier 3 working memory
+        self.lawh.store(
+            "CURRENT_INPUT",
+            combined_text[:500],
+            certainty=1.0,
+            source="multimodal_input",
+            tier=3,
+        )
+        key_terms = perception.get("fuad", {}).get("key_terms", [])
+        self.lawh.store(
+            "CURRENT_TERMS",
+            str(key_terms),
+            certainty=1.0,
+            source="fuad_analysis",
+            tier=3,
+        )
+
+        return {
+            "perception": perception,
+            "roots_identified": roots,
+            "key_terms": key_terms,
+            "zahir": perception.get("fuad", {}).get("zahir", ""),
+            "batin": perception.get("fuad", {}).get("batin", ""),
+            "has_vision": image_bytes is not None,
+            "has_audio": audio_bytes is not None,
         }
 
     def reason(self, question: str, context_text: str = None) -> dict:

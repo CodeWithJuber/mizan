@@ -81,26 +81,43 @@ class NutqEngine:
         self._voice = VoiceProcessor()
 
     async def speak(
-        self, text: str, tone: str = "standard", voice: str = "default"
+        self,
+        text: str,
+        tone: str = "standard",
+        voice: str = "default",
+        qalb_state: str = "",
     ) -> NutqUtterance:
-        """Generate speech with tone calibration."""
+        """Generate speech with tone calibration, optionally driven by Qalb state."""
         start = time.time()
 
-        # Adjust text for tone (light modifications)
-        adjusted_text = self._adjust_for_tone(text, tone)
+        # Qalb-driven tone override (when tone is default "standard")
+        effective_tone = tone
+        if qalb_state and tone == "standard":
+            qalb_tone_map = {
+                "frustrated": "patient",
+                "anxious": "warm",
+                "confused": "patient",
+                "fatigued": "warm",
+                "determined": "focused",
+                "positive": "warm",
+            }
+            effective_tone = qalb_tone_map.get(qalb_state, tone)
 
+        adjusted_text = self._adjust_for_tone(text, effective_tone)
+        language = self._detect_language(adjusted_text)
         audio = await self._voice.text_to_speech(adjusted_text, voice)
 
         elapsed = (time.time() - start) * 1000
         return NutqUtterance(
             text=adjusted_text,
             audio_bytes=audio,
-            tone=tone,
+            tone=effective_tone,
+            language=language,
             duration_ms=elapsed,
         )
 
     async def listen(self, audio_bytes: bytes) -> NutqTranscription:
-        """Transcribe speech with intent detection."""
+        """Transcribe speech with intent and language detection."""
         start = time.time()
 
         text = await self._voice.speech_to_text(audio_bytes)
@@ -112,41 +129,117 @@ class NutqEngine:
             )
 
         intent = self._detect_intent(text)
+        language = self._detect_language(text)
 
         elapsed = (time.time() - start) * 1000
         return NutqTranscription(
             text=text,
             confidence=0.9,
+            detected_language=language,
             detected_intent=intent,
             processing_time_ms=elapsed,
         )
 
-    def _adjust_for_tone(self, text: str, tone: str) -> str:
+    @staticmethod
+    def _adjust_for_tone(text: str, tone: str) -> str:
         """Light text adjustments based on desired tone."""
-        # In a full implementation, this would modify pacing markers,
-        # emphasis, and SSML tags. For now, return as-is.
+        if not text:
+            return text
+
+        if tone == "warm":
+            # Softer pacing: add pause markers between sentences
+            text = text.replace(". ", "... ").replace("! ", "... ")
+        elif tone == "patient":
+            # Slow down: extra spacing between sentences
+            text = text.replace(". ", ".   ").replace("? ", "?   ")
+        elif tone == "focused":
+            # Strip filler words for conciseness
+            fillers = ["well, ", "so, ", "you know, ", "basically, ", "actually, ", "like, "]
+            for filler in fillers:
+                text = text.replace(filler, "")
+                text = text.replace(filler.capitalize(), "")
+
         return text
 
-    def _detect_intent(self, text: str) -> str:
+    @staticmethod
+    def _detect_intent(text: str) -> str:
         """Detect the intent of transcribed speech."""
         text_stripped = text.strip()
+        if not text_stripped:
+            return "statement"
+
+        text_lower = text_stripped.lower()
+
+        # Question detection: question mark or question words at start
         if text_stripped.endswith("?"):
             return "question"
-        if any(
-            text_stripped.lower().startswith(w)
-            for w in [
-                "do",
-                "run",
-                "create",
-                "delete",
-                "open",
-                "close",
-                "find",
-                "search",
-                "show",
-                "tell",
-                "help",
-            ]
-        ):
+        question_starts = [
+            "what ", "where ", "when ", "who ", "whom ", "which ", "why ", "how ",
+            "is it ", "are there ", "can you ", "could you ", "would you ",
+            "do you ", "does it ", "will it ", "shall ",
+        ]
+        if any(text_lower.startswith(q) for q in question_starts):
+            return "question"
+
+        # Greeting detection
+        greetings = [
+            "hello", "hi ", "hey ", "good morning", "good afternoon",
+            "good evening", "salam", "assalamu",
+        ]
+        if any(text_lower.startswith(g) for g in greetings):
+            return "greeting"
+
+        # Farewell detection
+        farewells = ["goodbye", "bye", "see you", "take care", "good night", "ma'a salama"]
+        if any(text_lower.startswith(f) for f in farewells):
+            return "farewell"
+
+        # Confirmation/negation
+        if text_lower in ("yes", "yeah", "yep", "sure", "ok", "okay", "right", "correct"):
+            return "confirmation"
+        if text_lower in ("no", "nope", "nah", "wrong", "incorrect"):
+            return "negation"
+
+        # Command detection: imperative verbs
+        command_verbs = [
+            "do ", "run ", "create ", "delete ", "open ", "close ", "find ", "search ",
+            "show ", "tell ", "help ", "make ", "build ", "write ", "read ", "send ",
+            "stop ", "start ", "restart ", "install ", "update ", "fix ", "check ",
+            "list ", "get ", "set ", "add ", "remove ", "move ", "copy ", "save ",
+            "load ", "deploy ", "test ", "analyze ", "explain ", "summarize ",
+        ]
+        if any(text_lower.startswith(w) for w in command_verbs):
             return "command"
+
+        # Request detection (polite commands)
+        request_patterns = ["please ", "could you ", "can you ", "would you ", "i need ", "i want "]
+        if any(text_lower.startswith(p) for p in request_patterns):
+            return "request"
+
         return "statement"
+
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        """Basic language detection based on Unicode character ranges."""
+        if not text:
+            return "en"
+
+        # Count characters in Arabic Unicode range
+        arabic_count = sum(1 for c in text if "\u0600" <= c <= "\u06FF")
+        # Extended Arabic (includes Urdu-specific)
+        extended_arabic = sum(1 for c in text if "\uFB50" <= c <= "\uFDFF" or "\uFE70" <= c <= "\uFEFF")
+        total_alpha = sum(1 for c in text if c.isalpha())
+
+        if total_alpha == 0:
+            return "en"
+
+        arabic_ratio = (arabic_count + extended_arabic) / total_alpha
+
+        if arabic_ratio > 0.3:
+            # Distinguish Arabic from Urdu by checking for Urdu-specific characters
+            urdu_specific = sum(1 for c in text if c in "\u0679\u067E\u0686\u0688\u0691\u0698\u06BA\u06BE\u06C1\u06CC\u06D2")
+            if urdu_specific > 0:
+                return "ur"
+            return "ar"
+
+        return "en"

@@ -167,7 +167,7 @@ class LivingMemorySystem:
     context-dependent recall, and Dhikr maintenance daemon.
     """
 
-    def __init__(self, masalik=None, dhikr_db=None, lawh=None):
+    def __init__(self, masalik=None, dhikr_db=None, lawh=None, vector_store=None):
         # Memory stores by level
         self.sadr: list[MemoryTrace] = []       # working memory (capacity-limited)
         self.traces: dict[str, MemoryTrace] = {}  # all traces by ID
@@ -177,6 +177,7 @@ class LivingMemorySystem:
         self._masalik = masalik     # MasalikNetwork for spread activation
         self._dhikr_db = dhikr_db  # DhikrMemorySystem for persistence
         self._lawh = lawh          # LawhMahfuz for immutable storage
+        self._vector_store = vector_store  # VectorStore for semantic similarity
 
         self._daemon_cycle = 0
         self._content_hashes: dict[str, str] = {}  # hash → trace_id for fast lookup
@@ -620,10 +621,31 @@ class LivingMemorySystem:
             except Exception:
                 pass
 
+        # Persist to VectorStore for semantic similarity search
+        if self._vector_store and getattr(self._vector_store, "_available", False):
+            try:
+                import asyncio
+                import concurrent.futures
+
+                metadata = {"level": trace.level.value, "importance": trace.importance}
+                coro = self._vector_store.store(
+                    trace.content, memory_id=trace.trace_id, metadata=metadata
+                )
+                try:
+                    asyncio.get_running_loop()
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        executor.submit(asyncio.run, coro).result(timeout=5)
+                except RuntimeError:
+                    asyncio.run(coro)
+            except Exception:
+                pass
+
     def _find_best_match(self, content: str) -> tuple[MemoryTrace | None, float]:
-        """Find the most similar existing trace."""
+        """Find the most similar existing trace (text + optional vector similarity)."""
         best = None
         best_sim = 0.0
+
+        # Primary: Jaccard text similarity (always available)
         for trace in self.traces.values():
             if trace.trace_id in self.archive:
                 continue
@@ -631,7 +653,48 @@ class LivingMemorySystem:
             if sim > best_sim:
                 best_sim = sim
                 best = trace
+
+        # Secondary: Vector similarity via ChromaDB (if available)
+        if self._vector_store and getattr(self._vector_store, "_available", False):
+            try:
+                # VectorStore.search() is async but underlying ChromaDB is sync.
+                # Use sync wrapper to avoid event loop issues.
+                vector_results = self._vector_search_sync(content, limit=5)
+                for vr in vector_results:
+                    distance = vr.get("distance", 1.0)
+                    # ChromaDB L2 distance → 0-1 similarity
+                    vector_sim = max(0.0, 1.0 - (distance / 2.0))
+                    vec_id = vr.get("id", "")
+                    if vec_id in self.traces and vec_id not in self.archive:
+                        trace = self.traces[vec_id]
+                        hybrid_sim = max(
+                            self._text_similarity(content, trace.content),
+                            vector_sim,
+                        )
+                        if hybrid_sim > best_sim:
+                            best_sim = hybrid_sim
+                            best = trace
+            except Exception:
+                pass  # Graceful degradation to text-only
+
         return best, best_sim
+
+    def _vector_search_sync(self, query: str, limit: int = 5) -> list[dict]:
+        """Synchronous wrapper for VectorStore.search()."""
+        import asyncio
+        import concurrent.futures
+
+        try:
+            asyncio.get_running_loop()
+            # Already in async context — run in thread to avoid nested loop
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    asyncio.run, self._vector_store.search(query, limit=limit)
+                )
+                return future.result(timeout=5)
+        except RuntimeError:
+            # No running event loop — safe to run directly
+            return asyncio.run(self._vector_store.search(query, limit=limit))
 
     def _extract_novel_parts(self, new_content: str, existing: MemoryTrace) -> str:
         """Extract what's genuinely new in content vs existing trace."""
