@@ -178,6 +178,50 @@ class KnowledgeGraph:
             "incoming": incoming,
         }
 
+    async def search_entities(
+        self, query: str, limit: int = 10, entity_type: str | None = None
+    ) -> list[dict]:
+        """Search entities by name (LIKE query) with optional type filtering.
+
+        Used by MemoryPyramid layer 4 for graph-based recall.
+        """
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+
+        results = []
+        seen_ids: set[str] = set()
+        words = query.lower().split()
+
+        for word in words[:5]:
+            if len(word) < 2:
+                continue
+            if entity_type:
+                c.execute(
+                    "SELECT id, name, type, properties FROM kg_entities "
+                    "WHERE name LIKE ? AND type = ? LIMIT ?",
+                    (f"%{word}%", entity_type, limit),
+                )
+            else:
+                c.execute(
+                    "SELECT id, name, type, properties FROM kg_entities "
+                    "WHERE name LIKE ? LIMIT ?",
+                    (f"%{word}%", limit),
+                )
+            for row in c.fetchall():
+                if row[0] not in seen_ids:
+                    seen_ids.add(row[0])
+                    results.append(
+                        {
+                            "id": row[0],
+                            "name": row[1],
+                            "type": row[2],
+                            "properties": json.loads(row[3]) if row[3] else {},
+                        }
+                    )
+
+        conn.close()
+        return results[:limit]
+
     async def get_stats(self) -> dict:
         """Get knowledge graph statistics"""
         conn = sqlite3.connect(self.db_path)

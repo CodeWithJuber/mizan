@@ -449,6 +449,17 @@ class WebhookCreateRequest(BaseModel):
 class SkillInstallRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
+
+class MultimodalInput(BaseModel):
+    """Input for multimodal perception analysis (text + image + audio)."""
+
+    text: str = Field(default="", max_length=50000)
+    image_base64: str | None = None  # base64-encoded image
+    audio_base64: str | None = None  # base64-encoded audio
+    media_type: str = Field(default="image/png", max_length=50)
+    agent_id: str | None = None
+    qalb_state: str = Field(default="", max_length=50)
+
     # NOTE: Startup and shutdown logic is handled by the lifespan context manager above.
 
 
@@ -1080,6 +1091,46 @@ async def list_memories(memory_type: str | None = None, limit: int = 30):
             "tags": json.loads(row[7]) if row[7] else [],
         })
     return {"results": results, "total": len(results)}
+
+
+# === PERCEPTION (Sam' + Basar - سَمْع + بَصَر) ===
+
+
+@app.post("/api/perception/analyze")
+async def analyze_multimodal(
+    req: MultimodalInput,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Analyze multimodal input through the QCA perception pipeline.
+
+    Accepts text, base64-encoded images, and base64-encoded audio.
+    Follows Quranic ordering: Sam' (hearing) before Basar (sight).
+    """
+    import base64 as b64
+
+    agent = None
+    if req.agent_id and req.agent_id in active_agents:
+        agent = active_agents[req.agent_id]
+    elif active_agents:
+        agent = next(iter(active_agents.values()))
+
+    if not agent:
+        raise HTTPException(503, "No agents available for perception analysis")
+
+    image_bytes = b64.b64decode(req.image_base64) if req.image_base64 else None
+    audio_bytes = b64.b64decode(req.audio_base64) if req.audio_base64 else None
+
+    if not req.text and not image_bytes and not audio_bytes:
+        raise HTTPException(400, "At least one of text, image_base64, or audio_base64 is required")
+
+    result = await agent.qca.process_input_multimodal(
+        text=req.text,
+        image_bytes=image_bytes,
+        audio_bytes=audio_bytes,
+        media_type=req.media_type,
+        qalb_state=req.qalb_state,
+    )
+    return {"result": result}
 
 
 # === KNOWLEDGE INGESTION (Ilm - عِلْم) ===
@@ -2578,6 +2629,51 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "type": "task_done",
                             "result": result,
                         },
+                    )
+
+            elif msg_type == "multimodal":
+                import base64 as b64
+
+                session_id = data.get("session_id", client_id)
+                text = data.get("content", "")
+                image_b64 = data.get("image_base64")
+                audio_b64 = data.get("audio_base64")
+                media_type = data.get("media_type", "image/png")
+                qalb_state = data.get("qalb_state", "")
+
+                image_bytes = b64.b64decode(image_b64) if image_b64 else None
+                audio_bytes = b64.b64decode(audio_b64) if audio_b64 else None
+
+                agent = next(iter(active_agents.values()), None) if active_agents else None
+                if agent:
+                    try:
+                        result = await agent.qca.process_input_multimodal(
+                            text=text,
+                            image_bytes=image_bytes,
+                            audio_bytes=audio_bytes,
+                            media_type=media_type,
+                            qalb_state=qalb_state,
+                        )
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "perception_result",
+                                "session_id": session_id,
+                                "result": result,
+                            },
+                        )
+                    except Exception as e:
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "error",
+                                "message": f"Multimodal processing failed: {e}",
+                            },
+                        )
+                else:
+                    await manager.send(
+                        client_id,
+                        {"type": "error", "message": "No agents available"},
                     )
 
             elif msg_type == "command":
