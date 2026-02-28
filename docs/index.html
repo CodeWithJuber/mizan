@@ -189,6 +189,117 @@
     }
     .card h4 { margin-top: 0; }
 
+    /* Search */
+    .search-box {
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 8px 12px 8px 32px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+    .search-box { position: relative; }
+    .search-icon {
+      position: absolute;
+      left: 26px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      position: absolute;
+      top: 24px;
+      right: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* Section transitions */
+    .section {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .section.active { display: block; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Version badge */
+    .version-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(245, 166, 35, 0.15);
+      color: var(--accent);
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* Back to top */
+    .back-to-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(245, 166, 35, 0.3);
+      transition: transform 0.2s;
+      z-index: 50;
+    }
+    .back-to-top:hover { transform: translateY(-2px); }
+    .back-to-top.visible { display: flex; }
+
+    /* Light theme */
+    [data-theme="light"] {
+      --bg: #fafafa;
+      --bg-card: #ffffff;
+      --bg-code: #f4f4f8;
+      --border: #e0e0e8;
+      --text: #1a1a2e;
+      --text-dim: #5a5a70;
+      --link: #2563eb;
+    }
+
+    /* Highlight search results */
+    .nav-item.search-match {
+      background: rgba(245, 166, 35, 0.1);
+      color: var(--accent) !important;
+    }
+
     /* Mobile */
     .menu-toggle { display: none; position: fixed; top: 16px; left: 16px; z-index: 200;
       background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
@@ -198,19 +309,27 @@
       .sidebar.open { transform: translateX(0); }
       .main { margin-left: 0; padding: 24px 16px; padding-top: 64px; }
       .menu-toggle { display: block; }
+      .theme-toggle { top: 16px; right: 56px; position: fixed; z-index: 200; }
     }
   </style>
 </head>
 <body>
 
 <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+<button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">&#9788;</button>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8593;</button>
 
 <div class="layout">
   <!-- Sidebar Navigation -->
   <nav class="sidebar">
     <div class="sidebar-logo">
       <h1>MIZAN</h1>
-      <p>Documentation v3.0</p>
+      <p>Documentation <span class="version-badge">v3.0</span></p>
+    </div>
+
+    <div class="search-box">
+      <span class="search-icon">&#128269;</span>
+      <input class="search-input" type="text" placeholder="Search docs..." oninput="filterNav(this.value)" />
     </div>
 
     <div class="nav-section">Getting Started</div>
@@ -225,6 +344,7 @@
     <a class="nav-item" onclick="showSection('providers')">LLM Providers</a>
     <a class="nav-item" onclick="showSection('memory')">Memory System</a>
     <a class="nav-item" onclick="showSection('automation')">Automation</a>
+    <a class="nav-item" onclick="showSection('perception')">Perception</a>
     <a class="nav-item" onclick="showSection('channels')">Channels</a>
     <a class="nav-item" onclick="showSection('security')">Security</a>
 
@@ -239,11 +359,13 @@
     <div class="nav-section">API Reference</div>
     <a class="nav-item" onclick="showSection('api-agents')">Agents API</a>
     <a class="nav-item" onclick="showSection('api-chat')">Chat API</a>
+    <a class="nav-item" onclick="showSection('api-perception')">Perception API</a>
     <a class="nav-item" onclick="showSection('api-plugins')">Plugins API</a>
     <a class="nav-item" onclick="showSection('api-system')">System API</a>
     <a class="nav-item" onclick="showSection('api-websocket')">WebSocket</a>
 
     <div class="nav-section">Operations</div>
+    <a class="nav-item" onclick="showSection('releases')">Releases &amp; Versioning</a>
     <a class="nav-item" onclick="showSection('doctor')">Self-Healing Doctor</a>
     <a class="nav-item" onclick="showSection('updating')">Updating</a>
 
@@ -1212,6 +1334,218 @@ GET  /api/federation/status  Get agent federation status
 POST /api/federation/discover  Discover agents by capability</code></pre>
     </div>
 
+    <!-- ==================== PERCEPTION ==================== -->
+    <div id="perception" class="section">
+      <h1>Multimodal Perception</h1>
+      <p>MIZAN's perception system implements Quranic sensory processing: Sam' (hearing) processes <strong>before</strong> Basar (sight), following the order established in Quran 16:78 and 17:36.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Auditory-first processing:</strong> Audio input is always processed before visual input, mirroring the Quranic ordering of sam' before basar in every mention.</p>
+      </div>
+
+      <h3>Basirah — Vision Engine</h3>
+      <p>The <code>BasirahEngine</code> analyzes images using LLM vision capabilities. It returns structured JSON with:</p>
+      <ul>
+        <li><strong>Description:</strong> Natural language description of the image</li>
+        <li><strong>Category:</strong> text, diagram, screenshot, photo, or document</li>
+        <li><strong>Extracted text:</strong> Any text found in the image (OCR-like)</li>
+        <li><strong>Key elements:</strong> Important objects, patterns, or features</li>
+        <li><strong>Confidence:</strong> 0.0–1.0 reliability score</li>
+      </ul>
+
+      <h4>Qalb-Aware Focus</h4>
+      <p>Vision analysis adapts based on emotional state:</p>
+      <table>
+        <thead><tr><th>Qalb State</th><th>Focus Adjustment</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-accent">frustrated</span></td><td>Pay attention to errors, warnings, and problematic elements</td></tr>
+          <tr><td><span class="badge badge-purple">confused</span></td><td>Focus on clarity, labels, and explanatory elements</td></tr>
+          <tr><td><span class="badge badge-cyan">anxious</span></td><td>Look for reassuring elements and positive signals</td></tr>
+          <tr><td><span class="badge badge-emerald">determined</span></td><td>Identify actionable items and next steps</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Nutq — Voice Engine</h3>
+      <p>The <code>NutqEngine</code> handles speech synthesis and analysis:</p>
+      <ul>
+        <li><strong>Intent detection:</strong> question, command, greeting, farewell, confirmation, negation, request, statement</li>
+        <li><strong>Language detection:</strong> Arabic (Unicode \u0600–\u06FF), Urdu (specific chars), English (default)</li>
+        <li><strong>Tone adjustment:</strong> Adapts output based on Qalb state (warm, patient, focused)</li>
+      </ul>
+
+      <h3>QCA Integration</h3>
+      <p>Perception results flow into the QCA engine via <code>process_input_multimodal()</code>:</p>
+      <pre><code>Input → Sam' (audio) → Basar (vision) → Fu'ad (integration)
+  ↓         ↓              ↓               ↓
+Nutq    Transcribe      Analyze         Merge results
+Engine   intent &       category &      + ISM root analysis
+         language       elements        + Lawh storage</code></pre>
+
+      <h3>Using Perception in the UI</h3>
+      <p>Navigate to <strong>Tools → Perception</strong> in the sidebar, or attach an image/audio file directly in the chat interface. The system automatically routes media to the appropriate perception engine.</p>
+    </div>
+
+    <!-- ==================== PERCEPTION API ==================== -->
+    <div id="api-perception" class="section">
+      <h1>Perception API</h1>
+
+      <h3>Analyze Multimodal Input</h3>
+      <pre><code>POST /api/perception/analyze
+
+{
+  "text": "What does this diagram show?",
+  "image_base64": "iVBORw0KGgo...",
+  "audio_base64": "SUQzBAA...",
+  "media_type": "image/png",
+  "agent_id": "agent_abc123",
+  "qalb_state": "neutral"
+}
+
+Response:
+{
+  "perception": {
+    "sam": { ... },
+    "basar": { ... },
+    "fuad": { ... },
+    "nutq": {
+      "text": "What does this diagram show?",
+      "confidence": 0.92,
+      "language": "english",
+      "intent": "question"
+    },
+    "basirah": {
+      "description": "A system architecture diagram showing ...",
+      "category": "diagram",
+      "confidence": 0.87,
+      "extracted_text": "QCA Engine → Memory → ...",
+      "key_elements": ["architecture", "pipeline", "layers"]
+    }
+  },
+  "roots_identified": { "ع-ل-م": { ... } },
+  "key_terms": ["architecture", "pipeline"],
+  "zahir": "User is asking about a technical diagram",
+  "batin": "User wants to understand system structure"
+}</code></pre>
+
+      <h3>WebSocket Multimodal Message</h3>
+      <pre><code>// Send via WebSocket
+{
+  "type": "multimodal",
+  "text": "Describe this image",
+  "image_base64": "...",
+  "media_type": "image/png",
+  "session_id": "session_123",
+  "agent_id": "agent_abc"
+}
+
+// Receive perception_result
+{
+  "type": "perception_result",
+  "result": { ... }  // Same as REST response
+}</code></pre>
+    </div>
+
+    <!-- ==================== RELEASES & VERSIONING ==================== -->
+    <div id="releases" class="section">
+      <h1>Releases &amp; Versioning</h1>
+      <p>MIZAN uses <strong>Semantic Versioning</strong> (MAJOR.MINOR.PATCH) with support for pre-release versions (beta, rc).</p>
+
+      <h3>Version Format</h3>
+      <table>
+        <thead><tr><th>Format</th><th>Example</th><th>When</th></tr></thead>
+        <tbody>
+          <tr><td><code>MAJOR.MINOR.PATCH</code></td><td>3.1.0</td><td>Stable release</td></tr>
+          <tr><td><code>X.Y.Z-beta.N</code></td><td>3.2.0-beta.1</td><td>Beta pre-release</td></tr>
+          <tr><td><code>X.Y.Z-rc.N</code></td><td>3.2.0-rc.1</td><td>Release candidate</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Manual Release</h3>
+      <pre><code># Stable releases
+make release-patch    # 3.0.0 → 3.0.1  (bug fixes)
+make release-minor    # 3.0.0 → 3.1.0  (new features)
+make release-major    # 3.0.0 → 4.0.0  (breaking changes)
+
+# Pre-releases
+make release-beta     # 3.0.0 → 3.1.0-beta.1
+make release-rc       # 3.1.0-beta.2 → 3.1.0-rc.1
+
+# Preview without changes
+make release-dry      # Shows what would happen</code></pre>
+
+      <h3>What Happens During a Release</h3>
+      <pre><code>make release-patch
+  ↓
+scripts/release.sh:
+  1. Pre-flight: checks branch, clean tree, up-to-date
+  2. Bumps version in 6 files (VERSION, pyproject.toml, etc.)
+  3. Auto-generates CHANGELOG from git commits
+  4. Commits: "chore: release vX.Y.Z"
+  5. Creates annotated git tag: vX.Y.Z
+  6. Pushes branch + tag to origin
+  ↓
+GitHub Actions (release.yml) triggers on v* tag:
+  1. Validates: lint + test
+  2. Publishes to PyPI
+  3. Pushes Docker images to ghcr.io
+  4. Creates GitHub Release with changelog notes</code></pre>
+
+      <h3>Automatic Release</h3>
+      <p>When a PR is merged to <code>main</code>, the <strong>auto-release</strong> workflow determines the version bump automatically:</p>
+      <table>
+        <thead><tr><th>Signal</th><th>Bump</th></tr></thead>
+        <tbody>
+          <tr><td>PR label <code>release:major</code> or commit <code>BREAKING CHANGE</code></td><td>Major</td></tr>
+          <tr><td>PR label <code>release:minor</code> or commit prefix <code>feat:</code></td><td>Minor</td></tr>
+          <tr><td>PR label <code>release:patch</code> or commit prefix <code>fix:</code></td><td>Patch</td></tr>
+          <tr><td>PR label <code>release:beta</code></td><td>Beta pre-release</td></tr>
+          <tr><td>PR label <code>release:skip</code></td><td>No release</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-tip">
+        <p><strong>Tip:</strong> Add a <code>release:minor</code> label to your PR before merging to trigger an automatic minor release with auto-generated changelog.</p>
+      </div>
+
+      <h3>Version Storage</h3>
+      <p>The version is stored in 6 locations, all kept in sync by <code>scripts/bump-version.sh</code>:</p>
+      <table>
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>VERSION</code></td><td>Single source of truth</td></tr>
+          <tr><td><code>pyproject.toml</code></td><td>Python package metadata</td></tr>
+          <tr><td><code>backend/_version.py</code></td><td>Runtime import (<code>from backend._version import __version__</code>)</td></tr>
+          <tr><td><code>frontend/package.json</code></td><td>Frontend version</td></tr>
+          <tr><td><code>backend/cli.py</code></td><td>CLI banner display</td></tr>
+          <tr><td><code>backend/api/main.py</code></td><td>API version metadata</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Changelog Format</h3>
+      <p>CHANGELOG.md follows <a href="https://keepachangelog.com">Keep a Changelog</a>. During release, commits are auto-categorized:</p>
+      <table>
+        <thead><tr><th>Commit Prefix</th><th>Category</th></tr></thead>
+        <tbody>
+          <tr><td><code>feat:</code> / <code>add:</code> / <code>new:</code></td><td>Added</td></tr>
+          <tr><td><code>fix:</code> / <code>bug:</code> / <code>hotfix:</code></td><td>Fixed</td></tr>
+          <tr><td><code>refactor:</code> / <code>docs:</code> / <code>chore:</code> / <code>perf:</code></td><td>Changed</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Branch Protection</h3>
+      <p>The <code>main</code> branch is protected with these rules:</p>
+      <ul>
+        <li>Require PR with 1 approval before merging</li>
+        <li>Dismiss stale reviews on new pushes</li>
+        <li>Require status checks: Lint, Test, Frontend Build</li>
+        <li>Require branch to be up to date</li>
+        <li>Require all conversations resolved</li>
+        <li>Block force pushes and branch deletion</li>
+      </ul>
+      <pre><code># Apply protection rules (requires gh CLI)
+make protect</code></pre>
+    </div>
+
     <!-- ==================== ARCHITECTURE ==================== -->
     <div id="architecture" class="section">
       <h1>System Design</h1>
@@ -1269,14 +1603,20 @@ POST /api/federation/discover  Discover agents by capability</code></pre>
 |   |   +-- plugins.py               # Plugin manager (Wasilah)
 |   |   +-- middleware.py             # Middleware pipeline (Silsilah)
 |   +-- providers.py                 # LLM providers (Claude/GPT/Ollama/300+)
+|   +-- perception/
+|   |   +-- basirah.py               # Vision engine (LLM-powered image analysis)
+|   |   +-- nutq.py                  # Voice engine (speech + intent detection)
+|   |   +-- vision.py                # Low-level vision processing
+|   |   +-- voice.py                 # Low-level voice processing
 |   +-- memory/
 |   |   +-- dhikr.py                 # 3-tier persistent memory
 |   |   +-- masalik.py               # Neural pathways (spreading activation)
-|   |   +-- lawh_mahfuz.py           # Immutable memory (triple-checksum)
+|   |   +-- lawh_mahfuz.py           # Immutable memory (quad-checksum)
 |   |   +-- memory_pyramid.py        # Unified 5-layer query engine
 |   |   +-- vector_store.py          # Semantic embeddings (ChromaDB)
 |   |   +-- knowledge_graph.py       # Entity-relationship graph
-|   |   +-- living_memory.py         # Adaptive memory lifecycle
+|   |   +-- living_memory.py         # Adaptive memory lifecycle (hybrid similarity)
+|   |   +-- quaternary.py            # DNA-inspired ACGT encoding &amp; integrity
 |   +-- reasoning/
 |   |   +-- aql_engine.py            # Arabic Query Language reasoning
 |   |   +-- causal_engine.py         # Pearl's 3-rung causal ladder
@@ -1290,11 +1630,13 @@ POST /api/federation/discover  Discover agents by capability</code></pre>
 |   +-- settings.py                  # Configuration
 |   +-- cli.py                       # Terminal interface
 +-- frontend/src/
-|   +-- App.tsx                      # Main UI + WebSocket handler
+|   +-- App.tsx                      # Main UI + WebSocket + multimodal chat
 |   +-- components/
-|   |   +-- ChatMessage.tsx          # Chat bubbles + CognitiveBar pills
+|   |   +-- ChatMessage.tsx          # Chat bubbles + CognitiveBar + PerceptionCard
 |   |   +-- AgentCard.tsx            # Agent card (Nafs + Ruh bars)
-|   +-- pages/                       # Feature pages
+|   |   +-- Icons.tsx                # SVG icon components
+|   +-- pages/
+|   |   +-- PerceptionPage.tsx       # Vision &amp; voice analysis UI
 |   +-- hooks/                       # React hooks
 |   +-- types.ts                     # TypeScript types (CognitiveMetadata)
 +-- plugins/                         # Your plugins go here!
@@ -1310,18 +1652,114 @@ POST /api/federation/discover  Discover agents by capability</code></pre>
 
 <script>
 function showSection(id) {
-  // Hide all sections
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  // Show selected
-  document.getElementById(id).classList.add('active');
-  // Update nav
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  event.target.classList.add('active');
-  // Close mobile menu
+  if (event && event.target) event.target.classList.add('active');
   document.querySelector('.sidebar').classList.remove('open');
-  // Scroll to top
-  window.scrollTo(0, 0);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Update URL hash
+  history.replaceState(null, '', '#' + id);
 }
+
+// Search / filter navigation
+function filterNav(query) {
+  const q = query.toLowerCase().trim();
+  document.querySelectorAll('.nav-item').forEach(item => {
+    if (!q) {
+      item.style.display = '';
+      item.classList.remove('search-match');
+      return;
+    }
+    const text = item.textContent.toLowerCase();
+    // Also search section content
+    const onclick = item.getAttribute('onclick') || '';
+    const sectionId = onclick.match(/showSection\('([^']+)'\)/);
+    let content = text;
+    if (sectionId) {
+      const sec = document.getElementById(sectionId[1]);
+      if (sec) content += ' ' + sec.textContent.toLowerCase();
+    }
+    if (content.includes(q)) {
+      item.style.display = '';
+      item.classList.add('search-match');
+    } else {
+      item.style.display = 'none';
+      item.classList.remove('search-match');
+    }
+  });
+  // Show/hide section headers
+  document.querySelectorAll('.nav-section').forEach(sec => {
+    if (!q) { sec.style.display = ''; return; }
+    let next = sec.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('nav-section')) {
+      if (next.style.display !== 'none' && next.classList.contains('nav-item')) hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    sec.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+// Theme toggle
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('mizan-docs-theme', next);
+  document.querySelector('.theme-toggle').innerHTML = next === 'light' ? '&#9790;' : '&#9788;';
+}
+
+// Initialize theme
+(function() {
+  const saved = localStorage.getItem('mizan-docs-theme');
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.querySelector('.theme-toggle').innerHTML = '&#9790;';
+  }
+})();
+
+// Back to top button
+window.addEventListener('scroll', function() {
+  const btn = document.querySelector('.back-to-top');
+  if (window.scrollY > 300) btn.classList.add('visible');
+  else btn.classList.remove('visible');
+});
+
+// Handle URL hash on load
+(function() {
+  const hash = window.location.hash.slice(1);
+  if (hash) {
+    const el = document.getElementById(hash);
+    if (el && el.classList.contains('section')) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      el.classList.add('active');
+      // Highlight nav item
+      document.querySelectorAll('.nav-item').forEach(n => {
+        if (n.getAttribute('onclick') && n.getAttribute('onclick').includes(hash)) {
+          n.classList.add('active');
+        } else {
+          n.classList.remove('active');
+        }
+      });
+    }
+  }
+})();
+
+// Keyboard shortcut: Ctrl+K or / to focus search
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA')) {
+    e.preventDefault();
+    document.querySelector('.search-input').focus();
+  }
+  if (e.key === 'Escape') {
+    document.querySelector('.search-input').blur();
+    document.querySelector('.search-input').value = '';
+    filterNav('');
+  }
+});
 </script>
 
 </body>

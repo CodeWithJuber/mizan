@@ -40,7 +40,7 @@ BUMP_TYPE=""
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=true ;;
-        patch|minor|major) BUMP_TYPE="$arg" ;;
+        patch|minor|major|beta|rc) BUMP_TYPE="$arg" ;;
         *)
             if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                 BUMP_TYPE="$arg"
