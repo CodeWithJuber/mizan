@@ -25,6 +25,7 @@ class SecurityConfig:
     allowed_origins: list[str] = field(
         default_factory=lambda: [
             "http://localhost:3000",
+            "http://localhost:3100",
             "http://localhost:8000",
         ]
     )

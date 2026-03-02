@@ -485,6 +485,8 @@ def create_provider(
         elif "/" in model:
             # Slash in model name like "google/gemini-2.0-flash" → OpenRouter
             provider = "openrouter"
+        elif model.startswith("ruh"):
+            provider = "ruh"
         elif model.startswith(("llama", "mistral", "phi", "gemma", "qwen", "codellama")):
             provider = "ollama"
 
@@ -537,6 +539,16 @@ def create_provider(
         ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         return OllamaProvider(base_url=ollama_url)
 
+    elif provider == "ruh":
+        model_path = os.getenv("RUH_MODEL_PATH", "")
+        if not model_path:
+            logger.warning("RUH_MODEL_PATH not set")
+            return None
+        from providers_ruh import RuhModelProvider
+
+        device = os.getenv("RUH_DEVICE", "cpu")
+        return RuhModelProvider(model_path=model_path, device=device)
+
     else:
         logger.error(f"Unknown provider: {provider}")
         return None
@@ -566,6 +578,7 @@ def get_default_model(provider_name: str) -> str:
         "openrouter": "anthropic/claude-sonnet-4",
         "openai": "gpt-4o",
         "ollama": "llama3.2",
+        "ruh": "ruh-local",
     }
     return defaults.get(provider_name, "claude-sonnet-4-20250514")
 
@@ -596,6 +609,9 @@ PROVIDER_MODELS = {
     ],
     "openrouter": [],  # Fetched dynamically
     "ollama": [],  # Fetched dynamically
+    "ruh": [
+        {"id": "ruh-local", "name": "Rūḥ Model (Local)", "context": 2048, "vision": False},
+    ],
 }
 
 # In-memory active state — updated by switch_provider, read by get_provider_status.
@@ -662,6 +678,19 @@ def get_provider_status() -> dict:
             "base_url": ollama_url,
             "models": PROVIDER_MODELS["ollama"],
             "default_model": "llama3.2",
+        }
+    )
+
+    # Ruh Model (local)
+    ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
+    ruh_model_path = os.getenv("RUH_MODEL_PATH", "")
+    providers.append(
+        {
+            "name": "ruh",
+            "display": "Rūḥ Model (Local)",
+            "configured": bool(ruh_enabled and ruh_model_path),
+            "models": PROVIDER_MODELS["ruh"],
+            "default_model": "ruh-local",
         }
     )
 

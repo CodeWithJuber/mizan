@@ -56,6 +56,24 @@ class Settings(BaseSettings):
     # ── Local AI ─────────────────────────────────────────────
     ollama_url: str = "http://localhost:11434"
 
+    # ── Rūḥ Model (Local Neural Network) ──────────────────
+    ruh_enabled: bool = False
+    ruh_model_path: str = ""
+    ruh_confidence_threshold: float = 0.7
+    ruh_device: str = "cpu"
+
+    # ── Subscription Tiers ────────────────────────────────────
+    subscription_tier: str = "free"  # free | pro | enterprise
+    free_daily_messages: int = 50
+    pro_daily_messages: int = -1  # unlimited
+    api_rate_limit_free: int = 10  # per minute
+    api_rate_limit_pro: int = 100
+    api_rate_limit_enterprise: int = 1000
+
+    # ── Public API ────────────────────────────────────────────
+    public_api_enabled: bool = False
+    public_api_prefix: str = "/api/v1"
+
     # ── Channels (Optional) ──────────────────────────────────
     telegram_bot_token: str = ""
     discord_bot_token: str = ""

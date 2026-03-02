@@ -1,0 +1,23 @@
+# Alaqah (Clinging) -- Stage 2 of Nafs Curriculum
+# Paragraph-level comprehension, moderate learning rate.
+# "Then We made the drop into a clinging clot." -- Quran 23:14
+
+name: alaqah
+description: "Clinging: paragraphs, moderate LR, medium sequences"
+
+# Training parameters
+max_seq_len: 512
+lr: 1.0e-4
+epochs: 10
+batch_size: 8
+
+# Optimizer
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_fraction: 0.1
+
+# Data
+samples_per_root: 20
+
+# Logging
+log_every: 10

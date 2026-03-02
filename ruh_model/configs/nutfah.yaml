@@ -1,0 +1,23 @@
+# Nutfah (Embryonic) -- Stage 1 of Nafs Curriculum
+# Simple short sentences, high learning rate, fast iteration.
+# "Then We made the drop into a clinging clot." -- Quran 23:14
+
+name: nutfah
+description: "Embryonic: simple sentences, high LR, short sequences"
+
+# Training parameters
+max_seq_len: 128
+lr: 3.0e-4
+epochs: 5
+batch_size: 16
+
+# Optimizer
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_fraction: 0.1
+
+# Data
+samples_per_root: 10
+
+# Logging
+log_every: 10

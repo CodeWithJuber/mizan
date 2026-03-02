@@ -1,0 +1,17 @@
+# Khalq Akhar (New Creation) -- Stage 4 of Nafs Curriculum
+# Full capability, minimal learning rate, maximum sequence length.
+# "Then We developed him into another creation." -- Quran 23:14
+
+name: khalq_akhar
+description: "New creation: full capability, minimal LR, max sequences"
+
+# Training parameters
+max_seq_len: 2048
+lr: 1.0e-5
+epochs: 20
+batch_size: 2
+
+# Optimizer
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_fraction: 0.03

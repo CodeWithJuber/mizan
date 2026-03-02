@@ -30,6 +30,10 @@ node_modules/
 *.sqlite
 data/
 
+# Model checkpoints (large binaries)
+ruh_model/checkpoints/
+*.pt
+
 # Logs
 *.log
 /tmp/

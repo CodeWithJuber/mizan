@@ -1,0 +1,17 @@
+# Mudghah (Formation) -- Stage 3 of Nafs Curriculum
+# Document-level reasoning, low learning rate, long sequences.
+# "Then We made the lump into bones and clothed the bones with flesh." -- Quran 23:14
+
+name: mudghah
+description: "Formation: documents + reasoning, low LR, long sequences"
+
+# Training parameters
+max_seq_len: 1024
+lr: 5.0e-5
+epochs: 15
+batch_size: 4
+
+# Optimizer
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_fraction: 0.05

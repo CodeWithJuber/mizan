@@ -26,6 +26,7 @@ from fastapi import (
     Header,
     HTTPException,
     Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -59,6 +60,7 @@ from providers import (
     get_provider_status,
     set_active_state,
 )
+from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
 from qca.cognitive_methods import select_method
 
 # New Quranic systems
@@ -68,6 +70,10 @@ from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
+from task_queue.task_queue import MizanTaskQueue, QueuedTask
+from task_queue.worker import TaskWorker
+from task_queue.priorities import TaskPriority
+from training_manager import training_manager
 
 logger = logging.getLogger("mizan.api")
 
@@ -201,11 +207,43 @@ async def lifespan(app: FastAPI):
         },
     )
 
+    # Wire training manager to WebSocket broadcast
+    training_manager.set_broadcast(manager.broadcast)
+
+    # Initialize task queue + start worker
+    global task_worker
+    await task_queue.initialize()
+
+    async def handle_queued_task(payload: dict) -> dict:
+        """Route queued tasks to agents and broadcast results."""
+        task_text = payload.get("task", "")
+        agent_id = payload.get("agent_id")
+        if not agent_id and active_agents:
+            agent_id = next(iter(active_agents))
+        if not agent_id or agent_id not in active_agents:
+            return {"error": "No agent available"}
+        agent = active_agents[agent_id]
+        result = await agent.execute(task_text)
+        await manager.broadcast({
+            "type": "queue_task_complete",
+            "task": task_text,
+            "agent": agent.name,
+            "result": result.get("response", str(result)),
+        })
+        return result
+
+    task_worker = TaskWorker(task_queue, handle_queued_task, max_concurrent=3)
+    asyncio.create_task(task_worker.start())
+    logger.info("[QUEUE] Task queue initialized, worker started")
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    if task_worker:
+        await task_worker.stop()
+        logger.info("[QUEUE] Task worker stopped")
     await event_bus.emit("system.shutdown", {})
 
     # Persist Masalik neural pathways to disk before shutdown
@@ -286,6 +324,11 @@ skill_registry = SkillRegistry()
 yaqin_engine = YaqinEngine()
 qalb_engine = QalbEngine()
 federation = AgentFederation()
+thinking_stream = ThinkingStream()
+
+# Task queue + worker
+task_queue = MizanTaskQueue(db_path=os.getenv("QUEUE_DB_PATH", "/data/mizan_queue.db"))
+task_worker: TaskWorker | None = None
 
 
 # ===== SECURITY HEADERS MIDDLEWARE =====
@@ -887,10 +930,10 @@ async def chat(
         )
 
         response = ""
+        rest_trace = thinking_stream.create_trace(message_id)
 
         async def stream_cb(chunk: str, **kwargs):
             nonlocal response
-            # Handle tool_use events from agent
             chunk_type = kwargs.get("chunk_type", "text")
             if chunk_type == "tool_use":
                 await manager.broadcast(
@@ -912,11 +955,29 @@ async def chat(
                 }
             )
 
+        async def thinking_cb(phase: str, content: str, confidence: float, metadata: dict):
+            thinking_stream.add_step(
+                rest_trace.request_id, ThinkingPhase(phase),
+                content, confidence, metadata,
+            )
+            await manager.broadcast(
+                {
+                    "type": "thinking",
+                    "phase": phase,
+                    "content": content,
+                    "confidence": confidence,
+                    "message_id": message_id,
+                    "session_id": req.session_id,
+                    "metadata": metadata,
+                }
+            )
+
         try:
             result = await agent.execute(
                 req.content,
                 {"history": session["history"][-agent.max_tool_turns:]},
                 stream_callback=stream_cb,
+                thinking_callback=thinking_cb,
             )
         finally:
             # Restore original model after per-message override
@@ -937,6 +998,24 @@ async def chat(
             "mizan_label", "cognitive_method", "lubb", "lawwama",
         ) if result.get(k) is not None}
 
+        thinking_stream.complete(message_id)
+        completed_trace = thinking_stream.get_trace(message_id)
+        trace_dict = None
+        if completed_trace:
+            trace_dict = {
+                "request_id": completed_trace.request_id,
+                "steps": [
+                    {
+                        "id": s.id, "phase": s.phase.value,
+                        "content": s.content, "confidence": s.confidence,
+                        "timestamp": s.timestamp, "metadata": s.metadata,
+                    }
+                    for s in completed_trace.steps
+                ],
+                "duration_ms": completed_trace.duration_ms,
+                "avg_confidence": completed_trace.avg_confidence,
+            }
+
         await manager.broadcast(
             {
                 "type": "chat_complete",
@@ -945,6 +1024,7 @@ async def chat(
                 "response": str(final_response),
                 "agent": agent.name,
                 "cognitive": cognitive,
+                "thinking_trace": trace_dict,
             }
         )
 
@@ -952,17 +1032,17 @@ async def chat(
     return {"message_id": message_id, "session_id": req.session_id, "status": "processing"}
 
 
-@app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str):
-    messages = await memory.get_messages(session_id)
-    return {"session_id": session_id, "messages": messages}
-
-
 @app.get("/api/chat/sessions/list")
 async def list_sessions():
     """List recent chat sessions from DB with metadata"""
     db_sessions = await memory.list_sessions(limit=20)
     return {"sessions": db_sessions}
+
+
+@app.get("/api/chat/{session_id}")
+async def get_chat_history(session_id: str):
+    messages = await memory.get_messages(session_id)
+    return {"session_id": session_id, "messages": messages}
 
 
 # === PLANNER (Tafakkur — تفكر) ===
@@ -1272,6 +1352,37 @@ async def list_knowledge_sources():
         for row in rows
     ]
     return {"sources": sources, "total": len(sources)}
+
+
+# === FILE UPLOAD (Rafi' - رافع) ===
+
+_ALLOWED_UPLOAD_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".txt", ".md", ".docx"}
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile,
+    user: TokenPayload | None = Depends(get_current_user),
+) -> dict:
+    """Accept file uploads (PDF, images, docs) for processing."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _ALLOWED_UPLOAD_SUFFIXES:
+        raise HTTPException(400, f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_SUFFIXES)}")
+
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(400, "File too large. Maximum 20 MB.")
+
+    upload_dir = Path(os.getenv("UPLOAD_DIR", "/data/uploads"))
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    file_id = str(uuid.uuid4())
+    dest = upload_dir / f"{file_id}{suffix}"
+    dest.write_bytes(content)
+
+    wali.audit.log("file_uploaded", {"file_id": file_id, "filename": file.filename, "size": len(content)})
+    return {"file_id": file_id, "filename": file.filename, "size": len(content), "path": str(dest)}
 
 
 # === PROVIDERS (Ruh al-Ilm - روح العلم) ===
@@ -1597,6 +1708,81 @@ async def health_check():
             "checks": checks,
         },
     )
+
+
+# === PUBLIC API v1 (Revenue Tier) ===
+
+
+@app.post("/api/v1/root-analyze")
+async def api_v1_root_analyze(request: dict) -> dict:
+    """Analyze Arabic text to extract root-pattern decomposition.
+
+    Public API endpoint for root analysis as a service.
+    """
+    text = request.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="text field required")
+
+    try:
+        from tokenizer.bayan import BayanTokenizer
+
+        tokenizer = BayanTokenizer()
+        analysis = tokenizer.analyze(text)
+        return {"text": text, "analysis": analysis, "token_count": len(analysis)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tokenize")
+async def api_v1_tokenize(request: dict) -> dict:
+    """Tokenize text into (root_id, pattern_id) tuples.
+
+    Public API endpoint for Q28-aware tokenization.
+    """
+    text = request.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="text field required")
+
+    try:
+        from tokenizer.bayan import BayanTokenizer
+
+        tokenizer = BayanTokenizer()
+        tokens = tokenizer.encode(text)
+        return {
+            "text": text,
+            "tokens": [{"root_id": r, "pattern_id": p} for r, p in tokens],
+            "count": len(tokens),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/q28-features")
+async def api_v1_q28_features(request: dict) -> dict:
+    """Extract Q28 articulatory features for any text.
+
+    Maps input through IPA to Q28 articulatory coordinates.
+    """
+    text = request.get("text", "")
+    lang = request.get("lang", "en")
+    if not text:
+        raise HTTPException(status_code=400, detail="text field required")
+
+    try:
+        from tokenizer.q28_articulatory import Q28ArticulatoryBasis
+
+        q28 = Q28ArticulatoryBasis()
+        coords = q28.text_to_q28(text, lang=lang)
+        root_hint = q28.q28_to_root_hint(coords) if coords else ""
+        return {
+            "text": text,
+            "lang": lang,
+            "features": [c.tolist() for c in coords],
+            "root_hint": root_hint,
+            "phoneme_count": len(coords),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # === DOCTOR (SELF-HEALING DIAGNOSTIC) ===
@@ -2238,6 +2424,248 @@ async def federation_route_task(
 # ===== RUH ENERGY ENDPOINTS =====
 
 
+# ===== RŪḤ MODEL ENDPOINTS =====
+
+
+class RuhGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    max_tokens: int = Field(default=256, ge=1, le=2048)
+    temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+
+
+class RuhTokenizeRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=10000)
+    detailed: bool = Field(default=False)
+
+
+@app.get("/api/ruh/status")
+async def get_ruh_model_status():
+    """Get Rūḥ Model availability and configuration."""
+    ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
+    ruh_path = os.getenv("RUH_MODEL_PATH", "")
+    return {
+        "enabled": ruh_enabled,
+        "model_path": ruh_path,
+        "device": os.getenv("RUH_DEVICE", "cpu"),
+        "loaded": False,  # Would check actual model state in production
+    }
+
+
+@app.post("/api/ruh/generate")
+async def ruh_generate(
+    req: RuhGenerateRequest,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Generate text using the local Rūḥ Model."""
+    ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
+    if not ruh_enabled:
+        raise HTTPException(503, "Rūḥ Model is not enabled")
+
+    try:
+        provider = create_provider(provider="ruh")
+        if not provider:
+            raise HTTPException(503, "Rūḥ Model provider not available")
+
+        response = provider.create(
+            model="ruh-local",
+            max_tokens=req.max_tokens,
+            system="",
+            messages=[{"role": "user", "content": req.prompt}],
+            temperature=req.temperature,
+        )
+        return {
+            "text": response.content[0].text if response.content else "",
+            "usage": response.usage,
+            "model": response.model,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Rūḥ generation failed: %s", exc)
+        raise HTTPException(500, f"Generation failed: {exc}") from exc
+
+
+@app.post("/api/ruh/tokenize")
+async def ruh_tokenize(req: RuhTokenizeRequest):
+    """Tokenize text using the Bayān tokenizer and return analysis."""
+    try:
+        from ruh_model.tokenizer.bayan import BayanTokenizer
+
+        tokenizer = BayanTokenizer()
+        tokens = tokenizer.encode(req.text)
+        analysis = tokenizer.analyze(req.text)
+
+        result: dict[str, Any] = {
+            "tokens": tokens,
+            "token_count": len(tokens),
+            "analysis": analysis,
+        }
+
+        # Detailed pipeline trace
+        if req.detailed:
+            result["pipeline"] = _build_tokenizer_pipeline_trace(req.text, tokenizer)
+
+        return result
+    except ImportError as exc:
+        raise HTTPException(503, "Rūḥ Model package not installed") from exc
+    except Exception as exc:
+        logger.error("Tokenization failed: %s", exc)
+        raise HTTPException(500, f"Tokenization failed: {exc}") from exc
+
+
+def _build_tokenizer_pipeline_trace(
+    text: str, tokenizer: Any
+) -> list[dict[str, Any]]:
+    """Build a step-by-step pipeline trace for detailed tokenization."""
+    import re
+    steps: list[dict[str, Any]] = []
+
+    # Step 1: Language detection per word
+    from ruh_model.tokenizer.bayan import (
+        _contains_arabic, _is_stopword, _tokenize_text,
+    )
+    words = _tokenize_text(text)
+    lang_detections = []
+    for word in words:
+        is_ar = _contains_arabic(word)
+        lang_detections.append({
+            "word": word,
+            "language": "arabic" if is_ar else "english",
+            "is_stopword": _is_stopword(word),
+        })
+    steps.append({
+        "phase": "language_detection",
+        "description": "Detect language per word (Arabic vs English)",
+        "output": lang_detections,
+    })
+
+    # Step 2: Morphological analysis
+    morph_results = []
+    for info in lang_detections:
+        word = info["word"]
+        if info["is_stopword"]:
+            morph_results.append({"word": word, "type": "stopword", "root": "", "pattern": "STOPWORD"})
+            continue
+        if info["language"] == "arabic":
+            root_str, pattern_name = tokenizer._arabic_analyzer.analyze(word)
+            morph_results.append({
+                "word": word, "type": "arabic_morphology",
+                "root": root_str, "pattern": pattern_name,
+            })
+        else:
+            root_str, pattern_name = tokenizer._english_bridge.to_root(word)
+            morph_results.append({
+                "word": word, "type": "english_bridge",
+                "root": root_str, "pattern": pattern_name,
+            })
+    steps.append({
+        "phase": "morphology",
+        "description": "Extract roots and patterns via morphological analysis",
+        "output": morph_results,
+    })
+
+    # Step 3: Root/pattern ID mapping
+    id_results = []
+    for morph in morph_results:
+        root_id = tokenizer._vocab.get_root_id(morph["root"]) if morph["root"] else 0
+        pattern_id = tokenizer._vocab.get_pattern_id(morph["pattern"])
+        id_results.append({
+            "word": morph["word"], "root": morph["root"],
+            "pattern": morph["pattern"],
+            "root_id": root_id, "pattern_id": pattern_id,
+        })
+    steps.append({
+        "phase": "id_mapping",
+        "description": "Map roots and patterns to integer IDs",
+        "output": id_results,
+    })
+
+    # Step 4: Q28 articulatory features (sample for first few words)
+    q28_results = []
+    for info in lang_detections[:5]:  # Limit to first 5 words
+        word = info["word"]
+        if info["is_stopword"]:
+            continue
+        try:
+            coords = tokenizer._q28.text_to_q28(word, lang="ar" if info["language"] == "arabic" else "en")
+            q28_results.append({
+                "word": word,
+                "features": [c.tolist() if hasattr(c, "tolist") else list(c) for c in coords] if coords else [],
+                "dimensions": ["place", "manner", "voicing", "nasality", "emphasis", "length"],
+            })
+        except Exception:
+            q28_results.append({"word": word, "features": [], "error": "Q28 analysis unavailable"})
+    steps.append({
+        "phase": "articulatory_features",
+        "description": "Q28 articulatory basis: 6D feature vectors per phoneme",
+        "output": q28_results,
+    })
+
+    # Step 5: Final token pairs
+    tokens = tokenizer.encode(text)
+    steps.append({
+        "phase": "final_tokens",
+        "description": "Final (root_id, pattern_id) pairs with BOS/EOS",
+        "output": [{"root_id": r, "pattern_id": p} for r, p in tokens],
+    })
+
+    return steps
+
+
+class TasrifDemoRequest(BaseModel):
+    features: list[float] = Field(..., min_length=6, max_length=6)
+    operators: list[str] = Field(..., min_length=1)
+
+
+@app.post("/api/ruh/tasrif-demo")
+async def tasrif_demo(req: TasrifDemoRequest):
+    """Apply tasrif morphophonemic operators to articulatory feature vectors."""
+    try:
+        import numpy as np
+        from ruh_model.tokenizer.tasrif_ops import TasrifEngine
+
+        engine = TasrifEngine()
+        available_ops = engine.get_operator_names()
+
+        invalid = [op for op in req.operators if op not in available_ops]
+        if invalid:
+            raise HTTPException(
+                400,
+                f"Unknown operators: {invalid}. Valid: {available_ops}",
+            )
+
+        features = np.array(req.features, dtype=np.float64)
+        results = []
+        current = features.copy()
+
+        for op_name in req.operators:
+            prev = current.copy()
+            current = engine.apply(op_name, current)
+            results.append({
+                "operator": op_name,
+                "input": prev.tolist(),
+                "output": current.tolist(),
+                "changed_dims": [
+                    i for i in range(6) if abs(prev[i] - current[i]) > 0.001
+                ],
+            })
+
+        return {
+            "original": features.tolist(),
+            "final": current.tolist(),
+            "steps": results,
+            "dimensions": ["place", "manner", "voicing", "nasality", "emphasis", "length"],
+            "available_operators": available_ops,
+        }
+    except HTTPException:
+        raise
+    except ImportError as exc:
+        raise HTTPException(503, "Rūḥ Model package not installed") from exc
+    except Exception as exc:
+        logger.error("Tasrif demo failed: %s", exc)
+        raise HTTPException(500, f"Tasrif demo failed: {exc}") from exc
+
+
 @app.get("/api/ruh/{agent_id}")
 async def get_ruh_energy(agent_id: str):
     """Get Ruh energy state for an agent."""
@@ -2251,6 +2679,375 @@ async def get_ruh_energy(agent_id: str):
         "max_energy": state.max_energy,
         "label": agent.ruh.get_fatigue_label(agent_id),
     }
+
+
+# ===== TASK QUEUE ENDPOINTS =====
+
+PRIORITY_MAP = {
+    "dharurah": TaskPriority.DHARURAH,
+    "hajah": TaskPriority.HAJAH,
+    "tahsiniyyah": TaskPriority.TAHSINIYYAH,
+    "takmiliyyah": TaskPriority.TAKMILIYYAH,
+}
+
+PRIORITY_NAMES = {v: k for k, v in PRIORITY_MAP.items()}
+
+
+def _task_to_dict(task: QueuedTask) -> dict:
+    """Serialize a QueuedTask to a JSON-safe dict."""
+    return {
+        "task_id": task.task_id,
+        "status": task.status,
+        "priority": PRIORITY_NAMES.get(task.priority, str(task.priority)),
+        "payload": task.payload,
+        "agent_id": task.agent_id,
+        "created_at": task.created_at,
+        "result": task.result,
+        "error": task.error,
+    }
+
+
+class QueueTaskRequest(BaseModel):
+    task: str = Field(..., min_length=1)
+    priority: str = Field(default="tahsiniyyah")
+    agent_id: str | None = Field(default=None)
+    metadata: dict = Field(default_factory=dict)
+
+
+@app.post("/api/queue/tasks")
+async def enqueue_task(
+    req: QueueTaskRequest,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Add a task to the priority queue."""
+    priority = PRIORITY_MAP.get(req.priority.lower(), TaskPriority.TAHSINIYYAH)
+    payload = {"task": req.task, "agent_id": req.agent_id, **req.metadata}
+    task_id = await task_queue.enqueue(payload, priority, req.agent_id)
+    await manager.broadcast({
+        "type": "queue_update",
+        "action": "enqueued",
+        "task_id": task_id,
+        "pending": task_queue.pending_count,
+    })
+    return {"task_id": task_id, "priority": req.priority, "status": "queued"}
+
+
+@app.get("/api/queue/tasks")
+async def list_queued_tasks(status: str | None = None, limit: int = 50):
+    """List tasks in the queue, optionally filtered by status."""
+    tasks = await task_queue.list_tasks(status=status)
+    tasks = tasks[:min(limit, 200)]
+    return {"tasks": [_task_to_dict(t) for t in tasks], "count": len(tasks)}
+
+
+@app.get("/api/queue/status")
+async def get_queue_status():
+    """Get overall queue status with counts and worker state."""
+    all_tasks = await task_queue.list_tasks()
+    counts: dict[str, int] = {}
+    for t in all_tasks:
+        counts[t.status] = counts.get(t.status, 0) + 1
+    return {
+        "pending": counts.get("pending", 0),
+        "running": counts.get("running", 0),
+        "complete": counts.get("complete", 0),
+        "failed": counts.get("failed", 0),
+        "cancelled": counts.get("cancelled", 0),
+        "total": len(all_tasks),
+        "worker": {
+            "running": task_worker.is_running if task_worker else False,
+            "active_tasks": task_worker.active_count if task_worker else 0,
+        },
+        "tasks": [_task_to_dict(t) for t in all_tasks[:20]],
+    }
+
+
+@app.get("/api/queue/tasks/{task_id}")
+async def get_queued_task(task_id: str) -> dict:
+    """Get status and details of a specific queued task."""
+    task = await task_queue.get_task(task_id)
+    if not task:
+        raise HTTPException(404, f"Task '{task_id}' not found")
+    return _task_to_dict(task)
+
+
+@app.delete("/api/queue/tasks/{task_id}")
+async def cancel_queued_task(
+    task_id: str,
+    user: TokenPayload | None = Depends(get_current_user),
+) -> dict:
+    """Cancel a pending queued task."""
+    cancelled = await task_queue.cancel(task_id)
+    if not cancelled:
+        raise HTTPException(404, f"Task '{task_id}' not found or not cancellable")
+    wali.audit.log("task_cancelled", {"task_id": task_id})
+    await manager.broadcast({
+        "type": "queue_update",
+        "action": "cancelled",
+        "task_id": task_id,
+        "pending": task_queue.pending_count,
+    })
+    return {"task_id": task_id, "status": "cancelled"}
+
+
+# ===== LEARNER ENDPOINTS =====
+
+
+@app.get("/api/learner/stats")
+async def get_learner_stats():
+    """Get learning data capture statistics."""
+    try:
+        from learner.ruh_learner import RuhLearner
+
+        learner = RuhLearner()
+        await learner.initialize()
+        stats = await learner.get_stats()
+        return stats
+    except ImportError as exc:
+        raise HTTPException(503, "Learner module not available") from exc
+    except Exception as exc:
+        logger.error("Learner stats failed: %s", exc)
+        raise HTTPException(500, f"Learner stats failed: {exc}") from exc
+
+
+@app.post("/api/learner/export")
+async def export_learner_data(
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Export captured learning data as JSONL for Rūḥ Model training."""
+    try:
+        from learner.data_export import DataExporter
+
+        exporter = DataExporter()
+        result = await exporter.export()
+        return result
+    except ImportError as exc:
+        raise HTTPException(503, "Learner module not available") from exc
+    except Exception as exc:
+        logger.error("Export failed: %s", exc)
+        raise HTTPException(500, f"Export failed: {exc}") from exc
+
+
+# ===== TRAINING ENDPOINTS =====
+
+
+@app.get("/api/training/status")
+async def get_training_status():
+    """Get current Rūḥ Model training status."""
+    return training_manager.get_status()
+
+
+@app.get("/api/training/history")
+async def get_training_history():
+    """Get history of past training runs."""
+    return {"runs": training_manager.get_history()}
+
+
+class TrainingStartRequest(BaseModel):
+    stage: str = Field(default="nutfah", pattern="^(nutfah|alaqah|mudghah|khalq_akhar)$")
+    config_path: str | None = None
+    data_dir: str = Field(default="ruh_model/data/training")
+    checkpoint_dir: str = Field(default="ruh_model/checkpoints")
+    log_every: int = Field(default=10, ge=1, le=1000)
+
+
+@app.post("/api/training/start")
+async def start_training(
+    req: TrainingStartRequest,
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Start a Rūḥ Model training run."""
+    ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
+    if not ruh_enabled:
+        raise HTTPException(503, "Rūḥ Model is not enabled. Set RUH_ENABLED=true in .env")
+
+    try:
+        result = await training_manager.start_training(
+            stage=req.stage,
+            config_path=req.config_path,
+            data_dir=req.data_dir,
+            checkpoint_dir=req.checkpoint_dir,
+            log_every=req.log_every,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Failed to start training: %s", exc)
+        raise HTTPException(500, f"Failed to start training: {exc}") from exc
+
+
+@app.post("/api/training/stop")
+async def stop_training(
+    user: TokenPayload | None = Depends(get_current_user),
+):
+    """Stop the currently running training."""
+    try:
+        result = await training_manager.stop_training()
+        return result
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Failed to stop training: %s", exc)
+        raise HTTPException(500, f"Failed to stop training: {exc}") from exc
+
+
+@app.get("/api/ruh/checkpoints")
+async def list_checkpoints():
+    """List available model checkpoints with metadata."""
+    checkpoint_dir = Path("ruh_model/checkpoints")
+    if not checkpoint_dir.exists():
+        return {"checkpoints": []}
+
+    checkpoints = []
+    for entry in sorted(checkpoint_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        # Compute size
+        total_size = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
+        # Look for config to determine stage
+        config_file = entry / "config.json"
+        config_data = {}
+        if config_file.exists():
+            try:
+                with open(config_file, encoding="utf-8") as fh:
+                    config_data = json.load(fh)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        checkpoints.append({
+            "name": entry.name,
+            "created_at": entry.stat().st_mtime,
+            "size_mb": round(total_size / (1024 * 1024), 2),
+            "max_seq_len": config_data.get("max_seq_len"),
+            "config": config_data,
+        })
+
+    return {"checkpoints": checkpoints}
+
+
+@app.get("/api/ruh/data-stats")
+async def get_data_stats():
+    """Get training data composition and statistics."""
+    data_dir = Path("ruh_model/data/training")
+    sources = []
+
+    # Check on-disk seed data
+    if data_dir.exists():
+        for fpath in data_dir.glob("*.jsonl"):
+            line_count = sum(1 for _ in open(fpath, encoding="utf-8"))
+            sources.append({
+                "name": fpath.stem,
+                "type": "seed",
+                "samples": line_count,
+                "size_mb": round(fpath.stat().st_size / (1024 * 1024), 2),
+                "available": True,
+            })
+
+    # Registered HuggingFace dataset slots
+    hf_datasets = [
+        {"name": "quran", "weight": 0.30, "hf_id": "quran_corpus"},
+        {"name": "hadith", "weight": 0.20, "hf_id": "hadith_corpus"},
+        {"name": "arabic_wiki", "weight": 0.25, "hf_id": "wikipedia/ar"},
+        {"name": "opus", "weight": 0.15, "hf_id": "opus-100/ar-en"},
+        {"name": "tashkeela", "weight": 0.10, "hf_id": "tashkeela"},
+    ]
+    for ds in hf_datasets:
+        sources.append({
+            "name": ds["name"],
+            "type": "huggingface",
+            "weight": ds["weight"],
+            "hf_id": ds["hf_id"],
+            "samples": 0,
+            "size_mb": 0,
+            "available": False,  # Would check actual availability
+        })
+
+    total_samples = sum(s["samples"] for s in sources)
+    total_size = sum(s["size_mb"] for s in sources)
+
+    return {
+        "sources": sources,
+        "total_samples": total_samples,
+        "total_size_mb": round(total_size, 2),
+    }
+
+
+@app.get("/api/ruh/architecture")
+async def get_model_architecture():
+    """Get model architecture info and parameter counts."""
+    try:
+        from ruh_model.config import RuhConfig
+
+        config = RuhConfig()
+
+        # Try to count actual parameters
+        total_params = 0
+        components = []
+        try:
+            from ruh_model.model import RuhModel
+            model = RuhModel(config)
+            total_params = model.count_parameters()
+
+            # Per-module parameter counts
+            for name, module in model.named_children():
+                param_count = sum(p.numel() for p in module.parameters())
+                components.append({
+                    "name": name,
+                    "type": type(module).__name__,
+                    "params": param_count,
+                })
+        except Exception:
+            total_params = 0
+
+        return {
+            "total_params": total_params,
+            "n_layers": config.n_layers,
+            "d_model": config.d_model,
+            "d_root": config.d_root,
+            "d_pattern": config.d_pattern,
+            "n_heads": config.n_heads,
+            "n_roots": config.n_roots,
+            "n_patterns": config.n_patterns,
+            "max_seq_len": config.max_seq_len,
+            "components": components,
+            "architecture_layers": [
+                {"name": "ISMEmbedding", "desc": "Factored (root, pattern) → d_model embedding"},
+                {"name": "SamBasarDual", "desc": "Dual attention: causal (Sam') + bidirectional (Basar)"},
+                {"name": "QalbAttention ×7", "desc": "Cardiac-oscillation modulated attention"},
+                {"name": "ISMFFN / ShuraMoE", "desc": "SwiGLU FFN or Mixture-of-Experts (every 2 blocks)"},
+                {"name": "LubbMetacognition", "desc": "Confidence estimation layer"},
+                {"name": "AdaptiveDepth", "desc": "Early exit based on confidence threshold"},
+                {"name": "MizanLoss", "desc": "5-component loss: CE + Calibration + Consistency + Fitrah + Hisbah"},
+            ],
+        }
+    except ImportError as exc:
+        raise HTTPException(503, "Rūḥ Model package not installed") from exc
+    except Exception as exc:
+        logger.error("Architecture query failed: %s", exc)
+        raise HTTPException(500, f"Failed to get architecture: {exc}") from exc
+
+
+@app.get("/api/learner/stats")
+async def get_learner_stats():
+    """Get learner interaction statistics."""
+    try:
+        from learner.data_export import DataExporter
+        exporter = DataExporter()
+        stats = exporter.get_stats()
+        return stats
+    except ImportError:
+        return {
+            "total_interactions": 0,
+            "exportable_count": 0,
+            "last_export": None,
+        }
+    except Exception:
+        return {
+            "total_interactions": 0,
+            "exportable_count": 0,
+            "last_export": None,
+        }
 
 
 # === PLUGINS (Wasilah - وسيلة) ===
@@ -2531,6 +3328,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         },
                     )
 
+                    # Create thinking trace for this message
+                    trace = thinking_stream.create_trace(message_id)
+
                     response_text = ""
 
                     async def ws_stream(chunk, _sid=session_id, _mid=message_id, **kwargs):
@@ -2558,10 +3358,29 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
+                    async def ws_thinking(phase: str, content: str, confidence: float, metadata: dict):
+                        thinking_stream.add_step(
+                            trace.request_id, ThinkingPhase(phase),
+                            content, confidence, metadata,
+                        )
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "thinking",
+                                "phase": phase,
+                                "content": content,
+                                "confidence": confidence,
+                                "message_id": message_id,
+                                "session_id": session_id,
+                                "metadata": metadata,
+                            },
+                        )
+
                     result = await agent.execute(
                         content,
                         {"history": session["history"][-agent.max_tool_turns:]},
                         stream_callback=ws_stream,
+                        thinking_callback=ws_thinking,
                     )
 
                     final = result.get("result", response_text)
@@ -2577,6 +3396,27 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         "mizan_label", "cognitive_method", "lubb", "lawwama",
                     ) if result.get(k) is not None}
 
+                    # Complete thinking trace and include in response
+                    thinking_stream.complete(message_id)
+                    completed_trace = thinking_stream.get_trace(message_id)
+                    trace_dict = None
+                    if completed_trace:
+                        trace_dict = {
+                            "request_id": completed_trace.request_id,
+                            "steps": [
+                                {
+                                    "id": s.id, "phase": s.phase.value,
+                                    "content": s.content,
+                                    "confidence": s.confidence,
+                                    "timestamp": s.timestamp,
+                                    "metadata": s.metadata,
+                                }
+                                for s in completed_trace.steps
+                            ],
+                            "duration_ms": completed_trace.duration_ms,
+                            "avg_confidence": completed_trace.avg_confidence,
+                        }
+
                     await manager.send(
                         client_id,
                         {
@@ -2588,6 +3428,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "message_id": message_id,
                             "success": result.get("success", True),
                             "cognitive": cognitive,
+                            "thinking_trace": trace_dict,
                         },
                     )
 
