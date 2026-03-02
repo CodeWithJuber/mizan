@@ -1201,6 +1201,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         context: dict = None,
         stream_callback: Callable = None,
         tool_callback: Callable = None,
+        thinking_callback: Callable = None,
     ) -> dict:
         """
         Execute a task - full Quranic cycle:
@@ -1220,6 +1221,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self.state = "acting"
         self.current_task = task
         self.total_tasks += 1
+
+        async def emit_thinking(phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None) -> None:
+            if thinking_callback:
+                try:
+                    await thinking_callback(phase, content, confidence, metadata or {})
+                except Exception:
+                    pass
 
         # Ruh energy gate — check if agent can handle this task
         complexity = self.ruh.classify_task_complexity(task)
@@ -1243,6 +1251,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     "ruh_fatigue": self.ruh.get_fatigue_label(self.id),
                 }
         self.ruh.consume_energy(self.id, complexity)
+        ruh_state = self.ruh.get_state(self.id)
+        await emit_thinking("perception", f"Task complexity: {complexity} | Energy: {ruh_state.energy:.0f}%", 0.9, {"complexity": complexity, "energy": ruh_state.energy})
 
         # NafsTriad — inner voices deliberate → dominant voice sets behavioral approach
         nafs_decision = self.nafs_triad.deliberate(task, self.nafs_level, complexity)
@@ -1254,15 +1264,18 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             nafs_decision.dissent_ratio,
             task[:60],
         )
+        await emit_thinking("comprehension", f"Inner deliberation: {nafs_decision.dominant_voice} voice dominant (confidence: {nafs_decision.confidence:.0%})", nafs_decision.confidence, {"voice": nafs_decision.dominant_voice, "approach": nafs_decision.approach})
 
         # Qalb — detect user emotional state from task text
         qalb_reading = self.qalb.analyze(task)
+        await emit_thinking("perception", f"Emotional context: {qalb_reading.state if hasattr(qalb_reading, 'state') else 'neutral'}", 0.8, {"qalb": qalb_reading.to_dict() if hasattr(qalb_reading, 'to_dict') else {}})
 
         # Cognitive method selection — route to best reasoning strategy
         cognitive_method = select_method(task, context)
         logger.info(
             "[COGNITIVE] Selected method %s for task: %s", cognitive_method.value, task[:80]
         )
+        await emit_thinking("reasoning", f"Reasoning strategy: {cognitive_method.value}", 0.85, {"method": cognitive_method.value})
 
         try:
             full_response = ""
@@ -1294,6 +1307,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             yaqin_tag = self.yaqin.tag_inference(
                 full_response[:200], confidence=base_confidence, source="agentic_reasoning"
             )
+            await emit_thinking("evaluation", f"Certainty: {yaqin_tag.level} ({yaqin_tag.confidence:.0%})", yaqin_tag.confidence, {"level": yaqin_tag.level, "source": "agentic_reasoning"})
 
             # Shukr — reinforce this success pattern
             task_type = self._classify_task(task)
@@ -1369,6 +1383,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     )
             except Exception as lubb_err:
                 logger.debug("[LUBB] Metacognition skipped: %s", lubb_err)
+            if lubb_report:
+                await emit_thinking("reflection", f"Metacognition: {lubb_report.quality.value} (coherence: {lubb_report.coherence.score:.0%})", lubb_report.coherence.score, {"quality": lubb_report.quality.value, "bias_flags": [b.bias_type for b in lubb_report.bias_flags]})
 
             # Lawwāma self-healing — monitor response integrity, apply repair if needed
             healing_report = None
@@ -1426,6 +1442,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     )
             except Exception:
                 pass
+
+            await emit_thinking("generation", f"Response formed ({len(full_response)} chars)", 0.9, {"length": len(full_response)})
 
             self.evolve_nafs()
             self.state = "resting"

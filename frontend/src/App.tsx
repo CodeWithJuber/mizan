@@ -23,6 +23,9 @@ import type {
   SystemStatus,
   PerceptionResult,
 } from "./types";
+import type { ThinkingTrace, ThinkingStep } from "./types/ruh";
+import { ThinkingStream } from "./components/ThinkingStream";
+import { QueueDashboard } from "./components/QueueDashboard";
 import { config } from "./config";
 import { useApi } from "./hooks/useApi";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -144,6 +147,7 @@ const MajlisPage = lazy(() => import("./pages/MajlisPage"));
 const PluginsPage = lazy(() => import("./pages/PluginsPage"));
 const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
 const DeveloperPage = lazy(() => import("./pages/DeveloperPage"));
+const RuhModelPage = lazy(() => import("./pages/RuhModelPage"));
 const WelcomePage = lazy(() => import("./pages/WelcomePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 
@@ -194,6 +198,10 @@ function AppInner() {
   });
   const [typingIndicator, setTypingIndicator] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
+  const [thinkingTraces, setThinkingTraces] = useState<
+    Record<string, ThinkingTrace>
+  >({});
+  const [activeThinkingId, setActiveThinkingId] = useState<string | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
@@ -365,12 +373,30 @@ function AppInner() {
             },
           ]);
           addTerminalLine(`Response from ${data.agent}`, "info");
+          setActiveThinkingId(null);
           break;
-        case "chat_complete":
+        case "chat_complete": {
           setStreamingText("");
           setStreaming(false);
           setTypingIndicator(false);
           setToolStatus("");
+          const messageId = (data.message_id as string) || `msg_${Date.now()}`;
+          // Store server-provided trace if available
+          const serverTrace = data.thinking_trace as
+            | Record<string, unknown>
+            | undefined;
+          if (serverTrace) {
+            setThinkingTraces((prev) => ({
+              ...prev,
+              [messageId]: {
+                request_id: (serverTrace.request_id as string) || messageId,
+                steps: (serverTrace.steps as ThinkingStep[]) || [],
+                duration_ms: (serverTrace.duration_ms as number) || 0,
+                avg_confidence: (serverTrace.avg_confidence as number) || 0,
+              },
+            }));
+          }
+          setActiveThinkingId(null);
           setMessages((prev) => [
             ...prev,
             {
@@ -381,13 +407,44 @@ function AppInner() {
               agent: data.agent as string,
               ts: new Date().toLocaleTimeString(),
               cognitive: data.cognitive as CognitiveMetadata | undefined,
+              thinkingMessageId: messageId,
             },
           ]);
           addTerminalLine(`Response from ${data.agent}`, "info");
+          loadChatSessions();
           break;
+        }
         case "typing":
           setTypingIndicator(true);
           break;
+        case "thinking": {
+          const thinkMsgId = (data.message_id as string) || "current";
+          setActiveThinkingId(thinkMsgId);
+          setThinkingTraces((prev) => {
+            const existing = prev[thinkMsgId] || {
+              request_id: thinkMsgId,
+              steps: [],
+              duration_ms: 0,
+              avg_confidence: 0,
+            };
+            const newStep: ThinkingStep = {
+              id: `step_${Date.now()}_${existing.steps.length}`,
+              phase: data.phase as ThinkingStep["phase"],
+              content: data.content as string,
+              confidence: (data.confidence as number) ?? 0,
+              timestamp: Date.now() / 1000,
+              metadata: data.metadata as Record<string, unknown> | undefined,
+            };
+            const steps = [...existing.steps, newStep];
+            const avgConf =
+              steps.reduce((sum, s) => sum + s.confidence, 0) / steps.length;
+            return {
+              ...prev,
+              [thinkMsgId]: { ...existing, steps, avg_confidence: avgConf },
+            };
+          });
+          break;
+        }
         case "tool_use":
           setToolStatus(`Agent is using ${data.tool_name as string}...`);
           addTerminalLine(`Tool: ${data.tool_name as string}`, "info");
@@ -429,6 +486,18 @@ function AppInner() {
         case "task_done":
           addTerminalLine("Task completed", "gold");
           loadAgents();
+          break;
+        case "queue_update":
+          addTerminalLine(
+            `Queue: ${data.action as string} (${data.pending as number} pending)`,
+            "info",
+          );
+          break;
+        case "queue_task_complete":
+          addTerminalLine(
+            `Queue task done by ${data.agent as string}: ${(data.result as string)?.substring(0, 60)}`,
+            "gold",
+          );
           break;
         case "perception_result":
           setStreaming(false);
@@ -725,9 +794,7 @@ function AppInner() {
       role: "user",
       content:
         content +
-        (files.length > 0
-          ? ` [${files.map((f) => f.name).join(", ")}]`
-          : ""),
+        (files.length > 0 ? ` [${files.map((f) => f.name).join(", ")}]` : ""),
       ts: new Date().toLocaleTimeString(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -735,6 +802,7 @@ function AppInner() {
     setStreamingText("");
     setTypingIndicator(true);
     setToolStatus("");
+    setActiveThinkingId(null);
     setInput("");
     setAttachedFiles([]);
     // Reset textarea height after clearing
@@ -933,6 +1001,12 @@ function AppInner() {
           desc: "Run background jobs",
           icon: <Icons.Terminal />,
         },
+        {
+          id: "queue",
+          label: "Queue",
+          desc: "Task queue & workers",
+          icon: <Icons.Clock />,
+        },
       ],
     },
     {
@@ -1014,6 +1088,12 @@ function AppInner() {
           label: "Developer",
           desc: "Build extensions",
           icon: <Icons.Brain />,
+        },
+        {
+          id: "ruh-model",
+          label: "Ruh Model",
+          desc: "Train, explore & monitor",
+          icon: <Icons.Zap />,
         },
       ],
     },
@@ -1137,23 +1217,39 @@ function AppInner() {
                     <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                       {selectedAgent?.name || "MIZAN"}
                     </span>
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-gray-400">
-                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-3.5 h-3.5 text-gray-400"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </button>
 
                   {showAgentPicker && (
                     <div className="absolute top-full left-0 mt-1.5 w-72 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
                       <div className="px-3 py-2 border-b border-gray-100 dark:border-zinc-800">
-                        <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Select Agent</span>
+                        <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                          Select Agent
+                        </span>
                       </div>
                       {agents.map((agent) => {
                         const roleLabels: Record<string, string> = {
-                          general: "General", hafiz: "General", wakil: "General",
-                          browser: "Browser", mubashir: "Browser",
-                          research: "Research", mundhir: "Research",
-                          code: "Code", katib: "Code",
-                          communication: "Comms", rasul: "Comms",
+                          general: "General",
+                          hafiz: "General",
+                          wakil: "General",
+                          browser: "Browser",
+                          mubashir: "Browser",
+                          research: "Research",
+                          mundhir: "Research",
+                          code: "Code",
+                          katib: "Code",
+                          communication: "Comms",
+                          rasul: "Comms",
                         };
                         return (
                           <button
@@ -1163,18 +1259,33 @@ function AppInner() {
                                 ? "bg-amber-50 dark:bg-amber-500/10"
                                 : "hover:bg-gray-50 dark:hover:bg-zinc-800"
                             }`}
-                            onClick={() => { setSelectedAgent(agent); setShowAgentPicker(false); }}
+                            onClick={() => {
+                              setSelectedAgent(agent);
+                              setShowAgentPicker(false);
+                            }}
                           >
                             <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-semibold text-amber-600 dark:text-amber-400 shrink-0">
                               {agent.name[0]?.toUpperCase()}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{agent.name}</div>
-                              <div className="text-[11px] text-gray-400 dark:text-gray-500">{roleLabels[agent.role] || agent.role}</div>
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {agent.name}
+                              </div>
+                              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                                {roleLabels[agent.role] || agent.role}
+                              </div>
                             </div>
                             {selectedAgent?.id === agent.id && (
-                              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-500 shrink-0">
-                                <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                              <svg
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                className="w-4 h-4 text-amber-500 shrink-0"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                                  clipRule="evenodd"
+                                />
                               </svg>
                             )}
                           </button>
@@ -1188,7 +1299,8 @@ function AppInner() {
                 <div className="flex items-center gap-1">
                   {selectedAgent && (
                     <span className="text-[11px] text-gray-400 dark:text-gray-500 hidden sm:inline mr-2 font-mono">
-                      L{selectedAgent.nafs_level} {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
+                      L{selectedAgent.nafs_level}{" "}
+                      {NAFS_LEVELS[selectedAgent.nafs_level]?.latin}
                     </span>
                   )}
 
@@ -1196,40 +1308,62 @@ function AppInner() {
                   <div className="relative">
                     <button
                       className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                      onClick={() => { setShowSessionHistory(!showSessionHistory); if (!showSessionHistory) loadChatSessions(); }}
+                      onClick={() => {
+                        setShowSessionHistory(!showSessionHistory);
+                        if (!showSessionHistory) loadChatSessions();
+                      }}
                       title="Chat history"
                     >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4.5 h-4.5"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                     </button>
                     {showSessionHistory && (
                       <div className="absolute top-full right-0 mt-1.5 w-80 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
                         <div className="px-3 py-2 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">History</span>
+                          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                            History
+                          </span>
                         </div>
                         <div className="max-h-72 overflow-y-auto">
                           {chatSessions.length === 0 && (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No previous sessions</div>
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">
+                              No previous sessions
+                            </div>
                           )}
                           {chatSessions.map((s) => (
                             <button
                               key={s.session_id}
                               className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
-                                sessionId === s.session_id ? "bg-amber-50 dark:bg-amber-500/10" : "hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                sessionId === s.session_id
+                                  ? "bg-amber-50 dark:bg-amber-500/10"
+                                  : "hover:bg-gray-50 dark:hover:bg-zinc-800"
                               }`}
                               onClick={() => switchSession(s.session_id)}
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                                  {s.first_message || s.session_id.slice(0, 24) + "..."}
+                                  {s.first_message ||
+                                    s.session_id.slice(0, 24) + "..."}
                                 </div>
                                 <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                                  {s.message_count} msgs{s.last_message_at && ` · ${new Date(s.last_message_at).toLocaleDateString()}`}
+                                  {s.message_count} msgs
+                                  {s.last_message_at &&
+                                    ` · ${new Date(s.last_message_at).toLocaleDateString()}`}
                                 </div>
                               </div>
                               {sessionId === s.session_id && (
-                                <span className="text-[10px] text-amber-500 font-mono shrink-0">ACTIVE</span>
+                                <span className="text-[10px] text-amber-500 font-mono shrink-0">
+                                  ACTIVE
+                                </span>
                               )}
                             </button>
                           ))}
@@ -1244,7 +1378,11 @@ function AppInner() {
                     onClick={startNewSession}
                     title="New chat"
                   >
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-4.5 h-4.5"
+                    >
                       <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
                       <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
                     </svg>
@@ -1254,7 +1392,11 @@ function AppInner() {
             </div>
 
             {/* ===== Chat Messages Area ===== */}
-            <div className="chat-scroll-area relative" ref={chatScrollRef} onScroll={handleChatScroll}>
+            <div
+              className="chat-scroll-area relative"
+              ref={chatScrollRef}
+              onScroll={handleChatScroll}
+            >
               {messages.length === 0 && !streaming ? (
                 /* ===== Empty state — centered like ChatGPT ===== */
                 <div className="flex flex-col items-center justify-center h-full px-4">
@@ -1265,20 +1407,40 @@ function AppInner() {
                       </svg>
                     </div>
                     <div>
-                      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <h2
+                        className="text-xl font-semibold text-gray-900 dark:text-gray-100"
+                        style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                      >
                         How can I help you today?
                       </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">
-                        Ask anything, run code, browse the web, or try a suggestion below.
+                        Ask anything, run code, browse the web, or try a
+                        suggestion below.
                       </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5 max-w-lg w-full">
                     {[
-                      { label: "Write code", desc: "Generate or debug code", prompt: "Help me write a Python script that " },
-                      { label: "Analyze data", desc: "Find patterns and insights", prompt: "Analyze this data and help me understand " },
-                      { label: "Research topic", desc: "Deep dive into any subject", prompt: "Research and summarize the key points about " },
-                      { label: "Brainstorm", desc: "Creative thinking together", prompt: "Help me brainstorm ideas for " },
+                      {
+                        label: "Write code",
+                        desc: "Generate or debug code",
+                        prompt: "Help me write a Python script that ",
+                      },
+                      {
+                        label: "Analyze data",
+                        desc: "Find patterns and insights",
+                        prompt: "Analyze this data and help me understand ",
+                      },
+                      {
+                        label: "Research topic",
+                        desc: "Deep dive into any subject",
+                        prompt: "Research and summarize the key points about ",
+                      },
+                      {
+                        label: "Brainstorm",
+                        desc: "Creative thinking together",
+                        prompt: "Help me brainstorm ideas for ",
+                      },
                     ].map((action) => (
                       <button
                         key={action.label}
@@ -1288,7 +1450,9 @@ function AppInner() {
                         <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
                           {action.label}
                         </div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{action.desc}</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {action.desc}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -1297,12 +1461,38 @@ function AppInner() {
                 /* ===== Messages list ===== */
                 <div className="py-4 space-y-0">
                   {messages.map((msg) => (
-                    <ChatMessageBubble
-                      key={msg.id}
-                      msg={msg}
-                      selectedAgent={selectedAgent}
-                    />
+                    <div key={msg.id}>
+                      {/* Collapsed thinking trace above assistant message */}
+                      {msg.role === "assistant" &&
+                        msg.thinkingMessageId &&
+                        thinkingTraces[msg.thinkingMessageId] && (
+                          <div className="chat-message-row">
+                            <div className="chat-message-container">
+                              <ThinkingStream
+                                trace={thinkingTraces[msg.thinkingMessageId]}
+                                isStreaming={false}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      <ChatMessageBubble
+                        msg={msg}
+                        selectedAgent={selectedAgent}
+                      />
+                    </div>
                   ))}
+
+                  {/* Active thinking stream — shown while agent is processing */}
+                  {activeThinkingId && thinkingTraces[activeThinkingId] && (
+                    <div className="chat-message-row">
+                      <div className="chat-message-container">
+                        <ThinkingStream
+                          trace={thinkingTraces[activeThinkingId]}
+                          isStreaming={streaming}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Typing indicator */}
                   {streaming && !streamingText && typingIndicator && (
@@ -1310,7 +1500,11 @@ function AppInner() {
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
                           <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
-                            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="white"
+                              className="w-3.5 h-3.5"
+                            >
                               <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
                             </svg>
                           </div>
@@ -1332,10 +1526,18 @@ function AppInner() {
                         <div className="flex gap-3.5 items-center">
                           <div className="w-7 h-7 shrink-0" />
                           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-200/60 dark:border-blue-500/20">
-                            <svg className="w-3.5 h-3.5 text-blue-500 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg
+                              className="w-3.5 h-3.5 text-blue-500 animate-spin"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
                               <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M7.76 7.76L4.93 4.93" />
                             </svg>
-                            <span className="text-xs font-medium text-blue-600 dark:text-blue-400">{toolStatus}</span>
+                            <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                              {toolStatus}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1348,7 +1550,11 @@ function AppInner() {
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
                           <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
-                            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="white"
+                              className="w-3.5 h-3.5"
+                            >
                               <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
                             </svg>
                           </div>
@@ -1376,8 +1582,16 @@ function AppInner() {
                 onClick={scrollToBottom}
                 aria-label="Scroll to bottom"
               >
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path fillRule="evenodd" d="M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z" clipRule="evenodd" />
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </button>
             </div>
@@ -1403,10 +1617,18 @@ function AppInner() {
                             : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
                         }`}
                         onMouseEnter={() => setCommandMenuIndex(i)}
-                        onClick={() => { setInput(cmd.name + " "); setShowCommandMenu(false); setCommandMenuIndex(0); }}
+                        onClick={() => {
+                          setInput(cmd.name + " ");
+                          setShowCommandMenu(false);
+                          setCommandMenuIndex(0);
+                        }}
                       >
-                        <span className="font-mono font-semibold text-amber-600 dark:text-amber-400 shrink-0">{cmd.name}</span>
-                        <span className="text-gray-500 dark:text-gray-400 text-xs truncate">{cmd.description}</span>
+                        <span className="font-mono font-semibold text-amber-600 dark:text-amber-400 shrink-0">
+                          {cmd.name}
+                        </span>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                          {cmd.description}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1423,11 +1645,23 @@ function AppInner() {
                           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-xs"
                         >
                           {file.type.startsWith("image/") ? (
-                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-amber-500">
-                              <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81V14.75c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.06l-2.22-2.22a.75.75 0 00-1.06 0L9.72 14.72a.75.75 0 01-1.06 0l-1.94-1.94a.75.75 0 00-1.06 0L2.5 11.06zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="w-3.5 h-3.5 text-amber-500"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81V14.75c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.06l-2.22-2.22a.75.75 0 00-1.06 0L9.72 14.72a.75.75 0 01-1.06 0l-1.94-1.94a.75.75 0 00-1.06 0L2.5 11.06zM12 7a1 1 0 11-2 0 1 1 0 012 0z"
+                                clipRule="evenodd"
+                              />
                             </svg>
                           ) : (
-                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-indigo-500">
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="w-3.5 h-3.5 text-indigo-500"
+                            >
                               <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
                               <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
                             </svg>
@@ -1443,7 +1677,11 @@ function AppInner() {
                               )
                             }
                           >
-                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="w-3 h-3"
+                            >
                               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
                             </svg>
                           </button>
@@ -1459,10 +1697,10 @@ function AppInner() {
                       className="chat-input-btn"
                       title="Attach image or audio"
                       onClick={() => {
-                        const fileInput = document.createElement('input');
-                        fileInput.type = 'file';
+                        const fileInput = document.createElement("input");
+                        fileInput.type = "file";
                         fileInput.multiple = true;
-                        fileInput.accept = 'image/*,audio/*';
+                        fileInput.accept = "image/*,audio/*";
                         fileInput.onchange = (e) => {
                           const files = (e.target as HTMLInputElement).files;
                           if (files && files.length > 0) {
@@ -1475,7 +1713,11 @@ function AppInner() {
                         fileInput.click();
                       }}
                     >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5">
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4.5 h-4.5"
+                      >
                         <path d="M10 5a.75.75 0 01.75.75v3.5h3.5a.75.75 0 010 1.5h-3.5v3.5a.75.75 0 01-1.5 0v-3.5h-3.5a.75.75 0 010-1.5h3.5v-3.5A.75.75 0 0110 5z" />
                       </svg>
                     </button>
@@ -1484,10 +1726,22 @@ function AppInner() {
                     <button
                       className="chat-input-btn"
                       title="Web search"
-                      onClick={() => setInput((prev) => prev + (prev ? ' ' : '') + '/web_search ')}
+                      onClick={() =>
+                        setInput(
+                          (prev) => prev + (prev ? " " : "") + "/web_search ",
+                        )
+                      }
                     >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0c0-.738.402-1.381 1-1.726a5.994 5.994 0 01.98 2.65l-.02.018a.998.998 0 01-.592.29A6.003 6.003 0 0110 16a6.004 6.004 0 01-5.668-7.973z" clipRule="evenodd" />
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4 h-4"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0c0-.738.402-1.381 1-1.726a5.994 5.994 0 01.98 2.65l-.02.018a.998.998 0 01-.592.29A6.003 6.003 0 0110 16a6.004 6.004 0 01-5.668-7.973z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -1509,23 +1763,54 @@ function AppInner() {
                       }
                       // Auto-resize
                       e.target.style.height = "auto";
-                      e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+                      e.target.style.height =
+                        Math.min(e.target.scrollHeight, 200) + "px";
                     }}
                     onKeyDown={(e) => {
                       if (showCommandMenu && filteredCommands.length > 0) {
-                        if (e.key === "ArrowDown") { e.preventDefault(); setCommandMenuIndex((prev) => (prev + 1) % filteredCommands.length); return; }
-                        if (e.key === "ArrowUp") { e.preventDefault(); setCommandMenuIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length); return; }
-                        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                        if (e.key === "ArrowDown") {
                           e.preventDefault();
-                          const selected = filteredCommands[commandMenuIndex];
-                          if (selected) { setInput(selected.name + " "); setShowCommandMenu(false); setCommandMenuIndex(0); }
+                          setCommandMenuIndex(
+                            (prev) => (prev + 1) % filteredCommands.length,
+                          );
                           return;
                         }
-                        if (e.key === "Escape") { e.preventDefault(); setShowCommandMenu(false); return; }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setCommandMenuIndex(
+                            (prev) =>
+                              (prev - 1 + filteredCommands.length) %
+                              filteredCommands.length,
+                          );
+                          return;
+                        }
+                        if (
+                          e.key === "Tab" ||
+                          (e.key === "Enter" && !e.shiftKey)
+                        ) {
+                          e.preventDefault();
+                          const selected = filteredCommands[commandMenuIndex];
+                          if (selected) {
+                            setInput(selected.name + " ");
+                            setShowCommandMenu(false);
+                            setCommandMenuIndex(0);
+                          }
+                          return;
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setShowCommandMenu(false);
+                          return;
+                        }
                       }
-                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
                     }}
-                    onBlur={() => { setTimeout(() => setShowCommandMenu(false), 150); }}
+                    onBlur={() => {
+                      setTimeout(() => setShowCommandMenu(false), 150);
+                    }}
                     rows={1}
                   />
 
@@ -1536,15 +1821,23 @@ function AppInner() {
                       className="chat-input-btn"
                       title="Commands (/)"
                       onClick={() => {
-                        if (!input.startsWith('/')) {
-                          setInput('/');
+                        if (!input.startsWith("/")) {
+                          setInput("/");
                           setShowCommandMenu(true);
                           setCommandMenuIndex(0);
                         }
                       }}
                     >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                        <path fillRule="evenodd" d="M14.5 10a4.5 4.5 0 004.284-5.882c-.105-.324-.51-.391-.752-.15L15.34 6.66a.454.454 0 01-.493.101 3.046 3.046 0 01-1.607-1.607.454.454 0 01.1-.493l2.693-2.692c.24-.241.174-.647-.15-.752a4.5 4.5 0 00-5.873 4.575c.055.873-.128 1.808-.8 2.368l-7.23 6.024a2.724 2.724 0 103.837 3.837l6.024-7.23c.56-.672 1.495-.855 2.368-.8.096.007.193.01.291.01zM5 16a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4 h-4"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M14.5 10a4.5 4.5 0 004.284-5.882c-.105-.324-.51-.391-.752-.15L15.34 6.66a.454.454 0 01-.493.101 3.046 3.046 0 01-1.607-1.607.454.454 0 01.1-.493l2.693-2.692c.24-.241.174-.647-.15-.752a4.5 4.5 0 00-5.873 4.575c.055.873-.128 1.808-.8 2.368l-7.23 6.024a2.724 2.724 0 103.837 3.837l6.024-7.23c.56-.672 1.495-.855 2.368-.8.096.007.193.01.291.01zM5 16a1 1 0 11-2 0 1 1 0 012 0z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                     </button>
 
@@ -1554,12 +1847,18 @@ function AppInner() {
                         className="chat-stop-btn"
                         onClick={() => {
                           // Signal stop — close and reconnect WS
-                          if (ws) { ws.close(); }
+                          if (ws) {
+                            ws.close();
+                          }
                         }}
                         title="Stop generating"
                         aria-label="Stop generating"
                       >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                        <svg
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-3.5 h-3.5"
+                        >
                           <rect x="5" y="5" width="10" height="10" rx="1.5" />
                         </svg>
                       </button>
@@ -1567,10 +1866,16 @@ function AppInner() {
                       <button
                         className="chat-send-btn"
                         onClick={sendMessage}
-                        disabled={(!input.trim() && attachedFiles.length === 0) || !ws}
+                        disabled={
+                          (!input.trim() && attachedFiles.length === 0) || !ws
+                        }
                         aria-label="Send message"
                       >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-4 h-4"
+                        >
                           <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
                         </svg>
                       </button>
@@ -1579,10 +1884,12 @@ function AppInner() {
                 </div>
                 <div className="flex items-center justify-between mt-2 px-1">
                   <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
-                    <span className="hidden sm:inline">Enter to send · Shift+Enter for new line · / for commands</span>
+                    <span className="hidden sm:inline">
+                      Enter to send · Shift+Enter for new line · / for commands
+                    </span>
                     <span className="sm:hidden">Enter to send</span>
                   </span>
-                  {wsStatus !== 'connected' && (
+                  {wsStatus !== "connected" && (
                     <span className="text-[10px] text-red-400 font-mono flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
                       Disconnected
@@ -1663,6 +1970,21 @@ function AppInner() {
                   Run
                 </button>
               </div>
+            </div>
+          </div>
+        );
+
+      case "queue":
+        return (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/50 dark:border-white/5 bg-white/50 dark:bg-mizan-dark-surface/30 backdrop-blur-md z-10">
+              <h2 className="page-title">Task Queue</h2>
+              <p className="page-description">
+                Priority queue with parallel worker processing
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <QueueDashboard api={api} />
             </div>
           </div>
         );
@@ -2047,6 +2369,8 @@ function AppInner() {
         return <SettingsPage api={api} />;
       case "developer":
         return <DeveloperPage api={api} />;
+      case "ruh-model":
+        return <RuhModelPage api={api} />;
       case "integrations":
         return (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -2155,7 +2479,9 @@ function AppInner() {
         />
 
         {/* Content */}
-        <main className={`flex-1 overflow-hidden flex flex-col bg-transparent relative z-0 ${activeTab === "chat" ? "pb-0" : "pb-16 md:pb-0"}`}>
+        <main
+          className={`flex-1 overflow-hidden flex flex-col bg-transparent relative z-0 ${activeTab === "chat" ? "pb-0" : "pb-16 md:pb-0"}`}
+        >
           <ErrorBoundary>
             <Suspense
               fallback={

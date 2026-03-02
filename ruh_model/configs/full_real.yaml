@@ -1,0 +1,25 @@
+# Full Real-Data Training Configuration
+# Use with: python -m ruh_model.train_full --config ruh_model/configs/full_real.yaml
+#
+# This is a reference config for large-scale training with all 5 HuggingFace
+# data sources. Adjust samples, device, and batch_size for your hardware.
+
+# --- Data ---
+samples: 500000                # Total samples from HuggingFace
+mixing_ratios:
+  quran: 0.30                  # Quranic text (primary theological source)
+  hadith: 0.20                 # Hadith collections
+  arabic_wiki: 0.25            # Arabic Wikipedia (general knowledge)
+  opus: 0.15                   # OPUS-100 parallel corpus (bilingual)
+  morphology: 0.10             # Tashkeela diacritized text (morphology)
+
+# --- Hardware ---
+device: auto                   # auto | cpu | cuda | mps
+
+# --- Optimizer ---
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_fraction: 0.10
+
+# --- Logging ---
+log_every: 50

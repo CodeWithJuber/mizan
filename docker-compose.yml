@@ -19,11 +19,15 @@ services:
       - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY environment variable is required}
       - DB_PATH=/data/mizan_memory.db
+      - ALLOWED_ORIGINS=http://localhost:3100,http://localhost:3000,http://localhost:5173
       - LINODE_API_TOKEN=${LINODE_API_TOKEN:-}
+      - RUH_ENABLED=${RUH_ENABLED:-false}
+      - RUH_MODEL_PATH=${RUH_MODEL_PATH:-}
     volumes:
       - mizan-data:/data
       - mizan-plugins:/app/plugins
       - ./backend:/app
+      - ./ruh_model:/app/ruh_model
     networks:
       - mizan-net
     healthcheck:
@@ -41,7 +45,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     ports:
-      - "3000:3000"
+      - "3100:3000"
     depends_on:
       backend:
         condition: service_healthy

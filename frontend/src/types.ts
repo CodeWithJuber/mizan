@@ -189,6 +189,7 @@ export interface ChatMessage {
   ts: string;
   cognitive?: CognitiveMetadata;
   perception?: PerceptionResult;
+  thinkingMessageId?: string;
 }
 
 // ===== Memory Types =====
@@ -463,6 +464,42 @@ export interface PerceptionResult {
   batin: string;
   has_vision?: boolean;
   has_audio?: boolean;
+}
+
+// ===== Queue Types =====
+
+export type QueueTaskStatus =
+  | "pending"
+  | "running"
+  | "complete"
+  | "failed"
+  | "cancelled";
+export type QueuePriority =
+  | "dharurah"
+  | "hajah"
+  | "tahsiniyyah"
+  | "takmiliyyah";
+
+export interface QueueTask {
+  task_id: string;
+  status: QueueTaskStatus;
+  priority: QueuePriority;
+  payload: { task: string; agent_id?: string; [key: string]: unknown };
+  agent_id: string | null;
+  created_at: number;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface QueueStatus {
+  pending: number;
+  running: number;
+  complete: number;
+  failed: number;
+  cancelled: number;
+  total: number;
+  worker: { running: boolean; active_tasks: number };
+  tasks: QueueTask[];
 }
 
 // ===== WebSocket Types =====
