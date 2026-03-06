@@ -14,9 +14,9 @@
 $ErrorActionPreference = "Stop"
 
 # ───── Config ─────
-$MizanMethod = if ($env:MIZAN_METHOD) { $env:MIZAN_METHOD } else { "pip" }
-$MizanDir = if ($env:MIZAN_DIR) { $env:MIZAN_DIR } else { Join-Path $HOME "mizan" }
-$MizanBranch = if ($env:MIZAN_BRANCH) { $env:MIZAN_BRANCH } else { "main" }
+$MizanMethod = $(if ($env:MIZAN_METHOD) { $env:MIZAN_METHOD } else { "pip" })
+$MizanDir = $(if ($env:MIZAN_DIR) { $env:MIZAN_DIR } else { Join-Path $HOME "mizan" })
+$MizanBranch = $(if ($env:MIZAN_BRANCH) { $env:MIZAN_BRANCH } else { "main" })
 $MizanRepo = "https://github.com/CodeWithJuber/mizan.git"
 $MizanMinPython = "3.11"
 $MizanMinNode = 18
@@ -64,7 +64,7 @@ function Compare-Version {
 
 # ───── OS Detection ─────
 function Get-Platform {
-    $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+    $arch = $(if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" })
     Write-Info "Detected: Windows ($arch)"
     return @{ OS = "windows"; Arch = $arch }
 }
