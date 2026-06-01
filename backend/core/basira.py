@@ -32,9 +32,9 @@ logger = logging.getLogger("mizan.basira")
 
 
 class InsightLevel(Enum):
-    CLEAR = "clear"        # Sound reasoning, grounded in evidence, no self-deception
-    PARTIAL = "partial"    # Reasonable but with blind spots or thin evidence
-    CLOUDED = "clouded"    # Unsound, self-serving, or unsupported — do not trust
+    CLEAR = "clear"  # Sound reasoning, grounded in evidence, no self-deception
+    PARTIAL = "partial"  # Reasonable but with blind spots or thin evidence
+    CLOUDED = "clouded"  # Unsound, self-serving, or unsupported — do not trust
 
 
 # Phrases where the agent praises/justifies its *own* reasoning rather than the
@@ -90,12 +90,12 @@ class DiscernmentReport:
     """Result of a Basira discernment pass."""
 
     level: InsightLevel
-    soundness: float                       # 0.0 – 1.0, overall trustworthiness
-    is_self_serving: bool                  # True if the trace believes-what-it-wants
-    deeper_reading: str                    # what the surface may be hiding
+    soundness: float  # 0.0 – 1.0, overall trustworthiness
+    is_self_serving: bool  # True if the trace believes-what-it-wants
+    deeper_reading: str  # what the surface may be hiding
     blind_spots: list[str] = field(default_factory=list)
-    witnessing_score: float = 0.0          # 0 = no self-scrutiny, 1 = strong
-    recommendation: str = ""               # actionable next step
+    witnessing_score: float = 0.0  # 0 = no self-scrutiny, 1 = strong
+    recommendation: str = ""  # actionable next step
 
     def to_dict(self) -> dict:
         return {
@@ -163,20 +163,14 @@ class BasiraEngine:
         deeper_reading, surface_mismatch = self._read_beneath(trace, task)
 
         # 4. Blind spots
-        blind_spots = self._find_blind_spots(
-            trace, evidence, self_serving_hits, surface_mismatch
-        )
+        blind_spots = self._find_blind_spots(trace, evidence, self_serving_hits, surface_mismatch)
 
         # 5. Soundness blend (fall back to internal estimates when missing)
         coherence = (
-            coherence_score
-            if coherence_score is not None
-            else self._estimate_coherence(trace)
+            coherence_score if coherence_score is not None else self._estimate_coherence(trace)
         )
         conviction = (
-            conviction_confidence
-            if conviction_confidence is not None
-            else evidence_density
+            conviction_confidence if conviction_confidence is not None else evidence_density
         )
         soundness = (
             self._W_COHERENCE * coherence
@@ -205,7 +199,10 @@ class BasiraEngine:
 
         logger.debug(
             "[BASIRA] level=%s soundness=%.2f self_serving=%s blind_spots=%d",
-            level.value, soundness, is_self_serving, len(blind_spots),
+            level.value,
+            soundness,
+            is_self_serving,
+            len(blind_spots),
         )
         return DiscernmentReport(
             level=level,
@@ -304,7 +301,9 @@ class BasiraEngine:
         if len(evidence) == 1:
             spots.append("Single source of evidence — no independent corroboration")
         # No counterfactual considered
-        if not any(w in lower for w in ["if not", "otherwise", "what if", "unless", "could be wrong"]):
+        if not any(
+            w in lower for w in ["if not", "otherwise", "what if", "unless", "could be wrong"]
+        ):
             if len(trace) > 150:
                 spots.append("No counterfactual considered ('what if this is wrong?')")
         return spots
