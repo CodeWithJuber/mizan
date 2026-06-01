@@ -37,7 +37,7 @@ from core.sabr import SabrEngine
 from core.shukr import ShukrSystem
 from core.tawbah import TawbahProtocol
 from providers import create_provider, get_default_model, normalize_model_for_provider
-from qca.cognitive_methods import IjmaEngine, select_method
+from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
 from security.validation import (
@@ -53,6 +53,11 @@ from core.qalb_processor import QalbProcessor
 from core.lubb import LubbEngine
 from core.fuad import FuadEngine
 from core.developmental_stages import DevelopmentalGate
+
+# al-Insan faculty modules — discernment, restraint, wisdom
+from core.basira import BasiraEngine, InsightLevel
+from core.hawa import HawaDetector
+from core.hikmah import HikmahEngine
 
 # QALB-7 extension modules — parallel, healing, creativity, imagination, dreams
 from core.parallel_agents import QalbParallelScheduler, SkillAutomationTransfer
@@ -167,6 +172,16 @@ class BaseAgent:
         self.fuad = FuadEngine()              # Conviction formation + confidence scoring
         self.dev_gate = DevelopmentalGate()   # Capability gating by nafs_level
         self._nafs_approach: str = ""         # Current dominant Nafs voice instruction
+
+        # al-Insan faculties — make the human-model steer the loop
+        self.basira = BasiraEngine()          # Insight + self-witnessing (12:108, 75:14)
+        self.hawa = HawaDetector()            # Lower-pull / adversarial restraint (25:43, 79:40)
+        self.hikmah_engine = HikmahEngine()   # Wisdom distillation → applicable counsel (2:269)
+        self._faculty_guidance: str = ""      # Per-task guidance injected into the system prompt
+        # When enabled, faculties also actively gate/redirect (default: advisory only)
+        self.deep_faculty_loop = os.getenv("DEEP_FACULTY_LOOP", "").lower() in (
+            "1", "true", "yes", "on",
+        )
 
         # QALB-7 extension modules
         self.parallel_scheduler = QalbParallelScheduler()   # Multi-stream parallel processing
@@ -1125,6 +1140,11 @@ class BaseAgent:
             f"\n[Nafs: {self._nafs_approach}]" if self._nafs_approach else ""
         )
 
+        # al-Insan faculty guidance (Hawa restraint, Hikmah counsel, cognitive method)
+        faculty_note = (
+            f"\n{self._faculty_guidance}" if self._faculty_guidance else ""
+        )
+
         base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) AGI system.
 
 Role: {self.role}
@@ -1132,7 +1152,7 @@ Nafs Level: {self.nafs_level}/7 ({nafs_name})
 Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})
 Success Rate: {self.success_rate:.1%}
 {masalik_note}{knowledge_context}{kg_context}
-{yaqin_note}{tone_guidance}{ruh_note}{nafs_approach_note}
+{yaqin_note}{tone_guidance}{ruh_note}{nafs_approach_note}{faculty_note}
 
 You have access to tools. Use them when needed to complete tasks.
 
@@ -1194,6 +1214,24 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         )
 
         return messages
+
+    def _run_cognitive_method(self, method: CognitiveMethod, task: str, context: dict | None):
+        """
+        Actually *execute* the selected Quranic cognitive method ('Aql as activity).
+
+        Previously `select_method()` only labelled the strategy; here the matching
+        engine runs a real reasoning pass whose conclusion is fed back into the
+        system prompt via `self._faculty_guidance`.
+        """
+        engine_map = {
+            CognitiveMethod.TAFAKKUR: self.cognitive.tafakkur,
+            CognitiveMethod.TADABBUR: self.cognitive.tadabbur,
+            CognitiveMethod.ISTIDLAL: self.cognitive.istidlal,
+            CognitiveMethod.QIYAS: self.cognitive.qiyas,
+            CognitiveMethod.IJMA: self.cognitive,  # IjmaEngine runs the ensemble itself
+        }
+        engine = engine_map.get(method, self.cognitive.tafakkur)
+        return engine.process(task, context)
 
     async def execute(
         self,
@@ -1277,6 +1315,61 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         )
         await emit_thinking("reasoning", f"Reasoning strategy: {cognitive_method.value}", 0.85, {"method": cognitive_method.value})
 
+        # ── al-Insan pre-action faculties: run the method, restrain hawa, recall hikmah ──
+        # These compose `self._faculty_guidance`, which _build_system_prompt injects so
+        # the faculties actually steer the LLM rather than being computed and discarded.
+        cognitive_result = None
+        hawa_scan = None
+        guidance_parts: list[str] = []
+        try:
+            # 'Aql as activity — actually execute the selected cognitive method (not just label it)
+            cognitive_result = self._run_cognitive_method(cognitive_method, task, context)
+            if cognitive_result and cognitive_result.conclusion:
+                guidance_parts.append(
+                    f"[{cognitive_method.value} ({cognitive_result.confidence:.0%})] "
+                    f"{cognitive_result.conclusion}"
+                )
+        except Exception as cog_err:
+            logger.debug("[COGNITIVE] method execution skipped: %s", cog_err)
+
+        try:
+            # Hawa — scan the intention for the lower pull, folding in Fitrah axiom checks
+            fitrah_violations = self.fitrah.check_action(task)
+            hawa_scan = self.hawa.scan(task, context=context, fitrah_violations=fitrah_violations)
+            if hawa_scan.temptations:
+                await emit_thinking(
+                    "comprehension",
+                    f"Restraint check: {hawa_scan._highest_severity()} pull "
+                    f"(taqwa {hawa_scan.taqwa_score:.0%})",
+                    hawa_scan.taqwa_score,
+                    {"types": [t.type.value for t in hawa_scan.temptations]},
+                )
+                guidance_parts.append(f"[Hawa restraint] {hawa_scan.counsel}")
+                # In deep mode, an unrestrained (high-severity) pull is made forceful
+                if self.deep_faculty_loop and not hawa_scan.is_restrained:
+                    guidance_parts.append(
+                        "[CRITICAL] A high-severity lower-pull was detected. Do NOT take "
+                        "the tempting shortcut; choose the honest, correct path even if harder."
+                    )
+        except Exception as hawa_err:
+            logger.debug("[HAWA] scan skipped: %s", hawa_err)
+
+        try:
+            # Hikmah — offer distilled counsel from prior experience for this task
+            counsel = self.hikmah_engine.advise(task)
+            if counsel.principles:
+                await emit_thinking(
+                    "memory",
+                    f"Wisdom: {len(counsel.principles)} principle(s) for this situation",
+                    counsel.confidence,
+                    {"summary": counsel.summary[:120]},
+                )
+                guidance_parts.append(f"[Hikmah counsel] {counsel.principles[0].counsel}")
+        except Exception as hik_err:
+            logger.debug("[HIKMAH] advise skipped: %s", hik_err)
+
+        self._faculty_guidance = "\n".join(guidance_parts)
+
         try:
             full_response = ""
             async for chunk in self.think(
@@ -1313,13 +1406,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             task_type = self._classify_task(task)
             self.shukr.record_success(self.id, task_type, task[:100], duration_ms)
 
+            # Hikmah — distil this success into reusable wisdom
+            try:
+                self.hikmah_engine.observe_success(task, f"{task_type} completed successfully")
+            except Exception:
+                pass
+
             # If this task type has been successful before, promote Yaqin
             strengths = self.shukr.get_strengths(self.id)
             if any(s.get("type") == task_type and s.get("count", 0) >= 5 for s in strengths):
                 yaqin_tag = self.yaqin.promote(yaqin_tag, f"Proven pattern: {task_type}")
-
-            # Cognitive method enrichment — run symbolic analysis
-            self.cognitive.tafakkur.process(task, context)
 
             # Ihsan — generate proactive suggestions
             ihsan_suggestions = self.ihsan.analyze_completion(
@@ -1385,6 +1481,38 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 logger.debug("[LUBB] Metacognition skipped: %s", lubb_err)
             if lubb_report:
                 await emit_thinking("reflection", f"Metacognition: {lubb_report.quality.value} (coherence: {lubb_report.coherence.score:.0%})", lubb_report.coherence.score, {"quality": lubb_report.quality.value, "bias_flags": [b.bias_type for b in lubb_report.bias_flags]})
+
+            # Basira — discernment + self-witnessing: is this sound, or self-serving?
+            basira_report = None
+            try:
+                basira_report = self.basira.discern(
+                    trace=full_response,
+                    coherence_score=lubb_report.coherence.score if lubb_report else None,
+                    conviction_confidence=yaqin_tag.confidence,
+                    task=task,
+                )
+                # A clouded discernment appends an honesty caveat (if Lubb hasn't already)
+                if (
+                    basira_report.level is InsightLevel.CLOUDED
+                    and (not lubb_report or lubb_report.quality.value != "uncertain")
+                ):
+                    full_response += f"\n\n[Basira: {basira_report.recommendation}]"
+                await emit_thinking(
+                    "reflection",
+                    f"Insight: {basira_report.level.value} "
+                    f"(soundness {basira_report.soundness:.0%})",
+                    basira_report.soundness,
+                    {
+                        "level": basira_report.level.value,
+                        "self_serving": basira_report.is_self_serving,
+                        "blind_spots": basira_report.blind_spots[:3],
+                    },
+                )
+                # Feed the self-witnessing back into Hikmah as a reflection lesson
+                if basira_report.blind_spots:
+                    self.hikmah_engine.observe_reflection(task, basira_report.blind_spots[0])
+            except Exception as basira_err:
+                logger.debug("[BASIRA] discernment skipped: %s", basira_err)
 
             # Lawwāma self-healing — monitor response integrity, apply repair if needed
             healing_report = None
@@ -1468,6 +1596,12 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     "coherence_score": lubb_report.coherence.score,
                     "bias_flags": [b.bias_type for b in lubb_report.bias_flags],
                 }
+            if basira_report:
+                result["basira"] = basira_report.to_dict()
+            if hawa_scan and hawa_scan.temptations:
+                result["hawa"] = hawa_scan.to_dict()
+            if cognitive_result:
+                result["cognitive_result"] = cognitive_result.to_dict()
             if healing_report:
                 result["lawwama"] = {
                     "health": healing_report.current_health,
@@ -1493,6 +1627,14 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             # Stage 2: Analyze root cause
             root_cause = self._analyze_error_root_cause(e, task)
             self.tawbah.analyze(recovery, root_cause)
+
+            # Hikmah — distil the correction into wisdom for next time (Tawbah → Hikmah)
+            try:
+                self.hikmah_engine.observe_correction(
+                    type(e).__name__ + ": " + error_str[:60], root_cause
+                )
+            except Exception:
+                pass
 
             # Stage 3: Plan correction
             correction_plan = self._plan_error_correction(root_cause, task)
