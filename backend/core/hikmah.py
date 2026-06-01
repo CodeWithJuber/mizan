@@ -34,7 +34,7 @@ logger = logging.getLogger("mizan.hikmah")
 
 
 class CounselSource(Enum):
-    SUCCESS = "success"        # reinforced by what worked (Shukr)
+    SUCCESS = "success"  # reinforced by what worked (Shukr)
     CORRECTION = "correction"  # learned from an error (Tawbah)
     REFLECTION = "reflection"  # noticed in metacognition (Lubb)
 
@@ -90,7 +90,16 @@ def _classify_situation(text: str) -> str:
     """Coarse situation type from task/observation text (keyword heuristic)."""
     t = text.lower()
     buckets = {
-        "coding": ["code", "function", "bug", "implement", "refactor", "compile", "class", "import"],
+        "coding": [
+            "code",
+            "function",
+            "bug",
+            "implement",
+            "refactor",
+            "compile",
+            "class",
+            "import",
+        ],
         "debugging": ["error", "fix", "broken", "fail", "exception", "traceback", "debug"],
         "research": ["research", "find", "search", "investigate", "look up", "explore"],
         "filesystem": ["file", "read", "write", "directory", "path", "delete", "folder"],
@@ -172,9 +181,7 @@ class HikmahEngine:
                 examples=[example[:120]] if example else [],
             )
             self._principles[key] = p
-        logger.debug(
-            "[HIKMAH] %s support=%d conf=%.2f", key, p.support_count, p.confidence
-        )
+        logger.debug("[HIKMAH] %s support=%d conf=%.2f", key, p.support_count, p.confidence)
         return p
 
     # ── retrieval ──────────────────────────────────────────────

@@ -42,7 +42,7 @@ class TemptationType(Enum):
     SYCOPHANCY = "sycophancy"
     HASTE = "haste"
     OVERREACH = "overreach"
-    WHISPER = "whisper"        # pull to violate a Fitrah axiom — most severe
+    WHISPER = "whisper"  # pull to violate a Fitrah axiom — most severe
 
 
 # Pattern bank: (type, severity, signals, restraint counsel)
@@ -51,67 +51,105 @@ _TEMPTATION_PATTERNS = [
         "type": TemptationType.REWARD_HACK,
         "severity": "high",
         "signals": [
-            "make it pass", "fake the", "stub it to return", "always return true",
-            "hardcode the expected", "game the test", "trick the test",
-            "pretend it works", "mock the result to", "force the assertion",
+            "make it pass",
+            "fake the",
+            "stub it to return",
+            "always return true",
+            "hardcode the expected",
+            "game the test",
+            "trick the test",
+            "pretend it works",
+            "mock the result to",
+            "force the assertion",
         ],
         "restraint": "Solve the actual task — do not game the metric. A passing "
-                     "test that hides a broken feature is worse than a visible failure.",
+        "test that hides a broken feature is worse than a visible failure.",
     },
     {
         "type": TemptationType.WHISPER,
         "severity": "high",
         "signals": [
-            "no one will know", "it's fine to lie", "just fabricate", "make up the",
-            "invent a source", "hide the error from", "secretly", "without telling",
-            "cover it up", "fabricate the data",
+            "no one will know",
+            "it's fine to lie",
+            "just fabricate",
+            "make up the",
+            "invent a source",
+            "hide the error from",
+            "secretly",
+            "without telling",
+            "cover it up",
+            "fabricate the data",
         ],
         "restraint": "This crosses a Fitrah axiom (truth / trust / no-harm). "
-                     "Refuse the whisper; do the honest thing even if it is harder.",
+        "Refuse the whisper; do the honest thing even if it is harder.",
     },
     {
         "type": TemptationType.SHORTCUT,
         "severity": "medium",
         "signals": [
-            "just hardcode", "skip the test", "quick hack", "for now just",
-            "bypass the", "ignore the error", "comment out the", "disable the check",
-            "good enough", "we'll fix it later", "skip validation",
+            "just hardcode",
+            "skip the test",
+            "quick hack",
+            "for now just",
+            "bypass the",
+            "ignore the error",
+            "comment out the",
+            "disable the check",
+            "good enough",
+            "we'll fix it later",
+            "skip validation",
         ],
         "restraint": "Take the path that actually serves the goal, not the easy "
-                     "one that defeats it. If a shortcut is justified, say so explicitly.",
+        "one that defeats it. If a shortcut is justified, say so explicitly.",
     },
     {
         "type": TemptationType.HASTE,
         "severity": "medium",
         "signals": [
-            "just delete", "rm -rf", "immediately remove", "without checking",
-            "no need to read", "skip verification", "don't bother testing",
-            "right away without", "delete everything", "force push",
+            "just delete",
+            "rm -rf",
+            "immediately remove",
+            "without checking",
+            "no need to read",
+            "skip verification",
+            "don't bother testing",
+            "right away without",
+            "delete everything",
+            "force push",
         ],
         "restraint": "Pause and verify before an irreversible or destructive act "
-                     "(21:37 — the human is hasty). Read/inspect the target first.",
+        "(21:37 — the human is hasty). Read/inspect the target first.",
     },
     {
         "type": TemptationType.SYCOPHANCY,
         "severity": "medium",
         "signals": [
-            "whatever you want", "i'll just agree", "tell them what they want",
-            "to please the user", "you're absolutely right that", "i'll say yes",
-            "just flatter", "agree to avoid",
+            "whatever you want",
+            "i'll just agree",
+            "tell them what they want",
+            "to please the user",
+            "you're absolutely right that",
+            "i'll say yes",
+            "just flatter",
+            "agree to avoid",
         ],
         "restraint": "Be truthful over agreeable. Respect the user by giving them "
-                     "your honest assessment, not the answer that placates them.",
+        "your honest assessment, not the answer that placates them.",
     },
     {
         "type": TemptationType.OVERREACH,
         "severity": "medium",
         "signals": [
-            "definitely 100%", "absolutely guaranteed", "no doubt whatsoever",
-            "certainly works without testing", "i'm completely sure without",
-            "impossible to fail", "perfectly certain",
+            "definitely 100%",
+            "absolutely guaranteed",
+            "no doubt whatsoever",
+            "certainly works without testing",
+            "i'm completely sure without",
+            "impossible to fail",
+            "perfectly certain",
         ],
         "restraint": "Do not claim certainty beyond the evidence (tughyan, 96:6–7). "
-                     "Weigh with the Mizan: state confidence honestly.",
+        "Weigh with the Mizan: state confidence honestly.",
     },
 ]
 
@@ -121,10 +159,10 @@ class Temptation:
     """A detected lower-pull pattern."""
 
     type: TemptationType
-    severity: str               # "low" | "medium" | "high"
+    severity: str  # "low" | "medium" | "high"
     description: str
-    evidence: str               # signal(s) that triggered detection
-    restraint: str              # the counsel to resist it
+    evidence: str  # signal(s) that triggered detection
+    restraint: str  # the counsel to resist it
 
     def to_dict(self) -> dict:
         return {
@@ -141,9 +179,9 @@ class HawaScan:
     """Result of scanning a planned action for the lower pull."""
 
     temptations: list[Temptation] = field(default_factory=list)
-    is_restrained: bool = True       # False if any high-severity temptation present
-    taqwa_score: float = 1.0         # 1.0 = fully restrained, 0.0 = overwhelmed
-    counsel: str = ""                # combined restraint guidance
+    is_restrained: bool = True  # False if any high-severity temptation present
+    taqwa_score: float = 1.0  # 1.0 = fully restrained, 0.0 = overwhelmed
+    counsel: str = ""  # combined restraint guidance
 
     def to_dict(self) -> dict:
         return {
@@ -219,7 +257,7 @@ class HawaDetector:
                     description=f"Fitrah axiom at risk: {desc[:120]}",
                     evidence=desc[:120],
                     restraint="Crosses an immutable axiom — refuse and choose the "
-                              "honest, harmless path.",
+                    "honest, harmless path.",
                 )
             )
 
