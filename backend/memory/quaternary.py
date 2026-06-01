@@ -81,7 +81,12 @@ def quaternary_to_bytes(quat: str) -> bytes:
 # 3 quaternary symbols = 1 codon (64 possible triplets → semantic categories)
 
 CODON_CATEGORIES = [
-    "data", "reference", "separator", "checksum", "metadata", "padding",
+    "data",
+    "reference",
+    "separator",
+    "checksum",
+    "metadata",
+    "padding",
 ]
 
 

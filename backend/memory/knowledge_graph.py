@@ -203,8 +203,7 @@ class KnowledgeGraph:
                 )
             else:
                 c.execute(
-                    "SELECT id, name, type, properties FROM kg_entities "
-                    "WHERE name LIKE ? LIMIT ?",
+                    "SELECT id, name, type, properties FROM kg_entities WHERE name LIKE ? LIMIT ?",
                     (f"%{word}%", limit),
                 )
             for row in c.fetchall():

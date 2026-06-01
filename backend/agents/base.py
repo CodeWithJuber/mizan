@@ -23,19 +23,43 @@ import subprocess
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
+from agents.perpetual_rotation import PerpetualRotation
+from agents.shura_council import ShuraCouncil
+
+# al-Insan faculty modules — discernment, restraint, wisdom
+from core.basira import BasiraEngine, InsightLevel
+from core.creativity import IbdaCreativityEngine
+from core.developmental_stages import DevelopmentalGate
+from core.dream_engine import ManamDreamEngine
+
+# QALB-7 architecture modules — core
+from core.fitrah import FitrahSystem
+from core.fuad import FuadEngine
+from core.hawa import HawaDetector
+from core.hikmah import HikmahEngine
 from core.ihsan import IhsanMode
+from core.imagination import TaswirImaginationEngine
+from core.lubb import LubbEngine
+from core.nafs_triad import NafsTriad
+
+# QALB-7 extension modules — parallel, healing, creativity, imagination, dreams
+from core.parallel_agents import QalbParallelScheduler, SkillAutomationTransfer
 from core.qalb import EmotionalState, QalbEngine
+from core.qalb_processor import QalbProcessor
 
 # Core Quranic systems integration
 from core.ruh_engine import RuhEngine
 from core.sabr import SabrEngine
+from core.self_healing import LawwamaHealingSystem
 from core.shukr import ShukrSystem
 from core.tawbah import TawbahProtocol
+
+# Living Memory + 24/7 Multi-Agent Collaboration
+from memory.living_memory import LivingMemorySystem
 from providers import create_provider, get_default_model, normalize_model_for_provider
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
@@ -45,31 +69,6 @@ from security.validation import (
     validate_command_safe,
     validate_url,
 )
-
-# QALB-7 architecture modules — core
-from core.fitrah import FitrahSystem
-from core.nafs_triad import NafsTriad
-from core.qalb_processor import QalbProcessor
-from core.lubb import LubbEngine
-from core.fuad import FuadEngine
-from core.developmental_stages import DevelopmentalGate
-
-# al-Insan faculty modules — discernment, restraint, wisdom
-from core.basira import BasiraEngine, InsightLevel
-from core.hawa import HawaDetector
-from core.hikmah import HikmahEngine
-
-# QALB-7 extension modules — parallel, healing, creativity, imagination, dreams
-from core.parallel_agents import QalbParallelScheduler, SkillAutomationTransfer
-from core.self_healing import LawwamaHealingSystem
-from core.imagination import TaswirImaginationEngine, ImaginationMode
-from core.creativity import IbdaCreativityEngine
-from core.dream_engine import ManamDreamEngine
-
-# Living Memory + 24/7 Multi-Agent Collaboration
-from memory.living_memory import LivingMemorySystem
-from agents.shura_council import ShuraCouncil
-from agents.perpetual_rotation import PerpetualRotation
 
 logger = logging.getLogger("mizan.agent")
 
@@ -165,36 +164,39 @@ class BaseAgent:
         self.cognitive = IjmaEngine()  # Cognitive reasoning methods
 
         # QALB-7 layer additions
-        self.fitrah = FitrahSystem()          # Innate ethical BIOS (immutable axioms)
-        self.nafs_triad = NafsTriad()         # Three-voice consciousness deliberation
-        self.qalb_processor = QalbProcessor() # Cardiac oscillation → LLM params
-        self.lubb = LubbEngine()              # Metacognition: compress, cohere, debias
-        self.fuad = FuadEngine()              # Conviction formation + confidence scoring
-        self.dev_gate = DevelopmentalGate()   # Capability gating by nafs_level
-        self._nafs_approach: str = ""         # Current dominant Nafs voice instruction
+        self.fitrah = FitrahSystem()  # Innate ethical BIOS (immutable axioms)
+        self.nafs_triad = NafsTriad()  # Three-voice consciousness deliberation
+        self.qalb_processor = QalbProcessor()  # Cardiac oscillation → LLM params
+        self.lubb = LubbEngine()  # Metacognition: compress, cohere, debias
+        self.fuad = FuadEngine()  # Conviction formation + confidence scoring
+        self.dev_gate = DevelopmentalGate()  # Capability gating by nafs_level
+        self._nafs_approach: str = ""  # Current dominant Nafs voice instruction
 
         # al-Insan faculties — make the human-model steer the loop
-        self.basira = BasiraEngine()          # Insight + self-witnessing (12:108, 75:14)
-        self.hawa = HawaDetector()            # Lower-pull / adversarial restraint (25:43, 79:40)
-        self.hikmah_engine = HikmahEngine()   # Wisdom distillation → applicable counsel (2:269)
-        self._faculty_guidance: str = ""      # Per-task guidance injected into the system prompt
+        self.basira = BasiraEngine()  # Insight + self-witnessing (12:108, 75:14)
+        self.hawa = HawaDetector()  # Lower-pull / adversarial restraint (25:43, 79:40)
+        self.hikmah_engine = HikmahEngine()  # Wisdom distillation → applicable counsel (2:269)
+        self._faculty_guidance: str = ""  # Per-task guidance injected into the system prompt
         # When enabled, faculties also actively gate/redirect (default: advisory only)
         self.deep_faculty_loop = os.getenv("DEEP_FACULTY_LOOP", "").lower() in (
-            "1", "true", "yes", "on",
+            "1",
+            "true",
+            "yes",
+            "on",
         )
 
         # QALB-7 extension modules
-        self.parallel_scheduler = QalbParallelScheduler()   # Multi-stream parallel processing
-        self.skill_automation = SkillAutomationTransfer()   # Cerebellar skill automation
-        self.self_healer = LawwamaHealingSystem()           # 4-level self-repair
-        self.imagination = TaswirImaginationEngine()        # Mental simulation + counterfactuals
-        self.creativity = IbdaCreativityEngine()            # 5-mode creativity engine
-        self.dream_engine = ManamDreamEngine()              # Offline memory consolidation
+        self.parallel_scheduler = QalbParallelScheduler()  # Multi-stream parallel processing
+        self.skill_automation = SkillAutomationTransfer()  # Cerebellar skill automation
+        self.self_healer = LawwamaHealingSystem()  # 4-level self-repair
+        self.imagination = TaswirImaginationEngine()  # Mental simulation + counterfactuals
+        self.creativity = IbdaCreativityEngine()  # 5-mode creativity engine
+        self.dream_engine = ManamDreamEngine()  # Offline memory consolidation
 
         # Living Memory + 24/7 Multi-Agent Collaboration
-        self.living_memory = LivingMemorySystem()            # Novelty-gated 4-level memory
-        self.shura_council = ShuraCouncil()                  # Multi-agent consultation
-        self.perpetual_rotation = PerpetualRotation()        # 24/7 shift rotation
+        self.living_memory = LivingMemorySystem()  # Novelty-gated 4-level memory
+        self.shura_council = ShuraCouncil()  # Multi-agent consultation
+        self.perpetual_rotation = PerpetualRotation()  # 24/7 shift rotation
 
         # Load Fitrah axioms into QCA Lawh Tier 1 (immutable moral foundation)
         for key, entry in self.fitrah.get_lawh_tier1_entries().items():
@@ -212,7 +214,9 @@ class BaseAgent:
         self.ai_client = create_provider(provider=provider_name, model=self.ai_model)
         if self.ai_client:
             # Normalize model ID for the active provider (e.g. Anthropic→OpenRouter format)
-            self.ai_model = normalize_model_for_provider(self.ai_model, self.ai_client.provider_name)
+            self.ai_model = normalize_model_for_provider(
+                self.ai_model, self.ai_client.provider_name
+            )
             # If no model set in config, use the provider's default
             if not config or "model" not in config:
                 self.ai_model = get_default_model(self.ai_client.provider_name)
@@ -499,15 +503,19 @@ class BaseAgent:
     def evolve_nafs(self):
         """Evolve Nafs level via DevelopmentalGate readiness check.
 
-        Delegates to dev_gate.check_upgrade_readiness() which uses
-        NafsProfile.EVOLUTION_THRESHOLDS (success_rate, min_tasks, min_hikmah).
+        Promotes through every stage the agent currently qualifies for, one
+        stage at a time (the DevelopmentalGate enforces sequential progression),
+        using NafsProfile.EVOLUTION_THRESHOLDS (success_rate, min_tasks, min_hikmah).
         """
         old_level = self.nafs_level
-        report = self.dev_gate.check_upgrade_readiness(self)
-        if report.ready:
+        report = None
+        while self.nafs_level < 7:
+            report = self.dev_gate.check_upgrade_readiness(self)
+            if not report.ready:
+                break
             self.nafs_level = report.target_level
 
-        if self.nafs_level != old_level:
+        if report is not None and self.nafs_level != old_level:
             logger.info(
                 "[NAFS] %s evolved: %s → %s (L%d→L%d, tazkiyah=%.2f)",
                 self.name,
@@ -617,9 +625,9 @@ class BaseAgent:
                 logger.error(f"[FIKR] Thinking error for {self.name}: {e}")
                 if "Connection" in err_str or "connect" in err_str.lower():
                     yield (
-                        f"Could not reach the AI provider. "
-                        f"Please check your API key and network connection in .env "
-                        f"(ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY)."
+                        "Could not reach the AI provider. "
+                        "Please check your API key and network connection in .env "
+                        "(ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY)."
                     )
                 else:
                     yield f"[Error: {err_str}]"
@@ -720,7 +728,8 @@ class BaseAgent:
                 # Furqan: Validate final output before delivery
                 if accumulated_text:
                     overall_confidence = self.fuad.compute_confidence(
-                        tool_count=tool_count, tool_results=tool_results,
+                        tool_count=tool_count,
+                        tool_results=tool_results,
                     )
                     furqan_report = self.qca.furqan.validate_and_express(
                         accumulated_text[:200],
@@ -782,9 +791,7 @@ class BaseAgent:
             return {"error": f"Input validation failed: {validation_error}"}
 
         # Fitrah — ethical axiom gate (immutable innate disposition check)
-        fitrah_violations = self.fitrah.check_action(
-            f"{tool_name} {json.dumps(params)[:200]}"
-        )
+        fitrah_violations = self.fitrah.check_action(f"{tool_name} {json.dumps(params)[:200]}")
         critical_violations = [v for v in fitrah_violations if v["severity"] == "critical"]
         if critical_violations:
             v = critical_violations[0]
@@ -895,8 +902,11 @@ class BaseAgent:
             sig = inspect.signature(fn)
             # Filter out 'self' for bound methods
             sig_params = [
-                p for name, p in sig.parameters.items()
-                if name != "self" and p.kind in (
+                p
+                for name, p in sig.parameters.items()
+                if name != "self"
+                and p.kind
+                in (
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                     inspect.Parameter.POSITIONAL_ONLY,
                     inspect.Parameter.KEYWORD_ONLY,
@@ -969,9 +979,7 @@ class BaseAgent:
                 if "ModuleNotFoundError" in type(e).__name__ or "No module named" in err_str:
                     module_name = self._extract_module_name(err_str)
                     if module_name and attempt < max_retries:
-                        logger.info(
-                            f"[TAWBAH] Auto-installing missing module: {module_name}"
-                        )
+                        logger.info(f"[TAWBAH] Auto-installing missing module: {module_name}")
                         install_result = await self._auto_install_package(module_name)
                         if install_result:
                             continue
@@ -981,7 +989,9 @@ class BaseAgent:
                 return {"error": str(e)}
 
         self._record_tool_failure(tool_name, params)
-        return {"error": f"Tool '{tool_name}' failed after {max_retries + 1} attempts: {last_error}"}
+        return {
+            "error": f"Tool '{tool_name}' failed after {max_retries + 1} attempts: {last_error}"
+        }
 
     def _record_tool_failure(self, tool_name: str, params: dict):
         """Record a tool failure for circuit breaker tracking."""
@@ -993,6 +1003,7 @@ class BaseAgent:
     def _extract_module_name(self, error_str: str) -> str | None:
         """Extract module name from a ModuleNotFoundError message."""
         import re
+
         match = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
         if match:
             # Get top-level module (e.g., 'paramiko.client' → 'paramiko')
@@ -1003,14 +1014,41 @@ class BaseAgent:
         """Auto-install a missing Python package via pip (Tawbah self-correction)."""
         # Safety: only allow known-safe packages
         safe_packages = {
-            "paramiko", "fabric", "httpx", "requests", "beautifulsoup4",
-            "bs4", "lxml", "pyyaml", "yaml", "toml", "markdown",
-            "pillow", "numpy", "pandas", "aiohttp", "aiofiles",
-            "jinja2", "python-dotenv", "rich", "click", "typer",
-            "pydantic", "fastapi", "uvicorn", "websockets",
-            "redis", "celery", "sqlalchemy", "alembic",
-            "boto3", "google-cloud-storage", "azure-storage-blob",
-            "docker", "kubernetes", "ansible",
+            "paramiko",
+            "fabric",
+            "httpx",
+            "requests",
+            "beautifulsoup4",
+            "bs4",
+            "lxml",
+            "pyyaml",
+            "yaml",
+            "toml",
+            "markdown",
+            "pillow",
+            "numpy",
+            "pandas",
+            "aiohttp",
+            "aiofiles",
+            "jinja2",
+            "python-dotenv",
+            "rich",
+            "click",
+            "typer",
+            "pydantic",
+            "fastapi",
+            "uvicorn",
+            "websockets",
+            "redis",
+            "celery",
+            "sqlalchemy",
+            "alembic",
+            "boto3",
+            "google-cloud-storage",
+            "azure-storage-blob",
+            "docker",
+            "kubernetes",
+            "ansible",
         }
         if package_name.lower() not in safe_packages:
             logger.warning(f"[TAWBAH] Package '{package_name}' not in safe list, skipping install")
@@ -1106,10 +1144,7 @@ class BaseAgent:
         if self.knowledge_graph and self.current_task:
             try:
                 # Extract key terms from task and query the graph
-                task_words = [
-                    w for w in self.current_task.split()
-                    if len(w) > 3 and w.isalpha()
-                ]
+                task_words = [w for w in self.current_task.split() if len(w) > 3 and w.isalpha()]
                 kg_facts = []
                 for word in task_words[:5]:
                     result = await self.knowledge_graph.query_entity(word)
@@ -1136,14 +1171,10 @@ class BaseAgent:
         custom_prompt = self.config.get("system_prompt", "") if self.config else ""
 
         # Nafs approach injection
-        nafs_approach_note = (
-            f"\n[Nafs: {self._nafs_approach}]" if self._nafs_approach else ""
-        )
+        nafs_approach_note = f"\n[Nafs: {self._nafs_approach}]" if self._nafs_approach else ""
 
         # al-Insan faculty guidance (Hawa restraint, Hikmah counsel, cognitive method)
-        faculty_note = (
-            f"\n{self._faculty_guidance}" if self._faculty_guidance else ""
-        )
+        faculty_note = f"\n{self._faculty_guidance}" if self._faculty_guidance else ""
 
         base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) AGI system.
 
@@ -1260,7 +1291,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self.current_task = task
         self.total_tasks += 1
 
-        async def emit_thinking(phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None) -> None:
+        async def emit_thinking(
+            phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None
+        ) -> None:
             if thinking_callback:
                 try:
                     await thinking_callback(phase, content, confidence, metadata or {})
@@ -1290,7 +1323,12 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 }
         self.ruh.consume_energy(self.id, complexity)
         ruh_state = self.ruh.get_state(self.id)
-        await emit_thinking("perception", f"Task complexity: {complexity} | Energy: {ruh_state.energy:.0f}%", 0.9, {"complexity": complexity, "energy": ruh_state.energy})
+        await emit_thinking(
+            "perception",
+            f"Task complexity: {complexity} | Energy: {ruh_state.energy:.0f}%",
+            0.9,
+            {"complexity": complexity, "energy": ruh_state.energy},
+        )
 
         # NafsTriad — inner voices deliberate → dominant voice sets behavioral approach
         nafs_decision = self.nafs_triad.deliberate(task, self.nafs_level, complexity)
@@ -1302,18 +1340,33 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             nafs_decision.dissent_ratio,
             task[:60],
         )
-        await emit_thinking("comprehension", f"Inner deliberation: {nafs_decision.dominant_voice} voice dominant (confidence: {nafs_decision.confidence:.0%})", nafs_decision.confidence, {"voice": nafs_decision.dominant_voice, "approach": nafs_decision.approach})
+        await emit_thinking(
+            "comprehension",
+            f"Inner deliberation: {nafs_decision.dominant_voice} voice dominant (confidence: {nafs_decision.confidence:.0%})",
+            nafs_decision.confidence,
+            {"voice": nafs_decision.dominant_voice, "approach": nafs_decision.approach},
+        )
 
         # Qalb — detect user emotional state from task text
         qalb_reading = self.qalb.analyze(task)
-        await emit_thinking("perception", f"Emotional context: {qalb_reading.state if hasattr(qalb_reading, 'state') else 'neutral'}", 0.8, {"qalb": qalb_reading.to_dict() if hasattr(qalb_reading, 'to_dict') else {}})
+        await emit_thinking(
+            "perception",
+            f"Emotional context: {qalb_reading.state if hasattr(qalb_reading, 'state') else 'neutral'}",
+            0.8,
+            {"qalb": qalb_reading.to_dict() if hasattr(qalb_reading, "to_dict") else {}},
+        )
 
         # Cognitive method selection — route to best reasoning strategy
         cognitive_method = select_method(task, context)
         logger.info(
             "[COGNITIVE] Selected method %s for task: %s", cognitive_method.value, task[:80]
         )
-        await emit_thinking("reasoning", f"Reasoning strategy: {cognitive_method.value}", 0.85, {"method": cognitive_method.value})
+        await emit_thinking(
+            "reasoning",
+            f"Reasoning strategy: {cognitive_method.value}",
+            0.85,
+            {"method": cognitive_method.value},
+        )
 
         # ── al-Insan pre-action faculties: run the method, restrain hawa, recall hikmah ──
         # These compose `self._faculty_guidance`, which _build_system_prompt injects so
@@ -1400,7 +1453,12 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             yaqin_tag = self.yaqin.tag_inference(
                 full_response[:200], confidence=base_confidence, source="agentic_reasoning"
             )
-            await emit_thinking("evaluation", f"Certainty: {yaqin_tag.level} ({yaqin_tag.confidence:.0%})", yaqin_tag.confidence, {"level": yaqin_tag.level, "source": "agentic_reasoning"})
+            await emit_thinking(
+                "evaluation",
+                f"Certainty: {yaqin_tag.level} ({yaqin_tag.confidence:.0%})",
+                yaqin_tag.confidence,
+                {"level": yaqin_tag.level, "source": "agentic_reasoning"},
+            )
 
             # Shukr — reinforce this success pattern
             task_type = self._classify_task(task)
@@ -1451,7 +1509,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 try:
                     task_type = self._classify_task(task)
                     await self.knowledge_graph.add_entity(
-                        task[:100], entity_type="task",
+                        task[:100],
+                        entity_type="task",
                         properties={"agent": self.name, "type": task_type, "success": True},
                     )
                     # Link task to tools used (from Lawh memory)
@@ -1459,8 +1518,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                         if key.startswith("TOOL:"):
                             tool_name = key.split(":")[1]
                             await self.knowledge_graph.add_relationship(
-                                task[:100], tool_name,
-                                rel_type="used_tool", confidence=yaqin_tag.confidence,
+                                task[:100],
+                                tool_name,
+                                rel_type="used_tool",
+                                confidence=yaqin_tag.confidence,
                             )
                 except Exception as e:
                     logger.debug("[KG] Entity extraction error: %s", e)
@@ -1480,7 +1541,15 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             except Exception as lubb_err:
                 logger.debug("[LUBB] Metacognition skipped: %s", lubb_err)
             if lubb_report:
-                await emit_thinking("reflection", f"Metacognition: {lubb_report.quality.value} (coherence: {lubb_report.coherence.score:.0%})", lubb_report.coherence.score, {"quality": lubb_report.quality.value, "bias_flags": [b.bias_type for b in lubb_report.bias_flags]})
+                await emit_thinking(
+                    "reflection",
+                    f"Metacognition: {lubb_report.quality.value} (coherence: {lubb_report.coherence.score:.0%})",
+                    lubb_report.coherence.score,
+                    {
+                        "quality": lubb_report.quality.value,
+                        "bias_flags": [b.bias_type for b in lubb_report.bias_flags],
+                    },
+                )
 
             # Basira — discernment + self-witnessing: is this sound, or self-serving?
             basira_report = None
@@ -1492,9 +1561,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     task=task,
                 )
                 # A clouded discernment appends an honesty caveat (if Lubb hasn't already)
-                if (
-                    basira_report.level is InsightLevel.CLOUDED
-                    and (not lubb_report or lubb_report.quality.value != "uncertain")
+                if basira_report.level is InsightLevel.CLOUDED and (
+                    not lubb_report or lubb_report.quality.value != "uncertain"
                 ):
                     full_response += f"\n\n[Basira: {basira_report.recommendation}]"
                 await emit_thinking(
@@ -1526,7 +1594,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     conviction_score=conviction_score,
                 )
                 if healing_report.repair_needed.value > 0:
-                    from core.self_healing import RepairLevel
                     full_response, repair_record = self.self_healer.repair(
                         level=healing_report.repair_needed,
                         response=full_response,
@@ -1545,10 +1612,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             try:
                 self.dream_engine.add_memory(
                     content=f"Task: {task[:150]} | Response: {full_response[:150]}",
-                    emotional_intensity=abs(qalb_reading.valence) if hasattr(qalb_reading, "valence") else 0.3,
+                    emotional_intensity=abs(qalb_reading.valence)
+                    if hasattr(qalb_reading, "valence")
+                    else 0.3,
                     novelty=healing_report.hallucination_score if healing_report else 0.3,
                     goal_relevance=0.7,
-                    prediction_error=1.0 - (healing_report.current_health if healing_report else 0.8),
+                    prediction_error=1.0
+                    - (healing_report.current_health if healing_report else 0.8),
                 )
             except Exception:
                 pass
@@ -1565,13 +1635,20 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 if gate_result.decision.value != "ignore":
                     logger.debug(
                         "[LIVING-MEM] %s: %s (sim=%.2f imp=%.2f)",
-                        gate_result.decision.value, gate_result.delta_info[:60],
-                        gate_result.similarity, gate_result.importance,
+                        gate_result.decision.value,
+                        gate_result.delta_info[:60],
+                        gate_result.similarity,
+                        gate_result.importance,
                     )
             except Exception:
                 pass
 
-            await emit_thinking("generation", f"Response formed ({len(full_response)} chars)", 0.9, {"length": len(full_response)})
+            await emit_thinking(
+                "generation",
+                f"Response formed ({len(full_response)} chars)",
+                0.9,
+                {"length": len(full_response)},
+            )
 
             self.evolve_nafs()
             self.state = "resting"
@@ -1638,17 +1715,20 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             # Stage 3: Plan correction
             correction_plan = self._plan_error_correction(root_cause, task)
-            self.tawbah.plan(recovery, correction_plan.get("description", "Retry with adjusted approach"))
+            self.tawbah.plan(
+                recovery, correction_plan.get("description", "Retry with adjusted approach")
+            )
 
             # Stage 4: Apply fix (retry with correction if possible)
             retry_result = None
-            can_retry = (
-                recovery.attempts < self.tawbah.MAX_ATTEMPTS
-                and correction_plan.get("retryable", False)
+            can_retry = recovery.attempts < self.tawbah.MAX_ATTEMPTS and correction_plan.get(
+                "retryable", False
             )
             if can_retry:
                 try:
-                    self.tawbah.apply(recovery, f"Retrying with correction: {correction_plan.get('fix', '')}")
+                    self.tawbah.apply(
+                        recovery, f"Retrying with correction: {correction_plan.get('fix', '')}"
+                    )
                     # Attempt corrected execution
                     corrected_response = ""
                     async for chunk in self.think(
@@ -1665,7 +1745,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
                     if corrected_response:
                         # Stage 5: Verify success
-                        self.tawbah.verify(recovery, True, f"Recovered via: {correction_plan.get('fix', '')}")
+                        self.tawbah.verify(
+                            recovery, True, f"Recovered via: {correction_plan.get('fix', '')}"
+                        )
                         self.success_count += 1
                         retry_result = {
                             "success": True,
@@ -1680,7 +1762,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     self.tawbah.verify(recovery, False, str(retry_error))
 
             if retry_result:
-                await self._tafakkur(task, retry_result.get("result", ""), True, retry_result["duration_ms"])
+                await self._tafakkur(
+                    task, retry_result.get("result", ""), True, retry_result["duration_ms"]
+                )
                 self.state = "resting"
                 self.current_task = None
                 return retry_result
@@ -1723,13 +1807,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self.learning_iterations += 1
         task_type = self._classify_task(task)
 
-        pattern = {
-            "task_type": task_type,
-            "success": success,
-            "duration_ms": duration_ms,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
         if success and duration_ms < 5000:
             pattern_text = f"Task type '{task_type}' completed in {duration_ms:.0f}ms"
             self.hikmah.append(
@@ -1770,21 +1847,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     logger.debug("[HIKMAH] Failed to persist failure: %s", e)
 
     def _classify_task(self, task: str) -> str:
-        """Classify task using cognitive method routing + keyword fallback."""
-        from qca.cognitive_methods import CognitiveMethod
-        method = select_method(task, {})
-        method_map = {
-            CognitiveMethod.TAFAKKUR: "analysis",
-            CognitiveMethod.TADABBUR: "research",
-            CognitiveMethod.ISTIDLAL: "coding",
-            CognitiveMethod.QIYAS: "analysis",
-            CognitiveMethod.IJMA: "general",
-        }
-        mapped = method_map.get(method)
-        if mapped and mapped != "general":
-            return mapped
-
-        # Keyword fallback for domain-specific routing
+        """Classify a task into a domain category from keyword signals."""
         task_lower = task.lower()
         if any(w in task_lower for w in ["code", "script", "python", "js"]):
             return "coding"
@@ -1792,6 +1855,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             return "research"
         if any(w in task_lower for w in ["email", "message", "send"]):
             return "communication"
+        if any(w in task_lower for w in ["analyze", "analysis", "data"]):
+            return "analysis"
         if any(w in task_lower for w in ["file", "read", "write", "save"]):
             return "file_management"
         return "general"
@@ -2128,14 +2193,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             if self.memory:
                 try:
                     asyncio.get_event_loop().create_task(
-                        self.memory.save_agent_profile({
-                            "id": new_agent.id,
-                            "name": new_agent.name,
-                            "role": agent_type,
-                            "nafs_level": 1,
-                            "capabilities": list(new_agent.tools.keys()),
-                            "config": self.config or {},
-                        })
+                        self.memory.save_agent_profile(
+                            {
+                                "id": new_agent.id,
+                                "name": new_agent.name,
+                                "role": agent_type,
+                                "nafs_level": 1,
+                                "capabilities": list(new_agent.tools.keys()),
+                                "config": self.config or {},
+                            }
+                        )
                     )
                 except Exception:
                     pass
@@ -2178,11 +2245,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         import re
 
         # Validate skill name
-        if not re.match(r'^[a-z][a-z0-9_]*$', name):
-            return json.dumps({
-                "success": False,
-                "error": "Skill name must be snake_case (lowercase letters, digits, underscores)",
-            })
+        if not re.match(r"^[a-z][a-z0-9_]*$", name):
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Skill name must be snake_case (lowercase letters, digits, underscores)",
+                }
+            )
 
         skills_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills", "builtin")
         skill_path = os.path.join(skills_dir, f"{name}.py")
@@ -2190,29 +2259,35 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         if code:
             # Mode 1: Full code provided — validate it defines a SkillBase subclass
             if "SkillBase" not in code:
-                return json.dumps({
-                    "success": False,
-                    "error": "Skill code must define a class that inherits from SkillBase. "
-                    "Import with: from ..base import SkillBase, SkillManifest",
-                })
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "Skill code must define a class that inherits from SkillBase. "
+                        "Import with: from ..base import SkillBase, SkillManifest",
+                    }
+                )
             skill_code = code
         elif tools:
             # Mode 2: Auto-generate skill from tool definitions
             skill_code = self._generate_skill_code(name, description, tools)
         else:
-            return json.dumps({
-                "success": False,
-                "error": "Either 'code' (full Python) or 'tools' (dict of tool definitions) required",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Either 'code' (full Python) or 'tools' (dict of tool definitions) required",
+                }
+            )
 
         # Security check: block dangerous patterns in skill code
         dangerous = ["os.system", "subprocess.call", "eval(", "exec(", "__import__"]
         for pattern in dangerous:
             if pattern in skill_code and "subprocess.run" not in skill_code:
-                return json.dumps({
-                    "success": False,
-                    "error": f"Blocked dangerous pattern in skill code: {pattern}",
-                })
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Blocked dangerous pattern in skill code: {pattern}",
+                    }
+                )
 
         try:
             # Write skill file
@@ -2229,32 +2304,38 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 self.skill_registry._load_skill_module(module_path)
 
                 logger.info(f"[KHALQ] Dynamic skill created: {name}")
-                return json.dumps({
-                    "success": True,
-                    "skill_name": name,
-                    "path": skill_path,
-                    "message": f"Skill '{name}' created and registered. Its tools are now available.",
-                    "tools": list(self.skill_registry.get_skill(name).get_tools().keys())
-                    if self.skill_registry.get_skill(name)
-                    else [],
-                })
+                return json.dumps(
+                    {
+                        "success": True,
+                        "skill_name": name,
+                        "path": skill_path,
+                        "message": f"Skill '{name}' created and registered. Its tools are now available.",
+                        "tools": list(self.skill_registry.get_skill(name).get_tools().keys())
+                        if self.skill_registry.get_skill(name)
+                        else [],
+                    }
+                )
             else:
-                return json.dumps({
-                    "success": True,
-                    "skill_name": name,
-                    "path": skill_path,
-                    "message": f"Skill '{name}' saved but registry not available. Will load on restart.",
-                })
+                return json.dumps(
+                    {
+                        "success": True,
+                        "skill_name": name,
+                        "path": skill_path,
+                        "message": f"Skill '{name}' saved but registry not available. Will load on restart.",
+                    }
+                )
 
         except Exception as e:
             # Cleanup on failure
             if os.path.exists(skill_path):
                 os.unlink(skill_path)
             logger.error(f"[KHALQ] Skill creation failed: {e}")
-            return json.dumps({
-                "success": False,
-                "error": str(e),
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
 
     def _generate_skill_code(self, name: str, description: str, tools: dict) -> str:
         """Auto-generate a skill class from simple tool definitions."""
@@ -2273,8 +2354,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             safe_name = tool_name.replace("-", "_")
             tool_registrations.append(f'            "{tool_name}": self.{safe_name},')
             tool_methods.append(
-                f'    async def {safe_name}(self, params: dict) -> dict:\n'
-                f'        """{ desc }"""\n'
+                f"    async def {safe_name}(self, params: dict) -> dict:\n"
+                f'        """{desc}"""\n'
                 f'        return {{"executed": "{tool_name}", "params": params}}'
             )
             schema_props = {
@@ -2469,9 +2550,7 @@ class {class_name}(SkillBase):
                 pass  # Fall through to standard recall
 
         try:
-            memories = await self.memory.recall(
-                query, memory_type or None, limit=min(limit, 20)
-            )
+            memories = await self.memory.recall(query, memory_type or None, limit=min(limit, 20))
         except Exception as exc:
             return f"Memory recall failed: {exc}"
         if not memories:
@@ -2528,7 +2607,9 @@ class {class_name}(SkillBase):
 
         logger.info(
             "[FEDERATION] %s delegating to %s: %s",
-            self.name, target_agent.name, task[:80],
+            self.name,
+            target_agent.name,
+            task[:80],
         )
 
         try:

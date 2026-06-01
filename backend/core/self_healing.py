@@ -26,21 +26,20 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.self_healing")
 
 # Health metric parameters
 H_BASELINE = 1.0
-LAMBDA_HALLUCINATION = 0.4   # weight: hallucination error
-LAMBDA_COHERENCE = 0.3       # weight: coherence violation
-LAMBDA_CONTRADICTION = 0.2   # weight: self-contradiction
-LAMBDA_DRIFT = 0.1           # weight: goal drift
+LAMBDA_HALLUCINATION = 0.4  # weight: hallucination error
+LAMBDA_COHERENCE = 0.3  # weight: coherence violation
+LAMBDA_CONTRADICTION = 0.2  # weight: self-contradiction
+LAMBDA_DRIFT = 0.1  # weight: goal drift
 
-MU_L1 = 0.1   # health restored per L1 repair
-MU_L2 = 0.2   # health restored per L2 repair
+MU_L1 = 0.1  # health restored per L1 repair
+MU_L2 = 0.2  # health restored per L2 repair
 MU_L3 = 0.35  # health restored per L3 repair
-MU_L4 = 0.6   # health restored per L4 repair
+MU_L4 = 0.6  # health restored per L4 repair
 
 # Synaptic homeostasis
 ETA = 0.1  # homeostatic learning rate
@@ -54,10 +53,10 @@ L4_THRESHOLD = 0.40
 
 class RepairLevel(Enum):
     NONE = 0
-    L1_PROOFREADING = 1       # Immediate: token-level
-    L2_MISMATCH = 2           # Batch: paragraph-level
-    L3_EXCISION = 3           # Structural: chain replacement
-    L4_REGENERATION = 4       # Nuclear: full restart
+    L1_PROOFREADING = 1  # Immediate: token-level
+    L2_MISMATCH = 2  # Batch: paragraph-level
+    L3_EXCISION = 3  # Structural: chain replacement
+    L4_REGENERATION = 4  # Nuclear: full restart
 
 
 class ErrorType(Enum):
@@ -71,8 +70,8 @@ class ErrorType(Enum):
 @dataclass
 class HealthError:
     error_type: ErrorType
-    severity: float          # 0.0 - 1.0
-    location: str            # where in the reasoning chain
+    severity: float  # 0.0 - 1.0
+    location: str  # where in the reasoning chain
     description: str
     timestamp: float = field(default_factory=time.time)
 
@@ -90,6 +89,7 @@ class RepairRecord:
 @dataclass
 class ImmuneMemory:
     """Records successful repairs for adaptive future healing."""
+
     error_pattern: str
     repair_strategy: RepairLevel
     success_rate: float
@@ -156,17 +156,11 @@ class LawwamaHealingSystem:
         errors = self._detect_errors(response, task, hallucination_score)
 
         # Update health metric
-        error_penalty = sum(
-            self._lambda(e.error_type) * e.severity for e in errors
-        )
+        error_penalty = sum(self._lambda(e.error_type) * e.severity for e in errors)
         repair_benefit = sum(
-            self._mu(r.level) for r in self.repair_history[-5:]
-            if time.time() - r.timestamp < 60
+            self._mu(r.level) for r in self.repair_history[-5:] if time.time() - r.timestamp < 60
         )
-        self.health = max(
-            0.0,
-            min(H_BASELINE, H_BASELINE - error_penalty + repair_benefit)
-        )
+        self.health = max(0.0, min(H_BASELINE, H_BASELINE - error_penalty + repair_benefit))
 
         # Record errors
         self.error_history.extend(errors)
@@ -182,7 +176,11 @@ class LawwamaHealingSystem:
 
         logger.debug(
             "[LAWWAMA] cycle=%d health=%.3f h_score=%.3f errors=%d repair=%s",
-            self._cycle, self.health, hallucination_score, len(errors), repair_needed.name,
+            self._cycle,
+            self.health,
+            hallucination_score,
+            len(errors),
+            repair_needed.name,
         )
 
         return HealthReport(
@@ -238,9 +236,7 @@ class LawwamaHealingSystem:
         if pattern in self.immune_memory:
             mem = self.immune_memory[pattern]
             mem.invocation_count += 1
-            mem.success_rate = (
-                0.8 * mem.success_rate + 0.2 * (1.0 if record.success else 0.0)
-            )
+            mem.success_rate = 0.8 * mem.success_rate + 0.2 * (1.0 if record.success else 0.0)
         else:
             self.immune_memory[pattern] = ImmuneMemory(
                 error_pattern=pattern,
@@ -251,7 +247,9 @@ class LawwamaHealingSystem:
 
         logger.info(
             "[REPAIR] L%d applied: %s → health=%.3f",
-            level.value, action[:80], self.health,
+            level.value,
+            action[:80],
+            self.health,
         )
         return repaired, record
 
@@ -307,7 +305,11 @@ class LawwamaHealingSystem:
         paragraphs = response.split("\n\n")
         # Keep first and last paragraphs (intro + conclusion), rebuild middle
         if len(paragraphs) > 2:
-            rebuilt = paragraphs[0] + "\n\n[Reasoning chain rebuilt due to coherence errors]\n\n" + paragraphs[-1]
+            rebuilt = (
+                paragraphs[0]
+                + "\n\n[Reasoning chain rebuilt due to coherence errors]\n\n"
+                + paragraphs[-1]
+            )
         else:
             rebuilt = response
         action = "L3 structural excision: middle chain rebuilt"
@@ -331,12 +333,14 @@ class LawwamaHealingSystem:
 
         # Hallucination detection
         if hallucination_score > 0.5:
-            errors.append(HealthError(
-                error_type=ErrorType.HALLUCINATION,
-                severity=hallucination_score,
-                location="response",
-                description=f"Hallucination score {hallucination_score:.2f} exceeds threshold",
-            ))
+            errors.append(
+                HealthError(
+                    error_type=ErrorType.HALLUCINATION,
+                    severity=hallucination_score,
+                    location="response",
+                    description=f"Hallucination score {hallucination_score:.2f} exceeds threshold",
+                )
+            )
 
         # Contradiction markers
         contradiction_pairs = [
@@ -346,26 +350,33 @@ class LawwamaHealingSystem:
         ]
         for pos, neg in contradiction_pairs:
             if pos in response_lower and neg in response_lower:
-                errors.append(HealthError(
-                    error_type=ErrorType.SELF_CONTRADICTION,
-                    severity=0.6,
-                    location="response",
-                    description=f"Contradiction detected: '{pos}' vs '{neg}'",
-                ))
+                errors.append(
+                    HealthError(
+                        error_type=ErrorType.SELF_CONTRADICTION,
+                        severity=0.6,
+                        location="response",
+                        description=f"Contradiction detected: '{pos}' vs '{neg}'",
+                    )
+                )
 
         # Overclaiming (epistemic violation)
         overclaim_markers = [
-            "100% certain", "absolutely guaranteed", "impossible to fail",
-            "perfect solution", "I am certain"
+            "100% certain",
+            "absolutely guaranteed",
+            "impossible to fail",
+            "perfect solution",
+            "I am certain",
         ]
         for marker in overclaim_markers:
             if marker.lower() in response_lower:
-                errors.append(HealthError(
-                    error_type=ErrorType.COHERENCE_VIOLATION,
-                    severity=0.4,
-                    location="response",
-                    description=f"Overclaiming detected: '{marker}'",
-                ))
+                errors.append(
+                    HealthError(
+                        error_type=ErrorType.COHERENCE_VIOLATION,
+                        severity=0.4,
+                        location="response",
+                        description=f"Overclaiming detected: '{marker}'",
+                    )
+                )
                 break
 
         # Goal drift — response doesn't address task
@@ -373,12 +384,14 @@ class LawwamaHealingSystem:
         response_words = set(response_lower.split())
         overlap = len(task_keywords & response_words) / max(len(task_keywords), 1)
         if overlap < 0.2:
-            errors.append(HealthError(
-                error_type=ErrorType.GOAL_DRIFT,
-                severity=0.3 + 0.3 * (1 - overlap),
-                location="response",
-                description=f"Goal drift: only {overlap:.1%} task keyword coverage",
-            ))
+            errors.append(
+                HealthError(
+                    error_type=ErrorType.GOAL_DRIFT,
+                    severity=0.3 + 0.3 * (1 - overlap),
+                    location="response",
+                    description=f"Goal drift: only {overlap:.1%} task keyword coverage",
+                )
+            )
 
         return errors
 
@@ -405,7 +418,7 @@ class LawwamaHealingSystem:
             self.synaptic_weights[skill_key] = 1.0
         w = self.synaptic_weights[skill_key]
         ratio = self.target_activity / max(actual_activity, 0.01)
-        self.synaptic_weights[skill_key] = min(2.0, max(0.1, w * (ratio ** ETA)))
+        self.synaptic_weights[skill_key] = min(2.0, max(0.1, w * (ratio**ETA)))
 
     @staticmethod
     def _lambda(error_type: ErrorType) -> float:

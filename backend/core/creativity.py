@@ -34,16 +34,14 @@ Creative oscillation:
 import logging
 import math
 import random
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.creativity")
 
 # Creativity landscape weights
-ALPHA_NOVELTY = 0.4     # novelty importance
-BETA_UTILITY = 0.5      # utility importance
+ALPHA_NOVELTY = 0.4  # novelty importance
+BETA_UTILITY = 0.5  # utility importance
 # Feasibility has implicit weight: 1 - α - β = 0.1 (or computed as multiplier)
 
 # Creative oscillation period (interactions)
@@ -58,18 +56,19 @@ SELECTION_PRESSURE = 0.7
 
 
 class CreationMode(Enum):
-    BADI = "badi"        # Radical origination (Badī')
-    KHALQ = "khalq"      # Measured evolutionary creation
-    JAL = "jal"          # Recombination / analogy (Jaʿl)
-    SUNW = "sunw"        # Refinement / polish (Ṣunʿ)
-    TASWIR = "taswir"    # Visualization (Taṣwīr)
+    BADI = "badi"  # Radical origination (Badī')
+    KHALQ = "khalq"  # Measured evolutionary creation
+    JAL = "jal"  # Recombination / analogy (Jaʿl)
+    SUNW = "sunw"  # Refinement / polish (Ṣunʿ)
+    TASWIR = "taswir"  # Visualization (Taṣwīr)
 
 
 @dataclass
 class ConceptVector:
     """A concept in the creativity latent space."""
+
     label: str
-    features: dict[str, float]   # semantic feature dimensions
+    features: dict[str, float]  # semantic feature dimensions
     novelty_score: float = 0.0
     utility_score: float = 0.0
     feasibility_score: float = 0.0
@@ -77,8 +76,8 @@ class ConceptVector:
     def landscape_score(self, alpha: float = ALPHA_NOVELTY, beta: float = BETA_UTILITY) -> float:
         """Ψ(z) = U^β × N^α × F"""
         return (
-            (self.utility_score ** beta)
-            * (self.novelty_score ** alpha)
+            (self.utility_score**beta)
+            * (self.novelty_score**alpha)
             * max(0.01, self.feasibility_score)
         )
 
@@ -86,9 +85,10 @@ class ConceptVector:
 @dataclass
 class BisociationResult:
     """Result of bisociation (Koestler): two matrices of thought intersect."""
+
     concept_a: str
     concept_b: str
-    intersection: str   # the "aha" moment
+    intersection: str  # the "aha" moment
     novelty: float
     metaphor: str
 
@@ -180,8 +180,11 @@ class IbdaCreativityEngine:
 
         logger.debug(
             "[IBDA] mode=%s Ψ=%.3f N=%.3f U=%.3f F=%.3f",
-            mode.value, result.landscape_score, result.novelty,
-            result.utility, result.feasibility,
+            mode.value,
+            result.landscape_score,
+            result.novelty,
+            result.utility,
+            result.feasibility,
         )
 
         return result
@@ -200,9 +203,7 @@ class IbdaCreativityEngine:
         modes = list(CreationMode)
         return modes[mode_idx]
 
-    def _build_concept_vector(
-        self, task: str, fragments: list[str]
-    ) -> ConceptVector:
+    def _build_concept_vector(self, task: str, fragments: list[str]) -> ConceptVector:
         """Build feature vector for task in concept space."""
         words = task.lower().split()
         features = {
@@ -210,7 +211,9 @@ class IbdaCreativityEngine:
             "novelty_seed": (hash(task) % 1000) / 1000.0,
             "fragment_richness": min(1.0, len(fragments) / 5.0),
             "question_mark": 1.0 if "?" in task else 0.0,
-            "imperative": 1.0 if words[0] in {"create", "build", "design", "make", "write"} else 0.0,
+            "imperative": 1.0
+            if words[0] in {"create", "build", "design", "make", "write"}
+            else 0.0,
         }
         return ConceptVector(label=task[:50], features=features)
 
@@ -232,7 +235,11 @@ class IbdaCreativityEngine:
         # Radical idea generation: invert standard approaches
         inversions = self._generate_inversions(task)
         primary_idea = inversions[0] if inversions else f"Radical reframe of: {task[:80]}"
-        elaboration = " | ".join(inversions[:3]) if inversions else "No known solutions — pure origination territory"
+        elaboration = (
+            " | ".join(inversions[:3])
+            if inversions
+            else "No known solutions — pure origination territory"
+        )
 
         bisociations = self._find_bisociations(task, n=2)
 
@@ -264,9 +271,9 @@ class IbdaCreativityEngine:
         # Generate initial population
         population = [self._generate_candidate(task, constraints, mutation=MUTATION_RATE)]
         for _ in range(2):
-            population.append(self._generate_candidate(
-                task, constraints, mutation=MUTATION_RATE * 1.5
-            ))
+            population.append(
+                self._generate_candidate(task, constraints, mutation=MUTATION_RATE * 1.5)
+            )
 
         best = population[0]
         best_score = 0.0
@@ -274,19 +281,14 @@ class IbdaCreativityEngine:
 
         for gen in range(generations):
             # Score and select
-            scored = [
-                (c, self._score_candidate(c, task, constraints))
-                for c in population
-            ]
+            scored = [(c, self._score_candidate(c, task, constraints)) for c in population]
             scored.sort(key=lambda x: x[1], reverse=True)
             best, best_score = scored[0]
 
             # Mutate survivors into next generation
-            survivors = [c for c, _ in scored[:max(1, len(scored) // 2)]]
+            survivors = [c for c, _ in scored[: max(1, len(scored) // 2)]]
             mutation = MUTATION_RATE * (1.0 - gen / generations * SELECTION_PRESSURE)
-            population = survivors + [
-                self._mutate_candidate(s, mutation) for s in survivors
-            ]
+            population = survivors + [self._mutate_candidate(s, mutation) for s in survivors]
             iterations = gen + 1
 
         bisociations = self._find_bisociations(task, n=1)
@@ -389,9 +391,7 @@ class IbdaCreativityEngine:
             ),
         )
 
-    def _taswir_visualization(
-        self, task: str, concept: ConceptVector
-    ) -> CreativeOutput:
+    def _taswir_visualization(self, task: str, concept: ConceptVector) -> CreativeOutput:
         """
         Taṣwīr: Creative visualization — generates a rich mental image.
         Delegates to imagination engine in full integration.
@@ -430,20 +430,21 @@ class IbdaCreativityEngine:
         ]
 
         results = []
-        task_lower = task.lower()
 
         for domain_a, domain_b in domain_pairs[:n]:
             intersection = f"The {domain_a} metaphor applied to {task[:40]}: {domain_b} lens"
             metaphor = f"Like {domain_a} processes, this task involves {domain_b} principles"
             novelty = 0.6 + (hash(domain_a + task) % 30) / 100.0
 
-            results.append(BisociationResult(
-                concept_a=domain_a,
-                concept_b=domain_b,
-                intersection=intersection,
-                novelty=round(min(0.95, novelty), 3),
-                metaphor=metaphor,
-            ))
+            results.append(
+                BisociationResult(
+                    concept_a=domain_a,
+                    concept_b=domain_b,
+                    intersection=intersection,
+                    novelty=round(min(0.95, novelty), 3),
+                    metaphor=metaphor,
+                )
+            )
 
         return results
 
@@ -452,8 +453,8 @@ class IbdaCreativityEngine:
         words_a = set(concept_a.lower().split()[:5])
         words_b = set(concept_b.lower().split()[:5])
         shared = words_a & words_b
-        unique_a = (words_a - words_b)
-        unique_b = (words_b - words_a)
+        unique_a = words_a - words_b
+        unique_b = words_b - words_a
 
         if shared:
             return f"Shared structure [{', '.join(list(shared)[:2])}] bridging [{', '.join(list(unique_a)[:2])}] and [{', '.join(list(unique_b)[:2])}]"
@@ -468,9 +469,7 @@ class IbdaCreativityEngine:
         ]
         return inversions
 
-    def _generate_candidate(
-        self, task: str, constraints: list[str], mutation: float
-    ) -> str:
+    def _generate_candidate(self, task: str, constraints: list[str], mutation: float) -> str:
         """Generate a candidate solution for evolutionary selection."""
         seed = f"Approach {random.random():.2f}: {task[:60]}"
         if constraints:
@@ -485,17 +484,13 @@ class IbdaCreativityEngine:
             words[idx] = f"[mutated:{words[idx]}]"
         return " ".join(words)
 
-    def _score_candidate(
-        self, candidate: str, task: str, constraints: list[str]
-    ) -> float:
+    def _score_candidate(self, candidate: str, task: str, constraints: list[str]) -> float:
         """Fitness function for evolutionary selection."""
         utility = self._estimate_utility(task, candidate, constraints)
         feasibility = self._estimate_feasibility(candidate, constraints)
         return utility * BETA_UTILITY + feasibility * (1.0 - BETA_UTILITY)
 
-    def _identify_imperfections(
-        self, idea: str, constraints: list[str]
-    ) -> list[str]:
+    def _identify_imperfections(self, idea: str, constraints: list[str]) -> list[str]:
         """Find imperfections in current idea relative to constraints."""
         imperfections = []
         if len(idea.split()) > 20:
@@ -509,7 +504,7 @@ class IbdaCreativityEngine:
     def _apply_refinement(self, idea: str, imperfection: str) -> str:
         """Apply targeted fix to an imperfection."""
         if imperfection == "verbosity":
-            return idea[:len(idea) // 2] + " [condensed]"
+            return idea[: len(idea) // 2] + " [condensed]"
         if imperfection == "lack of novelty":
             return idea.replace("standard", "novel")
         return idea + f" [refined: {imperfection} addressed]"
@@ -520,16 +515,16 @@ class IbdaCreativityEngine:
         complexity = min(1.0, len(idea.split()) / 30.0)
         return utility / max(complexity, 0.1)
 
-    def _estimate_utility(
-        self, task: str, idea: str, constraints: list[str]
-    ) -> float:
+    def _estimate_utility(self, task: str, idea: str, constraints: list[str]) -> float:
         """Estimate how useful the idea is for the task."""
         if not task:
             return 0.6
         task_words = set(task.lower().split())
         idea_words = set(idea.lower().split())
         overlap = len(task_words & idea_words) / max(len(task_words), 1)
-        constraint_penalty = 0.1 * max(0, len(constraints) - len(idea_words & set(" ".join(constraints).lower().split())))
+        constraint_penalty = 0.1 * max(
+            0, len(constraints) - len(idea_words & set(" ".join(constraints).lower().split()))
+        )
         return max(0.1, min(0.95, 0.4 + 0.5 * overlap - constraint_penalty))
 
     def _estimate_feasibility(self, idea: str, constraints: list[str]) -> float:
@@ -549,10 +544,7 @@ class IbdaCreativityEngine:
         if not self.known_solutions:
             return 1.0  # maximum distance — all is novel
         seed = concept.features.get("novelty_seed", 0.5)
-        distances = [
-            abs(seed - k.features.get("novelty_seed", 0.5))
-            for k in self.known_solutions
-        ]
+        distances = [abs(seed - k.features.get("novelty_seed", 0.5)) for k in self.known_solutions]
         return min(distances)
 
     def _register_known_solution(self, concept: ConceptVector) -> None:

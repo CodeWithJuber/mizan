@@ -18,7 +18,6 @@ Uses the Linode API v4: https://api.linode.com/v4/
 
 import logging
 import os
-from datetime import UTC, datetime
 
 import httpx
 
@@ -70,8 +69,7 @@ class LinodeCloudSkill(SkillBase):
         t = token or self._token
         if not t:
             raise ValueError(
-                "No Linode API token. Set LINODE_API_TOKEN env var "
-                "or call linode_set_token first."
+                "No Linode API token. Set LINODE_API_TOKEN env var or call linode_set_token first."
             )
         return {
             "Authorization": f"Bearer {t}",
@@ -115,7 +113,9 @@ class LinodeCloudSkill(SkillBase):
                     errors = data.get("errors", []) if isinstance(data, dict) else []
                     error_msgs = [e.get("reason", str(e)) for e in errors]
                     return {
-                        "error": "; ".join(error_msgs) if error_msgs else f"HTTP {resp.status_code}",
+                        "error": "; ".join(error_msgs)
+                        if error_msgs
+                        else f"HTTP {resp.status_code}",
                         "status_code": resp.status_code,
                         "details": data,
                     }
@@ -286,10 +286,11 @@ class LinodeCloudSkill(SkillBase):
             return {"error": "Password must be at least 11 characters (Linode requirement)"}
 
         # Step 1: Shut down
-        shutdown = await self._request(
-            "POST", f"/linode/instances/{linode_id}/shutdown"
-        )
-        if shutdown.get("error") and "already powered off" not in str(shutdown.get("error", "")).lower():
+        shutdown = await self._request("POST", f"/linode/instances/{linode_id}/shutdown")
+        if (
+            shutdown.get("error")
+            and "already powered off" not in str(shutdown.get("error", "")).lower()
+        ):
             return {"error": f"Shutdown failed: {shutdown.get('error')}"}
 
         # Step 2: Wait for offline status (poll up to 60s)
@@ -315,7 +316,7 @@ class LinodeCloudSkill(SkillBase):
             return {"error": f"Password reset failed: {reset.get('error')}"}
 
         # Step 4: Boot back up
-        boot = await self._request("POST", f"/linode/instances/{linode_id}/boot")
+        await self._request("POST", f"/linode/instances/{linode_id}/boot")
 
         return {
             "success": True,
