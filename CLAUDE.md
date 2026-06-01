@@ -59,7 +59,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 | 4 | `backend/memory/` | Hierarchical memory: `dhikr`, `masalik`, `memory_pyramid`, `lawh_mahfuz`, `living_memory`, `knowledge_graph`, `vector_store` |
 | 5 | `backend/reasoning/` | ReAct reasoning: `aql_engine`, `causal_engine`, `planner`, `context_manager` |
 | 6 | `backend/agents/` | Autonomous agents with **Nafs** levels: `base`, `specialized`, `khalifah`, `shura_council`, `federation`, `perpetual_rotation` |
-| 7 | `backend/core/` | Principles & cognition: `qalb`, `ihsan`, `tawbah`, `sabr`, `shukr`, `tawakkul`, `fitrah`, `fuad`, `lubb`, `hidayah`, `nafs_triad`, `ruh_engine`, `dream_engine`, `creativity`, `imagination`, `self_healing`, plus `plugins`, `hooks`, `middleware`, `events` |
+| 7 | `backend/core/` | Principles & cognition: `qalb`, `ihsan`, `tawbah`, `sabr`, `shukr`, `tawakkul`, `fitrah`, `fuad`, `lubb`, `basira`, `hawa`, `hikmah`, `hidayah`, `nafs_triad`, `ruh_engine`, `dream_engine`, `creativity`, `imagination`, `self_healing`, plus `plugins`, `hooks`, `middleware`, `events` |
 
 **Cross-cutting subsystems:**
 
@@ -89,7 +89,8 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - Agents run a real ReAct loop (`BaseAgent.think` → `_agentic_loop`), not single-shot calls; max iterations scale with **Nafs** level. Tools execute through `_execute_tool_safe` with input validation and self-healing (auto-install missing packages).
 - **Nafs** levels (7-stage) evolve via `evolve_nafs()` / `DevelopmentalGate` based on success rate, task count, and hikmah.
 - Real-time streaming via WebSocket and the `cognitive/thinking_stream` module.
-- **Arabic-inspired naming** (consistency matters): Dhikr=memory, Masalik=memory paths, Wali=guardian, Izn=permission, Nafs=self/ego, Qalb=heart, Ihsan=excellence, Tawbah=self-correction, Sabr=patience, Shura=council, Khalifah=steward agent, Yaqin=certainty, Ruh=spirit/model, Qadr=scheduling, Ummah=network, Bab=gateway.
+- **Arabic-inspired naming** (consistency matters): Dhikr=memory, Masalik=memory paths, Wali=guardian, Izn=permission, Nafs=self/ego, Qalb=heart, Fuad=conviction, Lubb=metacognition, Basira=insight/discernment, Hawa=lower-pull/safety gate, Hikmah=wisdom, Ihsan=excellence, Tawbah=self-correction, Sabr=patience, Shura=council, Khalifah=steward agent, Yaqin=certainty, Ruh=spirit/model, Qadr=scheduling, Ummah=network, Bab=gateway.
+- **al-Insān human-model** (`docs/quranic_human_model.md`): the Qur'anic anthropology MIZAN implements. Faculties (`basira`, `hawa`, `hikmah`, …) run inside `BaseAgent.execute()` and inject guidance into the system prompt via `self._faculty_guidance`. Set `DEEP_FACULTY_LOOP=true` to let them actively gate/redirect (default: advisory only).
 
 ## Environment Setup
 

@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     ruh_confidence_threshold: float = 0.7
     ruh_device: str = "cpu"
 
+    # ── al-Insān faculties ────────────────────────────────────
+    # When true, Baṣīra/Hawā/Ḥikma actively gate & redirect the agent loop
+    # (e.g. a high-severity lower-pull becomes a forceful restraint). When
+    # false (default) the faculties are advisory: they emit signals and inject
+    # guidance but do not block, keeping the default reasoning path unchanged.
+    deep_faculty_loop: bool = False
+
     # ── Subscription Tiers ────────────────────────────────────
     subscription_tier: str = "free"  # free | pro | enterprise
     free_daily_messages: int = 50
