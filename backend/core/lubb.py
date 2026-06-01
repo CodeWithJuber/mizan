@@ -24,14 +24,15 @@ logger = logging.getLogger("mizan.lubb")
 
 
 class QualityLabel(Enum):
-    CONFIDENT = "confident"    # High coherence, low bias
-    HEDGED = "hedged"         # Moderate quality — recommend caveats
-    UNCERTAIN = "uncertain"   # Low coherence or strong bias detected
+    CONFIDENT = "confident"  # High coherence, low bias
+    HEDGED = "hedged"  # Moderate quality — recommend caveats
+    UNCERTAIN = "uncertain"  # Low coherence or strong bias detected
 
 
 @dataclass
 class BiasFlag:
     """A detected reasoning bias."""
+
     bias_type: str
     description: str
     severity: str  # "low" | "medium" | "high"
@@ -41,7 +42,8 @@ class BiasFlag:
 @dataclass
 class CoherenceReport:
     """Result of reasoning chain coherence check."""
-    score: float                    # 0.0 = incoherent, 1.0 = perfectly coherent
+
+    score: float  # 0.0 = incoherent, 1.0 = perfectly coherent
     contradictions: list[str] = field(default_factory=list)
     unsupported_claims: list[str] = field(default_factory=list)
     summary: str = ""
@@ -50,12 +52,13 @@ class CoherenceReport:
 @dataclass
 class MetaReport:
     """Full metacognitive evaluation of a reasoning trace."""
+
     quality: QualityLabel
     compressed_trace: str
     coherence: CoherenceReport
     bias_flags: list[BiasFlag] = field(default_factory=list)
     overall_confidence: float = 0.5
-    caveat: str = ""            # Appended to response if quality is poor
+    caveat: str = ""  # Appended to response if quality is poor
 
     def to_dict(self) -> dict:
         return {
@@ -73,36 +76,66 @@ class MetaReport:
 _BIAS_PATTERNS = [
     {
         "type": "confirmation_bias",
-        "signals": ["as expected", "confirms that", "proves that", "as i thought",
-                    "just as predicted", "this confirms"],
+        "signals": [
+            "as expected",
+            "confirms that",
+            "proves that",
+            "as i thought",
+            "just as predicted",
+            "this confirms",
+        ],
         "description": "Seeking only evidence that supports prior beliefs",
         "severity": "medium",
     },
     {
         "type": "anchoring",
-        "signals": ["first", "initially", "originally said", "started with",
-                    "the initial value", "as mentioned first"],
+        "signals": [
+            "first",
+            "initially",
+            "originally said",
+            "started with",
+            "the initial value",
+            "as mentioned first",
+        ],
         "description": "Over-relying on the first piece of information encountered",
         "severity": "medium",
     },
     {
         "type": "availability_bias",
-        "signals": ["recently", "just saw", "just read", "just mentioned",
-                    "as we just discussed", "the latest"],
+        "signals": [
+            "recently",
+            "just saw",
+            "just read",
+            "just mentioned",
+            "as we just discussed",
+            "the latest",
+        ],
         "description": "Over-weighting recent or easily recalled information",
         "severity": "low",
     },
     {
         "type": "overconfidence",
-        "signals": ["definitely", "certainly", "100%", "impossible that",
-                    "guaranteed", "absolutely sure", "no doubt"],
+        "signals": [
+            "definitely",
+            "certainly",
+            "100%",
+            "impossible that",
+            "guaranteed",
+            "absolutely sure",
+            "no doubt",
+        ],
         "description": "Claiming certainty beyond what evidence supports",
         "severity": "high",
     },
     {
         "type": "false_dichotomy",
-        "signals": ["either", "only two options", "must be one or the other",
-                    "no other way", "the only possibility"],
+        "signals": [
+            "either",
+            "only two options",
+            "must be one or the other",
+            "no other way",
+            "the only possibility",
+        ],
         "description": "Presenting a limited set of options as exhaustive",
         "severity": "medium",
     },
@@ -150,17 +183,17 @@ class LubbEngine:
         kept = []
 
         _high_value_patterns = [
-            r"\[Tool:",          # Tool call results
-            r"\btherefore\b",    # Logical conclusions
-            r"\bconclud",        # Conclusions
-            r"\bfound\b",        # Discovery
-            r"\berror\b",        # Errors
-            r"\bresult:",        # Results
-            r"\bans(wer)?:",     # Answers
-            r"\d{2,}",           # Numbers (stats, line numbers, etc.)
-            r"https?://",        # URLs
+            r"\[Tool:",  # Tool call results
+            r"\btherefore\b",  # Logical conclusions
+            r"\bconclud",  # Conclusions
+            r"\bfound\b",  # Discovery
+            r"\berror\b",  # Errors
+            r"\bresult:",  # Results
+            r"\bans(wer)?:",  # Answers
+            r"\d{2,}",  # Numbers (stats, line numbers, etc.)
+            r"https?://",  # URLs
             r"\.py|\.js|\.ts",  # File references
-            r"→|=>|:-",         # Flow indicators
+            r"→|=>|:-",  # Flow indicators
         ]
 
         _low_value_patterns = [
@@ -263,12 +296,14 @@ class LubbEngine:
             matched_signals = [s for s in pattern_def["signals"] if s in lower]
             if matched_signals:
                 evidence = f"Signals: {matched_signals[:3]}"
-                flags.append(BiasFlag(
-                    bias_type=pattern_def["type"],
-                    description=pattern_def["description"],
-                    severity=pattern_def["severity"],
-                    evidence=evidence,
-                ))
+                flags.append(
+                    BiasFlag(
+                        bias_type=pattern_def["type"],
+                        description=pattern_def["description"],
+                        severity=pattern_def["severity"],
+                        evidence=evidence,
+                    )
+                )
 
         return flags
 
@@ -309,8 +344,7 @@ class LubbEngine:
         elif confidence >= 0.45:
             quality = QualityLabel.HEDGED
             caveat = (
-                "This response has moderate confidence. "
-                "Please verify key claims independently."
+                "This response has moderate confidence. Please verify key claims independently."
             )
         else:
             quality = QualityLabel.UNCERTAIN
@@ -320,10 +354,7 @@ class LubbEngine:
             if high_severity_biases:
                 issues.append("shows overconfidence bias")
             issues_str = " and ".join(issues) if issues else "has low coherence"
-            caveat = (
-                f"[Lubb warning: This reasoning {issues_str}. "
-                f"Treat conclusions with caution.]"
-            )
+            caveat = f"[Lubb warning: This reasoning {issues_str}. Treat conclusions with caution.]"
 
         report = MetaReport(
             quality=quality,
@@ -336,7 +367,10 @@ class LubbEngine:
 
         logger.debug(
             "[LUBB] task='%s...' quality=%s coherence=%.2f biases=%d",
-            task[:50], quality.value, coherence.score, len(bias_flags),
+            task[:50],
+            quality.value,
+            coherence.score,
+            len(bias_flags),
         )
         return report
 

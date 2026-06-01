@@ -29,15 +29,14 @@ import math
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.living_memory")
 
 # Novelty Gate thresholds
-THETA_IDENTICAL = 0.98    # "I already know this exactly"
-THETA_SIMILAR = 0.85      # "I know something like this"
-THETA_RELATED = 0.50      # "This is new but related"
-THETA_WORTH_STORING = 0.3 # Minimum importance to store unrelated info
+THETA_IDENTICAL = 0.98  # "I already know this exactly"
+THETA_SIMILAR = 0.85  # "I know something like this"
+THETA_RELATED = 0.50  # "This is new but related"
+THETA_WORTH_STORING = 0.3  # Minimum importance to store unrelated info
 
 # Importance scoring weights
 W_EMOTION = 0.20
@@ -49,17 +48,17 @@ W_RARITY = 0.15
 
 # Strength / decay parameters
 INITIAL_STRENGTH = 0.30
-DELTA_REINFORCE = 0.12     # strength boost on re-encounter
-DELTA_RETRIEVAL = 0.08     # testing effect: recall strengthens memory
-DELTA_REVIEW = 0.05        # dhikr daemon review boost (diminishing)
-DELTA_DECAY = 0.02         # per-cycle decay rate for unreviewed
-PHI_SPACING = 1.5          # spacing effect exponent
+DELTA_REINFORCE = 0.12  # strength boost on re-encounter
+DELTA_RETRIEVAL = 0.08  # testing effect: recall strengthens memory
+DELTA_REVIEW = 0.05  # dhikr daemon review boost (diminishing)
+DELTA_DECAY = 0.02  # per-cycle decay rate for unreviewed
+PHI_SPACING = 1.5  # spacing effect exponent
 
 # Consolidation thresholds
-CONSOLIDATE_RECALL_COUNT = 5   # promote Dhikr→ʿIlm after N retrievals
+CONSOLIDATE_RECALL_COUNT = 5  # promote Dhikr→ʿIlm after N retrievals
 CONSOLIDATE_CONSISTENCY = 0.7
-PROVE_COUNT = 20               # promote ʿIlm→Lawḥ after N verifications
-FORGET_THRESHOLD = 0.05        # archive if strength drops below
+PROVE_COUNT = 20  # promote ʿIlm→Lawḥ after N verifications
+FORGET_THRESHOLD = 0.05  # archive if strength drops below
 MIN_STRENGTH = 0.01
 
 # Spread activation parameters
@@ -76,10 +75,10 @@ BASE_REVIEW_INTERVAL = 3600  # 1 hour base
 
 
 class MemoryLevel(Enum):
-    SADR = "sadr"      # Working memory (~4-7 items, seconds)
-    DHIKR = "dhikr"    # Episodic/active (hours-days)
-    ILM = "ilm"        # Semantic/knowledge (weeks-years)
-    LAWH = "lawh"      # Immutable core (forever, write-once-read-many)
+    SADR = "sadr"  # Working memory (~4-7 items, seconds)
+    DHIKR = "dhikr"  # Episodic/active (hours-days)
+    ILM = "ilm"  # Semantic/knowledge (weeks-years)
+    LAWH = "lawh"  # Immutable core (forever, write-once-read-many)
 
 
 class GateDecision(Enum):
@@ -93,13 +92,14 @@ class GateDecision(Enum):
 @dataclass
 class MemoryTrace:
     """A single memory trace in the living memory system."""
+
     trace_id: str
     content: str
-    content_hash: str          # for fast exact-match
+    content_hash: str  # for fast exact-match
     level: MemoryLevel
     strength: float
     importance: float
-    emotional_tag: float       # -1.0 to +1.0
+    emotional_tag: float  # -1.0 to +1.0
     context_tags: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)  # trace_ids of associated memories
     recall_count: int = 0
@@ -110,7 +110,7 @@ class MemoryTrace:
     contradiction_count: int = 0
     proven_count: int = 0
     mutable: bool = True
-    gist: str = ""             # extracted abstract form (for ʿIlm level)
+    gist: str = ""  # extracted abstract form (for ʿIlm level)
     source: str = ""
 
     def age_hours(self) -> float:
@@ -128,6 +128,7 @@ class MemoryTrace:
 @dataclass
 class GateResult:
     """Result of the Novelty Gate evaluation."""
+
     decision: GateDecision
     matched_trace: MemoryTrace | None
     similarity: float
@@ -138,6 +139,7 @@ class GateResult:
 @dataclass
 class RecallResult:
     """A recalled memory with contextual scoring."""
+
     trace: MemoryTrace
     activation: float
     context_match: float
@@ -150,6 +152,7 @@ class RecallResult:
 @dataclass
 class MaintenanceReport:
     """Result of one Dhikr Daemon maintenance cycle."""
+
     reviewed: int
     decayed: int
     archived: int
@@ -169,14 +172,14 @@ class LivingMemorySystem:
 
     def __init__(self, masalik=None, dhikr_db=None, lawh=None, vector_store=None):
         # Memory stores by level
-        self.sadr: list[MemoryTrace] = []       # working memory (capacity-limited)
+        self.sadr: list[MemoryTrace] = []  # working memory (capacity-limited)
         self.traces: dict[str, MemoryTrace] = {}  # all traces by ID
-        self.archive: list[str] = []             # archived (forgotten) trace IDs
+        self.archive: list[str] = []  # archived (forgotten) trace IDs
 
         # External system references (for integration)
-        self._masalik = masalik     # MasalikNetwork for spread activation
+        self._masalik = masalik  # MasalikNetwork for spread activation
         self._dhikr_db = dhikr_db  # DhikrMemorySystem for persistence
-        self._lawh = lawh          # LawhMahfuz for immutable storage
+        self._lawh = lawh  # LawhMahfuz for immutable storage
         self._vector_store = vector_store  # VectorStore for semantic similarity
 
         self._daemon_cycle = 0
@@ -212,9 +215,7 @@ class LivingMemorySystem:
         best_match, max_similarity = self._find_best_match(content)
 
         # Importance scoring
-        importance = self._score_importance(
-            content, emotional_state, goals, context, source_trust
-        )
+        importance = self._score_importance(content, emotional_state, goals, context, source_trust)
 
         # Decision tree (Algorithm: NOVELTY_GATE)
         if max_similarity > THETA_IDENTICAL and best_match:
@@ -228,9 +229,7 @@ class LivingMemorySystem:
 
         elif max_similarity > THETA_RELATED and best_match:
             # "New but related" → store with links
-            trace = self._create_trace(
-                content, content_hash, importance, emotional_state, context
-            )
+            trace = self._create_trace(content, content_hash, importance, emotional_state, context)
             trace.links.append(best_match.trace_id)
             self._store_trace(trace)
             return GateResult(
@@ -291,7 +290,6 @@ class LivingMemorySystem:
         activations: dict[str, float] = {}
 
         # Wave 1: Direct matches
-        query_words = set(query.lower().split())
         for tid, trace in self.traces.items():
             if tid in self.archive:
                 continue
@@ -306,9 +304,7 @@ class LivingMemorySystem:
             for linked_id in trace.links:
                 if linked_id in self.traces and linked_id not in self.archive:
                     link_activation = activation * 0.6
-                    wave2[linked_id] = max(
-                        wave2.get(linked_id, 0), link_activation
-                    )
+                    wave2[linked_id] = max(wave2.get(linked_id, 0), link_activation)
         for tid, act in wave2.items():
             activations[tid] = max(activations.get(tid, 0), act)
 
@@ -318,9 +314,7 @@ class LivingMemorySystem:
             trace = self.traces[tid]
             for linked_id in trace.links:
                 if linked_id in self.traces and linked_id not in self.archive:
-                    wave3[linked_id] = max(
-                        wave3.get(linked_id, 0), activation * 0.3
-                    )
+                    wave3[linked_id] = max(wave3.get(linked_id, 0), activation * 0.3)
         for tid, act in wave3.items():
             activations[tid] = max(activations.get(tid, 0), act)
 
@@ -333,34 +327,36 @@ class LivingMemorySystem:
             trace = self.traces[tid]
 
             # Context modulation
-            context_match = self._text_similarity(context, " ".join(trace.context_tags)) if context else 0.0
+            context_match = (
+                self._text_similarity(context, " ".join(trace.context_tags)) if context else 0.0
+            )
             modulated = base_activation * (1 + ALPHA_CONTEXT * context_match)
 
             # Emotional modulation (mood-congruent)
             emotional_match = 1.0 - abs(emotional_state - trace.emotional_tag)
-            modulated *= (1 + ALPHA_EMOTION * emotional_match)
+            modulated *= 1 + ALPHA_EMOTION * emotional_match
 
             # Goal modulation
             goal_match = 0.0
             if goals:
-                goal_match = max(
-                    self._text_similarity(g, trace.content) for g in goals
-                )
-                modulated *= (1 + ALPHA_GOAL * goal_match)
+                goal_match = max(self._text_similarity(g, trace.content) for g in goals)
+                modulated *= 1 + ALPHA_GOAL * goal_match
 
             # Recency weighting
             recency = math.exp(-LAMBDA_RECENCY * trace.hours_since_access())
             modulated *= recency
 
-            results.append(RecallResult(
-                trace=trace,
-                activation=modulated,
-                context_match=context_match,
-                emotional_match=emotional_match,
-                goal_match=goal_match,
-                recency=recency,
-                reconstructed=trace.content,  # simplified: no gap-filling yet
-            ))
+            results.append(
+                RecallResult(
+                    trace=trace,
+                    activation=modulated,
+                    context_match=context_match,
+                    emotional_match=emotional_match,
+                    goal_match=goal_match,
+                    recency=recency,
+                    reconstructed=trace.content,  # simplified: no gap-filling yet
+                )
+            )
 
         # Sort by activation, take top-k
         results.sort(key=lambda r: r.activation, reverse=True)
@@ -401,15 +397,14 @@ class LivingMemorySystem:
 
         # Step 1-2: Review overdue traces
         overdue = [
-            t for t in self.traces.values()
+            t
+            for t in self.traces.values()
             if t.mutable and t.trace_id not in self.archive and t.review_urgency() > 1.0
         ]
         overdue.sort(key=lambda t: t.review_urgency() * t.importance, reverse=True)
 
         for trace in overdue[:20]:  # max 20 reviews per cycle
-            trace.strength = min(1.0,
-                trace.strength + DELTA_REVIEW / max(trace.recall_count, 1)
-            )
+            trace.strength = min(1.0, trace.strength + DELTA_REVIEW / max(trace.recall_count, 1))
             trace.last_accessed = time.time()
             # Extend optimal interval (spaced repetition)
             trace.optimal_interval *= (1 + trace.strength) ** PHI_SPACING
@@ -422,7 +417,7 @@ class LivingMemorySystem:
             if trace.review_urgency() < 1.0:
                 continue  # not overdue, no decay
             if trace.importance < 0.5:  # only decay low-importance
-                trace.strength *= (1 - DELTA_DECAY)
+                trace.strength *= 1 - DELTA_DECAY
                 decayed += 1
 
                 # Archive if too weak
@@ -469,7 +464,12 @@ class LivingMemorySystem:
         elapsed_ms = (time.monotonic() - start) * 1000
         logger.debug(
             "[DHIKR-DAEMON] cycle=%d reviewed=%d decayed=%d archived=%d ilm=%d lawh=%d",
-            self._daemon_cycle, reviewed, decayed, archived, promoted_ilm, promoted_lawh,
+            self._daemon_cycle,
+            reviewed,
+            decayed,
+            archived,
+            promoted_ilm,
+            promoted_lawh,
         )
 
         return MaintenanceReport(
@@ -504,9 +504,7 @@ class LivingMemorySystem:
         # Factor 2: Goal relevance
         goal_relevance = 0.0
         if goals:
-            goal_relevance = max(
-                self._text_similarity(g, content) for g in goals
-            )
+            goal_relevance = max(self._text_similarity(g, content) for g in goals)
 
         # Factor 3: Prediction error (surprise) — novelty proxy
         _, max_sim = self._find_best_match(content)
@@ -514,16 +512,15 @@ class LivingMemorySystem:
 
         # Factor 4: Causal significance (keyword heuristic)
         causal_keywords = {"because", "caused", "leads to", "therefore", "result", "effect"}
-        causal_impact = min(1.0,
-            sum(1 for k in causal_keywords if k in content_lower) / 3
-        )
+        causal_impact = min(1.0, sum(1 for k in causal_keywords if k in content_lower) / 3)
 
         # Factor 5: Source trust
         trust = min(1.0, max(0.0, source_trust))
 
         # Factor 6: Rarity (inverse frequency of similar content)
         similar_count = sum(
-            1 for t in self.traces.values()
+            1
+            for t in self.traces.values()
             if self._text_similarity(content, t.content) > THETA_RELATED
         )
         rarity = 1.0 / (1.0 + similar_count)
@@ -539,9 +536,7 @@ class LivingMemorySystem:
         )
         return self._sigmoid(raw * 3)  # scale into sigmoid range
 
-    def _activate_existing(
-        self, trace: MemoryTrace, reason: str
-    ) -> GateResult:
+    def _activate_existing(self, trace: MemoryTrace, reason: str) -> GateResult:
         """Activate an existing trace: no new storage, just strengthen."""
         trace.activation_count += 1
         trace.last_accessed = time.time()
@@ -556,9 +551,7 @@ class LivingMemorySystem:
             delta_info=f"{reason} — activated (count={trace.activation_count})",
         )
 
-    def _update_existing(
-        self, trace: MemoryTrace, delta: str, importance: float
-    ) -> GateResult:
+    def _update_existing(self, trace: MemoryTrace, delta: str, importance: float) -> GateResult:
         """Update an existing trace with novel information delta."""
         if delta:
             trace.content += f" | UPDATE: {delta[:200]}"
@@ -584,7 +577,7 @@ class LivingMemorySystem:
         context: str,
     ) -> MemoryTrace:
         trace_id = hashlib.md5(
-            f"{content[:100]}:{time.time()}".encode()
+            f"{content[:100]}:{time.time()}".encode(), usedforsecurity=False
         ).hexdigest()[:12]
 
         # New traces start in Ṣadr (working memory)
@@ -688,9 +681,7 @@ class LivingMemorySystem:
             asyncio.get_running_loop()
             # Already in async context — run in thread to avoid nested loop
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    asyncio.run, self._vector_store.search(query, limit=limit)
-                )
+                future = executor.submit(asyncio.run, self._vector_store.search(query, limit=limit))
                 return future.result(timeout=5)
         except RuntimeError:
             # No running event loop — safe to run directly

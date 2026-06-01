@@ -132,15 +132,15 @@ class TestSilah:
 
 
 class TestMasalikEncode:
-    def test_encode_creates_concepts(self):
-        net = MasalikNetwork()
+    def test_encode_creates_concepts(self, tmp_path):
+        net = MasalikNetwork(persist_path=str(tmp_path / "m.json"))
         before = len(net.concepts)
         result = net.encode("Python programming language")
         assert result["encoded"] > 0
         assert len(net.concepts) > before
 
-    def test_encode_creates_pathways(self):
-        net = MasalikNetwork()
+    def test_encode_creates_pathways(self, tmp_path):
+        net = MasalikNetwork(persist_path=str(tmp_path / "m.json"))
         before = len(net.pathways)
         net.encode("Python programming language")
         assert len(net.pathways) > before
@@ -159,11 +159,11 @@ class TestMasalikEncode:
         assert r2["new_pathways"] == 0
         assert r2["pathways_strengthened"] > 0
 
-    def test_importance_affects_strength(self):
-        net1 = MasalikNetwork()
+    def test_importance_affects_strength(self, tmp_path):
+        net1 = MasalikNetwork(persist_path=str(tmp_path / "a.json"))
         net1.encode("machine learning algorithms", importance=0.2)
 
-        net2 = MasalikNetwork()
+        net2 = MasalikNetwork(persist_path=str(tmp_path / "b.json"))
         net2.encode("machine learning algorithms", importance=0.9)
 
         # Higher importance → stronger pathways

@@ -209,10 +209,10 @@ class TestMasalikEncode:
         assert result2["new_pathways"] == 0
         assert result2["pathways_strengthened"] > 0
 
-    def test_importance_scales_strength(self, network):
+    def test_importance_scales_strength(self, network, tmp_path):
         """Higher importance → stronger initial pathways."""
-        net1 = MasalikNetwork()
-        net2 = MasalikNetwork()
+        net1 = MasalikNetwork(persist_path=str(tmp_path / "a.json"))
+        net2 = MasalikNetwork(persist_path=str(tmp_path / "b.json"))
 
         net1.encode("important concept here", importance=1.0)
         net2.encode("important concept here", importance=0.1)

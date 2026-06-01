@@ -9,7 +9,7 @@ if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
 from task_queue.priorities import TaskPriority  # noqa: E402
-from task_queue.task_queue import MizanTaskQueue, QueuedTask  # noqa: E402
+from task_queue.task_queue import MizanTaskQueue  # noqa: E402
 
 
 class TestTaskPriorityOrdering:

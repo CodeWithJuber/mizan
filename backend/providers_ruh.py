@@ -83,11 +83,7 @@ class RuhModelProvider(BaseLLMProvider):
                 continue
             content = msg.get("content", "")
             if isinstance(content, list):
-                texts = [
-                    block.get("text", "")
-                    for block in content
-                    if block.get("type") == "text"
-                ]
+                texts = [block.get("text", "") for block in content if block.get("type") == "text"]
                 return " ".join(texts)
             return str(content)
         return ""
@@ -96,10 +92,6 @@ class RuhModelProvider(BaseLLMProvider):
         """Convert token pairs to root_id and pattern_id tensors."""
         import torch
 
-        root_ids = torch.tensor(
-            [[token[0] for token in tokens]], dtype=torch.long
-        )
-        pattern_ids = torch.tensor(
-            [[token[1] for token in tokens]], dtype=torch.long
-        )
+        root_ids = torch.tensor([[token[0] for token in tokens]], dtype=torch.long)
+        pattern_ids = torch.tensor([[token[1] for token in tokens]], dtype=torch.long)
         return root_ids, pattern_ids

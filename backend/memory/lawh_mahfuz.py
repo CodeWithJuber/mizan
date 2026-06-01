@@ -15,12 +15,11 @@ Any mismatch on read → corruption detected → entry quarantined.
 
 import binascii
 import hashlib
-import json
 import logging
 import os
 import sqlite3
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger("mizan.lawh_mahfuz")
 
@@ -28,13 +27,14 @@ logger = logging.getLogger("mizan.lawh_mahfuz")
 @dataclass
 class LawhEntry:
     """An immutable entry in the Preserved Tablet."""
+
     key: str
     content: str
     source: str
     stored_at: float
-    sha256: str       # SHA-256 of content
-    crc32: str        # CRC-32 hex of content
-    length: int       # len(content) in bytes
+    sha256: str  # SHA-256 of content
+    crc32: str  # CRC-32 hex of content
+    length: int  # len(content) in bytes
     certainty: float = 1.0
     category: str = "general"
     quaternary_checksum: str = ""  # DNA-inspired quaternary checksum (ACGT)
@@ -126,12 +126,20 @@ class LawhMahfuz:
             c = conn.cursor()
             c.execute("SELECT * FROM lawh_entries")
             for row in c.fetchall():
-                key, content, source, stored_at, sha256, crc32, length, certainty, category = row[:9]
+                key, content, source, stored_at, sha256, crc32, length, certainty, category = row[
+                    :9
+                ]
                 quat_checksum = row[9] if len(row) > 9 else ""
                 entry = LawhEntry(
-                    key=key, content=content, source=source, stored_at=stored_at,
-                    sha256=sha256, crc32=crc32, length=length,
-                    certainty=certainty, category=category,
+                    key=key,
+                    content=content,
+                    source=source,
+                    stored_at=stored_at,
+                    sha256=sha256,
+                    crc32=crc32,
+                    length=length,
+                    certainty=certainty,
+                    category=category,
                     quaternary_checksum=quat_checksum or "",
                 )
                 self._cache[key] = entry
@@ -165,14 +173,21 @@ class LawhMahfuz:
         quat_checksum = ""
         try:
             from memory.quaternary import quaternary_checksum
+
             quat_checksum = quaternary_checksum(content)
         except ImportError:
             pass
 
         entry = LawhEntry(
-            key=key, content=content, source=source, stored_at=now,
-            sha256=sha, crc32=crc, length=length,
-            certainty=certainty, category=category,
+            key=key,
+            content=content,
+            source=source,
+            stored_at=now,
+            sha256=sha,
+            crc32=crc,
+            length=length,
+            certainty=certainty,
+            category=category,
             quaternary_checksum=quat_checksum,
         )
 
@@ -190,7 +205,13 @@ class LawhMahfuz:
             conn.close()
 
         self._cache[key] = entry
-        logger.debug("[LAWH] Stored '%s' (len=%d sha=%s... quat=%s...)", key, length, sha[:8], quat_checksum[:8] if quat_checksum else "n/a")
+        logger.debug(
+            "[LAWH] Stored '%s' (len=%d sha=%s... quat=%s...)",
+            key,
+            length,
+            sha[:8],
+            quat_checksum[:8] if quat_checksum else "n/a",
+        )
         return key
 
     def verify_integrity(self, key: str) -> bool:
@@ -225,6 +246,7 @@ class LawhMahfuz:
         if entry.quaternary_checksum:
             try:
                 from memory.quaternary import hamming_distance, quaternary_checksum
+
                 actual_quat = quaternary_checksum(entry.content)
                 dist = hamming_distance(actual_quat, entry.quaternary_checksum)
                 if dist > 0:
@@ -265,7 +287,8 @@ class LawhMahfuz:
     def get_by_category(self, category: str) -> list[LawhEntry]:
         """Get all entries in a category (e.g., 'ethical', 'epistemic')."""
         return [
-            e for k, e in self._cache.items()
+            e
+            for k, e in self._cache.items()
             if e.category == category and k not in self._quarantine
         ]
 

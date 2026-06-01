@@ -6,13 +6,10 @@ from pathlib import Path
 import aiosqlite
 
 _EXPORT_SQL = (
-    "SELECT prompt, response, provider, model, domain "
-    "FROM interactions WHERE quality_score >= ?"
+    "SELECT prompt, response, provider, model, domain FROM interactions WHERE quality_score >= ?"
 )
 
-_COUNT_SQL = (
-    "SELECT COUNT(*) FROM interactions WHERE quality_score >= ?"
-)
+_COUNT_SQL = "SELECT COUNT(*) FROM interactions WHERE quality_score >= ?"
 
 
 class DataExporter:
@@ -35,9 +32,7 @@ class DataExporter:
                 with open(output_path, "w", encoding="utf-8") as file_handle:
                     async for row in cursor:
                         entry = self._build_entry(row)
-                        file_handle.write(
-                            json.dumps(entry, ensure_ascii=False) + "\n"
-                        )
+                        file_handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
                         count += 1
         return count
 
@@ -62,6 +57,4 @@ class DataExporter:
         """Ensure the output directory exists."""
         parent = Path(output_path).parent
         if not parent.exists():
-            raise FileNotFoundError(
-                f"Output directory does not exist: {parent}"
-            )
+            raise FileNotFoundError(f"Output directory does not exist: {parent}")

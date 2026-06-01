@@ -197,12 +197,14 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     params[key] = json.loads(value)
                 except (json.JSONDecodeError, ValueError):
                     params[key] = value
-            tool_blocks.append(ContentBlock(
-                type="tool_use",
-                id=f"xmltool_{uuid.uuid4().hex[:12]}",
-                name=tool_name,
-                input=params,
-            ))
+            tool_blocks.append(
+                ContentBlock(
+                    type="tool_use",
+                    id=f"xmltool_{uuid.uuid4().hex[:12]}",
+                    name=tool_name,
+                    input=params,
+                )
+            )
         return tool_blocks
 
     @staticmethod
@@ -210,16 +212,20 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         """Remove XML tool-call markup from text, keeping surrounding prose."""
         # Remove <minimax:tool_call>...</minimax:tool_call> wrappers
         cleaned = re.sub(
-            r'<minimax:tool_call>.*?</minimax:tool_call>',
-            '', text, flags=re.DOTALL,
+            r"<minimax:tool_call>.*?</minimax:tool_call>",
+            "",
+            text,
+            flags=re.DOTALL,
         )
         # Remove bare <invoke>...</invoke> blocks
         cleaned = re.sub(
             r'<invoke\s+name="[^"]*"[^>]*>.*?</invoke>',
-            '', cleaned, flags=re.DOTALL,
+            "",
+            cleaned,
+            flags=re.DOTALL,
         )
         # Collapse multiple blank lines
-        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned
 
     def _convert_tools_to_openai(self, tools: list[dict]) -> list[dict]:
@@ -268,20 +274,24 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             # Ensure content is a string
                             if not isinstance(raw_content, str):
                                 raw_content = json.dumps(raw_content) if raw_content else ""
-                            tool_results.append({
-                                "role": "tool",
-                                "tool_call_id": block.get("tool_use_id", ""),
-                                "content": raw_content,
-                            })
+                            tool_results.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": block.get("tool_use_id", ""),
+                                    "content": raw_content,
+                                }
+                            )
                         elif block_type == "tool_use":
-                            tool_calls.append({
-                                "id": block.get("id", ""),
-                                "type": "function",
-                                "function": {
-                                    "name": block.get("name", ""),
-                                    "arguments": json.dumps(block.get("input", {})),
-                                },
-                            })
+                            tool_calls.append(
+                                {
+                                    "id": block.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": block.get("name", ""),
+                                        "arguments": json.dumps(block.get("input", {})),
+                                    },
+                                }
+                            )
                         elif block_type == "text":
                             text_parts.append(block.get("text", ""))
                     elif hasattr(block, "type"):
@@ -289,14 +299,16 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                         if block.type == "text":
                             text_parts.append(block.text)
                         elif block.type == "tool_use":
-                            tool_calls.append({
-                                "id": block.id,
-                                "type": "function",
-                                "function": {
-                                    "name": block.name,
-                                    "arguments": json.dumps(block.input),
-                                },
-                            })
+                            tool_calls.append(
+                                {
+                                    "id": block.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": block.name,
+                                        "arguments": json.dumps(block.input),
+                                    },
+                                }
+                            )
 
                 # Emit a single assistant message with text + tool_calls combined
                 if role == "assistant" and (text_parts or tool_calls):
@@ -704,9 +716,7 @@ def get_provider_status() -> dict:
                 break
 
     default_model = (
-        _active_state["model"]
-        or os.getenv("DEFAULT_MODEL", "")
-        or get_default_model(active)
+        _active_state["model"] or os.getenv("DEFAULT_MODEL", "") or get_default_model(active)
     )
 
     return {
@@ -758,7 +768,8 @@ async def fetch_openrouter_models(
             if search:
                 search_lower = search.lower()
                 models = [
-                    m for m in models
+                    m
+                    for m in models
                     if search_lower in m["id"].lower() or search_lower in m["name"].lower()
                 ]
             if free_only:

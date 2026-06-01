@@ -753,7 +753,10 @@ class SuperAgent(BrowserAgent, ResearchAgent, CodeAgent, CommunicationAgent):
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "The page URL"},
-                    "selector": {"type": "string", "description": "CSS selector of the element to click"},
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector of the element to click",
+                    },
                 },
                 "required": ["url", "selector"],
             },
@@ -954,8 +957,16 @@ class SuperAgent(BrowserAgent, ResearchAgent, CodeAgent, CommunicationAgent):
                     "host": {"type": "string", "description": "IMAP server hostname"},
                     "user": {"type": "string", "description": "Email username"},
                     "password": {"type": "string", "description": "Email password"},
-                    "folder": {"type": "string", "description": "Folder to check", "default": "INBOX"},
-                    "limit": {"type": "integer", "description": "Max messages to return", "default": 10},
+                    "folder": {
+                        "type": "string",
+                        "description": "Folder to check",
+                        "default": "INBOX",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max messages to return",
+                        "default": 10,
+                    },
                 },
                 "required": ["host", "user", "password"],
             },

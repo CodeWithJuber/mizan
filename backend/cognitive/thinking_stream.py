@@ -5,6 +5,7 @@ Thinking Stream (تفكير مرئي - Visible Thinking)
 Generates structured thinking events from the QCA pipeline,
 enabling transparent AI reasoning visible to the user.
 """
+
 from __future__ import annotations
 
 import time
@@ -184,9 +185,7 @@ def generate_thinking_events(
     trace = stream.create_trace()
     rid = trace.request_id
 
-    stream.add_step(
-        rid, ThinkingPhase.PERCEPTION, f"Received: '{query[:80]}...'", 0.9
-    )
+    stream.add_step(rid, ThinkingPhase.PERCEPTION, f"Received: '{query[:80]}...'", 0.9)
 
     if context:
         stream.add_step(
@@ -196,15 +195,9 @@ def generate_thinking_events(
             0.7,
         )
 
-    stream.add_step(
-        rid, ThinkingPhase.COMPREHENSION, "Understanding intent and context", 0.8
-    )
-    stream.add_step(
-        rid, ThinkingPhase.REASONING, "Processing through cognitive layers", 0.75
-    )
-    stream.add_step(
-        rid, ThinkingPhase.EVALUATION, "Assessing response quality", 0.85
-    )
+    stream.add_step(rid, ThinkingPhase.COMPREHENSION, "Understanding intent and context", 0.8)
+    stream.add_step(rid, ThinkingPhase.REASONING, "Processing through cognitive layers", 0.75)
+    stream.add_step(rid, ThinkingPhase.EVALUATION, "Assessing response quality", 0.85)
     stream.add_step(rid, ThinkingPhase.GENERATION, "Forming response", 0.8)
     stream.complete(rid)
 

@@ -29,7 +29,6 @@ from typing import Any
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStep, ThinkingStream
 from learner.ruh_learner import RuhLearner
 from providers import BaseLLMProvider, create_provider, get_default_model
-
 from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue
 
@@ -59,7 +58,23 @@ _TASK_KEYWORDS: frozenset[str] = frozenset(
 )
 
 _QUESTION_STARTERS: frozenset[str] = frozenset(
-    {"what", "why", "how", "when", "where", "who", "which", "is", "are", "does", "do", "can", "could", "would", "should"}
+    {
+        "what",
+        "why",
+        "how",
+        "when",
+        "where",
+        "who",
+        "which",
+        "is",
+        "are",
+        "does",
+        "do",
+        "can",
+        "could",
+        "would",
+        "should",
+    }
 )
 
 _SYSTEM_PROMPT = (
@@ -115,7 +130,7 @@ class KhalifahAgent:
         on_thinking receives (request_id, ThinkingStep) for each cognitive step.
         """
         request_id = str(uuid.uuid4())
-        trace = self._thinking.create_trace(request_id)
+        self._thinking.create_trace(request_id)
 
         if on_thinking:
             self._thinking.on_step(on_thinking)
@@ -173,9 +188,7 @@ class KhalifahAgent:
         self._thinking.complete(request_id)
 
         # 5. Capture for Ruh Learner (fire-and-forget; never blocks streaming)
-        asyncio.create_task(
-            self._capture_interaction(message, full_response, client_id)
-        )
+        asyncio.create_task(self._capture_interaction(message, full_response, client_id))
 
     # ── Intent classification ─────────────────────────────────────────────────
 

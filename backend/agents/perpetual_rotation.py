@@ -21,15 +21,14 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.perpetual")
 
 
 class ShiftType(Enum):
-    ACTIVE = "active"             # Processing tasks
+    ACTIVE = "active"  # Processing tasks
     CONSOLIDATION = "consolidation"  # Dreams/memory/repair
-    RESERVE = "reserve"           # Monitoring/emergency standby
+    RESERVE = "reserve"  # Monitoring/emergency standby
 
 
 class MessageType(Enum):
@@ -46,11 +45,12 @@ class MessageType(Enum):
 @dataclass
 class AgentSlot:
     """An agent slot in the rotation system."""
+
     agent_id: str
     agent_name: str
     expertise: str
     current_shift: ShiftType
-    energy: float = 1.0        # 0.0 (exhausted) → 1.0 (fully rested)
+    energy: float = 1.0  # 0.0 (exhausted) → 1.0 (fully rested)
     tasks_completed: int = 0
     last_rotation: float = field(default_factory=time.time)
     consolidation_pending: bool = False
@@ -59,6 +59,7 @@ class AgentSlot:
 @dataclass
 class ChatMessage:
     """A message in the persistent agent group chat."""
+
     message_id: str
     message_type: MessageType
     sender_id: str
@@ -72,6 +73,7 @@ class ChatMessage:
 @dataclass
 class HandoffBrief:
     """Briefing document for shift transitions."""
+
     outgoing_shift: ShiftType
     incoming_shift: ShiftType
     active_tasks: list[str]
@@ -84,6 +86,7 @@ class HandoffBrief:
 @dataclass
 class RotationEvent:
     """Record of a shift rotation."""
+
     rotation_id: str
     new_active: list[str]
     new_consolidation: list[str]
@@ -95,11 +98,12 @@ class RotationEvent:
 @dataclass
 class SystemStatus:
     """Current state of the perpetual system."""
+
     active_agents: list[str]
     consolidating_agents: list[str]
     reserve_agents: list[str]
     total_agents: int
-    current_capacity: float       # active/total
+    current_capacity: float  # active/total
     surge_mode: bool
     rotation_count: int
     chat_messages: int
@@ -249,7 +253,7 @@ class PerpetualRotation:
 
         # Rotation configuration
         self.rotation_period_s = 3600  # default: rotate every hour
-        self.energy_threshold = 0.3    # rotate when energy drops below
+        self.energy_threshold = 0.3  # rotate when energy drops below
         self._last_rotation = time.time()
 
     def register_agent(
@@ -286,8 +290,8 @@ class PerpetualRotation:
 
         third = max(1, len(all_agents) // 3)
         active = all_agents[:third]
-        consolidation = all_agents[third:third * 2]
-        reserve = all_agents[third * 2:]
+        consolidation = all_agents[third : third * 2]
+        reserve = all_agents[third * 2 :]
 
         for agent in active:
             agent.current_shift = ShiftType.ACTIVE
@@ -310,10 +314,7 @@ class PerpetualRotation:
 
         # Energy-based: any active agent exhausted
         for slot in self.slots.values():
-            if (
-                slot.current_shift == ShiftType.ACTIVE
-                and slot.energy < self.energy_threshold
-            ):
+            if slot.current_shift == ShiftType.ACTIVE and slot.energy < self.energy_threshold:
                 return True
 
         return False
@@ -370,7 +371,7 @@ class PerpetualRotation:
             sender_id="system",
             sender_name="Rotation Manager",
             content=f"Shift rotation: {len(old_consol)} agents now active, "
-                    f"tasks: {', '.join(active_tasks[:3]) if active_tasks else 'none'}",
+            f"tasks: {', '.join(active_tasks[:3]) if active_tasks else 'none'}",
             message_type=MessageType.HANDOFF,
             context=recent_context[:200],
         )
@@ -386,7 +387,9 @@ class PerpetualRotation:
 
         logger.info(
             "[ROTATION] Shift change: active=%d consolidating=%d reserve=%d",
-            len(old_consol), len(old_reserve), len(old_active),
+            len(old_consol),
+            len(old_reserve),
+            len(old_active),
         )
         return event
 
@@ -433,7 +436,9 @@ class PerpetualRotation:
 
     def get_status(self) -> SystemStatus:
         active = [s.agent_id for s in self.slots.values() if s.current_shift == ShiftType.ACTIVE]
-        consolidating = [s.agent_id for s in self.slots.values() if s.current_shift == ShiftType.CONSOLIDATION]
+        consolidating = [
+            s.agent_id for s in self.slots.values() if s.current_shift == ShiftType.CONSOLIDATION
+        ]
         reserve = [s.agent_id for s in self.slots.values() if s.current_shift == ShiftType.RESERVE]
         total = len(self.slots)
 
