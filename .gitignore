@@ -55,3 +55,7 @@ backend/.vault.key
 .idea/
 *.swp
 *.swo
+
+# Research pipeline scratch + derived artifacts (datasets/ + results/ ARE committed)
+backend/research/output/
+backend/research/research.db

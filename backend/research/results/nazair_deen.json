@@ -1,0 +1,146 @@
+{
+  "construction": "mukhlisan lahu al-din",
+  "n_nazair": 11,
+  "consistency": {
+    "worship": 0.36363636363636365,
+    "call": 0.5454545454545454,
+    "Allah": 0.9090909090909091,
+    "lahu": 1.0,
+    "worship_or_call": 0.9090909090909091
+  },
+  "family": [
+    {
+      "verse": "4:146",
+      "sura": 4,
+      "aya": 146,
+      "word": "دِينَهُمْ",
+      "anchors": {
+        "worship": false,
+        "call": false,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "7:29",
+      "sura": 7,
+      "aya": 29,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": false,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "10:22",
+      "sura": 10,
+      "aya": 22,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "29:65",
+      "sura": 29,
+      "aya": 65,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "31:32",
+      "sura": 31,
+      "aya": 32,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "39:2",
+      "sura": 39,
+      "aya": 2,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": true,
+        "call": false,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "39:11",
+      "sura": 39,
+      "aya": 11,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": true,
+        "call": false,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "39:14",
+      "sura": 39,
+      "aya": 14,
+      "word": "دِينِى",
+      "anchors": {
+        "worship": true,
+        "call": false,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "40:14",
+      "sura": 40,
+      "aya": 14,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "40:65",
+      "sura": 40,
+      "aya": 65,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": false,
+        "call": true,
+        "Allah": true,
+        "lahu": true
+      }
+    },
+    {
+      "verse": "98:5",
+      "sura": 98,
+      "aya": 5,
+      "word": "ٱلدِّينَ",
+      "anchors": {
+        "worship": true,
+        "call": false,
+        "Allah": true,
+        "lahu": true
+      }
+    }
+  ],
+  "resolves_98_5": true
+}

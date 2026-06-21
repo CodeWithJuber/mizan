@@ -1,0 +1,11 @@
+{
+  "n_roots": 835,
+  "K_fields": 25,
+  "n_features": 36,
+  "cells": 900,
+  "T_obs": 4.233718358360906,
+  "fwer_p": 0.24675324675324675,
+  "null_max_mean": 3.9088490707090906,
+  "survivors": [],
+  "verdict": "no local signal survives correction"
+}
