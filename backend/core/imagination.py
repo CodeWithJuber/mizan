@@ -25,10 +25,8 @@ Counterfactual reasoning follows Pearl's 3-step procedure:
 
 import logging
 import math
-import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.imagination")
 
@@ -46,17 +44,18 @@ RESOLUTION_FINE = "fine"
 
 
 class ImaginationMode(Enum):
-    PROSPECTIVE = "prospective"     # Forward simulation: what will happen?
-    RETROSPECTIVE = "retrospective" # Backward: what led to this?
+    PROSPECTIVE = "prospective"  # Forward simulation: what will happen?
+    RETROSPECTIVE = "retrospective"  # Backward: what led to this?
     COUNTERFACTUAL = "counterfactual"  # What if? (Pearl Rung 3)
-    CREATIVE = "creative"           # Novel scene construction
+    CREATIVE = "creative"  # Novel scene construction
 
 
 @dataclass
 class SceneFragment:
     """A memory fragment used to construct imagined scenes."""
+
     content: str
-    source: str          # "episodic", "semantic", "sensory"
+    source: str  # "episodic", "semantic", "sensory"
     salience: float
     emotional_tag: float  # -1.0 (negative) to +1.0 (positive)
 
@@ -64,9 +63,10 @@ class SceneFragment:
 @dataclass
 class HierarchicalScene:
     """Multi-resolution mental scene."""
-    coarse: str          # High-level gist: "a meeting goes wrong"
-    medium: str          # Mid-level: actors, setting, actions
-    fine: str            # Fine-grained: specific details, dialogue
+
+    coarse: str  # High-level gist: "a meeting goes wrong"
+    medium: str  # Mid-level: actors, setting, actions
+    fine: str  # Fine-grained: specific details, dialogue
     emotional_valence: float
     confidence: float
     prediction_errors: list[float]  # ε per layer
@@ -75,22 +75,24 @@ class HierarchicalScene:
 @dataclass
 class MentalSimulation:
     """Result of running a mental simulation forward."""
+
     scenario: str
     steps: list[str]
     predicted_outcome: str
     emotional_trajectory: list[float]  # valence at each step
     confidence: float
-    surprisal: float    # -log P(outcome): how unexpected?
+    surprisal: float  # -log P(outcome): how unexpected?
 
 
 @dataclass
 class CounterfactualResult:
     """Pearl Rung 3 counterfactual analysis."""
+
     original_observation: str
     intervention: str
     counterfactual_world: str
-    probability_shift: float   # ΔP(outcome) under intervention
-    abduced_state: dict        # latent variables inferred
+    probability_shift: float  # ΔP(outcome) under intervention
+    abduced_state: dict  # latent variables inferred
 
 
 @dataclass
@@ -99,7 +101,7 @@ class ImaginationResult:
     scene: HierarchicalScene
     simulation: MentalSimulation | None
     counterfactual: CounterfactualResult | None
-    predictive_states: list[float]   # μ_l per layer
+    predictive_states: list[float]  # μ_l per layer
     total_surprise: float
 
 
@@ -169,7 +171,9 @@ class TaswirImaginationEngine:
 
         logger.debug(
             "[TASWIR] mode=%s fragments=%d surprise=%.3f",
-            mode.value, len(fragments), total_surprise,
+            mode.value,
+            len(fragments),
+            total_surprise,
         )
 
         return ImaginationResult(
@@ -181,9 +185,7 @@ class TaswirImaginationEngine:
             total_surprise=round(total_surprise, 4),
         )
 
-    def _recombine_fragments(
-        self, prompt: str, raw_fragments: list[dict]
-    ) -> list[SceneFragment]:
+    def _recombine_fragments(self, prompt: str, raw_fragments: list[dict]) -> list[SceneFragment]:
         """
         Hippocampal recombination: select and blend memory fragments
         relevant to the prompt.
@@ -201,24 +203,28 @@ class TaswirImaginationEngine:
             emotional_tag = raw.get("emotional_tag", 0.0)
             salience = overlap * 0.7 + abs(emotional_tag) * 0.3
 
-            fragments.append(SceneFragment(
-                content=content,
-                source=raw.get("source", "semantic"),
-                salience=salience,
-                emotional_tag=emotional_tag,
-            ))
+            fragments.append(
+                SceneFragment(
+                    content=content,
+                    source=raw.get("source", "semantic"),
+                    salience=salience,
+                    emotional_tag=emotional_tag,
+                )
+            )
 
         # Sort by salience, keep top fragments
         fragments.sort(key=lambda f: f.salience, reverse=True)
         top = fragments[:5]
 
         # Add synthetic fragment from prompt itself
-        top.append(SceneFragment(
-            content=prompt,
-            source="episodic",
-            salience=1.0,
-            emotional_tag=self._estimate_valence(prompt),
-        ))
+        top.append(
+            SceneFragment(
+                content=prompt,
+                source="episodic",
+                salience=1.0,
+                emotional_tag=self._estimate_valence(prompt),
+            )
+        )
 
         return top
 
@@ -245,9 +251,9 @@ class TaswirImaginationEngine:
         # Emotional valence: weighted average across fragments
         if fragments:
             total_salience = sum(f.salience for f in fragments)
-            emotional_valence = sum(
-                f.emotional_tag * f.salience for f in fragments
-            ) / max(total_salience, 0.01)
+            emotional_valence = sum(f.emotional_tag * f.salience for f in fragments) / max(
+                total_salience, 0.01
+            )
         else:
             emotional_valence = 0.0
 
@@ -264,9 +270,7 @@ class TaswirImaginationEngine:
             prediction_errors=[],
         )
 
-    def _compute_prediction_errors(
-        self, scene: HierarchicalScene
-    ) -> list[float]:
+    def _compute_prediction_errors(self, scene: HierarchicalScene) -> list[float]:
         """
         Prediction error at each layer:
         ε_l(t) = observation_l - μ_l(t)
@@ -280,7 +284,7 @@ class TaswirImaginationEngine:
             self._text_to_activation(scene.coarse),
             scene.confidence,  # abstract layer = overall confidence
         ]
-        errors = [obs - mu for obs, mu in zip(observations, self.mu)]
+        errors = [obs - mu for obs, mu in zip(observations, self.mu, strict=False)]
         scene.prediction_errors = errors
         return errors
 
@@ -291,16 +295,14 @@ class TaswirImaginationEngine:
         Top-down correction: each layer's prediction is adjusted
         by the difference between its own error and the layer above.
         """
-        for l in range(N_LAYERS):
-            own_error = errors[l]
-            upper_error = errors[l + 1] if l + 1 < N_LAYERS else 0.0
-            self.mu[l] = max(0.0, min(1.0,
-                self.mu[l] + KAPPA[l] * (own_error - upper_error)
-            ))
+        for layer in range(N_LAYERS):
+            own_error = errors[layer]
+            upper_error = errors[layer + 1] if layer + 1 < N_LAYERS else 0.0
+            self.mu[layer] = max(
+                0.0, min(1.0, self.mu[layer] + KAPPA[layer] * (own_error - upper_error))
+            )
 
-    def _run_forward_simulation(
-        self, prompt: str, scene: HierarchicalScene
-    ) -> MentalSimulation:
+    def _run_forward_simulation(self, prompt: str, scene: HierarchicalScene) -> MentalSimulation:
         """
         Run mental simulation forward in time from the imagined scene.
 
@@ -315,7 +317,7 @@ class TaswirImaginationEngine:
             f"Initial state: {scene.coarse}",
             f"Development: {scene.medium}",
             f"Key action: {self._extract_action(prompt)}",
-            f"Consequence: outcome follows from action",
+            "Consequence: outcome follows from action",
         ]
         for template in sim_templates:
             steps.append(template)
@@ -394,15 +396,11 @@ class TaswirImaginationEngine:
             return f"{gist_seed} → {dominant.content[:60]}"
         return f"Imagined scenario: {gist_seed}"
 
-    def _extract_actors_and_setting(
-        self, prompt: str, fragments: list[SceneFragment]
-    ) -> str:
+    def _extract_actors_and_setting(self, prompt: str, fragments: list[SceneFragment]) -> str:
         context = " | ".join(f.content[:40] for f in fragments[:2])
         return f"Setting: {prompt[:60]} | Context: {context}"
 
-    def _construct_fine_details(
-        self, prompt: str, fragments: list[SceneFragment]
-    ) -> str:
+    def _construct_fine_details(self, prompt: str, fragments: list[SceneFragment]) -> str:
         details = " ".join(f.content[:30] for f in fragments[:3])
         return f"Details: {details[:200]}"
 

@@ -178,7 +178,9 @@ class DualInputProcessor:
             try:
                 basirah = BasirahEngine()
                 insight = await basirah.analyze(
-                    image_bytes, context=context, media_type=media_type,
+                    image_bytes,
+                    context=context,
+                    media_type=media_type,
                     qalb_state=qalb_state,
                 )
                 results["basirah"] = insight.to_dict()
@@ -198,8 +200,12 @@ class DualInputProcessor:
             results["fuad"] = fuad
         else:
             results["fuad"] = {
-                "zahir": "", "batin": "", "key_terms": [],
-                "vocabulary_richness": 0, "sequential_pairs": [], "total_tokens": 0,
+                "zahir": "",
+                "batin": "",
+                "key_terms": [],
+                "vocabulary_richness": 0,
+                "sequential_pairs": [],
+                "total_tokens": 0,
             }
 
         return results

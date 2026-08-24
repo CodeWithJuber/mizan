@@ -20,9 +20,8 @@ Math:
 import logging
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.parallel_agents")
 
@@ -35,25 +34,26 @@ W_TASK_RELEVANCE = 0.35
 TAU_COMPETITION = 1.0
 
 # Decay time constants per agent type (seconds)
-TAU_FAST = 0.1   # reactive / surface agents
-TAU_SLOW = 0.5   # deliberative / deep agents
+TAU_FAST = 0.1  # reactive / surface agents
+TAU_SLOW = 0.5  # deliberative / deep agents
 
 # Skill automation mastery threshold
 MASTERY_THRESHOLD = 0.85
 
 
 class AgentStreamType(Enum):
-    REACTIVE = "reactive"       # fast, surface-level (Ammara-like)
+    REACTIVE = "reactive"  # fast, surface-level (Ammara-like)
     DELIBERATIVE = "deliberative"  # slow, deep reasoning (Mutmainna-like)
-    BACKGROUND = "background"   # cerebellar — automated skills, no bottleneck
+    BACKGROUND = "background"  # cerebellar — automated skills, no bottleneck
 
 
 @dataclass
 class AgentStream:
     """A single parallel thought stream."""
+
     name: str
     stream_type: AgentStreamType
-    hidden_state: float = 0.0      # h_i: activation level
+    hidden_state: float = 0.0  # h_i: activation level
     salience: float = 0.0
     novelty: float = 0.0
     affect: float = 0.0
@@ -61,12 +61,13 @@ class AgentStream:
     tau: float = TAU_SLOW
     output: str = ""
     latency_ms: float = 0.0
-    is_automated: bool = False     # True = background cerebellar processing
+    is_automated: bool = False  # True = background cerebellar processing
 
 
 @dataclass
 class WorkspaceAccess:
     """Result of workspace competition — one stream wins global broadcast."""
+
     winner: str
     winner_salience: float
     competition_probs: dict[str, float]
@@ -77,6 +78,7 @@ class WorkspaceAccess:
 @dataclass
 class SkillAutomation:
     """A skill that has been transferred to background processing."""
+
     skill_name: str
     mastery_score: float
     invocation_count: int
@@ -87,6 +89,7 @@ class SkillAutomation:
 @dataclass
 class ParallelResult:
     """Full result from parallel processing cycle."""
+
     workspace: WorkspaceAccess
     integration: str
     streams_active: int
@@ -161,9 +164,7 @@ class QalbParallelScheduler:
 
         # Step 2: Compute salience and competition (skip background — no bottleneck)
         competing = {
-            name: stream
-            for name, stream in self.streams.items()
-            if not stream.is_automated
+            name: stream for name, stream in self.streams.items() if not stream.is_automated
         }
         for stream in competing.values():
             stream.novelty = self._compute_novelty(stream, task)
@@ -204,7 +205,9 @@ class QalbParallelScheduler:
         elapsed_ms = (time.monotonic() - start) * 1000
         logger.debug(
             "[PARALLEL] cycle=%d winner=%s salience=%.3f",
-            self.cycle_count, winner_name, winner.salience,
+            self.cycle_count,
+            winner_name,
+            winner.salience,
         )
 
         return ParallelResult(
@@ -215,9 +218,7 @@ class QalbParallelScheduler:
             skill_automations=list(self.automation_registry.keys()),
         )
 
-    def _update_hidden_state(
-        self, stream: AgentStream, task: str, context: dict | None
-    ) -> float:
+    def _update_hidden_state(self, stream: AgentStream, task: str, context: dict | None) -> float:
         """
         Simplified discrete-time hidden state update:
         h_i(t+1) = h_i(t)·(1 - 1/τ_i) + σ(W_input·x)
@@ -226,8 +227,7 @@ class QalbParallelScheduler:
         """
         complexity = min(1.0, len(task.split()) / 50.0)
         broadcast_signal = (
-            self._hash_to_float(self.broadcast_history[-1])
-            if self.broadcast_history else 0.0
+            self._hash_to_float(self.broadcast_history[-1]) if self.broadcast_history else 0.0
         )
         decay = 1.0 - (1.0 / max(stream.tau * 10, 1))
         input_signal = self._sigmoid(complexity + 0.3 * broadcast_signal)
@@ -254,9 +254,7 @@ class QalbParallelScheduler:
         neg_score = sum(1 for w in negative if w in task_lower) / len(negative)
         return abs(pos_score - neg_score) + 0.1 * stream.hidden_state
 
-    def _compute_task_relevance(
-        self, stream: AgentStream, task: str, goal: str
-    ) -> float:
+    def _compute_task_relevance(self, stream: AgentStream, task: str, goal: str) -> float:
         """Relevance of stream hidden state to task goal."""
         if not goal:
             return 0.5
@@ -281,9 +279,7 @@ class QalbParallelScheduler:
             + W_TASK_RELEVANCE * stream.task_relevance
         )
 
-    def _softmax_compete(
-        self, streams: dict[str, AgentStream]
-    ) -> tuple[str, dict[str, float]]:
+    def _softmax_compete(self, streams: dict[str, AgentStream]) -> tuple[str, dict[str, float]]:
         """
         P(agent_i) = exp(salience_i / τ) / Σ_j exp(salience_j / τ)
         Winner = argmax P.
@@ -305,9 +301,7 @@ class QalbParallelScheduler:
         }[stream.stream_type]
         return f"[{stream.name.upper()}:{type_label}] Processing: {task[:80]}"
 
-    def _run_background_stream(
-        self, stream: AgentStream, task: str, broadcast: str
-    ) -> dict:
+    def _run_background_stream(self, stream: AgentStream, task: str, broadcast: str) -> dict:
         """Background cerebellar streams — run automated skills."""
         results = []
         for skill_name, automation in self.automation_registry.items():
@@ -319,9 +313,7 @@ class QalbParallelScheduler:
             "output": f"[BACKGROUND] {len(results)} automated skills active",
         }
 
-    def _integrate(
-        self, broadcast: str, background_results: list[dict], task: str
-    ) -> str:
+    def _integrate(self, broadcast: str, background_results: list[dict], task: str) -> str:
         """Merge broadcast signal with background processing results."""
         parts = [f"WORKSPACE: {broadcast[:200]}"]
         for bg in background_results:
@@ -357,9 +349,7 @@ class SkillAutomationTransfer:
         self.skill_stats: dict[str, dict] = {}
         self.automated: dict[str, SkillAutomation] = {}
 
-    def record_invocation(
-        self, skill_name: str, success: bool, latency_ms: float
-    ) -> bool:
+    def record_invocation(self, skill_name: str, success: bool, latency_ms: float) -> bool:
         """Record a skill invocation. Returns True if newly automated."""
         if skill_name not in self.skill_stats:
             self.skill_stats[skill_name] = {
@@ -372,8 +362,7 @@ class SkillAutomationTransfer:
         stats["count"] += 1
         stats["total_latency"] += latency_ms
         stats["mastery"] = (
-            self.ALPHA * (1.0 if success else 0.0)
-            + (1.0 - self.ALPHA) * stats["mastery"]
+            self.ALPHA * (1.0 if success else 0.0) + (1.0 - self.ALPHA) * stats["mastery"]
         )
 
         # Check if ready for automation
@@ -392,7 +381,8 @@ class SkillAutomationTransfer:
             )
             logger.info(
                 "[AUTOMATION] Skill '%s' transferred to background (mastery=%.2f)",
-                skill_name, stats["mastery"],
+                skill_name,
+                stats["mastery"],
             )
             return True
         return False

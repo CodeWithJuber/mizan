@@ -27,11 +27,12 @@ logger = logging.getLogger("mizan.memory_pyramid")
 @dataclass
 class MemoryHit:
     """A single result from any memory layer."""
+
     content: str
-    source_layer: str       # "masalik" | "dhikr" | "vector" | "graph" | "lawh"
-    relevance: float        # 0-1 (how well it matches query)
-    certainty: float        # 0-1 (how reliable the memory is)
-    recency_score: float    # 0-1 (1 = very recent)
+    source_layer: str  # "masalik" | "dhikr" | "vector" | "graph" | "lawh"
+    relevance: float  # 0-1 (how well it matches query)
+    certainty: float  # 0-1 (how reliable the memory is)
+    recency_score: float  # 0-1 (1 = very recent)
     tags: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
@@ -99,16 +100,18 @@ class MemoryPyramid:
                 for concept, activation in pathway_results:
                     node = self.masalik.concepts.get(concept)
                     certainty = node.resting_level if node else 0.3
-                    hits.append(MemoryHit(
-                        content=f"Associated concept: {concept}",
-                        source_layer="masalik",
-                        relevance=float(activation),
-                        certainty=certainty,
-                        recency_score=_recency_score(
-                            node.last_activated if node else now - 3600, now
-                        ),
-                        tags=["concept", "association"],
-                    ))
+                    hits.append(
+                        MemoryHit(
+                            content=f"Associated concept: {concept}",
+                            source_layer="masalik",
+                            relevance=float(activation),
+                            certainty=certainty,
+                            recency_score=_recency_score(
+                                node.last_activated if node else now - 3600, now
+                            ),
+                            tags=["concept", "association"],
+                        )
+                    )
             except Exception as e:
                 logger.debug("[PYRAMID] Masalik query failed: %s", e)
 
@@ -116,26 +119,27 @@ class MemoryPyramid:
         if self.dhikr:
             try:
                 import asyncio
+
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # Use sync fallback if we're inside async context
                     memories = self._dhikr_sync_recall(text, top_k)
                 else:
-                    memories = loop.run_until_complete(
-                        self.dhikr.recall(text, limit=top_k)
-                    )
+                    memories = loop.run_until_complete(self.dhikr.recall(text, limit=top_k))
                 for mem in memories:
                     content_str = str(mem.content)
                     recency = _recency_score(mem.recency.timestamp(), now)
-                    hits.append(MemoryHit(
-                        content=content_str,
-                        source_layer="dhikr",
-                        relevance=float(mem.importance),
-                        certainty=min(0.9, 0.3 + mem.access_count * 0.05),
-                        recency_score=recency,
-                        tags=mem.tags or [],
-                        metadata={"type": mem.memory_type},
-                    ))
+                    hits.append(
+                        MemoryHit(
+                            content=content_str,
+                            source_layer="dhikr",
+                            relevance=float(mem.importance),
+                            certainty=min(0.9, 0.3 + mem.access_count * 0.05),
+                            recency_score=recency,
+                            tags=mem.tags or [],
+                            metadata={"type": mem.memory_type},
+                        )
+                    )
             except Exception as e:
                 logger.debug("[PYRAMID] Dhikr query failed: %s", e)
 
@@ -144,14 +148,16 @@ class MemoryPyramid:
             try:
                 vector_results = self.vector_store.search(text, top_k=top_k)
                 for result in vector_results:
-                    hits.append(MemoryHit(
-                        content=result.get("content", ""),
-                        source_layer="vector",
-                        relevance=float(result.get("score", 0.5)),
-                        certainty=0.7,  # Vector search has good precision
-                        recency_score=0.5,  # Unknown recency
-                        tags=result.get("tags", []),
-                    ))
+                    hits.append(
+                        MemoryHit(
+                            content=result.get("content", ""),
+                            source_layer="vector",
+                            relevance=float(result.get("score", 0.5)),
+                            certainty=0.7,  # Vector search has good precision
+                            recency_score=0.5,  # Unknown recency
+                            tags=result.get("tags", []),
+                        )
+                    )
             except Exception as e:
                 logger.debug("[PYRAMID] VectorStore query failed: %s", e)
 
@@ -164,14 +170,16 @@ class MemoryPyramid:
                     content = f"{entity.get('name', '')} ({entity.get('type', 'entity')})"
                     if props:
                         content += f": {list(props.items())[:3]}"
-                    hits.append(MemoryHit(
-                        content=content,
-                        source_layer="graph",
-                        relevance=0.7,  # Entity match is high relevance
-                        certainty=0.6,
-                        recency_score=0.4,
-                        tags=["entity", entity.get("type", "concept")],
-                    ))
+                    hits.append(
+                        MemoryHit(
+                            content=content,
+                            source_layer="graph",
+                            relevance=0.7,  # Entity match is high relevance
+                            certainty=0.6,
+                            recency_score=0.4,
+                            tags=["entity", entity.get("type", "concept")],
+                        )
+                    )
             except Exception as e:
                 logger.debug("[PYRAMID] KnowledgeGraph query failed: %s", e)
 
@@ -180,15 +188,17 @@ class MemoryPyramid:
             try:
                 lawh_results = self.lawh_mahfuz.search(text, top_k=top_k)
                 for entry in lawh_results:
-                    hits.append(MemoryHit(
-                        content=entry.content,
-                        source_layer="lawh",
-                        relevance=0.9,  # Immutable facts are highly reliable
-                        certainty=entry.certainty,
-                        recency_score=1.0,  # Immutable facts never decay
-                        tags=["immutable", entry.category],
-                        metadata={"source": entry.source},
-                    ))
+                    hits.append(
+                        MemoryHit(
+                            content=entry.content,
+                            source_layer="lawh",
+                            relevance=0.9,  # Immutable facts are highly reliable
+                            certainty=entry.certainty,
+                            recency_score=1.0,  # Immutable facts never decay
+                            tags=["immutable", entry.category],
+                            metadata={"source": entry.source},
+                        )
+                    )
             except Exception as e:
                 logger.debug("[PYRAMID] LawhMahfuz query failed: %s", e)
 
@@ -213,11 +223,10 @@ class MemoryPyramid:
         try:
             import asyncio
             import concurrent.futures
+
             # Run the coroutine in a separate thread with its own event loop
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    asyncio.run, self.dhikr.recall(query, limit=limit)
-                )
+                future = executor.submit(asyncio.run, self.dhikr.recall(query, limit=limit))
                 return future.result(timeout=5)
         except Exception:
             return []
@@ -245,7 +254,7 @@ class MemoryPyramid:
             "masalik": self.masalik is not None,
             "dhikr": self.dhikr is not None,
             "vector_store": self.vector_store is not None
-                and getattr(self.vector_store, "_available", False),
+            and getattr(self.vector_store, "_available", False),
             "knowledge_graph": self.knowledge_graph is not None,
             "lawh_mahfuz": self.lawh_mahfuz is not None,
         }

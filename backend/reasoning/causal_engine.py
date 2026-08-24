@@ -22,30 +22,33 @@ logger = logging.getLogger("mizan.causal")
 
 
 class CausalRung(Enum):
-    OBSERVATION = 1       # Association — seeing patterns
-    INTERVENTION = 2      # Doing — what happens when I act
-    COUNTERFACTUAL = 3    # Imagining — what would have been
+    OBSERVATION = 1  # Association — seeing patterns
+    INTERVENTION = 2  # Doing — what happens when I act
+    COUNTERFACTUAL = 3  # Imagining — what would have been
 
 
 @dataclass
 class CausalNode:
     """A variable in the causal graph."""
+
     name: str
-    value: float = 0.5          # Normalised probability (0-1)
+    value: float = 0.5  # Normalised probability (0-1)
     is_observed: bool = False
 
 
 @dataclass
 class CausalEdge:
     """A directed causal link: source → target with strength."""
+
     source: str
     target: str
-    strength: float = 0.5       # Causal strength (0-1)
+    strength: float = 0.5  # Causal strength (0-1)
 
 
 @dataclass
 class CausalModel:
     """A structural causal model (SCM) built from observations."""
+
     nodes: dict[str, CausalNode] = field(default_factory=dict)
     edges: list[CausalEdge] = field(default_factory=list)
 
@@ -59,6 +62,7 @@ class CausalModel:
 @dataclass
 class ObservationResult:
     """Rung 1 result: observed associations."""
+
     rung: CausalRung = CausalRung.OBSERVATION
     associations: dict[str, float] = field(default_factory=dict)
     model: CausalModel = field(default_factory=CausalModel)
@@ -68,6 +72,7 @@ class ObservationResult:
 @dataclass
 class InterventionResult:
     """Rung 2 result: effect of doing action."""
+
     rung: CausalRung = CausalRung.INTERVENTION
     action: str = ""
     predicted_effects: dict[str, float] = field(default_factory=dict)
@@ -87,6 +92,7 @@ class InterventionResult:
 @dataclass
 class CounterfactualResult:
     """Rung 3 result: what would have happened."""
+
     rung: CausalRung = CausalRung.COUNTERFACTUAL
     factual: str = ""
     alternative: str = ""
@@ -112,13 +118,24 @@ def _detect_causal_rung(text: str) -> CausalRung:
     """
     lower = text.lower()
     rung3_signals = [
-        "what if i had", "what would have", "if only", "had i",
-        "would have been", "could have", "should have",
+        "what if i had",
+        "what would have",
+        "if only",
+        "had i",
+        "would have been",
+        "could have",
+        "should have",
     ]
     rung2_signals = [
-        "what if i", "what happens if", "what would happen",
-        "if i do", "if i delete", "if i change", "if i run",
-        "what if we", "what if you",
+        "what if i",
+        "what happens if",
+        "what would happen",
+        "if i do",
+        "if i delete",
+        "if i change",
+        "if i run",
+        "what if we",
+        "what if you",
     ]
     if any(s in lower for s in rung3_signals):
         return CausalRung.COUNTERFACTUAL
@@ -156,7 +173,7 @@ class CausalEngine:
         # Create edges based on co-occurrence / correlation heuristics
         # High-value nodes tend to "cause" downstream effects
         for i, a in enumerate(keys):
-            for b in keys[i + 1:]:
+            for b in keys[i + 1 :]:
                 va, vb = data[a], data[b]
                 # If both are high, assume possible causal relationship
                 if abs(va - vb) < 0.3:
@@ -165,7 +182,9 @@ class CausalEngine:
                         model.edges.append(CausalEdge(source=a, target=b, strength=strength))
 
         associations = {k: round(v, 3) for k, v in data.items()}
-        summary = f"Observed {len(keys)} variables, identified {len(model.edges)} potential causal links."
+        summary = (
+            f"Observed {len(keys)} variables, identified {len(model.edges)} potential causal links."
+        )
 
         logger.debug("[CAUSAL] Rung 1: %s", summary)
         return ObservationResult(
@@ -215,9 +234,12 @@ class CausalEngine:
                             for child in children:
                                 if child not in predicted_effects:
                                     edge = next(
-                                        (e for e in model.edges
-                                         if e.source == node_name and e.target == child),
-                                        None
+                                        (
+                                            e
+                                            for e in model.edges
+                                            if e.source == node_name and e.target == child
+                                        ),
+                                        None,
                                     )
                                     if edge:
                                         propagated = effects[trigger_var] * edge.strength * 0.7
@@ -293,8 +315,12 @@ class CausalEngine:
             f"Probability estimate: {probability:.0%}."
         )
 
-        logger.debug("[CAUSAL] Rung 3: factual='%s' alt='%s' prob=%.2f",
-                     factual[:40], alternative[:40], probability)
+        logger.debug(
+            "[CAUSAL] Rung 3: factual='%s' alt='%s' prob=%.2f",
+            factual[:40],
+            alternative[:40],
+            probability,
+        )
         return CounterfactualResult(
             factual=factual,
             alternative=alternative,

@@ -19,7 +19,7 @@ import logging
 import os
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ..base import SkillBase, SkillManifest
@@ -199,7 +199,9 @@ class JisrRemoteSkill(SkillBase):
         """Execute a command on a remote server via SSH."""
         server = self._get_server(params)
         if not server:
-            return {"error": "Server not found. Register with ssh_register_server first, or provide 'host' in params."}
+            return {
+                "error": "Server not found. Register with ssh_register_server first, or provide 'host' in params."
+            }
 
         command = params.get("command", "")
         if not command:
@@ -269,9 +271,7 @@ class JisrRemoteSkill(SkillBase):
             if server.password:
                 scp_cmd = self._wrap_with_sshpass(scp_cmd, server.password)
 
-            upload_result = subprocess.run(
-                scp_cmd, capture_output=True, text=True, timeout=30
-            )
+            upload_result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=30)
             if upload_result.returncode != 0:
                 return {
                     "error": f"Failed to upload script: {upload_result.stderr[:500]}",
@@ -284,9 +284,7 @@ class JisrRemoteSkill(SkillBase):
             if server.password:
                 ssh_cmd = self._wrap_with_sshpass(ssh_cmd, server.password)
 
-            result = subprocess.run(
-                ssh_cmd, capture_output=True, text=True, timeout=timeout
-            )
+            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
 
             # Cleanup remote script
             cleanup_cmd = self._build_ssh_cmd(server, f"rm -f {remote_script}")
@@ -322,9 +320,7 @@ class JisrRemoteSkill(SkillBase):
         # Support inline content → write to temp then upload
         content = params.get("content", "")
         if content and not local_path:
-            with tempfile.NamedTemporaryFile(
-                mode="w", delete=False, prefix="mizan_upload_"
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, prefix="mizan_upload_") as tmp:
                 tmp.write(content)
                 local_path = tmp.name
 
@@ -336,9 +332,7 @@ class JisrRemoteSkill(SkillBase):
             scp_cmd = self._wrap_with_sshpass(scp_cmd, server.password)
 
         try:
-            result = subprocess.run(
-                scp_cmd, capture_output=True, text=True, timeout=120
-            )
+            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
             # Clean up temp file if we created one from content
             if content:
                 os.unlink(local_path)
@@ -370,9 +364,7 @@ class JisrRemoteSkill(SkillBase):
             scp_cmd = self._wrap_with_sshpass(scp_cmd, server.password)
 
         try:
-            result = subprocess.run(
-                scp_cmd, capture_output=True, text=True, timeout=120
-            )
+            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
             return {
                 "success": result.returncode == 0,
                 "local_path": local_path,
@@ -394,9 +386,7 @@ class JisrRemoteSkill(SkillBase):
             ssh_cmd = self._wrap_with_sshpass(ssh_cmd, server.password)
 
         try:
-            result = subprocess.run(
-                ssh_cmd, capture_output=True, text=True, timeout=15
-            )
+            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=15)
             if result.returncode == 0 and "MIZAN_PING_OK" in result.stdout:
                 server.status = "connected"
                 server.last_connected = datetime.now(UTC).isoformat()
@@ -456,10 +446,14 @@ class JisrRemoteSkill(SkillBase):
             result = subprocess.run(
                 [
                     "ssh-keygen",
-                    "-t", "ed25519",
-                    "-f", key_path,
-                    "-N", "",  # No passphrase
-                    "-C", "mizan-agent",
+                    "-t",
+                    "ed25519",
+                    "-f",
+                    key_path,
+                    "-N",
+                    "",  # No passphrase
+                    "-C",
+                    "mizan-agent",
                 ],
                 capture_output=True,
                 text=True,
@@ -550,14 +544,10 @@ class JisrRemoteSkill(SkillBase):
 
                 # Verify key auth works
                 verify_cmd = self._build_ssh_cmd(server, "echo 'MIZAN_KEY_AUTH_OK'")
-                verify = subprocess.run(
-                    verify_cmd, capture_output=True, text=True, timeout=15
-                )
+                verify = subprocess.run(verify_cmd, capture_output=True, text=True, timeout=15)
 
                 if verify.returncode == 0 and "MIZAN_KEY_AUTH_OK" in verify.stdout:
-                    logger.info(
-                        f"[JISR] SSH key installed and verified on {server.host}"
-                    )
+                    logger.info(f"[JISR] SSH key installed and verified on {server.host}")
                     return {
                         "success": True,
                         "server": server.host,
@@ -597,8 +587,15 @@ class JisrRemoteSkill(SkillBase):
                     "properties": {
                         "host": {"type": "string", "description": "Server IP or hostname"},
                         "port": {"type": "integer", "description": "SSH port", "default": 22},
-                        "user": {"type": "string", "description": "SSH username", "default": "root"},
-                        "key_path": {"type": "string", "description": "Path to SSH private key file"},
+                        "user": {
+                            "type": "string",
+                            "description": "SSH username",
+                            "default": "root",
+                        },
+                        "key_path": {
+                            "type": "string",
+                            "description": "Path to SSH private key file",
+                        },
                         "password": {"type": "string", "description": "SSH password (if no key)"},
                         "label": {"type": "string", "description": "Friendly name for this server"},
                     },
@@ -612,12 +609,19 @@ class JisrRemoteSkill(SkillBase):
                     "type": "object",
                     "properties": {
                         "server_id": {"type": "string", "description": "Registered server ID"},
-                        "host": {"type": "string", "description": "Server host (if not registered)"},
+                        "host": {
+                            "type": "string",
+                            "description": "Server host (if not registered)",
+                        },
                         "user": {"type": "string", "description": "SSH user (default: root)"},
                         "password": {"type": "string", "description": "SSH password"},
                         "key_path": {"type": "string", "description": "SSH key path"},
                         "command": {"type": "string", "description": "Command to execute"},
-                        "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 60},
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Timeout in seconds",
+                            "default": 60,
+                        },
                     },
                     "required": ["command"],
                 },
@@ -632,9 +636,20 @@ class JisrRemoteSkill(SkillBase):
                         "host": {"type": "string", "description": "Server host"},
                         "user": {"type": "string", "description": "SSH user"},
                         "password": {"type": "string", "description": "SSH password"},
-                        "script": {"type": "string", "description": "Multi-line bash script to execute"},
-                        "interpreter": {"type": "string", "description": "Script interpreter", "default": "/bin/bash"},
-                        "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 300},
+                        "script": {
+                            "type": "string",
+                            "description": "Multi-line bash script to execute",
+                        },
+                        "interpreter": {
+                            "type": "string",
+                            "description": "Script interpreter",
+                            "default": "/bin/bash",
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Timeout in seconds",
+                            "default": 300,
+                        },
                     },
                     "required": ["script"],
                 },
@@ -647,8 +662,14 @@ class JisrRemoteSkill(SkillBase):
                     "properties": {
                         "server_id": {"type": "string", "description": "Registered server ID"},
                         "host": {"type": "string", "description": "Server host"},
-                        "local_path": {"type": "string", "description": "Local file path to upload"},
-                        "content": {"type": "string", "description": "File content to upload (alternative to local_path)"},
+                        "local_path": {
+                            "type": "string",
+                            "description": "Local file path to upload",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "File content to upload (alternative to local_path)",
+                        },
                         "remote_path": {"type": "string", "description": "Remote destination path"},
                     },
                     "required": ["remote_path"],
@@ -706,9 +727,19 @@ class JisrRemoteSkill(SkillBase):
                         "server_id": {"type": "string", "description": "Registered server ID"},
                         "host": {"type": "string", "description": "Server IP or hostname"},
                         "port": {"type": "integer", "description": "SSH port", "default": 22},
-                        "user": {"type": "string", "description": "SSH username", "default": "root"},
-                        "password": {"type": "string", "description": "Current server password (required for first-time key setup)"},
-                        "key_path": {"type": "string", "description": "SSH key path (default: /data/.ssh/mizan_id_ed25519)"},
+                        "user": {
+                            "type": "string",
+                            "description": "SSH username",
+                            "default": "root",
+                        },
+                        "password": {
+                            "type": "string",
+                            "description": "Current server password (required for first-time key setup)",
+                        },
+                        "key_path": {
+                            "type": "string",
+                            "description": "SSH key path (default: /data/.ssh/mizan_id_ed25519)",
+                        },
                     },
                     "required": ["password"],
                 },

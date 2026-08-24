@@ -37,20 +37,18 @@ REM dream bizarreness:
 """
 
 import logging
-import math
 import random
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.dream_engine")
 
 # NREM replay priority weights
-ALPHA_EMOTIONAL = 0.30   # emotional intensity weight
-BETA_NOVELTY = 0.25      # novelty weight
-GAMMA_GOAL = 0.25        # goal relevance weight
-DELTA_ERROR = 0.20       # prediction error weight
+ALPHA_EMOTIONAL = 0.30  # emotional intensity weight
+BETA_NOVELTY = 0.25  # novelty weight
+GAMMA_GOAL = 0.25  # goal relevance weight
+DELTA_ERROR = 0.20  # prediction error weight
 
 # NREM synaptic downscaling rate
 DOWNSCALING_DELTA = 0.05  # w → w × (1 - δ)
@@ -70,19 +68,20 @@ GIST_TOP_K = 5
 
 class DreamPhase(Enum):
     AWAKE = "awake"
-    NREM = "nrem"            # Non-REM: slow-wave consolidation
-    REM = "rem"              # REM: adversarial creative replay
-    TAWIL = "tawil"          # Taʾwīl: dream interpretation
+    NREM = "nrem"  # Non-REM: slow-wave consolidation
+    REM = "rem"  # REM: adversarial creative replay
+    TAWIL = "tawil"  # Taʾwīl: dream interpretation
 
 
 @dataclass
 class MemoryTrace:
     """A memory trace eligible for dream replay."""
+
     content: str
-    emotional_intensity: float   # |valence|, 0-1
-    novelty: float               # surprisal during encoding
-    goal_relevance: float        # 0-1
-    prediction_error: float      # original error magnitude
+    emotional_intensity: float  # |valence|, 0-1
+    novelty: float  # surprisal during encoding
+    goal_relevance: float  # 0-1
+    prediction_error: float  # original error magnitude
     encoding_time: float = field(default_factory=time.time)
     replay_count: int = 0
 
@@ -101,9 +100,10 @@ class MemoryTrace:
 @dataclass
 class NREMCycle:
     """Result of one NREM slow-wave sleep cycle."""
-    replayed_memories: list[str]          # compressed content
+
+    replayed_memories: list[str]  # compressed content
     synaptic_weight_changes: dict[str, float]  # key → new weight
-    gist_extracted: list[str]             # high-level patterns extracted
+    gist_extracted: list[str]  # high-level patterns extracted
     compression_ratio: float
     downscaling_applied: bool
 
@@ -111,26 +111,29 @@ class NREMCycle:
 @dataclass
 class REMCycle:
     """Result of one REM cycle."""
-    dream_content: list[str]             # generated dream scenarios
-    emotional_episodes: list[str]        # emotionally processed memories
-    creative_insights: list[str]         # novel connections discovered
-    discriminator_loss: float            # GAN D loss (lower = more realistic dreams)
-    generator_loss: float                # GAN G loss (lower = better generation)
+
+    dream_content: list[str]  # generated dream scenarios
+    emotional_episodes: list[str]  # emotionally processed memories
+    creative_insights: list[str]  # novel connections discovered
+    discriminator_loss: float  # GAN D loss (lower = more realistic dreams)
+    generator_loss: float  # GAN G loss (lower = better generation)
     bizarreness_score: float
 
 
 @dataclass
 class TawilInterpretation:
     """Dream interpretation (Taʾwīl)."""
-    dream_symbols: dict[str, str]        # symbol → meaning
-    waking_relevance: str                # how the dream relates to current tasks
-    insights: list[str]                  # extracted actionable insights
+
+    dream_symbols: dict[str, str]  # symbol → meaning
+    waking_relevance: str  # how the dream relates to current tasks
+    insights: list[str]  # extracted actionable insights
     confidence: float
 
 
 @dataclass
 class DreamSession:
     """A complete offline consolidation session."""
+
     phase_sequence: list[DreamPhase]
     nrem_cycles: list[NREMCycle]
     rem_cycles: list[REMCycle]
@@ -197,7 +200,8 @@ class ManamDreamEngine:
 
         logger.debug(
             "[MANAM] Memory added: priority=%.3f content=%s",
-            trace.priority_score(), content[:50],
+            trace.priority_score(),
+            content[:50],
         )
 
     def run_consolidation(
@@ -214,7 +218,10 @@ class ManamDreamEngine:
         start = time.monotonic()
         logger.info(
             "[MANAM] Starting dream session #%d: %d memories, %d NREM + %d REM cycles",
-            self._session_count, len(self.replay_buffer), n_nrem_cycles, n_rem_cycles,
+            self._session_count,
+            len(self.replay_buffer),
+            n_nrem_cycles,
+            n_rem_cycles,
         )
 
         phase_sequence = []
@@ -227,7 +234,12 @@ class ManamDreamEngine:
             phase_sequence.append(DreamPhase.NREM)
             nrem = self._run_nrem_cycle()
             nrem_results.append(nrem)
-            logger.debug("[MANAM] NREM cycle %d: %d replays, %d gists", i + 1, len(nrem.replayed_memories), len(nrem.gist_extracted))
+            logger.debug(
+                "[MANAM] NREM cycle %d: %d replays, %d gists",
+                i + 1,
+                len(nrem.replayed_memories),
+                len(nrem.gist_extracted),
+            )
 
         # Phase 2: REM cycles
         for i in range(n_rem_cycles):
@@ -235,7 +247,13 @@ class ManamDreamEngine:
             phase_sequence.append(DreamPhase.REM)
             rem = self._run_rem_cycle()
             rem_results.append(rem)
-            logger.debug("[MANAM] REM cycle %d: %d dreams, %d insights, D_loss=%.3f", i + 1, len(rem.dream_content), len(rem.creative_insights), rem.discriminator_loss)
+            logger.debug(
+                "[MANAM] REM cycle %d: %d dreams, %d insights, D_loss=%.3f",
+                i + 1,
+                len(rem.dream_content),
+                len(rem.creative_insights),
+                rem.discriminator_loss,
+            )
 
         # Phase 3: Taʾwīl
         tawil = None
@@ -291,13 +309,13 @@ class ManamDreamEngine:
             key=lambda t: t.priority_score(),
             reverse=True,
         )
-        top_traces = sorted_traces[:min(10, len(sorted_traces))]
+        top_traces = sorted_traces[: min(10, len(sorted_traces))]
 
         replayed = []
         for trace in top_traces:
             trace.replay_count += 1
             # Compressed replay: truncate to 1/COMPRESSION_RATIO of original detail
-            compressed = trace.content[:max(20, len(trace.content) // int(COMPRESSION_RATIO))]
+            compressed = trace.content[: max(20, len(trace.content) // int(COMPRESSION_RATIO))]
             replayed.append(f"[NREM:{trace.replay_count}x] {compressed}")
 
         # Step 3: Synaptic homeostasis — downscale all weights
@@ -321,7 +339,8 @@ class ManamDreamEngine:
         # Remove low-priority memories after consolidation
         consolidation_threshold = 0.2
         self.replay_buffer = [
-            t for t in self.replay_buffer
+            t
+            for t in self.replay_buffer
             if t.priority_score() > consolidation_threshold or t.replay_count == 0
         ]
 
@@ -354,17 +373,15 @@ class ManamDreamEngine:
 
         # GAN training step (discriminator update)
         d_loss, g_loss = self._gan_training_step(dream_content, fragments)
-        self._discriminator_confidence = min(0.95, self._discriminator_confidence + GAN_LR * (0.5 - d_loss))
+        self._discriminator_confidence = min(
+            0.95, self._discriminator_confidence + GAN_LR * (0.5 - d_loss)
+        )
         self._generator_quality = min(0.95, self._generator_quality + GAN_LR * (0.5 - g_loss))
 
         # Step 2: Emotional processing
-        high_affect = [
-            t for t in self.replay_buffer
-            if t.emotional_intensity > 0.6
-        ][:3]
+        high_affect = [t for t in self.replay_buffer if t.emotional_intensity > 0.6][:3]
         emotional_episodes = [
-            f"[REM:affect={t.emotional_intensity:.2f}] {t.content[:60]}"
-            for t in high_affect
+            f"[REM:affect={t.emotional_intensity:.2f}] {t.content[:60]}" for t in high_affect
         ]
 
         # Step 3: Creative insight detection
@@ -465,9 +482,7 @@ class ManamDreamEngine:
         first_sentence = top.content.split(".")[0][:80]
         return [f"Gist: {first_sentence}"]
 
-    def _generate_dreams(
-        self, fragments: list[str], noise: list[float]
-    ) -> list[str]:
+    def _generate_dreams(self, fragments: list[str], noise: list[float]) -> list[str]:
         """
         G(z, fragments): Generate dream scenarios from memory fragments + noise.
 
@@ -483,10 +498,6 @@ class ManamDreamEngine:
             n = len(fragments)
             if n == 0:
                 continue
-            raw_weights = [abs(random.gauss(0, 1)) for _ in range(n)]
-            total = sum(raw_weights) or 1.0
-            weights = [w / total for w in raw_weights]
-
             # Blend fragments with weights
             selected = fragments[i % n] if i < len(fragments) else fragments[0]
             noise_tag = f"[noise:{nz:.2f}]"
@@ -553,8 +564,7 @@ class ManamDreamEngine:
                 jaccard = overlap / union if union > 0 else 0
                 if 0.05 < jaccard < 0.3:  # some but not full overlap → novel link
                     insight = (
-                        f"Creative link: [{dream[:40]}] ↔ [{frag[:40]}] "
-                        f"(Jaccard={jaccard:.2f})"
+                        f"Creative link: [{dream[:40]}] ↔ [{frag[:40]}] (Jaccard={jaccard:.2f})"
                     )
                     insights.append(insight)
 
@@ -600,7 +610,7 @@ class ManamDreamEngine:
 
             # Estimate emotional intensity from content
             positive_words = {"success", "solved", "found", "created", "excellent"}
-            negative_words = {"error", "failed", "failed", "wrong", "exception"}
+            negative_words = {"error", "failed", "wrong", "exception"}
             words = set(content.lower().split())
             pos = len(words & positive_words) / len(positive_words)
             neg = len(words & negative_words) / len(negative_words)

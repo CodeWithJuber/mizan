@@ -36,10 +36,7 @@ _INSERT_SQL = (
     "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
 
-_UPDATE_SQL = (
-    "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? "
-    "WHERE task_id = ?"
-)
+_UPDATE_SQL = "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? WHERE task_id = ?"
 
 
 @dataclass(order=True)
@@ -126,7 +123,7 @@ class MizanTaskQueue:
         """Wait for next available task with timeout."""
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         return await self.dequeue()
 

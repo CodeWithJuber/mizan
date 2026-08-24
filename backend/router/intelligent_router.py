@@ -48,19 +48,33 @@ class IntelligentRouter:
         """Route to best provider. Returns (response, decision)."""
         if not self._ruh:
             return self._route_external(
-                model, max_tokens, system, messages, tools, temperature,
+                model,
+                max_tokens,
+                system,
+                messages,
+                tools,
+                temperature,
                 reason="ruh_not_available",
             )
 
         # Ruh Model doesn't support tool_use yet
         if tools:
             return self._route_external(
-                model, max_tokens, system, messages, tools, temperature,
+                model,
+                max_tokens,
+                system,
+                messages,
+                tools,
+                temperature,
                 reason="tools_required",
             )
 
         return self._try_ruh_with_fallback(
-            model, max_tokens, system, messages, temperature,
+            model,
+            max_tokens,
+            system,
+            messages,
+            temperature,
         )
 
     def _route_external(
@@ -77,7 +91,12 @@ class IntelligentRouter:
         if not self._external:
             raise RuntimeError("No external provider configured")
         response = self._external.create(
-            model, max_tokens, system, messages, tools, temperature,
+            model,
+            max_tokens,
+            system,
+            messages,
+            tools,
+            temperature,
         )
         decision = RouteDecision("external", 0.0, reason)
         self._stats["external"] += 1
@@ -94,7 +113,11 @@ class IntelligentRouter:
         """Try Ruh Model first; fall back to external on failure."""
         try:
             response = self._ruh.create(
-                model, max_tokens, system, messages, temperature=temperature,
+                model,
+                max_tokens,
+                system,
+                messages,
+                temperature=temperature,
             )
             decision = RouteDecision("ruh", 0.5, "ruh_available")
             self._stats["ruh"] += 1
@@ -102,7 +125,12 @@ class IntelligentRouter:
         except Exception as exc:
             logger.warning("Ruh Model failed, falling back to external: %s", exc)
             return self._route_external(
-                model, max_tokens, system, messages, None, temperature,
+                model,
+                max_tokens,
+                system,
+                messages,
+                None,
+                temperature,
                 reason=f"ruh_failed: {exc}",
             )
 

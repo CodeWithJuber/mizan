@@ -93,6 +93,7 @@ class DhikrMemorySystem:
         # ── KnowledgeGraph: Entity + relationship store ──
         try:
             from memory.knowledge_graph import KnowledgeGraph
+
             self.knowledge_graph = KnowledgeGraph(db_path=self.db_path)
         except Exception:
             self.knowledge_graph = None
@@ -100,7 +101,9 @@ class DhikrMemorySystem:
         # ── LawhMahfuz: Immutable preserved memory ──
         try:
             import os
+
             from memory.lawh_mahfuz import LawhMahfuz
+
             lawh_dir = os.path.dirname(self.db_path) if self.db_path != ":memory:" else "/tmp"
             lawh_db = (
                 os.path.join(lawh_dir, "lawh_mahfuz.db")
@@ -114,6 +117,7 @@ class DhikrMemorySystem:
         # ── MemoryPyramid: Unified 5-layer query ──
         try:
             from memory.memory_pyramid import MemoryPyramid
+
             self.pyramid = MemoryPyramid(
                 dhikr=self,
                 masalik=self.masalik,
@@ -730,7 +734,7 @@ class DhikrMemorySystem:
 
     async def set_preference(self, key: str, value: str) -> None:
         """Upsert a persisted preference."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         conn = self._get_conn()
         c = conn.cursor()

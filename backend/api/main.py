@@ -42,6 +42,7 @@ from agents.specialized import create_agent
 from api.commands import handle_command
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
+from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
 from core.architecture import MizanBalancer, ShuraCouncil
 from core.events import EVENTS, event_bus
 from core.hooks import HOOKS, hook_registry
@@ -50,8 +51,6 @@ from core.plugins import plugin_manager
 from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
-from reasoning.context_manager import ContextManager
-from reasoning.planner import TafakkurPlanner
 from providers import (
     check_provider_health,
     create_provider,
@@ -60,19 +59,20 @@ from providers import (
     get_provider_status,
     set_active_state,
 )
-from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
 from qca.cognitive_methods import select_method
 
 # New Quranic systems
 from qca.yaqin_engine import YaqinEngine
+from reasoning.context_manager import ContextManager
+from reasoning.planner import TafakkurPlanner
 from security.auth import MizanAuth, TokenPayload
 from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
+from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
 from task_queue.worker import TaskWorker
-from task_queue.priorities import TaskPriority
 from training_manager import training_manager
 
 logger = logging.getLogger("mizan.api")
@@ -224,12 +224,14 @@ async def lifespan(app: FastAPI):
             return {"error": "No agent available"}
         agent = active_agents[agent_id]
         result = await agent.execute(task_text)
-        await manager.broadcast({
-            "type": "queue_task_complete",
-            "task": task_text,
-            "agent": agent.name,
-            "result": result.get("response", str(result)),
-        })
+        await manager.broadcast(
+            {
+                "type": "queue_task_complete",
+                "task": task_text,
+                "agent": agent.name,
+                "result": result.get("response", str(result)),
+            }
+        )
         return result
 
     task_worker = TaskWorker(task_queue, handle_queued_task, max_concurrent=3)
@@ -257,18 +259,20 @@ async def lifespan(app: FastAPI):
     # Persist agent profiles
     try:
         for agent in active_agents.values():
-            await memory.save_agent_profile({
-                "id": agent.id,
-                "name": agent.name,
-                "role": agent.role,
-                "nafs_level": agent.nafs_level,
-                "capabilities": list(agent.tools.keys()),
-                "total_tasks": agent.total_tasks,
-                "success_rate": agent.success_rate,
-                "error_count": agent.error_count,
-                "learning_iterations": agent.learning_iterations,
-                "config": agent.config or {},
-            })
+            await memory.save_agent_profile(
+                {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "role": agent.role,
+                    "nafs_level": agent.nafs_level,
+                    "capabilities": list(agent.tools.keys()),
+                    "total_tasks": agent.total_tasks,
+                    "success_rate": agent.success_rate,
+                    "error_count": agent.error_count,
+                    "learning_iterations": agent.learning_iterations,
+                    "config": agent.config or {},
+                }
+            )
         logger.info(f"[AGENTS] {len(active_agents)} agent profiles persisted")
     except Exception as e:
         logger.warning(f"[AGENTS] Failed to persist profiles: {e}")
@@ -703,14 +707,16 @@ async def update_agent(
         if provider_obj:
             agent.ai_client = provider_obj
 
-    await memory.save_agent_profile({
-        "id": agent.id,
-        "name": agent.name,
-        "role": agent.role,
-        "nafs_level": agent.nafs_level,
-        "capabilities": list(agent.tools.keys()),
-        "config": agent.config,
-    })
+    await memory.save_agent_profile(
+        {
+            "id": agent.id,
+            "name": agent.name,
+            "role": agent.role,
+            "nafs_level": agent.nafs_level,
+            "capabilities": list(agent.tools.keys()),
+            "config": agent.config,
+        }
+    )
 
     await manager.broadcast({"type": "agent_updated", "agent": agent.to_dict()})
     return agent.to_dict()
@@ -739,12 +745,14 @@ async def set_agent_model(
     agent.ai_client = provider
     agent.ai_model = req.model
 
-    await manager.broadcast({
-        "type": "agent_model_changed",
-        "agent_id": agent_id,
-        "provider": req.provider,
-        "model": req.model,
-    })
+    await manager.broadcast(
+        {
+            "type": "agent_model_changed",
+            "agent_id": agent_id,
+            "provider": req.provider,
+            "model": req.model,
+        }
+    )
 
     wali.audit.log("agent_model_changed", {"agent_id": agent_id, "model": req.model})
     return {"agent_id": agent_id, "provider": req.provider, "model": req.model}
@@ -856,10 +864,7 @@ async def chat(
     # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
     if session is None:
         db_messages = await memory.get_messages(req.session_id, limit=50)
-        restored_history = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in db_messages
-        ]
+        restored_history = [{"role": msg["role"], "content": msg["content"]} for msg in db_messages]
         session = {"history": restored_history}
         if restored_history:
             logger.info(
@@ -957,8 +962,11 @@ async def chat(
 
         async def thinking_cb(phase: str, content: str, confidence: float, metadata: dict):
             thinking_stream.add_step(
-                rest_trace.request_id, ThinkingPhase(phase),
-                content, confidence, metadata,
+                rest_trace.request_id,
+                ThinkingPhase(phase),
+                content,
+                confidence,
+                metadata,
             )
             await manager.broadcast(
                 {
@@ -975,7 +983,7 @@ async def chat(
         try:
             result = await agent.execute(
                 req.content,
-                {"history": session["history"][-agent.max_tool_turns:]},
+                {"history": session["history"][-agent.max_tool_turns :]},
                 stream_callback=stream_cb,
                 thinking_callback=thinking_cb,
             )
@@ -993,10 +1001,21 @@ async def chat(
         session["history"].append({"role": "assistant", "content": str(final_response)})
 
         # Extract cognitive metadata from QALB-7 pipeline
-        cognitive = {k: result.get(k) for k in (
-            "nafs_level", "nafs_name", "ruh_energy", "qalb", "yaqin",
-            "mizan_label", "cognitive_method", "lubb", "lawwama",
-        ) if result.get(k) is not None}
+        cognitive = {
+            k: result.get(k)
+            for k in (
+                "nafs_level",
+                "nafs_name",
+                "ruh_energy",
+                "qalb",
+                "yaqin",
+                "mizan_label",
+                "cognitive_method",
+                "lubb",
+                "lawwama",
+            )
+            if result.get(k) is not None
+        }
 
         thinking_stream.complete(message_id)
         completed_trace = thinking_stream.get_trace(message_id)
@@ -1006,9 +1025,12 @@ async def chat(
                 "request_id": completed_trace.request_id,
                 "steps": [
                     {
-                        "id": s.id, "phase": s.phase.value,
-                        "content": s.content, "confidence": s.confidence,
-                        "timestamp": s.timestamp, "metadata": s.metadata,
+                        "id": s.id,
+                        "phase": s.phase.value,
+                        "content": s.content,
+                        "confidence": s.confidence,
+                        "timestamp": s.timestamp,
+                        "metadata": s.metadata,
                     }
                     for s in completed_trace.steps
                 ],
@@ -1083,11 +1105,13 @@ async def execute_plan(
 
     async def run_plan():
         result = await planner.execute_plan(plan, active_agents)
-        await manager.broadcast({
-            "type": "plan_complete",
-            "plan_id": plan_id,
-            "result": result,
-        })
+        await manager.broadcast(
+            {
+                "type": "plan_complete",
+                "plan_id": plan_id,
+                "result": result,
+            }
+        )
 
     background_tasks.add_task(run_plan)
     return {"status": "executing", "plan_id": plan_id}
@@ -1160,16 +1184,18 @@ async def list_memories(memory_type: str | None = None, limit: int = 30):
             content = json.loads(row[1]) if row[1] else None
         except Exception:
             content = row[1]
-        results.append({
-            "id": row[0],
-            "content": str(content)[:500] if content else "",
-            "type": row[2],
-            "importance": row[3] or 0,
-            "recency": row[4] or "",
-            "access_count": row[5] or 0,
-            "agent_id": row[6],
-            "tags": json.loads(row[7]) if row[7] else [],
-        })
+        results.append(
+            {
+                "id": row[0],
+                "content": str(content)[:500] if content else "",
+                "type": row[2],
+                "importance": row[3] or 0,
+                "recency": row[4] or "",
+                "access_count": row[5] or 0,
+                "agent_id": row[6],
+                "tags": json.loads(row[7]) if row[7] else [],
+            }
+        )
     return {"results": results, "total": len(results)}
 
 
@@ -1240,7 +1266,9 @@ async def ingest_knowledge(req: KnowledgeIngest):
     elif source_type == "url":
         result = await extract_url(req.source)
     else:
-        raise HTTPException(400, f"Use /api/knowledge/upload for file uploads. Got source_type: {source_type}")
+        raise HTTPException(
+            400, f"Use /api/knowledge/upload for file uploads. Got source_type: {source_type}"
+        )
 
     if "error" in result:
         raise HTTPException(422, result["error"])
@@ -1251,7 +1279,7 @@ async def ingest_knowledge(req: KnowledgeIngest):
 
     chunks = chunk_content(content)
     stored_ids = []
-    for idx, chunk in enumerate(chunks):
+    for chunk in chunks:
         mem_id = await memory.remember(
             content=chunk,
             memory_type="semantic",
@@ -1356,7 +1384,17 @@ async def list_knowledge_sources():
 
 # === FILE UPLOAD (Rafi' - رافع) ===
 
-_ALLOWED_UPLOAD_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".txt", ".md", ".docx"}
+_ALLOWED_UPLOAD_SUFFIXES = {
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".txt",
+    ".md",
+    ".docx",
+}
 _MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
@@ -1368,7 +1406,9 @@ async def upload_file(
     """Accept file uploads (PDF, images, docs) for processing."""
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in _ALLOWED_UPLOAD_SUFFIXES:
-        raise HTTPException(400, f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_SUFFIXES)}")
+        raise HTTPException(
+            400, f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_SUFFIXES)}"
+        )
 
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
@@ -1381,7 +1421,9 @@ async def upload_file(
     dest = upload_dir / f"{file_id}{suffix}"
     dest.write_bytes(content)
 
-    wali.audit.log("file_uploaded", {"file_id": file_id, "filename": file.filename, "size": len(content)})
+    wali.audit.log(
+        "file_uploaded", {"file_id": file_id, "filename": file.filename, "size": len(content)}
+    )
     return {"file_id": file_id, "filename": file.filename, "size": len(content), "path": str(dest)}
 
 
@@ -1412,7 +1454,10 @@ async def list_provider_models(
     """
     if provider_name == "openrouter":
         result = await fetch_openrouter_models(
-            limit=limit, offset=offset, search=search, free_only=free_only,
+            limit=limit,
+            offset=offset,
+            search=search,
+            free_only=free_only,
         )
         return {"provider": "openrouter", **result}
     elif provider_name == "ollama":
@@ -2251,6 +2296,31 @@ async def get_nafs_status(agent_id: str):
     }
 
 
+@app.get("/api/nafs/{agent_id}/faculties")
+async def get_agent_faculties(agent_id: str):
+    """Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status.
+
+    Basira (insight) and Hawa (restraint) are per-task signals returned in the
+    /api/chat and task results; this endpoint surfaces the persistent faculties.
+    """
+    if agent_id not in active_agents:
+        raise HTTPException(404, "Agent not found")
+    agent = active_agents[agent_id]
+    hikmah_stats = {}
+    principles = []
+    try:
+        hikmah_stats = agent.hikmah_engine.stats()
+        principles = [p.to_dict() for p in agent.hikmah_engine.distill()[:10]]
+    except Exception:
+        pass
+    return {
+        "agent_id": agent_id,
+        "deep_faculty_loop": getattr(agent, "deep_faculty_loop", False),
+        "hikmah": hikmah_stats,
+        "applicable_principles": principles,
+    }
+
+
 # ===== YAQIN CERTAINTY ENDPOINTS =====
 
 
@@ -2378,9 +2448,12 @@ async def federation_route_task(
     # Register all agents with federation first
     for aid, agent in active_agents.items():
         federation.register_agent(
-            aid, agent.name, agent.role,
+            aid,
+            agent.name,
+            agent.role,
             list(agent.tools.keys()),
-            agent.nafs_level, agent.success_rate,
+            agent.nafs_level,
+            agent.success_rate,
         )
 
     # Discover best agent for this task
@@ -2411,7 +2484,9 @@ async def federation_route_task(
     result = await agent.execute(req.task, {"history": []})
     if result.get("success"):
         await memory.save_message(session_id, "user", req.task)
-        await memory.save_message(session_id, "assistant", str(result.get("result", ""))[:5000], agent_id)
+        await memory.save_message(
+            session_id, "assistant", str(result.get("result", ""))[:5000], agent_id
+        )
 
     return {
         "routed_to": agent.name,
@@ -2513,72 +2588,94 @@ async def ruh_tokenize(req: RuhTokenizeRequest):
         raise HTTPException(500, f"Tokenization failed: {exc}") from exc
 
 
-def _build_tokenizer_pipeline_trace(
-    text: str, tokenizer: Any
-) -> list[dict[str, Any]]:
+def _build_tokenizer_pipeline_trace(text: str, tokenizer: Any) -> list[dict[str, Any]]:
     """Build a step-by-step pipeline trace for detailed tokenization."""
-    import re
     steps: list[dict[str, Any]] = []
 
     # Step 1: Language detection per word
     from ruh_model.tokenizer.bayan import (
-        _contains_arabic, _is_stopword, _tokenize_text,
+        _contains_arabic,
+        _is_stopword,
+        _tokenize_text,
     )
+
     words = _tokenize_text(text)
     lang_detections = []
     for word in words:
         is_ar = _contains_arabic(word)
-        lang_detections.append({
-            "word": word,
-            "language": "arabic" if is_ar else "english",
-            "is_stopword": _is_stopword(word),
-        })
-    steps.append({
-        "phase": "language_detection",
-        "description": "Detect language per word (Arabic vs English)",
-        "output": lang_detections,
-    })
+        lang_detections.append(
+            {
+                "word": word,
+                "language": "arabic" if is_ar else "english",
+                "is_stopword": _is_stopword(word),
+            }
+        )
+    steps.append(
+        {
+            "phase": "language_detection",
+            "description": "Detect language per word (Arabic vs English)",
+            "output": lang_detections,
+        }
+    )
 
     # Step 2: Morphological analysis
     morph_results = []
     for info in lang_detections:
         word = info["word"]
         if info["is_stopword"]:
-            morph_results.append({"word": word, "type": "stopword", "root": "", "pattern": "STOPWORD"})
+            morph_results.append(
+                {"word": word, "type": "stopword", "root": "", "pattern": "STOPWORD"}
+            )
             continue
         if info["language"] == "arabic":
             root_str, pattern_name = tokenizer._arabic_analyzer.analyze(word)
-            morph_results.append({
-                "word": word, "type": "arabic_morphology",
-                "root": root_str, "pattern": pattern_name,
-            })
+            morph_results.append(
+                {
+                    "word": word,
+                    "type": "arabic_morphology",
+                    "root": root_str,
+                    "pattern": pattern_name,
+                }
+            )
         else:
             root_str, pattern_name = tokenizer._english_bridge.to_root(word)
-            morph_results.append({
-                "word": word, "type": "english_bridge",
-                "root": root_str, "pattern": pattern_name,
-            })
-    steps.append({
-        "phase": "morphology",
-        "description": "Extract roots and patterns via morphological analysis",
-        "output": morph_results,
-    })
+            morph_results.append(
+                {
+                    "word": word,
+                    "type": "english_bridge",
+                    "root": root_str,
+                    "pattern": pattern_name,
+                }
+            )
+    steps.append(
+        {
+            "phase": "morphology",
+            "description": "Extract roots and patterns via morphological analysis",
+            "output": morph_results,
+        }
+    )
 
     # Step 3: Root/pattern ID mapping
     id_results = []
     for morph in morph_results:
         root_id = tokenizer._vocab.get_root_id(morph["root"]) if morph["root"] else 0
         pattern_id = tokenizer._vocab.get_pattern_id(morph["pattern"])
-        id_results.append({
-            "word": morph["word"], "root": morph["root"],
-            "pattern": morph["pattern"],
-            "root_id": root_id, "pattern_id": pattern_id,
-        })
-    steps.append({
-        "phase": "id_mapping",
-        "description": "Map roots and patterns to integer IDs",
-        "output": id_results,
-    })
+        id_results.append(
+            {
+                "word": morph["word"],
+                "root": morph["root"],
+                "pattern": morph["pattern"],
+                "root_id": root_id,
+                "pattern_id": pattern_id,
+            }
+        )
+    steps.append(
+        {
+            "phase": "id_mapping",
+            "description": "Map roots and patterns to integer IDs",
+            "output": id_results,
+        }
+    )
 
     # Step 4: Q28 articulatory features (sample for first few words)
     q28_results = []
@@ -2587,27 +2684,37 @@ def _build_tokenizer_pipeline_trace(
         if info["is_stopword"]:
             continue
         try:
-            coords = tokenizer._q28.text_to_q28(word, lang="ar" if info["language"] == "arabic" else "en")
-            q28_results.append({
-                "word": word,
-                "features": [c.tolist() if hasattr(c, "tolist") else list(c) for c in coords] if coords else [],
-                "dimensions": ["place", "manner", "voicing", "nasality", "emphasis", "length"],
-            })
+            coords = tokenizer._q28.text_to_q28(
+                word, lang="ar" if info["language"] == "arabic" else "en"
+            )
+            q28_results.append(
+                {
+                    "word": word,
+                    "features": [c.tolist() if hasattr(c, "tolist") else list(c) for c in coords]
+                    if coords
+                    else [],
+                    "dimensions": ["place", "manner", "voicing", "nasality", "emphasis", "length"],
+                }
+            )
         except Exception:
             q28_results.append({"word": word, "features": [], "error": "Q28 analysis unavailable"})
-    steps.append({
-        "phase": "articulatory_features",
-        "description": "Q28 articulatory basis: 6D feature vectors per phoneme",
-        "output": q28_results,
-    })
+    steps.append(
+        {
+            "phase": "articulatory_features",
+            "description": "Q28 articulatory basis: 6D feature vectors per phoneme",
+            "output": q28_results,
+        }
+    )
 
     # Step 5: Final token pairs
     tokens = tokenizer.encode(text)
-    steps.append({
-        "phase": "final_tokens",
-        "description": "Final (root_id, pattern_id) pairs with BOS/EOS",
-        "output": [{"root_id": r, "pattern_id": p} for r, p in tokens],
-    })
+    steps.append(
+        {
+            "phase": "final_tokens",
+            "description": "Final (root_id, pattern_id) pairs with BOS/EOS",
+            "output": [{"root_id": r, "pattern_id": p} for r, p in tokens],
+        }
+    )
 
     return steps
 
@@ -2641,14 +2748,14 @@ async def tasrif_demo(req: TasrifDemoRequest):
         for op_name in req.operators:
             prev = current.copy()
             current = engine.apply(op_name, current)
-            results.append({
-                "operator": op_name,
-                "input": prev.tolist(),
-                "output": current.tolist(),
-                "changed_dims": [
-                    i for i in range(6) if abs(prev[i] - current[i]) > 0.001
-                ],
-            })
+            results.append(
+                {
+                    "operator": op_name,
+                    "input": prev.tolist(),
+                    "output": current.tolist(),
+                    "changed_dims": [i for i in range(6) if abs(prev[i] - current[i]) > 0.001],
+                }
+            )
 
         return {
             "original": features.tolist(),
@@ -2723,12 +2830,14 @@ async def enqueue_task(
     priority = PRIORITY_MAP.get(req.priority.lower(), TaskPriority.TAHSINIYYAH)
     payload = {"task": req.task, "agent_id": req.agent_id, **req.metadata}
     task_id = await task_queue.enqueue(payload, priority, req.agent_id)
-    await manager.broadcast({
-        "type": "queue_update",
-        "action": "enqueued",
-        "task_id": task_id,
-        "pending": task_queue.pending_count,
-    })
+    await manager.broadcast(
+        {
+            "type": "queue_update",
+            "action": "enqueued",
+            "task_id": task_id,
+            "pending": task_queue.pending_count,
+        }
+    )
     return {"task_id": task_id, "priority": req.priority, "status": "queued"}
 
 
@@ -2736,7 +2845,7 @@ async def enqueue_task(
 async def list_queued_tasks(status: str | None = None, limit: int = 50):
     """List tasks in the queue, optionally filtered by status."""
     tasks = await task_queue.list_tasks(status=status)
-    tasks = tasks[:min(limit, 200)]
+    tasks = tasks[: min(limit, 200)]
     return {"tasks": [_task_to_dict(t) for t in tasks], "count": len(tasks)}
 
 
@@ -2781,12 +2890,14 @@ async def cancel_queued_task(
     if not cancelled:
         raise HTTPException(404, f"Task '{task_id}' not found or not cancellable")
     wali.audit.log("task_cancelled", {"task_id": task_id})
-    await manager.broadcast({
-        "type": "queue_update",
-        "action": "cancelled",
-        "task_id": task_id,
-        "pending": task_queue.pending_count,
-    })
+    await manager.broadcast(
+        {
+            "type": "queue_update",
+            "action": "cancelled",
+            "task_id": task_id,
+            "pending": task_queue.pending_count,
+        }
+    )
     return {"task_id": task_id, "status": "cancelled"}
 
 
@@ -2915,13 +3026,15 @@ async def list_checkpoints():
             except (json.JSONDecodeError, OSError):
                 pass
 
-        checkpoints.append({
-            "name": entry.name,
-            "created_at": entry.stat().st_mtime,
-            "size_mb": round(total_size / (1024 * 1024), 2),
-            "max_seq_len": config_data.get("max_seq_len"),
-            "config": config_data,
-        })
+        checkpoints.append(
+            {
+                "name": entry.name,
+                "created_at": entry.stat().st_mtime,
+                "size_mb": round(total_size / (1024 * 1024), 2),
+                "max_seq_len": config_data.get("max_seq_len"),
+                "config": config_data,
+            }
+        )
 
     return {"checkpoints": checkpoints}
 
@@ -2936,13 +3049,15 @@ async def get_data_stats():
     if data_dir.exists():
         for fpath in data_dir.glob("*.jsonl"):
             line_count = sum(1 for _ in open(fpath, encoding="utf-8"))
-            sources.append({
-                "name": fpath.stem,
-                "type": "seed",
-                "samples": line_count,
-                "size_mb": round(fpath.stat().st_size / (1024 * 1024), 2),
-                "available": True,
-            })
+            sources.append(
+                {
+                    "name": fpath.stem,
+                    "type": "seed",
+                    "samples": line_count,
+                    "size_mb": round(fpath.stat().st_size / (1024 * 1024), 2),
+                    "available": True,
+                }
+            )
 
     # Registered HuggingFace dataset slots
     hf_datasets = [
@@ -2953,15 +3068,17 @@ async def get_data_stats():
         {"name": "tashkeela", "weight": 0.10, "hf_id": "tashkeela"},
     ]
     for ds in hf_datasets:
-        sources.append({
-            "name": ds["name"],
-            "type": "huggingface",
-            "weight": ds["weight"],
-            "hf_id": ds["hf_id"],
-            "samples": 0,
-            "size_mb": 0,
-            "available": False,  # Would check actual availability
-        })
+        sources.append(
+            {
+                "name": ds["name"],
+                "type": "huggingface",
+                "weight": ds["weight"],
+                "hf_id": ds["hf_id"],
+                "samples": 0,
+                "size_mb": 0,
+                "available": False,  # Would check actual availability
+            }
+        )
 
     total_samples = sum(s["samples"] for s in sources)
     total_size = sum(s["size_mb"] for s in sources)
@@ -2986,17 +3103,20 @@ async def get_model_architecture():
         components = []
         try:
             from ruh_model.model import RuhModel
+
             model = RuhModel(config)
             total_params = model.count_parameters()
 
             # Per-module parameter counts
             for name, module in model.named_children():
                 param_count = sum(p.numel() for p in module.parameters())
-                components.append({
-                    "name": name,
-                    "type": type(module).__name__,
-                    "params": param_count,
-                })
+                components.append(
+                    {
+                        "name": name,
+                        "type": type(module).__name__,
+                        "params": param_count,
+                    }
+                )
         except Exception:
             total_params = 0
 
@@ -3013,12 +3133,21 @@ async def get_model_architecture():
             "components": components,
             "architecture_layers": [
                 {"name": "ISMEmbedding", "desc": "Factored (root, pattern) → d_model embedding"},
-                {"name": "SamBasarDual", "desc": "Dual attention: causal (Sam') + bidirectional (Basar)"},
+                {
+                    "name": "SamBasarDual",
+                    "desc": "Dual attention: causal (Sam') + bidirectional (Basar)",
+                },
                 {"name": "QalbAttention ×7", "desc": "Cardiac-oscillation modulated attention"},
-                {"name": "ISMFFN / ShuraMoE", "desc": "SwiGLU FFN or Mixture-of-Experts (every 2 blocks)"},
+                {
+                    "name": "ISMFFN / ShuraMoE",
+                    "desc": "SwiGLU FFN or Mixture-of-Experts (every 2 blocks)",
+                },
                 {"name": "LubbMetacognition", "desc": "Confidence estimation layer"},
                 {"name": "AdaptiveDepth", "desc": "Early exit based on confidence threshold"},
-                {"name": "MizanLoss", "desc": "5-component loss: CE + Calibration + Consistency + Fitrah + Hisbah"},
+                {
+                    "name": "MizanLoss",
+                    "desc": "5-component loss: CE + Calibration + Consistency + Fitrah + Hisbah",
+                },
             ],
         }
     except ImportError as exc:
@@ -3026,28 +3155,6 @@ async def get_model_architecture():
     except Exception as exc:
         logger.error("Architecture query failed: %s", exc)
         raise HTTPException(500, f"Failed to get architecture: {exc}") from exc
-
-
-@app.get("/api/learner/stats")
-async def get_learner_stats():
-    """Get learner interaction statistics."""
-    try:
-        from learner.data_export import DataExporter
-        exporter = DataExporter()
-        stats = exporter.get_stats()
-        return stats
-    except ImportError:
-        return {
-            "total_interactions": 0,
-            "exportable_count": 0,
-            "last_export": None,
-        }
-    except Exception:
-        return {
-            "total_interactions": 0,
-            "exportable_count": 0,
-            "last_export": None,
-        }
 
 
 # === PLUGINS (Wasilah - وسيلة) ===
@@ -3358,10 +3465,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
-                    async def ws_thinking(phase: str, content: str, confidence: float, metadata: dict):
+                    async def ws_thinking(
+                        phase: str,
+                        content: str,
+                        confidence: float,
+                        metadata: dict,
+                        _trace=trace,
+                        _mid=message_id,
+                        _sid=session_id,
+                    ):
                         thinking_stream.add_step(
-                            trace.request_id, ThinkingPhase(phase),
-                            content, confidence, metadata,
+                            _trace.request_id,
+                            ThinkingPhase(phase),
+                            content,
+                            confidence,
+                            metadata,
                         )
                         await manager.send(
                             client_id,
@@ -3370,15 +3488,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                                 "phase": phase,
                                 "content": content,
                                 "confidence": confidence,
-                                "message_id": message_id,
-                                "session_id": session_id,
+                                "message_id": _mid,
+                                "session_id": _sid,
                                 "metadata": metadata,
                             },
                         )
 
                     result = await agent.execute(
                         content,
-                        {"history": session["history"][-agent.max_tool_turns:]},
+                        {"history": session["history"][-agent.max_tool_turns :]},
                         stream_callback=ws_stream,
                         thinking_callback=ws_thinking,
                     )
@@ -3391,10 +3509,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     session["history"].append({"role": "assistant", "content": str(final)})
 
                     # Extract cognitive metadata from QALB-7 pipeline
-                    cognitive = {k: result.get(k) for k in (
-                        "nafs_level", "nafs_name", "ruh_energy", "qalb", "yaqin",
-                        "mizan_label", "cognitive_method", "lubb", "lawwama",
-                    ) if result.get(k) is not None}
+                    cognitive = {
+                        k: result.get(k)
+                        for k in (
+                            "nafs_level",
+                            "nafs_name",
+                            "ruh_energy",
+                            "qalb",
+                            "yaqin",
+                            "mizan_label",
+                            "cognitive_method",
+                            "lubb",
+                            "lawwama",
+                        )
+                        if result.get(k) is not None
+                    }
 
                     # Complete thinking trace and include in response
                     thinking_stream.complete(message_id)
@@ -3405,7 +3534,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "request_id": completed_trace.request_id,
                             "steps": [
                                 {
-                                    "id": s.id, "phase": s.phase.value,
+                                    "id": s.id,
+                                    "phase": s.phase.value,
                                     "content": s.content,
                                     "confidence": s.confidence,
                                     "timestamp": s.timestamp,
