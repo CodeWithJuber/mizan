@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -110,11 +109,17 @@ class TrainingManager:
 
         # Build command
         cmd = [
-            "python", "-m", "ruh_model.train",
-            "--stage", stage,
-            "--data-dir", data_dir,
-            "--checkpoint-dir", checkpoint_dir,
-            "--log-every", str(log_every),
+            "python",
+            "-m",
+            "ruh_model.train",
+            "--stage",
+            stage,
+            "--data-dir",
+            data_dir,
+            "--checkpoint-dir",
+            checkpoint_dir,
+            "--log-every",
+            str(log_every),
             "--generate-data",
             "--json-progress",
         ]
@@ -142,9 +147,7 @@ class TrainingManager:
         )
 
         # Start monitoring task
-        self._monitor_task = asyncio.create_task(
-            self._monitor_output(), name="training_monitor"
-        )
+        self._monitor_task = asyncio.create_task(self._monitor_output(), name="training_monitor")
 
         return self.get_status()
 
@@ -161,7 +164,7 @@ class TrainingManager:
             # Wait briefly for graceful shutdown
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._process.kill()
                 await self._process.wait()
 
@@ -197,7 +200,9 @@ class TrainingManager:
                     self._state.message = "Training completed successfully"
                     self._save_run_to_history("completed")
                 else:
-                    stderr_bytes = await self._process.stderr.read() if self._process.stderr else b""
+                    stderr_bytes = (
+                        await self._process.stderr.read() if self._process.stderr else b""
+                    )
                     stderr = stderr_bytes.decode("utf-8", errors="replace")[-500:]
                     self._state.message = f"Training failed (exit {return_code}): {stderr}"
                     self._save_run_to_history("failed")
@@ -237,7 +242,9 @@ class TrainingManager:
             self._state.message = (
                 f"Epoch {self._state.epoch}/{self._state.total_epochs} "
                 f"Step {self._state.step}/{self._state.total_steps} "
-                f"Loss: {self._state.loss:.4f}" if self._state.loss else ""
+                f"Loss: {self._state.loss:.4f}"
+                if self._state.loss
+                else ""
             )
 
         elif msg_type == "epoch":
@@ -247,7 +254,9 @@ class TrainingManager:
             self._state.epoch = data.get("epoch", 0)
             self._state.message = (
                 f"Epoch {self._state.epoch}/{self._state.total_epochs} complete. "
-                f"Avg loss: {avg_loss:.4f}" if avg_loss else ""
+                f"Avg loss: {avg_loss:.4f}"
+                if avg_loss
+                else ""
             )
 
         elif msg_type == "complete":
@@ -255,7 +264,8 @@ class TrainingManager:
             final_loss = data.get("final_loss")
             self._state.message = (
                 f"Training complete. Final loss: {final_loss:.4f}"
-                if final_loss else "Training complete."
+                if final_loss
+                else "Training complete."
             )
             self._save_run_to_history("completed")
 
@@ -265,10 +275,12 @@ class TrainingManager:
         """Send current state to all WebSocket clients."""
         if self._broadcast_fn:
             try:
-                await self._broadcast_fn({
-                    "type": "training_progress",
-                    **self.get_status(),
-                })
+                await self._broadcast_fn(
+                    {
+                        "type": "training_progress",
+                        **self.get_status(),
+                    }
+                )
             except Exception as exc:
                 logger.debug("Broadcast failed: %s", exc)
 

@@ -25,9 +25,7 @@ _INSERT_SQL = (
     "VALUES (?, ?, ?, ?, ?, ?)"
 )
 
-_STATS_BY_PROVIDER_SQL = (
-    "SELECT COUNT(*), provider FROM interactions GROUP BY provider"
-)
+_STATS_BY_PROVIDER_SQL = "SELECT COUNT(*), provider FROM interactions GROUP BY provider"
 
 _STATS_TOTAL_SQL = "SELECT COUNT(*) FROM interactions"
 
@@ -36,9 +34,7 @@ _RECENT_SQL = (
     "FROM interactions ORDER BY created_at DESC LIMIT ?"
 )
 
-_UPDATE_QUALITY_SQL = (
-    "UPDATE interactions SET quality_score = ? WHERE id = ?"
-)
+_UPDATE_QUALITY_SQL = "UPDATE interactions SET quality_score = ? WHERE id = ?"
 
 
 class RuhLearner:

@@ -17,7 +17,6 @@ KHUSHU (خشوع) — Deep focus state triggered at high nafs_level + extreme ta
 """
 
 import logging
-import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -25,18 +24,19 @@ logger = logging.getLogger("mizan.qalb_processor")
 
 
 class QalbState(Enum):
-    QABD = "qabd"        # Contraction — analytical, focused
-    BAST = "bast"        # Expansion — creative, open
-    KHUSHU = "khushu"   # Deep focus — highest attention
+    QABD = "qabd"  # Contraction — analytical, focused
+    BAST = "bast"  # Expansion — creative, open
+    KHUSHU = "khushu"  # Deep focus — highest attention
 
 
 @dataclass
 class QalbOutput:
     """LLM parameter recommendations from Qalb state."""
+
     state: QalbState
     max_tokens: int
     temperature: float
-    reasoning: str         # Why this state was chosen
+    reasoning: str  # Why this state was chosen
 
     def to_dict(self) -> dict:
         return {
@@ -62,8 +62,8 @@ _EMOTION_TO_STATE = {
     "confused": QalbState.QABD,
     "positive": QalbState.BAST,
     "determined": QalbState.BAST,
-    "fatigued": QalbState.QABD,   # Tired → reduce load
-    "neutral": None,               # Follow oscillation
+    "fatigued": QalbState.QABD,  # Tired → reduce load
+    "neutral": None,  # Follow oscillation
 }
 
 
@@ -138,8 +138,12 @@ class QalbProcessor:
 
         logger.debug(
             "[QALB] phase=%.2f emotion=%s nafs=%d → %s (tokens=%d temp=%.2f)",
-            self.oscillation_phase, emotional_state, nafs_level,
-            state.value, output.max_tokens, output.temperature,
+            self.oscillation_phase,
+            emotional_state,
+            nafs_level,
+            state.value,
+            output.max_tokens,
+            output.temperature,
         )
         return output
 

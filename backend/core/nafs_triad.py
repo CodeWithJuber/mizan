@@ -13,8 +13,8 @@ Nafs levels 3-4: Lawwama rises  (self-correction — check work)
 Nafs levels 5-7: Mutmainna leads (integrated balance — wisdom)
 """
 
-import math
 import logging
+import math
 from dataclasses import dataclass
 
 logger = logging.getLogger("mizan.nafs_triad")
@@ -23,9 +23,10 @@ logger = logging.getLogger("mizan.nafs_triad")
 @dataclass
 class NafsVoice:
     """A single inner voice with its bias and dynamic weight."""
-    name: str        # "Ammara" | "Lawwama" | "Mutmainna"
+
+    name: str  # "Ammara" | "Lawwama" | "Mutmainna"
     arabic: str
-    bias: str        # "drive" | "caution" | "balance"
+    bias: str  # "drive" | "caution" | "balance"
     quran_ref: str
 
     def score(self, task: str, complexity: str) -> float:
@@ -53,8 +54,18 @@ class NafsVoice:
 
         else:  # balance / Mutmainna
             # Mutmainna: weighs both sides, prefers nuanced tasks
-            nuance_words = ["explain", "analyse", "compare", "understand", "balance",
-                            "consider", "reflect", "what", "why", "how"]
+            nuance_words = [
+                "explain",
+                "analyse",
+                "compare",
+                "understand",
+                "balance",
+                "consider",
+                "reflect",
+                "what",
+                "why",
+                "how",
+            ]
             matches = sum(1 for w in nuance_words if w in task_lower)
             base = 0.45 + 0.08 * matches
             return min(1.0, base)
@@ -63,10 +74,11 @@ class NafsVoice:
 @dataclass
 class NafsDecision:
     """Result of Nafs Triad deliberation."""
-    dominant_voice: str      # "Ammara" | "Lawwama" | "Mutmainna"
-    approach: str            # Instruction injected into system prompt
-    confidence: float        # 0-1 how strongly one voice won
-    dissent_ratio: float     # fraction of weight held by losing voices
+
+    dominant_voice: str  # "Ammara" | "Lawwama" | "Mutmainna"
+    approach: str  # Instruction injected into system prompt
+    confidence: float  # 0-1 how strongly one voice won
+    dissent_ratio: float  # fraction of weight held by losing voices
     nafs_level: int
 
 
@@ -115,15 +127,9 @@ class NafsTriad:
     """
 
     def __init__(self):
-        self.ammara = NafsVoice(
-            "Ammara", "أمارة", "drive", "12:53"
-        )
-        self.lawwama = NafsVoice(
-            "Lawwama", "لوامة", "caution", "75:2"
-        )
-        self.mutmainna = NafsVoice(
-            "Mutmainna", "مطمئنة", "balance", "89:27"
-        )
+        self.ammara = NafsVoice("Ammara", "أمارة", "drive", "12:53")
+        self.lawwama = NafsVoice("Lawwama", "لوامة", "caution", "75:2")
+        self.mutmainna = NafsVoice("Mutmainna", "مطمئنة", "balance", "89:27")
         self._voices = [self.ammara, self.lawwama, self.mutmainna]
 
     def deliberate(self, task: str, nafs_level: int, complexity: str = "moderate") -> NafsDecision:
@@ -141,7 +147,7 @@ class NafsTriad:
         weights = _LEVEL_WEIGHTS[level]
 
         raw_scores = [v.score(task, complexity) for v in self._voices]
-        weighted = [s * w for s, w in zip(raw_scores, weights)]
+        weighted = [s * w for s, w in zip(raw_scores, weights, strict=False)]
         probs = _softmax(weighted)
 
         winner_idx = probs.index(max(probs))
@@ -159,7 +165,11 @@ class NafsTriad:
 
         logger.debug(
             "[NAFS_TRIAD] level=%d task='%s...' → %s (conf=%.2f dissent=%.2f)",
-            level, task[:60], winner.name, winner_prob, dissent,
+            level,
+            task[:60],
+            winner.name,
+            winner_prob,
+            dissent,
         )
         return decision
 

@@ -25,17 +25,18 @@ logger = logging.getLogger("mizan.fuad")
 
 
 class ConvictionLevel(Enum):
-    IMPRESSION = "impression"    # Single source — unverified
-    BELIEF = "belief"           # 2+ independent sources
-    CONVICTION = "conviction"   # 3+ sources + temporal consistency
+    IMPRESSION = "impression"  # Single source — unverified
+    BELIEF = "belief"  # 2+ independent sources
+    CONVICTION = "conviction"  # 3+ sources + temporal consistency
 
 
 @dataclass
 class ConvictionAssessment:
     """Result of evidence evaluation."""
+
     claim: str
     level: ConvictionLevel
-    confidence: float            # 0.0 – 1.0
+    confidence: float  # 0.0 – 1.0
     source_count: int
     supporting: list[str] = field(default_factory=list)
     contradicting: list[str] = field(default_factory=list)
@@ -50,9 +51,7 @@ class ConvictionAssessment:
             "source_count": self.source_count,
             "supporting_count": len(self.supporting),
             "contradicting_count": len(self.contradicting),
-            "temporal_span_hours": round(
-                (self.last_updated - self.first_seen) / 3600, 2
-            ),
+            "temporal_span_hours": round((self.last_updated - self.first_seen) / 3600, 2),
         }
 
 
@@ -68,6 +67,7 @@ def _are_independent(src_a: str, src_b: str) -> bool:
     """
     if src_a == src_b:
         return False
+
     # If both look like URLs, compare domain
     def _domain(s: str) -> str:
         try:
@@ -181,7 +181,10 @@ class FuadEngine:
 
         logger.debug(
             "[FUAD] claim='%s...' level=%s conf=%.2f sources=%d",
-            claim[:60], assessment.level.value, confidence, independent_count,
+            claim[:60],
+            assessment.level.value,
+            confidence,
+            independent_count,
         )
         return assessment
 

@@ -174,17 +174,37 @@ class NutqEngine:
         if text_stripped.endswith("?"):
             return "question"
         question_starts = [
-            "what ", "where ", "when ", "who ", "whom ", "which ", "why ", "how ",
-            "is it ", "are there ", "can you ", "could you ", "would you ",
-            "do you ", "does it ", "will it ", "shall ",
+            "what ",
+            "where ",
+            "when ",
+            "who ",
+            "whom ",
+            "which ",
+            "why ",
+            "how ",
+            "is it ",
+            "are there ",
+            "can you ",
+            "could you ",
+            "would you ",
+            "do you ",
+            "does it ",
+            "will it ",
+            "shall ",
         ]
         if any(text_lower.startswith(q) for q in question_starts):
             return "question"
 
         # Greeting detection
         greetings = [
-            "hello", "hi ", "hey ", "good morning", "good afternoon",
-            "good evening", "salam", "assalamu",
+            "hello",
+            "hi ",
+            "hey ",
+            "good morning",
+            "good afternoon",
+            "good evening",
+            "salam",
+            "assalamu",
         ]
         if any(text_lower.startswith(g) for g in greetings):
             return "greeting"
@@ -202,11 +222,43 @@ class NutqEngine:
 
         # Command detection: imperative verbs
         command_verbs = [
-            "do ", "run ", "create ", "delete ", "open ", "close ", "find ", "search ",
-            "show ", "tell ", "help ", "make ", "build ", "write ", "read ", "send ",
-            "stop ", "start ", "restart ", "install ", "update ", "fix ", "check ",
-            "list ", "get ", "set ", "add ", "remove ", "move ", "copy ", "save ",
-            "load ", "deploy ", "test ", "analyze ", "explain ", "summarize ",
+            "do ",
+            "run ",
+            "create ",
+            "delete ",
+            "open ",
+            "close ",
+            "find ",
+            "search ",
+            "show ",
+            "tell ",
+            "help ",
+            "make ",
+            "build ",
+            "write ",
+            "read ",
+            "send ",
+            "stop ",
+            "start ",
+            "restart ",
+            "install ",
+            "update ",
+            "fix ",
+            "check ",
+            "list ",
+            "get ",
+            "set ",
+            "add ",
+            "remove ",
+            "move ",
+            "copy ",
+            "save ",
+            "load ",
+            "deploy ",
+            "test ",
+            "analyze ",
+            "explain ",
+            "summarize ",
         ]
         if any(text_lower.startswith(w) for w in command_verbs):
             return "command"
@@ -225,9 +277,11 @@ class NutqEngine:
             return "en"
 
         # Count characters in Arabic Unicode range
-        arabic_count = sum(1 for c in text if "\u0600" <= c <= "\u06FF")
+        arabic_count = sum(1 for c in text if "\u0600" <= c <= "\u06ff")
         # Extended Arabic (includes Urdu-specific)
-        extended_arabic = sum(1 for c in text if "\uFB50" <= c <= "\uFDFF" or "\uFE70" <= c <= "\uFEFF")
+        extended_arabic = sum(
+            1 for c in text if "\ufb50" <= c <= "\ufdff" or "\ufe70" <= c <= "\ufeff"
+        )
         total_alpha = sum(1 for c in text if c.isalpha())
 
         if total_alpha == 0:
@@ -237,7 +291,11 @@ class NutqEngine:
 
         if arabic_ratio > 0.3:
             # Distinguish Arabic from Urdu by checking for Urdu-specific characters
-            urdu_specific = sum(1 for c in text if c in "\u0679\u067E\u0686\u0688\u0691\u0698\u06BA\u06BE\u06C1\u06CC\u06D2")
+            urdu_specific = sum(
+                1
+                for c in text
+                if c in "\u0679\u067e\u0686\u0688\u0691\u0698\u06ba\u06be\u06c1\u06cc\u06d2"
+            )
             if urdu_specific > 0:
                 return "ur"
             return "ar"
