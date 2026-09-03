@@ -2,888 +2,501 @@
 
 # MIZAN
 
-### Your Personal AI That Grows With You
+### An evidence-first agentic AI research prototype
 
-**An open-source, plugin-powered AI assistant that anyone can extend**
+**Python · FastAPI · LLM tool calling · persistent memory · extensible agents**
 
 [![CI](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/mizan.svg)](https://pypi.org/project/mizan/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
-[Install in 1 Minute](#install-in-1-minute) · [What Can It Do?](#what-can-it-do) · [Build a Plugin](#build-a-plugin-in-5-minutes) · [Docs](docs/) · [Contributing](CONTRIBUTING.md)
+[Reviewer quick view](#reviewer-quick-view) · [Run locally](#run-locally) · [Architecture](#architecture) · [Build a plugin](#build-a-plugin) · [API](#api-surface) · [Docs](docs/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-## What is MIZAN?
+> **Project status:** MIZAN is an open-source **beta research and engineering prototype**. It contains executable implementations of an agent loop, provider-normalized tool calling, local memory, APIs, plugins, tests and container packaging. This repository does **not** claim verified enterprise production use.
 
-MIZAN is a **personal AI assistant** you can run on your own computer. Unlike ChatGPT or other cloud services:
+## Reviewer quick view
 
-- **You own your data** — everything runs locally or on your server
-- **It can DO things** — browse the web, run code, manage files, send messages
-- **It learns from you** — remembers your preferences and past conversations
-- **Anyone can extend it** — add new abilities with simple plugins
-- **Works with any AI** — Anthropic Claude, OpenAI, OpenRouter (300+ models), or local Ollama
+MIZAN explores how a self-hostable personal assistant can combine LLM reasoning, tool execution, memory and custom cognitive-control modules in one Python application. This section separates what can be verified in the repository from experimental or absent capabilities.
 
-> Think of it as your personal AI employee that can use tools, remember things, and get better over time — powered by a 7-layer Quranic Cognitive Architecture (QALB-7).
+### What the code demonstrates
 
----
+| Area | Verifiable implementation | Evidence | Boundary |
+|---|---|---|---|
+| Agent loop | Iterative model → tool → result → model execution with bounded turns | [`BaseAgent._agentic_loop`](backend/agents/base.py), [`BaseAgent._execute_tool_safe`](backend/agents/base.py) | Implemented in source; no claim of external production operation |
+| Tool/function calling | JSON tool schemas, Anthropic `tool_use`, OpenAI-compatible function-call conversion and parsing | [`backend/agents/base.py`](backend/agents/base.py), [`backend/providers.py`](backend/providers.py) | Provider integration code exists; repository tests are not evidence of live calls to every provider |
+| Tools | HTTP, filesystem, Bash, Python execution, memory recall, delegation, skill and plugin tools | [`BaseAgent._register_base_tools`](backend/agents/base.py), [`backend/skills`](backend/skills) | Execution is gated by repository security checks; operators remain responsible for isolation and permissions |
+| Memory | SQLite-backed episodic/semantic/procedural storage and recall, plus graph and pathway experiments | [`backend/memory/dhikr.py`](backend/memory/dhikr.py), [`backend/memory/knowledge_graph.py`](backend/memory/knowledge_graph.py), [`backend/memory/masalik.py`](backend/memory/masalik.py) | Default operation is local and prototype-scale |
+| Knowledge ingestion | URL, PDF and YouTube extraction with chunking and storage endpoints | [`backend/knowledge/ingest.py`](backend/knowledge/ingest.py), [`backend/api/main.py`](backend/api/main.py) | Ingestion and retrieval components exist; this is not presented as a production-grade RAG platform |
+| Agent coordination | In-process registration, capability matching, message routing and task delegation | [`backend/agents/federation.py`](backend/agents/federation.py), [`tests/test_agent_comprehensive.py`](tests/test_agent_comprehensive.py) | Implemented locally; not a distributed multi-agent runtime |
+| Guardrails | Permission levels, tool validation, rate limits, SSRF/path/command checks and audit events | [`backend/security/izn.py`](backend/security/izn.py), [`backend/security/wali.py`](backend/security/wali.py), [`tests/test_security_comprehensive.py`](tests/test_security_comprehensive.py) | Deterministic application controls, not a complete enterprise security boundary |
+| Python engineering | Async FastAPI services, Pydantic configuration, provider adapters, task queue, SQLite and PyTorch experiments | [`backend`](backend), [`ruh_model`](ruh_model), [`pyproject.toml`](pyproject.toml) | Demonstrates implementation breadth; it does not establish deployment scale by itself |
+| Delivery scaffolding | Python-version CI matrix, linting, tests, package build and Docker image builds | [CI workflow](.github/workflows/ci.yml), [`docker-compose.prod.yml`](docker-compose.prod.yml), [`docker/Dockerfile.backend.prod`](docker/Dockerfile.backend.prod) | Deployable scaffolding, not evidence of a live production service |
 
-## Install in 1 Minute
+### Test and build proof
 
-### Mac / Linux (recommended)
+- CI is defined for Python 3.11, 3.12 and 3.13 in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+- The [24 August 2026 CI run](https://github.com/CodeWithJuber/mizan/actions/runs/32774615854) completed the test, lint, package-build and Docker-build jobs; its test log reported **557 passed and 8 skipped** for that repository snapshot.
+- Unit and API coverage includes agent routing, memory, security, cognitive modules and application endpoints under [`tests/`](tests).
+- The package metadata explicitly classifies the project as **Beta** in [`pyproject.toml`](pyproject.toml).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.sh | bash
+The test count above is a dated snapshot, not a promise that every future commit has the same count. The workflow badge is the current signal.
+
+### Maturity boundary
+
+| Status | Capability | Precise boundary |
+|---|---|---|
+| Implemented | Custom agent loop and tool calling | The loop, schemas, provider translations, validation and tool-result continuation are executable source |
+| Implemented | Persistent local memory | SQLite storage and retrieval paths are present and tested |
+| Implemented | In-process agent federation | Agents can be registered, selected by capability and delegated work inside the running process |
+| Implemented | FastAPI, WebSocket, CLI and plugin surfaces | Application interfaces and extension points are present in source |
+| Partial / experimental | Chroma vector search | A [`VectorStore`](backend/memory/vector_store.py) client and Docker profile exist, but Chroma is not wired into the default memory construction path; the unified pyramid integration still needs async/configuration hardening and integration tests |
+| Partial / experimental | Human approval | [`Izn`](backend/security/izn.py) can classify actions as approval-required and retain pending requests; a complete approve/reject-and-resume API workflow is not yet implemented |
+| Partial / experimental | Multi-agent council and parallel deliberation | Basic federation/delegation is implemented, but [`agents/shura_council.py`](backend/agents/shura_council.py) and [`core/parallel_agents.py`](backend/core/parallel_agents.py) contain placeholder or heuristic generation paths; [`core/architecture.py`](backend/core/architecture.py) marks consensus construction as simplified |
+| Partial / experimental | Custom Ruh model | Transformer, tokenizer, loss and training code exist under [`ruh_model/`](ruh_model); no released checkpoint or benchmark result is claimed |
+| Not included | Named orchestration frameworks | No LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio implementation is claimed |
+| Not included | Azure AI | No Azure OpenAI or Azure AI Foundry integration or deployment is claimed |
+| Not included | Enterprise RPA/application suite | No Salesforce, ServiceNow, SAP, Microsoft 365/Graph or RPA-platform implementation is claimed |
+| Not evidenced | Production use | The repository does not provide customer, traffic, SLO, production telemetry or verified live-deployment evidence |
+
+## What MIZAN is
+
+MIZAN is a personal AI assistant and an experimental framework for studying agent control, memory and extensibility. It can be run with a configured cloud LLM provider or with Ollama on a local machine.
+
+Core goals:
+
+- make tool execution explicit, inspectable and permission-gated;
+- keep application state and memories under the operator's control;
+- normalize several model-provider interfaces behind one agent loop;
+- support new tools, providers, channels and behaviors through extension points;
+- explore QALB-7, a cognitive architecture inspired by concepts from Islamic psychology.
+
+If Anthropic, OpenAI or OpenRouter is selected, prompts and relevant context are sent to that configured provider under its terms. Local application state does not make a cloud-backed model call local.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI["Web, CLI, channels"] --> API["FastAPI and WebSocket"]
+    API --> Agent["BaseAgent loop"]
+    Agent --> Providers["Anthropic, OpenAI-compatible, Ollama"]
+    Agent --> Tools["Built-in, skill and plugin tools"]
+    Agent --> Memory["SQLite memory"]
+    Agent --> Federation["In-process federation"]
+    Memory -.-> Chroma["Optional Chroma adapter"]
 ```
 
-### Windows (PowerShell)
+The dotted edge marks the incomplete default Chroma wiring described below.
 
-```powershell
-irm https://raw.githubusercontent.com/CodeWithJuber/mizan/main/install.ps1 | iex
-```
+### Agent execution path
 
-### Using pip
+The central loop in [`backend/agents/base.py`](backend/agents/base.py) performs the following bounded sequence:
 
-```bash
-pip install mizan
-mizan setup      # First-time config (adds your API key)
-mizan chat       # Start chatting
-mizan serve      # Start the web UI
-```
+1. Build provider-compatible tool schemas from built-in, skill and plugin tools.
+2. Ask the selected provider for the next response.
+3. Inspect structured tool requests.
+4. Validate tool input and pass the request through Fitrah and Izn permission gates.
+5. Execute the selected handler and append a tool-result message.
+6. Continue until the provider returns a final response or the configured turn limit is reached.
 
-### Using Docker
+[`backend/providers.py`](backend/providers.py) normalizes provider responses. Anthropic uses native `tool_use` blocks; the OpenAI-compatible adapter translates the same internal schemas to function tools and parses returned calls.
 
-```bash
-git clone https://github.com/CodeWithJuber/mizan.git && cd mizan
-cp .env.example .env      # Edit .env with your API key
-docker compose up -d       # Start everything
-# Open http://localhost:3000
-```
+### QALB-7 research modules
 
-**Common Docker Commands:**
+QALB-7 is the project's organizing vocabulary for experimental cognitive controls. Module names describe code-level abstractions, not claims of human cognition or independently validated reasoning performance.
 
-| What you want to do | Command |
-|---------------------|---------|
-| Start MIZAN | `docker compose up -d` |
-| Stop MIZAN | `docker compose down` |
-| Restart MIZAN | `docker compose restart` |
-| View logs | `docker compose logs -f` |
-| Update & rebuild | `git pull && docker compose up -d --build` |
-| Rebuild from scratch | `docker compose down && docker compose up -d --build` |
-| Start with Ollama (free local AI) | `docker compose --profile ollama up -d --build` |
-| Start everything (all services) | `docker compose --profile ollama --profile vector up -d --build` |
+| Module | Purpose in this repository | Source |
+|---|---|---|
+| Fitrah | Deterministic ethical/action gate | [`backend/core/fitrah.py`](backend/core/fitrah.py) |
+| Nafs Triad | Competing heuristic perspectives on an approach | [`backend/core/nafs_triad.py`](backend/core/nafs_triad.py) |
+| Qalb Processor | State-dependent model-parameter modulation | [`backend/core/qalb_processor.py`](backend/core/qalb_processor.py) |
+| Fu'ad | Evidence and conviction tracking | [`backend/core/fuad.py`](backend/core/fuad.py) |
+| Lubb | Trace compression, coherence and bias checks | [`backend/core/lubb.py`](backend/core/lubb.py) |
+| Developmental stages | Turn, tool and autonomy capability gates | [`backend/core/developmental_stages.py`](backend/core/developmental_stages.py) |
+| Causal engine | Observational, interventional and counterfactual data structures/heuristics | [`backend/reasoning/causal_engine.py`](backend/reasoning/causal_engine.py) |
 
-### From Source (for developers)
+Additional experiments include multimodal perception, recovery state machines, novelty-sensitive memory, imagination/creativity modules, dream-style consolidation and quaternary integrity checks. See [`backend/core`](backend/core), [`backend/perception`](backend/perception), [`backend/reasoning`](backend/reasoning) and [`backend/memory`](backend/memory).
 
-```bash
-git clone https://github.com/CodeWithJuber/mizan.git && cd mizan
-make setup                 # Install dependencies
-# Edit .env with your API key
-make dev                   # Start backend + frontend
-# Frontend: http://localhost:3000 — API: http://localhost:8000/docs
-```
+### Memory and retrieval
+
+| Component | Current role | Status |
+|---|---|---|
+| Dhikr | SQLite-backed episodic, semantic and procedural memory | Implemented and exercised by tests |
+| Masalik | Pathway graph with spreading activation | Implemented experimental module |
+| Knowledge graph | SQLite entity/relationship storage and search | Implemented experimental module |
+| Living memory | In-memory trace lifecycle and novelty heuristics, with optional vector hooks | Experimental |
+| VectorStore | Async Chroma HTTP adapter for store/search/delete/count | Adapter implemented; not active in the default memory path |
+| MemoryPyramid | Intended merger across memory layers | Experimental integration; requires further async and end-to-end hardening |
+
+Knowledge ingestion accepts web pages, PDFs and YouTube transcripts, applies overlapping chunking, and stores content through the memory APIs. A production RAG implementation would additionally require verified embedding generation, default vector wiring, retrieval/reranking evaluation, source-attribution behavior, versioned indexing and load/reliability testing.
+
+### Agent coordination
+
+[`backend/agents/federation.py`](backend/agents/federation.py) provides process-local agent discovery, capability matching, messaging and task delegation. [`backend/reasoning/planner.py`](backend/reasoning/planner.py) can ask an LLM for a JSON task decomposition and execute dependency-ready work.
+
+This is evidence of a custom coordination prototype. It is not presented as:
+
+- a distributed agent mesh;
+- orchestration built with LangGraph, LangChain, Semantic Kernel, AutoGen or CrewAI;
+- a validated council-consensus system; or
+- parallel LLM-agent execution at enterprise scale.
+
+### Security and approval controls
+
+The repository includes:
+
+- permission levels and per-tool checks in [`backend/security/izn.py`](backend/security/izn.py);
+- command, path, URL and input validation in [`backend/security/wali.py`](backend/security/wali.py) and [`backend/security/validation.py`](backend/security/validation.py);
+- SSRF-oriented URL controls, rate limits and in-memory audit events;
+- JWT/API-key application authentication in [`backend/security/auth.py`](backend/security/auth.py);
+- recovery-state and health-check experiments in [`backend/core/tawbah.py`](backend/core/tawbah.py), [`backend/core/self_healing.py`](backend/core/self_healing.py) and [`backend/doctor.py`](backend/doctor.py).
+
+These are defense-in-depth application controls, not a substitute for container/VM isolation, least-privilege credentials, network policy, secrets management or an enterprise identity provider. Authentication, revocation and several coordination controls retain process-local state. Human approval is modeled, but blocked work cannot yet be approved/rejected and resumed through a complete supported API flow.
+
+## Run locally
 
 ### Requirements
 
-- **Python 3.11+** (auto-installed by the one-liner)
-- **At least one AI API key**: [Anthropic](https://console.anthropic.com/) (best), [OpenRouter](https://openrouter.ai/) (300+ models), [OpenAI](https://platform.openai.com/), or [Ollama](https://ollama.ai/) (free, local)
-- Node.js 20+ (only for frontend development, auto-installed)
+- Python 3.11 or newer
+- At least one of:
+  - an Anthropic API key;
+  - an OpenAI API key;
+  - an OpenRouter API key; or
+  - a reachable Ollama server for local inference
+- Node.js 20 or newer for frontend development
+- Docker and Docker Compose for the containerized path
 
----
+### Docker Compose
 
-## What Can It Do?
-
-### For Everyone
-
-| Feature | What It Means |
-|---------|---------------|
-| **Chat** | Talk to your AI in the browser or terminal |
-| **Browse the web** | AI can search Google, read websites, extract information |
-| **Analyze images & voice** | Upload images for vision analysis, audio for transcription |
-| **Run code** | AI writes and executes Python, bash scripts |
-| **Manage files** | Read, write, organize files on your computer |
-| **Remember things** | Remembers your conversations and preferences |
-| **Multiple AI models** | Switch between Claude, GPT-4, Gemini, Llama, and 300+ others |
-| **Scheduled tasks** | Set up automated tasks that run on a schedule |
-| **Multiple channels** | Connect via Web, Telegram, Discord, Slack, WhatsApp |
-
-### For Developers
-
-| Feature | What It Means |
-|---------|---------------|
-| **QALB-7 Cognitive Pipeline** | 7-layer architecture: ethics → deliberation → emotion → conviction → metacognition |
-| **Multimodal Perception** | Sam' (hearing) + Basar (sight) → Fu'ad integration, with Qalb-aware context |
-| **Developmental Stages** | Agents grow from Nutfah (5 tools, 5 turns) to Khalq Akhar (all tools, 25 turns) |
-| **Living Memory** | Novelty gate with hybrid text+vector similarity — never re-stores 1+1=2 |
-| **5-Layer Memory Pyramid** | Unified query across episodic, semantic, neural pathways, vectors, and knowledge graph |
-| **DNA Integrity** | Quaternary (ACGT) checksums with Hamming distance verification in Lawh al-Mahfuz |
-| **Causal Reasoning** | Pearl's 3-rung causal ladder: observation, intervention, counterfactual |
-| **Plugin system** | Add new abilities with a simple Python file |
-| **Event bus + Hooks** | Decoupled communication — modify data at any point in the pipeline |
-| **REST + WebSocket API** | Full API with cognitive metadata streamed in real-time |
-| **Multi-agent Shura** | Agents consult via Shura Council for complex decisions |
-| **Self-healing (Lawwama)** | Immune memory, adaptive checkpoints, auto-package-install |
-| **Security (Wali)** | JWT auth, rate limiting, sandboxing, SSRF block, audit logs |
-
----
-
-## Build a Plugin in 5 Minutes
-
-MIZAN is **fully decoupled** — you can add any new feature without touching core code. Here's how:
-
-### Step 1: Create a folder
-
+```bash
+git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan
+cp .env.example .env
+# Edit .env: set a strong SECRET_KEY and configure a provider.
+docker compose up -d --build
 ```
+
+With the checked-in development Compose file:
+
+- frontend: `http://localhost:3100`
+- API: `http://localhost:8000`
+- interactive API docs: `http://localhost:8000/docs`
+
+Optional profiles:
+
+```bash
+# Include local Ollama service
+docker compose --profile ollama up -d --build
+
+# Start the optional Chroma service as well
+docker compose --profile ollama --profile vector up -d --build
+```
+
+The profiles start the optional service containers. In the current `docker-compose.yml`, starting the Ollama profile does not itself select Ollama as the backend provider, and starting Chroma does not complete the default application-to-Chroma memory wiring. Review the provider and memory configuration before assuming either service is active in application requests.
+
+Common commands:
+
+| Task | Command |
+|---|---|
+| Show service state | `docker compose ps` |
+| Follow logs | `docker compose logs -f` |
+| Restart | `docker compose restart` |
+| Stop | `docker compose down` |
+| Rebuild | `docker compose up -d --build` |
+
+`docker compose down -v` removes named volumes and their stored data. Use it only when a full local reset is intended.
+
+### From source
+
+```bash
+git clone https://github.com/CodeWithJuber/mizan.git
+cd mizan
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+cp .env.example .env
+# Edit .env, then:
+make serve
+```
+
+On Windows PowerShell, activate the environment with:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+For backend and frontend development together:
+
+```bash
+make setup
+make dev
+```
+
+The package exposes the `mizan` command through [`pyproject.toml`](pyproject.toml):
+
+```bash
+mizan setup
+mizan chat
+mizan serve
+mizan status
+mizan doctor --check
+```
+
+### Provider configuration
+
+Set one provider in `.env`. [`backend/providers.py`](backend/providers.py) is the authoritative implementation.
+
+| Provider path | Primary configuration | Notes |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | Native Anthropic message/tool format |
+| OpenAI | `OPENAI_API_KEY` | OpenAI-compatible adapter |
+| OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible endpoint |
+| Ollama | `OLLAMA_URL` | Local or operator-hosted server |
+
+Azure OpenAI and Azure AI Foundry are not current provider options.
+
+Known CLI boundary: `mizan setup` currently prompts for Anthropic and OpenRouter credentials, while OpenAI and Ollama settings must be edited in `.env`. `mizan chat` also checks a `has_any_provider` property that currently counts the three API-key providers but not Ollama. The Ollama adapter exists, but an Ollama-only CLI session should not be assumed to work until that preflight is corrected.
+
+## Build a plugin
+
+Plugins can register tools, subscribe to events and add hooks without changing the central agent loop.
+
+```text
 plugins/
 └── my_plugin/
-    ├── plugin.json    ← Describes your plugin
-    └── main.py        ← Your plugin code
+    ├── plugin.json
+    └── main.py
 ```
 
-### Step 2: Describe your plugin
+`plugins/my_plugin/plugin.json`:
 
-**plugins/my_plugin/plugin.json**
 ```json
 {
-    "name": "my_plugin",
-    "version": "1.0.0",
-    "description": "What your plugin does",
-    "author": "Your Name",
-    "permissions": [],
-    "tags": ["example"],
-    "enabled": true
+  "name": "my_plugin",
+  "version": "1.0.0",
+  "description": "Example plugin",
+  "author": "Your Name",
+  "permissions": [],
+  "tags": ["example"],
+  "enabled": true
 }
 ```
 
-### Step 3: Write your code
+`plugins/my_plugin/main.py`:
 
-**plugins/my_plugin/main.py**
 ```python
 from core.plugins import PluginBase
 
+
 class Plugin(PluginBase):
     async def on_load(self):
-        # Give agents a new tool
-        self.add_tool("weather", self.get_weather, {
-            "name": "weather",
-            "description": "Get weather for a city",
-            "input_schema": {
-                "type": "object",
-                "properties": {"city": {"type": "string"}},
-                "required": ["city"]
-            }
-        })
-
-        # React to events
+        self.add_tool(
+            "weather",
+            self.get_weather,
+            {
+                "name": "weather",
+                "description": "Get example weather data for a city",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}},
+                    "required": ["city"],
+                },
+            },
+        )
         self.on_event("task.completed", self.on_task_done)
 
     async def on_unload(self):
-        pass  # Cleanup is automatic
+        pass
 
     async def get_weather(self, city: str):
-        return {"city": city, "temp": 22, "condition": "sunny"}
+        # Replace this deterministic example with a real, permissioned data source.
+        return {"city": city, "temperature_c": 22, "condition": "example"}
 
     async def on_task_done(self, data):
         print(f"Task completed: {data}")
 ```
 
-### Step 4: Restart MIZAN
+The main extension surfaces are:
 
-Your plugin loads automatically. The agent can now use the "weather" tool!
+| Surface | Starting point |
+|---|---|
+| Plugins | [`backend/core/plugins.py`](backend/core/plugins.py) |
+| Skills/tools | [`backend/skills`](backend/skills) |
+| Events | [`backend/core/events.py`](backend/core/events.py) |
+| Hooks | [`backend/core/hooks.py`](backend/core/hooks.py) |
+| Middleware | [`backend/core/middleware.py`](backend/core/middleware.py) |
+| LLM providers | [`backend/providers.py`](backend/providers.py) |
+| Channel adapters | [`backend/gateway/channels`](backend/gateway/channels) |
+| Specialized agents | [`backend/agents/specialized.py`](backend/agents/specialized.py) |
 
-### What Your Plugin Can Do
+## API surface
 
-| Capability | How | Example |
-|-----------|-----|---------|
-| **Add tools** | `self.add_tool(name, handler, schema)` | Give agents new abilities |
-| **Listen to events** | `self.on_event(name, handler)` | React when things happen |
-| **Modify data** | `self.add_hook(name, handler)` | Change prompts, responses, etc. |
-| **Emit events** | `await self.emit(name, data)` | Tell other parts something happened |
+Run the backend and open `http://localhost:8000/docs` for the generated OpenAPI interface. The route implementation in [`backend/api/main.py`](backend/api/main.py) is authoritative.
 
-See the [Plugin Development Guide](docs/) for the full reference.
+Representative endpoints:
 
----
+```text
+# Authentication
+POST /api/auth/login
+POST /api/auth/register
+POST /api/auth/api-key
 
-## Architecture
+# Agents, chat and tasks
+GET  /api/agents
+POST /api/agents
+POST /api/chat
+POST /api/tasks
 
-MIZAN implements a **7-layer Quranic Cognitive Architecture (QALB-7)** — a bio-inspired AI system where each cognitive module maps to a concept from Islamic psychology.
+# Memory and knowledge
+POST /api/memory/query
+POST /api/memory/store
+POST /api/memory/consolidate
+POST /api/knowledge/ingest
+POST /api/knowledge/upload
 
-### System Overview
+# Federation
+GET  /api/federation/status
+POST /api/federation/discover
+POST /api/federation/route
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        MIZAN Architecture                         │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  YOU (Browser / Terminal / Telegram / Discord / Slack / WhatsApp) │
-│   │                                                               │
-│   ▼                                                               │
-│  ┌───────────────────────────────────────────────────────────┐    │
-│  │            Gateway (REST API + WebSocket)                  │    │
-│  │   Auth · Rate Limiting · Input Validation · CORS           │    │
-│  └──────────────────────┬────────────────────────────────────┘    │
-│                         │                                         │
-│  ┌──────────────────────▼────────────────────────────────────┐    │
-│  │               Plugin System (Decoupled)                    │    │
-│  │  Events (Nida') · Hooks (Ta'liq) · Middleware (Silsilah)   │    │
-│  └──────────────────────┬────────────────────────────────────┘    │
-│                         │                                         │
-│  ┌──────────────────────▼────────────────────────────────────┐    │
-│  │             QALB-7 Cognitive Pipeline                      │    │
-│  │                                                            │    │
-│  │  Fitrah ──► Nafs Triad ──► Qalb Processor ──► Fu'ad ──►   │    │
-│  │  (Ethics)  (Deliberate)   (Modulate LLM)   (Convict)      │    │
-│  │                                                            │    │
-│  │  ──► Lubb ──► Developmental Gate ──► Causal Engine         │    │
-│  │    (Meta)    (Capability Gate)      (Why/What-if)          │    │
-│  └──────────────────────┬────────────────────────────────────┘    │
-│                         │                                         │
-│  ┌──────────────────────▼────────────────────────────────────┐    │
-│  │          Agent System (Multi-Agent + Shura Council)        │    │
-│  │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌────────────────┐   │    │
-│  │  │ Hafiz  │ │ Mubashir │ │ Mundhir │ │ Khalifah       │   │    │
-│  │  │General │ │ Browser  │ │Research │ │ SuperAgent     │   │    │
-│  │  └───┬────┘ └────┬─────┘ └────┬────┘ └───┬────────────┘   │    │
-│  │      └───────┬────┘───────────┘───────────┘                │    │
-│  │              ▼                                              │    │
-│  │  ┌──────────────────────────────────────────────────┐      │    │
-│  │  │  Agentic Loop (Think → Tool → Lawwama → Repeat)  │      │    │
-│  │  │  5–25 turns (gated by Developmental Stage)       │      │    │
-│  │  └──────────────────────────────────────────────────┘      │    │
-│  └────────────────────────────────────────────────────────────┘    │
-│                         │                                         │
-│  ┌──────────┬───────────▼────────────┬────────────────────────┐   │
-│  │ Memory   │  LLM Providers         │  Skills & Tools        │   │
-│  │ Pyramid  │  Claude / GPT / Gemini │  Web, Code, File,     │   │
-│  │ (5-layer)│  Llama / 300+ models   │  SSH, HTTP + Custom   │   │
-│  └──────────┴────────────────────────┴────────────────────────┘   │
-│                                                                   │
-│  ┌────────────────────────────────────────────────────────────┐   │
-│  │             Security Layer (Wali Guardian)                  │   │
-│  │  JWT Auth · Rate Limit · Sandbox · SSRF Block · Audit Log  │   │
-│  └────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────┘
+# Providers and plugins
+GET  /api/providers
+POST /api/providers/switch
+GET  /api/plugins
+POST /api/plugins/{name}/load
+POST /api/plugins/{name}/unload
+
+# Automation and diagnostics
+POST /api/automation/jobs
+POST /api/automation/webhooks
+GET  /api/health
+GET  /api/doctor
+POST /api/doctor/fix
+
+# Realtime
+WS   /ws/{client_id}
 ```
 
-### QALB-7 Cognitive Modules
-
-Each agent processes every task through these cognitive layers:
-
-| # | Module | Arabic | Purpose | File |
-|---|--------|--------|---------|------|
-| 1 | **Fitrah** | فطرة | Innate ethical guardrails (NO_HARM, TRUTH, JUSTICE) | `core/fitrah.py` |
-| 2 | **Nafs Triad** | نفس | Three competing inner voices (Ammara/Lawwama/Mutmainna) deliberate on approach | `core/nafs_triad.py` |
-| 3 | **Qalb Processor** | قلب | Cardiac oscillation — alternates between focused (Qabd) and creative (Bast) states, modulating LLM temperature and token limits | `core/qalb_processor.py` |
-| 4 | **Fu'ad** | فؤاد | Bayesian conviction engine — evidence accumulation from impression to conviction | `core/fuad.py` |
-| 5 | **Lubb** | لبّ | Metacognition — compresses reasoning traces, checks coherence, detects cognitive bias | `core/lubb.py` |
-| 6 | **Developmental Gate** | أطوار | Progressive capability gating (7 stages from Nutfah to Khalq Akhar) — controls tools, turn limits, autonomy | `core/developmental_stages.py` |
-| 7 | **Causal Engine** | سببية | Pearl's causal ladder — observation, intervention ("what if I do X?"), counterfactual reasoning | `reasoning/causal_engine.py` |
-
-### Extension Modules
-
-| Module | Arabic | Purpose | File |
-|--------|--------|---------|------|
-| **Multimodal Perception** | سمع+بصر | Sam' (hearing) first, then Basar (sight), Qalb-aware context | `perception/basirah.py`, `perception/nutq.py` |
-| **Living Memory** | ذاكرة حية | Novelty gate + hybrid text/vector similarity + Dhikr daemon | `memory/living_memory.py` |
-| **Quaternary Encoding** | تشفير رباعي | DNA-inspired ACGT checksums with Hamming distance verification | `memory/quaternary.py` |
-| **Lawwama Self-Healing** | لوّامة | Immune memory, health metrics, adaptive checkpoint intervals | `core/self_healing.py` |
-| **Parallel Agents** | — | Concurrent task scheduling + skill transfer between agents | `core/parallel_agents.py` |
-| **Imagination** | تصوير | Predictive coding — simulate outcomes before acting | `core/imagination.py` |
-| **Creativity** | إبداع | 5 creative modes + fitness landscape mathematics | `core/creativity.py` |
-| **Dream Engine** | منام | Offline memory consolidation (NREM replay + REM recombination) | `core/dream_engine.py` |
-| **Shura Council** | شورى | Multi-agent consultation for complex decisions | `agents/shura_council.py` |
-| **Perpetual Rotation** | دورة | Agent rotation and load balancing | `agents/perpetual_rotation.py` |
-
-### Memory Architecture (5-Layer Pyramid)
-
-All memory layers are queried through a unified `MemoryPyramid`:
-
-| Layer | Module | Purpose |
-|-------|--------|---------|
-| **Living Memory** | `memory/living_memory.py` | Novelty gate (hybrid text + vector similarity), importance scoring, Dhikr daemon |
-| **Dhikr** | `memory/dhikr.py` | Three-tier persistent memory (episodic, semantic, procedural) |
-| **Masalik** | `memory/masalik.py` | Neural pathway network with spreading activation |
-| **VectorStore** | `memory/vector_store.py` | Semantic embedding search (ChromaDB) — also used by Living Memory |
-| **KnowledgeGraph** | `memory/knowledge_graph.py` | Entity-relationship graph with full-text search (SQLite) |
-| **Lawh al-Mahfuz** | `memory/lawh_mahfuz.py` | Immutable memory with 4-layer integrity: SHA-256 + CRC-32 + length + quaternary checksum |
-
-Unified query: `memory/memory_pyramid.py` merges, deduplicates, and ranks results by relevance x certainty x recency.
-
-**Living Memory** solves the 1+1=2 problem: seeing the same information again doesn't create a new trace — it activates the existing one. New information enriches existing traces, related info gets linked, and only genuinely novel content is stored.
-
-**Quaternary Encoding** (`memory/quaternary.py`) provides DNA-inspired error detection: binary data is encoded using a 4-symbol alphabet (A, C, G, T), chunked into codons (triplets), and verified using XOR parity and Hamming distance.
-
-### Developmental Stages (Nafs Levels 1–7)
-
-Agents grow through seven stages, each unlocking new capabilities:
-
-| Level | Stage | Max Turns | Key Unlocks |
-|-------|-------|-----------|-------------|
-| 1 | **Nutfah** (نطفة) | 5 | Basic tools: bash, read_file, recall_memory |
-| 2 | **Alaqah** (علقة) | 8 | + write_file, http_get |
-| 3 | **Mudghah** (مضغة) | 10 | + python_exec, http_post, delegation |
-| 4 | **Izham** (عظام) | 12 | + create_agent, causal reasoning (rung 2) |
-| 5 | **Lahm** (لحم) | 15 | All tools, causal rung 3, Lubb metacognition |
-| 6 | **Nafkh** (نفخ) | 20 | Full metacognition |
-| 7 | **Khalq Akhar** (خلق آخر) | 25 | Full autonomy |
-
-### Cognitive Metadata in the UI
-
-Every assistant response includes a **CognitiveBar** showing:
-- **Qalb** state (Qabd/Bast/Khushu) with confidence
-- **Yaqin** certainty level (ʿIlm al-Yaqin / ʿAyn al-Yaqin / Ḥaqq al-Yaqin)
-- **Lubb** quality assessment (confident / hedged / uncertain)
-- **Ruh** energy percentage
-- **Nafs** level and name badge
-- **Lawwama** repair indicator (when self-healing is active)
-
-Expandable for detailed signals, bias flags, and evidence lists.
-
-### Decoupled Communication
-
-```
-Plugin A ──────►  Event Bus  ◄────── Plugin B
-                    │
-                    │ (events flow freely)
-                    │
-Agent ────────►  Hook Chain  ◄────── Plugin C
-                    │
-                    │ (data gets modified)
-                    │
-API Request ──►  Middleware  ──────► Handler
-```
-
-**Modules don't import each other.** They communicate through:
-- **Events** — "Something happened" (fire and forget)
-- **Hooks** — "Modify this data" (transformation chain)
-- **Middleware** — "Process this request" (pipeline)
-
----
-
-## Self-Healing Doctor (Shifa)
-
-MIZAN includes a built-in diagnostic and self-healing system:
-
-```bash
-mizan doctor          # Full diagnostic + auto-fix
-mizan doctor --check  # Diagnose only (no fixes)
-```
-
-Or via the API:
-
-```bash
-curl http://localhost:8000/api/doctor       # Diagnose
-curl -X POST http://localhost:8000/api/doctor/fix  # Auto-fix
-```
-
-The doctor checks:
-- Python version and virtual environment
-- `.env` file and API key configuration
-- All dependencies and core module imports
-- Database connectivity and schema
-- Neural pathway memory (Masalik) initialization
-- Port availability (8000, 3000)
-- Provider connectivity (Anthropic, OpenRouter, etc.)
-
-Auto-fixes include creating `.env` from template, generating a secure `SECRET_KEY`, creating the data directory, and running database migrations.
-
----
-
-## Extensibility Points
-
-MIZAN has **5 ways** to extend it, from easiest to most powerful:
-
-### 1. Plugins (Easiest)
-
-Create a folder in `plugins/` with `plugin.json` + `main.py`. Plugins can:
-- Add new tools for agents
-- Listen to events
-- Modify data with hooks
-- Hot-reload without restart
-
-### 2. Skills
-
-Skills are built-in capabilities that agents can use. See `backend/skills/builtin/` for examples.
-
-### 3. Channel Adapters
-
-Connect MIZAN to new platforms (Telegram, Discord, etc.). See `backend/gateway/channels/base.py`.
-
-### 4. LLM Providers
-
-Add new AI model providers. See `backend/providers.py` for the unified interface.
-
-### 5. Custom Agents
-
-Create specialized agents with unique capabilities. See `backend/agents/specialized.py`.
-
----
-
-## API Reference
-
-### Authentication
-```
-POST /api/auth/login       Authenticate and get JWT token
-POST /api/auth/register    Register a new user
-POST /api/auth/api-key     Create an API key (requires auth)
-```
-
-### Agents
-```
-GET  /api/agents              List all agents
-POST /api/agents              Create a new agent
-GET  /api/agents/{id}         Get agent details
-DEL  /api/agents/{id}         Delete an agent
-```
-
-### Chat & Tasks
-```
-POST /api/chat                Send a chat message
-GET  /api/chat/{session}      Get chat history
-GET  /api/chat/sessions/list  List active sessions
-POST /api/tasks               Execute a task (single or parallel)
-GET  /api/tasks/history       Get task history
-```
-
-### Memory
-```
-POST /api/memory/query        Search memories
-POST /api/memory/store        Store a memory
-POST /api/memory/consolidate  Prune old memories
-GET  /api/memory/list         List recent memories
-```
-
-### Perception (Sam' + Basar)
-```
-POST /api/perception/analyze  Multimodal analysis (text + base64 image + base64 audio)
-```
-
-Accepts `MultimodalInput` with fields: `text`, `image_base64`, `audio_base64`, `media_type`, `qalb_state`.
-Processes Sam' (audio) first, then Basar (image), integrates via Fu'ad.
-
-### Cognitive Pipeline
-```
-POST /api/qalb/analyze          Analyze emotional state from text
-GET  /api/qalb/trend/{user_id}  Get emotional trend over time
-POST /api/cognitive/route        Route to best cognitive method
-POST /api/yaqin/tag              Tag knowledge with certainty level
-GET  /api/yaqin/stats            Get Yaqin statistics
-```
-
-### Federation
-```
-GET  /api/federation/status    Federation network status
-POST /api/federation/discover  Discover agents by capability
-POST /api/federation/route     Route task to best agent
-```
-
-### Nafs & Ruh
-```
-GET  /api/nafs/tiers           Get all 7 Nafs tier definitions
-GET  /api/nafs/{agent_id}      Get agent Nafs level and progress
-GET  /api/ruh/{agent_id}       Get agent Ruh energy level
-```
-
-### Knowledge
-```
-POST /api/knowledge/ingest     Ingest from URL or YouTube
-POST /api/knowledge/upload     Upload PDF for knowledge extraction
-GET  /api/knowledge/sources    List ingested knowledge sources
-```
-
-### Plugins & Extensibility
-```
-GET  /api/plugins             List all plugins
-POST /api/plugins/{n}/load    Load a plugin
-POST /api/plugins/{n}/unload  Unload a plugin
-POST /api/plugins/{n}/reload  Reload a plugin
-GET  /api/plugins/tools       List tools from plugins
-GET  /api/events              List events + handlers
-GET  /api/events/history      Recent event history
-GET  /api/hooks               List hooks + handlers
-GET  /api/middleware           List middleware pipelines
-GET  /api/extensibility       Full extensibility overview
-```
-
-### Providers
-```
-GET  /api/providers           List all LLM providers
-GET  /api/providers/{n}/models  List models for a provider
-GET  /api/providers/{n}/health  Health check
-POST /api/providers/switch    Switch active provider
-```
-
-### Skills & Automation
-```
-GET  /api/skills              List available skills
-POST /api/skills/install      Install a skill
-POST /api/skills/execute      Execute a skill action
-POST /api/automation/jobs     Create cron job
-GET  /api/automation/jobs     List scheduled jobs
-DEL  /api/automation/jobs/{id}  Delete a job
-POST /api/automation/webhooks Create webhook trigger
-GET  /api/automation/webhooks List webhooks
-```
-
-### System & Diagnostics
-```
-GET  /api/status              System dashboard
-GET  /api/health              Health check (for monitoring/Docker)
-GET  /api/version             Version info and update check
-GET  /api/doctor              Run diagnostic checks
-POST /api/doctor/fix          Run diagnostics with auto-fix
-GET  /api/settings            Get system settings
-POST /api/settings            Update settings
-POST /api/shura               Multi-agent consultation
-WS   /ws/{client_id}          WebSocket connection
-```
-
-**WebSocket message types**: `chat`, `task`, `command`, `multimodal`, `ping`
-
-The `multimodal` type accepts: `{ type: "multimodal", content: "text", image_base64: "...", audio_base64: "...", media_type: "image/png", qalb_state: "neutral" }` and returns a `perception_result` message with full QCA analysis.
-
-### Channels
-```
-POST /api/channels/{name}/start   Start a channel adapter
-POST /api/channels/{name}/stop    Stop a channel adapter
-GET  /api/channels/{name}/status  Get channel status
-POST /api/channels/{name}/test    Send a test message
-```
-
-Full interactive docs at `http://localhost:8000/docs` (Swagger UI).
-
----
-
-## CLI Usage
-
-```bash
-mizan                  # Show help
-mizan setup            # First-time setup wizard
-mizan chat             # Interactive terminal chat
-mizan chat --model claude-opus-4-6  # Use specific model
-mizan serve            # Start API server
-mizan serve --reload   # Start with auto-reload
-mizan status           # Show system status
-mizan doctor           # Self-healing diagnostics
-mizan version          # Show version
-```
-
----
-
-## LLM Providers
-
-MIZAN works with any major AI provider:
-
-| Provider | Models | Setup |
-|----------|--------|-------|
-| **Anthropic** | Claude Opus, Sonnet, Haiku | `ANTHROPIC_API_KEY=sk-ant-...` |
-| **OpenRouter** | 300+ models (Gemini, Llama, Mistral...) | `OPENROUTER_API_KEY=sk-or-...` |
-| **OpenAI** | GPT-4o, o3 | `OPENAI_API_KEY=sk-...` |
-| **Ollama** | Any local model | Install [Ollama](https://ollama.ai/) and run it |
-
-Switch providers anytime from the UI or API — no restart needed.
-
----
-
-## Updating MIZAN
-
-### Quick Reference
-
-| Your setup | Update command |
-|-----------|----------------|
-| **Docker** | `git pull && docker compose up -d --build` |
-| **pip install** | `pip install --upgrade mizan` |
-| **From source** | `./update.sh` or `make update` |
-| **Production server** | `./deploy.sh --update` |
-
-### Docker Update
-
-```bash
-cd mizan                              # Go to your mizan folder
-git pull                              # Get latest code
-docker compose up -d --build          # Rebuild and restart
-```
-
-To update only the frontend:
-```bash
-docker compose build frontend && docker compose up -d frontend
-```
-
-To update only the backend:
-```bash
-docker compose build backend && docker compose up -d backend
-```
-
-### Source Install Update
-
-```bash
-./update.sh                # Update everything automatically
-```
-
-Or use any of these equivalent commands:
-
-```bash
-make update                # Via Makefile
-./start.sh update          # Via start script
-```
-
-### What the Updater Does
-
-1. Checks if new updates are available
-2. Stops running services gracefully
-3. Stashes your local changes (and restores them after)
-4. Pulls the latest code
-5. Rebuilds backend dependencies + frontend
-6. Restarts services
-7. Shows you the version change (e.g., `3.0.0 → 3.1.0`)
-
-### Other Update Commands
-
-```bash
-./update.sh --check        # Check for updates without installing
-./update.sh --version      # Show current version
-```
-
-### Production Deployments
-
-```bash
-./deploy.sh --update       # Update existing production deployment
-./deploy.sh --status       # Check service status
-./deploy.sh --logs         # View production logs
-```
-
-### Auto-Update Notifications
-
-When you start MIZAN with `./start.sh start` or `make dev`, it automatically checks for updates and shows a notification if a new version is available. No action is taken unless you run the update command.
-
----
-
-## Common Tasks
-
-### Check if MIZAN is running
-
-```bash
-docker compose ps                              # Docker users
-curl http://localhost:8000/api/health          # Any setup
-```
-
-### View logs
-
-```bash
-docker compose logs -f                  # All services
-docker compose logs -f backend          # Backend only
-docker compose logs -f frontend         # Frontend only
-```
-
-### Reset everything (start fresh)
-
-```bash
-docker compose down -v         # Stop and remove all data
-docker compose up -d --build   # Rebuild from scratch
-```
-
-### Fix common issues
-
-```bash
-mizan doctor                                           # Source install
-curl -X POST http://localhost:8000/api/doctor/fix      # Docker / any setup
-```
-
----
+Channel adapters are present for Telegram, Discord, Slack and WhatsApp under [`backend/gateway/channels`](backend/gateway/channels). Linode REST and SSH skills are also present. Their existence demonstrates adapter implementation; it is not proof that each connector has been exercised against a live enterprise account.
 
 ## Development
 
 ```bash
-make setup        # Install everything
-make dev          # Start backend + frontend
-make update       # Update to latest version
-make test         # Run tests
-make test-cov     # Run tests with coverage
-make lint         # Lint code
-make format       # Format code
-make typecheck    # Type checking
-make check        # Run all checks (lint + typecheck + test)
-make clean        # Clean build artifacts
+make install-dev    # Editable install plus test/lint tools
+make test           # Pytest suite
+make test-cov       # Coverage report
+make lint           # Ruff checks
+make format         # Ruff formatting and safe fixes
+make typecheck      # Mypy
+make check          # Lint + typecheck + tests
+make build          # Build the Python package
 ```
 
-### Docker via Makefile
+### Project map
 
-```bash
-make docker          # Start with Docker (builds + starts)
-make docker-full     # Start with Ollama + ChromaDB
-make docker-down     # Stop all Docker services
-```
-
----
-
-## Project Structure
-
-```
+```text
 mizan/
 ├── backend/
-│   ├── api/main.py                  # FastAPI server + WebSocket + all routes
-│   ├── agents/
-│   │   ├── base.py                  # Base agent with QALB-7 agentic loop
-│   │   ├── specialized.py           # Browser, Research, Code, SuperAgent (Khalifah)
-│   │   ├── federation.py            # Agent-to-agent communication
-│   │   ├── shura_council.py         # Multi-agent consultation
-│   │   └── perpetual_rotation.py    # Agent rotation & load balancing
-│   ├── core/
-│   │   ├── fitrah.py                # Innate ethical guardrails
-│   │   ├── nafs_triad.py            # 3-voice deliberation (Ammara/Lawwama/Mutmainna)
-│   │   ├── qalb_processor.py        # Cardiac oscillation → LLM param modulation
-│   │   ├── fuad.py                  # Bayesian conviction formation
-│   │   ├── lubb.py                  # Metacognition: compress, cohere, debias
-│   │   ├── developmental_stages.py  # 7-stage capability gating (Nutfah→Khalq Akhar)
-│   │   ├── self_healing.py          # Lawwama immune system + health metrics
-│   │   ├── parallel_agents.py       # Concurrent task scheduling + skill transfer
-│   │   ├── imagination.py           # Predictive coding engine
-│   │   ├── creativity.py            # 5 creative modes + landscape math
-│   │   ├── dream_engine.py          # Offline memory consolidation (NREM+REM)
-│   │   ├── qalb.py                  # Emotional intelligence (sentiment)
-│   │   ├── ruh_engine.py            # Energy/vitality management
-│   │   ├── tawbah.py                # Error recovery protocol
-│   │   ├── ihsan.py                 # Proactive excellence suggestions
-│   │   ├── sabr.py                  # Patience engine for long tasks
-│   │   ├── shukr.py                 # Strength reinforcement
-│   │   ├── events.py                # Event bus — decoupled communication
-│   │   ├── hooks.py                 # Hook system — data transformation
-│   │   ├── plugins.py               # Plugin manager
-│   │   └── middleware.py            # Middleware pipeline
-│   ├── qca/
-│   │   ├── engine.py                # 7-layer QCA integration
-│   │   ├── yaqin_engine.py          # Certainty/confidence tracking
-│   │   ├── cognitive_methods.py     # Reasoning method selection
-│   │   └── roots.py                 # Semantic root analysis (ISM layer)
-│   ├── providers.py                 # Unified LLM provider (Claude/GPT/Ollama/300+)
-│   ├── memory/
-│   │   ├── dhikr.py                 # Three-tier persistent memory
-│   │   ├── masalik.py               # Neural pathway network (spreading activation)
-│   │   ├── lawh_mahfuz.py           # Immutable memory (triple-checksum)
-│   │   ├── memory_pyramid.py        # Unified 5-layer query engine
-│   │   ├── vector_store.py          # Semantic embeddings (ChromaDB)
-│   │   ├── knowledge_graph.py       # Entity-relationship graph
-│   │   └── living_memory.py         # Adaptive memory lifecycle
-│   ├── reasoning/
-│   │   ├── aql_engine.py            # Arabic Query Language reasoning
-│   │   ├── causal_engine.py         # Pearl's 3-rung causal ladder
-│   │   ├── planner.py               # Task planning
-│   │   └── context_manager.py       # Context window management
-│   ├── security/                    # Auth, permissions, sandboxing
-│   ├── skills/                      # Extensible skill registry
-│   │   ├── builtin/                 # Built-in skills (web, code, SSH, cloud)
-│   │   ├── base.py                  # Skill base class
-│   │   └── registry.py              # Skill discovery & loading
-│   ├── knowledge/                   # Knowledge base management
-│   ├── gateway/channels/            # Telegram, Discord, Slack, WhatsApp adapters
-│   ├── automation/                  # Cron scheduler + webhook triggers
-│   ├── doctor.py                    # Self-healing diagnostic system
-│   ├── settings.py                  # Configuration (env vars, pydantic-settings)
-│   └── cli.py                       # Terminal interface
-├── frontend/src/
-│   ├── App.tsx                      # Main UI + WebSocket handler
-│   ├── components/
-│   │   ├── ChatMessage.tsx          # Chat bubbles + CognitiveBar pills
-│   │   ├── AgentCard.tsx            # Agent card with Nafs + Ruh bars
-│   │   ├── Sidebar.tsx              # Navigation sidebar
-│   │   └── ...                      # Toast, Markdown, Icons, etc.
-│   ├── pages/                       # Feature pages (Plugins, Providers, Settings, etc.)
-│   ├── hooks/                       # API & WebSocket hooks
-│   └── types.ts                     # TypeScript types (CognitiveMetadata, etc.)
-├── plugins/                         # Your custom plugins go here!
-├── docs/                            # Documentation
-├── tests/                           # Test suite
-├── docker/                          # Docker configs
-├── pyproject.toml                   # Python package config
-├── Makefile                         # Development commands
-└── docker-compose.yml               # Full-stack deployment
+│   ├── agents/              # Agent loop, specialized agents, federation and council experiments
+│   ├── api/main.py          # FastAPI routes and WebSocket entrypoint
+│   ├── automation/          # Cron jobs and webhook triggers
+│   ├── core/                # QALB-7 controls, plugins, events, hooks and recovery experiments
+│   ├── gateway/channels/    # Telegram, Discord, Slack and WhatsApp adapters
+│   ├── knowledge/           # URL/PDF/YouTube ingestion and chunking
+│   ├── memory/              # SQLite memory, graphs, pathways and optional vector adapter
+│   ├── reasoning/           # Planner, causal and iterative reasoning modules
+│   ├── security/            # Auth, permissions and validation
+│   ├── skills/              # Built-in and extensible tools
+│   ├── providers.py         # LLM-provider normalization and tool calls
+│   └── cli.py               # Command-line interface
+├── frontend/                # React/TypeScript user interface
+├── ruh_model/               # Experimental PyTorch language-model components
+├── plugins/                 # External plugin location
+├── tests/                   # Unit and API tests
+├── docs/                    # Additional documentation
+├── docker/                  # Development and production-oriented Dockerfiles
+├── docker-compose.yml       # Local full-stack composition
+├── docker-compose.prod.yml  # Production-oriented scaffolding
+└── pyproject.toml           # Package metadata and dependencies
 ```
 
----
+## Deployment status
 
-## Events Reference
+The repository includes container, Nginx, health-check, install, update and deployment scripts. These make the prototype easier to run and evaluate; filenames containing `prod` describe intended configuration, not verified production operation.
 
-Your plugins can listen to these events:
+Before treating MIZAN as production-ready, the project would need, at minimum:
 
-| Event | When It Fires |
-|-------|--------------|
-| `system.startup` | MIZAN starts up |
-| `system.shutdown` | MIZAN shuts down |
-| `agent.created` | New agent created |
-| `agent.deleted` | Agent deleted |
-| `task.started` | Agent begins a task |
-| `task.completed` | Task finished successfully |
-| `task.failed` | Task failed |
-| `task.tool.called` | Agent calls a tool |
-| `chat.message.received` | User sends message |
-| `chat.message.sent` | System sends response |
-| `provider.switched` | LLM provider changed |
-| `plugin.loaded` | Plugin loaded |
-| `plugin.unloaded` | Plugin unloaded |
-| `memory.stored` | Memory saved |
-| `channel.connected` | Channel connects |
-| `webhook.triggered` | Webhook fires |
+- durable shared identity, API-key, revocation, rate-limit and coordination state;
+- a production queue/broker with explicit retry, backoff and dead-letter behavior;
+- completed Chroma/embedding integration and retrieval evaluation;
+- a closed-loop human approval and resume workflow;
+- secrets management and, where relevant, managed identity;
+- distributed tracing, metrics, alerting, SLOs and cost/latency monitoring;
+- adversarial, tool-safety, groundedness and regression evaluation;
+- concurrency, load, failure-recovery and backup/restore testing;
+- a documented release and rollback process; and
+- deployment evidence for the intended infrastructure.
 
----
+## Roadmap
 
-## Hooks Reference
+Near-term engineering gaps exposed by the current implementation:
 
-Your plugins can modify data at these points:
-
-| Hook | What You Can Modify |
-|------|-------------------|
-| `agent.system_prompt` | The system prompt before LLM call |
-| `agent.messages` | Message history before LLM call |
-| `agent.response` | Agent response before returning |
-| `agent.tool.before` | Tool parameters before execution |
-| `agent.tool.after` | Tool results after execution |
-| `chat.input` | User input before processing |
-| `chat.output` | Output before sending to user |
-| `provider.before_call` | LLM parameters before API call |
-| `provider.after_call` | LLM response after API call |
-| `memory.before_store` | Memory before saving |
-| `memory.after_query` | Query results before returning |
-
----
+1. Complete async Chroma wiring in the default memory path and add live integration tests.
+2. Add an embedding/index lifecycle, hybrid retrieval, reranking, citations and retrieval-quality evaluation.
+3. Implement approve/reject/resume APIs and durable human-in-the-loop state.
+4. Replace Shura and parallel-agent placeholder paths with tested provider-backed execution or narrow their public contract.
+5. Add retries, backoff, idempotency and dead-letter handling to background execution.
+6. Add LLM/RAG quality, safety, latency and cost regression suites.
+7. Add production observability and externalize process-local state before multi-worker deployment.
+8. Add cloud/framework integrations only when backed by executable code, tests and deployment evidence.
 
 ## FAQ
 
-**Q: Do I need to pay for an API key?**
-A: You need at least one AI provider. Ollama is completely free and runs locally. Anthropic, OpenAI, and OpenRouter are paid but offer free tiers.
+### Is MIZAN production-ready?
 
-**Q: Can I run MIZAN completely offline?**
-A: Yes! Install Ollama and use local models like Llama 3.2. No internet needed.
+No production-readiness claim is made. It is a containerized beta prototype with CI and application security controls. See [Deployment status](#deployment-status) for the work still required.
 
-**Q: How do I add a new AI provider?**
-A: Add your provider to `backend/providers.py` following the `BaseLLMProvider` interface. Or use OpenRouter which already supports 300+ models.
+### Does MIZAN implement RAG?
 
-**Q: Can I use this in production?**
-A: Yes. MIZAN has JWT auth, rate limiting, input validation, command sandboxing, and SSRF prevention built in.
+It implements ingestion, chunking, persistent retrieval components and a Chroma adapter. The default vector path is not yet wired and evaluated end to end, so the project is described as a retrieval/memory prototype rather than production RAG.
 
-**Q: How do I update MIZAN?**
-A: Run `./update.sh` — it handles everything automatically (pulls code, rebuilds, restarts). You can also use `make update` or `./start.sh update`.
+### Is MIZAN a multi-agent system?
 
-**Q: How do I connect Telegram/Discord/Slack?**
-A: Set the bot token in your `.env` file (e.g., `TELEGRAM_BOT_TOKEN=your-token`). See the Channels page in the UI.
+It has implemented in-process registration, capability routing and delegation. Council synthesis and parallel LLM deliberation remain experimental or simplified, and no distributed multi-agent operation is claimed.
 
-**Q: Something is broken. How do I fix it?**
-A: Run `mizan doctor` — it automatically diagnoses and fixes common issues.
+### Does it use LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio?
 
----
+No. The current orchestration loop and federation layer are custom Python implementations.
+
+### Does it support Azure OpenAI or Azure AI Foundry?
+
+Not currently. Supported provider paths are listed in [Provider configuration](#provider-configuration).
+
+### Can it run without sending prompts to a cloud model provider?
+
+The Ollama adapter supports an operator-hosted local model path. Some tools and ingestion sources may still use network services, so offline behavior depends on which capabilities are enabled.
+
+### Where is project data stored?
+
+The default application memory is SQLite at the configured `DB_PATH`; Docker mounts application data to a named volume. Operators should review provider, connector and tool behavior before using sensitive data.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Contributions that close a documented maturity gap should include tests and update the relevant boundary statement in this README.
 
 ## License
 
-[Apache License 2.0](LICENSE) — Free for personal and commercial use.
+[Apache License 2.0](LICENSE).
 
 ---
 
 <div align="center">
 
-**[Star this repo](https://github.com/CodeWithJuber/mizan)** if MIZAN helps you build something amazing.
-
-Built with care by the MIZAN community.
+MIZAN is built as an inspectable research prototype: the code is the claim, and the boundaries are part of the documentation.
 
 </div>
