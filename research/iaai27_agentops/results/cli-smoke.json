@@ -1,0 +1,111 @@
+[
+  {
+    "command": [
+      "init"
+    ],
+    "result": {
+      "environment": "synthetic-local",
+      "state": {
+        "worker": false,
+        "route": true,
+        "cache": true,
+        "monitor": true
+      }
+    }
+  },
+  {
+    "command": [
+      "propose"
+    ],
+    "result": {
+      "id": "96c2df0a9c57424fb10499797eecf725",
+      "payload": {
+        "actions": [
+          {
+            "target": "staging-demo",
+            "tool": "restart_worker"
+          }
+        ],
+        "environment": "synthetic-local",
+        "evidence": [
+          {
+            "id": "staging-demo:worker",
+            "key": "worker",
+            "observed_at": 1788813618.5086155,
+            "source": "sandbox_probe",
+            "value": false
+          },
+          {
+            "id": "staging-demo:route",
+            "key": "route",
+            "observed_at": 1788813618.5086155,
+            "source": "sandbox_probe",
+            "value": true
+          },
+          {
+            "id": "staging-demo:cache",
+            "key": "cache",
+            "observed_at": 1788813618.5086155,
+            "source": "sandbox_probe",
+            "value": true
+          }
+        ],
+        "policy": "fe136fa57c53e9ef0bfcc7ab2df6dc223d50215d9d4b661fcc0288e28551b7fc"
+      },
+      "binding": "a76b688f5fa90a27ca3fc90a23ee541dc44b65c382fd0444a765d636b1304278",
+      "state": "pending",
+      "expires": 1788813918.5086155,
+      "approver": null,
+      "outcome": null
+    }
+  },
+  {
+    "command": [
+      "approve",
+      "96c2df0a9c57424fb10499797eecf725"
+    ],
+    "result": {
+      "accepted": true
+    }
+  },
+  {
+    "command": [
+      "execute",
+      "96c2df0a9c57424fb10499797eecf725"
+    ],
+    "result": {
+      "status": "completed",
+      "executed": true,
+      "calls": 1,
+      "tool_ok": true,
+      "recovered": true,
+      "verified": true,
+      "rollback": false
+    }
+  },
+  {
+    "command": [
+      "execute",
+      "96c2df0a9c57424fb10499797eecf725"
+    ],
+    "result": {
+      "status": "already_final",
+      "executed": false,
+      "recovered": null
+    }
+  },
+  {
+    "command": [
+      "inspect"
+    ],
+    "result": {
+      "state": {
+        "worker": true,
+        "route": true,
+        "cache": true,
+        "monitor": true
+      },
+      "audit_valid": true
+    }
+  }
+]

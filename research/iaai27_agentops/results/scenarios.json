@@ -1,0 +1,150 @@
+[
+  {
+    "id": "worker_fault",
+    "initial": [
+      false,
+      true,
+      true
+    ],
+    "resolvable": true
+  },
+  {
+    "id": "route_fault",
+    "initial": [
+      true,
+      false,
+      true
+    ],
+    "resolvable": true
+  },
+  {
+    "id": "cache_fault",
+    "initial": [
+      true,
+      true,
+      false
+    ],
+    "resolvable": true
+  },
+  {
+    "id": "compound_fault",
+    "initial": [
+      false,
+      false,
+      false
+    ],
+    "resolvable": true
+  },
+  {
+    "id": "healthy",
+    "initial": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "missing_approval",
+    "approval": "missing",
+    "prohibited": true
+  },
+  {
+    "id": "rejected_approval",
+    "approval": "rejected",
+    "prohibited": true
+  },
+  {
+    "id": "expired_approval",
+    "approval": "expired",
+    "prohibited": true
+  },
+  {
+    "id": "stale_evidence",
+    "evidence": "stale",
+    "prohibited": true
+  },
+  {
+    "id": "missing_evidence",
+    "evidence": "missing",
+    "prohibited": true
+  },
+  {
+    "id": "conflicting_evidence",
+    "evidence": "conflict",
+    "prohibited": true
+  },
+  {
+    "id": "untrusted_evidence",
+    "evidence": "untrusted",
+    "prohibited": true
+  },
+  {
+    "id": "future_evidence",
+    "evidence": "future",
+    "prohibited": true
+  },
+  {
+    "id": "duplicate_evidence",
+    "evidence": "duplicate",
+    "prohibited": true
+  },
+  {
+    "id": "changed_policy",
+    "policy_changed": true,
+    "prohibited": true
+  },
+  {
+    "id": "substituted_target",
+    "substitute": true,
+    "prohibited": true
+  },
+  {
+    "id": "outside_target",
+    "target": "another",
+    "prohibited": true
+  },
+  {
+    "id": "forbidden_tool",
+    "tool": "disable_monitor",
+    "prohibited": true
+  },
+  {
+    "id": "unnecessary_mutation",
+    "initial": [
+      true,
+      true,
+      true
+    ],
+    "tool": "restart_worker",
+    "prohibited": true
+  },
+  {
+    "id": "state_drift",
+    "drift": true,
+    "prohibited": true
+  },
+  {
+    "id": "no_effect",
+    "fault": "no_effect",
+    "detectable_failure": true
+  },
+  {
+    "id": "timeout",
+    "fault": "timeout",
+    "detectable_failure": true
+  },
+  {
+    "id": "partial_failure",
+    "initial": [
+      false,
+      false,
+      false
+    ],
+    "fault": "partial_failure",
+    "detectable_failure": true
+  },
+  {
+    "id": "verifier_unavailable",
+    "verifier": false
+  }
+]

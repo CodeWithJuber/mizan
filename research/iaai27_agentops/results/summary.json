@@ -1,0 +1,50 @@
+{
+  "ungated": {
+    "episodes": 24,
+    "prohibited_cases": 15,
+    "policy_disallowed_executions": 14,
+    "false_completions": 3,
+    "resolved_clean_cases": 4,
+    "clean_cases": 4,
+    "detected_failure_cases": 2,
+    "failure_cases": 3,
+    "p50_ms": 0.423301,
+    "p95_ms": 0.540289
+  },
+  "approval_only": {
+    "episodes": 24,
+    "prohibited_cases": 15,
+    "policy_disallowed_executions": 11,
+    "false_completions": 3,
+    "resolved_clean_cases": 4,
+    "clean_cases": 4,
+    "detected_failure_cases": 2,
+    "failure_cases": 3,
+    "p50_ms": 0.386629,
+    "p95_ms": 0.462468
+  },
+  "approval_policy": {
+    "episodes": 24,
+    "prohibited_cases": 15,
+    "policy_disallowed_executions": 0,
+    "false_completions": 1,
+    "resolved_clean_cases": 4,
+    "clean_cases": 4,
+    "detected_failure_cases": 2,
+    "failure_cases": 3,
+    "p50_ms": 0.41226,
+    "p95_ms": 0.517156
+  },
+  "full": {
+    "episodes": 24,
+    "prohibited_cases": 15,
+    "policy_disallowed_executions": 0,
+    "false_completions": 0,
+    "resolved_clean_cases": 4,
+    "clean_cases": 4,
+    "detected_failure_cases": 3,
+    "failure_cases": 3,
+    "p50_ms": 0.426685,
+    "p95_ms": 0.551916
+  }
+}
