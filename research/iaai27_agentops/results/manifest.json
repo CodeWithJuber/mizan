@@ -1,0 +1,19 @@
+{
+  "python": "3.12.13",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.39",
+  "base_commit": "d63da860803b7ba4177d23a0f5d02d5ffe2d78c5",
+  "scenario_sha256": "7224c80aec396c74f53cb0a5d4fcd453695601fecd476eed08feba51812c00f0",
+  "scenario_count": 24,
+  "source_sha256": {
+    "core.py": "e7a78f8cead8f62789dbab8c08b306f1d77f1aaf657418dc6ef688de09234046",
+    "test_agentops.py": "2184df4e2aacfdc926d6ea7f72327949cbbed3788217c5c452487161b46d0e48",
+    "__init__.py": "27a4d46498394391ed5860a23f87d03efffc13e8f766660a110d94dd9d46b668",
+    "evaluate.py": "dea602ee5a6a5e8710558892b8eb5b51667a780aaaec69e03260cc83b3bf03d8",
+    "__main__.py": "a874352d70202e297e08ad1d71444cfa394e224b3aa594bead05370edc1e37c9"
+  },
+  "model": "uniform-cost-symbolic-planner; no LLM calls",
+  "approval": "simulated-local-operator",
+  "suite_kind": "finite hand-authored acceptance/control suite; not held-out or representative",
+  "uncertainty": "Exact finite-suite counts; no population confidence interval is warranted.",
+  "measured_at_utc": "2026-09-07T20:35:34Z"
+}

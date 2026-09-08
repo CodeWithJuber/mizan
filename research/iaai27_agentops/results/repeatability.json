@@ -1,0 +1,10 @@
+{
+  "matching_semantic_outcomes": 96,
+  "compared": 96,
+  "excluded": [
+    "latency_ms",
+    "audit: request UUIDs and dependent hashes"
+  ],
+  "same_scenarios": true,
+  "different_random_samples": false
+}
