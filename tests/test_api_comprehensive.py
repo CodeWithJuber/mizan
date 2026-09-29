@@ -85,16 +85,20 @@ class TestRootEndpoints:
         assert "version" in data
         assert data["status"] == "active"
 
-    def test_status_endpoint(self, client):
-        resp = client.get("/api/status")
+    def test_status_endpoint(self, client, auth_headers):
+        resp = client.get("/api/status", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["system"] == "MIZAN"
         assert "agents" in data
         assert "security" in data
 
-    def test_status_has_qca_info(self, client):
+    def test_status_anonymous_denied(self, client):
         resp = client.get("/api/status")
+        assert resp.status_code == 401
+
+    def test_status_has_qca_info(self, client, auth_headers):
+        resp = client.get("/api/status", headers=auth_headers)
         data = resp.json()
         assert isinstance(data, dict)
 
@@ -200,8 +204,8 @@ class TestMemoryEndpoints:
 
 
 class TestDoctorEndpoints:
-    def test_doctor_check(self, client):
-        resp = client.get("/api/doctor")
+    def test_doctor_check(self, client, auth_headers):
+        resp = client.get("/api/doctor", headers=auth_headers)
         assert resp.status_code in (200, 429)
         if resp.status_code == 200:
             data = resp.json()
@@ -210,8 +214,12 @@ class TestDoctorEndpoints:
             assert isinstance(data["checks"], list)
             assert len(data["checks"]) > 0
 
-    def test_doctor_check_structure(self, client):
+    def test_doctor_anonymous_denied(self, client):
         resp = client.get("/api/doctor")
+        assert resp.status_code == 401
+
+    def test_doctor_check_structure(self, client, auth_headers):
+        resp = client.get("/api/doctor", headers=auth_headers)
         if resp.status_code == 200:
             data = resp.json()
             for check in data["checks"]:
