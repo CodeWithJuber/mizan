@@ -102,10 +102,14 @@ class TestAuthEnforcement:
 
 
 class TestSystemEndpoints:
-    def test_status(self, client):
-        resp = client.get("/api/status")
+    def test_status(self, client, auth_headers):
+        resp = client.get("/api/status", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["system"] == "MIZAN"
         assert "agents" in data
         assert "security" in data
+
+    def test_status_anonymous_denied(self, client):
+        resp = client.get("/api/status")
+        assert resp.status_code == 401

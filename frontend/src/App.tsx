@@ -164,6 +164,18 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// ===== AUTHENTICATED FETCH =====
+// Wraps fetch with the stored JWT (same pattern as PR #50 for /api/chat).
+// Public endpoints (/version) keep using plain fetch().
+function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = localStorage.getItem("mizan_token");
+  const headers = new Headers(init.headers || {});
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 // ===== MAIN APP INNER =====
 function AppInner() {
   const { addToast } = useToast();
@@ -547,7 +559,7 @@ function AppInner() {
 
   const loadAgents = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/agents`);
+      const res = await authFetch(`${config.API_URL}/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
       if (!selectedAgent && data.agents?.length > 0) {
@@ -567,7 +579,7 @@ function AppInner() {
 
   const loadStatus = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/status`);
+      const res = await authFetch(`${config.API_URL}/status`);
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -579,7 +591,7 @@ function AppInner() {
     try {
       let data;
       if (query.trim()) {
-        const res = await fetch(`${config.API_URL}/memory/query`, {
+        const res = await authFetch(`${config.API_URL}/memory/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -596,7 +608,7 @@ function AppInner() {
         if (typeFilter && typeFilter !== "all") {
           params.set("memory_type", typeFilter);
         }
-        const res = await fetch(
+        const res = await authFetch(
           `${config.API_URL}/memory/list?${params.toString()}`,
         );
         data = await res.json();
@@ -609,7 +621,7 @@ function AppInner() {
 
   const loadKnowledgeSources = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/knowledge/sources`);
+      const res = await authFetch(`${config.API_URL}/knowledge/sources`);
       const data = await res.json();
       setKnowledgeSources(data.sources || []);
     } catch {
@@ -622,7 +634,7 @@ function AppInner() {
     setKnowledgeLoading(true);
     setKnowledgeResult(null);
     try {
-      const res = await fetch(`${config.API_URL}/knowledge/ingest`, {
+      const res = await authFetch(`${config.API_URL}/knowledge/ingest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source: knowledgeUrl.trim() }),
@@ -652,7 +664,7 @@ function AppInner() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`${config.API_URL}/knowledge/upload`, {
+      const res = await authFetch(`${config.API_URL}/knowledge/upload`, {
         method: "POST",
         body: formData,
       });
@@ -676,7 +688,7 @@ function AppInner() {
 
   const loadIntegrations = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/integrations`);
+      const res = await authFetch(`${config.API_URL}/integrations`);
       const data = await res.json();
       setIntegrations(data.integrations || []);
     } catch {
@@ -686,7 +698,7 @@ function AppInner() {
 
   const loadChatHistory = useCallback(async (sid: string) => {
     try {
-      const res = await fetch(`${config.API_URL}/chat/${sid}`);
+      const res = await authFetch(`${config.API_URL}/chat/${sid}`);
       if (!res.ok) return;
       const data = await res.json();
       const history = (data.messages || []).map(
@@ -717,7 +729,7 @@ function AppInner() {
 
   const loadChatSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${config.API_URL}/chat/sessions/list`);
+      const res = await authFetch(`${config.API_URL}/chat/sessions/list`);
       if (!res.ok) return;
       const data = await res.json();
       setChatSessions(data.sessions || []);
@@ -868,7 +880,7 @@ function AppInner() {
     // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
     // Fall back to WebSocket direct send if HTTP fails
     try {
-      const res = await fetch(`${config.API_URL}/chat`, {
+      const res = await authFetch(`${config.API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -988,7 +1000,9 @@ function AppInner() {
   const deleteAgent = async (agentId: string) => {
     if (!confirm("Delete this agent?")) return;
     try {
-      await fetch(`${config.API_URL}/agents/${agentId}`, { method: "DELETE" });
+      await authFetch(`${config.API_URL}/agents/${agentId}`, {
+        method: "DELETE",
+      });
       if (selectedAgent?.id === agentId) setSelectedAgent(null);
       loadAgents();
       addToast({ type: "success", title: "Agent deleted" });
@@ -2050,7 +2064,7 @@ function AppInner() {
                 <button
                   className="btn-secondary text-sm"
                   onClick={async () => {
-                    await fetch(`${config.API_URL}/memory/consolidate`, {
+                    await authFetch(`${config.API_URL}/memory/consolidate`, {
                       method: "POST",
                     });
                     addToast({
@@ -2115,7 +2129,7 @@ function AppInner() {
                     className="btn-gold text-sm ml-auto"
                     disabled={!newMemory.content.trim()}
                     onClick={async () => {
-                      await fetch(`${config.API_URL}/memory/store`, {
+                      await authFetch(`${config.API_URL}/memory/store`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -2441,7 +2455,7 @@ function AppInner() {
                   <button
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                     onClick={async () => {
-                      await fetch(`${config.API_URL}/integrations/${int.id}`, {
+                      await authFetch(`${config.API_URL}/integrations/${int.id}`, {
                         method: "DELETE",
                       });
                       loadIntegrations();
