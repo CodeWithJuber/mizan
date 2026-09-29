@@ -81,10 +81,10 @@ ml = [
 ]
 nlp = [
     # Native inference deps for mizan.nlp (backend/nlp) — CPU-friendly WSD.
-    # Phase 1 needs none of these (stub); install with: pip install "pymizan[nlp]"
-    "torch>=2.1.0",
+    # Phase 1: sklearn per-lemma classifiers (joblib artifact). Install with: pip install "pymizan[nlp]"
+    "scikit-learn>=1.9.1",
+    "joblib>=1.4.0",
     "numpy>=1.26.0",
-    "safetensors>=0.4.0",
 ]
 dev = [
     "pytest>=8.3.0",

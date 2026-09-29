@@ -14,8 +14,9 @@ Section C — real-artifact integration (Track 1, mizan-sense-wsd v1.0.0):
 import os
 from pathlib import Path
 
-import nlp
 import pytest
+
+import nlp
 from nlp import (
     DisambiguationResult,
     ModelNotReadyError,
