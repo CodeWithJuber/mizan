@@ -294,7 +294,11 @@ function AppInner() {
           setWsStatus("reconnecting");
         }
 
-        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
+        const wsToken = localStorage.getItem("mizan_token");
+        const wsUrl = wsToken
+          ? `${config.WS_URL}/${clientId.current}?token=${encodeURIComponent(wsToken)}`
+          : `${config.WS_URL}/${clientId.current}`;
+        socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
           setWsStatus("connected");
@@ -473,13 +477,22 @@ function AppInner() {
           addTerminalLine(`Command: ${cmdContent.substring(0, 60)}`, "gold");
           break;
         }
-        case "error":
+        case "error": {
           setStreaming(false);
           setStreamingText("");
           setTypingIndicator(false);
           setToolStatus("");
-          addTerminalLine(`Error: ${data.message as string}`, "error");
+          const errText = data.message as string;
+          addTerminalLine(`Error: ${errText}`, "error");
+          const errMsg: ChatMessage = {
+            id: Date.now(),
+            role: "assistant",
+            content: `\u26a0\ufe0f ${errText}`,
+            ts: new Date().toLocaleTimeString(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
           break;
+        }
         case "task_stream":
           addTerminalLine(data.chunk as string, "");
           break;
@@ -783,6 +796,19 @@ function AppInner() {
 
   const sendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0) || streaming) return;
+    // Auth gate: chat requires login (token from Security page)
+    const authToken = localStorage.getItem("mizan_token");
+    if (!authToken) {
+      const loginMsg: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content:
+          "\ud83d\udd12 Login required \u2014 Security tab me register/login karo, phir dubara bhejo",
+        ts: new Date().toLocaleTimeString(),
+      };
+      setMessages((prev) => [...prev, loginMsg]);
+      return;
+    }
     const content = input;
     const files = [...attachedFiles];
     const hasMedia = files.some(
@@ -843,7 +869,10 @@ function AppInner() {
     try {
       const res = await fetch(`${config.API_URL}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
           session_id: sessionId,
           content,
