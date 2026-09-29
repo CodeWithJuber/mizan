@@ -49,6 +49,8 @@ services:
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
       - SECRET_KEY=${SECRET_KEY}
+      - MIZAN_ADMIN_USER=${MIZAN_ADMIN_USER:-admin}
+      - MIZAN_ADMIN_PASS=${MIZAN_ADMIN_PASS}
       - DEBUG=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DB_PATH=/data/mizan.db
