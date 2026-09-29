@@ -72,9 +72,7 @@ def test_disambiguate_empty_validation():
 
 def test_sense_candidate_tuple_unpacking():
     # The contract is "list of (sense_id, confidence)".
-    sid, confidence = SenseCandidate(
-        sense_id="qcsmp2:يَوْم:judgment-day", confidence=0.82
-    )
+    sid, confidence = SenseCandidate(sense_id="qcsmp2:يَوْم:judgment-day", confidence=0.82)
     assert sid == "qcsmp2:يَوْم:judgment-day"
     assert confidence == pytest.approx(0.82)
 

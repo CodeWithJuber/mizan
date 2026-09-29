@@ -162,9 +162,7 @@ def _load_artifact() -> bool:
             with open(artifact_dir / "manifest.json", encoding="utf-8") as f:
                 manifest = json.load(f)
             _META = manifest
-            _BUNDLE = joblib.load(
-                artifact_dir / manifest.get("model_file", "model.joblib")
-            )
+            _BUNDLE = joblib.load(artifact_dir / manifest.get("model_file", "model.joblib"))
             key_a = _MODEL_KEYS["a"]
             _STRIPPED_LEMMA_INDEX = {
                 _strip_marks(k): k for k in _BUNDLE["models"][key_a]["per_lemma"]
