@@ -150,3 +150,16 @@ before activation — advisory-only.
 9. **JEV log:** mocking strategy `choice` → monkeypatch-bindings (0.90);
    skip protocol `choice` → self-skip-probes (0.86); mock-vs-real-artifact
    `noul` → YES mock (0.76) — dep changes out of scope, CI runtime small.
+9. **Group A missing/corrupt tests simulate at the `find_artifact()` seam**
+   (2026-09-29, post-CI): the preregistered versions deleted/set
+   `MIZAN_NLP_ARTIFACT` expecting fail-closed, but the loader intentionally
+   falls back to the packaged `artifacts/default/` (shipped in-repo), so CI
+   never saw ModelNotReadyError — 2 failures. Fix: `test_missing_artifact…`
+   patches `nlp.wsd.find_artifact → None`; `test_corrupt_artifact…` patches
+   it to a dir with an invalid manifest (the real fail-closed path:
+   `json.load` raises → `_LOAD_ERROR` → ModelNotReadyError). Env-var-only
+   simulation was the wrong seam; the tests now pin the true fail-closed
+   contract.
+10. **ruff I001 in `tests/test_nlp.py`** (2026-09-29): import order corrected
+    (`import pytest` before `import nlp`) — the earlier fix attempt had the
+    order backwards and CI's lint job caught it.
