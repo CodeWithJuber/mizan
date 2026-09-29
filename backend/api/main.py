@@ -699,7 +699,7 @@ async def create_new_agent(req: AgentCreate, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/agents/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     return active_agents[agent_id].to_dict()
@@ -874,7 +874,9 @@ async def run_task(
 
 
 @app.get("/api/tasks/history")
-async def get_task_history(agent_id: str | None = None, limit: int = 50):
+async def get_task_history(
+    agent_id: str | None = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
+):
     limit = min(limit, 200)
     history = await memory.get_task_history(agent_id, limit)
     return {"history": history}
@@ -1149,7 +1151,7 @@ async def execute_plan(
 
 
 @app.get("/api/plan/{plan_id}")
-async def get_plan(plan_id: str):
+async def get_plan(plan_id: str, user: TokenPayload = Depends(require_auth)):
     """Get status of a plan"""
     plan = planner.get_plan(plan_id)
     if not plan:
@@ -1194,7 +1196,9 @@ async def consolidate_memory(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/memory/list")
-async def list_memories(memory_type: str | None = None, limit: int = 30):
+async def list_memories(
+    memory_type: str | None = None, limit: int = 30, user: TokenPayload = Depends(require_auth)
+):
     """List recent memories without search filtering."""
     conn = memory._get_conn()
     c = conn.cursor()
@@ -1386,7 +1390,7 @@ async def upload_knowledge(request: Request, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/knowledge/sources")
-async def list_knowledge_sources():
+async def list_knowledge_sources(user: TokenPayload = Depends(require_auth)):
     """List ingested knowledge sources."""
     conn = memory._get_conn()
     cursor = conn.cursor()
@@ -1462,7 +1466,7 @@ async def upload_file(
 
 
 @app.get("/api/providers")
-async def list_providers():
+async def list_providers(user: TokenPayload = Depends(require_auth)):
     """
     List all LLM providers with their status, models, and configuration.
     Inspired by OpenClaw's multi-provider architecture.
@@ -1477,6 +1481,7 @@ async def list_provider_models(
     offset: int = 0,
     search: str = "",
     free_only: bool = False,
+    user: TokenPayload = Depends(require_auth),
 ):
     """
     List available models for a specific provider.
@@ -1504,7 +1509,7 @@ async def list_provider_models(
 
 
 @app.get("/api/providers/{provider_name}/health")
-async def provider_health(provider_name: str):
+async def provider_health(provider_name: str, user: TokenPayload = Depends(require_auth)):
     """
     Health check for a specific provider.
     Verifies API keys are valid and the provider is reachable.
@@ -1563,7 +1568,7 @@ async def switch_provider(req: ProviderSwitchRequest, user: TokenPayload = Depen
 
 
 @app.get("/api/preferences")
-async def get_preferences():
+async def get_preferences(user: TokenPayload = Depends(require_auth)):
     """Return all persisted user preferences."""
     prefs = await memory.get_all_preferences()
     return {"preferences": prefs}
@@ -1585,7 +1590,7 @@ async def save_preferences(req: dict, user: TokenPayload = Depends(require_auth)
 
 
 @app.get("/api/integrations")
-async def list_integrations():
+async def list_integrations(user: TokenPayload = Depends(require_auth)):
     integrations = await memory.get_integrations()
     return {"integrations": integrations}
 
@@ -1637,7 +1642,7 @@ async def list_permissions(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/status")
-async def system_status():
+async def system_status(user: TokenPayload = Depends(require_auth)):
     """Full system status - Mizan dashboard"""
     agent_stats = []
     for agent in active_agents.values():
@@ -1861,7 +1866,7 @@ async def api_v1_q28_features(request: dict, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/doctor")
-async def doctor_check():
+async def doctor_check(user: TokenPayload = Depends(require_auth)):
     """
     Self-healing diagnostic — check system health and auto-fix issues.
     "And We send down of the Quran that which is a healing (shifa)" — 17:82
@@ -2063,7 +2068,7 @@ async def stop_channel(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/channels/{name}/status")
-async def channel_status(name: str):
+async def channel_status(name: str, user: TokenPayload = Depends(require_auth)):
     """Get real-time channel status"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2278,7 +2283,7 @@ async def list_channels(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.get("/api/nafs/tiers")
-async def get_nafs_tiers():
+async def get_nafs_tiers(user: TokenPayload = Depends(require_auth)):
     """Get all 7 Nafs tiers and their permission mappings."""
     tiers = []
     for level in range(1, 8):
@@ -2287,7 +2292,7 @@ async def get_nafs_tiers():
 
 
 @app.get("/api/nafs/{agent_id}")
-async def get_nafs_status(agent_id: str):
+async def get_nafs_status(agent_id: str, user: TokenPayload = Depends(require_auth)):
     """Get 7-level Nafs status for an agent."""
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
@@ -2314,7 +2319,7 @@ async def get_nafs_status(agent_id: str):
 
 
 @app.get("/api/nafs/{agent_id}/faculties")
-async def get_agent_faculties(agent_id: str):
+async def get_agent_faculties(agent_id: str, user: TokenPayload = Depends(require_auth)):
     """Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status.
 
     Basira (insight) and Hawa (restraint) are per-task signals returned in the
@@ -2363,7 +2368,7 @@ async def tag_with_yaqin(req: YaqinTagRequest, user: TokenPayload = Depends(requ
 
 
 @app.get("/api/yaqin/stats")
-async def yaqin_stats():
+async def yaqin_stats(user: TokenPayload = Depends(require_auth)):
     """Get Yaqin engine statistics."""
     return {"stats": yaqin_engine.stats()}
 
@@ -2412,7 +2417,7 @@ async def analyze_emotion(req: QalbAnalyzeRequest, user: TokenPayload = Depends(
 
 
 @app.get("/api/qalb/trend/{user_id}")
-async def emotional_trend(user_id: str):
+async def emotional_trend(user_id: str, user: TokenPayload = Depends(require_auth)):
     """Get emotional trend for a user."""
     trend = qalb_engine.get_trend(user_id)
     return {"trend": trend}
@@ -2422,7 +2427,7 @@ async def emotional_trend(user_id: str):
 
 
 @app.get("/api/federation/status")
-async def federation_status():
+async def federation_status(user: TokenPayload = Depends(require_auth)):
     """Get federation network status."""
     # Register active agents with federation
     for aid, agent in active_agents.items():
@@ -2533,7 +2538,7 @@ class RuhTokenizeRequest(BaseModel):
 
 
 @app.get("/api/ruh/status")
-async def get_ruh_model_status():
+async def get_ruh_model_status(user: TokenPayload = Depends(require_auth)):
     """Get Rūḥ Model availability and configuration."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
     ruh_path = os.getenv("RUH_MODEL_PATH", "")
@@ -2793,7 +2798,7 @@ async def tasrif_demo(req: TasrifDemoRequest, user: TokenPayload = Depends(requi
 
 
 @app.get("/api/ruh/{agent_id}")
-async def get_ruh_energy(agent_id: str):
+async def get_ruh_energy(agent_id: str, user: TokenPayload = Depends(require_auth)):
     """Get Ruh energy state for an agent."""
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
@@ -2861,7 +2866,9 @@ async def enqueue_task(
 
 
 @app.get("/api/queue/tasks")
-async def list_queued_tasks(status: str | None = None, limit: int = 50):
+async def list_queued_tasks(
+    status: str | None = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
+):
     """List tasks in the queue, optionally filtered by status."""
     tasks = await task_queue.list_tasks(status=status)
     tasks = tasks[: min(limit, 200)]
@@ -2869,7 +2876,7 @@ async def list_queued_tasks(status: str | None = None, limit: int = 50):
 
 
 @app.get("/api/queue/status")
-async def get_queue_status():
+async def get_queue_status(user: TokenPayload = Depends(require_auth)):
     """Get overall queue status with counts and worker state."""
     all_tasks = await task_queue.list_tasks()
     counts: dict[str, int] = {}
@@ -2924,7 +2931,7 @@ async def cancel_queued_task(
 
 
 @app.get("/api/learner/stats")
-async def get_learner_stats():
+async def get_learner_stats(user: TokenPayload = Depends(require_auth)):
     """Get learning data capture statistics."""
     try:
         from learner.ruh_learner import RuhLearner
@@ -2962,13 +2969,13 @@ async def export_learner_data(
 
 
 @app.get("/api/training/status")
-async def get_training_status():
+async def get_training_status(user: TokenPayload = Depends(require_auth)):
     """Get current Rūḥ Model training status."""
     return training_manager.get_status()
 
 
 @app.get("/api/training/history")
-async def get_training_history():
+async def get_training_history(user: TokenPayload = Depends(require_auth)):
     """Get history of past training runs."""
     return {"runs": training_manager.get_history()}
 
@@ -3023,7 +3030,7 @@ async def stop_training(
 
 
 @app.get("/api/ruh/checkpoints")
-async def list_checkpoints():
+async def list_checkpoints(user: TokenPayload = Depends(require_auth)):
     """List available model checkpoints with metadata."""
     checkpoint_dir = Path("ruh_model/checkpoints")
     if not checkpoint_dir.exists():
@@ -3059,7 +3066,7 @@ async def list_checkpoints():
 
 
 @app.get("/api/ruh/data-stats")
-async def get_data_stats():
+async def get_data_stats(user: TokenPayload = Depends(require_auth)):
     """Get training data composition and statistics."""
     data_dir = Path("ruh_model/data/training")
     sources = []
@@ -3110,7 +3117,7 @@ async def get_data_stats():
 
 
 @app.get("/api/ruh/architecture")
-async def get_model_architecture():
+async def get_model_architecture(user: TokenPayload = Depends(require_auth)):
     """Get model architecture info and parameter counts."""
     try:
         from ruh_model.config import RuhConfig
@@ -3213,7 +3220,7 @@ async def reload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/plugins/tools")
-async def list_plugin_tools():
+async def list_plugin_tools(user: TokenPayload = Depends(require_auth)):
     """List all tools provided by loaded plugins."""
     tools = []
     for plugin in plugin_manager._loaded.values():
@@ -3232,7 +3239,7 @@ async def list_plugin_tools():
 
 
 @app.get("/api/events")
-async def list_events():
+async def list_events(user: TokenPayload = Depends(require_auth)):
     """List all standard events and registered handlers."""
     return {
         "standard_events": EVENTS,
@@ -3242,7 +3249,9 @@ async def list_events():
 
 
 @app.get("/api/events/history")
-async def event_history(event_name: str = None, limit: int = 50):
+async def event_history(
+    event_name: str = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
+):
     """Get recent event history."""
     limit = min(limit, 200)
     return {"history": event_bus.get_history(event_name, limit)}
@@ -3252,7 +3261,7 @@ async def event_history(event_name: str = None, limit: int = 50):
 
 
 @app.get("/api/hooks")
-async def list_hooks():
+async def list_hooks(user: TokenPayload = Depends(require_auth)):
     """List all standard hooks and registered handlers."""
     return {
         "standard_hooks": HOOKS,
@@ -3264,7 +3273,7 @@ async def list_hooks():
 
 
 @app.get("/api/middleware")
-async def list_middleware():
+async def list_middleware(user: TokenPayload = Depends(require_auth)):
     """List all registered middleware pipelines."""
     return {"pipelines": middleware_pipeline.list_middleware()}
 
@@ -3273,7 +3282,7 @@ async def list_middleware():
 
 
 @app.get("/api/extensibility")
-async def extensibility_status():
+async def extensibility_status(user: TokenPayload = Depends(require_auth)):
     """
     Overview of all extensibility points in MIZAN.
     Useful for developers who want to build plugins.

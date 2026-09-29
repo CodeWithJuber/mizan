@@ -210,6 +210,18 @@ const QALB_COLORS: Record<string, string> = {
   fatigued: "bg-gray-100 dark:bg-zinc-700/40 text-gray-500 dark:text-gray-400",
 };
 
+// User-friendly labels for qalb emotional states (internal enum values like
+// "neutral" must not leak into the UI).
+const QALB_LABELS: Record<string, string> = {
+  neutral: "Neutral",
+  positive: "Positive",
+  frustrated: "Frustrated",
+  anxious: "Anxious",
+  confused: "Confused",
+  determined: "Determined",
+  fatigued: "Fatigued",
+};
+
 const YAQIN_LABELS: Record<string, string> = {
   ilm_al_yaqin: "'ilm",
   ayn_al_yaqin: "'ayn",
@@ -249,10 +261,10 @@ function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
         {cognitive.qalb && (
           <span
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${QALB_COLORS[cognitive.qalb.state] || QALB_COLORS.neutral}`}
-            title={`Qalb: ${cognitive.qalb.state} (${(cognitive.qalb.confidence * 100).toFixed(0)}%)`}
+            title={`Qalb: ${QALB_LABELS[cognitive.qalb.state] || cognitive.qalb.state} (${(cognitive.qalb.confidence * 100).toFixed(0)}%)`}
           >
             <span className="opacity-60">Qalb</span>
-            {cognitive.qalb.state}
+            {QALB_LABELS[cognitive.qalb.state] || cognitive.qalb.state}
           </span>
         )}
 
