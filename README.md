@@ -63,6 +63,8 @@ Full local setup (Docker, source install, provider configuration): [Run locally]
 - **QALB-7 cognitive controls** — deterministic ethical/action gates (Fitrah), evidence tracking (Fu'ad), trace compression (Lubb), developmental capability gates; heuristic research modules, not validated cognition claims.
 - **Extensibility** — plugins, skills/tools, events, hooks, middleware, channel adapters (Telegram, Discord, Slack, WhatsApp).
 - **Operations** — FastAPI + WebSocket API, CLI (`mizan setup/chat/serve/status/doctor`), Docker Compose, self-healing doctor experiments.
+- **Ruh model training** — own small transformer trained in a 4-stage developmental curriculum (nutfah → alaqah → mudghah → khalq_akhar); a full GPU run completed 2026-09-29 with loss 5.2660 → 1.0827. [Retrain guide](docs/TRAINING.md).
+- **Web UI** — React/TypeScript chat interface (`frontend/`); mobile navigation drawer with hamburger menu, authenticated API calls on every endpoint.
 
 ## Reviewer quick view
 
@@ -105,7 +107,7 @@ The test count above is a dated snapshot, not a promise that every future commit
 | Partial / experimental   | Chroma vector search                          | A [`VectorStore`](backend/memory/vector_store.py) client and Docker profile exist, but Chroma is not wired into the default memory construction path; the unified pyramid integration still needs async/configuration hardening and integration tests                                                                              |
 | Partial / experimental   | Human approval                                | [`Izn`](backend/security/izn.py) can classify actions as approval-required and retain pending requests; a complete approve/reject-and-resume API workflow is not yet implemented                                                                                                                                                   |
 | Partial / experimental   | Multi-agent council and parallel deliberation | Basic federation/delegation is implemented, but [`agents/shura_council.py`](backend/agents/shura_council.py) and [`core/parallel_agents.py`](backend/core/parallel_agents.py) contain placeholder or heuristic generation paths; [`core/architecture.py`](backend/core/architecture.py) marks consensus construction as simplified |
-| Partial / experimental   | Custom Ruh model                              | Transformer, tokenizer, loss and training code exist under [`ruh_model/`](ruh_model); no released checkpoint or benchmark result is claimed                                                                                                                                                                                        |
+| Partial / experimental   | Custom Ruh model                              | Transformer, tokenizer, loss and training code exist under [`ruh_model/`](ruh_model); a full 4-stage GPU curriculum run completed 2026-09-29 (training loss 5.2660 → 1.0827 over 50 epochs, [docs](docs/TRAINING.md)) — losses are training-set only, no external benchmark, and checkpoints are not shipped in the repo                                                                 |
 | Not included             | Named orchestration frameworks                | No LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio implementation is claimed                                                                                                                                                                                                                              |
 | Not included             | Azure AI                                      | No Azure OpenAI or Azure AI Foundry integration or deployment is claimed                                                                                                                                                                                                                                                           |
 | Not included             | Enterprise RPA/application suite              | No Salesforce, ServiceNow, SAP, Microsoft 365/Graph or RPA-platform implementation is claimed                                                                                                                                                                                                                                      |
@@ -276,6 +278,7 @@ The repository includes:
 - command, path, URL and input validation in [`backend/security/wali.py`](backend/security/wali.py) and [`backend/security/validation.py`](backend/security/validation.py);
 - SSRF-oriented URL controls, rate limits and in-memory audit events;
 - JWT/API-key application authentication in [`backend/security/auth.py`](backend/security/auth.py);
+- user and API-key persistence to `$MIZAN_DATA_DIR/users.json` (default `/data/mizan/users.json`), so registered accounts survive backend restarts;
 - recovery-state and health-check experiments in [`backend/core/tawbah.py`](backend/core/tawbah.py), [`backend/core/self_healing.py`](backend/core/self_healing.py) and [`backend/doctor.py`](backend/doctor.py).
 
 These are defense-in-depth application controls, not a substitute for container/VM isolation, least-privilege credentials, network policy, secrets management or an enterprise identity provider. Authentication, revocation and several coordination controls retain process-local state. Human approval is modeled, but blocked work cannot yet be approved/rejected and resumed through a complete supported API flow.
@@ -506,6 +509,12 @@ POST /api/doctor/fix
 # Realtime
 WS   /ws/{client_id}
 ```
+
+**Authentication:** every `/api/*` endpoint except `POST /api/auth/login`,
+`POST /api/auth/register`, `GET /`, `GET /api/health` and `GET /api/version`
+requires a JWT Bearer token (or API key). The web UI sends the token on all
+API calls. Users and API keys persist to `$MIZAN_DATA_DIR/users.json`
+(default `/data/mizan/users.json`), so accounts survive backend restarts.
 
 The Python API for native Arabic disambiguation (no HTTP involved):
 
