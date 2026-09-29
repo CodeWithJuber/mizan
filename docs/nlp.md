@@ -7,26 +7,25 @@
 
 ## What it is
 
-`mizan.nlp` (`backend/nlp/`) is Mizan's own NLP: native Qur'anic Arabic
+`mizan.nlp` (`nlp/`) is Mizan's own NLP: native Qur'anic Arabic
 word-sense disambiguation (WSD). Given Arabic text and a lemma, it returns
 ranked sense candidates with confidences — no LLM call, no network.
 
 It is **not a neural model**. The shipped artifact is 48 per-lemma
 scikit-learn `LogisticRegression` classifiers (lbfgs, C=1.0) over frozen
 character 2–4-gram surface+context features, trained 2026-09-29 on
-[Q-CSMP v2](https://doi.org/10.5281/zenodo.23024527) (48 lemmas, 115
-senses). The 5.9 MB `model.joblib` lives in
-[`backend/nlp/artifacts/default/`](../../../backend/nlp/artifacts/default/)
+[Q-CSMP v2](https://doi.org/10.5281/zenodo.23024527) (48 lemmas, 96 senses). The 5.9 MB `model.joblib` lives in
+[`nlp/artifacts/default/`](../../nlp/artifacts/default/)
 next to its `manifest.json` (schema v1) and `sense_inventory.json`.
 
-> **Design revision, recorded honestly:** [`DESIGN.md` §4](../../../backend/nlp/DESIGN.md)
+> **Design revision, recorded honestly:** [`DESIGN.md` §4](../../nlp/DESIGN.md)
 > specified `model.safetensors` ("safetensors only, no pickle") — written
 > assuming a neural model. Track 1 trained a real sklearn artifact instead,
 > and safetensors physically cannot hold sklearn estimator objects.
 > The spec was revised, not the model: `REQUIRED_FILES` is now
 > `(manifest.json, model.joblib, sense_inventory.json)`, decided via JEV
 > `choice` (confidence 0.89) and recorded in
-> [`artifacts/DECISIONS.md`](../../../backend/nlp/artifacts/DECISIONS.md).
+> [`artifacts/DECISIONS.md`](../../nlp/artifacts/DECISIONS.md).
 > The old assumption is kept visible here rather than rewritten away.
 
 ## API
@@ -69,21 +68,19 @@ From `manifest.json` (`backend/nlp/artifacts/default/manifest.json`) —
 whole-surah holdout, n=627, preregistered 2026-09-29 11:40 +04 before any
 test evaluation:
 
-| Measure                    | Value                                                             |
-| -------------------------- | ----------------------------------------------------------------- |
-| Test accuracy              | 0.7592 (95% CI 0.7241–0.7927)                                     |
-| Macro-F1                   | 0.5471 (95% CI 0.4725–0.5432)                                     |
-| Rare senses at zero recall | 12 of 88, per the training track's eval report (not in this repo) |
-| Artifact size              | 5.9 MB joblib (sha256 pinned in the manifest)                     |
-| Coverage                   | 48 lemmas / 115 senses — anything else returns `[]`               |
+| Measure       | Value                                                                          |
+| ------------- | ------------------------------------------------------------------------------ |
+| Test accuracy | 0.8150 (n=627 whole-surah holdout; bootstrap CIs not recomputed for 96 senses) |
+| Macro-F1      | 0.6380 (over the full 96-sense universe; absent senses contribute 0.0)         |
+| Artifact size | 5.9 MB joblib (sha256 pinned in the manifest)                                  |
+| Coverage      | 48 lemmas / 96 senses — anything else returns `[]`                            |
 
-Label caveat: the training track reports the Q-CSMP v2 labels carry a
-keyword-rule component — treat the 0.7592 as accuracy against those labels,
-not against human gold judgment. The manifest's own `eval_verdict` is
-`FAIL` on the frozen accuracy leg (the 0.20 improvement bar was
-miscalibrated against the per-lemma majority baseline of 0.6156); the SANE
-gate passed (0.0064 from the stage-2 reference). Both facts ship in the
-manifest — neither is rounded away.
+Honest note (from the manifest itself): retrained-model predictions are
+bit-for-bit identical to the remapped baseline on all 627 test items — the
+measured gain vs the 97-sense baseline comes from ontology simplification
+(the AYY vocative micro-merge), not from retraining. Treat 0.8150 as
+accuracy against the merged Q-CSMP v2 labels, not against human gold
+judgment. The win-bar comparator passed 4/4 gates.
 
 Latency/cold-start budgets (cold-start < 10 s, single-call p95 < 300 ms)
 are **design budgets from `DESIGN.md` §4, not measurements**. Do not cite
@@ -127,7 +124,7 @@ QalbProcessor LLM params, Lawh tiering, and faculty engines.
 
 ```bash
 pip install -e ".[nlp]"   # scikit-learn, joblib, numpy
-PYTHONPATH=backend python -c "
+python -c "
 from nlp import disambiguate, is_ready
 print(is_ready())
 for sense_id, conf in disambiguate('تِلْكَ آيَاتُ اللَّهِ نَتْلُوهَا عَلَيْكَ بِالْحَقِّ', 'آية'):
@@ -135,14 +132,14 @@ for sense_id, conf in disambiguate('تِلْكَ آيَاتُ اللَّهِ ن�
 "
 # qcsmp2:آيَة:sign 0.9732
 # qcsmp2:آيَة:verse 0.0268
+```
 
-`pip install pymizan` (PyPI 3.0.0) does **not** include `backend/nlp` —
+`pip install pymizan` (PyPI 3.0.0) does **not** include `nlp` —
 the native module currently ships from source only.
 
 ## Further reading
 
-- [`backend/nlp/DESIGN.md`](../../../backend/nlp/DESIGN.md) — interface spec and wiring plan
-- [`backend/nlp/artifacts/DECISIONS.md`](../../../backend/nlp/artifacts/DECISIONS.md) — artifact-format and sense-ID decisions
-- [`backend/nlp/artifacts/default/manifest.json`](../../../backend/nlp/artifacts/default/manifest.json) — the honest numbers
+- [`backend/nlp/DESIGN.md`](../../nlp/DESIGN.md) — interface spec and wiring plan
+- [`backend/nlp/artifacts/DECISIONS.md`](../../nlp/artifacts/DECISIONS.md) — artifact-format and sense-ID decisions
+- [`backend/nlp/artifacts/default/manifest.json`](../../nlp/artifacts/default/manifest.json) — the honest numbers
 - [`tests/test_nlp.py`](../../../tests/test_nlp.py) — contract tests
-```

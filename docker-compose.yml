@@ -4,8 +4,8 @@
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/Dockerfile.backend
+      context: .
+      dockerfile: docker/Dockerfile.backend
     container_name: mizan-backend
     restart: unless-stopped
     stop_grace_period: 30s
@@ -27,6 +27,7 @@ services:
       - mizan-data:/data
       - mizan-plugins:/app/plugins
       - ./backend:/app
+      - ./nlp:/app/nlp
       - ./ruh_model:/app/ruh_model
     networks:
       - mizan-net

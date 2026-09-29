@@ -36,8 +36,8 @@ services:
   # ── Backend API ──
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/Dockerfile.backend.prod
+      context: .
+      dockerfile: docker/Dockerfile.backend.prod
     container_name: mizan-backend
     restart: unless-stopped
     expose:
@@ -53,6 +53,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DB_PATH=/data/mizan.db
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost}}
+      - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-}
+      - RUH_ENABLED=${RUH_ENABLED:-}
     volumes:
       - mizan-data:/data
     networks:

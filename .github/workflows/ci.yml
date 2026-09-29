@@ -63,6 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
-        run: docker build -f docker/Dockerfile.backend -t mizan-backend ./backend
+        run: docker build -f docker/Dockerfile.backend -t mizan-backend .
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend -t mizan-frontend ./frontend
