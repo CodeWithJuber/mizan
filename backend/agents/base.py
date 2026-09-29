@@ -1582,7 +1582,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "evaluation",
                 f"Certainty: {yaqin_tag.level} ({yaqin_tag.confidence:.0%})",
                 yaqin_tag.confidence,
-                {"level": yaqin_tag.level, "source": "agentic_reasoning"},
+                {"level": yaqin_tag.level.value, "source": "agentic_reasoning"},
             )
 
             # Shukr — reinforce this success pattern

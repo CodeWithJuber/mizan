@@ -604,7 +604,11 @@ class ConnectionManager:
         if ws:
             try:
                 await ws.send_json(data)
-            except Exception:
+            except Exception as e:
+                # Never swallow serialization/transport failures silently:
+                # a TypeError here (e.g. raw Enum in payload) kills chat_complete
+                # and freezes the UI on "Thinking..." with zero log evidence.
+                logger.error("ConnectionManager.send failed for %s: %r", ws_id, e)
                 self.disconnect(ws_id)
 
     async def broadcast(self, data: dict):
@@ -612,7 +616,8 @@ class ConnectionManager:
         for ws_id, ws in self.connections.items():
             try:
                 await ws.send_json(data)
-            except Exception:
+            except Exception as e:
+                logger.error("ConnectionManager.broadcast failed for %s: %r", ws_id, e)
                 disconnected.append(ws_id)
         for ws_id in disconnected:
             self.disconnect(ws_id)
@@ -1102,7 +1107,7 @@ async def chat(
                         "content": s.content,
                         "confidence": s.confidence,
                         "timestamp": s.timestamp,
-                        "metadata": s.metadata,
+                        "metadata": json.loads(json.dumps(s.metadata, default=str)),
                     }
                     for s in completed_trace.steps
                 ],
@@ -3796,7 +3801,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                                     "content": s.content,
                                     "confidence": s.confidence,
                                     "timestamp": s.timestamp,
-                                    "metadata": s.metadata,
+                                    "metadata": json.loads(json.dumps(s.metadata, default=str)),
                                 }
                                 for s in completed_trace.steps
                             ],
