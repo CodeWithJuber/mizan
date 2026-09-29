@@ -56,14 +56,8 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
     try {
-      const data = (await api.get("/security/audit")) as Record<string, unknown>;
-      // Shape-validate: a logged-out 401 body ({detail: ...}) is truthy but
-      // has no recent[] — storing it would crash the audit render.
-      if (data && Array.isArray(data.recent)) {
-        setAuditData(data as unknown as AuditSummary);
-      } else {
-        setAuditData({ total_events: 0, warnings: 0, errors: 0, recent: [] });
-      }
+      const data = await api.get("/security/audit");
+      setAuditData(data as unknown as AuditSummary);
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
       // Fallback: empty audit data (may fail due to auth requirements)
@@ -84,12 +78,12 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
     setMessage(null);
     try {
       const data = (await api.post("/auth/login", loginForm)) as {
-        access_token?: string;
+        token?: string;
         error?: string;
       };
-      if (data.access_token) {
-        localStorage.setItem("mizan_token", data.access_token);
-        setToken(data.access_token);
+      if (data.token) {
+        localStorage.setItem("mizan_token", data.token);
+        setToken(data.token);
         setMessage({ type: "success", text: "Logged in successfully" });
         addTerminalLine?.("Authenticated", "gold");
       } else {
@@ -112,10 +106,10 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
       const data = (await api.post("/auth/register", {
         username: registerForm.username,
         password: registerForm.password,
-      })) as { access_token?: string; error?: string };
-      if (data.access_token) {
-        localStorage.setItem("mizan_token", data.access_token);
-        setToken(data.access_token);
+      })) as { token?: string; error?: string };
+      if (data.token) {
+        localStorage.setItem("mizan_token", data.token);
+        setToken(data.token);
         setMessage({ type: "success", text: "Account created and logged in" });
         addTerminalLine?.("Account created", "gold");
       } else {
@@ -572,13 +566,13 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                     </button>
                   </div>
 
-                  {(auditData.recent ?? []).length === 0 ? (
+                  {auditData.recent.length === 0 ? (
                     <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
                       No audit events recorded yet.
                     </div>
                   ) : (
                     <div className="space-y-1 max-h-96 overflow-y-auto">
-                      {[...(auditData.recent ?? [])].reverse().map((event, i) => (
+                      {[...auditData.recent].reverse().map((event, i) => (
                         <div
                           key={i}
                           className="flex items-start gap-3 py-2 px-3 rounded hover:bg-gray-100 dark:hover:bg-zinc-800/50 text-xs"
