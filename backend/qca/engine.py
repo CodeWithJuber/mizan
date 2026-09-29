@@ -52,15 +52,49 @@ def _nlp_native_wsd_enabled() -> bool:
     return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
 
 
+#: Arabic-script token pattern — the SAME tokenizer as IP-1
+#: (backend/agents/base.py::_arabic_lemmas). One shared approach, not two.
+_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
+    seen: list[str] = []
+    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
+        if tok not in seen:
+            seen.append(tok)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
 def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> list[dict]:
     """Native WSD candidates for each ISM root (Phase 2, IP-3).
 
     Returns e.g. [{"lemma": "كتب", "sense_id": "qcsmp2:كَتَب:write",
-    "confidence": 0.91, "english_term": "write"}] -- entries only for roots
-    whose top sense clears NLP_MIN_SENSE_CONFIDENCE. [] when the flag is off
-    or the model is not ready. Additive signal only.
+    "confidence": 0.91, "english_term": "write"}] -- entries only for lemmas
+    whose top sense clears NLP_MIN_SENSE_CONFIDENCE with the required margin.
+    [] when the flag is off or the model is not ready. Additive signal only.
+
+    JEV `choice` (confidence 0.80, 2026-09-29): when `roots` is empty AND the
+    text carries Arabic script, resolve the Arabic tokens directly through
+    mizan.nlp instead of returning []. The roots path only matches English
+    concept words against CONCEPT_MAP, so Arabic-only queries (the exact
+    input native WSD is built for) were a no-op at IP-3. Fallback-only:
+    texts that yield ISM roots behave exactly as before.
     """
-    if not roots or not _nlp_native_wsd_enabled():
+    if not _nlp_native_wsd_enabled():
+        return []
+    items: list[tuple[str, str]]
+    if roots:
+        items = [(r.get("root") or "", r.get("english_term", "")) for r in roots[:limit]]
+    else:
+        # Arabic-lemma fallback: no CONCEPT_MAP gloss exists for raw Arabic
+        # tokens, so english_term is the honest null "".
+        items = [(lemma, "") for lemma in _arabic_lemmas(text, limit)]
+        if items:
+            logger.info("IP-3: no ISM roots; resolving %d Arabic lemma(s) natively", len(items))
+    if not items:
         return []
     try:
         from nlp import ModelNotReadyError, disambiguate, is_ready
@@ -71,8 +105,7 @@ def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> li
         logger.info("mizan.nlp artifact not ready -- QCA senses skipped")
         return []
     out: list[dict] = []
-    for r in roots[:limit]:
-        lemma = r.get("root") or ""
+    for lemma, english_term in items:
         if not lemma:
             continue
         try:
@@ -81,19 +114,22 @@ def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> li
             logger.info("mizan.nlp became not-ready mid-call -- QCA senses skipped")
             return out
         except Exception as exc:  # fail-closed: never break the pipeline
-            logger.warning("mizan.nlp inference failed for root %r (%s) -- skipped", lemma, exc)
+            logger.warning("mizan.nlp inference failed for lemma %r (%s) -- skipped", lemma, exc)
             continue
         if not candidates:
             continue
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
-        if confidence >= NLP_MIN_SENSE_CONFIDENCE and (confidence - runner_up) >= NLP_MIN_SENSE_MARGIN:
+        if (
+            confidence >= NLP_MIN_SENSE_CONFIDENCE
+            and (confidence - runner_up) >= NLP_MIN_SENSE_MARGIN
+        ):
             out.append(
                 {
                     "lemma": lemma,
                     "sense_id": sense_id,
                     "confidence": round(confidence, 4),
-                    "english_term": r.get("english_term", ""),
+                    "english_term": english_term,
                 }
             )
     return out
