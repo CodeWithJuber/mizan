@@ -1,0 +1,135 @@
+{
+ "schema_version": "1",
+ "name": "mizan-sense-wsd",
+ "version": "1.2.0-candidate",
+ "dataset": "Q-CSMP v2",
+ "dataset_doi": "10.5281/zenodo.23024527",
+ "num_lemmas": 48,
+ "num_senses": 97,
+ "eval_accuracy": 0.815,
+ "eval_macro_f1": 0.6314,
+ "eval_n": 627,
+ "remapped_baseline": {
+  "accuracy": 0.815,
+  "macro_f1": 0.6314,
+  "note": "EXACT Phase-A mapping applied to frozen baseline y_true AND y_pred (spec v2 §5.2)"
+ },
+ "gates": {
+  "accuracy": {
+   "pass": true,
+   "got": 0.8149920255183413,
+   "bar": 0.8099920255183413
+  },
+  "macro_f1": {
+   "pass": true,
+   "got": 0.6314322912345838,
+   "bar": 0.6214322912345838
+  },
+  "no_new_drywells": {
+   "pass": true,
+   "got": [],
+   "bar": null
+  },
+  "target_recall": {
+   "pass": true,
+   "got": {
+    "('أَكْثَر', 'most')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('بَعْض', 'some of')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('خالِد', 'abide forever')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('شَهِيد', 'witness')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('عَدُوّ', 'enemy')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('عَلِيم', 'all knower')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('كَثِير', 'many')": [
+     true,
+     1.0,
+     1.0
+    ],
+    "('مُؤْمِن', 'believer')": [
+     true,
+     1.0,
+     1.0
+    ]
+   },
+   "bar": null
+  }
+ },
+ "per_target_recall": {
+  "('أَكْثَر', 'most')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('بَعْض', 'some of')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('خالِد', 'abide forever')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('شَهِيد', 'witness')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('عَدُوّ', 'enemy')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('عَلِيم', 'all knower')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('كَثِير', 'many')": [
+   true,
+   1.0,
+   1.0
+  ],
+  "('مُؤْمِن', 'believer')": [
+   true,
+   1.0,
+   1.0
+  ]
+ },
+ "overall": "PASS",
+ "sklearn_version": "1.9.1",
+ "joblib_version": "1.6.0",
+ "numpy_version": "2.5.3",
+ "trained_at": "2026-09-29",
+ "sense_inventory_sha256": "2cda3d989b973c803ff57db121aeaf7bbe9baba790c3a523e07afd92cd3413b3",
+ "model_sha256": "d30826adc984626880e9a1c09cd5b509cc74bb074c16e03c8c5aaf6dcd43f761",
+ "files": [
+  "manifest.json",
+  "model.joblib",
+  "sense_inventory.json"
+ ],
+ "trust_boundary": "CANDIDATE — not the default artifact. Same loader contract as default."
+}
