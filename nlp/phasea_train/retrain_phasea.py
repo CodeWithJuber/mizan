@@ -59,9 +59,7 @@ from nlp.wsd import _features  # noqa: E402  (path setup above is required first
 WSD_SHA256 = "566ddaf3705899bce210ebdee680d6f9a7df352e51fe99cc5c83fe0b062761d0"
 DATA = Path(os.path.expanduser("~/workspace/research/stage2/qcsmp_v2.jsonl"))
 DATA_MD5 = "35c1a6bf0cbaa58aa7d52d3683d68b5d"
-BASELINE_BUNDLE = Path(
-    os.path.expanduser("~/workspace/mizan-merges/stage/model.joblib")
-)
+BASELINE_BUNDLE = Path(os.path.expanduser("~/workspace/mizan-merges/stage/model.joblib"))
 SPLIT_COUNTS = {"train": 4691, "dev": 451, "test": 627}
 BOOT_SEED = 137
 BOOT_N = 10_000
@@ -239,9 +237,7 @@ def main() -> None:
         return r
 
     rows106 = {s: [apply(r, map41) for r in rows[s]] for s in rows}
-    universe_106 = sorted(
-        {(r["lemma"], r["sense"]) for s in rows106.values() for r in s}
-    )
+    universe_106 = sorted({(r["lemma"], r["sense"]) for s in rows106.values() for r in s})
     assert len(universe_106) == 106, len(universe_106)
 
     rows97 = {s: [apply(r, mapA) for r in rows106[s]] for s in rows106}
@@ -258,12 +254,8 @@ def main() -> None:
     # recipe actually trains on; 1005 = 201 x 5 perturbations = dataset-level
     # count matching the spec number. Both true; definitions kept explicit.
     assert n_relabeled_A == 201, f"Phase-A relabeled (base) {n_relabeled_A}, want 201"
-    n_relabeled_all = sum(
-        1 for r in rows_all for k in [mapA.get((r["lemma"], r["sense"]))] if k
-    )
-    assert n_relabeled_all == 1005, (
-        f"Phase-A relabeled (all) {n_relabeled_all}, want 1005"
-    )
+    n_relabeled_all = sum(1 for r in rows_all for k in [mapA.get((r["lemma"], r["sense"]))] if k)
+    assert n_relabeled_all == 1005, f"Phase-A relabeled (all) {n_relabeled_all}, want 1005"
     for (lemma, sense), target in mapA.items():
         assert (lemma, sense) not in universe_97, f"merged-away still present: {sense}"
         assert (lemma, target) in universe_97, f"merge target missing: {target}"
@@ -276,9 +268,7 @@ def main() -> None:
         if (r["lemma"], r["sense"]) not in inv97
     ]
     assert not unmapped, f"unmapped labels: {unmapped[:5]}"
-    print(
-        f"composition OK: 115 -> 106 -> 97 | Phase-A relabeled: {n_relabeled_A} | unmapped: 0"
-    )
+    print(f"composition OK: 115 -> 106 -> 97 | Phase-A relabeled: {n_relabeled_A} | unmapped: 0")
 
     # ── Frozen baseline recompute (post-PR-41 v1.1.0, 106 senses) ──────────
     bundle = joblib.load(BASELINE_BUNDLE)
@@ -288,9 +278,7 @@ def main() -> None:
     base_acc = accuracy(y_pred_106, test106)
     base_f1 = macro_f1(y_pred_106, test106, universe_106)
     assert abs(base_acc - 0.8038) < 0.002, f"baseline recipe drift: acc={base_acc:.4f}"
-    print(
-        f"baseline recomputed: acc={base_acc:.4f} (≈0.8038 ✓) | macro_f1={base_f1:.4f}"
-    )
+    print(f"baseline recomputed: acc={base_acc:.4f} (≈0.8038 ✓) | macro_f1={base_f1:.4f}")
 
     # ── Remapped baseline: EXACT Phase-A map on y_true AND y_pred ──────────
     def remap(lemma, sense):
@@ -305,9 +293,7 @@ def main() -> None:
     rem_acc = accuracy(y_pred_remapped, test97)
     rem_f1 = macro_f1(y_pred_remapped, test97, universe_97)
     rem_recall = per_class_recall(y_pred_remapped, test97, universe_97)
-    print(
-        f"REMAPPED BASELINE: acc={rem_acc:.4f} | macro_f1={rem_f1:.4f} | n={len(test97)}"
-    )
+    print(f"REMAPPED BASELINE: acc={rem_acc:.4f} | macro_f1={rem_f1:.4f} | n={len(test97)}")
 
     # affected targets (8 unique — خالِد target takes 2 merges)
     targets = sorted({(lemma, t_sense) for (lemma, _s), t_sense in mapA.items()})
@@ -316,9 +302,7 @@ def main() -> None:
 
     # ── Retrain on Phase-A labels (train split only) ─────────────────────
     per_a, per_b, single = train_per_lemma(rows97["train"])
-    print(
-        f"retrained 48 lemmas (a+b) | single-sense: {len(single)} ({', '.join(single)})"
-    )
+    print(f"retrained 48 lemmas (a+b) | single-sense: {len(single)} ({', '.join(single)})")
 
     import sklearn
 
@@ -336,14 +320,14 @@ def main() -> None:
         sp = [new_pred[i] for i in idx]
         ba.append(accuracy(sp, sub))
         bf.append(macro_f1(sp, sub, universe_97))
+
     def ci(v):
         return [
             round(float(np.percentile(v, 2.5)), 4),
             round(float(np.percentile(v, 97.5)), 4),
         ]
-    print(
-        f"NEW MODEL: acc={new_acc:.4f} ci95={ci(ba)} | macro_f1={new_f1:.4f} ci95={ci(bf)}"
-    )
+
+    print(f"NEW MODEL: acc={new_acc:.4f} ci95={ci(ba)} | macro_f1={new_f1:.4f} ci95={ci(bf)}")
 
     # ── 4 gates (revised spec v2 §5.2) ────────────────────────────────────
     gates = {}
@@ -402,8 +386,7 @@ def main() -> None:
     }
     joblib.dump(bundle_new, STAGE / "model.joblib")
     inventory = {
-        f"qcsmp2:{lemma}:{sense}": {"lemma": lemma, "sense": sense}
-        for lemma, sense in universe_97
+        f"qcsmp2:{lemma}:{sense}": {"lemma": lemma, "sense": sense} for lemma, sense in universe_97
     }
     assert len(inventory) == 97
     with open(STAGE / "sense_inventory.json", "w", encoding="utf-8") as f:
@@ -425,9 +408,7 @@ def main() -> None:
             "macro_f1": round(rem_f1, 4),
             "note": "EXACT Phase-A mapping applied to frozen baseline y_true AND y_pred (spec v2 §5.2)",
         },
-        "gates": {
-            k: {"pass": bool(v[0]), "got": v[1], "bar": v[2]} for k, v in gates.items()
-        },
+        "gates": {k: {"pass": bool(v[0]), "got": v[1], "bar": v[2]} for k, v in gates.items()},
         "per_target_recall": per_target,
         "overall": "PASS" if all_pass else "FAIL",
         "sklearn_version": sklearn.__version__,
