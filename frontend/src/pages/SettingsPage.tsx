@@ -213,17 +213,17 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Section Tabs */}
-        <div className="w-56 shrink-0 border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-4">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        {/* Section Tabs — horizontal scroll on mobile, sidebar on desktop */}
+        <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
           {sections.map((s) => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
-              className={`w-full text-left px-6 py-3 text-sm transition-all duration-300 ${
+              className={`whitespace-nowrap text-left px-4 md:px-6 py-2.5 md:py-3 text-sm transition-all duration-300 ${
                 activeSection === s.id
-                  ? "text-mizan-gold font-medium bg-gradient-to-r from-mizan-gold/10 to-transparent border-r-2 border-mizan-gold"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40 hover:translate-x-1"
+                  ? "text-mizan-gold font-medium bg-gradient-to-r from-mizan-gold/10 to-transparent border-b-2 md:border-b-0 md:border-r-2 border-mizan-gold"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40"
               }`}
             >
               {s.label}
@@ -232,7 +232,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
         </div>
 
         {/* Section Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-6 relative z-10">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative z-10">
           {/* AI Providers */}
           {activeSection === "providers" && (
             <div className="space-y-4">
@@ -369,7 +369,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                 <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
                   Rate Limiting
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label
                       htmlFor="rate-limit"
