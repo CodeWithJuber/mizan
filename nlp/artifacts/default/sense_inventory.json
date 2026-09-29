@@ -31,10 +31,6 @@
     "lemma": "آيَة",
     "sense": "verse"
   },
-  "qcsmp2:أَجْر:payment": {
-    "lemma": "أَجْر",
-    "sense": "payment"
-  },
   "qcsmp2:أَجْر:reward": {
     "lemma": "أَجْر",
     "sense": "reward"
@@ -111,10 +107,6 @@
     "lemma": "بَعْض",
     "sense": "part"
   },
-  "qcsmp2:بَعْض:some": {
-    "lemma": "بَعْض",
-    "sense": "some"
-  },
   "qcsmp2:بَعْض:some of": {
     "lemma": "بَعْض",
     "sense": "some of"
@@ -187,10 +179,6 @@
     "lemma": "دِين",
     "sense": "religion"
   },
-  "qcsmp2:ذُو:owner": {
-    "lemma": "ذُو",
-    "sense": "owner"
-  },
   "qcsmp2:ذُو:possessor": {
     "lemma": "ذُو",
     "sense": "possessor"
@@ -251,10 +239,6 @@
     "lemma": "شَىْء",
     "sense": "thing"
   },
-  "qcsmp2:صالِحَة:good deeds": {
-    "lemma": "صالِحَة",
-    "sense": "good deeds"
-  },
   "qcsmp2:صالِحَة:righteous deeds": {
     "lemma": "صالِحَة",
     "sense": "righteous deeds"
@@ -291,10 +275,6 @@
     "lemma": "عَيْن",
     "sense": "spring"
   },
-  "qcsmp2:عِلْم:any knowledge": {
-    "lemma": "عِلْم",
-    "sense": "any knowledge"
-  },
   "qcsmp2:عِلْم:knowledge": {
     "lemma": "عِلْم",
     "sense": "knowledge"
@@ -307,17 +287,9 @@
     "lemma": "فَضْل",
     "sense": "grace"
   },
-  "qcsmp2:قَرْيَة:cities": {
-    "lemma": "قَرْيَة",
-    "sense": "cities"
-  },
   "qcsmp2:قَرْيَة:town": {
     "lemma": "قَرْيَة",
     "sense": "town"
-  },
-  "qcsmp2:قَوْل:saying": {
-    "lemma": "قَوْل",
-    "sense": "saying"
   },
   "qcsmp2:قَوْل:speech": {
     "lemma": "قَوْل",
@@ -343,10 +315,6 @@
     "lemma": "كِتاب",
     "sense": "record"
   },
-  "qcsmp2:كِتاب:scripture": {
-    "lemma": "كِتاب",
-    "sense": "scripture"
-  },
   "qcsmp2:مَثَل:example": {
     "lemma": "مَثَل",
     "sense": "example"
@@ -366,10 +334,6 @@
   "qcsmp2:مُبِين:clear": {
     "lemma": "مُبِين",
     "sense": "clear"
-  },
-  "qcsmp2:مُبِين:manifest": {
-    "lemma": "مُبِين",
-    "sense": "manifest"
   },
   "qcsmp2:مِثْل:like": {
     "lemma": "مِثْل",
