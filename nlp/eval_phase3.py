@@ -4,7 +4,13 @@
 Compares a candidate artifact (joblib + manifest.json + sense_inventory.json)
 against the locked Phase-3 baseline on the frozen Phase-1 whole-surah holdout
 test split, and applies the preregistered decision rule
-(PREREGISTRATION_PHASE3.md) to produce a PASS/FAIL verdict.
+(PREREGISTRATION_PHASE3.md, incl. Amendment A1) to produce a PASS/FAIL verdict.
+
+Scoring space: by default the POST-MERGE sense space (Amendment A1 —
+SENSE_MERGES_PHASE3.json, 115 -> 106 senses). Gold labels AND predictions are
+remapped symmetrically through the merge map, so both the old baseline and
+new candidates are scored in the merged ontology. `--no-merge` scores in the
+original 115-sense space (reference only).
 
 Trust boundary: the artifact directory is operator-supplied. The manifest is
 fully validated (schema + required files + sha256 checksums + size budget)
@@ -40,20 +46,19 @@ import numpy as np
 # in nlp/artifact.py; the feature extractor stays single-sourced in nlp/wsd.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from nlp import wsd as wsd_mod  # noqa: E402  (frozen feature extractor)
-from nlp.artifact import (  # noqa: E402
-    ArtifactManifest,
-)
+from nlp.artifact import ArtifactManifest  # noqa: E402
 
-# ── Frozen protocol constants (PREREGISTRATION_PHASE3.md §1-§4) ────────────
+# ── Frozen protocol constants (PREREGISTRATION_PHASE3.md §1-§4, Amdt A1) ──
 DATA_MD5 = "35c1a6bf0cbaa58aa7d52d3683d68b5d"
 SPLIT_COUNTS = {"train": 4691, "dev": 451, "test": 627}
 N_SENSES_UNIVERSE = 115
+N_MERGES_FROZEN = 9
 PRIMARY_MODEL_KEY = "model_a_surface_ctx"
 SECONDARY_MODEL_KEY = "model_b_surface_ctx_morph"
 BOOT_SEED = 137
 BOOT_N = 10000
 
-TARGET_SENSES = [  # (lemma, sense) — frozen §3, baseline recall 0.0 on all 12
+TARGET_SENSES = [  # (lemma, sense) — frozen §3; 9 merged by Amdt A1, 3 as-is
     ("أَجْر", "payment"),
     ("أَيّ", "so which"),
     ("بَعْض", "some"),
@@ -68,12 +73,15 @@ TARGET_SENSES = [  # (lemma, sense) — frozen §3, baseline recall 0.0 on all 1
     ("نِساء", "wives"),
 ]
 
-# Frozen decision rule (PREREGISTRATION_PHASE3.md §4; tolerances via JEV §7)
+# Frozen decision rule (PREREGISTRATION_PHASE3.md §4 + Amendment A1;
+# tolerances via JEV: lift bar conf 0.33, guardrails conf 0.73,
+# regression floor conf 0.69, merge-WIN construction conf 0.55)
 RULE = {
-    "win_lift_bar": 0.10,  # mean target-sense recall lift (JEV, conf 0.33)
-    "guard_acc_drop": 0.02,  # max accuracy drop (JEV, conf 0.73)
-    "guard_f1_drop": 0.02,  # max macro-F1 drop (JEV, conf 0.73)
-    "regression_support_floor": 5,  # n_test >= 5 for hard regression (JEV, conf 0.69)
+    "win_lift_bar": 0.10,
+    "guard_acc_drop": 0.02,
+    "guard_f1_drop": 0.02,
+    "regression_support_floor": 5,
+    "scoring_space": "post-merge (106 senses, symmetric remap)",
 }
 
 
@@ -88,12 +96,13 @@ class HarnessError(Exception):
 # silent feature drift would invalidate every number).
 
 
+# ruff: noqa: UP031 — %-formatting is verbatim from the frozen nlp.wsd extractor
 def _ngrams(s, lo=2, hi=4):
     s = " " + (s or "") + " "
     out = {}
     for n in range(lo, hi + 1):
         for i in range(len(s) - n + 1):
-            g = f"c{n}:{s[i : i + n]}"
+            g = "c%d:%s" % (n, s[i : i + n])
             out[g] = out.get(g, 0) + 1
     return out
 
@@ -106,20 +115,20 @@ def _features_a(record):
         ("n", (record.get("next") or {}).get("form")),
     ):
         for g, c in _ngrams(s).items():
-            d[f"{k}:{g}"] = c
-    d[f"len={(record.get('morph') or {}).get('n_letters')}"] = 1
+            d["%s:%s" % (k, g)] = c
+    d["len=%s" % (record.get("morph") or {}).get("n_letters")] = 1
     return d
 
 
 def _features_b(record):
     d = dict(_features_a(record))
     m = record.get("morph") or {}
-    d[f"root={record.get('root')}"] = 1
-    d[f"prev_root={(record.get('prev') or {}).get('root')}"] = 1
-    d[f"next_root={(record.get('next') or {}).get('root')}"] = 1
-    d[f"n_seg={m.get('n_seg')}"] = 1
-    d[f"n_letters={m.get('n_letters')}"] = 1
-    d[f"pos={record.get('pos')}"] = 1
+    d["root=%s" % record.get("root")] = 1
+    d["prev_root=%s" % (record.get("prev") or {}).get("root")] = 1
+    d["next_root=%s" % (record.get("next") or {}).get("root")] = 1
+    d["n_seg=%s" % m.get("n_seg")] = 1
+    d["n_letters=%s" % m.get("n_letters")] = 1
+    d["pos=%s" % record.get("pos")] = 1
     return d
 
 
@@ -143,7 +152,7 @@ def _self_test_features():
 
 
 def _md5(path: Path) -> str:
-    h = hashlib.md5(usedforsecurity=False)
+    h = hashlib.md5(usedforsecurity=False)  # non-security dataset checksum
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
@@ -182,6 +191,71 @@ def load_split_verified(data_path: Path):
         if t not in universe:
             raise HarnessError(f"target sense {t} not in label universe")
     return rows, universe
+
+
+# ── Merge map (Amendment A1) ──────────────────────────────────────────────
+
+
+def load_merges(merge_file: Path, sense_inventory: dict):
+    """Load + validate the sense-merge JSON. Returns {(lemma, old_sense):
+    (lemma, new_sense)}. Fail-closed on any structural problem."""
+    with open(merge_file, encoding="utf-8") as f:
+        raw = json.load(f)
+    inv_pairs = {(v["lemma"], v["sense"]) for v in sense_inventory.values()}
+
+    def _to_pair(sid):
+        lemma, sense = sid.split("qcsmp2:", 1)[1].split(":", 1)
+        return (lemma, sense)
+
+    merges = {}
+    for old_id, new_id in raw.items():
+        if old_id.startswith("_"):
+            continue
+        old, new = _to_pair(old_id), _to_pair(new_id)
+        if old not in inv_pairs:
+            raise HarnessError(f"merge map: unknown old sense_id {old_id}")
+        if new not in inv_pairs:
+            raise HarnessError(f"merge map: unknown new sense_id {new_id}")
+        if old[0] != new[0]:
+            raise HarnessError(f"merge map: cross-lemma merge {old_id} -> {new_id}")
+        merges[old] = new
+    if len(merges) != N_MERGES_FROZEN:
+        raise HarnessError(f"merge map has {len(merges)} merges, frozen count is {N_MERGES_FROZEN}")
+    if set(merges) & set(merges.values()):
+        raise HarnessError("merge map: chained merges are not allowed")
+    return merges
+
+
+def merges_from_baseline(baseline: dict):
+    """Rebuild the frozen merge map from the locked baseline (authority)."""
+    m = baseline["protocol"].get("merges_applied")
+    if not m:
+        return None
+    return {(a[0], a[1]): (b[0], b[1]) for a, b in m}
+
+
+def effective_universe(universe, merges):
+    eff = sorted({merges.get(s, s) for s in universe})
+    if len(eff) != N_SENSES_UNIVERSE - N_MERGES_FROZEN:
+        raise HarnessError(f"post-merge universe is {len(eff)}, want 106")
+    return eff
+
+
+def remap_rows(test_rows, merges):
+    """Gold labels remapped through the merge map (symmetric scoring: the
+    eval ontology is the merged one)."""
+    out = []
+    for r in test_rows:
+        r2 = dict(r)
+        r2["sense"] = merges.get((r["lemma"], r["sense"]), (r["lemma"], r["sense"]))[1]
+        out.append(r2)
+    return out
+
+
+def remap_pred(p, lemma, merges):
+    if p is None:
+        return None
+    return merges.get((lemma, p), (lemma, p))[1]
 
 
 # ── Artifact loading (manifest verified BEFORE unpickle) ─────────────────
@@ -229,10 +303,9 @@ def load_artifact_verified(artifact_dir: Path):
         except ImportError:
             versions[mod] = "missing"
     version_warnings = []
-    for mod, key in (("sklearn", "sklearn_version"),):
-        want = getattr(manifest, key, "")
-        if want and versions.get(mod) != want:
-            version_warnings.append(f"{mod} runtime {versions.get(mod)} != manifest {want}")
+    want = getattr(manifest, "sklearn_version", "")
+    if want and versions.get("sklearn") != want:
+        version_warnings.append(f"sklearn runtime {versions.get('sklearn')} != manifest {want}")
     return {
         "manifest": manifest,
         "bundle": bundle,
@@ -283,8 +356,8 @@ def accuracy(pred, rows):
 
 
 def macro_f1(pred, rows, senses_all):
-    """Macro-F1 over the full 115 sense inventory; absent-from-test senses
-    contribute 0.0 (frozen Track-1 rule, replicated exactly)."""
+    """Macro-F1 over a sense universe; absent-from-test senses contribute
+    0.0 (frozen Track-1 rule, replicated exactly)."""
     from sklearn.metrics import f1_score
 
     inv = {s: i for i, s in enumerate(senses_all)}
@@ -307,9 +380,9 @@ def macro_f1(pred, rows, senses_all):
 
 
 def per_sense_table(pred, rows, universe):
-    """Per-sense recall for all 115 senses; test-absent -> recall None."""
+    """Per-sense recall over a universe; test-absent -> recall None."""
     s_ok, s_t = defaultdict(int), defaultdict(int)
-    for r, p in zip(pred, rows, strict=True):
+    for p, r in zip(pred, rows, strict=True):
         k = (r["lemma"], r["sense"])
         s_t[k] += 1
         if p == r["sense"]:
@@ -362,24 +435,32 @@ def bootstrap_cis(pred, rows, senses_all):
         ba.append(a)
         bf.append(macro_f1(sp, sub, senses_all))
 
-    def _ci(v):
-        return [round(float(np.percentile(v, 2.5)), 4), round(float(np.percentile(v, 97.5)), 4)]
+    def ci(v):
+        return [
+            round(float(np.percentile(v, 2.5)), 4),
+            round(float(np.percentile(v, 97.5)), 4),
+        ]
 
-    return _ci(ba), _ci(bf)
+    return ci(ba), ci(bf)
 
 
-def evaluate(bundle, rows, universe):
-    test = rows["test"]
-    pred = predict_primary(bundle, test)
-    acc, ok = accuracy(pred, test)
-    f1 = macro_f1(pred, test, universe)
-    acc_ci, f1_ci = bootstrap_cis(pred, test, universe)
-    attested = [k for k in per_sense_table(pred, test, universe).values() if k["n_test"] > 0]
-    mean_recall = float(np.mean([k["recall"] for k in attested]))
-    # ECE needs confidences: recompute top-1 probs
+def score_space(bundle, test_rows, universe_eff, merges, with_bootstrap=True):
+    """Score predictions in one label space (original or post-merge)."""
+    eff_rows = remap_rows(test_rows, merges) if merges else test_rows
+    pred_raw = predict_primary(bundle, test_rows)
+    if merges:
+        pred = [remap_pred(p, r["lemma"], merges) for p, r in zip(pred_raw, test_rows, strict=True)]
+    else:
+        pred = pred_raw
+    acc, ok = accuracy(pred, eff_rows)
+    f1 = macro_f1(pred, eff_rows, universe_eff)
+    acc_ci, f1_ci = bootstrap_cis(pred, eff_rows, universe_eff) if with_bootstrap else (None, None)
+    table = per_sense_table(pred, eff_rows, universe_eff)
+    attested = [v for v in table.values() if v["n_test"] > 0]
+    mean_recall = float(np.mean([v["recall"] for v in attested]))
     per_lemma = bundle["models"][PRIMARY_MODEL_KEY]["per_lemma"]
     probs = []
-    for r in test:
+    for r in test_rows:
         m = per_lemma.get(r["lemma"])
         if m is None:
             probs.append(None)
@@ -393,48 +474,109 @@ def evaluate(bundle, rows, universe):
         "macro_f1_ci95": f1_ci,
         "mean_sense_recall": round(mean_recall, 6),
         "ece": round(ece(probs, ok), 6),
-        "per_sense_recall": per_sense_table(pred, test, universe),
-        "per_lemma_accuracy": per_lemma_acc(pred, test),
-        "n_test": len(test),
+        "per_sense_recall": table,
+        "per_lemma_accuracy": per_lemma_acc(pred, eff_rows),
+        "n_test": len(eff_rows),
+        "universe_size": len(universe_eff),
     }
-    sec = predict_secondary(bundle, test)
+    sec = predict_secondary(bundle, test_rows)
     if sec is not None:
-        sa, _ = accuracy(sec, test)
+        sec_eff = (
+            [remap_pred(p, r["lemma"], merges) for p, r in zip(sec, test_rows, strict=True)]
+            if merges
+            else sec
+        )
+        sa, _ = accuracy(sec_eff, eff_rows)
         metrics["secondary_variant_b"] = {
             "accuracy": round(sa, 6),
-            "macro_f1": round(macro_f1(sec, test, universe), 6),
+            "macro_f1": round(macro_f1(sec_eff, eff_rows, universe_eff), 6),
             "note": "informational only — no decision weight (Track-1 protocol)",
         }
-    return metrics
+    return metrics, pred_raw
 
 
-# ── Decision rule ─────────────────────────────────────────────────────────
+# ── Decision rule (PREREGISTRATION_PHASE3.md §4 + Amendment A1) ───────────
 
 
-def apply_rule(candidate_metrics, baseline_metrics):
-    cm, bm = candidate_metrics, baseline_metrics
-    d_acc = cm["accuracy"] - bm["accuracy"]
-    d_f1 = cm["macro_f1"] - bm["macro_f1"]
+def target_detail(metrics_eff, merges, pred_raw, test_rows):
+    """Per-target-sense detail in the effective (post-merge) space.
+
+    Each of the 12 targets maps to its post-merge representative; for merged
+    targets the harness additionally verifies the former test items resolve
+    to the merge target (Amendment A1 'recall win' check)."""
+    table = metrics_eff["per_sense_recall"]
+    out = []
+    for lemma, sense in TARGET_SENSES:
+        rep = merges.get((lemma, sense), (lemma, sense)) if merges else (lemma, sense)
+        key = f"{rep[0]} :: {rep[1]}"
+        entry = {
+            "target": f"{lemma} :: {sense}",
+            "representative": key,
+            "merged": merges is not None and (lemma, sense) in merges,
+            "recall": table[key]["recall"],
+            "n_test": table[key]["n_test"],
+        }
+        if entry["merged"]:
+            former = [
+                (p, r)
+                for p, r in zip(pred_raw, test_rows, strict=True)
+                if (r["lemma"], r["sense"]) == (lemma, sense)
+            ]
+            n = len(former)
+            res = (
+                sum(1 for p, r in former if remap_pred(p, r["lemma"], merges) == rep[1]) / n
+                if n
+                else None
+            )
+            entry["former_items_n"] = n
+            entry["former_items_resolve_to_target"] = round(res, 6) if res is not None else None
+        out.append(entry)
+    return out
+
+
+def apply_rule(cand_eff, baseline, cand_pred_raw, test_rows):
+    """Apply the frozen decision rule. The baseline side (metrics + target
+    detail) comes from the LOCKED baseline JSON — never re-evaluated."""
+    merges = merges_from_baseline(baseline)
+    base_eff = baseline["metrics"]
+    d_acc = cand_eff["accuracy"] - base_eff["accuracy"]
+    d_f1 = cand_eff["macro_f1"] - base_eff["macro_f1"]
+    ct = {t["target"]: t for t in target_detail(cand_eff, merges, cand_pred_raw, test_rows)}
+    bt = {t["target"]: t for t in baseline["target_senses"]}
     targets = []
     for lemma, sense in TARGET_SENSES:
-        key = f"{lemma} :: {sense}"
-        rc = cm["per_sense_recall"][key]["recall"]
-        rb = bm["per_sense_recall"][key]["recall"]
+        name = f"{lemma} :: {sense}"
+        c, b = ct[name], bt[name]
+        delta = round((c["recall"] or 0.0) - (b["recall"] or 0.0), 6)
         targets.append(
             {
-                "sense": key,
-                "baseline_recall": rb,
-                "candidate_recall": rc,
-                "delta": round((rc or 0.0) - (rb or 0.0), 6),
-                "n_test": cm["per_sense_recall"][key]["n_test"],
+                "target": name,
+                "representative": c["representative"],
+                "merged": c["merged"],
+                "baseline_recall": b["recall"],
+                "candidate_recall": c["recall"],
+                "delta": delta,
+                "n_test": c["n_test"],
+                **(
+                    {
+                        "former_items_n": c["former_items_n"],
+                        "former_items_resolve_to_target": c["former_items_resolve_to_target"],
+                    }
+                    if c["merged"]
+                    else {}
+                ),
             }
         )
     lift = float(np.mean([t["delta"] for t in targets]))
     regressions, warnings = [], []
-    for key, b in bm["per_sense_recall"].items():
-        c = cm["per_sense_recall"][key]
+    for key, b in base_eff["per_sense_recall"].items():
+        c = cand_eff["per_sense_recall"][key]
         if b["recall"] not in (None, 0.0) and b["n_test"] > 0 and c["recall"] == 0.0:
-            entry = {"sense": key, "baseline_recall": b["recall"], "n_test": b["n_test"]}
+            entry = {
+                "sense": key,
+                "baseline_recall": b["recall"],
+                "n_test": b["n_test"],
+            }
             if b["n_test"] >= RULE["regression_support_floor"]:
                 regressions.append(entry)
             else:
@@ -457,9 +599,8 @@ def apply_rule(candidate_metrics, baseline_metrics):
         },
         "no_regression": {"violations": regressions, "pass": len(regressions) == 0},
     }
-    verdict = all(legs[k]["pass"] for k in legs)
     return {
-        "pass": verdict,
+        "pass": all(legs[k]["pass"] for k in legs),
         "legs": legs,
         "target_senses": targets,
         "mean_target_recall_lift": round(lift, 6),
@@ -482,21 +623,57 @@ def main():
     )
     ap.add_argument("--data", required=True, help="Q-CSMP v2 jsonl path")
     ap.add_argument(
+        "--merges",
+        default=None,
+        help="sense-merge JSON (default: SENSE_MERGES_PHASE3.json next to this script)",
+    )
+    ap.add_argument(
+        "--no-merge",
+        action="store_true",
+        help="score in the original 115-sense space (reference only)",
+    )
+    ap.add_argument(
         "--lock-baseline",
         metavar="OUT",
         help="baseline-lock mode: write BASELINE_PHASE3.json (no verdict)",
     )
     ap.add_argument(
-        "--baseline", metavar="JSON", help="candidate mode: locked baseline JSON for deltas"
+        "--baseline",
+        metavar="JSON",
+        help="candidate mode: locked baseline JSON for deltas",
     )
     ap.add_argument("--out", metavar="JSON", help="candidate mode: write report here")
     args = ap.parse_args()
 
+    script_dir = Path(__file__).resolve().parent
     _self_test_features()
     rows, universe = load_split_verified(Path(args.data))
     art = load_artifact_verified(Path(args.artifact))
     manifest = art["manifest"]
-    metrics = evaluate(art["bundle"], rows, universe)
+
+    merges = None
+    if not args.no_merge:
+        merge_file = Path(args.merges) if args.merges else script_dir / "SENSE_MERGES_PHASE3.json"
+        merges = load_merges(merge_file, art["sense_inventory"])
+    universe_eff = effective_universe(universe, merges) if merges else universe
+
+    metrics_eff, pred_raw = score_space(art["bundle"], rows["test"], universe_eff, merges)
+
+    # Original-space reference (informational; the published Track-1 numbers).
+    ref_metrics, _ = score_space(art["bundle"], rows["test"], universe, None, with_bootstrap=False)
+    ref_metrics.pop("accuracy_ci95", None)
+    ref_metrics.pop("macro_f1_ci95", None)
+    ref_metrics.pop("per_sense_recall", None)
+    ref_metrics.pop("per_lemma_accuracy", None)
+    # Track-1's "0.6554" figure: macro-F1 over true∪predicted classes (96).
+    union_classes = sorted(
+        {(r["lemma"], r["sense"]) for r in rows["test"]}
+        | {(r["lemma"], p) for r, p in zip(rows["test"], pred_raw, strict=True) if p}
+    )
+    ref_metrics["macro_f1_true_pred_union"] = round(
+        macro_f1(pred_raw, rows["test"], union_classes), 6
+    )
+    ref_metrics["true_pred_union_size"] = len(union_classes)
 
     artifact_id = {
         "name": manifest.name,
@@ -509,14 +686,19 @@ def main():
         "version_warnings": art["version_warnings"],
     }
     protocol = {
-        "preregistration": "nlp/PREREGISTRATION_PHASE3.md (frozen 2026-09-29)",
+        "preregistration": "nlp/PREREGISTRATION_PHASE3.md (frozen 2026-09-29, Amendment A1 same day)",
         "dataset": "Q-CSMP v2",
         "dataset_md5": DATA_MD5,
         "split": "per-lemma whole-surah holdout, base items only",
         "n_train": SPLIT_COUNTS["train"],
         "n_dev": SPLIT_COUNTS["dev"],
         "n_test": SPLIT_COUNTS["test"],
-        "label_universe": N_SENSES_UNIVERSE,
+        "label_universe_original": N_SENSES_UNIVERSE,
+        "merges_applied": None
+        if merges is None
+        else [[[a[0], a[1]], [b[0], b[1]]] for a, b in sorted(merges.items())],
+        "label_universe_effective": len(universe_eff),
+        "scoring": "symmetric remap of gold + predictions into the merged ontology",
         "primary_model": PRIMARY_MODEL_KEY,
         "bootstrap": {"seed": BOOT_SEED, "resamples": BOOT_N},
         "run_at": datetime.now(UTC).isoformat(),
@@ -527,32 +709,24 @@ def main():
             "kind": "BASELINE_PHASE3",
             "artifact": artifact_id,
             "protocol": protocol,
-            "metrics": metrics,
-            "target_senses": [
-                {
-                    "sense": f"{lemma} :: {sense}",
-                    "sense_id": next(
-                        (
-                            sid
-                            for sid, v in art["sense_inventory"].items()
-                            if v.get("lemma") == lemma and v.get("sense") == sense
-                        ),
-                        None,
-                    ),
-                    "baseline_recall": metrics["per_sense_recall"][f"{lemma} :: {sense}"]["recall"],
-                    "n_test": metrics["per_sense_recall"][f"{lemma} :: {sense}"]["n_test"],
-                }
-                for lemma, sense in TARGET_SENSES
-            ],
+            "metrics": metrics_eff,
+            "target_senses": target_detail(metrics_eff, merges, pred_raw, rows["test"]),
+            "reference_original_space": ref_metrics,
             "claim": "locked by eval_phase3.py --lock-baseline on the main artifact; "
-            "deltas for all future candidates are computed against these numbers",
+            "all candidate deltas are computed against metrics (effective space)",
         }
         with open(args.lock_baseline, "w", encoding="utf-8") as f:
             json.dump(baseline, f, ensure_ascii=False, indent=1)
         print(f"baseline locked -> {args.lock_baseline}")
         print(
-            f"accuracy={metrics['accuracy']} ci95={metrics['accuracy_ci95']} "
-            f"macro_f1={metrics['macro_f1']} ci95={metrics['macro_f1_ci95']}"
+            f"[effective] accuracy={metrics_eff['accuracy']} "
+            f"ci95={metrics_eff['accuracy_ci95']} macro_f1={metrics_eff['macro_f1']} "
+            f"ci95={metrics_eff['macro_f1_ci95']}"
+        )
+        print(
+            f"[original ] accuracy={ref_metrics['accuracy']} "
+            f"macro_f1_115={ref_metrics['macro_f1']} "
+            f"macro_f1_true_pred_union={ref_metrics['macro_f1_true_pred_union']}"
         )
         return
 
@@ -561,7 +735,13 @@ def main():
         sys.exit(2)
     with open(args.baseline, encoding="utf-8") as f:
         baseline = json.load(f)
-    verdict = apply_rule(metrics, baseline["metrics"])
+    base_merges = merges_from_baseline(baseline)
+    if (merges is None) != (base_merges is None) or (merges is not None and merges != base_merges):
+        raise HarnessError(
+            "candidate merge map != locked baseline merge map — "
+            "candidates must be scored in the frozen post-merge space"
+        )
+    verdict = apply_rule(metrics_eff, baseline, pred_raw, rows["test"])
     report = {
         "kind": "PHASE3_CANDIDATE_REPORT",
         "candidate_artifact": artifact_id,
@@ -569,10 +749,11 @@ def main():
         "baseline_ref": {
             "accuracy": baseline["metrics"]["accuracy"],
             "macro_f1": baseline["metrics"]["macro_f1"],
+            "scoring_space": baseline["protocol"]["label_universe_effective"],
             "artifact": baseline["artifact"]["name"] + " v" + baseline["artifact"]["version"],
             "model_sha256": baseline["artifact"]["model_sha256"],
         },
-        "candidate_metrics": metrics,
+        "candidate_metrics": metrics_eff,
         "verdict": verdict,
     }
     with open(args.out, "w", encoding="utf-8") as f:
