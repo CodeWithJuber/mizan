@@ -39,7 +39,9 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
           setStatus("connecting");
         }
 
-        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
+        const token = localStorage.getItem("mizan_token") || "";
+        const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+        socket = new WebSocket(`${config.WS_URL}/${clientId.current}${qs}`);
 
         socket.onopen = () => {
           setStatus("connected");

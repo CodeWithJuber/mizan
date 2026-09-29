@@ -46,7 +46,9 @@ export function useTrainingWebSocket(): {
       wsRef.current = null;
     }
 
-    const wsUrl = `${config.WS_URL}/${clientId.current}`;
+    const token = localStorage.getItem("mizan_token") || "";
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    const wsUrl = `${config.WS_URL}/${clientId.current}${qs}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

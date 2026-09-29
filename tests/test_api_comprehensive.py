@@ -61,6 +61,16 @@ def client():
         return TestClient(app, raise_server_exceptions=False)
 
 
+@pytest.fixture
+def auth_headers(client):
+    """Create an admin user and return Bearer auth headers."""
+    from api.main import auth
+
+    user = auth.create_user("testadmin2", "testpass", roles=["admin"])
+    token = auth.create_token(user)
+    return {"Authorization": f"Bearer {token}"}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROOT & STATUS ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -117,7 +127,7 @@ class TestAgentEndpoints:
 
 
 class TestMemoryEndpoints:
-    def test_store_memory(self, client):
+    def test_store_memory(self, client, auth_headers):
         resp = client.post(
             "/api/memory/store",
             json={
@@ -125,6 +135,7 @@ class TestMemoryEndpoints:
                 "memory_type": "semantic",
                 "importance": 0.9,
             },
+            headers=auth_headers,
         )
         # Accept 200 or 429 (if rate limiter persists across tests)
         assert resp.status_code in (200, 429)
@@ -132,7 +143,7 @@ class TestMemoryEndpoints:
             data = resp.json()
             assert data["stored"] is True
 
-    def test_query_memory(self, client):
+    def test_query_memory(self, client, auth_headers):
         client.post(
             "/api/memory/store",
             json={
@@ -140,6 +151,7 @@ class TestMemoryEndpoints:
                 "memory_type": "semantic",
                 "importance": 0.8,
             },
+            headers=auth_headers,
         )
         resp = client.post(
             "/api/memory/query",
@@ -147,13 +159,14 @@ class TestMemoryEndpoints:
                 "query": "Quranic architecture",
                 "limit": 5,
             },
+            headers=auth_headers,
         )
         assert resp.status_code in (200, 429)
         if resp.status_code == 200:
             data = resp.json()
             assert "results" in data
 
-    def test_store_memory_types(self, client):
+    def test_store_memory_types(self, client, auth_headers):
         """All memory types should be accepted."""
         for mtype in ["episodic", "semantic", "procedural"]:
             resp = client.post(
@@ -163,10 +176,11 @@ class TestMemoryEndpoints:
                     "memory_type": mtype,
                     "importance": 0.5,
                 },
+                headers=auth_headers,
             )
             assert resp.status_code in (200, 429)
 
-    def test_store_memory_with_tags(self, client):
+    def test_store_memory_with_tags(self, client, auth_headers):
         resp = client.post(
             "/api/memory/store",
             json={
@@ -175,6 +189,7 @@ class TestMemoryEndpoints:
                 "importance": 0.7,
                 "tags": ["test", "important"],
             },
+            headers=auth_headers,
         )
         assert resp.status_code in (200, 429)
 
@@ -205,8 +220,11 @@ class TestDoctorEndpoints:
                 assert "message" in check
                 assert check["status"] in ("pass", "warn", "fail", "fixed", "skip")
 
-    def test_doctor_fix(self, client):
-        resp = client.post("/api/doctor/fix")
+    def test_doctor_fix(self, client, auth_headers):
+        resp = client.post(
+            "/api/doctor/fix",
+            headers=auth_headers,
+        )
         assert resp.status_code in (200, 429)
         if resp.status_code == 200:
             data = resp.json()
@@ -224,24 +242,29 @@ class TestErrorHandling:
         resp = client.get("/api/nonexistent")
         assert resp.status_code in (404, 429)
 
-    def test_memory_store_missing_content(self, client):
+    def test_memory_store_missing_content(self, client, auth_headers):
         resp = client.post(
             "/api/memory/store",
             json={
                 "memory_type": "semantic",
             },
+            headers=auth_headers,
         )
         assert resp.status_code in (400, 422, 429)
 
-    def test_memory_query_empty(self, client):
-        resp = client.post("/api/memory/query", json={})
+    def test_memory_query_empty(self, client, auth_headers):
+        resp = client.post(
+            "/api/memory/query",
+            json={},
+            headers=auth_headers,
+        )
         assert resp.status_code in (200, 400, 422, 429)
 
-    def test_invalid_json_body(self, client):
+    def test_invalid_json_body(self, client, auth_headers):
         resp = client.post(
             "/api/memory/store",
             content=b"not-json",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **auth_headers},
         )
         assert resp.status_code in (400, 422, 429)
 
@@ -292,7 +315,7 @@ class TestConcurrentRequests:
         # The key test is that the server doesn't crash
         assert success_count >= 0
 
-    def test_multiple_memory_stores(self, client):
+    def test_multiple_memory_stores(self, client, auth_headers):
         """Should handle rapid memory storage."""
         success_count = 0
         for i in range(3):
@@ -302,6 +325,7 @@ class TestConcurrentRequests:
                     "content": f"Memory item {i}",
                     "importance": 0.5,
                 },
+                headers=auth_headers,
             )
             if resp.status_code == 200:
                 success_count += 1

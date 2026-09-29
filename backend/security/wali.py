@@ -314,48 +314,22 @@ class WaliGuardian:
         return True
 
     def validate_url(self, url: str) -> bool:
-        """Validate URL to prevent SSRF"""
-        from urllib.parse import urlparse
+        """Validate URL to prevent SSRF.
 
-        try:
-            parsed = urlparse(url)
-        except Exception:
-            return False
+        Delegates to the hardened security.validation.validate_url, which
+        rejects IP literals in any notation (decimal/hex/octal/IPv6) that
+        point at non-public addresses. Keeps the ssrf_blocked audit event.
+        """
+        from security.validation import validate_url as _validate_url
 
-        # Block internal/private networks
-        blocked_hosts = [
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "169.254.",
-            "10.",
-            "172.16.",
-            "172.17.",
-            "172.18.",
-            "192.168.",
-            "::1",
-            "fc00:",
-            "fe80:",
-        ]
-
-        host = parsed.hostname or ""
-        for blocked in blocked_hosts:
-            if host.startswith(blocked) or host == blocked:
-                self.audit.log(
-                    "ssrf_blocked",
-                    {
-                        "url": url,
-                        "blocked_host": host,
-                    },
-                    severity="warning",
-                )
-                return False
-
-        # Only allow http and https
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        return True
+        is_safe, reason = _validate_url(url)
+        if not is_safe:
+            self.audit.log(
+                "ssrf_blocked",
+                {"url": url, "reason": reason},
+                severity="warning",
+            )
+        return is_safe
 
     def validate_input_length(self, text: str, field_name: str = "input") -> bool:
         """Check input doesn't exceed maximum length"""

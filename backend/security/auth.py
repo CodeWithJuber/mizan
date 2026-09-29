@@ -10,14 +10,31 @@ JWT-based authentication with role-based access control.
 import os
 import time
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    """Hash a password with bcrypt.
+
+    bcrypt hard-errors on inputs longer than 72 bytes (v5+); we truncate
+    explicitly and document it instead of relying on silent truncation.
+    Output is standard $2b$ format, compatible with hashes made by passlib.
+    """
+    return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against a $2b$ hash (same 72-byte rule as hashing)."""
+    try:
+        return bcrypt.checkpw(password.encode("utf-8")[:72], password_hash.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
 
 # Roles hierarchy
 ROLES = {
@@ -27,6 +44,24 @@ ROLES = {
     "viewer": 10,
     "guest": 0,
 }
+
+
+# Request-scoped principal roles, bound by require_auth (or the WebSocket
+# handshake) for the lifetime of the request task. Default is empty:
+# fail closed - code running outside an authenticated request (background
+# jobs, tests, imports) holds no privileges.
+_request_roles: ContextVar[tuple] = ContextVar("mizan_request_roles", default=())
+
+
+def set_request_roles(roles) -> None:
+    """Bind the current request principal's roles. Call once per request."""
+    _request_roles.set(tuple(roles or ()))
+
+
+def request_has_role(role: str) -> bool:
+    """True if the current request principal holds `role` (admin implies all)."""
+    roles = _request_roles.get()
+    return role in roles or "admin" in roles
 
 
 @dataclass
@@ -101,7 +136,7 @@ class MizanAuth:
         user = UserRecord(
             id=user_id,
             username=username,
-            password_hash=pwd_context.hash(password),
+            password_hash=hash_password(password),
             roles=roles or ["user"],
             created_at=datetime.now(UTC).isoformat(),
             api_keys=[],
@@ -113,7 +148,7 @@ class MizanAuth:
         """Authenticate user with username and password"""
         for user in self._users.values():
             if user.username == username and user.enabled:
-                if pwd_context.verify(password, user.password_hash):
+                if verify_password(password, user.password_hash):
                     return user
         return None
 

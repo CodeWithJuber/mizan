@@ -65,7 +65,7 @@ from qca.cognitive_methods import select_method
 from qca.yaqin_engine import YaqinEngine
 from reasoning.context_manager import ContextManager
 from reasoning.planner import TafakkurPlanner
-from security.auth import MizanAuth, TokenPayload
+from security.auth import MizanAuth, TokenPayload, set_request_roles
 from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
@@ -439,6 +439,9 @@ async def require_auth(
     token = auth.extract_token(authorization, x_api_key)
     if not token:
         raise HTTPException(401, "Authentication required")
+    # Bind the principal's roles to this request scope so downstream
+    # privileged tools (bash/python_exec) can enforce role gates.
+    set_request_roles(token.roles)
     return token
 
 
@@ -649,7 +652,7 @@ async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/agents")
-async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
+async def create_new_agent(req: AgentCreate, user: TokenPayload = Depends(require_auth)):
     """Create a new agent"""
     config = {
         "model": req.model,
@@ -703,7 +706,7 @@ async def get_agent(agent_id: str):
 
 
 @app.delete("/api/agents/{agent_id}")
-async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_current_user)):
+async def delete_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     del active_agents[agent_id]
@@ -718,7 +721,7 @@ async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_cu
 async def update_agent(
     agent_id: str,
     req: AgentUpdate,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Update an existing agent's name, model, or system prompt."""
     agent = active_agents.get(agent_id)
@@ -759,7 +762,7 @@ class AgentModelRequest(BaseModel):
 async def set_agent_model(
     agent_id: str,
     req: AgentModelRequest,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Set model for a specific agent (does not affect other agents)."""
     agent = active_agents.get(agent_id)
@@ -793,7 +796,7 @@ async def set_agent_model(
 async def run_task(
     req: TaskRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Execute a task - single or parallel"""
 
@@ -1107,7 +1110,7 @@ class PlanRequest(BaseModel):
 async def create_plan(
     req: PlanRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Decompose a complex goal into sub-tasks using TafakkurPlanner"""
     agent_id = req.agent_id or (list(active_agents.keys())[0] if active_agents else None)
@@ -1124,7 +1127,7 @@ async def create_plan(
 async def execute_plan(
     plan_id: str,
     background_tasks: BackgroundTasks,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Execute a previously created plan"""
     plan = planner.get_plan(plan_id)
@@ -1158,7 +1161,7 @@ async def get_plan(plan_id: str):
 
 
 @app.post("/api/memory/query")
-async def query_memory(req: MemoryQuery):
+async def query_memory(req: MemoryQuery, user: TokenPayload = Depends(require_auth)):
     memories = await memory.recall(req.query, req.memory_type, req.agent_id, req.limit)
     return {
         "query": req.query,
@@ -1179,13 +1182,13 @@ async def query_memory(req: MemoryQuery):
 
 
 @app.post("/api/memory/store")
-async def store_memory(req: MemoryStore):
+async def store_memory(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
     mem_id = await memory.remember(req.content, req.memory_type, req.importance, tags=req.tags)
     return {"id": mem_id, "stored": True}
 
 
 @app.post("/api/memory/consolidate")
-async def consolidate_memory():
+async def consolidate_memory(user: TokenPayload = Depends(require_auth)):
     result = await memory.consolidate()
     return result
 
@@ -1233,7 +1236,7 @@ async def list_memories(memory_type: str | None = None, limit: int = 30):
 @app.post("/api/perception/analyze")
 async def analyze_multimodal(
     req: MultimodalInput,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Analyze multimodal input through the QCA perception pipeline.
 
@@ -1276,7 +1279,7 @@ class KnowledgeIngest(BaseModel):
 
 
 @app.post("/api/knowledge/ingest")
-async def ingest_knowledge(req: KnowledgeIngest):
+async def ingest_knowledge(req: KnowledgeIngest, user: TokenPayload = Depends(require_auth)):
     """Ingest knowledge from a URL or YouTube video into memory."""
     from knowledge.ingest import (
         chunk_content,
@@ -1331,7 +1334,7 @@ async def ingest_knowledge(req: KnowledgeIngest):
 
 
 @app.post("/api/knowledge/upload")
-async def upload_knowledge(request: Request):
+async def upload_knowledge(request: Request, user: TokenPayload = Depends(require_auth)):
     """Upload a PDF file and ingest its content into memory."""
     from knowledge.ingest import chunk_content, extract_pdf
 
@@ -1429,7 +1432,7 @@ _MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 @app.post("/api/upload")
 async def upload_file(
     file: UploadFile,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ) -> dict:
     """Accept file uploads (PDF, images, docs) for processing."""
     suffix = Path(file.filename or "").suffix.lower()
@@ -1516,9 +1519,7 @@ class ProviderSwitchRequest(BaseModel):
 
 
 @app.post("/api/providers/switch")
-async def switch_provider(
-    req: ProviderSwitchRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def switch_provider(req: ProviderSwitchRequest, user: TokenPayload = Depends(require_auth)):
     """
     Switch the active LLM provider and model for all agents.
     Persists choice to database so it survives restarts.
@@ -1569,7 +1570,7 @@ async def get_preferences():
 
 
 @app.post("/api/preferences")
-async def save_preferences(req: dict):
+async def save_preferences(req: dict, user: TokenPayload = Depends(require_auth)):
     """Save one or more preferences. Body: {"key": "value", ...}"""
     saved = []
     for key, value in req.items():
@@ -1590,9 +1591,7 @@ async def list_integrations():
 
 
 @app.post("/api/integrations")
-async def add_integration(
-    req: IntegrationCreate, user: TokenPayload | None = Depends(get_current_user)
-):
+async def add_integration(req: IntegrationCreate, user: TokenPayload = Depends(require_auth)):
     int_id = await memory.save_integration(
         {
             "name": req.name,
@@ -1605,7 +1604,7 @@ async def add_integration(
 
 
 @app.delete("/api/integrations/{int_id}")
-async def delete_integration(int_id: str, user: TokenPayload | None = Depends(get_current_user)):
+async def delete_integration(int_id: str, user: TokenPayload = Depends(require_auth)):
     import sqlite3
 
     conn = sqlite3.connect(memory.db_path)
@@ -1787,7 +1786,7 @@ async def health_check():
 
 
 @app.post("/api/v1/root-analyze")
-async def api_v1_root_analyze(request: dict) -> dict:
+async def api_v1_root_analyze(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
     """Analyze Arabic text to extract root-pattern decomposition.
 
     Public API endpoint for root analysis as a service.
@@ -1807,7 +1806,7 @@ async def api_v1_root_analyze(request: dict) -> dict:
 
 
 @app.post("/api/v1/tokenize")
-async def api_v1_tokenize(request: dict) -> dict:
+async def api_v1_tokenize(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
     """Tokenize text into (root_id, pattern_id) tuples.
 
     Public API endpoint for Q28-aware tokenization.
@@ -1831,7 +1830,7 @@ async def api_v1_tokenize(request: dict) -> dict:
 
 
 @app.post("/api/v1/q28-features")
-async def api_v1_q28_features(request: dict) -> dict:
+async def api_v1_q28_features(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
     """Extract Q28 articulatory features for any text.
 
     Maps input through IPA to Q28 articulatory coordinates.
@@ -1877,7 +1876,7 @@ async def doctor_check():
 
 
 @app.post("/api/doctor/fix")
-async def doctor_fix():
+async def doctor_fix(user: TokenPayload = Depends(require_auth)):
     """Run doctor with auto-fix enabled."""
     try:
         from doctor import report_to_dict, run_doctor
@@ -1964,9 +1963,7 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/settings")
-async def update_settings(
-    req: SettingsUpdate, user: TokenPayload | None = Depends(get_current_user)
-):
+async def update_settings(req: SettingsUpdate, user: TokenPayload = Depends(require_auth)):
     """Update a setting (API key, config value, etc.)"""
     if req.section == "provider" and req.provider and req.api_key:
         env_key = f"{req.provider.upper()}_API_KEY"
@@ -2040,7 +2037,7 @@ async def update_settings(
 
 
 @app.post("/api/channels/{name}/start")
-async def start_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def start_channel(name: str, user: TokenPayload = Depends(require_auth)):
     """Start a channel adapter"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2059,7 +2056,7 @@ async def start_channel(name: str, user: TokenPayload | None = Depends(get_curre
 
 
 @app.post("/api/channels/{name}/stop")
-async def stop_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def stop_channel(name: str, user: TokenPayload = Depends(require_auth)):
     """Stop a channel adapter"""
     wali.audit.log("channel_stop", {"channel": name})
     return {"status": "stopped", "channel": name}
@@ -2086,7 +2083,7 @@ async def channel_status(name: str):
 
 
 @app.post("/api/channels/{name}/test")
-async def test_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def test_channel(name: str, user: TokenPayload = Depends(require_auth)):
     """Send a test message through a channel"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2102,7 +2099,7 @@ async def test_channel(name: str, user: TokenPayload | None = Depends(get_curren
 
 
 @app.post("/api/shura")
-async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(get_current_user)):
+async def shura_consult(req: ShuraRequest, user: TokenPayload = Depends(require_auth)):
     """Multi-agent Shura consultation"""
     result = await shura.consult(req.question, req.context, list(active_agents.keys()))
     return result
@@ -2118,9 +2115,7 @@ async def list_jobs(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/jobs")
-async def create_job(
-    req: ScheduleJobRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def create_job(req: ScheduleJobRequest, user: TokenPayload = Depends(require_auth)):
     """Create a new scheduled job"""
     job = await scheduler.add_job(req.name, req.cron, req.task, req.agent_id)
     wali.audit.log("job_created", {"name": req.name, "cron": req.cron})
@@ -2128,7 +2123,7 @@ async def create_job(
 
 
 @app.delete("/api/automation/jobs/{job_id}")
-async def delete_job(job_id: str, user: TokenPayload | None = Depends(get_current_user)):
+async def delete_job(job_id: str, user: TokenPayload = Depends(require_auth)):
     """Remove a scheduled job"""
     removed = await scheduler.remove_job(job_id)
     if not removed:
@@ -2143,9 +2138,7 @@ async def list_webhooks(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/webhooks")
-async def create_webhook(
-    req: WebhookCreateRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def create_webhook(req: WebhookCreateRequest, user: TokenPayload = Depends(require_auth)):
     """Create a new webhook trigger"""
     webhook = await trigger_manager.register_webhook(
         req.name, req.task_template, req.agent_id, req.secret
@@ -2155,7 +2148,9 @@ async def create_webhook(
 
 
 @app.post("/api/automation/webhooks/{webhook_id}/trigger")
-async def trigger_webhook(webhook_id: str, request: Request):
+async def trigger_webhook(
+    webhook_id: str, request: Request, user: TokenPayload = Depends(require_auth)
+):
     """Handle an incoming webhook trigger"""
     try:
         payload = await request.json()
@@ -2175,9 +2170,7 @@ async def list_skills(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/skills/install")
-async def install_skill(
-    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def install_skill(req: SkillInstallRequest, user: TokenPayload = Depends(require_auth)):
     """Install a skill"""
     result = skill_registry.install_skill(req.name)
     if result:
@@ -2187,9 +2180,7 @@ async def install_skill(
 
 
 @app.post("/api/skills/uninstall")
-async def uninstall_skill(
-    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def uninstall_skill(req: SkillInstallRequest, user: TokenPayload = Depends(require_auth)):
     """Uninstall a skill"""
     result = skill_registry.uninstall_skill(req.name)
     if result:
@@ -2206,9 +2197,7 @@ class SkillExecuteRequest(BaseModel):
 
 
 @app.post("/api/skills/execute")
-async def execute_skill(
-    req: SkillExecuteRequest, user: TokenPayload | None = Depends(get_current_user)
-):
+async def execute_skill(req: SkillExecuteRequest, user: TokenPayload = Depends(require_auth)):
     """Execute a skill action — routes to the appropriate built-in skill"""
     skill = skill_registry.get_skill(req.skill)
     if not skill:
@@ -2360,7 +2349,7 @@ class YaqinTagRequest(BaseModel):
 
 
 @app.post("/api/yaqin/tag")
-async def tag_with_yaqin(req: YaqinTagRequest):
+async def tag_with_yaqin(req: YaqinTagRequest, user: TokenPayload = Depends(require_auth)):
     """Tag a piece of knowledge with its Yaqin certainty level."""
     if req.source == "proven":
         tag = yaqin_engine.tag_proven(
@@ -2388,7 +2377,9 @@ class CognitiveRouteRequest(BaseModel):
 
 
 @app.post("/api/cognitive/route")
-async def route_cognitive_method(req: CognitiveRouteRequest):
+async def route_cognitive_method(
+    req: CognitiveRouteRequest, user: TokenPayload = Depends(require_auth)
+):
     """Route a query to the best Quranic cognitive method."""
     method = select_method(req.query)
     return {
@@ -2412,7 +2403,7 @@ class QalbAnalyzeRequest(BaseModel):
 
 
 @app.post("/api/qalb/analyze")
-async def analyze_emotion(req: QalbAnalyzeRequest):
+async def analyze_emotion(req: QalbAnalyzeRequest, user: TokenPayload = Depends(require_auth)):
     """Analyze emotional state from a message."""
     reading = qalb_engine.analyze(req.message)
     if req.user_id:
@@ -2451,7 +2442,7 @@ class DiscoverRequest(BaseModel):
 
 
 @app.post("/api/federation/discover")
-async def discover_agents(req: DiscoverRequest):
+async def discover_agents(req: DiscoverRequest, user: TokenPayload = Depends(require_auth)):
     """Discover agents by capability."""
     matches = federation.discover(req.capabilities)
     return {"agents": [m.to_dict() for m in matches]}
@@ -2466,7 +2457,7 @@ class FederationTaskRequest(BaseModel):
 async def federation_route_task(
     req: FederationTaskRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Route a task to the best agent via Federation intelligence.
 
@@ -2557,7 +2548,7 @@ async def get_ruh_model_status():
 @app.post("/api/ruh/generate")
 async def ruh_generate(
     req: RuhGenerateRequest,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Generate text using the local Rūḥ Model."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
@@ -2589,7 +2580,7 @@ async def ruh_generate(
 
 
 @app.post("/api/ruh/tokenize")
-async def ruh_tokenize(req: RuhTokenizeRequest):
+async def ruh_tokenize(req: RuhTokenizeRequest, user: TokenPayload = Depends(require_auth)):
     """Tokenize text using the Bayān tokenizer and return analysis."""
     try:
         from ruh_model.tokenizer.bayan import BayanTokenizer
@@ -2753,7 +2744,7 @@ class TasrifDemoRequest(BaseModel):
 
 
 @app.post("/api/ruh/tasrif-demo")
-async def tasrif_demo(req: TasrifDemoRequest):
+async def tasrif_demo(req: TasrifDemoRequest, user: TokenPayload = Depends(require_auth)):
     """Apply tasrif morphophonemic operators to articulatory feature vectors."""
     try:
         import numpy as np
@@ -2852,7 +2843,7 @@ class QueueTaskRequest(BaseModel):
 @app.post("/api/queue/tasks")
 async def enqueue_task(
     req: QueueTaskRequest,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Add a task to the priority queue."""
     priority = PRIORITY_MAP.get(req.priority.lower(), TaskPriority.TAHSINIYYAH)
@@ -2911,7 +2902,7 @@ async def get_queued_task(task_id: str) -> dict:
 @app.delete("/api/queue/tasks/{task_id}")
 async def cancel_queued_task(
     task_id: str,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ) -> dict:
     """Cancel a pending queued task."""
     cancelled = await task_queue.cancel(task_id)
@@ -2951,7 +2942,7 @@ async def get_learner_stats():
 
 @app.post("/api/learner/export")
 async def export_learner_data(
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Export captured learning data as JSONL for Rūḥ Model training."""
     try:
@@ -2993,7 +2984,7 @@ class TrainingStartRequest(BaseModel):
 @app.post("/api/training/start")
 async def start_training(
     req: TrainingStartRequest,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Start a Rūḥ Model training run."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
@@ -3018,7 +3009,7 @@ async def start_training(
 
 @app.post("/api/training/stop")
 async def stop_training(
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
     """Stop the currently running training."""
     try:
@@ -3195,7 +3186,7 @@ async def list_plugins(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/plugins/{name}/load")
-async def load_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def load_plugin(name: str, user: TokenPayload = Depends(require_auth)):
     """Load (activate) a plugin."""
     result = await plugin_manager.load(name)
     if result:
@@ -3204,7 +3195,7 @@ async def load_plugin(name: str, user: TokenPayload | None = Depends(get_current
 
 
 @app.post("/api/plugins/{name}/unload")
-async def unload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def unload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
     """Unload (deactivate) a plugin."""
     result = await plugin_manager.unload(name)
     if result:
@@ -3213,7 +3204,7 @@ async def unload_plugin(name: str, user: TokenPayload | None = Depends(get_curre
 
 
 @app.post("/api/plugins/{name}/reload")
-async def reload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
+async def reload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
     """Reload a plugin (unload + load)."""
     result = await plugin_manager.reload(name)
     if result:
@@ -3314,26 +3305,26 @@ async def extensibility_status():
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | None = None):
-    # Accept WebSocket connection
-    await websocket.accept()
-
-    # Authenticate via token (optional but recommended)
+    # Authenticate BEFORE accepting (fail closed). A missing, invalid or
+    # expired token is rejected at the handshake - the socket is never
+    # accepted for an unauthenticated principal.
     user = None
     if token:
         try:
             user = auth.verify_token(token)
             if user and user.is_expired:
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "message": "Token expired. Please reconnect with a valid token.",
-                    }
-                )
-                await websocket.close()
-                return
+                user = None
         except Exception:
-            # Token validation failed - log warning but allow connection
-            wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
+            user = None
+    if not user:
+        wali.audit.log("ws_auth_rejected", {"client_id": client_id}, severity="warning")
+        await websocket.close(code=4401, reason="Authentication required")
+        return
+
+    # Bind principal roles for this connection's scope (privileged tool gates)
+    set_request_roles(user.roles)
+
+    await websocket.accept()
 
     # Connect to WebSocket manager
     manager.connections[client_id] = websocket
