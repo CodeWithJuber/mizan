@@ -193,15 +193,23 @@ class QalbAttention(nn.Module):
         cos, sin = self.rope(query, seq_len)
         query, key = apply_rotary_pos_emb(query, key, cos, sin)
 
-        # Complexity-adaptive period: longer sequences or richer context get
-        # a wider oscillation cycle, encouraging broader attention exploration.
-        complexity = torch.sigmoid(self.complexity_proj(x.mean(dim=1)))  # (B, 1)
-        T_effective = (self.T_base.abs() + 1.0) * (0.5 + complexity.squeeze(-1))  # (B,)
+        # Complexity-adaptive period: richer prefix context gets a wider
+        # oscillation cycle, encouraging broader attention exploration.
+        # Causal prefix mean (not whole-sequence mean): position i sees only
+        # tokens 0..i, so no future information leaks into the statistic.
+        prefix_counts = torch.arange(
+            1, seq_len + 1, device=x.device, dtype=x.dtype
+        ).view(1, -1, 1)
+        prefix_mean = x.cumsum(dim=1) / prefix_counts  # (B, N, D)
+        complexity = torch.sigmoid(self.complexity_proj(prefix_mean))  # (B, N, 1)
+        T_effective = (self.T_base.abs() + 1.0) * (
+            0.5 + complexity.squeeze(-1)
+        )  # (B, N)
 
-        psi = _compute_cardiac_oscillation(t_step, T_effective, self.alpha)  # (B,)
+        psi = _compute_cardiac_oscillation(t_step, T_effective, self.alpha)  # (B, N)
 
         # Reshape for broadcasting over (B, n_heads, N, N)
-        scale = math.sqrt(self.head_dim) * psi.view(-1, 1, 1, 1)
+        scale = math.sqrt(self.head_dim) * psi.view(-1, 1, seq_len, 1)
 
         out = _scaled_dot_product_attention(
             query, key, value, scale, mask, self.dropout
