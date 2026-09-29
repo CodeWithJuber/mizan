@@ -79,6 +79,13 @@ ml = [
     "datasets>=2.16.0",
     "huggingface-hub>=0.20.0",
 ]
+nlp = [
+    # Native inference deps for mizan.nlp (backend/nlp) — CPU-friendly WSD.
+    # Phase 1: sklearn per-lemma classifiers (joblib artifact). Install with: pip install "pymizan[nlp]"
+    "scikit-learn>=1.9.1",
+    "joblib>=1.4.0",
+    "numpy>=1.26.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
