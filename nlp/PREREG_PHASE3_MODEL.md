@@ -121,3 +121,48 @@ Every ablation number tagged ✅ verified (frozen harness, this run) /
 
 ---
 *End of preregistration. Ablation measurements below this line are post-freeze.*
+
+## Addendum A — Amendment A1 adopted (2026-09-29 ~18:15 +04, pre-first-candidate-eval)
+
+After this preregistration froze, Track 4 committed Amendment A1
+(`PREREGISTRATION_PHASE3.md` §10), a merge-aware `eval_phase3.py`, the frozen
+`SENSE_MERGES_PHASE3.json` (9 merges, 115 → 106 senses), and a locked
+`BASELINE_PHASE3.json` in post-merge space — all BEFORE Track 3's first
+candidate evaluation. Per the parent orchestrator's update, Track 3 adopts A1
+as the scoring authority:
+
+- **Scoring space:** post-merge 106-sense space; baseline = Track 4's locked
+  `BASELINE_PHASE3.json` (effective acc **0.802233**, macro-F1 **0.615794**;
+  original-space reference 0.759171 / 0.547097). No Track-3 re-lock.
+- **Candidate-PASS rule** = Track-4 rule §4 + A1 §10: WIN (mean target recall
+  lift ≥ +0.10 over the 12 targets in post-merge space; the 9 merged targets
+  contribute ~0 by construction — baseline resolves 26/26 former items — so
+  the bar must be cleared by the 3 unmerged senses أَيّ/نَذِير/نِساء, max
+  achievable +0.25) + GUARD-A (acc drop ≤ 0.02 vs 0.802233) + GUARD-F
+  (macro-F1 drop ≤ 0.02 vs 0.615794) + NO-REGRESSION (post-merge space).
+- **Interventions unchanged** (frozen §2): balanced, focal, poss-sfx — all
+  three already target the 3 unmerged senses (minority reweighting for the
+  starved أَيّ/نَذِير; suffix-person feature for نِساء). نِساء has n_test=1:
+  any gain there is a single-item swing, reported as such, never oversold.
+- **Winner rule unchanged** (§3): among variants passing the A1 rule, max
+  mean target lift; tie-break = smaller accuracy drop. None pass → null
+  result, best-lift reported informationally, no "improvement" claimed.
+- **Harness bug found + disclosed (not fixed on branch):** the branch's
+  ruff-cleaned pre-A1 harness crashed in `per_sense_table`
+  (`for r, p in zip(pred, rows)` — unpacking swapped; every other loop uses
+  `p, r`). Fixed only in my `/tmp` working copy used for a superseded
+  original-space run; Track 4's A1 harness does not have the bug. Reported
+  for Track 4 to fix; Track 3 does not touch Track 4's files.
+- **Superseded:** an early WIP-harness baseline lock and a killed
+  original-space ablation run — decision-irrelevant under A1.
+
+## Addendum B — packaging move (2026-09-29 ~18:20 +04)
+
+User merged PR #39 and moved `backend/nlp/` → top-level `nlp/` on main
+(commit `13504471`); the branch was rebased onto the new main (now
+`a7d24f97`). This rebase dropped the first Addendum-A commit; it is
+re-applied here. New paths: prereg at `nlp/PREREG_PHASE3_MODEL.md`,
+candidate at `nlp/artifacts/candidate_model_v1/`, harness invoked as
+`python3 nlp/eval_phase3.py` with top-level `import nlp`. The rebased A1
+harness is logic-identical to the one used for the ablations below
+(verified: whitespace-insensitive diff shows formatting + path strings only).
