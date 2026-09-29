@@ -1,0 +1,30 @@
+{
+ "schema_version": "1",
+ "name": "mizan-sense-wsd",
+ "version": "1.1.0-data",
+ "dataset": "Q-CSMP v2",
+ "dataset_doi": "10.5281/zenodo.23024527",
+ "dataset_note": "Derived weights only. The dataset itself (Q-CSMP v2) is NOT redistributed. Train = Q-CSMP v2 base train split with the 9 frozen label-noise merges (Amendment A1) + 24 targeted-mined interrogative أَيّ items (label_source=targeted-mining, real surah:ayah:word). Shipped sense_inventory.json is the original 115-sense inventory (required by the harness merge-map check); the bundle predicts the frozen 106-label space.",
+ "architecture": "per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b'); single-sense lemmas use a constant prior predictor",
+ "model_file": "model.joblib",
+ "model_type": "sklearn-pipeline-dict",
+ "sklearn_version": "1.9.1",
+ "joblib_version": "1.6.0",
+ "numpy_version": "2.5.3",
+ "trained_at": "2026-09-29",
+ "variant": "a (surface+context; PRIMARY)",
+ "license": "Apache-2.0",
+ "num_lemmas": 48,
+ "num_senses": 115,
+ "eval_accuracy": 0.85327,
+ "eval_macro_f1": 0.625783,
+ "eval_n": 627,
+ "sense_id_scheme": "qcsmp2:<lemma>:<sense-slug>",
+ "sense_inventory_sha256": "8b29859651b6c23e0593a3839004386892f3a7e33143c2548f56b227a39c5b09",
+ "model_sha256": "a74cc394c3e7cc074b7c63cbde72019fc319be858f3cfa756f7343e6b04ae9c7",
+ "files": [
+  "manifest.json",
+  "model.joblib",
+  "sense_inventory.json"
+ ]
+}
