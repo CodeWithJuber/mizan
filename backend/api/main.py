@@ -422,6 +422,37 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# ===== RUH USE-CASE ROUTERS (feat/ruh-usecases) =====
+# Deterministic, torch-free Ruh API surface. Each router is optional:
+# a failed import must never take down the main app.
+
+
+def _include_ruh_router(module_name: str) -> None:
+    try:
+        module = __import__(module_name, fromlist=["router"])
+    except Exception as e:  # noqa: BLE001 - startup resilience, logged
+        logger.warning("Ruh router %s not loaded: %s", module_name, e)
+        return
+    router = getattr(module, "router", None)
+    if router is not None:
+        app.include_router(router)
+        logger.info("Ruh router loaded: %s", module_name)
+    else:
+        logger.warning("Ruh router %s has no router (deps missing?)", module_name)
+
+
+for _ruh_module in (
+    "backend.api.ruh_morphology",  # POST /v1/analyze
+    "backend.api.ruh_disambiguate",  # POST /v1/disambiguate
+    "backend.api.ruh_reader",  # /v1/reader/*
+    "backend.api.ruh_dialect",  # POST /v1/normalize
+    "backend.api.ruh_screening",  # POST /v1/screen (pilot/beta)
+    "backend.api.ruh_embeddings",  # POST /v1/embed (beta/unverified)
+):
+    _include_ruh_router(_ruh_module)
+del _ruh_module, _include_ruh_router
+
+
 # ===== AUTH DEPENDENCY =====
 
 
