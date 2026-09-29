@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check backend/ tests/
-      - run: ruff format --check backend/ tests/
+      - run: ruff check backend/ tests/ nlp/
+      - run: ruff format --check backend/ tests/ nlp/
 
   test:
     name: Test
