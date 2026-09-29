@@ -343,7 +343,7 @@ install_via_pip() {
     source "$HOME/.mizan/venv/bin/activate"
     info "Installing mizan package..."
     pip install --upgrade pip -q
-    pip install mizan -q 2>/dev/null || {
+    pip install pymizan -q 2>/dev/null || {
         warn "PyPI package not available yet. Falling back to git install..."
         MIZAN_METHOD="git"
         install_via_git
@@ -530,7 +530,7 @@ print_success() {
 interactive_setup() {
     echo -e "  ${BOLD}Choose installation method:${NC}"
     echo ""
-    echo -e "    ${GOLD}1)${NC} pip install ${DIM}(recommended — quick setup)${NC}"
+    echo -e "    ${GOLD}1)${NC} pip install pymizan ${DIM}(recommended — quick setup)${NC}"
     echo -e "    ${GOLD}2)${NC} git clone   ${DIM}(development — full source)${NC}"
     echo -e "    ${GOLD}3)${NC} docker      ${DIM}(containerized — production)${NC}"
     echo ""

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mizan"
+name = "pymizan"
 version = "3.0.0"
 description = "Agentic Personal AI - Quranic Cognitive Architecture for human-like reasoning"
 readme = "README.md"

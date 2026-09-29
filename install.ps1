@@ -160,7 +160,7 @@ function Install-ViaPip {
     Write-Info "Installing mizan package..."
     pip install --upgrade pip -q 2>$null
     try {
-        pip install mizan -q 2>$null
+        pip install pymizan -q 2>$null
         Write-Ok "MIZAN installed via pip"
     } catch {
         Write-Warn "PyPI package not available yet. Falling back to git install..."
@@ -281,7 +281,7 @@ function Add-ToPath {
 function Select-Method {
     Write-Host "  Choose installation method:" -ForegroundColor White
     Write-Host ""
-    Write-Gold "    1) pip install   (recommended - quick setup)"
+    Write-Gold "    1) pip install pymizan (recommended - quick setup)"
     Write-Gold "    2) git clone     (development - full source)"
     Write-Gold "    3) docker        (containerized - production)"
     Write-Host ""
