@@ -9,6 +9,8 @@ Section A — public interface contract (stable across artifact versions).
 Section B — artifact contract (manifest schema v1, joblib format).
 Section C — real-artifact integration (Track 1, mizan-sense-wsd v1.0.0):
     smoke case + unknown-lemma graceful path + distribution sanity.
+Section D — candidate artifact (Track 2, mizan-sense-wsd v1.1.0-data):
+    manifest validates with checksums + merged-sense smoke tests.
 """
 
 import os
@@ -226,3 +228,64 @@ def test_sense_ids_follow_scheme():
 
 def test_artifact_version_reported():
     assert wsd.artifact_version() == "1.0.0"
+
+
+# ── D. Candidate artifact (Track 2, mizan-sense-wsd v1.1.0-data) ───────────
+
+CANDIDATE_DIR = Path(wsd.__file__).resolve().parent / "artifacts" / "candidate_data_v1"
+
+
+def test_candidate_manifest_validates_with_checksums():
+    """The Track-2 candidate manifest must validate against its shipped
+    files, including sha256 checksums (checked before any unpickling)."""
+    assert CANDIDATE_DIR.is_dir(), "candidate artifact dir missing"
+    import json
+
+    with open(CANDIDATE_DIR / "manifest.json", encoding="utf-8") as f:
+        manifest = ArtifactManifest.from_dict(json.load(f))
+    assert manifest.validate(CANDIDATE_DIR) == []
+    assert manifest.name == "mizan-sense-wsd"
+    assert manifest.version == "1.1.0-data"
+    # The shipped inventory is the ORIGINAL 115-sense inventory: the frozen
+    # Phase-3 harness merge-check requires every merged-away sense_id to be
+    # present; the bundle itself predicts the frozen 106 labels.
+    assert manifest.num_senses == 115
+    assert manifest.num_lemmas == 48
+
+
+def _load_candidate_artifact(monkeypatch):
+    monkeypatch.setenv("MIZAN_NLP_ARTIFACT", str(CANDIDATE_DIR))
+    wsd.reset_for_tests()
+    assert wsd.is_ready() is True
+    assert wsd.artifact_version() == "1.1.0-data"
+
+
+def test_candidate_smoke_merged_ajr_reward(monkeypatch):
+    """Merged sense: after the أَجْر payment→reward merge, the candidate
+    predicts only qcsmp2:أَجْر:reward for أَجْر."""
+    _load_candidate_artifact(monkeypatch)
+    try:
+        cands = disambiguate(
+            "إِنَّ ٱلَّذِينَ ءَامَنُوا۟ وَعَمِلُوا۟ ٱلصَّٰلِحَٰتِ لَهُمْ أَجْرٌ غَيْرُ مَمْنُونٍ",
+            "أَجْر",
+        )
+        assert len(cands) == 1
+        assert cands[0].sense_id == "qcsmp2:أَجْر:reward"
+        assert cands[0].confidence == pytest.approx(1.0)
+    finally:
+        monkeypatch.undo()
+        wsd.reset_for_tests()
+
+
+def test_candidate_smoke_interrogative_ayy(monkeypatch):
+    """Targeted mining: an interrogative أَيّ form must now resolve to
+    qcsmp2:أَيّ:so which with high confidence (was 0.0 recall pre-mining)."""
+    _load_candidate_artifact(monkeypatch)
+    try:
+        cands = disambiguate("فَبِأَيِّ ءَالَآءِ رَبِّكُمَا تُكَذِّبَانِ", "أَيّ")
+        assert cands
+        assert cands[0].sense_id == "qcsmp2:أَيّ:so which"
+        assert cands[0].confidence > 0.5
+    finally:
+        monkeypatch.undo()
+        wsd.reset_for_tests()
