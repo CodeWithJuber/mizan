@@ -31,20 +31,32 @@ Determinism: lbfgs/DictVectorizer are deterministic; bootstrap CIs use the
 frozen seed 137 with 10,000 resamples (same recipe as Track 1).
 """
 
-import argparse
-import hashlib
-import json
+import os
 import sys
-from collections import defaultdict
-from datetime import UTC, datetime
-from pathlib import Path
 
-import numpy as np
+# Path bootstrap FIRST (before any other import): the harness ships inside
+# nlp/, so the script's own directory lands on sys.path — where nlp/types.py
+# would shadow stdlib `types` and crash the import chain (argparse→re→enum)
+# whenever `types` isn't pre-cached (e.g. python -S). `os` is safe to import
+# here (no `types` dependency); `pathlib` is NOT. Insert the repo root, then
+# drop the script dir; `from nlp import ...` resolves via the repo root.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(_here))
+if _here in sys.path:
+    sys.path.remove(_here)
+del _here
 
-# The harness ships inside nlp/, so the nlp package is importable
-# from the repo's backend/ directory. Manifest validation stays single-sourced
-# in nlp/artifact.py; the feature extractor stays single-sourced in nlp/wsd.py.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import argparse  # noqa: E402  (after sys.path bootstrap above)
+import hashlib  # noqa: E402
+import json  # noqa: E402
+from collections import defaultdict  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import numpy as np  # noqa: E402
+
+# Manifest validation stays single-sourced in nlp/artifact.py; the feature
+# extractor stays single-sourced in nlp/wsd.py.
 from nlp import wsd as wsd_mod  # noqa: E402  (frozen feature extractor)
 from nlp.artifact import ArtifactManifest  # noqa: E402
 
