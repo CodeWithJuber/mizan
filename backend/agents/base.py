@@ -2768,7 +2768,9 @@ class {class_name}(SkillBase):
         try:
             from nlp import ModelNotReadyError, disambiguate, is_ready
         except ImportError as exc:
-            return f"Native WSD unavailable (import failed: {exc}); reason from the LLM path instead."
+            return (
+                f"Native WSD unavailable (import failed: {exc}); reason from the LLM path instead."
+            )
         if not is_ready():
             return "Native WSD not ready (no trained artifact); reason from the LLM path instead."
         try:
