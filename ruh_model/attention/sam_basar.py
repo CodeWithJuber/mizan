@@ -7,9 +7,11 @@ attention modalities:
     attends only to previous positions, modelling temporal flow like
     auditory comprehension.
 
-    Basar (البصر / Sight): Bidirectional/structural processing. Each
-    position attends to all positions, modelling holistic pattern
-    recognition like visual comprehension.
+    Basar (البصر / Sight): Causal/structural processing. Each position
+    attends to itself and previous positions, modelling structural pattern
+    recognition over the past like visual comprehension of what has
+    unfolded. (Bidirectional Basar leaked future tokens into autoregressive
+    training; it is causal as of the causality fix.)
 
 The Fuad module fuses these two streams via a learned sigmoid gate,
 dynamically blending sequential and structural understanding per token.
@@ -81,10 +83,11 @@ class SamProcessor(nn.Module):
 
 
 class BasarProcessor(nn.Module):
-    """Basar (البصر) -- Bidirectional/structural processing (like sight).
+    """Basar (البصر) -- Causal/structural processing (like sight).
 
-    Wraps QalbAttention without any mask, allowing full bidirectional
-    attention for global pattern recognition.
+    Wraps QalbAttention with an auto-generated causal mask so each
+    position only attends to itself and previous positions. Structural
+    pattern recognition over the past; no future leakage.
 
     Args:
         config: Model configuration.
@@ -101,18 +104,20 @@ class BasarProcessor(nn.Module):
         t_step: int = 0,
         mask: Optional[Tensor] = None,
     ) -> Tensor:
-        """Forward pass with full bidirectional attention.
+        """Forward pass with causal masking.
 
         Args:
             x: Hidden states (B, N, D).
             root_ids: Root IDs per token (B, N).
             t_step: Processing step for cardiac oscillation.
-            mask: Ignored; no mask is applied (bidirectional).
+            mask: Ignored; causal mask is always applied.
 
         Returns:
             Output tensor (B, N, D).
         """
-        return self.attention(x, root_ids, t_step, mask=None)
+        seq_len = x.shape[1]
+        causal_mask = _build_causal_mask(seq_len, x.device)
+        return self.attention(x, root_ids, t_step, causal_mask)
 
 
 class SamBasarDual(nn.Module):
@@ -152,7 +157,7 @@ class SamBasarDual(nn.Module):
             root_ids: Root IDs per token (B, N).
             t_step: Processing step for cardiac oscillation.
             mask: Accepted for interface compatibility; not used internally
-                (Sam' always applies causal, Basar always applies none).
+                (both branches always apply causal masking).
 
         Returns:
             Fused output tensor (B, N, D).
