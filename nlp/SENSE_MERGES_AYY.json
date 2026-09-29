@@ -1,0 +1,5 @@
+{
+  "_note": "أَيّ:vocative micro-PR (2026-09-29, PR #42). qcsmp2:أَيّ:mankind and qcsmp2:أَيّ:you who believe were gloss-leakage artifacts (the label was the next word: النَّاسُ vs الَّذِينَ; MASAQ 2:21 segmentation proof). 34/34 unique Q-CSMP contexts vocative (يَٰٓأَيُّهَا), 0 ambiguous; control 'so which' (فَبِأَىِّ interrogative/relative) clean — see goals/mizan-apne-nlp-par/files/ayy-context-classification.md. Merged into canonical class qcsmp2:أَيّ:vocative ('O — vocative address particle (يا أيها + complement)'). Composition: Q-CSMP v2 115 -> PR-41 (nlp/SENSE_MERGES.json) -> 106 -> Phase-A (nlp/SENSE_MERGES_PHASEA.json) -> 97 -> AYY -> 96 final (2 fake senses -> 1 real class, 170 records relabeled: 34 base + 136 perturbation variants). Lemma-disjoint from PR-41 + Phase-A merges. Final label pending Juber's confirmation (PR #42 body carries the confirmable note). Keys are merged-away sense_ids, values are merge targets.",
+  "qcsmp2:أَيّ:mankind": "qcsmp2:أَيّ:vocative",
+  "qcsmp2:أَيّ:you who believe": "qcsmp2:أَيّ:vocative"
+}
