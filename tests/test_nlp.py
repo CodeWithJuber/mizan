@@ -152,9 +152,9 @@ def test_packaged_manifest_validates_with_checksums():
     with open(ARTIFACT_DIR / "manifest.json", encoding="utf-8") as f:
         manifest = ArtifactManifest.from_dict(json.load(f))
     assert manifest.validate(ARTIFACT_DIR) == []
-    assert manifest.eval_accuracy == pytest.approx(0.7592)
+    assert manifest.eval_accuracy == pytest.approx(0.8038)
     assert manifest.num_lemmas == 48
-    assert manifest.num_senses == 115
+    assert manifest.num_senses == 106
 
 
 def test_is_ready_true_with_packaged_artifact():
@@ -226,4 +226,4 @@ def test_sense_ids_follow_scheme():
 
 
 def test_artifact_version_reported():
-    assert wsd.artifact_version() == "1.0.0"
+    assert wsd.artifact_version() == "1.1.0"

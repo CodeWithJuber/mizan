@@ -1,1 +1,41 @@
-{"architecture":"per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b')","dataset":"Q-CSMP v2","dataset_doi":"10.5281/zenodo.23024527","dataset_note":"Derived weights + sense inventory only. The dataset itself is NOT redistributed.","eval_accuracy":0.7592,"eval_accuracy_ci95":[0.7241,0.7927],"eval_macro_f1":0.5471,"eval_macro_f1_ci95":[0.4725,0.5432],"eval_n":627,"eval_protocol":"whole-surah holdout, single test run, preregistered 2026-09-29 11:40 +04 before any test eval (Track-1 PREREGISTRATION.md)","eval_verdict":"FAIL on the frozen accuracy leg (delta-acc 0.1436 < 0.20 bar; bar miscalibrated against per-lemma majority 0.6156 — documented in Track-1 EVAL_REPORT.md). Ships as the first real Mizan-owned NLP module: SANE gate passed (|0.7592-0.7656|=0.0064 vs stage-2 reference), bootstrap-CI lower bounds clear baseline points.","files":["manifest.json","model.joblib","sense_inventory.json"],"joblib_version":"1.6.0","license":"Apache-2.0","model_file":"model.joblib","model_sha256":"019f0795a51d371ca91714c37b1bd8a861dff2ea2bf3f36433c99a777dcf9c26","model_type":"sklearn-pipeline-dict","name":"mizan-sense-wsd","num_lemmas":48,"num_senses":115,"numpy_version":"2.5.3","schema_version":"1","sense_id_example":"qcsmp2:يَوْم:judgment-day","sense_id_scheme":"qcsmp2:<lemma>:<sense-slug>","sense_inventory_sha256":"8b29859651b6c23e0593a3839004386892f3a7e33143c2548f56b227a39c5b09","sklearn_version":"1.9.1","trained_at":"2026-09-29","trust_boundary":"model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files.","variant":"a (surface+context; PRIMARY)","version":"1.0.0"}
+{
+ "schema_version": "1",
+ "name": "mizan-sense-wsd",
+ "version": "1.1.0",
+ "dataset": "Q-CSMP v2",
+ "dataset_doi": "10.5281/zenodo.23024527",
+ "dataset_note": "Derived weights + sense inventory only. The dataset itself (Q-CSMP v2) is NOT redistributed. Train = Q-CSMP v2 base train split with the 9 frozen label-noise merges applied (Amendment A1, nlp/SENSE_MERGES.json): أَجْر payment→reward, بَعْض some→other, ذُو owner→possessor, صالِحَة good deeds→righteous deeds, عِلْم any knowledge→knowledge, قَرْيَة cities→town, قَوْل saying→word, كِتاب scripture→book, مُبِين manifest→clear. Each merge JEV-confirmed per Track-1 DIAGNOSIS.",
+ "architecture": "per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b'); single-sense lemmas use a constant prior predictor",
+ "model_file": "model.joblib",
+ "model_type": "sklearn-pipeline-dict",
+ "sklearn_version": "1.9.1",
+ "joblib_version": "1.6.0",
+ "numpy_version": "2.5.3",
+ "trained_at": "2026-09-29",
+ "variant": "a (surface+context; PRIMARY)",
+ "license": "Apache-2.0",
+ "num_lemmas": 48,
+ "num_senses": 106,
+ "eval_accuracy": 0.8038,
+ "eval_accuracy_ci95": [
+  0.7735,
+  0.8341
+ ],
+ "eval_macro_f1": 0.6163,
+ "eval_macro_f1_ci95": [
+  0.5384,
+  0.6122
+ ],
+ "eval_n": 627,
+ "eval_protocol": "whole-surah holdout, single test run on the frozen Phase-1 test split (n=627), gold labels merged to the 106-sense space; macro-F1 over the full 106-sense universe (absent senses contribute 0.0); bootstrap CIs seed 137, 10k resamples (Track-1 recipe).",
+ "sense_id_scheme": "qcsmp2:<lemma>:<sense-slug>",
+ "sense_id_example": "qcsmp2:يَوْم:judgment-day",
+ "sense_inventory_sha256": "123946a0fcaa5286f0afecb00364c59909ecb2de3650b146a32faa1f3acb316a",
+ "model_sha256": "666008c49e54c5f6d91230dc35504e6efbae4085b2218d4bbea275894e22751a",
+ "files": [
+  "manifest.json",
+  "model.joblib",
+  "sense_inventory.json"
+ ],
+ "trust_boundary": "model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files."
+}
