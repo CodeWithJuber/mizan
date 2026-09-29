@@ -40,6 +40,8 @@ import {
 } from "./components/ChatMessage";
 import { Sidebar } from "./components/Sidebar";
 import { MobileNav } from "./components/MobileNav";
+import { RootExplorerDrawer } from "./components/ruh/RootExplorerDrawer";
+import type { ExplainPromptResponse } from "./types/morphology";
 import { AgentModal } from "./components/AgentModal";
 import { SkeletonCard } from "./components/Skeleton";
 
@@ -192,6 +194,8 @@ function AppInner() {
     localStorage.setItem("mizan_active_tab", tab);
   }, []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // MORPH-FEAT: Arabic word tap-to-explore drawer
+  const [exploreWord, setExploreWord] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -400,8 +404,7 @@ function AppInner() {
           const messageId = (data.message_id as string) || `msg_${Date.now()}`;
           // Store server-provided trace if available
           const serverTrace = data.thinking_trace as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           if (serverTrace) {
             setThinkingTraces((prev) => ({
               ...prev,
@@ -1522,6 +1525,7 @@ function AppInner() {
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
+                        onExploreWord={setExploreWord}
                       />
                     </div>
                   ))}
@@ -2455,9 +2459,12 @@ function AppInner() {
                   <button
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                     onClick={async () => {
-                      await authFetch(`${config.API_URL}/integrations/${int.id}`, {
-                        method: "DELETE",
-                      });
+                      await authFetch(
+                        `${config.API_URL}/integrations/${int.id}`,
+                        {
+                          method: "DELETE",
+                        },
+                      );
                       loadIntegrations();
                     }}
                   >
@@ -2584,6 +2591,46 @@ function AppInner() {
       {activeTab !== "chat" && (
         <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
       )}
+
+      {/* MORPH-FEAT: root-morphology explorer drawer */}
+      <RootExplorerDrawer
+        word={exploreWord}
+        onClose={() => setExploreWord(null)}
+        onAskAI={(word, prompt: ExplainPromptResponse) => {
+          const content = [
+            "[Verified morphology \u2014 Mizan Ruh engine. Treat as ground truth; do not contradict.]",
+            JSON.stringify(prompt.verified_facts, null, 2),
+            "[End verified context]",
+            "",
+            `User question: explain the Arabic word "${word}" \u2014 its root, pattern, and meaning. ` +
+              "Label anything beyond the verified facts above as AI-generated.",
+          ].join("\n");
+          const token = localStorage.getItem("mizan_token");
+          authFetch(`${config.API_URL}/chat`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              session_id: sessionId,
+              content,
+              agent_id: selectedAgent?.id,
+            }),
+          })
+            .then((res) => {
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              setExploreWord(null);
+            })
+            .catch((e) =>
+              addToast({
+                type: "error",
+                title: "Ask AI failed",
+                description: e instanceof Error ? e.message : undefined,
+              }),
+            );
+        }}
+      />
 
       {/* Create / Edit Agent Modal */}
       {showCreateAgent && (

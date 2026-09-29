@@ -1,5 +1,6 @@
 import { memo, useState, useCallback, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -37,7 +38,11 @@ function CopyButton({ text }: { text: string }) {
       {copied ? (
         <span className="flex items-center gap-1 text-green-400">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-            <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+              clipRule="evenodd"
+            />
           </svg>
           Copied
         </span>
@@ -56,17 +61,32 @@ function CopyButton({ text }: { text: string }) {
 
 interface MarkdownProps {
   content: string;
+  /**
+   * MORPH-FEAT: optional react-markdown component overrides, merged UNDER
+   * the defaults below. Defaults win; overrides may only ADD element types
+   * not already customized (e.g. `p`).
+   */
+  components?: Partial<Components>;
 }
 
-export const Markdown = memo(function Markdown({ content }: MarkdownProps) {
+export const Markdown = memo(function Markdown({
+  content,
+  components: overrides,
+}: MarkdownProps) {
   return (
     <div className="prose">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        rehypePlugins={[
+          rehypeKatex,
+          [rehypeHighlight, { detect: true, ignoreMissing: true }],
+        ]}
         components={{
+          ...overrides,
           code({ children, className }) {
-            const isBlock = className?.startsWith("language-") || className?.startsWith("hljs");
+            const isBlock =
+              className?.startsWith("language-") ||
+              className?.startsWith("hljs");
             const langMatch = className?.match(/language-(\w+)/);
             const lang = langMatch ? langMatch[1] : "";
             const plainText = extractText(children).replace(/\n$/, "");
