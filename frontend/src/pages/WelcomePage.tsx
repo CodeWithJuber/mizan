@@ -1,6 +1,7 @@
 /**
  * Welcome / Setup Wizard for MIZAN
- * Shows on first visit. Guides users through initial setup.
+ * Shows on first visit. Guides users through initial setup:
+ * login -> welcome -> provider -> ready.
  */
 
 import { useState, useEffect } from "react";
@@ -12,7 +13,7 @@ interface WelcomePageProps {
   onComplete: () => void;
 }
 
-type Step = "welcome" | "provider" | "ready";
+type Step = "login" | "welcome" | "provider" | "ready";
 
 interface ProviderOption {
   id: string;
@@ -24,10 +25,18 @@ interface ProviderOption {
 }
 
 export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePageProps) {
-  const [step, setStep] = useState<Step>("welcome");
+  const [step, setStep] = useState<Step>(() =>
+    localStorage.getItem("mizan_token") ? "welcome" : "login"
+  );
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [testing, setTesting] = useState<string | null>(null);
   const [healthResult, setHealthResult] = useState<Record<string, boolean>>({});
+
+  // Login form state
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
     loadProviders();
@@ -81,6 +90,30 @@ export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePagePr
     }
   };
 
+  const handleLogin = async () => {
+    if (!username.trim() || !password) {
+      setLoginError("Username aur password dono chahiye");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const data = await api.post("/auth/login", { username: username.trim(), password }) as {
+        token?: string;
+        error?: string;
+      };
+      if (data.token) {
+        localStorage.setItem("mizan_token", data.token);
+        setStep("welcome");
+      } else {
+        setLoginError(data.error || "Login failed — username/password check karo");
+      }
+    } catch {
+      setLoginError("Server se connect nahi ho paya — backend chal raha hai?");
+    }
+    setLoginLoading(false);
+  };
+
   const testProvider = async (name: string) => {
     setTesting(name);
     try {
@@ -99,9 +132,68 @@ export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePagePr
 
   const anyConfigured = providers.some((p) => p.configured || healthResult[p.id]);
 
+  const wsLabel =
+    wsStatus === "connected" ? "Backend connected" :
+    wsStatus === "connecting" || wsStatus === "reconnecting" ? "Connecting to backend..." :
+    "Connection failed";
+  const wsDot =
+    wsStatus === "connected" ? "bg-emerald-500" :
+    wsStatus === "connecting" || wsStatus === "reconnecting" ? "bg-amber-500 animate-pulse" :
+    "bg-red-500";
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
+
+        {/* Step 0: Login (first visit) */}
+        {step === "login" && (
+          <div className="max-w-sm mx-auto text-center space-y-6">
+            <div className="space-y-3">
+              <div className="text-5xl font-arabic text-mizan-gold">&#1605;&#1610;&#1586;&#1575;&#1606;</div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Welcome to MIZAN</h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                Pehle login karo, phir setup karenge.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-6 space-y-4 text-left">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">USERNAME</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
+                  placeholder="admin"
+                  autoComplete="username"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">PASSWORD</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+              {loginError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{loginError}</p>
+              )}
+              <button
+                onClick={handleLogin}
+                disabled={loginLoading}
+                className="w-full px-8 py-3 bg-mizan-gold hover:bg-mizan-gold-light text-black font-semibold rounded-lg transition shadow-md disabled:opacity-50"
+              >
+                {loginLoading ? "Logging in..." : "Log in"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Step 1: Welcome */}
         {step === "welcome" && (
@@ -117,39 +209,23 @@ export default function WelcomePage({ api, wsStatus, onComplete }: WelcomePagePr
 
             {/* Connection status */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm">
-              <div className={`w-2.5 h-2.5 rounded-full ${
-                wsStatus === "connected" ? "bg-emerald-500" :
-                wsStatus === "connecting" ? "bg-amber-500 animate-pulse" :
-                "bg-red-500"
-              }`} />
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {wsStatus === "connected" ? "Backend connected" :
-                 wsStatus === "connecting" ? "Connecting to backend..." :
-                 "Backend not running"}
-              </span>
+              <div className={`w-2.5 h-2.5 rounded-full ${wsDot}`} />
+              <span className="text-sm text-gray-600 dark:text-gray-400">{wsLabel}</span>
             </div>
 
             {wsStatus !== "connected" && (
               <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-300 max-w-md mx-auto">
-                <p className="font-medium mb-1">Start the backend first:</p>
-                <code className="bg-amber-100 dark:bg-amber-500/10 px-2 py-1 rounded text-xs">mizan serve</code>
-                {" "}or{" "}
-                <code className="bg-amber-100 dark:bg-amber-500/10 px-2 py-1 rounded text-xs">make dev</code>
+                <p className="font-medium mb-1">Backend se connect nahi ho paya.</p>
+                <p className="text-xs opacity-80">Self-host kar rahe ho to pehle backend start karo: <code className="bg-amber-100 dark:bg-amber-500/10 px-1.5 py-0.5 rounded">mizan serve</code></p>
               </div>
             )}
 
-            <div className="flex justify-center gap-3 pt-4">
+            <div className="flex justify-center pt-4">
               <button
                 onClick={() => setStep("provider")}
                 className="px-8 py-3 bg-mizan-gold hover:bg-mizan-gold-light text-black font-semibold rounded-lg transition shadow-md"
               >
                 Get Started
-              </button>
-              <button
-                onClick={finishSetup}
-                className="px-6 py-3 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-sm transition"
-              >
-                Skip setup
               </button>
             </div>
           </div>
