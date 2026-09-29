@@ -40,8 +40,12 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await api.get("/queue/status");
-      setStatus(data as unknown as QueueStatus);
+      const data = (await api.get("/queue/status")) as Record<string, unknown>;
+      // Shape-validate: a logged-out 401 body ({detail: ...}) is truthy but
+      // has no tasks/worker — storing it would crash the render below.
+      if (data && Array.isArray(data.tasks)) {
+        setStatus(data as unknown as QueueStatus);
+      }
     } catch {
       // Queue may not be available yet
     } finally {
@@ -108,22 +112,23 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
       {/* Worker status */}
       <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span
-          className={`w-2 h-2 rounded-full ${status.worker.running ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`}
+          className={`w-2 h-2 rounded-full ${status.worker?.running ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`}
         />
         <span>
-          Worker {status.worker.running ? "active" : "stopped"}
-          {status.worker.active_tasks > 0 && ` (${status.worker.active_tasks} processing)`}
+          Worker {status.worker?.running ? "active" : "stopped"}
+          {(status.worker?.active_tasks ?? 0) > 0 &&
+            ` (${status.worker.active_tasks} processing)`}
         </span>
       </div>
 
       {/* Task list */}
-      {status.tasks.length > 0 ? (
+      {(status.tasks ?? []).length > 0 ? (
         <div className="space-y-1">
           <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Recent Tasks ({status.total})
           </h4>
           <div className="space-y-1 max-h-64 overflow-y-auto">
-            {status.tasks.map((task: QueueTask) => (
+            {(status.tasks ?? []).map((task: QueueTask) => (
               <div
                 key={task.task_id}
                 className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 border border-gray-100 dark:border-zinc-700/50"
