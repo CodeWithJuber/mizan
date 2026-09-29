@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v3.0.0] — 2026-09-29
 
 ### Added
+- Mizan ECC bundle: docs + skills library covering every command contract (PR #34)
+- Bounded AgentOps reference application with finite control evaluation (PR #36)
 - Multimodal perception pipeline: Basirah (vision) + Nutq (voice) wired into QCA engine
 - Auditory-first processing (Sam' before Basar) per Quran 16:78/17:36
 - Perception-Qalb integration: emotional context modulates vision and voice analysis
@@ -44,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update documentation site with Doctor, Federation, and QCA sections
 - Update CHANGELOG to follow Keep a Changelog standard
 
-## [v3.0.0] — 2025-01-01
+## [v3.0.0-beta] — 2025-01-01
 
 ### Added
 
