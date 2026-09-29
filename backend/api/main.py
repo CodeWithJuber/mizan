@@ -645,17 +645,19 @@ async def login(req: LoginRequest):
 
 
 @app.post("/api/auth/register")
-async def register(req: LoginRequest):
-    """Register a new user"""
+async def register(req: LoginRequest, user: TokenPayload = Depends(require_auth)):
+    """Register a new user (admin only)"""
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Admin access required")
     # Check if username already exists
     for u in auth._users.values():
         if u.username == req.username:
             raise HTTPException(409, "Username already exists")
 
-    user = auth.create_user(req.username, req.password, roles=["user"])
-    token = auth.create_token(user)
-    wali.audit.log("user_registered", {"username": req.username, "user_id": user.id})
-    return {"token": token, "user_id": user.id, "username": user.username}
+    new_user = auth.create_user(req.username, req.password, roles=["user"])
+    token = auth.create_token(new_user)
+    wali.audit.log("user_registered", {"username": new_user.username, "user_id": new_user.id})
+    return {"token": token, "user_id": new_user.id, "username": new_user.username}
 
 
 @app.post("/api/auth/api-key")
