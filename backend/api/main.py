@@ -75,6 +75,14 @@ from task_queue.task_queue import MizanTaskQueue, QueuedTask
 from task_queue.worker import TaskWorker
 from training_manager import training_manager
 
+from qca.morphology_api import analyze_word as _morph_analyze_word
+from qca.morphology_api import bridge_concept as _morph_bridge_concept
+from qca.morphology_api import build_explain_prompt as _morph_build_explain_prompt
+from qca.morphology_api import get_occurrences as _morph_get_occurrences
+from qca.morphology_api import get_pattern_siblings as _morph_get_pattern_siblings
+from qca.morphology_api import get_root_family as _morph_get_root_family
+from qca.morphology_api import get_senses as _morph_get_senses
+
 logger = logging.getLogger("mizan.api")
 
 # ===== LIFESPAN =====
@@ -2795,6 +2803,183 @@ async def tasrif_demo(req: TasrifDemoRequest, user: TokenPayload = Depends(requi
     except Exception as exc:
         logger.error("Tasrif demo failed: %s", exc)
         raise HTTPException(500, f"Tasrif demo failed: {exc}") from exc
+
+
+# ===== RUH MORPHOLOGY API (sarf) — deterministic root-morphology endpoints =====
+# Every response carries provenance (verified | heuristic | unavailable) + source
+# so the UI can tag claims. Must stay BEFORE the /api/ruh/{agent_id} catch-all.
+
+
+class MorphAnalyzeRequest(BaseModel):
+    word: str = Field(..., min_length=1, max_length=100)
+
+
+class MorphSensesRequest(BaseModel):
+    word: str = Field(..., min_length=1, max_length=100)
+    context: str | None = Field(default=None, max_length=1000)
+
+
+class MorphProvenance(BaseModel):
+    provenance: str = Field(..., description="verified | heuristic | unavailable")
+    source: str = Field(..., description="Data source of the claim")
+    note: str | None = Field(default=None)
+
+
+class MorphAnalyzeResponse(MorphProvenance):
+    word: str
+    root: str
+    root_provenance: str
+    pattern: str
+    pattern_provenance: str
+    wazn: str | None
+    wazn_provenance: str
+
+
+class MorphDerivative(BaseModel):
+    surface: str
+    gloss: str
+
+
+class MorphRootResponse(MorphProvenance):
+    root: str
+    meaning: str
+    meaning_en: str
+    domain: str
+    derivatives: list[MorphDerivative]
+    patterns: list[str]
+    patterns_provenance: str
+    frequency: int | None
+
+
+class MorphSense(BaseModel):
+    surface: str
+    gloss: str
+    kind: str
+    pattern: str | None
+
+
+class MorphSensesResponse(MorphProvenance):
+    word: str
+    root: str
+    senses: list[MorphSense]
+    ranked_by_context: bool
+
+
+class MorphBridgeResponse(MorphProvenance):
+    concept: str
+    arabic_root: str
+    root_entry: dict
+
+
+class MorphSiblingsResponse(MorphProvenance):
+    wazn: str
+    available: bool
+    siblings: list
+    reason: str | None = None
+
+
+class MorphOccurrencesResponse(MorphProvenance):
+    root: str
+    available: bool
+    occurrences: list
+    frequency: int | None = None
+    frequency_note: str | None = None
+    reason: str | None = None
+
+
+class MorphExplainPromptResponse(MorphProvenance):
+    word: str
+    verified_facts: dict
+    system_instruction: str
+
+
+@app.post("/api/ruh/morphology/analyze", response_model=MorphAnalyzeResponse)
+async def ruh_morphology_analyze(
+    req: MorphAnalyzeRequest, user: TokenPayload = Depends(require_auth)
+):
+    """Analyze one word into (root, pattern, wazn) with provenance tags."""
+    try:
+        return _morph_analyze_word(req.word)
+    except Exception as exc:
+        logger.error("Morphology analyze failed: %s", exc)
+        raise HTTPException(500, f"Morphology analysis failed: {exc}") from exc
+
+
+@app.get("/api/ruh/morphology/root/{root}", response_model=MorphRootResponse)
+async def ruh_morphology_root(root: str, user: TokenPayload = Depends(require_auth)):
+    """Verified root family: meaning, domain, derivatives, frequency."""
+    try:
+        family = _morph_get_root_family(root)
+        if family is None:
+            raise HTTPException(404, f"Root '{root}' not in the verified root database")
+        return family
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Morphology root lookup failed: %s", exc)
+        raise HTTPException(500, f"Root lookup failed: {exc}") from exc
+
+
+@app.post("/api/ruh/morphology/senses", response_model=MorphSensesResponse)
+async def ruh_morphology_senses(
+    req: MorphSensesRequest, user: TokenPayload = Depends(require_auth)
+):
+    """Sense options for a word, grouped from the verified root entry."""
+    try:
+        return _morph_get_senses(req.word, req.context)
+    except Exception as exc:
+        logger.error("Morphology senses failed: %s", exc)
+        raise HTTPException(500, f"Sense lookup failed: {exc}") from exc
+
+
+@app.get("/api/ruh/morphology/bridge", response_model=MorphBridgeResponse)
+async def ruh_morphology_bridge(concept: str, user: TokenPayload = Depends(require_auth)):
+    """Bridge an English concept to an Arabic root. 404 if unknown — never invented."""
+    try:
+        bridged = _morph_bridge_concept(concept)
+        if bridged is None:
+            raise HTTPException(404, f"No verified concept bridge for '{concept}'")
+        return bridged
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Morphology bridge failed: %s", exc)
+        raise HTTPException(500, f"Concept bridge failed: {exc}") from exc
+
+
+@app.get("/api/ruh/morphology/pattern/{wazn}", response_model=MorphSiblingsResponse)
+async def ruh_morphology_pattern(wazn: str, user: TokenPayload = Depends(require_auth)):
+    """Sibling words sharing a pattern. Currently available=false (no verified
+    pattern data in the root DB) — honest empty rather than synthesized."""
+    try:
+        return _morph_get_pattern_siblings(wazn)
+    except Exception as exc:
+        logger.error("Morphology pattern lookup failed: %s", exc)
+        raise HTTPException(500, f"Pattern lookup failed: {exc}") from exc
+
+
+@app.get("/api/ruh/morphology/occurrences", response_model=MorphOccurrencesResponse)
+async def ruh_morphology_occurrences(root: str, user: TokenPayload = Depends(require_auth)):
+    """Quranic occurrences for a root. No static per-verse data exists, so this
+    returns available=false with the aggregate frequency count as context."""
+    try:
+        return _morph_get_occurrences(root)
+    except Exception as exc:
+        logger.error("Morphology occurrences failed: %s", exc)
+        raise HTTPException(500, f"Occurrence lookup failed: {exc}") from exc
+
+
+@app.post("/api/ruh/morphology/explain-prompt", response_model=MorphExplainPromptResponse)
+async def ruh_morphology_explain_prompt(
+    req: MorphAnalyzeRequest, user: TokenPayload = Depends(require_auth)
+):
+    """Constrained LLM prompt: verified facts + system instruction so the model
+    explains morphology without inventing roots, verses, or wazn."""
+    try:
+        return _morph_build_explain_prompt(req.word)
+    except Exception as exc:
+        logger.error("Morphology explain-prompt failed: %s", exc)
+        raise HTTPException(500, f"Explain prompt failed: {exc}") from exc
 
 
 @app.get("/api/ruh/{agent_id}")
