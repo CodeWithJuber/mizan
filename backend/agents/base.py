@@ -27,6 +27,7 @@ from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import httpx
+
 from agents.perpetual_rotation import PerpetualRotation
 from agents.shura_council import ShuraCouncil
 
@@ -64,7 +65,6 @@ from providers import create_provider, get_default_model, normalize_model_for_pr
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
-
 from security.auth import request_has_role
 from security.validation import (
     sanitize_path,
