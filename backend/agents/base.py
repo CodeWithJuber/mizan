@@ -19,6 +19,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -71,6 +72,87 @@ from security.validation import (
 )
 
 logger = logging.getLogger("mizan.agent")
+
+
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-1..IP-4) ─────────────────────
+# Flag-gated rollout: MIZAN_NLP_NATIVE_WSD=1 enables the native paths.
+# Default OFF = today's behavior, bit-for-bit. Native WSD is an accelerant,
+# never a single point of failure: every call site is fail-closed
+# (ModelNotReadyError / inference exceptions -> logged fallback to the
+# LLM/heuristic path, never swallowed silently).
+
+#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
+#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
+#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
+#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
+#: the top end, so the gate filters ambiguous low-information cases while the
+#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
+#: carries the residual overconfident-error risk.
+NLP_MIN_SENSE_CONFIDENCE = 0.8
+
+#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
+#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
+NLP_MIN_SENSE_MARGIN = 0.2
+
+_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
+    seen: list[str] = []
+    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
+        if tok not in seen:
+            seen.append(tok)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
+def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
+    """Guarded native-WSD call shared by the agent-loop call sites.
+
+    Returns ["lemma->sense_id (conf)", ...] for lemmas whose top sense clears
+    NLP_MIN_SENSE_CONFIDENCE. Fail-closed: import failure / not-ready /
+    inference exceptions are LOGGED and yield [] -- the LLM/heuristic path
+    continues unchanged.
+    """
+    if not lemmas or not _nlp_native_wsd_enabled():
+        return []
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- native WSD skipped, LLM path only", exc)
+        return []
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- native WSD skipped, LLM path only")
+        return []
+    bits: list[str] = []
+    for lemma in lemmas:
+        try:
+            candidates = disambiguate(text, lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- native WSD skipped, LLM path only")
+            return bits
+        except Exception as exc:  # fail-closed: never break the agent loop
+            logger.warning(
+                "mizan.nlp inference failed for lemma %r (%s) -- skipped, LLM path only",
+                lemma,
+                exc,
+            )
+            continue
+        if not candidates:
+            continue
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        margin = confidence - runner_up
+        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+            bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
+    return bits
 
 
 class BaseAgent:
@@ -238,6 +320,10 @@ class BaseAgent:
             "delegate_task": self._tool_delegate_task,
             "query_knowledge": self._tool_query_knowledge,
         }
+        # Phase 2 (mizan.nlp, IP-2): native sense tool -- registered only when
+        # the flag is on, so flag-off behavior stays bit-for-bit identical.
+        if _nlp_native_wsd_enabled():
+            self.tools["disambiguate_sense"] = self._tool_disambiguate_sense
 
     def get_tool_schemas(self) -> list[dict]:
         """Get Claude tool_use API schemas for this agent's tools"""
@@ -455,6 +541,37 @@ class BaseAgent:
                 },
             },
         ]
+        # Phase 2 (mizan.nlp, IP-2): native sense tool schema -- only when the
+        # flag is on, so the LLM's tool surface is unchanged when off.
+        if _nlp_native_wsd_enabled():
+            schemas.append(
+                {
+                    "name": "disambiguate_sense",
+                    "description": (
+                        "Natively disambiguate which sense of an Arabic lemma is used in a text "
+                        "(mizan.nlp -- no LLM round-trip). Returns a JSON list with the "
+                        "top [sense_id, confidence] pair -- and only when top-1 "
+                        "confidence >= 0.80 with margin >= 0.20 over the runner-up; "
+                        "otherwise the list is empty. "
+                        "Use when Arabic input is ambiguous and you want the native "
+                        "model's read before reasoning."
+                    ),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "text": {
+                                "type": "string",
+                                "description": "Arabic context (verse, sentence, or passage)",
+                            },
+                            "lemma": {
+                                "type": "string",
+                                "description": "Arabic lemma to disambiguate (diacritized or not)",
+                            },
+                        },
+                        "required": ["text", "lemma"],
+                    },
+                }
+            )
         all_schemas = schemas + self.TOOL_SCHEMAS
 
         # Include tool schemas from loaded skills (Hikmah — wisdom)
@@ -590,6 +707,13 @@ class BaseAgent:
                 for r in qca_input["roots_identified"][:5]
             )
             messages[-1]["content"] += f"\n\n[QCA Context: {root_context}]"
+
+        # Phase 2 (mizan.nlp, IP-1): native Arabic sense disambiguation, next to
+        # the heuristic root line -- the agent now sees the native model's read
+        # of Arabic lemmas in the task. Fail-closed (see _native_sense_bits).
+        sense_bits = _native_sense_bits(task[:500], _arabic_lemmas(task[:500]))
+        if sense_bits:
+            messages[-1]["content"] += f"\n\n[NLP Senses: {', '.join(sense_bits)}]"
 
         # QCA Layer 7: Check Lawh memory for relevant prior knowledge
         memory_hits = self.qca.lawh.search(task, top_k=3, tiers=[1, 2, 3])
@@ -2631,6 +2755,40 @@ class {class_name}(SkillBase):
             return result
         except Exception as e:
             return {"found": False, "error": str(e)}
+
+    async def _tool_disambiguate_sense(self, text: str, lemma: str) -> str:
+        """Natively disambiguate an Arabic lemma's sense (mizan.nlp, Phase 2 IP-2).
+
+        Returns a JSON list with the top [sense_id, confidence] pair -- but
+        only when top-1 confidence >= NLP_MIN_SENSE_CONFIDENCE with margin >=
+        NLP_MIN_SENSE_MARGIN over the runner-up; otherwise an empty list.
+        Never raises: failures return a message directing the agent to reason
+        from the LLM path instead.
+        """
+        try:
+            from nlp import ModelNotReadyError, disambiguate, is_ready
+        except ImportError as exc:
+            return (
+                f"Native WSD unavailable (import failed: {exc}); reason from the LLM path instead."
+            )
+        if not is_ready():
+            return "Native WSD not ready (no trained artifact); reason from the LLM path instead."
+        try:
+            candidates = disambiguate(text, lemma)
+        except ModelNotReadyError:
+            return "Native WSD not ready (no trained artifact); reason from the LLM path instead."
+        except (TypeError, ValueError) as exc:
+            return f"Invalid disambiguate_sense input: {exc}"
+        except Exception as exc:  # fail-closed: never break the agent loop
+            logger.warning("mizan.nlp tool inference failed: %s", exc)
+            return f"Native WSD inference failed ({exc}); reason from the LLM path instead."
+        if not candidates:
+            return json.dumps([])
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        if confidence < NLP_MIN_SENSE_CONFIDENCE or (confidence - runner_up) < NLP_MIN_SENSE_MARGIN:
+            return json.dumps([])
+        return json.dumps([[sense_id, round(confidence, 4)]])
 
     def _extract_facts(self, messages: list[dict]) -> list[str]:
         """
