@@ -33,10 +33,44 @@ except ImportError:  # pragma: no cover
         ARABIC_ROOTS: dict[str, dict[str, Any]] = {}
         CONCEPT_MAP: dict[str, str] = {}
 
-try:
-    from ruh_model.tokenizer.morphology import ArabicMorphAnalyzer
-except ImportError:  # pragma: no cover
-    ArabicMorphAnalyzer = None  # type: ignore[assignment,misc]
+
+def _load_analyzer():
+    """Load ArabicMorphAnalyzer, working even when torch is absent.
+
+    The normal package import executes ruh_model/__init__.py, which
+    unconditionally imports torch (ml extra). But morphology.py itself is
+    pure stdlib (re, unicodedata), so when the package import fails we load
+    the file directly by path — keeping these deterministic features
+    dependency-light, as documented.
+    """
+    try:
+        from ruh_model.tokenizer.morphology import ArabicMorphAnalyzer
+
+        return ArabicMorphAnalyzer
+    except ImportError:
+        pass
+    try:
+        import importlib.util
+        import os
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        candidates = (
+            os.path.join(here, "..", "..", "ruh_model", "tokenizer", "morphology.py"),
+            os.path.join(here, "..", "ruh_model", "tokenizer", "morphology.py"),
+        )
+        for cand in candidates:
+            path = os.path.normpath(cand)
+            if os.path.isfile(path):
+                spec = importlib.util.spec_from_file_location("ruh_morphology_standalone", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)  # type: ignore[union-attr]
+                return mod.ArabicMorphAnalyzer
+    except Exception:
+        pass
+    return None
+
+
+ArabicMorphAnalyzer = _load_analyzer()
 
 # ---------------------------------------------------------------------------
 # Provenance constants
