@@ -7,10 +7,13 @@ RUN apt-get update && apt-get install -y \
     curl git build-essential openssh-client sshpass \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Build context is the repo root (see docker-compose.yml)
+COPY backend/ ./
+COPY nlp/ ./nlp/
+COPY ruh_model/ ./ruh_model/
 
 # Create data and plugins directories
 RUN mkdir -p /data plugins

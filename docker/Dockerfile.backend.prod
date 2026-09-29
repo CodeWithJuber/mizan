@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── Production stage ──
@@ -26,7 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /install /usr/local
 
-COPY . .
+# Backend code, packaged NLP (mizan.nlp), and Ruh model weights/code.
+# Build context is the repo root (see docker-compose.prod.yml).
+COPY backend/ ./
+COPY nlp/ ./nlp/
+COPY ruh_model/ ./ruh_model/
 
 RUN mkdir -p /data plugins && chown -R mizan:mizan /app /data
 
@@ -67,4 +71,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Single worker: auth sessions, API keys, and scheduler state are process-local
+# (in-memory). Scale horizontally only after these move to shared stores.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
