@@ -34,7 +34,7 @@ import json
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -54,7 +54,7 @@ _WSD_PATH = (
     else Path(os.path.expanduser("~/workspace/mizan-merges/repocheck/nlp/wsd.py"))
 )
 sys.path.insert(0, str(_WSD_PATH.parent.parent))  # frozen _features
-from nlp.wsd import _features
+from nlp.wsd import _features  # noqa: E402  (path setup above is required first)
 
 WSD_SHA256 = "566ddaf3705899bce210ebdee680d6f9a7df352e51fe99cc5c83fe0b062761d0"
 DATA = Path(os.path.expanduser("~/workspace/research/stage2/qcsmp_v2.jsonl"))
@@ -336,10 +336,11 @@ def main() -> None:
         sp = [new_pred[i] for i in idx]
         ba.append(accuracy(sp, sub))
         bf.append(macro_f1(sp, sub, universe_97))
-    ci = lambda v: [
-        round(float(np.percentile(v, 2.5)), 4),
-        round(float(np.percentile(v, 97.5)), 4),
-    ]
+    def ci(v):
+        return [
+            round(float(np.percentile(v, 2.5)), 4),
+            round(float(np.percentile(v, 97.5)), 4),
+        ]
     print(
         f"NEW MODEL: acc={new_acc:.4f} ci95={ci(ba)} | macro_f1={new_f1:.4f} ci95={ci(bf)}"
     )
@@ -384,7 +385,7 @@ def main() -> None:
         "meta": {
             "dataset": "Q-CSMP v2",
             "data_md5": DATA_MD5,
-            "trained": str(datetime.now(timezone.utc).date()),
+            "trained": str(datetime.now(UTC).date()),
             "solver": "lbfgs",
             "merges_applied": 9,
             "merges_file": "nlp/SENSE_MERGES_PHASEA.json",
@@ -432,7 +433,7 @@ def main() -> None:
         "sklearn_version": sklearn.__version__,
         "joblib_version": joblib.__version__,
         "numpy_version": np.__version__,
-        "trained_at": str(datetime.now(timezone.utc).date()),
+        "trained_at": str(datetime.now(UTC).date()),
         "sense_inventory_sha256": _sha256(STAGE / "sense_inventory.json"),
         "model_sha256": _sha256(STAGE / "model.joblib"),
         "files": ["manifest.json", "model.joblib", "sense_inventory.json"],
