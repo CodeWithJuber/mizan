@@ -65,6 +65,7 @@ from providers import create_provider, get_default_model, normalize_model_for_pr
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
+from security.auth import request_has_role
 from security.validation import (
     sanitize_path,
     validate_command_safe,
@@ -2100,10 +2101,13 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
     async def _tool_bash(self, command: str, timeout: int = 30) -> dict:
         """
         Execute bash command with Wali security.
+        - Requires admin role on the requesting principal (fail closed)
         - Validates command against blocklist
         - Caps timeout
         - Uses shlex.split (no shell=True)
         """
+        if not request_has_role("admin"):
+            return {"error": "bash tool requires admin role", "returncode": -1}
         # Validate command
         is_safe, reason = validate_command_safe(command)
         if not is_safe:
@@ -2229,7 +2233,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         """
         Execute Python code in a sandboxed subprocess.
         Replaces unsafe exec() with subprocess isolation.
+        Requires admin role on the requesting principal (fail closed).
         """
+        if not request_has_role("admin"):
+            return {"error": "python_exec tool requires admin role"}
         if len(code) > 50000:
             return {"error": "Code exceeds 50KB limit"}
 
