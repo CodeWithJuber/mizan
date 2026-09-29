@@ -298,7 +298,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
-    description="Production-ready agentic AI with Quranic Cognitive Architecture",
+    description="Agentic AI with Quranic Cognitive Architecture (beta)",
     version=__version__,
     lifespan=lifespan,
 )
