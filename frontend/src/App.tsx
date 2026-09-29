@@ -201,6 +201,10 @@ function AppInner() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState<string>("connecting");
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  // Liveness of the HTTP backend, from the public GET /api/health probe
+  // (unauthenticated). null = not yet probed. This — not the WS state —
+  // decides whether "cannot connect to backend" is shown.
+  const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
     { text: "MIZAN System Initializing...", type: "" },
     { text: "Connecting to backend...", type: "" },
@@ -295,6 +299,26 @@ function AppInner() {
     ]);
   }, []);
 
+  // Public backend liveness probe (no auth). Polled so the connection
+  // banner can tell "backend down" apart from "login required" (WS 4401).
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const res = await fetch(`${config.API_URL}/health`);
+        if (!cancelled) setBackendUp(res.ok);
+      } catch {
+        if (!cancelled) setBackendUp(false);
+      }
+    };
+    probe();
+    const timer = setInterval(probe, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   // Connect WebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -326,8 +350,21 @@ function AppInner() {
           handleWsMessage(data);
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event: CloseEvent) => {
           setWs(null);
+          // 4401 = fail-closed auth rejection (anonymous or expired token).
+          // Not a backend outage: stop the reconnect storm and surface an
+          // explicit "login required" state instead of "disconnected".
+          if (event.code === 4401) {
+            attempts = 0;
+            setReconnectAttempts(0);
+            setWsStatus("auth_required");
+            addTerminalLine(
+              "Authentication required — log in on the Security page",
+              "warn",
+            );
+            return;
+          }
           attempts++;
           setReconnectAttempts(attempts);
           if (attempts >= 5) {
@@ -1149,7 +1186,9 @@ function AppInner() {
       ? "bg-emerald-500"
       : wsStatus === "connecting" || wsStatus === "reconnecting"
         ? "bg-amber-500 animate-pulse"
-        : "bg-red-500";
+        : wsStatus === "auth_required"
+          ? "bg-sky-500"
+          : "bg-red-500";
 
   const statusLabel =
     wsStatus === "connected"
@@ -1158,7 +1197,9 @@ function AppInner() {
         ? "Connecting..."
         : wsStatus === "reconnecting"
           ? "Reconnecting..."
-          : "Offline";
+          : wsStatus === "auth_required"
+            ? "Login required"
+            : "Offline";
 
   // ===== RENDER CONTENT =====
   const renderContent = () => {
@@ -2477,7 +2518,12 @@ function AppInner() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
       {/* Connection banner */}
-      <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
+      <ConnectionBanner
+        status={wsStatus}
+        attempts={reconnectAttempts}
+        backendUp={backendUp}
+        onLogin={() => setActiveTab("security")}
+      />
 
       {/* Header */}
       <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
