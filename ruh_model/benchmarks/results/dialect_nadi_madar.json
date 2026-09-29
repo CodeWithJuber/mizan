@@ -1,8 +1,0 @@
-{
-  "eval": "dialect identification (NADI/MADAR)",
-  "date": "2026-09-29",
-  "status": "could-not-verify",
-  "reason": "NADI and MADAR datasets are rights-restricted and not bundled; no licensed copy available in this environment. The harness refuses to invent data (load_nadi_tsv raises FileNotFoundError with download pointers).",
-  "harness_smoke": "verified — loader raises FileNotFoundError with NADI pointer on missing file; majority-baseline path unit-tested in test_eval_harness.py",
-  "verdict": "No dialect numbers exist. Any dialect claim remains unverified until licensed data is obtained."
-}

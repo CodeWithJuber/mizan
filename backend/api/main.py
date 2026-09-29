@@ -448,6 +448,7 @@ for _ruh_module in (
     "backend.api.ruh_dialect",  # POST /v1/normalize
     "backend.api.ruh_screening",  # POST /v1/screen (pilot/beta)
     "backend.api.ruh_embeddings",  # POST /v1/embed (beta/unverified)
+    "backend.api.ruh_tajwid",  # POST /v1/tajwid/analyze, GET /v1/tajwid/rules
 ):
     _include_ruh_router(_ruh_module)
 del _ruh_module, _include_ruh_router
