@@ -30,7 +30,7 @@ import hashlib
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -39,14 +39,10 @@ import numpy as np
 # from the repo's backend/ directory. Manifest validation stays single-sourced
 # in nlp/artifact.py; the feature extractor stays single-sourced in nlp/wsd.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from nlp.artifact import (  # noqa: E402
-    ARTIFACT_ENV_VAR,
-    MANIFEST_SCHEMA_VERSION,
-    REQUIRED_FILES,
-    ArtifactManifest,
-    find_artifact,
-)
 from nlp import wsd as wsd_mod  # noqa: E402  (frozen feature extractor)
+from nlp.artifact import (  # noqa: E402
+    ArtifactManifest,
+)
 
 # ── Frozen protocol constants (PREREGISTRATION_PHASE3.md §1-§4) ────────────
 DATA_MD5 = "35c1a6bf0cbaa58aa7d52d3683d68b5d"
@@ -74,9 +70,9 @@ TARGET_SENSES = [  # (lemma, sense) — frozen §3, baseline recall 0.0 on all 1
 
 # Frozen decision rule (PREREGISTRATION_PHASE3.md §4; tolerances via JEV §7)
 RULE = {
-    "win_lift_bar": 0.10,          # mean target-sense recall lift (JEV, conf 0.33)
-    "guard_acc_drop": 0.02,        # max accuracy drop (JEV, conf 0.73)
-    "guard_f1_drop": 0.02,         # max macro-F1 drop (JEV, conf 0.73)
+    "win_lift_bar": 0.10,  # mean target-sense recall lift (JEV, conf 0.33)
+    "guard_acc_drop": 0.02,  # max accuracy drop (JEV, conf 0.73)
+    "guard_f1_drop": 0.02,  # max macro-F1 drop (JEV, conf 0.73)
     "regression_support_floor": 5,  # n_test >= 5 for hard regression (JEV, conf 0.69)
 }
 
@@ -97,7 +93,7 @@ def _ngrams(s, lo=2, hi=4):
     out = {}
     for n in range(lo, hi + 1):
         for i in range(len(s) - n + 1):
-            g = "c%d:%s" % (n, s[i : i + n])
+            g = f"c{n}:{s[i : i + n]}"
             out[g] = out.get(g, 0) + 1
     return out
 
@@ -110,20 +106,20 @@ def _features_a(record):
         ("n", (record.get("next") or {}).get("form")),
     ):
         for g, c in _ngrams(s).items():
-            d["%s:%s" % (k, g)] = c
-    d["len=%s" % (record.get("morph") or {}).get("n_letters")] = 1
+            d[f"{k}:{g}"] = c
+    d[f"len={(record.get('morph') or {}).get('n_letters')}"] = 1
     return d
 
 
 def _features_b(record):
     d = dict(_features_a(record))
     m = record.get("morph") or {}
-    d["root=%s" % record.get("root")] = 1
-    d["prev_root=%s" % (record.get("prev") or {}).get("root")] = 1
-    d["next_root=%s" % (record.get("next") or {}).get("root")] = 1
-    d["n_seg=%s" % m.get("n_seg")] = 1
-    d["n_letters=%s" % m.get("n_letters")] = 1
-    d["pos=%s" % record.get("pos")] = 1
+    d[f"root={record.get('root')}"] = 1
+    d[f"prev_root={(record.get('prev') or {}).get('root')}"] = 1
+    d[f"next_root={(record.get('next') or {}).get('root')}"] = 1
+    d[f"n_seg={m.get('n_seg')}"] = 1
+    d[f"n_letters={m.get('n_letters')}"] = 1
+    d[f"pos={record.get('pos')}"] = 1
     return d
 
 
@@ -147,7 +143,7 @@ def _self_test_features():
 
 
 def _md5(path: Path) -> str:
-    h = hashlib.md5()
+    h = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
@@ -158,9 +154,7 @@ def load_split_verified(data_path: Path):
     """Load base items; verify dataset md5, split counts, per-lemma surah
     disjointness (the Phase-1 whole-surah holdout identity)."""
     if _md5(data_path) != DATA_MD5:
-        raise HarnessError(
-            f"dataset md5 mismatch: {data_path} is not the frozen Q-CSMP v2 build"
-        )
+        raise HarnessError(f"dataset md5 mismatch: {data_path} is not the frozen Q-CSMP v2 build")
     rows = {"train": [], "dev": [], "test": []}
     with open(data_path, encoding="utf-8") as f:
         for line in f:
@@ -183,9 +177,7 @@ def load_split_verified(data_path: Path):
             raise HarnessError(f"split identity broken: surah overlap for {lemma}")
     universe = sorted({(r["lemma"], r["sense"]) for s in rows.values() for r in s})
     if len(universe) != N_SENSES_UNIVERSE:
-        raise HarnessError(
-            f"label universe is {len(universe)}, want {N_SENSES_UNIVERSE}"
-        )
+        raise HarnessError(f"label universe is {len(universe)}, want {N_SENSES_UNIVERSE}")
     for t in TARGET_SENSES:
         if t not in universe:
             raise HarnessError(f"target sense {t} not in label universe")
@@ -202,7 +194,7 @@ def load_artifact_verified(artifact_dir: Path):
         with open(manifest_path, encoding="utf-8") as f:
             manifest = ArtifactManifest.from_dict(json.load(f))
     except (OSError, json.JSONDecodeError) as exc:
-        raise HarnessError(f"manifest unreadable: {exc}")
+        raise HarnessError(f"manifest unreadable: {exc}") from exc
     problems = manifest.validate(artifact_dir)
     if problems:
         raise HarnessError("manifest validation failed: " + "; ".join(problems))
@@ -213,12 +205,10 @@ def load_artifact_verified(artifact_dir: Path):
     try:
         bundle = joblib.load(artifact_dir / manifest.model_file)
     except Exception as exc:  # noqa: BLE001 — fail closed, never half-load
-        raise HarnessError(f"joblib load failed: {exc}")
+        raise HarnessError(f"joblib load failed: {exc}") from exc
     models = bundle.get("models")
     if not isinstance(models, dict) or PRIMARY_MODEL_KEY not in models:
-        raise HarnessError(
-            f"bundle contract violated: missing primary {PRIMARY_MODEL_KEY!r}"
-        )
+        raise HarnessError(f"bundle contract violated: missing primary {PRIMARY_MODEL_KEY!r}")
     per_lemma = models[PRIMARY_MODEL_KEY].get("per_lemma")
     if not isinstance(per_lemma, dict):
         raise HarnessError("bundle contract violated: per_lemma is not a dict")
@@ -229,8 +219,11 @@ def load_artifact_verified(artifact_dir: Path):
     with open(inv_path, encoding="utf-8") as f:
         sense_inventory = json.load(f)
     versions = {}
-    for mod, attr in (("sklearn", "__version__"), ("joblib", "__version__"),
-                      ("numpy", "__version__")):
+    for mod, attr in (
+        ("sklearn", "__version__"),
+        ("joblib", "__version__"),
+        ("numpy", "__version__"),
+    ):
         try:
             versions[mod] = __import__(mod).__dict__.get(attr, "?")
         except ImportError:
@@ -239,9 +232,7 @@ def load_artifact_verified(artifact_dir: Path):
     for mod, key in (("sklearn", "sklearn_version"),):
         want = getattr(manifest, key, "")
         if want and versions.get(mod) != want:
-            version_warnings.append(
-                f"{mod} runtime {versions.get(mod)} != manifest {want}"
-            )
+            version_warnings.append(f"{mod} runtime {versions.get(mod)} != manifest {want}")
     return {
         "manifest": manifest,
         "bundle": bundle,
@@ -287,7 +278,7 @@ def predict_secondary(bundle, rows):
 
 
 def accuracy(pred, rows):
-    ok = [p == r["sense"] for p, r in zip(pred, rows)]
+    ok = [p == r["sense"] for p, r in zip(pred, rows, strict=True)]
     return sum(ok) / len(ok), ok
 
 
@@ -300,10 +291,8 @@ def macro_f1(pred, rows, senses_all):
     y_true = np.array([inv[(r["lemma"], r["sense"])] for r in rows])
     y_pred = np.array(
         [
-            inv[(r["lemma"], p)]
-            if p is not None and (r["lemma"], p) in inv
-            else -1
-            for p, r in zip(pred, rows)
+            inv[(r["lemma"], p)] if p is not None and (r["lemma"], p) in inv else -1
+            for p, r in zip(pred, rows, strict=True)
         ]
     )
     y_p2 = np.where(y_pred == -1, len(senses_all), y_pred)
@@ -320,8 +309,7 @@ def macro_f1(pred, rows, senses_all):
 def per_sense_table(pred, rows, universe):
     """Per-sense recall for all 115 senses; test-absent -> recall None."""
     s_ok, s_t = defaultdict(int), defaultdict(int)
-    s_train = defaultdict(int)
-    for r, p in zip(pred, rows):
+    for r, p in zip(pred, rows, strict=True):
         k = (r["lemma"], r["sense"])
         s_t[k] += 1
         if p == r["sense"]:
@@ -339,10 +327,10 @@ def per_sense_table(pred, rows, universe):
 
 def per_lemma_acc(pred, rows):
     acc = {}
-    for r, p in zip(rows, pred):
+    for r, p in zip(rows, pred, strict=True):
         a, t = acc.get(r["lemma"], (0, 0))
         acc[r["lemma"]] = (a + (p == r["sense"]), t + 1)
-    return {l: round(a / t, 6) for l, (a, t) in sorted(acc.items())}
+    return {lemma: round(a / t, 6) for lemma, (a, t) in sorted(acc.items())}
 
 
 def ece(probs, ok, bins=10):
@@ -352,8 +340,7 @@ def ece(probs, ok, bins=10):
         sel = [
             i
             for i, p in enumerate(probs)
-            if p is not None and b / bins <= p < (b + 1) / bins
-            or (b == bins - 1 and p == 1.0)
+            if p is not None and b / bins <= p < (b + 1) / bins or (b == bins - 1 and p == 1.0)
         ]
         if not sel:
             continue
@@ -374,9 +361,11 @@ def bootstrap_cis(pred, rows, senses_all):
         a, _ = accuracy(sp, sub)
         ba.append(a)
         bf.append(macro_f1(sp, sub, senses_all))
-    ci = lambda v: [round(float(np.percentile(v, 2.5)), 4),
-                    round(float(np.percentile(v, 97.5)), 4)]
-    return ci(ba), ci(bf)
+
+    def _ci(v):
+        return [round(float(np.percentile(v, 2.5)), 4), round(float(np.percentile(v, 97.5)), 4)]
+
+    return _ci(ba), _ci(bf)
 
 
 def evaluate(bundle, rows, universe):
@@ -385,8 +374,7 @@ def evaluate(bundle, rows, universe):
     acc, ok = accuracy(pred, test)
     f1 = macro_f1(pred, test, universe)
     acc_ci, f1_ci = bootstrap_cis(pred, test, universe)
-    attested = [k for k in per_sense_table(pred, test, universe).values()
-                if k["n_test"] > 0]
+    attested = [k for k in per_sense_table(pred, test, universe).values() if k["n_test"] > 0]
     mean_recall = float(np.mean([k["recall"] for k in attested]))
     # ECE needs confidences: recompute top-1 probs
     per_lemma = bundle["models"][PRIMARY_MODEL_KEY]["per_lemma"]
@@ -432,35 +420,42 @@ def apply_rule(candidate_metrics, baseline_metrics):
         key = f"{lemma} :: {sense}"
         rc = cm["per_sense_recall"][key]["recall"]
         rb = bm["per_sense_recall"][key]["recall"]
-        targets.append({
-            "sense": key,
-            "baseline_recall": rb,
-            "candidate_recall": rc,
-            "delta": round((rc or 0.0) - (rb or 0.0), 6),
-            "n_test": cm["per_sense_recall"][key]["n_test"],
-        })
+        targets.append(
+            {
+                "sense": key,
+                "baseline_recall": rb,
+                "candidate_recall": rc,
+                "delta": round((rc or 0.0) - (rb or 0.0), 6),
+                "n_test": cm["per_sense_recall"][key]["n_test"],
+            }
+        )
     lift = float(np.mean([t["delta"] for t in targets]))
     regressions, warnings = [], []
     for key, b in bm["per_sense_recall"].items():
         c = cm["per_sense_recall"][key]
         if b["recall"] not in (None, 0.0) and b["n_test"] > 0 and c["recall"] == 0.0:
-            entry = {"sense": key, "baseline_recall": b["recall"],
-                     "n_test": b["n_test"]}
+            entry = {"sense": key, "baseline_recall": b["recall"], "n_test": b["n_test"]}
             if b["n_test"] >= RULE["regression_support_floor"]:
                 regressions.append(entry)
             else:
                 warnings.append({**entry, "note": "n_test < 5: warning, not fail"})
     legs = {
-        "win_lift": {"value": round(lift, 6), "bar": RULE["win_lift_bar"],
-                     "pass": lift >= RULE["win_lift_bar"]},
-        "guard_accuracy": {"delta": round(d_acc, 6),
-                           "max_drop": RULE["guard_acc_drop"],
-                           "pass": d_acc >= -RULE["guard_acc_drop"]},
-        "guard_macro_f1": {"delta": round(d_f1, 6),
-                           "max_drop": RULE["guard_f1_drop"],
-                           "pass": d_f1 >= -RULE["guard_f1_drop"]},
-        "no_regression": {"violations": regressions,
-                          "pass": len(regressions) == 0},
+        "win_lift": {
+            "value": round(lift, 6),
+            "bar": RULE["win_lift_bar"],
+            "pass": lift >= RULE["win_lift_bar"],
+        },
+        "guard_accuracy": {
+            "delta": round(d_acc, 6),
+            "max_drop": RULE["guard_acc_drop"],
+            "pass": d_acc >= -RULE["guard_acc_drop"],
+        },
+        "guard_macro_f1": {
+            "delta": round(d_f1, 6),
+            "max_drop": RULE["guard_f1_drop"],
+            "pass": d_f1 >= -RULE["guard_f1_drop"],
+        },
+        "no_regression": {"violations": regressions, "pass": len(regressions) == 0},
     }
     verdict = all(legs[k]["pass"] for k in legs)
     return {
@@ -480,13 +475,20 @@ def apply_rule(candidate_metrics, baseline_metrics):
 
 def main():
     ap = argparse.ArgumentParser(description="Phase-3 eval harness for mizan.nlp")
-    ap.add_argument("--artifact", required=True,
-                    help="candidate artifact directory (manifest.json + model.joblib + sense_inventory.json)")
+    ap.add_argument(
+        "--artifact",
+        required=True,
+        help="candidate artifact directory (manifest.json + model.joblib + sense_inventory.json)",
+    )
     ap.add_argument("--data", required=True, help="Q-CSMP v2 jsonl path")
-    ap.add_argument("--lock-baseline", metavar="OUT",
-                    help="baseline-lock mode: write BASELINE_PHASE3.json (no verdict)")
-    ap.add_argument("--baseline", metavar="JSON",
-                    help="candidate mode: locked baseline JSON for deltas")
+    ap.add_argument(
+        "--lock-baseline",
+        metavar="OUT",
+        help="baseline-lock mode: write BASELINE_PHASE3.json (no verdict)",
+    )
+    ap.add_argument(
+        "--baseline", metavar="JSON", help="candidate mode: locked baseline JSON for deltas"
+    )
     ap.add_argument("--out", metavar="JSON", help="candidate mode: write report here")
     args = ap.parse_args()
 
@@ -511,12 +513,13 @@ def main():
         "dataset": "Q-CSMP v2",
         "dataset_md5": DATA_MD5,
         "split": "per-lemma whole-surah holdout, base items only",
-        "n_train": SPLIT_COUNTS["train"], "n_dev": SPLIT_COUNTS["dev"],
+        "n_train": SPLIT_COUNTS["train"],
+        "n_dev": SPLIT_COUNTS["dev"],
         "n_test": SPLIT_COUNTS["test"],
         "label_universe": N_SENSES_UNIVERSE,
         "primary_model": PRIMARY_MODEL_KEY,
         "bootstrap": {"seed": BOOT_SEED, "resamples": BOOT_N},
-        "run_at": datetime.now(timezone.utc).isoformat(),
+        "run_at": datetime.now(UTC).isoformat(),
     }
 
     if args.lock_baseline:
@@ -526,22 +529,31 @@ def main():
             "protocol": protocol,
             "metrics": metrics,
             "target_senses": [
-                {"sense": f"{l} :: {s}",
-                 "sense_id": next(
-                     (sid for sid, v in art["sense_inventory"].items()
-                      if v.get("lemma") == l and v.get("sense") == s), None),
-                 "baseline_recall": metrics["per_sense_recall"][f"{l} :: {s}"]["recall"],
-                 "n_test": metrics["per_sense_recall"][f"{l} :: {s}"]["n_test"]}
-                for l, s in TARGET_SENSES
+                {
+                    "sense": f"{lemma} :: {sense}",
+                    "sense_id": next(
+                        (
+                            sid
+                            for sid, v in art["sense_inventory"].items()
+                            if v.get("lemma") == lemma and v.get("sense") == sense
+                        ),
+                        None,
+                    ),
+                    "baseline_recall": metrics["per_sense_recall"][f"{lemma} :: {sense}"]["recall"],
+                    "n_test": metrics["per_sense_recall"][f"{lemma} :: {sense}"]["n_test"],
+                }
+                for lemma, sense in TARGET_SENSES
             ],
             "claim": "locked by eval_phase3.py --lock-baseline on the main artifact; "
-                     "deltas for all future candidates are computed against these numbers",
+            "deltas for all future candidates are computed against these numbers",
         }
         with open(args.lock_baseline, "w", encoding="utf-8") as f:
             json.dump(baseline, f, ensure_ascii=False, indent=1)
         print(f"baseline locked -> {args.lock_baseline}")
-        print(f"accuracy={metrics['accuracy']} ci95={metrics['accuracy_ci95']} "
-              f"macro_f1={metrics['macro_f1']} ci95={metrics['macro_f1_ci95']}")
+        print(
+            f"accuracy={metrics['accuracy']} ci95={metrics['accuracy_ci95']} "
+            f"macro_f1={metrics['macro_f1']} ci95={metrics['macro_f1_ci95']}"
+        )
         return
 
     if not args.baseline or not args.out:
@@ -557,8 +569,7 @@ def main():
         "baseline_ref": {
             "accuracy": baseline["metrics"]["accuracy"],
             "macro_f1": baseline["metrics"]["macro_f1"],
-            "artifact": baseline["artifact"]["name"] + " v"
-                        + baseline["artifact"]["version"],
+            "artifact": baseline["artifact"]["name"] + " v" + baseline["artifact"]["version"],
             "model_sha256": baseline["artifact"]["model_sha256"],
         },
         "candidate_metrics": metrics,
@@ -567,9 +578,11 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1)
     v = verdict
-    print(f"verdict: {'PASS' if v['pass'] else 'FAIL'} "
-          f"(lift={v['mean_target_recall_lift']} d_acc={v['accuracy_delta']} "
-          f"d_f1={v['macro_f1_delta']} regressions={len(v['legs']['no_regression']['violations'])})")
+    print(
+        f"verdict: {'PASS' if v['pass'] else 'FAIL'} "
+        f"(lift={v['mean_target_recall_lift']} d_acc={v['accuracy_delta']} "
+        f"d_f1={v['macro_f1_delta']} regressions={len(v['legs']['no_regression']['violations'])})"
+    )
     print(f"report -> {args.out}")
 
 
