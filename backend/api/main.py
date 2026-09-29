@@ -168,7 +168,19 @@ async def lifespan(app: FastAPI):
                     agent.ai_client = restored
                     agent.ai_model = saved_model
                 set_active_state(saved_provider, saved_model)
-                logger.info(f"Restored provider: {saved_provider}/{saved_model}")
+                env_model = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
+                if saved_model != env_model:
+                    logger.warning(
+                        "Persisted model preference %s/%s overrides "
+                        "DEFAULT_MODEL=%s from the environment. Change it via "
+                        "POST /api/providers/switch or clear the "
+                        "'active_provider'/'active_model' preferences.",
+                        saved_provider,
+                        saved_model,
+                        env_model,
+                    )
+                else:
+                    logger.info(f"Restored provider: {saved_provider}/{saved_model}")
     except Exception as exc:
         logger.warning(f"Could not restore provider preference: {exc}")
 
@@ -311,9 +323,25 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
+# ===== DATA DIRECTORY =====
+# Default storage lives next to the package (writable by the installing
+# user). The old hardcoded /data/* defaults crashed installs where /data
+# is absent or read-only (sqlite OperationalError at import time).
+_PACKAGE_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_PACKAGE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _default_path(env_var: str, filename: str) -> str:
+    """Env override wins; otherwise a file inside the package data dir."""
+    explicit = os.getenv(env_var)
+    if explicit:
+        return explicit
+    return str(_PACKAGE_DATA_DIR / filename)
+
+
 # ===== GLOBAL STATE =====
-memory = DhikrMemorySystem(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
-knowledge_graph = KnowledgeGraph(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
+memory = DhikrMemorySystem(db_path=_default_path("DB_PATH", "mizan_memory.db"))
+knowledge_graph = KnowledgeGraph(db_path=_default_path("DB_PATH", "mizan_memory.db"))
 context_manager = ContextManager()
 planner = TafakkurPlanner()
 balancer = MizanBalancer()
@@ -331,7 +359,7 @@ federation = AgentFederation()
 thinking_stream = ThinkingStream()
 
 # Task queue + worker
-task_queue = MizanTaskQueue(db_path=os.getenv("QUEUE_DB_PATH", "/data/mizan_queue.db"))
+task_queue = MizanTaskQueue(db_path=_default_path("QUEUE_DB_PATH", "mizan_queue.db"))
 task_worker: TaskWorker | None = None
 
 
@@ -1414,7 +1442,7 @@ async def upload_file(
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large. Maximum 20 MB.")
 
-    upload_dir = Path(os.getenv("UPLOAD_DIR", "/data/uploads"))
+    upload_dir = Path(os.getenv("UPLOAD_DIR", str(_PACKAGE_DATA_DIR / "uploads")))
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     file_id = str(uuid.uuid4())
