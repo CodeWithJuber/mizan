@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymizan"
-version = "3.0.0"
+version = "3.1.0"
 description = "Agentic Personal AI - Quranic Cognitive Architecture for human-like reasoning"
 readme = "README.md"
 license = "Apache-2.0"
