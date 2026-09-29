@@ -5,17 +5,33 @@ MIZAN Authentication (Amanah - أَمَانَة — Trust)
 "Indeed, Allah commands you to render trusts (Amanah) to whom they are due" — Quran 4:58
 
 JWT-based authentication with role-based access control.
+
+Users are persisted to a JSON store under the data directory
+(``MIZAN_DATA_DIR``, default ``/data/mizan``) so accounts survive
+backend restarts. Writes are atomic (temp file + rename) and guarded
+by a lock; a missing or unreadable store degrades to in-memory only.
 """
 
+import json
+import logging
 import os
+import tempfile
+import threading
 import time
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import bcrypt
 import jwt
+
+logger = logging.getLogger(__name__)
+
+# Default persistent data directory (matches the Wali sandbox allow-list).
+DEFAULT_DATA_DIR = "/data/mizan"
+USERS_FILENAME = "users.json"
 
 
 def hash_password(password: str) -> str:
@@ -107,20 +123,99 @@ class MizanAuth:
     """
     Authentication and authorization system.
     Supports JWT tokens, API keys, and WebSocket auth.
+
+    Users persist to ``<data_dir>/users.json`` (atomic writes). Pass
+    ``data_dir=None`` to use ``$MIZAN_DATA_DIR`` or ``/data/mizan``.
     """
 
-    def __init__(self, secret_key: str, expiry_hours: int = 24):
+    def __init__(self, secret_key: str, expiry_hours: int = 24, data_dir: str | None = None):
         self.secret_key = secret_key or os.urandom(32).hex()
         self.expiry_hours = expiry_hours
         self.algorithm = "HS256"
 
-        # In-memory user store (later: move to DhikrMemorySystem)
+        self.data_dir = Path(data_dir or os.getenv("MIZAN_DATA_DIR", DEFAULT_DATA_DIR))
+        self._users_file = self.data_dir / USERS_FILENAME
+        self._lock = threading.Lock()
+
         self._users: dict[str, UserRecord] = {}
         self._revoked_tokens: set = set()
         self._api_keys: dict[str, str] = {}  # api_key -> user_id
 
+        # Load persisted users before the default-admin check so a
+        # restarted server keeps its accounts.
+        self._load_users()
+
         # Create default admin if no users exist
         self._ensure_default_admin()
+
+    def _load_users(self) -> None:
+        """Load users from the JSON store. Best-effort: never crash startup."""
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Cannot create data dir %s (%s); using in-memory user store",
+                self.data_dir,
+                exc,
+            )
+            return
+
+        if not self._users_file.exists():
+            return
+
+        try:
+            raw = json.loads(self._users_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "Cannot read user store %s (%s); starting with empty user store",
+                self._users_file,
+                exc,
+            )
+            return
+
+        if not isinstance(raw, list):
+            logger.warning(
+                "User store %s is malformed; starting with empty user store",
+                self._users_file,
+            )
+            return
+
+        for item in raw:
+            try:
+                user = UserRecord(
+                    id=str(item["id"]),
+                    username=str(item["username"]),
+                    password_hash=str(item["password_hash"]),
+                    roles=list(item.get("roles") or ["user"]),
+                    created_at=str(item.get("created_at") or ""),
+                    api_keys=list(item.get("api_keys") or []),
+                    enabled=bool(item.get("enabled", True)),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning("Skipping malformed user record: %s", exc)
+                continue
+            self._users[user.id] = user
+            for key in user.api_keys:
+                self._api_keys[key] = user.id
+
+    def _save_users(self) -> None:
+        """Persist all users atomically (temp file + rename). Best-effort."""
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps([asdict(u) for u in self._users.values()], indent=2)
+            fd, tmp_path = tempfile.mkstemp(dir=str(self.data_dir), prefix="users.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(payload)
+                os.replace(tmp_path, self._users_file)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError as exc:
+            logger.warning("Cannot persist users to %s (%s)", self._users_file, exc)
 
     def _ensure_default_admin(self):
         """Create default admin user from environment"""
@@ -141,7 +236,9 @@ class MizanAuth:
             created_at=datetime.now(UTC).isoformat(),
             api_keys=[],
         )
-        self._users[user_id] = user
+        with self._lock:
+            self._users[user_id] = user
+            self._save_users()
         return user
 
     def authenticate(self, username: str, password: str) -> UserRecord | None:
@@ -197,13 +294,15 @@ class MizanAuth:
 
     def create_api_key(self, user_id: str) -> str | None:
         """Create an API key for a user"""
-        if user_id not in self._users:
-            return None
+        with self._lock:
+            if user_id not in self._users:
+                return None
 
-        key = f"mzn_{uuid.uuid4().hex}"
-        self._api_keys[key] = user_id
-        self._users[user_id].api_keys.append(key)
-        return key
+            key = f"mzn_{uuid.uuid4().hex}"
+            self._api_keys[key] = user_id
+            self._users[user_id].api_keys.append(key)
+            self._save_users()
+            return key
 
     def verify_api_key(self, key: str) -> TokenPayload | None:
         """Verify an API key and return a token payload"""
