@@ -884,9 +884,9 @@ async def get_task_history(agent_id: str | None = None, limit: int = 50):
 async def chat(
     req: ChatMessage,
     background_tasks: BackgroundTasks,
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
-    """Chat with an agent"""
+    """Chat with an agent (requires authentication)"""
     session = active_sessions.get(req.session_id)
 
     # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
@@ -1083,14 +1083,14 @@ async def chat(
 
 
 @app.get("/api/chat/sessions/list")
-async def list_sessions():
-    """List recent chat sessions from DB with metadata"""
+async def list_sessions(user: TokenPayload = Depends(require_auth)):
+    """List recent chat sessions from DB with metadata (requires authentication)"""
     db_sessions = await memory.list_sessions(limit=20)
     return {"sessions": db_sessions}
 
 
 @app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str):
+async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
     messages = await memory.get_messages(session_id)
     return {"session_id": session_id, "messages": messages}
 
