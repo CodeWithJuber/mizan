@@ -1,0 +1,462 @@
+{
+  "qcsmp2:آباء:fathers": {
+    "lemma": "آباء",
+    "sense": "fathers"
+  },
+  "qcsmp2:آباء:forefathers": {
+    "lemma": "آباء",
+    "sense": "forefathers"
+  },
+  "qcsmp2:آخَر:another": {
+    "lemma": "آخَر",
+    "sense": "another"
+  },
+  "qcsmp2:آخَر:other": {
+    "lemma": "آخَر",
+    "sense": "other"
+  },
+  "qcsmp2:آخِر:hereafter": {
+    "lemma": "آخِر",
+    "sense": "hereafter"
+  },
+  "qcsmp2:آخِر:last": {
+    "lemma": "آخِر",
+    "sense": "last"
+  },
+  "qcsmp2:آيَة:sign": {
+    "lemma": "آيَة",
+    "sense": "sign"
+  },
+  "qcsmp2:آيَة:verse": {
+    "lemma": "آيَة",
+    "sense": "verse"
+  },
+  "qcsmp2:أَجْر:payment": {
+    "lemma": "أَجْر",
+    "sense": "payment"
+  },
+  "qcsmp2:أَجْر:reward": {
+    "lemma": "أَجْر",
+    "sense": "reward"
+  },
+  "qcsmp2:أَرْض:earth": {
+    "lemma": "أَرْض",
+    "sense": "earth"
+  },
+  "qcsmp2:أَرْض:land": {
+    "lemma": "أَرْض",
+    "sense": "land"
+  },
+  "qcsmp2:أَكْثَر:most": {
+    "lemma": "أَكْثَر",
+    "sense": "most"
+  },
+  "qcsmp2:أَكْثَر:most of": {
+    "lemma": "أَكْثَر",
+    "sense": "most of"
+  },
+  "qcsmp2:أَمْر:affair-matter": {
+    "lemma": "أَمْر",
+    "sense": "affair-matter"
+  },
+  "qcsmp2:أَمْر:command": {
+    "lemma": "أَمْر",
+    "sense": "command"
+  },
+  "qcsmp2:أَهْل:family": {
+    "lemma": "أَهْل",
+    "sense": "family"
+  },
+  "qcsmp2:أَهْل:people": {
+    "lemma": "أَهْل",
+    "sense": "people"
+  },
+  "qcsmp2:أَوَّل:first": {
+    "lemma": "أَوَّل",
+    "sense": "first"
+  },
+  "qcsmp2:أَوَّل:former": {
+    "lemma": "أَوَّل",
+    "sense": "former"
+  },
+  "qcsmp2:أَيّ:mankind": {
+    "lemma": "أَيّ",
+    "sense": "mankind"
+  },
+  "qcsmp2:أَيّ:so which": {
+    "lemma": "أَيّ",
+    "sense": "so which"
+  },
+  "qcsmp2:أَيّ:you who believe": {
+    "lemma": "أَيّ",
+    "sense": "you who believe"
+  },
+  "qcsmp2:أُمَّة:community": {
+    "lemma": "أُمَّة",
+    "sense": "community"
+  },
+  "qcsmp2:أُمَّة:religious-way": {
+    "lemma": "أُمَّة",
+    "sense": "religious-way"
+  },
+  "qcsmp2:أُمَّة:time-period": {
+    "lemma": "أُمَّة",
+    "sense": "time-period"
+  },
+  "qcsmp2:بَعْض:other": {
+    "lemma": "بَعْض",
+    "sense": "other"
+  },
+  "qcsmp2:بَعْض:part": {
+    "lemma": "بَعْض",
+    "sense": "part"
+  },
+  "qcsmp2:بَعْض:some": {
+    "lemma": "بَعْض",
+    "sense": "some"
+  },
+  "qcsmp2:بَعْض:some of": {
+    "lemma": "بَعْض",
+    "sense": "some of"
+  },
+  "qcsmp2:بَعْض:some of you": {
+    "lemma": "بَعْض",
+    "sense": "some of you"
+  },
+  "qcsmp2:بَيِّنَة:clear": {
+    "lemma": "بَيِّنَة",
+    "sense": "clear"
+  },
+  "qcsmp2:بَيِّنَة:clear proof": {
+    "lemma": "بَيِّنَة",
+    "sense": "clear proof"
+  },
+  "qcsmp2:بُنَىّ:children": {
+    "lemma": "بُنَىّ",
+    "sense": "children"
+  },
+  "qcsmp2:بُنَىّ:children of israel": {
+    "lemma": "بُنَىّ",
+    "sense": "children of israel"
+  },
+  "qcsmp2:بُنَىّ:sons": {
+    "lemma": "بُنَىّ",
+    "sense": "sons"
+  },
+  "qcsmp2:حَقّ:right-due": {
+    "lemma": "حَقّ",
+    "sense": "right-due"
+  },
+  "qcsmp2:حَقّ:truth": {
+    "lemma": "حَقّ",
+    "sense": "truth"
+  },
+  "qcsmp2:خالِد:abide forever": {
+    "lemma": "خالِد",
+    "sense": "abide forever"
+  },
+  "qcsmp2:خالِد:abiding forever": {
+    "lemma": "خالِد",
+    "sense": "abiding forever"
+  },
+  "qcsmp2:خالِد:will abide forever": {
+    "lemma": "خالِد",
+    "sense": "will abide forever"
+  },
+  "qcsmp2:خَيْر:any good": {
+    "lemma": "خَيْر",
+    "sense": "any good"
+  },
+  "qcsmp2:خَيْر:best": {
+    "lemma": "خَيْر",
+    "sense": "best"
+  },
+  "qcsmp2:خَيْر:better": {
+    "lemma": "خَيْر",
+    "sense": "better"
+  },
+  "qcsmp2:خَيْر:good": {
+    "lemma": "خَيْر",
+    "sense": "good"
+  },
+  "qcsmp2:دِين:judgment-day": {
+    "lemma": "دِين",
+    "sense": "judgment-day"
+  },
+  "qcsmp2:دِين:religion": {
+    "lemma": "دِين",
+    "sense": "religion"
+  },
+  "qcsmp2:ذُو:owner": {
+    "lemma": "ذُو",
+    "sense": "owner"
+  },
+  "qcsmp2:ذُو:possessor": {
+    "lemma": "ذُو",
+    "sense": "possessor"
+  },
+  "qcsmp2:ذُو:what": {
+    "lemma": "ذُو",
+    "sense": "what"
+  },
+  "qcsmp2:ذِكْر:remembrance": {
+    "lemma": "ذِكْر",
+    "sense": "remembrance"
+  },
+  "qcsmp2:ذِكْر:revealed-reminder": {
+    "lemma": "ذِكْر",
+    "sense": "revealed-reminder"
+  },
+  "qcsmp2:زَوْج:kind": {
+    "lemma": "زَوْج",
+    "sense": "kind"
+  },
+  "qcsmp2:زَوْج:mate": {
+    "lemma": "زَوْج",
+    "sense": "mate"
+  },
+  "qcsmp2:زَوْج:pair": {
+    "lemma": "زَوْج",
+    "sense": "pair"
+  },
+  "qcsmp2:زَوْج:spouse": {
+    "lemma": "زَوْج",
+    "sense": "spouse"
+  },
+  "qcsmp2:زَوْج:wives": {
+    "lemma": "زَوْج",
+    "sense": "wives"
+  },
+  "qcsmp2:سَيِّئَة:evil": {
+    "lemma": "سَيِّئَة",
+    "sense": "evil"
+  },
+  "qcsmp2:سَيِّئَة:evil deed": {
+    "lemma": "سَيِّئَة",
+    "sense": "evil deed"
+  },
+  "qcsmp2:شَهِيد:witness": {
+    "lemma": "شَهِيد",
+    "sense": "witness"
+  },
+  "qcsmp2:شَهِيد:witnesses": {
+    "lemma": "شَهِيد",
+    "sense": "witnesses"
+  },
+  "qcsmp2:شَىْء:anything": {
+    "lemma": "شَىْء",
+    "sense": "anything"
+  },
+  "qcsmp2:شَىْء:thing": {
+    "lemma": "شَىْء",
+    "sense": "thing"
+  },
+  "qcsmp2:صالِحَة:good deeds": {
+    "lemma": "صالِحَة",
+    "sense": "good deeds"
+  },
+  "qcsmp2:صالِحَة:righteous deeds": {
+    "lemma": "صالِحَة",
+    "sense": "righteous deeds"
+  },
+  "qcsmp2:عَبْد:servant": {
+    "lemma": "عَبْد",
+    "sense": "servant"
+  },
+  "qcsmp2:عَبْد:slave": {
+    "lemma": "عَبْد",
+    "sense": "slave"
+  },
+  "qcsmp2:عَدُوّ:enemies": {
+    "lemma": "عَدُوّ",
+    "sense": "enemies"
+  },
+  "qcsmp2:عَدُوّ:enemy": {
+    "lemma": "عَدُوّ",
+    "sense": "enemy"
+  },
+  "qcsmp2:عَلِيم:all knower": {
+    "lemma": "عَلِيم",
+    "sense": "all knower"
+  },
+  "qcsmp2:عَلِيم:all knowing": {
+    "lemma": "عَلِيم",
+    "sense": "all knowing"
+  },
+  "qcsmp2:عَيْن:eyes": {
+    "lemma": "عَيْن",
+    "sense": "eyes"
+  },
+  "qcsmp2:عَيْن:spring": {
+    "lemma": "عَيْن",
+    "sense": "spring"
+  },
+  "qcsmp2:عِلْم:any knowledge": {
+    "lemma": "عِلْم",
+    "sense": "any knowledge"
+  },
+  "qcsmp2:عِلْم:knowledge": {
+    "lemma": "عِلْم",
+    "sense": "knowledge"
+  },
+  "qcsmp2:فَضْل:bounty": {
+    "lemma": "فَضْل",
+    "sense": "bounty"
+  },
+  "qcsmp2:فَضْل:grace": {
+    "lemma": "فَضْل",
+    "sense": "grace"
+  },
+  "qcsmp2:قَرْيَة:cities": {
+    "lemma": "قَرْيَة",
+    "sense": "cities"
+  },
+  "qcsmp2:قَرْيَة:town": {
+    "lemma": "قَرْيَة",
+    "sense": "town"
+  },
+  "qcsmp2:قَوْل:saying": {
+    "lemma": "قَوْل",
+    "sense": "saying"
+  },
+  "qcsmp2:قَوْل:speech": {
+    "lemma": "قَوْل",
+    "sense": "speech"
+  },
+  "qcsmp2:قَوْل:word": {
+    "lemma": "قَوْل",
+    "sense": "word"
+  },
+  "qcsmp2:كَثِير:many": {
+    "lemma": "كَثِير",
+    "sense": "many"
+  },
+  "qcsmp2:كَثِير:much": {
+    "lemma": "كَثِير",
+    "sense": "much"
+  },
+  "qcsmp2:كِتاب:book": {
+    "lemma": "كِتاب",
+    "sense": "book"
+  },
+  "qcsmp2:كِتاب:record": {
+    "lemma": "كِتاب",
+    "sense": "record"
+  },
+  "qcsmp2:كِتاب:scripture": {
+    "lemma": "كِتاب",
+    "sense": "scripture"
+  },
+  "qcsmp2:مَثَل:example": {
+    "lemma": "مَثَل",
+    "sense": "example"
+  },
+  "qcsmp2:مَثَل:similitude": {
+    "lemma": "مَثَل",
+    "sense": "similitude"
+  },
+  "qcsmp2:مُؤْمِن:believer": {
+    "lemma": "مُؤْمِن",
+    "sense": "believer"
+  },
+  "qcsmp2:مُؤْمِن:believing men": {
+    "lemma": "مُؤْمِن",
+    "sense": "believing men"
+  },
+  "qcsmp2:مُبِين:clear": {
+    "lemma": "مُبِين",
+    "sense": "clear"
+  },
+  "qcsmp2:مُبِين:manifest": {
+    "lemma": "مُبِين",
+    "sense": "manifest"
+  },
+  "qcsmp2:مِثْل:like": {
+    "lemma": "مِثْل",
+    "sense": "like"
+  },
+  "qcsmp2:مِثْل:like of": {
+    "lemma": "مِثْل",
+    "sense": "like of"
+  },
+  "qcsmp2:ناس:mankind": {
+    "lemma": "ناس",
+    "sense": "mankind"
+  },
+  "qcsmp2:ناس:people": {
+    "lemma": "ناس",
+    "sense": "people"
+  },
+  "qcsmp2:نَذِير:warner": {
+    "lemma": "نَذِير",
+    "sense": "warner"
+  },
+  "qcsmp2:نَذِير:warning": {
+    "lemma": "نَذِير",
+    "sense": "warning"
+  },
+  "qcsmp2:نَفْس:life": {
+    "lemma": "نَفْس",
+    "sense": "life"
+  },
+  "qcsmp2:نَفْس:self": {
+    "lemma": "نَفْس",
+    "sense": "self"
+  },
+  "qcsmp2:نَفْس:soul": {
+    "lemma": "نَفْس",
+    "sense": "soul"
+  },
+  "qcsmp2:نِساء:wives": {
+    "lemma": "نِساء",
+    "sense": "wives"
+  },
+  "qcsmp2:نِساء:women": {
+    "lemma": "نِساء",
+    "sense": "women"
+  },
+  "qcsmp2:وَلِيّ:allies": {
+    "lemma": "وَلِيّ",
+    "sense": "allies"
+  },
+  "qcsmp2:وَلِيّ:any protector": {
+    "lemma": "وَلِيّ",
+    "sense": "any protector"
+  },
+  "qcsmp2:وَلِيّ:friend": {
+    "lemma": "وَلِيّ",
+    "sense": "friend"
+  },
+  "qcsmp2:وَلِيّ:protector": {
+    "lemma": "وَلِيّ",
+    "sense": "protector"
+  },
+  "qcsmp2:يَد:before": {
+    "lemma": "يَد",
+    "sense": "before"
+  },
+  "qcsmp2:يَد:hand": {
+    "lemma": "يَد",
+    "sense": "hand"
+  },
+  "qcsmp2:يَمِين:oath": {
+    "lemma": "يَمِين",
+    "sense": "oath"
+  },
+  "qcsmp2:يَمِين:right": {
+    "lemma": "يَمِين",
+    "sense": "right"
+  },
+  "qcsmp2:يَمِين:right hand": {
+    "lemma": "يَمِين",
+    "sense": "right hand"
+  },
+  "qcsmp2:يَوْم:judgment-day": {
+    "lemma": "يَوْم",
+    "sense": "judgment-day"
+  },
+  "qcsmp2:يَوْم:ordinary-day": {
+    "lemma": "يَوْم",
+    "sense": "ordinary-day"
+  }
+}
