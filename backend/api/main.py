@@ -60,6 +60,13 @@ from providers import (
     set_active_state,
 )
 from qca.cognitive_methods import select_method
+from qca.morphology_api import analyze_word as _morph_analyze_word
+from qca.morphology_api import bridge_concept as _morph_bridge_concept
+from qca.morphology_api import build_explain_prompt as _morph_build_explain_prompt
+from qca.morphology_api import get_occurrences as _morph_get_occurrences
+from qca.morphology_api import get_pattern_siblings as _morph_get_pattern_siblings
+from qca.morphology_api import get_root_family as _morph_get_root_family
+from qca.morphology_api import get_senses as _morph_get_senses
 
 # New Quranic systems
 from qca.yaqin_engine import YaqinEngine
@@ -74,14 +81,6 @@ from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
 from task_queue.worker import TaskWorker
 from training_manager import training_manager
-
-from qca.morphology_api import analyze_word as _morph_analyze_word
-from qca.morphology_api import bridge_concept as _morph_bridge_concept
-from qca.morphology_api import build_explain_prompt as _morph_build_explain_prompt
-from qca.morphology_api import get_occurrences as _morph_get_occurrences
-from qca.morphology_api import get_pattern_siblings as _morph_get_pattern_siblings
-from qca.morphology_api import get_root_family as _morph_get_root_family
-from qca.morphology_api import get_senses as _morph_get_senses
 
 logger = logging.getLogger("mizan.api")
 
