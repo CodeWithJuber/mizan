@@ -10,6 +10,7 @@ JWT-based authentication with role-based access control.
 import os
 import time
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -27,6 +28,24 @@ ROLES = {
     "viewer": 10,
     "guest": 0,
 }
+
+
+# Request-scoped principal roles, bound by require_auth (or the WebSocket
+# handshake) for the lifetime of the request task. Default is empty:
+# fail closed - code running outside an authenticated request (background
+# jobs, tests, imports) holds no privileges.
+_request_roles: ContextVar[tuple] = ContextVar("mizan_request_roles", default=())
+
+
+def set_request_roles(roles) -> None:
+    """Bind the current request principal's roles. Call once per request."""
+    _request_roles.set(tuple(roles or ()))
+
+
+def request_has_role(role: str) -> bool:
+    """True if the current request principal holds `role` (admin implies all)."""
+    roles = _request_roles.get()
+    return role in roles or "admin" in roles
 
 
 @dataclass
