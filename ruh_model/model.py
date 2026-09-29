@@ -24,6 +24,7 @@ from ruh_model.config import RuhConfig
 from ruh_model.embedding.ism import ISMEmbedding
 from ruh_model.embedding.rope import RMSNorm
 from ruh_model.layers.transformer_block import RuhBlock
+from ruh_model.attention.sam_basar import _build_causal_mask
 from ruh_model.loss.mizan_loss import MizanLoss
 
 
@@ -88,8 +89,13 @@ class RuhModel(nn.Module):
         """
         hidden = self.embedding(root_ids, pattern_ids)
 
+        # Causal mask for all blocks: position i attends only to 0..i.
+        # (The first block's Sam'/Basar branches apply their own causal
+        # masks internally; the Qalb blocks use this one.)
+        causal_mask = _build_causal_mask(root_ids.shape[1], root_ids.device)
+
         for layer_idx, block in enumerate(self.blocks):
-            hidden = block(hidden, root_ids, t_step=layer_idx)
+            hidden = block(hidden, root_ids, t_step=layer_idx, mask=causal_mask)
 
         hidden = self.final_norm(hidden)
 
