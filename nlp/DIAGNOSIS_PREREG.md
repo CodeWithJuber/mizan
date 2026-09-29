@@ -1,6 +1,6 @@
 # Diagnosis Preregistration — mizan.nlp Phase 3, Track 1
 
-**Artifact under diagnosis:** `backend/nlp/artifacts/default/` v1.0.0 (mizan-sense-wsd),
+**Artifact under diagnosis:** `nlp/artifacts/default/` v1.0.0 (mizan-sense-wsd),
 per-lemma sklearn LogisticRegression, variant 'a' (surface+context features),
 trained 2026-09-29. **Read-only**: no retraining, no artifact modification, no
 relabeling.
@@ -14,7 +14,7 @@ relabeling.
 1. **Reproduction**: load `model.joblib` (sha256-verified against manifest) and
    run inference on the Phase-1 test split (`split=="test"`, `perturbation=="base"`
    → 627 items, matching manifest `eval_n`), using the frozen feature extractor
-   in `backend/nlp/wsd.py` (copied verbatim from training; any divergence is a
+   in `nlp/wsd.py` (copied verbatim from training; any divergence is a
    finding, not a fix I will make).
 2. **Repro criteria**: accuracy within ±0.005 of 0.7592 AND the same 12
    zero-recall senses (set equality). If either fails, I report ❌ honestly with
@@ -60,8 +60,8 @@ the classification for each sense is recorded with its evidence.
 
 ## 4. Outputs
 
-- `backend/nlp/DIAGNOSIS_PREREG.md` (this file).
-- `backend/nlp/DIAGNOSIS.md`: full per-sense table + cause classification +
+- `nlp/DIAGNOSIS_PREREG.md` (this file).
+- `nlp/DIAGNOSIS.md`: full per-sense table + cause classification +
   recommendations.
 - Claim tagging: ✅ verified by my run / 📋 from earlier (Track-1 reports,
   manifest) / ❌ could not verify.

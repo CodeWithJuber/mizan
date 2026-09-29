@@ -10,7 +10,7 @@ Format history
 * Schema v1 (DESIGN.md §4, Phase 1): assumed a neural model — required
   ``model.safetensors`` + ``tokenizer.json`` (safetensors ONLY, no pickle).
 * Schema v1 revised (2026-09-29, JEV choice decision, conf 0.89 — see
-  ``backend/nlp/artifacts/DECISIONS.md``): Track 1 actually trained a
+  ``nlp/artifacts/DECISIONS.md``): Track 1 actually trained a
   **per-lemma sklearn LogisticRegression** artifact. safetensors cannot
   hold sklearn estimator objects, and joblib is the honest standard for
   them, so the contract now requires ``model.joblib``. ``tokenizer.json``
@@ -42,7 +42,7 @@ from pathlib import Path
 #: Env var pointing at a directory holding the trained artifact.
 ARTIFACT_ENV_VAR = "MIZAN_NLP_ARTIFACT"
 
-#: Directory (relative to backend/nlp/) where the packaged default
+#: Directory (relative to nlp/) where the packaged default
 #: artifact ships with the wheel. Delivered by Track 1 (2026-09-29).
 PACKAGED_ARTIFACT_DIR = "artifacts/default"
 
