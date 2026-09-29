@@ -3561,6 +3561,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             user = None
     if not user:
         wali.audit.log("ws_auth_rejected", {"client_id": client_id}, severity="warning")
+        # Accept BEFORE closing: closing a not-yet-accepted socket surfaces as
+        # HTTP 403 to the browser (onclose code 1006), so the client would never
+        # see 4401 and would loop "reconnecting" instead of "login required".
+        # No message is processed before this point, so fail-closed holds.
+        await websocket.accept()
         await websocket.close(code=4401, reason="Authentication required")
         return
 
