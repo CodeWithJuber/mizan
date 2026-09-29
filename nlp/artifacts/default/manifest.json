@@ -1,10 +1,10 @@
 {
  "schema_version": "1",
  "name": "mizan-sense-wsd",
- "version": "1.1.0",
+ "version": "1.2.0",
  "dataset": "Q-CSMP v2",
  "dataset_doi": "10.5281/zenodo.23024527",
- "dataset_note": "Derived weights + sense inventory only. The dataset itself (Q-CSMP v2) is NOT redistributed. Train = Q-CSMP v2 base train split with the 9 frozen label-noise merges applied (Amendment A1, nlp/SENSE_MERGES.json): أَجْر payment→reward, بَعْض some→other, ذُو owner→possessor, صالِحَة good deeds→righteous deeds, عِلْم any knowledge→knowledge, قَرْيَة cities→town, قَوْل saying→word, كِتاب scripture→book, مُبِين manifest→clear. Each merge JEV-confirmed per Track-1 DIAGNOSIS.",
+ "dataset_note": "Derived weights + sense inventory only. The dataset itself (Q-CSMP v2) is NOT redistributed. Train = Q-CSMP v2 base train split with PR-41's 9 frozen label-noise merges (nlp/SENSE_MERGES.json) PLUS Phase-A's 9 MASAQ-grounded merges (nlp/SENSE_MERGES_PHASEA.json, Juber REVISE spec v2, frozen): عَلِيم all knowing→all knower, خالِد abiding forever→abide forever, خالِد will abide forever→abide forever, شَهِيد witnesses→witness, عَدُوّ enemies→enemy, مُؤْمِن believing men→believer, كَثِير much→many, أَكْثَر most of→most, بَعْض some of you→some of. Inventory 106→97 senses, 1,005 training records relabeled. أَيّ #1–#2 (mankind/you who believe) HELD for the vocative micro-phase.",
  "architecture": "per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b'); single-sense lemmas use a constant prior predictor",
  "model_file": "model.joblib",
  "model_type": "sklearn-pipeline-dict",
@@ -15,27 +15,54 @@
  "variant": "a (surface+context; PRIMARY)",
  "license": "Apache-2.0",
  "num_lemmas": 48,
- "num_senses": 106,
- "eval_accuracy": 0.8038,
- "eval_accuracy_ci95": [
-  0.7735,
-  0.8341
- ],
- "eval_macro_f1": 0.6163,
- "eval_macro_f1_ci95": [
-  0.5384,
-  0.6122
- ],
+ "num_senses": 97,
+ "eval_accuracy": 0.815,
+ "eval_macro_f1": 0.6314,
  "eval_n": 627,
- "eval_protocol": "whole-surah holdout, single test run on the frozen Phase-1 test split (n=627), gold labels merged to the 106-sense space; macro-F1 over the full 106-sense universe (absent senses contribute 0.0); bootstrap CIs seed 137, 10k resamples (Track-1 recipe).",
+ "eval_protocol": "whole-surah holdout, single test run on the frozen Phase-1 test split (n=627), gold labels merged to the 97-sense space; macro-F1 over the full 97-sense universe (absent senses contribute 0.0). Win bar = remapped-baseline comparator (spec v2 §5.2): EXACT Phase-A mapping applied to frozen baseline y_true AND y_pred first, then retrained model compared on the same collapsed ontology — 4/4 gates PASS.",
  "sense_id_scheme": "qcsmp2:<lemma>:<sense-slug>",
  "sense_id_example": "qcsmp2:يَوْم:judgment-day",
- "sense_inventory_sha256": "123946a0fcaa5286f0afecb00364c59909ecb2de3650b146a32faa1f3acb316a",
- "model_sha256": "666008c49e54c5f6d91230dc35504e6efbae4085b2218d4bbea275894e22751a",
+ "sense_inventory_sha256": "2cda3d989b973c803ff57db121aeaf7bbe9baba790c3a523e07afd92cd3413b3",
+ "model_sha256": "d30826adc984626880e9a1c09cd5b509cc74bb074c16e03c8c5aaf6dcd43f761",
  "files": [
   "manifest.json",
   "model.joblib",
   "sense_inventory.json"
  ],
- "trust_boundary": "model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files."
+ "trust_boundary": "model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files.",
+ "eval_accuracy_exact": 0.8149920255183413,
+ "eval_macro_f1_exact": 0.6314322912345838,
+ "win_bar": {
+  "comparator": "remapped baseline (exact Phase-A mapping applied to frozen baseline y_true+y_pred)",
+  "accuracy": {
+   "got": 0.8149920255183413,
+   "bar": 0.8099920255183413,
+   "pass": true
+  },
+  "macro_f1": {
+   "got": 0.6314322912345838,
+   "bar": 0.6214322912345838,
+   "pass": true
+  },
+  "no_new_drywells": {
+   "got": [],
+   "pass": true
+  },
+  "target_recall": {
+   "pass": true,
+   "detail": "all 8 affected targets: new recall >= remapped-baseline pooled recall (all 1.0)"
+  },
+  "overall": "PASS 4/4"
+ },
+ "honest_note": "Retrained model predictions are BIT-FOR-BIT identical to the remapped baseline (627/627 test items, 16 decimals). All measured gain (+0.0112 accuracy, +0.0151 macro-F1 vs the 106-sense baseline) comes from ontology simplification, not from retraining. Ship decision: native retrained artifact chosen over remap-shim (operator override of JEV ship_remap_only conf 0.27) — no shim stacking; أَيّ:vocative follow-up composes cleanly to 96 senses.",
+ "reproducibility": {
+  "config_hash": "2911a824edc44f40",
+  "mapping_composition": "Q-CSMP v2 115 labels -> PR-41 mapping (nlp/SENSE_MERGES.json) -> 106 baseline -> Phase-A mapping (nlp/SENSE_MERGES_PHASEA.json) -> 97 final",
+  "assertions": {
+   "final_class_count": 97,
+   "relabeled_records": 1005,
+   "unmapped_labels": 0
+  }
+ },
+ "eval_note": "Bootstrap CIs not recomputed for Phase-A; point estimates on frozen n=627 split. (v1.1.0 CIs were 106-sense space, not comparable.)"
 }

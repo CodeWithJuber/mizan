@@ -47,10 +47,6 @@
     "lemma": "أَكْثَر",
     "sense": "most"
   },
-  "qcsmp2:أَكْثَر:most of": {
-    "lemma": "أَكْثَر",
-    "sense": "most of"
-  },
   "qcsmp2:أَمْر:affair-matter": {
     "lemma": "أَمْر",
     "sense": "affair-matter"
@@ -111,10 +107,6 @@
     "lemma": "بَعْض",
     "sense": "some of"
   },
-  "qcsmp2:بَعْض:some of you": {
-    "lemma": "بَعْض",
-    "sense": "some of you"
-  },
   "qcsmp2:بَيِّنَة:clear": {
     "lemma": "بَيِّنَة",
     "sense": "clear"
@@ -146,14 +138,6 @@
   "qcsmp2:خالِد:abide forever": {
     "lemma": "خالِد",
     "sense": "abide forever"
-  },
-  "qcsmp2:خالِد:abiding forever": {
-    "lemma": "خالِد",
-    "sense": "abiding forever"
-  },
-  "qcsmp2:خالِد:will abide forever": {
-    "lemma": "خالِد",
-    "sense": "will abide forever"
   },
   "qcsmp2:خَيْر:any good": {
     "lemma": "خَيْر",
@@ -227,10 +211,6 @@
     "lemma": "شَهِيد",
     "sense": "witness"
   },
-  "qcsmp2:شَهِيد:witnesses": {
-    "lemma": "شَهِيد",
-    "sense": "witnesses"
-  },
   "qcsmp2:شَىْء:anything": {
     "lemma": "شَىْء",
     "sense": "anything"
@@ -251,10 +231,6 @@
     "lemma": "عَبْد",
     "sense": "slave"
   },
-  "qcsmp2:عَدُوّ:enemies": {
-    "lemma": "عَدُوّ",
-    "sense": "enemies"
-  },
   "qcsmp2:عَدُوّ:enemy": {
     "lemma": "عَدُوّ",
     "sense": "enemy"
@@ -262,10 +238,6 @@
   "qcsmp2:عَلِيم:all knower": {
     "lemma": "عَلِيم",
     "sense": "all knower"
-  },
-  "qcsmp2:عَلِيم:all knowing": {
-    "lemma": "عَلِيم",
-    "sense": "all knowing"
   },
   "qcsmp2:عَيْن:eyes": {
     "lemma": "عَيْن",
@@ -303,10 +275,6 @@
     "lemma": "كَثِير",
     "sense": "many"
   },
-  "qcsmp2:كَثِير:much": {
-    "lemma": "كَثِير",
-    "sense": "much"
-  },
   "qcsmp2:كِتاب:book": {
     "lemma": "كِتاب",
     "sense": "book"
@@ -326,10 +294,6 @@
   "qcsmp2:مُؤْمِن:believer": {
     "lemma": "مُؤْمِن",
     "sense": "believer"
-  },
-  "qcsmp2:مُؤْمِن:believing men": {
-    "lemma": "مُؤْمِن",
-    "sense": "believing men"
   },
   "qcsmp2:مُبِين:clear": {
     "lemma": "مُبِين",
