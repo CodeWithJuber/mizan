@@ -186,20 +186,32 @@ def agent_nlp(mock_wali, mock_izn, temp_db, monkeypatch):
 
 class TestNlpPackageContract:
     def test_missing_artifact_raises_model_not_ready(self, monkeypatch):
-        """Missing artifact -> fail-closed ModelNotReadyError, never a raw error."""
+        """Missing artifact -> fail-closed ModelNotReadyError, never a raw error.
+
+        The loader falls back to the packaged artifacts/default/ when the env
+        var is unset, so a truly-missing artifact is simulated at the
+        find_artifact() seam the loader itself uses.
+        """
         nlp.wsd.reset_for_tests()
         monkeypatch.delenv("MIZAN_NLP_ARTIFACT", raising=False)
+        monkeypatch.setattr(nlp.wsd, "find_artifact", lambda: None)
         with pytest.raises(ModelNotReadyError):
             disambiguate(AR_TEXT, AR_LEMMA)
 
     def test_corrupt_artifact_dir_fails_closed(self, monkeypatch, tmp_path):
-        """A corrupt artifact dir is rejected -> ModelNotReadyError (fail-closed)."""
+        """A corrupt artifact dir is rejected -> ModelNotReadyError (fail-closed).
+
+        find_artifact() itself refuses dirs with invalid manifests and the
+        loader falls back to packaged/default; the fail-closed path (invalid
+        manifest at load time) is simulated at the find_artifact() seam.
+        """
         nlp.wsd.reset_for_tests()
         garbage = tmp_path / "artifact"
         garbage.mkdir()
         (garbage / "manifest.json").write_text("{not valid json")
-        (garbage / "model.safetensors").write_text("junk")
+        (garbage / "model.joblib").write_text("junk")
         monkeypatch.setenv("MIZAN_NLP_ARTIFACT", str(garbage))
+        monkeypatch.setattr(nlp.wsd, "find_artifact", lambda: garbage)
         with pytest.raises(ModelNotReadyError):
             disambiguate(AR_TEXT, AR_LEMMA)
 
