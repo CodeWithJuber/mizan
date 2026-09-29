@@ -16,8 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check backend/ tests/
-      - run: ruff format --check backend/ tests/
+      - run: ruff check backend/ nlp/ tests/
+      - run: ruff format --check backend/ nlp/ tests/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
