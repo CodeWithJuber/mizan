@@ -179,6 +179,7 @@ function AppInner() {
     setActiveTabState(tab);
     localStorage.setItem("mizan_active_tab", tab);
   }, []);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -2466,6 +2467,22 @@ function AppInner() {
 
       {/* Header */}
       <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
+        <button
+          className="md:hidden p-2 -ml-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors focus-ring"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open navigation"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className="w-6 h-6"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
         <div className="flex items-center gap-2.5">
           <div className="text-2xl leading-none select-none text-mizan-gold font-arabic">
             &#1605;&#1610;&#1586;&#1575;&#1606;
@@ -2506,6 +2523,28 @@ function AppInner() {
           setActiveTab={setActiveTab}
           selectedAgent={selectedAgent}
         />
+        {mobileNavOpen && (
+          <div
+            className="fixed inset-0 z-[60] md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={() => setMobileNavOpen(false)}
+              aria-hidden="true"
+            />
+            <Sidebar
+              navSections={navSections}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              selectedAgent={selectedAgent}
+              isMobileDrawer
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          </div>
+        )}
 
         {/* Content */}
         <main
