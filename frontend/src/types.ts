@@ -509,6 +509,7 @@ export type WsConnectionStatus =
   | "connecting"
   | "reconnecting"
   | "disconnected"
+  | "auth_required"
   | "error";
 
 export interface WsMessage {

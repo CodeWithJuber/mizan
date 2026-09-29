@@ -1752,7 +1752,20 @@ async def version_info():
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint for monitoring and Docker"""
+    """Lightweight public liveness probe.
+
+    Unauthenticated by design: the web UI polls this to distinguish
+    "backend down" from "login required" (the WebSocket handshake closes
+    with 4401 for anonymous clients, which is NOT a backend outage).
+    Always HTTP 200 — UI reachability must never depend on subsystem
+    health; use /api/health/detailed for that.
+    """
+    return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/health/detailed")
+async def health_check_detailed(user: TokenPayload = Depends(require_auth)):
+    """Detailed subsystem health — authenticated (exposes internals)."""
     import time
 
     checks = {

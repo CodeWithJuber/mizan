@@ -27,8 +27,11 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export function LossCurveChart({ metrics, history = [] }: LossCurveChartProps) {
+  // Guard: when logged out the API returns a 401 body ({detail: ...}) that
+  // is truthy but has no losses — never .map() an undefined array.
+  const losses = metrics?.losses ?? [];
   // Build data points from current run losses
-  const currentData = metrics.losses.map((loss, idx) => ({
+  const currentData = losses.map((loss, idx) => ({
     epoch: idx + 1,
     current: loss,
   }));
@@ -36,12 +39,13 @@ export function LossCurveChart({ metrics, history = [] }: LossCurveChartProps) {
   // Merge historical runs as additional series
   const historicalSeries: { key: string; color: string; data: { epoch: number; loss: number }[] }[] = [];
   history.slice(-3).forEach((run, idx) => {
-    if (run.losses.length > 0) {
+    const runLosses = run?.losses ?? [];
+    if (runLosses.length > 0) {
       const key = `${run.stage}_${idx}`;
       historicalSeries.push({
         key,
         color: STAGE_COLORS[run.stage] ?? "#94a3b8",
-        data: run.losses.map((loss, epoch) => ({ epoch: epoch + 1, loss })),
+        data: runLosses.map((loss, epoch) => ({ epoch: epoch + 1, loss })),
       });
     }
   });

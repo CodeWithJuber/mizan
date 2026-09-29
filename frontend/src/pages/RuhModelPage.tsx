@@ -88,8 +88,16 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
   const fetchTrainingStatus = useCallback(async () => {
     try {
-      const data = await api.get("/training/status");
-      setPolledMetrics(data as unknown as TrainingMetrics);
+      const data = (await api.get("/training/status")) as Record<
+        string,
+        unknown
+      >;
+      // Shape-validate: a logged-out 401 body ({detail: ...}) is truthy but
+      // has no losses — never store it as metrics (LossCurveChart would
+      // crash on metrics.losses.map).
+      if (data && Array.isArray(data.losses)) {
+        setPolledMetrics(data as unknown as TrainingMetrics);
+      }
     } catch {
       // No training endpoint
     }
@@ -387,7 +395,13 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 ruhStatus={ruhStatus}
                 onStatusChange={refreshAll}
               />
-              <LossCurveChart metrics={metrics} history={trainingHistory} />
+              {metrics && Array.isArray(metrics.losses) ? (
+                <LossCurveChart metrics={metrics} history={trainingHistory} />
+              ) : (
+                <div className="card flex items-center justify-center text-sm text-gray-400 dark:text-gray-500 py-10">
+                  Training metrics unavailable — log in to view.
+                </div>
+              )}
             </div>
 
             {/* Generation playground */}
