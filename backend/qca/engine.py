@@ -17,6 +17,7 @@ This module implements the complete 7-layer cognitive pipeline:
 """
 
 import logging
+import os
 import re
 import time
 from collections import Counter, defaultdict
@@ -24,6 +25,78 @@ from collections import Counter, defaultdict
 from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
 logger = logging.getLogger("mizan.qca")
+
+
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-3) ──────────────────────────
+# Flag-gated: MIZAN_NLP_NATIVE_WSD=1 augments process_input() with native
+# sense candidates under the additive key `senses_identified`. Default OFF =
+# today's dict shape exactly. Fail-closed: ModelNotReadyError / inference
+# exceptions -> logged fallback, the 7-layer pipeline is never touched.
+
+#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
+#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
+#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
+#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
+#: the top end, so the gate filters ambiguous low-information cases while the
+#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
+#: carries the residual overconfident-error risk.
+NLP_MIN_SENSE_CONFIDENCE = 0.8
+
+#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
+#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
+NLP_MIN_SENSE_MARGIN = 0.2
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> list[dict]:
+    """Native WSD candidates for each ISM root (Phase 2, IP-3).
+
+    Returns e.g. [{"lemma": "كتب", "sense_id": "qcsmp2:كَتَب:write",
+    "confidence": 0.91, "english_term": "write"}] -- entries only for roots
+    whose top sense clears NLP_MIN_SENSE_CONFIDENCE. [] when the flag is off
+    or the model is not ready. Additive signal only.
+    """
+    if not roots or not _nlp_native_wsd_enabled():
+        return []
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- QCA senses skipped", exc)
+        return []
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- QCA senses skipped")
+        return []
+    out: list[dict] = []
+    for r in roots[:limit]:
+        lemma = r.get("root") or ""
+        if not lemma:
+            continue
+        try:
+            candidates = disambiguate(text, lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- QCA senses skipped")
+            return out
+        except Exception as exc:  # fail-closed: never break the pipeline
+            logger.warning("mizan.nlp inference failed for root %r (%s) -- skipped", lemma, exc)
+            continue
+        if not candidates:
+            continue
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        if confidence >= NLP_MIN_SENSE_CONFIDENCE and (confidence - runner_up) >= NLP_MIN_SENSE_MARGIN:
+            out.append(
+                {
+                    "lemma": lemma,
+                    "sense_id": sense_id,
+                    "confidence": round(confidence, 4),
+                    "english_term": r.get("english_term", ""),
+                }
+            )
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -886,13 +959,20 @@ class QCAEngine:
             tier=3,
         )
 
-        return {
+        result = {
             "perception": perception,
             "roots_identified": roots,
             "key_terms": key_terms,
             "zahir": perception["fuad"]["zahir"],
             "batin": perception["fuad"]["batin"],
         }
+        # Phase 2 (mizan.nlp, IP-3): native sense candidates per root.
+        # Additive signal only -- the key exists ONLY when the flag is on, so
+        # flag-off output is bit-for-bit identical to today. The 7-layer
+        # pipeline is untouched.
+        if _nlp_native_wsd_enabled():
+            result["senses_identified"] = _native_senses_for_roots(text, roots)
+        return result
 
     async def process_input_multimodal(
         self,
