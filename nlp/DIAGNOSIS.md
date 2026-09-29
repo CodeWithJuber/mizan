@@ -1,18 +1,18 @@
 # Diagnosis — mizan.nlp Phase 3, Track 1: the 12 zero-recall senses
 
-**Artifact:** `backend/nlp/artifacts/default/` v1.0.0 (mizan-sense-wsd), per-lemma
+**Artifact:** `nlp/artifacts/default/` v1.0.0 (mizan-sense-wsd), per-lemma
 sklearn LogisticRegression, variant 'a'. **Read-only diagnosis**: no retraining,
 no artifact modification, no relabeling (verified: branch diff vs main touches
 only the two new docs).
 
-**Preregistration:** `backend/nlp/DIAGNOSIS_PREREG.md` (committed before any
+**Preregistration:** `nlp/DIAGNOSIS_PREREG.md` (committed before any
 test-set analysis). Claim tags: ✅ verified by this run / 📋 from earlier
 (Track-1 reports, manifest, build scripts) / ❌ could not verify.
 
 ## 1. Reproduction ✅
 
 Loaded `model.joblib` (sha256 `019f0795…d8c26` matches manifest ✅) with the
-frozen `_features` extractor verbatim from `backend/nlp/wsd.py`, ran inference
+frozen `_features` extractor verbatim from `nlp/wsd.py`, ran inference
 on the Phase-1 eval set (`split=="test"`, `perturbation=="base"`, n=627 —
 matches manifest `eval_n` ✅):
 

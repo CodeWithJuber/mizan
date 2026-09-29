@@ -35,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
-# The harness ships inside backend/nlp/, so the nlp package is importable
+# The harness ships inside nlp/, so the nlp package is importable
 # from the repo's backend/ directory. Manifest validation stays single-sourced
 # in nlp/artifact.py; the feature extractor stays single-sourced in nlp/wsd.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -509,7 +509,7 @@ def main():
         "version_warnings": art["version_warnings"],
     }
     protocol = {
-        "preregistration": "backend/nlp/PREREGISTRATION_PHASE3.md (frozen 2026-09-29)",
+        "preregistration": "nlp/PREREGISTRATION_PHASE3.md (frozen 2026-09-29)",
         "dataset": "Q-CSMP v2",
         "dataset_md5": DATA_MD5,
         "split": "per-lemma whole-surah holdout, base items only",

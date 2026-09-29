@@ -3,7 +3,7 @@ mizan.nlp — Native Qur'anic Arabic sense-disambiguation package
 ===============================================================
 
 Wired to the real Track-1 artifact (per-lemma sklearn LogisticRegression,
-trained 2026-09-29 on Q-CSMP v2, shipped in ``backend/nlp/artifacts/default/``).
+trained 2026-09-29 on Q-CSMP v2, shipped in ``nlp/artifacts/default/``).
 
 Public interface
 ----------------

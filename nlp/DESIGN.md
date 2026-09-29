@@ -5,7 +5,7 @@ to the agent loop yet — `disambiguate()` raises `ModelNotReadyError` until the
 trained artifact lands (fail-closed, JEV `choice` decision, confidence 0.91).
 
 **Logical name:** `mizan.nlp` — Mizan's *own* NLP, its native Qur'anic Arabic
-sense-disambiguation module. **Physical path:** `backend/nlp/` — the wheel
+sense-disambiguation module. **Physical path:** `nlp/` — the wheel
 packages only `backend` (`pyproject.toml` → `[tool.hatch.build.targets.wheel]`
 → `packages = ["backend"]`), and the codebase imports with `backend/` on
 `sys.path` (e.g. `backend/agents/base.py` does `from agents... import ...`).
@@ -36,7 +36,7 @@ if is_ready():  # False in Phase 1
   is loaded. The agent loop must catch it and fall back to the LLM path —
   never swallow silently.
 - **`is_ready() -> bool`**: Phase 1 always `False`. Phase 2 checks
-  `MIZAN_NLP_ARTIFACT` env dir, then `backend/nlp/artifacts/default/`.
+  `MIZAN_NLP_ARTIFACT` env dir, then `nlp/artifacts/default/`.
 - Files: `__init__.py` (public API), `wsd.py` (entry point), `types.py`
   (`SenseCandidate`, `DisambiguationResult`), `artifact.py` (training-track
   handoff contract).
@@ -70,7 +70,7 @@ Lawh tiering; faculty engines. Small blast radius, additive signal.
 
 ## 4. What the trained artifact must provide
 
-All enforced by `backend/nlp/artifact.py` (`ArtifactManifest.validate()`):
+All enforced by `nlp/artifact.py` (`ArtifactManifest.validate()`):
 
 - **Format**: directory containing exactly `manifest.json` (+ schema v1),
   `model.safetensors` (weights — **safetensors only, no pickle**),

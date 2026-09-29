@@ -13,8 +13,8 @@ first candidate evaluation begins; any change requires a new dated
 amendment with its own freeze attestation.
 
 **Path note:** the task brief named `backend/mizan/nlp/`; no such directory
-exists in the repo. The package lives at `backend/nlp/` (verified at main
-`63dfb521`). All Phase-3 files go under `backend/nlp/`.
+exists in the repo. The package lives at `nlp/` (verified at main
+`63dfb521`). All Phase-3 files go under `nlp/`.
 
 ## 1. Eval split (identity — verified pre-freeze, all ✅)
 

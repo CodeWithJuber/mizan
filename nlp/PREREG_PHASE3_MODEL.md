@@ -1,8 +1,8 @@
 # PREREGISTRATION — Phase 3 Track 3: model-side ablations
 
 **FROZEN:** 2026-09-29 ~17:55 +04 (Asia/Dubai), BEFORE any ablation training
-or candidate evaluation. Track 1's diagnosis (`backend/nlp/DIAGNOSIS.md`) and
-the Track-4 eval harness (`backend/nlp/eval_phase3.py` + `PREREGISTRATION_PHASE3.md`)
+or candidate evaluation. Track 1's diagnosis (`nlp/DIAGNOSIS.md`) and
+the Track-4 eval harness (`nlp/eval_phase3.py` + `PREREGISTRATION_PHASE3.md`)
 are read and frozen; no candidate artifact has been trained or evaluated.
 
 **Scope:** model-side interventions only, on the CURRENT (pre-merge) sense
@@ -79,7 +79,7 @@ outcome, not a surprise.
 **What ships:** the winning intervention is applied to Track 2's MERGED
 inventory once its retrained data lands on the branch; the resulting model is
 re-evaluated with the frozen harness and, if the Track-4 rule passes on the
-merged inventory, written to `backend/nlp/artifacts/candidate_model_v1/`
+merged inventory, written to `nlp/artifacts/candidate_model_v1/`
 (joblib + manifest.json with sha256; manifest `eval_verdict` names the rule
 outcome honestly). If Track 2 has not landed when ablations finish, the
 standalone (pre-merge) winner artifact is written to `candidate_model_v1/`
