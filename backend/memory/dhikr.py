@@ -30,10 +30,104 @@ QCA Integration:
 """
 
 import json
+import logging
+import os
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger("mizan.dhikr")
+
+
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-4) ──────────────────────────
+# Flag-gated: MIZAN_NLP_NATIVE_WSD=1 adds an ADVISORY native-sense note for
+# Arabic lemmas in the recall query. Advisory-only: recall ranking and the
+# returned memories are NEVER changed by this -- the note just flags which
+# sense the native model reads, so same-root/different-sense concepts stay
+# distinguishable to the reader. Default OFF = today's behavior bit-for-bit.
+
+#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
+#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
+#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
+#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
+#: the top end, so the gate filters ambiguous low-information cases while the
+#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
+#: carries the residual overconfident-error risk.
+NLP_MIN_SENSE_CONFIDENCE = 0.8
+
+#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
+#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
+NLP_MIN_SENSE_MARGIN = 0.2
+
+_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
+    seen: list[str] = []
+    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
+        if tok not in seen:
+            seen.append(tok)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
+def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
+    """Guarded native-WSD call. Returns ["lemma->sense_id (conf)", ...].
+
+    Fail-closed: import failure / not-ready / inference exceptions are LOGGED
+    and yield [] -- recall behavior continues unchanged (hikmah-stack:
+    engines propose, the kernel admits; unknown stays unknown, never
+    backfilled with a guess).
+    """
+    if not lemmas or not _nlp_native_wsd_enabled():
+        return []
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- recall advisory skipped", exc)
+        return []
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- recall advisory skipped")
+        return []
+    bits: list[str] = []
+    for lemma in lemmas:
+        try:
+            candidates = disambiguate(text, lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- recall advisory skipped")
+            return bits
+        except Exception as exc:  # fail-closed: never break recall
+            logger.warning("mizan.nlp inference failed for lemma %r (%s) -- skipped", lemma, exc)
+            continue
+        if not candidates:
+            continue  # unknown stays unknown -- never backfilled
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        margin = confidence - runner_up
+        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+            bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
+    return bits
+
+
+def _native_sense_advisory(query: str) -> str:
+    """Advisory native-WSD note for a recall query (Phase 2, IP-4).
+
+    Returns "" when there is nothing to advise -- recall ranking itself is
+    never changed by this function.
+    """
+    bits = _native_sense_bits(query, _arabic_lemmas(query))
+    if not bits:
+        return ""
+    return "[Native sense advisory: " + ", ".join(bits) + "]"
 
 
 @dataclass
@@ -412,9 +506,19 @@ class DhikrMemorySystem:
         Recall unified memory and format for system prompt injection.
         Returns empty string if nothing relevant found.
         """
-        if self.pyramid:
-            return self.pyramid.format_for_prompt(query, top_k=top_k)
-        return self.recall_pathways(query, top_k=top_k)
+        # Phase 2 (mizan.nlp, IP-4): advisory native-sense note on the query.
+        # Advisory-only -- the recalled memories below are unchanged; the note
+        # keeps native/LLM sense readings visibly side-by-side (hikmah-stack:
+        # contradiction visibility -- never silently fold one into the other).
+        advisory = _native_sense_advisory(query)
+        base = (
+            self.pyramid.format_for_prompt(query, top_k=top_k)
+            if self.pyramid
+            else self.recall_pathways(query, top_k=top_k)
+        )
+        if advisory:
+            return f"{base}\n{advisory}" if base else advisory
+        return base
 
     async def _persist(self, memory: Memory):
         """Persist memory to database"""

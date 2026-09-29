@@ -33,6 +33,84 @@ from dataclasses import dataclass
 logger = logging.getLogger("mizan.masalik")
 
 
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-4) ──────────────────────────
+# Flag-gated: MIZAN_NLP_NATIVE_WSD=1 computes an ADVISORY native-sense read of
+# Arabic lemmas in the recall query BEFORE activation. Advisory-only: the
+# spreading-activation below is untouched -- the read is logged (not
+# returned), so same-root/different-sense merges stay observable while the
+# network logic is unchanged. Default OFF = today's behavior bit-for-bit.
+
+#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
+#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
+#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
+#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
+#: the top end, so the gate filters ambiguous low-information cases while the
+#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
+#: carries the residual overconfident-error risk.
+NLP_MIN_SENSE_CONFIDENCE = 0.8
+
+#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
+#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
+NLP_MIN_SENSE_MARGIN = 0.2
+
+_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
+    seen: list[str] = []
+    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
+        if tok not in seen:
+            seen.append(tok)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
+def _log_native_sense_advisory(query: str) -> None:
+    """Advisory native-WSD read of Arabic lemmas in a recall query (IP-4).
+
+    Computed BEFORE activation; advisory-only -- spreading activation is
+    unchanged. Fail-closed: import failure / not-ready / inference exceptions
+    are LOGGED and skipped. Unknown lemmas stay unknown (never backfilled).
+    """
+    lemmas = _arabic_lemmas(query)
+    if not lemmas or not _nlp_native_wsd_enabled():
+        return
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- recall advisory skipped", exc)
+        return
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- recall advisory skipped")
+        return
+    bits: list[str] = []
+    for lemma in lemmas:
+        try:
+            candidates = disambiguate(text=query, lemma=lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- recall advisory skipped")
+            return
+        except Exception as exc:  # fail-closed: never break recall
+            logger.warning("mizan.nlp inference failed for lemma %r (%s) -- skipped", lemma, exc)
+            continue
+        if not candidates:
+            continue  # unknown stays unknown -- never backfilled
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        margin = confidence - runner_up
+        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+            bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
+    if bits:
+        logger.info("mizan.nlp recall advisory for query %r: %s", query[:80], "; ".join(bits))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA STRUCTURES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -483,6 +561,9 @@ class MasalikNetwork:
 
         "And remember (udhkuru) Allah much, that you may be successful." — 8:45
         """
+        # Phase 2 (mizan.nlp, IP-4): advisory native-sense read BEFORE
+        # activation -- logged only, spreading activation below is unchanged.
+        _log_native_sense_advisory(query)
         query_concepts = extract_concepts(query)
         if not query_concepts:
             return []
