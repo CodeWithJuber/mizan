@@ -2552,7 +2552,12 @@ function AppInner() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
       {/* Connection banner */}
-      <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
+      <ConnectionBanner
+        status={wsStatus}
+        attempts={reconnectAttempts}
+        backendUp={null}
+        onLogin={() => setActiveTab("security")}
+      />
 
       {/* Header */}
       <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
