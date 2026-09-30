@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { PageProps, Notebook, NotebookCell, CellOutput } from "../types";
+import { useToast } from "../components/Toast";
 
 const CELL_BORDER_COLOR: Record<string, string> = {
   markdown: "border-l-blue-500",
@@ -15,6 +16,7 @@ const CELL_BORDER_COLOR: Record<string, string> = {
 };
 
 export default function NotebookPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
   const [showCreate, setShowCreate] = useState<boolean>(false);
@@ -96,14 +98,23 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       });
       loadNotebook(activeNotebook.id);
       const cell = (data as Record<string, unknown>).cell as
-        | Record<string, unknown>
-        | undefined;
-      if (cell?.status === "error") {
-        addTerminalLine?.("Cell execution error", "error");
+        Record<string, unknown> | undefined;
+      if (!cell) {
+        addToast({
+          type: "error",
+          title: "Cell fail ho gaya — dobara try karo",
+        });
+      } else if (cell?.status === "error") {
+        addToast({ type: "error", title: "Cell me error aaya" });
       } else {
-        addTerminalLine?.("Cell executed successfully", "gold");
+        addToast({ type: "success", title: "Cell chal gaya" });
       }
-    } catch {}
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Cell fail ho gaya",
+      });
+    }
   };
 
   const executeAll = async () => {
@@ -116,8 +127,13 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         notebook_id: activeNotebook.id,
       });
       loadNotebook(activeNotebook.id);
-      addTerminalLine?.("All cells executed", "gold");
-    } catch {}
+      addToast({ type: "success", title: "Saare cells chal gaye" });
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Execute fail ho gaya",
+      });
+    }
   };
 
   const updateCell = async (cellId: string) => {
@@ -298,20 +314,20 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
             <p className="page-description text-xs mt-0">كتاب</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
-            className="btn-secondary btn-sm"
+            className="btn-secondary btn-sm min-h-[44px]"
             onClick={() => addCell("code")}
           >
             + Code
           </button>
           <button
-            className="btn-secondary btn-sm"
+            className="btn-secondary btn-sm min-h-[44px]"
             onClick={() => addCell("markdown")}
           >
             + Markdown
           </button>
-          <button className="btn-gold btn-sm" onClick={executeAll}>
+          <button className="btn-gold btn-sm min-h-[44px]" onClick={executeAll}>
             Run All
           </button>
           <button

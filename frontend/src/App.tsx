@@ -40,8 +40,6 @@ import {
 } from "./components/ChatMessage";
 import { Sidebar } from "./components/Sidebar";
 import { MobileNav } from "./components/MobileNav";
-import { RootExplorerDrawer } from "./components/ruh/RootExplorerDrawer";
-import type { ExplainPromptResponse } from "./types/morphology";
 import { AgentModal } from "./components/AgentModal";
 import { SkeletonCard } from "./components/Skeleton";
 
@@ -194,8 +192,6 @@ function AppInner() {
     localStorage.setItem("mizan_active_tab", tab);
   }, []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // MORPH-FEAT: Arabic word tap-to-explore drawer
-  const [exploreWord, setExploreWord] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -205,10 +201,6 @@ function AppInner() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState<string>("connecting");
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  // Liveness of the HTTP backend, from the public GET /api/health probe
-  // (unauthenticated). null = not yet probed. This — not the WS state —
-  // decides whether "cannot connect to backend" is shown.
-  const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
     { text: "MIZAN System Initializing...", type: "" },
     { text: "Connecting to backend...", type: "" },
@@ -303,26 +295,6 @@ function AppInner() {
     ]);
   }, []);
 
-  // Public backend liveness probe (no auth). Polled so the connection
-  // banner can tell "backend down" apart from "login required" (WS 4401).
-  useEffect(() => {
-    let cancelled = false;
-    const probe = async () => {
-      try {
-        const res = await fetch(`${config.API_URL}/health`);
-        if (!cancelled) setBackendUp(res.ok);
-      } catch {
-        if (!cancelled) setBackendUp(false);
-      }
-    };
-    probe();
-    const timer = setInterval(probe, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
-
   // Connect WebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -354,21 +326,8 @@ function AppInner() {
           handleWsMessage(data);
         };
 
-        socket.onclose = (event: CloseEvent) => {
+        socket.onclose = () => {
           setWs(null);
-          // 4401 = fail-closed auth rejection (anonymous or expired token).
-          // Not a backend outage: stop the reconnect storm and surface an
-          // explicit "login required" state instead of "disconnected".
-          if (event.code === 4401) {
-            attempts = 0;
-            setReconnectAttempts(0);
-            setWsStatus("auth_required");
-            addTerminalLine(
-              "Authentication required — log in on the Security page",
-              "warn",
-            );
-            return;
-          }
           attempts++;
           setReconnectAttempts(attempts);
           if (attempts >= 5) {
@@ -806,6 +765,17 @@ function AppInner() {
     return () => clearInterval(interval);
   }, []);
 
+  // On 401 (token expired/invalid), send user to Security tab to log in again
+  useEffect(() => {
+    const onUnauthorized = () => {
+      addToast({ type: "error", title: "Session expired — dobara login karo" });
+      setActiveTab("security");
+    };
+    window.addEventListener("mizan:unauthorized", onUnauthorized);
+    return () =>
+      window.removeEventListener("mizan:unauthorized", onUnauthorized);
+  }, []);
+
   // Persist sessionId to localStorage
   useEffect(() => {
     localStorage.setItem("mizan_session_id", sessionId);
@@ -896,6 +866,7 @@ function AppInner() {
         const payload: Record<string, unknown> = {
           type: "multimodal",
           text: content,
+          content: content,
           agent_id: selectedAgent?.id,
           session_id: sessionId,
         };
@@ -1091,6 +1062,12 @@ function AppInner() {
           desc: "Task queue & workers",
           icon: <Icons.Clock />,
         },
+        {
+          id: "majlis",
+          label: "Majlis",
+          desc: "Agent community",
+          icon: <Icons.Users />,
+        },
       ],
     },
     {
@@ -1131,6 +1108,12 @@ function AppInner() {
           label: "Plugins",
           desc: "Extend with add-ons",
           icon: <Icons.Plugin />,
+        },
+        {
+          id: "scanner",
+          label: "Scanner",
+          desc: "Scan for issues",
+          icon: <Icons.Search />,
         },
       ],
     },
@@ -1189,9 +1172,7 @@ function AppInner() {
       ? "bg-emerald-500"
       : wsStatus === "connecting" || wsStatus === "reconnecting"
         ? "bg-amber-500 animate-pulse"
-        : wsStatus === "auth_required"
-          ? "bg-sky-500"
-          : "bg-red-500";
+        : "bg-red-500";
 
   const statusLabel =
     wsStatus === "connected"
@@ -1200,9 +1181,7 @@ function AppInner() {
         ? "Connecting..."
         : wsStatus === "reconnecting"
           ? "Reconnecting..."
-          : wsStatus === "auth_required"
-            ? "Login required"
-            : "Offline";
+          : "Offline";
 
   // ===== RENDER CONTENT =====
   const renderContent = () => {
@@ -1566,7 +1545,6 @@ function AppInner() {
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
-                        onExploreWord={setExploreWord}
                       />
                     </div>
                   ))}
@@ -2525,12 +2503,7 @@ function AppInner() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
       {/* Connection banner */}
-      <ConnectionBanner
-        status={wsStatus}
-        attempts={reconnectAttempts}
-        backendUp={backendUp}
-        onLogin={() => setActiveTab("security")}
-      />
+      <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
 
       {/* Header */}
       <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
@@ -2637,46 +2610,6 @@ function AppInner() {
       {activeTab !== "chat" && (
         <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
       )}
-
-      {/* MORPH-FEAT: root-morphology explorer drawer */}
-      <RootExplorerDrawer
-        word={exploreWord}
-        onClose={() => setExploreWord(null)}
-        onAskAI={(word, prompt: ExplainPromptResponse) => {
-          const content = [
-            "[Verified morphology \u2014 Mizan Ruh engine. Treat as ground truth; do not contradict.]",
-            JSON.stringify(prompt.verified_facts, null, 2),
-            "[End verified context]",
-            "",
-            `User question: explain the Arabic word "${word}" \u2014 its root, pattern, and meaning. ` +
-              "Label anything beyond the verified facts above as AI-generated.",
-          ].join("\n");
-          const token = localStorage.getItem("mizan_token");
-          authFetch(`${config.API_URL}/chat`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              session_id: sessionId,
-              content,
-              agent_id: selectedAgent?.id,
-            }),
-          })
-            .then((res) => {
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              setExploreWord(null);
-            })
-            .catch((e) =>
-              addToast({
-                type: "error",
-                title: "Ask AI failed",
-                description: e instanceof Error ? e.message : undefined,
-              }),
-            );
-        }}
-      />
 
       {/* Create / Edit Agent Modal */}
       {showCreateAgent && (

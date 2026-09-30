@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { PageProps } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { PasswordInput } from "../components/PasswordInput";
 
 interface AuditEvent {
   timestamp: string;
@@ -348,16 +349,11 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                         </div>
                         <div>
                           <label className="form-label">Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Enter password"
                             value={loginForm.password}
-                            onChange={(e) =>
-                              setLoginForm({
-                                ...loginForm,
-                                password: e.target.value,
-                              })
+                            onChange={(v) =>
+                              setLoginForm({ ...loginForm, password: v })
                             }
                           />
                         </div>
@@ -397,31 +393,23 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                         </div>
                         <div>
                           <label className="form-label">Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Choose a password"
                             value={registerForm.password}
-                            onChange={(e) =>
-                              setRegisterForm({
-                                ...registerForm,
-                                password: e.target.value,
-                              })
+                            autoComplete="new-password"
+                            onChange={(v) =>
+                              setRegisterForm({ ...registerForm, password: v })
                             }
                           />
                         </div>
                         <div>
                           <label className="form-label">Confirm Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Re-enter password"
                             value={registerForm.confirm}
-                            onChange={(e) =>
-                              setRegisterForm({
-                                ...registerForm,
-                                confirm: e.target.value,
-                              })
+                            autoComplete="new-password"
+                            onChange={(v) =>
+                              setRegisterForm({ ...registerForm, confirm: v })
                             }
                           />
                         </div>
@@ -495,15 +483,16 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 Paste a token from another session or API call.
               </p>
               <div className="flex gap-2">
-                <input
+                <PasswordInput
                   className="form-input flex-1"
-                  type="password"
                   placeholder="Paste token here..."
-                  onChange={(e) => {
-                    const val = e.target.value.trim();
-                    if (val) {
-                      localStorage.setItem("mizan_token", val);
-                      setToken(val);
+                  value=""
+                  autoComplete="off"
+                  onChange={(val) => {
+                    const v = val.trim();
+                    if (v) {
+                      localStorage.setItem("mizan_token", v);
+                      setToken(v);
                       setMessage({ type: "success", text: "Token saved" });
                     }
                   }}
