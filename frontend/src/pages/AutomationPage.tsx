@@ -62,6 +62,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   };
 
   const removeJob = async (jobId: string) => {
+    if (!window.confirm("Ye scheduled job delete kar dun?")) return;
     try {
       await api.del(`/automation/jobs/${jobId}`);
       addTerminalLine?.("Job removed", "gold");

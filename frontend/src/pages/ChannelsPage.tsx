@@ -12,6 +12,7 @@ import type {
   Integration,
 } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 
 const CHANNEL_TYPES: Record<
   string,
@@ -75,6 +76,7 @@ const CHANNEL_TYPES: Record<
 };
 
 export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(
@@ -131,24 +133,15 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   }, [loadChannels, loadIntegrations, loadGatewayStatus]);
 
   const toggleChannel = async (channelId: string) => {
-    try {
-      const integration = integrations.find((i) => i.type === channelId);
-      if (integration) {
-        await api.post("/integrations", {
-          name: integration.name,
-          type: integration.type,
-          enabled: !integration.enabled,
-          config: integration.config || {},
-        });
-      }
-      await api.post(`/gateway/channels/${channelId}/toggle`);
-      addTerminalLine?.(`Channel ${channelId} toggled`, "gold");
-      loadChannels();
-      loadIntegrations();
-    } catch (err) {
-      console.error("Failed to toggle channel:", err);
-      addTerminalLine?.(`Failed to toggle channel ${channelId}`, "error");
-    }
+    // Channels are env-var driven at startup — there is no runtime toggle API.
+    // Be honest: expand the Config panel so the user sees what's needed.
+    setShowConfig(channelId);
+    addToast({
+      type: "info",
+      title: "Channel setup",
+      description:
+        "Channels connect via server config — see Config below for what's needed.",
+    });
   };
 
   return (
@@ -235,10 +228,10 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
 
                 <div className="flex gap-2">
                   <button
-                    className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm`}
+                    className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm min-h-[44px]`}
                     onClick={() => toggleChannel(type)}
                   >
-                    {isConnected ? "Disconnect" : "Connect"}
+                    {isConnected ? "Connected" : "Setup"}
                   </button>
                   <button
                     className="btn-secondary btn-sm"
