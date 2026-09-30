@@ -57,6 +57,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost}}
       - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-}
       - RUH_ENABLED=${RUH_ENABLED:-}
+      - RUH_MODEL_PATH=${RUH_MODEL_PATH:-}
     volumes:
       - mizan-data:/data
     networks:
