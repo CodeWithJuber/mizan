@@ -136,8 +136,14 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
         action: "history",
       });
       setHistory((data.scans || []) as ScanHistoryItem[]);
-    } catch {}
-  }, [api]);
+    } catch {
+      addToast({
+        type: "error",
+        title: "Scan history load nahi hui",
+        description: "Phir se try karo ya page refresh karo.",
+      });
+    }
+  }, [api, addToast]);
 
   useEffect(() => {
     loadHistory();

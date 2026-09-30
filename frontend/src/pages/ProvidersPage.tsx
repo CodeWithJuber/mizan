@@ -514,42 +514,14 @@ export default function ProvidersPage({ api }: PageProps) {
           <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
             Quick Setup
           </h3>
-          <div className="space-y-2 text-sm font-mono">
-            <div>
-              <span className="text-amber-600 dark:text-amber-400">
-                Anthropic:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                ANTHROPIC_API_KEY=sk-ant-...
-              </span>
-            </div>
-            <div>
-              <span className="text-purple-600 dark:text-purple-400">
-                OpenRouter:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OPENROUTER_API_KEY=sk-or-...
-              </span>{" "}
-              <span className="text-gray-400 dark:text-gray-500">
-                (300+ models)
-              </span>
-            </div>
-            <div>
-              <span className="text-emerald-600 dark:text-emerald-400">
-                OpenAI:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OPENAI_API_KEY=sk-...
-              </span>
-            </div>
-            <div>
-              <span className="text-blue-600 dark:text-blue-400">Ollama:</span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OLLAMA_URL=http://localhost:11434
-              </span>{" "}
-              <span className="text-gray-400 dark:text-gray-500">(local)</span>
-            </div>
-          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Add your API keys in{" "}
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              Settings → AI Providers
+            </span>{" "}
+            — no server access needed. Keys are stored securely on your Mizan
+            server.
+          </p>
         </div>
       </div>
     </div>
