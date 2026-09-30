@@ -130,7 +130,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
 
   const loadAgents = useCallback(async () => {
     try {
-      const data = await api.get("/api/agents");
+      const data = await api.get("/agents");
       if (Array.isArray(data.agents)) {
         setAgents(
           data.agents.map(

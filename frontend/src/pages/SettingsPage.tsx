@@ -228,7 +228,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
     }
     setTogglingChannel((prev) => ({ ...prev, [channel.name]: true }));
     try {
-      await api.post(`/api/channels/${channel.name}/${action}`);
+      await api.post(`/channels/${channel.name}/${action}`);
       addToast({
         type: "success",
         title: channel.connected ? "Channel stopped" : "Channel started",

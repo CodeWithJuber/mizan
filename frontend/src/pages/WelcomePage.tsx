@@ -7,6 +7,7 @@
 import { useState, useEffect } from "react";
 import type { ApiClient } from "../types";
 import { PasswordInput } from "../components/PasswordInput";
+import { useToast } from "../components/Toast";
 
 interface WelcomePageProps {
   api: ApiClient;
@@ -32,6 +33,7 @@ export default function WelcomePage({
   onComplete,
   onOpenSettings,
 }: WelcomePageProps) {
+  const { addToast } = useToast();
   const [step, setStep] = useState<Step>(() =>
     localStorage.getItem("mizan_token") ? "welcome" : "login",
   );
@@ -172,8 +174,20 @@ export default function WelcomePage({
         healthy?: boolean;
       };
       setHealthResult((prev) => ({ ...prev, [name]: !!res.healthy }));
+      if (!res.healthy) {
+        addToast({
+          type: "warning",
+          title: `${name} not healthy`,
+          description: "API key check karo ya provider ka status dekho.",
+        });
+      }
     } catch {
       setHealthResult((prev) => ({ ...prev, [name]: false }));
+      addToast({
+        type: "error",
+        title: `${name} test failed`,
+        description: "Server se connect nahi ho paya.",
+      });
     }
     setTesting(null);
   };

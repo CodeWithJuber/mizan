@@ -156,7 +156,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
     setToggling((prev) => ({ ...prev, [channelId]: true }));
     try {
       await api.post(
-        `/api/channels/${channelId}/${isConnected ? "stop" : "start"}`,
+        `/channels/${channelId}/${isConnected ? "stop" : "start"}`,
       );
       addToast({
         type: "success",
