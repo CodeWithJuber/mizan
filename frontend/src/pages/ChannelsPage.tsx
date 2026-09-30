@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
+import { PasswordInput } from "../components/PasswordInput";
 
 const CHANNEL_TYPES: Record<
   string,
@@ -84,6 +85,10 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   );
   const [showConfig, setShowConfig] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [configTokens, setConfigTokens] = useState<Record<string, string>>({});
+  const [configSaving, setConfigSaving] = useState<Record<string, boolean>>({});
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
+  const [retrying, setRetrying] = useState(false);
 
   const loadChannels = useCallback(async () => {
     setLoading(true);
@@ -133,15 +138,92 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
   }, [loadChannels, loadIntegrations, loadGatewayStatus]);
 
   const toggleChannel = async (channelId: string) => {
-    // Channels are env-var driven at startup — there is no runtime toggle API.
-    // Be honest: expand the Config panel so the user sees what's needed.
-    setShowConfig(channelId);
-    addToast({
-      type: "info",
-      title: "Channel setup",
-      description:
-        "Channels connect via server config — see Config below for what's needed.",
-    });
+    // WebChat is built in — no backend start/stop exists for it.
+    if (channelId === "webchat") {
+      setShowConfig(showConfig === channelId ? null : channelId);
+      return;
+    }
+    const channel = channels.find((c) => c.type === channelId);
+    const integration = integrations.find((i) => i.type === channelId);
+    const isConnected =
+      channel?.status === "connected" || integration?.enabled === true;
+    const displayName = CHANNEL_TYPES[channelId]?.name || channelId;
+
+    if (isConnected && !window.confirm(`Stop the ${displayName} channel?`)) {
+      return;
+    }
+
+    setToggling((prev) => ({ ...prev, [channelId]: true }));
+    try {
+      await api.post(
+        `/api/channels/${channelId}/${isConnected ? "stop" : "start"}`,
+      );
+      addToast({
+        type: "success",
+        title: isConnected ? "Channel stopped" : "Channel started",
+        description: `${displayName} channel ${isConnected ? "stopped" : "started"}.`,
+      });
+      await loadChannels();
+      await loadGatewayStatus();
+    } catch (e: any) {
+      if (!isConnected) {
+        // Most likely: no token saved yet — open Config so the user can add it.
+        setShowConfig(channelId);
+        addToast({
+          type: "warning",
+          title: "Token needed",
+          description:
+            e?.message || "Save your bot token below, then start the channel.",
+        });
+      } else {
+        addToast({
+          type: "error",
+          title: "Couldn't stop channel",
+          description: e?.message || "Please try again.",
+        });
+      }
+    } finally {
+      setToggling((prev) => ({ ...prev, [channelId]: false }));
+    }
+  };
+
+  const saveConfigToken = async (channelId: string) => {
+    const token = configTokens[channelId];
+    if (!token) return;
+    const displayName = CHANNEL_TYPES[channelId]?.name || channelId;
+    setConfigSaving((prev) => ({ ...prev, [channelId]: true }));
+    try {
+      await api.post("/settings", {
+        section: "channel",
+        provider: channelId,
+        api_key: token,
+      });
+      addToast({
+        type: "success",
+        title: "Token saved",
+        description: `${displayName} token saved securely.`,
+      });
+      setConfigTokens((prev) => ({ ...prev, [channelId]: "" }));
+      await loadChannels();
+      await loadGatewayStatus();
+    } catch (e: any) {
+      addToast({
+        type: "error",
+        title: "Couldn't save token",
+        description: e?.message || "Please try again.",
+      });
+    } finally {
+      setConfigSaving((prev) => ({ ...prev, [channelId]: false }));
+    }
+  };
+
+  const retryGateway = async () => {
+    setRetrying(true);
+    try {
+      await Promise.all([loadGatewayStatus(), loadChannels()]);
+    } finally {
+      setRetrying(false);
+    }
   };
 
   return (
@@ -164,6 +246,21 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
       <div className="quran-quote">
         "Enter upon them through the gate (Bab)" — Quran 5:23
       </div>
+
+      {gatewayStatus && gatewayStatus.status !== "online" && !loading && (
+        <div className="mx-5 mt-3 p-3 rounded-lg text-sm bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20 flex flex-col sm:flex-row sm:items-center gap-2">
+          <span className="flex-1">
+            Messaging is offline — channels can't connect right now.
+          </span>
+          <button
+            onClick={retryGateway}
+            disabled={retrying}
+            className="btn-secondary btn-sm min-h-[44px] w-full sm:w-auto disabled:opacity-50"
+          >
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
 
       {loading && (
         <div className="p-5" aria-live="polite">
@@ -207,7 +304,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                   <span
                     className={`badge text-2xs ${isConnected ? "badge-success" : "badge-warning"}`}
                   >
-                    {isConnected ? "ACTIVE" : "IDLE"}
+                    {isConnected ? "Connected" : "Not connected"}
                   </span>
                 </div>
 
@@ -228,13 +325,22 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
 
                 <div className="flex gap-2">
                   <button
-                    className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm min-h-[44px]`}
+                    className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm min-h-[44px] disabled:opacity-50`}
                     onClick={() => toggleChannel(type)}
+                    disabled={toggling[type]}
                   >
-                    {isConnected ? "Connected" : "Setup"}
+                    {toggling[type]
+                      ? isConnected
+                        ? "Stopping…"
+                        : "Starting…"
+                      : isConnected
+                        ? "Stop"
+                        : type === "webchat"
+                          ? "Setup"
+                          : "Start"}
                   </button>
                   <button
-                    className="btn-secondary btn-sm"
+                    className="btn-secondary btn-sm min-h-[44px]"
                     onClick={() =>
                       setShowConfig(showConfig === type ? null : type)
                     }
@@ -248,62 +354,44 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                     <div className="text-xs font-mono text-gray-500 dark:text-gray-400 mb-2">
                       Configuration for {info.name}
                     </div>
-                    {type === "telegram" && (
-                      <div>
-                        <label className="form-label" htmlFor="telegram-token">
-                          Bot Token
-                        </label>
-                        <input
-                          id="telegram-token"
-                          className="form-input"
-                          type="password"
-                          placeholder="Enter Telegram bot token..."
-                        />
+                    {type === "webchat" ? (
+                      <div className="text-sm text-gray-600 dark:text-gray-300">
+                        WebChat works automatically inside this app — nothing to
+                        set up.
                       </div>
-                    )}
-                    {type === "discord" && (
-                      <div>
-                        <label className="form-label" htmlFor="discord-token">
-                          Bot Token
-                        </label>
-                        <input
-                          id="discord-token"
-                          className="form-input"
-                          type="password"
-                          placeholder="Enter Discord bot token..."
-                        />
-                      </div>
-                    )}
-                    {type === "slack" && (
-                      <div>
-                        <label className="form-label" htmlFor="slack-token">
-                          Slack App Token
-                        </label>
-                        <input
-                          id="slack-token"
-                          className="form-input"
-                          type="password"
-                          placeholder="Enter Slack app token..."
-                        />
-                      </div>
-                    )}
-                    {type === "whatsapp" && (
-                      <div>
-                        <label className="form-label" htmlFor="whatsapp-token">
-                          Cloud API Token
-                        </label>
-                        <input
-                          id="whatsapp-token"
-                          className="form-input"
-                          type="password"
-                          placeholder="Enter WhatsApp API token..."
-                        />
-                      </div>
-                    )}
-                    {type === "webchat" && (
-                      <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
-                        WebChat is built-in via WebSocket at
-                        ws://localhost:8000/ws
+                    ) : (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex-1 min-w-0">
+                          <label
+                            className="form-label"
+                            htmlFor={`${type}-token`}
+                          >
+                            {type === "slack"
+                              ? "Slack App Token"
+                              : type === "whatsapp"
+                                ? "Cloud API Token"
+                                : "Bot Token"}
+                          </label>
+                          <PasswordInput
+                            value={configTokens[type] || ""}
+                            onChange={(v) =>
+                              setConfigTokens((prev) => ({
+                                ...prev,
+                                [type]: v,
+                              }))
+                            }
+                            placeholder={`Enter ${info.name} token...`}
+                            className="form-input w-full text-sm font-mono"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <button
+                          onClick={() => saveConfigToken(type)}
+                          disabled={!configTokens[type] || configSaving[type]}
+                          className="btn-primary btn-sm min-h-[44px] w-full sm:w-auto sm:self-end disabled:opacity-50"
+                        >
+                          {configSaving[type] ? "Saving…" : "Save token"}
+                        </button>
                       </div>
                     )}
                   </div>

@@ -22,6 +22,7 @@ import type {
   Integration,
   SystemStatus,
   PerceptionResult,
+  ProviderStatus,
 } from "./types";
 import type { ThinkingTrace, ThinkingStep } from "./types/ruh";
 import { ThinkingStream } from "./components/ThinkingStream";
@@ -95,39 +96,42 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                 Something went wrong
               </h2>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                An unexpected error occurred while rendering this page. You can
-                try again or refresh the browser.
+                Kuch galat ho gaya hai. Dobara try karo ya page reload karo —
+                tumhara data safe hai.
               </p>
-              {this.state.error && (
-                <p className="mt-3 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-zinc-900 rounded-lg p-3 text-left break-all">
-                  {this.state.error.message}
-                </p>
-              )}
             </div>
-            <button
-              onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors shadow-sm"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="w-4 h-4"
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={this.handleRetry}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors shadow-sm"
               >
-                <path
-                  d="M1 4v6h6M23 20v-6h-6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Retry
-            </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="w-4 h-4"
+                >
+                  <path
+                    d="M1 4v6h6M23 20v-6h-6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Retry
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-200 hover:bg-gray-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Reload
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -233,6 +237,9 @@ function AppInner() {
   >([]);
   const [knowledgeResult, setKnowledgeResult] = useState<string | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(
+    null,
+  );
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({
     name: "",
@@ -509,7 +516,10 @@ function AppInner() {
           addTerminalLine(data.chunk as string, "");
           break;
         case "task_done":
-          addTerminalLine("Task completed", "gold");
+          addTerminalLine(
+            `Task completed: ${(data.result as string)?.substring(0, 500)}`,
+            "gold",
+          );
           loadAgents();
           break;
         case "queue_update":
@@ -583,6 +593,15 @@ function AppInner() {
       setStatus(data);
     } catch {
       /* ignore */
+    }
+  };
+
+  const loadProviders = async () => {
+    try {
+      const data = (await api.get("/providers")) as unknown as ProviderStatus;
+      setProviderStatus(data);
+    } catch {
+      /* ignore — provider check skipped if this fails */
     }
   };
 
@@ -749,6 +768,7 @@ function AppInner() {
 
   useEffect(() => {
     loadAgents();
+    loadProviders();
     loadChatHistory(sessionId);
     loadChatSessions();
     // Fetch version from backend
@@ -817,8 +837,9 @@ function AppInner() {
     addTerminalLine("New chat session started", "gold");
   }, []);
 
-  const sendMessage = async () => {
-    if ((!input.trim() && attachedFiles.length === 0) || streaming) return;
+  const sendMessage = async (contentOverride?: string) => {
+    const text = contentOverride ?? input;
+    if ((!text.trim() && attachedFiles.length === 0) || streaming) return;
     // Auth gate: chat requires login (token from Security page)
     const authToken = localStorage.getItem("mizan_token");
     if (!authToken) {
@@ -826,13 +847,26 @@ function AppInner() {
         id: Date.now(),
         role: "assistant",
         content:
-          "\ud83d\udd12 Login required \u2014 Security tab me register/login karo, phir dubara bhejo",
+          "🔒 Login required — Security tab me login karo (account ke liye admin se sampark karo), phir dubara bhejo",
         ts: new Date().toLocaleTimeString(),
       };
       setMessages((prev) => [...prev, loginMsg]);
       return;
     }
-    const content = input;
+    // Provider check: guide the user to Settings if no AI provider is set up
+    if (providerStatus && !providerStatus.providers.some((p) => p.configured)) {
+      const providerMsg = {
+        id: Date.now(),
+        role: "assistant" as const,
+        content:
+          "⚠️ Koi AI provider set nahi hai — Settings → AI Providers me key add karo",
+        ts: new Date().toLocaleTimeString(),
+        cta: { label: "AI Providers kholo", tab: "settings" },
+      } as ChatMessage & { cta: { label: string; tab: string } };
+      setMessages((prev) => [...prev, providerMsg]);
+      return;
+    }
+    const content = text;
     const files = [...attachedFiles];
     const hasMedia = files.some(
       (f) => f.type.startsWith("image/") || f.type.startsWith("audio/"),
@@ -921,6 +955,20 @@ function AppInner() {
         setStreaming(false);
         setTypingIndicator(false);
         addTerminalLine("Not connected - cannot send message", "error");
+        const errMsg: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "⚠️ Message nahi bheja ja saka — server se connection nahi hai. Dobara try karo.",
+          ts: new Date().toLocaleTimeString(),
+        };
+        setMessages((prev) => [...prev, errMsg]);
+        addToast({
+          type: "error",
+          title: "Not connected",
+          description:
+            "Server se connection nahi hai — message nahi bheja gaya",
+        });
       }
     }
   };
@@ -1512,7 +1560,7 @@ function AppInner() {
                       <button
                         key={action.label}
                         className="text-left p-3.5 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group cursor-pointer"
-                        onClick={() => setInput(action.prompt)}
+                        onClick={() => sendMessage(action.prompt)}
                       >
                         <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
                           {action.label}
@@ -1545,6 +1593,7 @@ function AppInner() {
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
+                        onNavigateTab={setActiveTab}
                       />
                     </div>
                   ))}
@@ -1932,7 +1981,7 @@ function AppInner() {
                     ) : (
                       <button
                         className="chat-send-btn"
-                        onClick={sendMessage}
+                        onClick={() => sendMessage()}
                         disabled={
                           (!input.trim() && attachedFiles.length === 0) || !ws
                         }
@@ -2067,9 +2116,9 @@ function AppInner() {
                   What your AI remembers from past interactions
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
-                  className="input text-sm py-1.5 w-48"
+                  className="input text-sm py-1.5 w-full sm:w-48"
                   placeholder="Search memories..."
                   value={memoryQuery}
                   onChange={(e) => setMemoryQuery(e.target.value)}
@@ -2119,7 +2168,7 @@ function AppInner() {
                     setNewMemory({ ...newMemory, content: e.target.value })
                   }
                 />
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex flex-wrap items-center gap-3 mt-2">
                   <select
                     className="input text-sm py-1.5"
                     value={newMemory.memory_type}

@@ -4,8 +4,9 @@
  * Designed for both technical and non-technical users.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { ApiClient } from "../types";
+import { useToast } from "../components/Toast";
 
 interface PluginInfo {
   name: string;
@@ -52,6 +53,7 @@ interface VersionInfo {
 }
 
 export default function DeveloperPage({ api }: { api: ApiClient }) {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<
     "system" | "plugins" | "events" | "hooks" | "guide"
   >("system");
@@ -66,7 +68,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
       const [pluginsRes, eventsRes, hooksRes, toolsRes] = await Promise.all([
@@ -92,27 +94,41 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
       setRegisteredHooks(hkData.registered || []);
       setPluginTools((toolsRes as { tools: PluginTool[] }).tools || []);
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: "Couldn't load developer data — check your connection.",
+      });
     }
     setLoading(false);
-  };
+  }, [api, addToast]);
 
-  const fetchVersion = async () => {
+  const fetchVersion = useCallback(async () => {
     try {
       const data = (await api.get("/version")) as unknown as VersionInfo;
       setVersionInfo(data);
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: "Couldn't load version info — check your connection.",
+      });
     }
-  };
+  }, [api, addToast]);
 
   const checkForUpdates = async () => {
     setCheckingUpdate(true);
     try {
       const data = (await api.get("/version")) as unknown as VersionInfo;
       setVersionInfo(data);
+      if (!data.updates_available) {
+        addToast({ type: "success", title: "You're up to date." });
+      } else {
+        addToast({
+          type: "info",
+          title: `${data.updates_available} update${data.updates_available === 1 ? "" : "s"} available — ask your server admin to install.`,
+        });
+      }
     } catch {
-      /* ignore */
+      addToast({ type: "error", title: "Couldn't check — try again." });
     }
     setCheckingUpdate(false);
   };
@@ -120,7 +136,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   useEffect(() => {
     fetchAll();
     fetchVersion();
-  }, []);
+  }, [fetchAll, fetchVersion]);
 
   const handlePluginAction = async (
     name: string,
@@ -128,9 +144,13 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   ) => {
     try {
       await api.post(`/plugins/${name}/${action}`);
+      addToast({ type: "success", title: `Plugin ${action}ed: ${name}` });
       await fetchAll();
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: `Couldn't ${action} plugin ${name} — try again.`,
+      });
     }
   };
 
@@ -176,7 +196,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
           <div className="space-y-5">
             {/* Version Card */}
             <div className="card">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-wrap gap-3 items-start justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
                     MIZAN
@@ -243,8 +263,8 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                     </p>
                   )}
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Run <code className="code">./update.sh</code> or{" "}
-                    <code className="code">make update</code> to update
+                    Updates are installed by your server admin — there&apos;s
+                    nothing to run here.
                   </p>
                 </div>
               ) : null}
@@ -263,13 +283,13 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
               <div className="card text-center py-4">
                 <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                   {versionInfo?.can_check ? (
-                    <span className="text-emerald-500">Git</span>
+                    <span className="text-emerald-500">Source</span>
                   ) : (
                     <span className="text-gray-400">-</span>
                   )}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Install Method
+                  Installed from source code
                 </div>
               </div>
               <div className="card text-center py-4">
@@ -287,54 +307,11 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
               <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 How to Update
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                MIZAN has a built-in one-command updater. Choose any of these:
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Updates are installed by your server admin. If you run Mizan
+                yourself, pull the latest code on the server and restart the
+                backend.
               </p>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    ./update.sh
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Direct command
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    make update
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Via Makefile
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    ./start.sh update
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Via start script
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-                The updater automatically stops services, pulls code, rebuilds
-                everything, and restarts.
-              </p>
-            </div>
-
-            {/* Check Only */}
-            <div className="card">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                Check Without Installing
-              </h3>
-              <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                <code className="text-sm font-mono text-mizan-gold flex-1">
-                  ./update.sh --check
-                </code>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  See if updates exist
-                </span>
-              </div>
             </div>
           </div>
         )}
@@ -359,11 +336,16 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                 <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   No Plugins Yet
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                  Create a folder in <code className="code">plugins/</code> with
-                  a <code className="code">plugin.json</code> and
-                  <code className="code">main.py</code> to get started.
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-4">
+                  Plugins are installed on the server by your admin. If you
+                  build your own, the Developer Guide shows how.
                 </p>
+                <button
+                  className="btn-secondary text-sm min-h-[44px]"
+                  onClick={() => setActiveTab("guide")}
+                >
+                  Open Developer Guide
+                </button>
               </div>
             ) : (
               <div className="grid gap-3">
@@ -376,8 +358,8 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                         : ""
                     }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold text-gray-900 dark:text-gray-100">
                             {p.name}
@@ -490,7 +472,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                   {eventHandlers.map((h, i) => (
                     <div
                       key={i}
-                      className="card flex items-center justify-between py-3"
+                      className="card flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between py-3"
                     >
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-cyan-600 dark:text-cyan-400 text-sm">
@@ -597,7 +579,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                   {registeredHooks.map((h, i) => (
                     <div
                       key={i}
-                      className="card flex items-center justify-between py-3"
+                      className="card flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between py-3"
                     >
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-purple-600 dark:text-purple-400 text-sm">
