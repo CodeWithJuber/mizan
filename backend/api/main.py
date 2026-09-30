@@ -3875,7 +3875,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 import base64 as b64
 
                 session_id = data.get("session_id", client_id)
-                text = data.get("content", "")
+                text = data.get("content", data.get("text", ""))
                 image_b64 = data.get("image_base64")
                 audio_b64 = data.get("audio_base64")
                 media_type = data.get("media_type", "image/png")
