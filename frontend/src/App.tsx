@@ -180,6 +180,35 @@ function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   return fetch(input, { ...init, headers });
 }
 
+// ===== CHAT SESSION PERSISTENCE =====
+// The backend chat session survives a page refresh via localStorage.
+// Key renamed from "mizan_session_id" (legacy, still read as fallback).
+const CHAT_SESSION_STORAGE_KEY = "mizan_chat_session_id";
+const LEGACY_CHAT_SESSION_KEY = "mizan_session_id";
+
+function readStoredChatSessionId(): string | null {
+  try {
+    return (
+      localStorage.getItem(CHAT_SESSION_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_CHAT_SESSION_KEY)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function loadStoredChatSessionId(): string {
+  return readStoredChatSessionId() || `session_${Date.now()}`;
+}
+
+// Disabled-send-button tooltips (repo convention: disabled buttons explain why)
+const WS_STATUS_HINTS: Record<string, string> = {
+  connecting: "Connecting to server…",
+  reconnecting: "Reconnecting to server — please wait",
+  disconnected: "Disconnected from server — check your connection",
+  auth_required: "Login required — Security tab me login karo",
+};
+
 // ===== MAIN APP INNER =====
 function AppInner() {
   const { addToast } = useToast();
@@ -210,9 +239,9 @@ function AppInner() {
     { text: "Connecting to backend...", type: "" },
   ]);
   const [taskInput, setTaskInput] = useState("");
-  const [sessionId, setSessionId] = useState(() => {
-    return localStorage.getItem("mizan_session_id") || `session_${Date.now()}`;
-  });
+  const [sessionId, setSessionId] = useState<string>(() =>
+    loadStoredChatSessionId(),
+  );
   const [typingIndicator, setTypingIndicator] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
   const [thinkingTraces, setThinkingTraces] = useState<
@@ -293,7 +322,21 @@ function AppInner() {
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const commandMenuRef = useRef<HTMLDivElement>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  // Tracks whether the user is near the bottom (synced on scroll events).
+  // Auto-scroll only fires when true — never yanks while reading history.
+  const nearBottomRef = useRef(true);
   const clientId = useRef(`client_${Date.now()}`);
+
+  // Send-button state: disabled while the socket is down, always with a
+  // tooltip explaining why (repo convention).
+  const hasSendableInput = input.trim().length > 0 || attachedFiles.length > 0;
+  const sendDisabled = !hasSendableInput || wsStatus !== "connected";
+  const sendTitle =
+    wsStatus === "connected"
+      ? hasSendableInput
+        ? "Send message"
+        : "Type a message to send"
+      : `Cannot send — ${WS_STATUS_HINTS[wsStatus] ?? "not connected to server"}`;
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
     setTerminalLines((prev) => [
@@ -714,10 +757,17 @@ function AppInner() {
     }
   };
 
-  const loadChatHistory = useCallback(async (sid: string) => {
-    try {
-      const res = await authFetch(`${config.API_URL}/chat/${sid}`);
-      if (!res.ok) return;
+  const loadChatHistory = useCallback(
+    async (sid: string, opts?: { onMissing?: () => void }) => {
+      try {
+        const res = await authFetch(`${config.API_URL}/chat/${sid}`);
+        if (res.status === 404) {
+          // Session expired or deleted server-side — the caller decides how
+          // to start fresh. Never toast here: a missing session is normal.
+          opts?.onMissing?.();
+          return;
+        }
+        if (!res.ok) return;
       const data = await res.json();
       const history = (data.messages || []).map(
         (
@@ -769,7 +819,22 @@ function AppInner() {
   useEffect(() => {
     loadAgents();
     loadProviders();
-    loadChatHistory(sessionId);
+    // Restore the previous chat session after a refresh. A stored id that the
+    // backend no longer knows (404) starts fresh silently — no error toast.
+    const storedSid = readStoredChatSessionId();
+    if (storedSid) {
+      loadChatHistory(storedSid, {
+        onMissing: () => {
+          try {
+            localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+            localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+          } catch {
+            /* ignore */
+          }
+          startNewSession();
+        },
+      });
+    }
     loadChatSessions();
     // Fetch version from backend
     fetch(`${config.API_URL}/version`)
@@ -796,9 +861,14 @@ function AppInner() {
       window.removeEventListener("mizan:unauthorized", onUnauthorized);
   }, []);
 
-  // Persist sessionId to localStorage
+  // Persist chat sessionId to localStorage (migrates the legacy key)
   useEffect(() => {
-    localStorage.setItem("mizan_session_id", sessionId);
+    try {
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+      localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+    } catch {
+      // storage unavailable — the session just won't survive a refresh
+    }
   }, [sessionId]);
 
   // Persist selected agent ID
@@ -815,13 +885,18 @@ function AppInner() {
   }, [activeTab]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll when the user is already near the bottom — never yank
+    // them away while they're scrolled up reading history.
+    if (nearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, streamingText]);
 
   const handleChatScroll = useCallback(() => {
     const el = chatScrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = distanceFromBottom < 150;
     setShowScrollDown(distanceFromBottom > 150);
   }, []);
 
@@ -836,6 +911,20 @@ function AppInner() {
     setStreamingText("");
     addTerminalLine("New chat session started", "gold");
   }, []);
+
+  // "New chat" discards the visible session (recoverable via History), so it
+  // confirms first. The /new chat command keeps its no-confirm behavior.
+  const handleNewChatClick = useCallback(() => {
+    if (
+      messages.length > 0 &&
+      !window.confirm(
+        "Start a new chat? The current conversation will be cleared from view (you can reopen it from History).",
+      )
+    ) {
+      return;
+    }
+    startNewSession();
+  }, [messages.length, startNewSession]);
 
   const sendMessage = async (contentOverride?: string) => {
     const text = contentOverride ?? input;
@@ -1494,7 +1583,7 @@ function AppInner() {
                   {/* New chat */}
                   <button
                     className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                    onClick={startNewSession}
+                    onClick={handleNewChatClick}
                     title="New chat"
                   >
                     <svg
@@ -1597,6 +1686,7 @@ function AppInner() {
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
+                        agents={agents}
                         onNavigateTab={setActiveTab}
                       />
                     </div>
@@ -1986,9 +2076,8 @@ function AppInner() {
                       <button
                         className="chat-send-btn"
                         onClick={() => sendMessage()}
-                        disabled={
-                          (!input.trim() && attachedFiles.length === 0) || !ws
-                        }
+                        disabled={sendDisabled}
+                        title={sendTitle}
                         aria-label="Send message"
                       >
                         <svg

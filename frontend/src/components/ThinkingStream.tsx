@@ -201,6 +201,11 @@ export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamPro
 
   const steps = trace?.steps ?? [];
   const hasSteps = steps.length > 0;
+  const durationDisplay = trace
+    ? trace.duration_ms < 1000
+      ? `${trace.duration_ms}ms`
+      : `${(trace.duration_ms / 1000).toFixed(1)}s`
+    : "...";
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-zinc-700/50 bg-gray-50 dark:bg-zinc-900/50 overflow-hidden animate-fade-in">
@@ -225,6 +230,7 @@ export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamPro
           />
         </svg>
 
+        {/* Subtle toggle: collapsed by default, machinery stays hidden */}
         <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
           {isStreaming ? (
             <>
@@ -232,9 +238,15 @@ export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamPro
               <AnimatedDots />
             </>
           ) : (
-            `Thought for ${trace ? (trace.duration_ms < 1000 ? `${trace.duration_ms}ms` : `${(trace.duration_ms / 1000).toFixed(1)}s`) : "..."}`
+            "Thought process"
           )}
         </span>
+
+        {!isStreaming && (
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums">
+            {durationDisplay}
+          </span>
+        )}
 
         {hasSteps && !expanded && (
           <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 font-mono">

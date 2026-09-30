@@ -75,6 +75,18 @@ from security.validation import (
 logger = logging.getLogger("mizan.agent")
 
 
+# ── Chat reliability: max_tokens auto-continuation ─────────────────────────
+# When a turn is cut off by the provider's max_tokens limit, the agent asks the
+# model to continue instead of silently delivering a clipped answer. Bounded so
+# a pathological model cannot loop forever.
+_MAX_AUTO_CONTINUATIONS = 2
+_CONTINUE_PROMPT = (
+    "[System: your previous reply was cut off by the length limit. "
+    "Continue exactly where you left off — do not repeat, do not summarize, "
+    "just continue.]"
+)
+
+
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-1..IP-4) ─────────────────────
 # Flag-gated rollout: MIZAN_NLP_NATIVE_WSD=1 enables the native paths.
 # Default OFF = today's behavior, bit-for-bit. Native WSD is an accelerant,
@@ -724,10 +736,13 @@ class BaseAgent:
             )
             messages[-1]["content"] += f"\n[Lawh Memory: {mem_context}]"
 
-        # Context Manager: inject Dhikr memories for grounding
+        # Context Manager: inject Dhikr memories for grounding.
+        # NOTE: DhikrMemorySystem.recall() takes `limit`, not `top_k` — passing
+        # top_k raised TypeError on every chat turn and the bare except below
+        # swallowed it, so memory injection silently never happened.
         if self.context_manager and self.memory:
             try:
-                relevant_memories = await self.memory.recall(task, top_k=3)
+                relevant_memories = await self.memory.recall(task, limit=3)
                 if relevant_memories:
                     memory_dicts = [
                         {"type": m.memory_type, "content": m.content}
@@ -736,8 +751,8 @@ class BaseAgent:
                     ]
                     if memory_dicts:
                         messages = self.context_manager.inject_memory(messages, memory_dicts)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[MEMORY] recall/inject failed for %s: %s", self.name, e)
 
         if self.ai_client:
             try:
@@ -789,6 +804,13 @@ class BaseAgent:
         """
         accumulated_text = ""
         tool_count = 0
+        # Tool results of the most recent turn — execute() uses these to
+        # synthesize a summary when the model produces no natural-language text.
+        self._last_tool_results = []
+        # Results from the latest tool turn, for the end-of-run Furqan check.
+        last_tool_results: list = []
+        # Bounded auto-continuation when a turn is cut off by max_tokens
+        continuations = 0
 
         for turn in range(self.max_tool_turns):
             # Qalb-modulated LLM params (cardiac oscillation: QABD=analytical, BAST=creative)
@@ -796,30 +818,64 @@ class BaseAgent:
             max_tokens = qalb_params.get("max_tokens", 4096)
             temperature = qalb_params.get("temperature", 0.5)
 
-            # Call the model via unified provider
-            response = self.ai_client.create(
-                model=self.ai_model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=messages,
-                tools=tool_schemas,
-            )
+            # True token streaming when the caller asked for it (stream=True);
+            # the blocking create() path otherwise. Streaming failures fall
+            # back to create() so a provider quirk can never break the run.
+            response = None
+            streamed_text = False
+            if stream:
+                try:
+                    final_holder: dict = {}
+                    async for text_chunk in self._streaming_create(
+                        system_prompt,
+                        messages,
+                        tool_schemas,
+                        max_tokens,
+                        temperature,
+                        final_holder,
+                    ):
+                        accumulated_text += text_chunk
+                        yield text_chunk
+                    response = final_holder.get("response")
+                    streamed_text = response is not None
+                except Exception as e:
+                    logger.warning("[FIKR] Streaming failed (%s), falling back to create()", e)
+                    response = None
+            if response is None:
+                # Call the model via unified provider
+                response = self.ai_client.create(
+                    model=self.ai_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system_prompt,
+                    messages=messages,
+                    tools=tool_schemas,
+                )
 
-            # Collect text output and tool calls from this turn
-            has_tool_use = False
-            tool_results = []
+            # Collect text output and tool calls from this turn. In streaming
+            # mode the text was already yielded live above.
+            tool_blocks = []
 
             for block in response.content:
                 if block.type == "text":
-                    accumulated_text += block.text
-                    yield block.text
+                    if not streamed_text:
+                        accumulated_text += block.text
+                        yield block.text
                 elif block.type == "tool_use":
-                    has_tool_use = True
-                    tool_count += 1
+                    tool_blocks.append(block)
 
-                    # Execute through security layer
-                    tool_result = await self._execute_tool_safe(block.name, block.input)
+            if tool_blocks:
+                # Independent tool calls, executed concurrently: the model
+                # emitted them in a single turn, so they are independent by
+                # construction. _execute_tool_safe never raises (it returns
+                # error dicts), so gather() is safe here.
+                tool_count += len(tool_blocks)
+                tool_results_raw = await asyncio.gather(
+                    *(self._execute_tool_safe(b.name, b.input) for b in tool_blocks)
+                )
+
+                tool_results = []
+                for block, tool_result in zip(tool_blocks, tool_results_raw, strict=True):
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
                     # Yaqin: Tag tool result as Ayn al-Yaqin (observed/verified)
@@ -847,54 +903,178 @@ class BaseAgent:
                             "content": json.dumps(tool_result)[:5000],
                         }
                     )
+                    self._last_tool_results.append({"name": block.name, "result": tool_result})
 
-            # If no tool calls were made, the agent is done
-            if not has_tool_use or response.stop_reason == "end_turn":
-                # Furqan: Validate final output before delivery
-                if accumulated_text:
-                    overall_confidence = self.fuad.compute_confidence(
-                        tool_count=tool_count,
-                        tool_results=tool_results,
-                    )
-                    furqan_report = self.qca.furqan.validate_and_express(
-                        accumulated_text[:200],
-                        overall_confidence,
-                        source="agentic_reasoning",
-                    )
-                    # Store reasoning result in Lawh Tier 3
-                    self.qca.lawh.store(
-                        f"RESULT:{original_task[:50]}",
-                        accumulated_text[:500],
-                        certainty=overall_confidence,
-                        source="agentic_loop",
-                        tier=3,
-                    )
-                    # Log Furqan validation
-                    if furqan_report.get("checks"):
-                        logger.info(
-                            "[FURQAN] Validation flags for %s: %s",
-                            self.name,
-                            furqan_report["checks"],
-                        )
-                return
+                # Feed tool results back for the next iteration
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "user", "content": tool_results})
+                last_tool_results = tool_results
 
-            # Feed tool results back for the next iteration
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": tool_results})
+                # Lawwama self-correction checkpoint — health-based interval
+                if self.self_healer.should_checkpoint(turn, self.max_tool_turns):
+                    lawwama_prompt = (
+                        f"[Lawwama checkpoint — turn {turn}/{self.max_tool_turns}] "
+                        "Pause and self-assess: Are you making progress toward the goal? "
+                        "Is there a more efficient approach? Correct course if needed."
+                    )
+                    messages.append({"role": "user", "content": lawwama_prompt})
+                    logger.info(
+                        "[LAWWAMA] Self-correction checkpoint at turn %d for %s",
+                        turn,
+                        self.name,
+                    )
+                continue
 
-            # Lawwama self-correction checkpoint — health-based interval
-            if self.self_healer.should_checkpoint(turn, self.max_tool_turns):
-                lawwama_prompt = (
-                    f"[Lawwama checkpoint — turn {turn}/{self.max_tool_turns}] "
-                    "Pause and self-assess: Are you making progress toward the goal? "
-                    "Is there a more efficient approach? Correct course if needed."
-                )
-                messages.append({"role": "user", "content": lawwama_prompt})
+            # No tool calls — the turn is final, unless the model was cut off
+            # by max_tokens, in which case ask it to continue (bounded, so a
+            # pathological model can't loop forever).
+            if response.stop_reason == "max_tokens" and continuations < _MAX_AUTO_CONTINUATIONS:
+                continuations += 1
                 logger.info(
-                    "[LAWWAMA] Self-correction checkpoint at turn %d for %s", turn, self.name
+                    "[FIKR] max_tokens hit — auto-continuing (%d/%d)",
+                    continuations,
+                    _MAX_AUTO_CONTINUATIONS,
                 )
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "user", "content": _CONTINUE_PROMPT})
+                continue
+
+            truncated = response.stop_reason == "max_tokens"
+
+            # Furqan: Validate final output before delivery
+            if accumulated_text:
+                overall_confidence = self.fuad.compute_confidence(
+                    tool_count=tool_count,
+                    tool_results=last_tool_results,
+                )
+                furqan_report = self.qca.furqan.validate_and_express(
+                    accumulated_text[:200],
+                    overall_confidence,
+                    source="agentic_reasoning",
+                )
+                # Store reasoning result in Lawh Tier 3
+                self.qca.lawh.store(
+                    f"RESULT:{original_task[:50]}",
+                    accumulated_text[:500],
+                    certainty=overall_confidence,
+                    source="agentic_loop",
+                    tier=3,
+                )
+                # Log Furqan validation
+                if furqan_report.get("checks"):
+                    logger.info(
+                        "[FURQAN] Validation flags for %s: %s",
+                        self.name,
+                        furqan_report["checks"],
+                    )
+
+            if truncated:
+                # Still cut after bounded continuations — say so honestly
+                # instead of silently delivering a clipped answer.
+                notice = "\n\n_[Response reached the length limit — ask me to continue for more.]_"
+                accumulated_text += notice
+                yield notice
+            return
 
         logger.warning(f"[FIKR] Agent {self.name} hit max_tool_turns ({self.max_tool_turns})")
+
+    async def _streaming_create(
+        self,
+        system_prompt: str,
+        messages: list,
+        tool_schemas: list,
+        max_tokens: int,
+        temperature: float,
+        final_holder: dict,
+    ) -> AsyncGenerator[str, None]:
+        """Yield live text deltas from the provider; stash the final LLMResponse.
+
+        Runs the provider's (blocking) stream in a worker thread and bridges
+        text deltas back through an asyncio.Queue, so the event loop stays free
+        for heartbeats and other clients while tokens arrive. The fully
+        accumulated response — including tool_use blocks — is placed in
+        ``final_holder["response"]`` once the stream completes.
+
+        Raises the provider's exception when streaming fails; the caller falls
+        back to ``create()``.
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def _runner() -> None:
+            try:
+                stream_ctx = self.ai_client.stream(
+                    model=self.ai_model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=messages,
+                    tools=tool_schemas or None,
+                    temperature=temperature,
+                )
+                with stream_ctx as s:
+                    for chunk in s.text_stream:
+                        loop.call_soon_threadsafe(queue.put_nowait, ("text", chunk))
+                    final = s.get_final_response()
+            except Exception as e:  # noqa: BLE001 — re-raised to caller via queue
+                loop.call_soon_threadsafe(queue.put_nowait, ("error", e))
+                return
+            loop.call_soon_threadsafe(queue.put_nowait, ("done", final))
+
+        runner_future = loop.run_in_executor(None, _runner)
+        try:
+            while True:
+                kind, payload = await queue.get()
+                if kind == "text":
+                    yield payload
+                elif kind == "error":
+                    raise payload
+                else:  # "done"
+                    final_holder["response"] = payload
+                    return
+        finally:
+            if not runner_future.done():
+                runner_future.cancel()
+
+    async def _summarize_tool_results(
+        self, task: str, tool_results: list[dict]
+    ) -> AsyncGenerator[str, None]:
+        """Single non-agentic turn: turn raw tool outputs into a user-facing summary.
+
+        Used when the model called tools but produced no natural-language text —
+        instead of returning a filler message, we ask the model to summarize
+        what the tools found.
+        """
+        qalb_params = getattr(self, "_qalb_params", {})
+        digest = "\n".join(
+            f"- {tr['name']}: {json.dumps(tr['result'])[:1500]}" for tr in tool_results
+        )
+        summary_prompt = (
+            "Summarize the following tool results as a direct answer to the user. "
+            "Be concise, skip internal jargon, and reply in the user's language.\n\n"
+            f"User request: {task[:500]}\n\nTool results:\n{digest[:6000]}"
+        )
+        system = "You are a helpful assistant that summarizes tool outputs."
+        messages = [{"role": "user", "content": summary_prompt}]
+        max_tokens = min(qalb_params.get("max_tokens", 4096), 2048)
+        try:
+            final_holder: dict = {}
+            async for chunk in self._streaming_create(
+                system, messages, [], max_tokens, 0.4, final_holder
+            ):
+                yield chunk
+        except Exception:
+            logger.warning("[AGENT] Summarization stream failed, using create()")
+            response = self.ai_client.create(
+                model=self.ai_model,
+                max_tokens=max_tokens,
+                temperature=0.4,
+                system=system,
+                messages=messages,
+                tools=None,
+            )
+            for block in response.content:
+                if block.type == "text":
+                    yield block.text
 
     async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
         """Execute a tool with Wali security checks and self-healing.
@@ -1778,18 +1958,32 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 {"length": len(full_response)},
             )
 
-            # Safeguard: if no natural-language text was produced (e.g. model only
-            # called tools), don't return an empty response — the UI would show
-            # nothing. Fall back to a brief summary.
+            # Safeguard: if no natural-language text was produced (e.g. the model
+            # only called tools until max turns), synthesize a summary from the
+            # tool results instead of returning an empty response — the UI would
+            # otherwise show nothing.
             if not full_response.strip():
-                full_response = (
-                    "Maine apna kaam poora kar liya hai, lekin iska saransh "
-                    "taiyaar nahi ho paya. Kripya dobara poochhein."
-                )
-                logger.warning(
-                    "[AGENT] %s produced empty full_response after tool loop; using fallback",
-                    self.name,
-                )
+                tool_results = getattr(self, "_last_tool_results", []) or []
+                summarized = ""
+                if tool_results:
+                    try:
+                        async for sum_chunk in self._summarize_tool_results(task, tool_results):
+                            summarized += sum_chunk
+                            if stream_callback:
+                                await stream_callback(sum_chunk)
+                    except Exception as e:
+                        logger.warning("[AGENT] Tool-result summarization failed: %s", e)
+                if summarized.strip():
+                    full_response = summarized
+                else:
+                    full_response = (
+                        "I looked into this but couldn't form an answer. "
+                        "Please try asking again or rephrase."
+                    )
+                    logger.warning(
+                        "[AGENT] %s produced empty full_response after tool loop; using fallback",
+                        self.name,
+                    )
 
             self.evolve_nafs()
             self.state = "resting"
@@ -1880,9 +2074,19 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                         stream=bool(stream_callback),
                         qalb_reading=qalb_reading,
                     ):
-                        corrected_response += chunk
-                        if stream_callback:
-                            await stream_callback(chunk)
+                        # Tool markers are UI events, not user-facing text — filter
+                        # them exactly like the main path does.
+                        if chunk.startswith("\n[Tool:") and stream_callback:
+                            tool_name = (
+                                chunk.split("[Tool: ")[1].split("]")[0]
+                                if "[Tool: " in chunk
+                                else "unknown"
+                            )
+                            await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
+                        else:
+                            corrected_response += chunk
+                            if stream_callback:
+                                await stream_callback(chunk)
 
                     if corrected_response:
                         # Stage 5: Verify success
@@ -1948,7 +2152,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self.learning_iterations += 1
         task_type = self._classify_task(task)
 
-        if success and duration_ms < 5000:
+        # Record every successful execution — LLM turns routinely take longer
+        # than a few seconds, so a duration gate here silently drops nearly all
+        # chat learning.
+        if success:
             pattern_text = f"Task type '{task_type}' completed in {duration_ms:.0f}ms"
             self.hikmah.append(
                 {

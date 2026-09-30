@@ -13,6 +13,12 @@ import type {
 } from "../types";
 import { Markdown } from "./Markdown";
 import type { Components } from "react-markdown";
+import { useToast } from "./Toast";
+import {
+  convertCopyFormat,
+  type CopyFormatId,
+} from "../utils/copyFormat";
+import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
 import { VerifiedBadge } from "./ruh/VerifiedBadge";
@@ -798,28 +804,80 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
 interface ChatMessageBubbleProps {
   msg: ChatMessageType;
   selectedAgent?: { name: string } | null;
+  // Loaded agents list — used to resolve a raw agent_id into a display name.
+  agents?: NamedAgent[];
   // MORPH-FEAT: forwarded to ChatMessageContent; opens RootExplorerDrawer.
   onExploreWord?: (word: string) => void;
   // Optional in-message CTA button (e.g. "AI Providers kholo" → settings tab).
   onNavigateTab?: (tab: string) => void;
 }
 
+const COPY_FORMATS: { id: CopyFormatId; label: string; hint: string }[] = [
+  { id: "markdown", label: "Copy", hint: "as-is" },
+  { id: "plain", label: "Copy plain text", hint: "no formatting" },
+  { id: "whatsapp", label: "Copy for WhatsApp", hint: "*bold* style" },
+];
+
+function CopyMenuItem({
+  label,
+  hint,
+  onSelect,
+}: {
+  label: string;
+  hint: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={onSelect}
+      className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+    >
+      <span className="text-[13px] font-medium text-gray-800 dark:text-gray-200">
+        {label}
+      </span>
+      <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
+        {hint}
+      </span>
+    </button>
+  );
+}
+
 export function ChatMessageBubble({
   msg,
   selectedAgent,
+  agents,
   onExploreWord,
   onNavigateTab,
 }: ChatMessageBubbleProps) {
   const [copied, setCopied] = useState(false);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const { addToast } = useToast();
   const cta = (
     msg as ChatMessageType & { cta?: { label: string; tab: string } }
   ).cta;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(msg.content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  const doCopy = (format: CopyFormatId, label: string) => {
+    const text = convertCopyFormat(msg.content, format);
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true);
+        setCopyMenuOpen(false);
+        setTimeout(() => setCopied(false), 2000);
+        addToast({
+          type: "success",
+          title: "Copied",
+          description: label === "Copy" ? undefined : label,
+        });
+      },
+      () => {
+        setCopyMenuOpen(false);
+        addToast({
+          type: "error",
+          title: "Copy failed — clipboard unavailable",
+        });
+      },
+    );
   };
 
   if (msg.role === "system") {
@@ -879,7 +937,7 @@ export function ChatMessageBubble({
             {/* Header */}
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[13px] font-semibold text-gray-900 dark:text-gray-100">
-                {msg.agent || selectedAgent?.name || "MIZAN"}
+                {resolveAgentName(msg.agent, agents, selectedAgent?.name)}
               </span>
               {msg.model && (
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400">
@@ -914,11 +972,15 @@ export function ChatMessageBubble({
 
             {/* Action buttons — hover reveal */}
             <div className="flex items-center gap-1 mt-2 opacity-100 md:opacity-0 md:group-hover/msg:opacity-100 transition-opacity duration-200">
-              <button
-                onClick={handleCopy}
-                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                title="Copy"
-              >
+              <div className="relative">
+                <button
+                  onClick={() => setCopyMenuOpen((v) => !v)}
+                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  title="Copy options"
+                  aria-haspopup="menu"
+                  aria-expanded={copyMenuOpen}
+                  aria-label="Copy options"
+                >
                 {copied ? (
                   <svg
                     viewBox="0 0 20 20"
@@ -941,7 +1003,32 @@ export function ChatMessageBubble({
                     <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
                   </svg>
                 )}
-              </button>
+                </button>
+                {copyMenuOpen && (
+                  <>
+                    <button
+                      className="fixed inset-0 z-40 cursor-default bg-transparent border-0 p-0"
+                      onClick={() => setCopyMenuOpen(false)}
+                      aria-label="Close copy menu"
+                      tabIndex={-1}
+                    />
+                    <div
+                      role="menu"
+                      aria-label="Copy options"
+                      className="absolute bottom-full left-0 mb-1.5 z-50 w-56 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden animate-fade-in"
+                    >
+                      {COPY_FORMATS.map((fmt) => (
+                        <CopyMenuItem
+                          key={fmt.id}
+                          label={fmt.label}
+                          hint={fmt.hint}
+                          onSelect={() => doCopy(fmt.id, fmt.label)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">
                 {msg.ts}
               </span>
