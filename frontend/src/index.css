@@ -28,7 +28,7 @@
   }
 
   html {
-    font-size: 16px;
+    /* Don't set font-size here — respect user's browser/OS font scaling (accessibility) */
   }
 
   body {
@@ -190,19 +190,24 @@
   }
 
   .chat-input-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
     text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
   }
 
   .chat-send-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
     bg-amber-500 hover:bg-amber-600 text-white shadow-sm
     disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
   }
 
   .chat-stop-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
     bg-red-500 hover:bg-red-600 text-white shadow-sm;
+  }
+
+  /* Safe-area padding for iPhone home indicator — used by MobileNav */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   /* ===== CARDS ===== */
