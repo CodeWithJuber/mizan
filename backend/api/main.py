@@ -556,6 +556,10 @@ class ScheduleJobRequest(BaseModel):
     agent_id: str | None = None
 
 
+class JobToggleRequest(BaseModel):
+    enabled: bool
+
+
 class WebhookCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     task_template: str = Field(..., min_length=1, max_length=10000)
@@ -2195,6 +2199,18 @@ async def delete_job(job_id: str, user: TokenPayload = Depends(require_auth)):
     return {"deleted": job_id}
 
 
+@app.patch("/api/automation/jobs/{job_id}")
+async def toggle_job(
+    job_id: str, req: JobToggleRequest, user: TokenPayload = Depends(require_auth)
+):
+    """Enable or pause a scheduled job"""
+    updated = await scheduler.set_job_enabled(job_id, req.enabled)
+    if not updated:
+        raise HTTPException(404, "Job not found")
+    wali.audit.log("job_toggled", {"job_id": job_id, "enabled": req.enabled})
+    return {"job_id": job_id, "enabled": req.enabled}
+
+
 @app.get("/api/automation/webhooks")
 async def list_webhooks(user: TokenPayload | None = Depends(get_current_user)):
     """List all webhook triggers"""
@@ -2222,6 +2238,16 @@ async def trigger_webhook(
         payload = {}
     result = await trigger_manager.handle_webhook(webhook_id, payload)
     return result
+
+
+@app.delete("/api/automation/webhooks/{webhook_id}")
+async def delete_webhook(webhook_id: str, user: TokenPayload = Depends(require_auth)):
+    """Delete a webhook trigger"""
+    if webhook_id not in trigger_manager.webhooks:
+        raise HTTPException(404, "Webhook not found")
+    del trigger_manager.webhooks[webhook_id]
+    wali.audit.log("webhook_deleted", {"webhook_id": webhook_id})
+    return {"deleted": webhook_id}
 
 
 # === SKILLS (Hikmah) ===

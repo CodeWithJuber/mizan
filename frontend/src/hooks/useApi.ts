@@ -82,6 +82,18 @@ export function useApi(): ApiClient {
     [headers],
   );
 
+  const patch = useCallback(
+    async (path: string, body?: Record<string, unknown>) => {
+      const res = await fetch(`${config.API_URL}${path}`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    [headers],
+  );
+
   const del = useCallback(
     async (path: string) => {
       const res = await fetch(`${config.API_URL}${path}`, {
@@ -94,7 +106,7 @@ export function useApi(): ApiClient {
   );
 
   return useMemo(
-    () => ({ get, post, put, del, API_URL: config.API_URL }),
-    [get, post, put, del],
+    () => ({ get, post, put, patch, del, API_URL: config.API_URL }),
+    [get, post, put, patch, del],
   );
 }
