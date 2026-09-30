@@ -71,7 +71,13 @@ const PHASE_CONFIG: Record<ThinkingPhase, PhaseConfig> = {
 
 // ===== Sub-components =====
 
-function PhaseIcon({ phase, className }: { phase: ThinkingPhase; className?: string }) {
+function PhaseIcon({
+  phase,
+  className,
+}: {
+  phase: ThinkingPhase;
+  className?: string;
+}) {
   const config = PHASE_CONFIG[phase];
   return (
     <svg
@@ -99,7 +105,10 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
         : "bg-red-500";
 
   return (
-    <div className="flex items-center gap-1.5" title={`Confidence: ${percentage}%`}>
+    <div
+      className="flex items-center gap-1.5"
+      title={`Confidence: ${percentage}%`}
+    >
       <div className="w-16 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-300 ${barColor}`}
@@ -131,7 +140,9 @@ function StepItem({ step }: { step: ThinkingStep }) {
       {/* Content */}
       <div className="pb-4 flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className={`text-xs font-semibold uppercase tracking-wider ${config.color}`}>
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider ${config.color}`}
+          >
             {config.label}
           </span>
           <ConfidenceBar confidence={step.confidence} />
@@ -170,7 +181,9 @@ function TraceSummary({ trace }: { trace: ThinkingTrace }) {
         {trace.steps.length} steps
       </span>
       <span className="text-xs text-gray-300 dark:text-gray-600">|</span>
-      <span className="text-xs text-gray-400 dark:text-gray-500">{durationDisplay}</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500">
+        {durationDisplay}
+      </span>
       <span className="text-xs text-gray-300 dark:text-gray-600">|</span>
       <span className="text-xs text-gray-400 dark:text-gray-500">
         Avg confidence: {Math.round(trace.avg_confidence * 100)}%
@@ -186,7 +199,10 @@ interface ThinkingStreamProps {
   isStreaming?: boolean;
 }
 
-export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamProps) {
+export function ThinkingStream({
+  trace,
+  isStreaming = false,
+}: ThinkingStreamProps) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -214,7 +230,9 @@ export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamPro
         onClick={() => setExpanded((prev) => !prev)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
         aria-expanded={expanded}
-        aria-label={expanded ? "Collapse thinking trace" : "Expand thinking trace"}
+        aria-label={
+          expanded ? "Collapse thinking trace" : "Expand thinking trace"
+        }
       >
         {/* Chevron */}
         <svg
@@ -257,10 +275,7 @@ export function ThinkingStream({ trace, isStreaming = false }: ThinkingStreamPro
 
       {/* Expandable content */}
       {expanded && (
-        <div
-          ref={scrollRef}
-          className="px-3 pb-3 max-h-80 overflow-y-auto"
-        >
+        <div ref={scrollRef} className="px-3 pb-3 max-h-80 overflow-y-auto">
           {hasSteps ? (
             <>
               <div className="space-y-0 pt-1">

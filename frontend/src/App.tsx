@@ -768,32 +768,34 @@ function AppInner() {
           return;
         }
         if (!res.ok) return;
-      const data = await res.json();
-      const history = (data.messages || []).map(
-        (
-          m: {
-            id?: number;
-            role: string;
-            content: string;
-            agent_id?: string;
-            created_at?: string;
-          },
-          idx: number,
-        ) => ({
-          id: m.id || idx,
-          role: m.role as "user" | "assistant" | "system",
-          content: m.content,
-          agent: m.agent_id,
-          ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
-        }),
-      );
-      if (history.length > 0) {
-        setMessages(history);
+        const data = await res.json();
+        const history = (data.messages || []).map(
+          (
+            m: {
+              id?: number;
+              role: string;
+              content: string;
+              agent_id?: string;
+              created_at?: string;
+            },
+            idx: number,
+          ) => ({
+            id: m.id || idx,
+            role: m.role as "user" | "assistant" | "system",
+            content: m.content,
+            agent: m.agent_id,
+            ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
+          }),
+        );
+        if (history.length > 0) {
+          setMessages(history);
+        }
+      } catch {
+        // No history available — start fresh
       }
-    } catch {
-      // No history available — start fresh
-    }
-  }, []);
+    },
+    [],
+  );
 
   const loadChatSessions = useCallback(async () => {
     try {

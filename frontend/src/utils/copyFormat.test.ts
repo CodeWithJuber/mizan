@@ -39,12 +39,24 @@ function isFalse(actual: boolean, label: string): void {
 
 // ---- stripMarkdown ---------------------------------------------------------
 
-eq(stripMarkdown("**bold** and _italic_"), "bold and italic", "plain: bold+italic");
+eq(
+  stripMarkdown("**bold** and _italic_"),
+  "bold and italic",
+  "plain: bold+italic",
+);
 eq(stripMarkdown("## Heading ##"), "Heading", "plain: ATX heading");
 eq(stripMarkdown("Title\n==="), "Title", "plain: setext heading");
-eq(stripMarkdown("- item one\n- item two"), "item one\nitem two", "plain: unordered list");
+eq(
+  stripMarkdown("- item one\n- item two"),
+  "item one\nitem two",
+  "plain: unordered list",
+);
 eq(stripMarkdown("* starred\n+ plus"), "starred\nplus", "plain: alt bullets");
-eq(stripMarkdown("1. first\n2. second"), "first\nsecond", "plain: ordered list");
+eq(
+  stripMarkdown("1. first\n2. second"),
+  "first\nsecond",
+  "plain: ordered list",
+);
 eq(stripMarkdown("[text](https://example.com)"), "text", "plain: link");
 eq(stripMarkdown("![alt](https://example.com/i.png)"), "alt", "plain: image");
 eq(stripMarkdown("> quoted"), "quoted", "plain: blockquote");
@@ -100,7 +112,10 @@ eq(convertCopyFormat("**x**", "whatsapp"), "*x*", "convert: whatsapp");
 // ---- looksLikeRawId --------------------------------------------------------
 
 isTrue(looksLikeRawId("11295847-a894-48c4-baa0-ebdc50c91135"), "id: uuid");
-isTrue(looksLikeRawId("11295847-A894-48C4-BAA0-EBDC50C91135"), "id: uuid upper");
+isTrue(
+  looksLikeRawId("11295847-A894-48C4-BAA0-EBDC50C91135"),
+  "id: uuid upper",
+);
 isTrue(looksLikeRawId("507f1f77bcf86cd799439011"), "id: 24-hex");
 isFalse(looksLikeRawId("Khalifah"), "id: name");
 isFalse(looksLikeRawId("agent_123"), "id: prefixed id");
@@ -108,7 +123,9 @@ isFalse(looksLikeRawId(""), "id: empty");
 
 // ---- resolveAgentName ------------------------------------------------------
 
-const agents = [{ id: "11295847-a894-48c4-baa0-ebdc50c91135", name: "Khalifah" }];
+const agents = [
+  { id: "11295847-a894-48c4-baa0-ebdc50c91135", name: "Khalifah" },
+];
 eq(
   resolveAgentName("11295847-a894-48c4-baa0-ebdc50c91135", agents),
   "Khalifah",
@@ -130,13 +147,29 @@ eq(
   "agent: unknown uuid -> selected agent name",
 );
 eq(
-  resolveAgentName("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", agents, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+  resolveAgentName(
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    agents,
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  ),
   "Assistant",
   "agent: selected name that is itself a uuid is not used",
 );
-eq(resolveAgentName(undefined, agents, "Khalifah"), "Khalifah", "agent: no id -> selected");
-eq(resolveAgentName(undefined, agents), "MIZAN", "agent: no id, none selected -> MIZAN");
-eq(resolveAgentName("Khalifah", agents), "Khalifah", "agent: display name passthrough");
+eq(
+  resolveAgentName(undefined, agents, "Khalifah"),
+  "Khalifah",
+  "agent: no id -> selected",
+);
+eq(
+  resolveAgentName(undefined, agents),
+  "MIZAN",
+  "agent: no id, none selected -> MIZAN",
+);
+eq(
+  resolveAgentName("Khalifah", agents),
+  "Khalifah",
+  "agent: display name passthrough",
+);
 
 // ---- report ----------------------------------------------------------------
 
