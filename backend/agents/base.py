@@ -1556,11 +1556,14 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 # Check if this is a tool_use marker from _agentic_loop
                 if chunk.startswith("\n[Tool:") and stream_callback:
                     # Extract tool name and send tool_use event
+                    # NOTE: tool markers are NOT added to full_response — they are
+                    # UI events, not user-facing text. Adding them here caused
+                    # "Response formed (N chars)" with no actual message when the
+                    # model produced no natural-language text after a tool call.
                     tool_name = (
                         chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
                     )
                     await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
-                    full_response += chunk
                 else:
                     full_response += chunk
                     if stream_callback:
@@ -1774,6 +1777,19 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 0.9,
                 {"length": len(full_response)},
             )
+
+            # Safeguard: if no natural-language text was produced (e.g. model only
+            # called tools), don't return an empty response — the UI would show
+            # nothing. Fall back to a brief summary.
+            if not full_response.strip():
+                full_response = (
+                    "Maine apna kaam poora kar liya hai, lekin iska saransh "
+                    "taiyaar nahi ho paya. Kripya dobara poochhein."
+                )
+                logger.warning(
+                    "[AGENT] %s produced empty full_response after tool loop; using fallback",
+                    self.name,
+                )
 
             self.evolve_nafs()
             self.state = "resting"

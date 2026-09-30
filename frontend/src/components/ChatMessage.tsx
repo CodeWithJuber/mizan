@@ -508,14 +508,14 @@ function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
           </span>
         )}
 
-        {/* Ruh energy pill */}
+        {/* Ruh energy pill — backend sends 0-100 already, do NOT ×100 */}
         {cognitive.ruh_energy != null && (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400"
-            title={`Ruh energy: ${(cognitive.ruh_energy * 100).toFixed(0)}%`}
+            title={`Ruh energy: ${cognitive.ruh_energy.toFixed(0)}%`}
           >
             <span className="opacity-60">Ruh</span>
-            {(cognitive.ruh_energy * 100).toFixed(0)}%
+            {cognitive.ruh_energy.toFixed(0)}%
           </span>
         )}
 
