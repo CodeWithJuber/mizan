@@ -89,12 +89,12 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
         </span>
       </div>
 
-      {/* Ruh energy bar */}
+      {/* Ruh energy bar — backend sends 0-100 already, do NOT ×100 */}
       {agent.ruh_energy != null && (
         <div className="flex items-center gap-2 mb-3">
           <span
             className="text-xs text-gray-500 dark:text-gray-400 min-w-[60px]"
-            title={`Ruh energy: ${(agent.ruh_energy * 100).toFixed(0)}%`}
+            title={`Ruh energy: ${agent.ruh_energy.toFixed(0)}%`}
           >
             Ruh
           </span>
@@ -102,18 +102,18 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
             <div
               className="h-full rounded-full transition-all"
               style={{
-                width: `${agent.ruh_energy * 100}%`,
+                width: `${Math.min(100, agent.ruh_energy)}%`,
                 background:
-                  agent.ruh_energy > 0.6
+                  agent.ruh_energy > 60
                     ? "#10b981"
-                    : agent.ruh_energy > 0.3
+                    : agent.ruh_energy > 30
                       ? "#f59e0b"
                       : "#ef4444",
               }}
             />
           </div>
           <span className="text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums whitespace-nowrap">
-            {(agent.ruh_energy * 100).toFixed(0)}%
+            {agent.ruh_energy.toFixed(0)}%
           </span>
         </div>
       )}
