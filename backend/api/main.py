@@ -355,6 +355,36 @@ balancer = MizanBalancer()
 shura = ShuraCouncil()
 active_agents: dict[str, Any] = {}
 active_sessions: dict[str, dict] = {}
+
+#: Conversation history window sent to the LLM per chat turn. This is
+#: deliberately separate from the agent's max_tool_turns (a ReAct-loop safety
+#: limit): conflating the two truncated context to as few as 5 messages at low
+#: Nafs levels, which users experienced as "context kaam nahi karta".
+MAX_CHAT_HISTORY = 30
+
+
+async def get_or_restore_session(session_id: str) -> dict:
+    """Return the in-memory session, restoring history from DB on a miss.
+
+    Without this, a backend restart (or a fresh worker) wipes the in-memory
+    ``active_sessions`` dict and the agent answers with zero prior context —
+    even though every message is persisted in SQLite.
+    """
+    session = active_sessions.get(session_id)
+    if session is None:
+        db_messages = await memory.get_messages(session_id, limit=MAX_CHAT_HISTORY)
+        restored = [{"role": msg["role"], "content": msg["content"]} for msg in db_messages]
+        session = {"history": restored}
+        if restored:
+            logger.info(
+                "[SESSION] Restored %d messages for session %s from DB",
+                len(restored),
+                session_id[:12],
+            )
+    active_sessions[session_id] = session
+    return session
+
+
 scheduler = QadrScheduler()
 trigger_manager = TriggerManager()
 skill_registry = SkillRegistry()
@@ -942,21 +972,7 @@ async def chat(
     user: TokenPayload = Depends(require_auth),
 ):
     """Chat with an agent (requires authentication)"""
-    session = active_sessions.get(req.session_id)
-
-    # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
-    if session is None:
-        db_messages = await memory.get_messages(req.session_id, limit=50)
-        restored_history = [{"role": msg["role"], "content": msg["content"]} for msg in db_messages]
-        session = {"history": restored_history}
-        if restored_history:
-            logger.info(
-                "[SESSION] Restored %d messages for session %s from DB",
-                len(restored_history),
-                req.session_id[:12],
-            )
-
-    active_sessions[req.session_id] = session
+    session = await get_or_restore_session(req.session_id)
 
     await memory.save_message(req.session_id, "user", req.content)
     session["history"].append({"role": "user", "content": req.content})
@@ -1064,12 +1080,26 @@ async def chat(
             )
 
         try:
-            result = await agent.execute(
-                req.content,
-                {"history": session["history"][-agent.max_tool_turns :]},
-                stream_callback=stream_cb,
-                thinking_callback=thinking_cb,
-            )
+            try:
+                result = await agent.execute(
+                    req.content,
+                    {"history": session["history"][-MAX_CHAT_HISTORY:]},
+                    stream_callback=stream_cb,
+                    thinking_callback=thinking_cb,
+                )
+            except Exception as e:
+                # A background-task exception is invisible to the client — it
+                # would hang on "Thinking..." forever. Surface it instead.
+                logger.exception("[CHAT] agent.execute failed (session %s)", req.session_id[:12])
+                await manager.broadcast(
+                    {
+                        "type": "error",
+                        "message": f"Agent error: {str(e)[:300]}",
+                        "session_id": req.session_id,
+                        "message_id": message_id,
+                    }
+                )
+                return
         finally:
             # Restore original model after per-message override
             if original_model is not None:
@@ -3711,8 +3741,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     agent = list(active_agents.values())[0]
 
                 if agent:
-                    session = active_sessions.get(session_id, {"history": []})
-                    active_sessions[session_id] = session
+                    session = await get_or_restore_session(session_id)
 
                     await memory.save_message(session_id, "user", content, agent.id)
                     session["history"].append({"role": "user", "content": content})
@@ -3789,12 +3818,28 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
-                    result = await agent.execute(
-                        content,
-                        {"history": session["history"][-agent.max_tool_turns :]},
-                        stream_callback=ws_stream,
-                        thinking_callback=ws_thinking,
-                    )
+                    try:
+                        result = await agent.execute(
+                            content,
+                            {"history": session["history"][-MAX_CHAT_HISTORY:]},
+                            stream_callback=ws_stream,
+                            thinking_callback=ws_thinking,
+                        )
+                    except Exception as e:
+                        # Never kill the connection on an agent failure — tell
+                        # the client what happened so the UI unsticks instead of
+                        # hanging on "Thinking..." forever.
+                        logger.exception("[WS] agent.execute failed (session %s)", session_id[:12])
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "error",
+                                "message": f"Agent error: {str(e)[:300]}",
+                                "session_id": session_id,
+                                "message_id": message_id,
+                            },
+                        )
+                        continue
 
                     final = result.get("result", response_text)
                     if isinstance(final, dict):
