@@ -206,13 +206,17 @@ export default function WelcomePage({
       ? "Backend connected"
       : wsStatus === "connecting" || wsStatus === "reconnecting"
         ? "Connecting to backend..."
-        : "Connection failed";
+        : wsStatus === "auth_required"
+          ? "Login required"
+          : "Connection failed";
   const wsDot =
     wsStatus === "connected"
       ? "bg-emerald-500"
       : wsStatus === "connecting" || wsStatus === "reconnecting"
         ? "bg-amber-500 animate-pulse"
-        : "bg-red-500";
+        : wsStatus === "auth_required"
+          ? "bg-amber-500"
+          : "bg-red-500";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 flex items-center justify-center p-4">
@@ -312,10 +316,14 @@ export default function WelcomePage({
             {wsStatus !== "connected" && (
               <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-300 max-w-md mx-auto">
                 <p className="font-medium mb-1">
-                  Backend se connect nahi ho paya.
+                  {wsStatus === "auth_required"
+                    ? "Login karo — backend chal raha hai."
+                    : "Backend se connect nahi ho paya."}
                 </p>
                 <p className="text-xs opacity-80">
-                  Ask the person who set up Mizan to start the backend server.
+                  {wsStatus === "auth_required"
+                    ? "Apna username aur password daalke login karo."
+                    : "Ask the person who set up Mizan to start the backend server."}
                 </p>
               </div>
             )}

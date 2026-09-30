@@ -125,7 +125,11 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     source: "",
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [messageText, setMessageText] = useState("");
+  // Draft message keyed by agent_id so typing in agent A's box doesn't
+  // leak into agent B's box when expanding a different panel.
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [showNafsInfo, setShowNafsInfo] = useState(false);
 
@@ -270,11 +274,12 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
   };
 
   const sendMessage = async (toId: string, toName?: string) => {
-    if (!messageText.trim()) return;
+    const text = (messageDrafts[toId] || "").trim();
+    if (!text) return;
     setBusyKey(`send:${toId}`, true);
     const data = await exec("message", {
       to_agent_id: toId,
-      content: messageText,
+      content: text,
       msg_type: "text",
     });
     setBusyKey(`send:${toId}`, false);
@@ -284,7 +289,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
         type: "success",
         title: `Message sent to ${toName || "agent"}`,
       });
-      setMessageText("");
+      setMessageDrafts((prev) => ({ ...prev, [toId]: "" }));
     } else {
       addToast({
         type: "error",
@@ -555,8 +560,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       <div className="flex gap-2 mb-2">
                         <input
                           className="form-input flex-1 text-xs"
-                          value={messageText}
-                          onChange={(e) => setMessageText(e.target.value)}
+                          value={messageDrafts[agent.agent_id] || ""}
+                          onChange={(e) =>
+                            setMessageDrafts((prev) => ({
+                              ...prev,
+                              [agent.agent_id]: e.target.value,
+                            }))
+                          }
                           placeholder="Send a message..."
                           onKeyDown={(e) =>
                             e.key === "Enter" &&

@@ -400,7 +400,17 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         </div>
 
         {showCreate && (
-          <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div
+            className="modal-overlay"
+            onClick={() => {
+              if (
+                !newTitle.trim() ||
+                window.confirm("Notebook ka title likha tha — band kar dun?")
+              ) {
+                setShowCreate(false);
+              }
+            }}
+          >
             <div
               className="modal"
               role="dialog"

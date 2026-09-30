@@ -15,6 +15,10 @@ export interface ApiClient {
     path: string,
     body?: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
+  patch: (
+    path: string,
+    body?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
   del: (path: string) => Promise<Record<string, unknown>>;
   API_URL: string;
 }
@@ -22,11 +26,7 @@ export interface ApiClient {
 // ===== Agent Types =====
 
 export type AgentState =
-  | "resting"
-  | "thinking"
-  | "acting"
-  | "learning"
-  | "error";
+  "resting" | "thinking" | "acting" | "learning" | "error";
 export type NafsLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type NafsName =
   | "Ammara"
@@ -80,11 +80,7 @@ export interface YaqinTag {
 // ===== Cognitive Method Types =====
 
 export type CognitiveMethod =
-  | "tafakkur"
-  | "tadabbur"
-  | "istidlal"
-  | "qiyas"
-  | "ijma";
+  "tafakkur" | "tadabbur" | "istidlal" | "qiyas" | "ijma";
 
 // ===== Qalb Emotional Types =====
 
@@ -97,12 +93,7 @@ export type EmotionalState =
   | "determined"
   | "fatigued";
 export type ToneStyle =
-  | "standard"
-  | "encouraging"
-  | "patient"
-  | "concise"
-  | "warm"
-  | "focused";
+  "standard" | "encouraging" | "patient" | "concise" | "warm" | "focused";
 
 export interface QalbReading {
   state: EmotionalState;
@@ -469,16 +460,9 @@ export interface PerceptionResult {
 // ===== Queue Types =====
 
 export type QueueTaskStatus =
-  | "pending"
-  | "running"
-  | "complete"
-  | "failed"
-  | "cancelled";
+  "pending" | "running" | "complete" | "failed" | "cancelled";
 export type QueuePriority =
-  | "dharurah"
-  | "hajah"
-  | "tahsiniyyah"
-  | "takmiliyyah";
+  "dharurah" | "hajah" | "tahsiniyyah" | "takmiliyyah";
 
 export interface QueueTask {
   task_id: string;

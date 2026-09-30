@@ -200,6 +200,24 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     }
   };
 
+  const toggleJob = async (jobId: string, currentlyEnabled: boolean) => {
+    try {
+      await api.patch(`/automation/jobs/${jobId}`, {
+        enabled: !currentlyEnabled,
+      });
+      addToast({
+        type: "success",
+        title: currentlyEnabled ? "Job pause ho gaya" : "Job chalu ho gaya",
+      });
+      loadJobs();
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Job update nahi ho paya",
+      });
+    }
+  };
+
   const addWebhookHandler = async () => {
     try {
       await api.post("/automation/webhooks", newWebhook);
@@ -352,6 +370,13 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       </div>
                     </div>
                     <button
+                      className="btn-secondary btn-sm min-h-[44px]"
+                      onClick={() => toggleJob(job.id, job.enabled)}
+                      title={job.enabled ? "Job pause karo" : "Job chalu karo"}
+                    >
+                      {job.enabled ? "Pause" : "Resume"}
+                    </button>
+                    <button
                       className="btn-danger btn-sm min-h-[44px]"
                       onClick={() => removeJob(job.id)}
                     >
@@ -401,6 +426,31 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                   >
                     Copy URL
                   </button>
+                  <button
+                    className="btn-sm min-h-[44px] shrink-0 px-3 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                    onClick={async () => {
+                      if (!window.confirm(`Delete webhook "${wh.name}"?`))
+                        return;
+                      try {
+                        await api.del(`/automation/webhooks/${wh.id}`);
+                        setWebhooks((prev) =>
+                          prev.filter((w) => w.id !== wh.id),
+                        );
+                        addToast({
+                          type: "success",
+                          title: "Webhook deleted",
+                        });
+                      } catch {
+                        addToast({
+                          type: "error",
+                          title: "Delete failed",
+                          description: "Could not delete the webhook.",
+                        });
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
@@ -409,7 +459,19 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       {showAddJob && (
-        <div className="modal-overlay" onClick={() => setShowAddJob(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            const dirty =
+              newJob.name.trim() || newJob.task.trim() || newJob.agent_id;
+            if (
+              !dirty ||
+              window.confirm("Job ka form adhoora hai — band kar dun?")
+            ) {
+              setShowAddJob(false);
+            }
+          }}
+        >
           <div
             className="modal"
             role="dialog"
@@ -558,6 +620,15 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 className="btn-gold min-h-[44px]"
                 onClick={addJob}
                 disabled={!newJob.name || !newJob.task || !!cronError}
+                title={
+                  !newJob.name
+                    ? "Pehle job ka naam likho"
+                    : !newJob.task
+                      ? "Pehle task likho"
+                      : cronError
+                        ? "Schedule theek karo"
+                        : ""
+                }
               >
                 Create Job
               </button>
@@ -567,7 +638,21 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       )}
 
       {showAddWebhook && (
-        <div className="modal-overlay" onClick={() => setShowAddWebhook(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            const dirty =
+              newWebhook.name.trim() ||
+              newWebhook.task_template.trim() ||
+              newWebhook.agent_id;
+            if (
+              !dirty ||
+              window.confirm("Webhook ka form adhoora hai — band kar dun?")
+            ) {
+              setShowAddWebhook(false);
+            }
+          }}
+        >
           <div
             className="modal"
             role="dialog"
@@ -660,6 +745,13 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 className="btn-gold min-h-[44px]"
                 onClick={addWebhookHandler}
                 disabled={!newWebhook.name || !newWebhook.task_template}
+                title={
+                  !newWebhook.name
+                    ? "Pehle webhook ka naam likho"
+                    : !newWebhook.task_template
+                      ? "Pehle task template likho"
+                      : ""
+                }
               >
                 Create Webhook
               </button>
