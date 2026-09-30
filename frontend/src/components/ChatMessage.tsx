@@ -16,6 +16,7 @@ import type { Components } from "react-markdown";
 import { useToast } from "./Toast";
 import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
+import { MessageMeta } from "./MessageMeta";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
 import { VerifiedBadge } from "./ruh/VerifiedBadge";
@@ -956,6 +957,9 @@ export function ChatMessageBubble({
 
             {/* Perception card */}
             {msg.perception && <PerceptionCard perception={msg.perception} />}
+
+            {/* Model transparency: observed model + usage + cost (workstreams C/E) */}
+            <MessageMeta meta={msg.meta} />
 
             {/* In-message CTA button (e.g. navigate to Settings) */}
             {cta && (

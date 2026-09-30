@@ -498,6 +498,11 @@ class _OpenAIStreamWrapper:
         self._acc_text: list[str] = []
         self._acc_tool_calls: dict[int, dict] = {}
         self._finish_reason: str | None = None
+        # Usage accounting: OpenAI-compatible providers emit the usage object
+        # on a final chunk with no choices when stream_options.include_usage
+        # is set. Captured byte-for-byte for auditability (chat workstream E).
+        self._observed_model: str | None = None
+        self._usage_chunk: dict | None = None
 
     def __enter__(self):
         kwargs = {
@@ -505,6 +510,9 @@ class _OpenAIStreamWrapper:
             "max_tokens": self._max_tokens,
             "messages": self._messages,
             "stream": True,
+            # Ask the provider to include the usage object on the stream so
+            # per-message token counts are observed, not estimated.
+            "stream_options": {"include_usage": True},
         }
         if self._tools:
             kwargs["tools"] = self._tools
@@ -519,6 +527,22 @@ class _OpenAIStreamWrapper:
     @property
     def text_stream(self):
         for chunk in self._stream:
+            # The usage chunk arrives with no choices — capture it verbatim
+            # before the choices guard below would skip it.
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                self._usage_chunk = (
+                    usage.model_dump()
+                    if hasattr(usage, "model_dump")
+                    else {
+                        "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                        "completion_tokens": getattr(usage, "completion_tokens", None),
+                        "total_tokens": getattr(usage, "total_tokens", None),
+                    }
+                )
+            # Observed model id from the wire (not the requested one).
+            if getattr(chunk, "model", None):
+                self._observed_model = chunk.model
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]
@@ -566,11 +590,20 @@ class _OpenAIStreamWrapper:
             "length": "max_tokens",
             "content_filter": "end_turn",
         }
+        usage: dict = {}
+        if self._usage_chunk:
+            raw = self._usage_chunk
+            if raw.get("prompt_tokens") is not None:
+                usage["input"] = raw["prompt_tokens"]
+            if raw.get("completion_tokens") is not None:
+                usage["output"] = raw["completion_tokens"]
+            # Forward the raw chunk byte-for-byte under "raw" for auditing.
+            usage["raw"] = raw
         return LLMResponse(
             content=blocks,
             stop_reason=stop_map.get(self._finish_reason or "", "end_turn"),
-            model=self._model,
-            usage={},
+            model=self._observed_model or self._model,
+            usage=usage,
         )
 
 

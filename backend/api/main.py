@@ -40,6 +40,7 @@ from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
 from api.commands import handle_command
+from api.usage import build_usage_block
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
@@ -514,6 +515,14 @@ async def require_auth(
     return token
 
 
+# ===== CHAT ARTIFACTS ROUTER (ticket/chat-upgrade-artifacts) =====
+# JWT is enforced inside backend.api.artifacts via its own require_auth,
+# which delegates to the function above (avoids a circular import).
+from . import artifacts as _artifacts_module  # noqa: E402
+
+app.include_router(_artifacts_module.router)
+
+
 # ===== PYDANTIC MODELS (with validation) =====
 
 
@@ -658,6 +667,34 @@ class ConnectionManager:
 
 
 manager = ConnectionManager(max_connections=security_config.ws_max_connections)
+
+
+# ===== CHAT-UPGRADE ROUTERS (ticket/chat-upgrade-backend) =====
+# sandbox + modes routers are mounted here with JWT auth enforced via
+# include_router(dependencies=...), keeping those modules import-safe
+# (no circular import of require_auth).
+
+try:
+    from api import modes as _modes_router_mod
+    from api import sandbox as _sandbox_router_mod
+
+    app.include_router(_sandbox_router_mod.router, dependencies=[Depends(require_auth)])
+    app.include_router(_modes_router_mod.router, dependencies=[Depends(require_auth)])
+    _modes_router_mod.set_progress_sink(manager.broadcast)
+    logger.info("chat-upgrade routers mounted: sandbox, modes")
+except Exception as e:  # noqa: BLE001 - startup resilience, matches ruh pattern
+    logger.warning("chat-upgrade routers not loaded: %s", e)
+
+# ── ADDITIVE (frontend ticket/chat-upgrade-frontend) ──────────────────────────
+# Server-side generation registry for the client "Stop" button.
+# POST /api/chat runs generation as a background task and the WS "chat" path
+# awaits agent.execute() inline; both register here so a {"type": "stop"}
+# message can cancel the actual LLM work instead of just hiding it in the UI.
+# Keyed by message_id; _CLIENT_ACTIVE_MESSAGE lets a stop without a
+# message_id fall back to the sender's in-flight generation.
+_ACTIVE_GENERATIONS: dict[str, "asyncio.Task"] = {}
+_CLIENT_ACTIVE_MESSAGE: dict[str, str] = {}
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ===== AUTH ROUTES =====
@@ -1079,14 +1116,42 @@ async def chat(
                 }
             )
 
+        # ── ADDITIVE (frontend ticket/chat-upgrade-frontend): register this
+        # generation so a client "stop" message can cancel it server-side.
+        _ACTIVE_GENERATIONS[message_id] = asyncio.current_task()  # type: ignore[assignment]
+        _CLIENT_ACTIVE_MESSAGE[req.session_id] = message_id
         try:
             try:
                 result = await agent.execute(
                     req.content,
-                    {"history": session["history"][-MAX_CHAT_HISTORY:]},
+                    {
+                        "history": session["history"][-MAX_CHAT_HISTORY:],
+                        "session_id": req.session_id,
+                    },
                     stream_callback=stream_cb,
                     thinking_callback=thinking_cb,
                 )
+            except asyncio.CancelledError:
+                # Client pressed Stop — persist what streamed so far and tell
+                # the client the generation ended early (never a silent hang).
+                logger.info(
+                    "[CHAT] generation stopped by client (session %s)",
+                    req.session_id[:12],
+                )
+                await memory.save_message(req.session_id, "assistant", response, agent_id)
+                session["history"].append({"role": "assistant", "content": response})
+                await manager.broadcast(
+                    {
+                        "type": "chat_stopped",
+                        "session_id": req.session_id,
+                        "message_id": message_id,
+                        "response": response,
+                        "partial": True,
+                        "stopped": True,
+                        "agent": agent.name,
+                    }
+                )
+                return
             except Exception as e:
                 # A background-task exception is invisible to the client — it
                 # would hang on "Thinking..." forever. Surface it instead.
@@ -1105,13 +1170,33 @@ async def chat(
             if original_model is not None:
                 agent.ai_model = original_model
                 agent.ai_client = original_client
+            # ── ADDITIVE (frontend ticket/chat-upgrade-frontend)
+            _ACTIVE_GENERATIONS.pop(message_id, None)
+            _CLIENT_ACTIVE_MESSAGE.pop(req.session_id, None)
 
         final_response = result.get("result", response) if result.get("success") else response
         if isinstance(final_response, dict):
             final_response = final_response.get("response", str(final_response))
 
-        await memory.save_message(req.session_id, "assistant", str(final_response), agent_id)
+        # Model transparency: observed model + usage + latency from the
+        # last provider call of this execution (chat workstream C).
+        usage_block = build_usage_block(getattr(agent, "_last_llm_call", None))
+        await memory.save_message(
+            req.session_id,
+            "assistant",
+            str(final_response),
+            agent_id,
+            metadata={"usage": usage_block} if usage_block else None,
+        )
         session["history"].append({"role": "assistant", "content": str(final_response)})
+
+        # mem0 append-only memory capture (no-op unless MEM0_ENABLED + configured)
+        try:
+            from memory.mem0_store import add_turn_async  # noqa: PLC0415
+
+            asyncio.create_task(add_turn_async(req.session_id, req.content, str(final_response)))
+        except Exception:  # noqa: BLE001 - never break chat_complete
+            pass
 
         # Extract cognitive metadata from QALB-7 pipeline
         cognitive = {
@@ -1160,6 +1245,7 @@ async def chat(
                 "agent": agent.name,
                 "cognitive": cognitive,
                 "thinking_trace": trace_dict,
+                "usage": usage_block,
             }
         )
 
@@ -3692,6 +3778,44 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             if msg_type == "ping":
                 await manager.send(client_id, {"type": "pong"})
 
+            elif msg_type == "stop":
+                # ── ADDITIVE (frontend ticket/chat-upgrade-frontend) ──────────
+                # Client "Stop" button: cancel the server-side generation task
+                # so the LLM stops working, not just the UI. The cancelled
+                # task sends back {"type": "chat_stopped"} with the partial
+                # text; we always ack so the client never hangs.
+                stop_mid = str(data.get("message_id") or "")
+                task = _ACTIVE_GENERATIONS.pop(stop_mid, None) if stop_mid else None
+                if task is None:
+                    # Fall back to this client's in-flight generation…
+                    fallback_mid = _CLIENT_ACTIVE_MESSAGE.pop(client_id, None)
+                    if fallback_mid:
+                        task = _ACTIVE_GENERATIONS.pop(fallback_mid, None)
+                        stop_mid = fallback_mid
+                if task is None:
+                    # …or the session's in-flight generation (POST /api/chat
+                    # path registers under session_id).
+                    fallback_mid = _CLIENT_ACTIVE_MESSAGE.pop(
+                        str(data.get("session_id") or ""), None
+                    )
+                    if fallback_mid:
+                        task = _ACTIVE_GENERATIONS.pop(fallback_mid, None)
+                        stop_mid = fallback_mid
+                cancelled = False
+                if task is not None and not task.done():
+                    task.cancel()
+                    cancelled = True
+                await manager.send(
+                    client_id,
+                    {
+                        "type": "stop_ack",
+                        "message_id": stop_mid,
+                        "session_id": data.get("session_id", ""),
+                        "cancelled": cancelled,
+                    },
+                )
+                # ─────────────────────────────────────────────────────────────
+
             elif msg_type == "chat":
                 session_id = data.get("session_id", client_id)
                 content = data.get("content", "")
@@ -3818,13 +3942,42 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
+                    # ── ADDITIVE (frontend ticket/chat-upgrade-frontend): register
+                    # so a client "stop" message can cancel this generation.
+                    _ACTIVE_GENERATIONS[message_id] = asyncio.current_task()  # type: ignore[assignment]
+                    _CLIENT_ACTIVE_MESSAGE[client_id] = message_id
                     try:
                         result = await agent.execute(
                             content,
-                            {"history": session["history"][-MAX_CHAT_HISTORY:]},
+                            {
+                                "history": session["history"][-MAX_CHAT_HISTORY:],
+                                "session_id": session_id,
+                            },
                             stream_callback=ws_stream,
                             thinking_callback=ws_thinking,
                         )
+                    except asyncio.CancelledError:
+                        # Client pressed Stop — persist the partial response
+                        # and tell the client the generation ended early.
+                        logger.info(
+                            "[WS] generation stopped by client (session %s)",
+                            session_id[:12],
+                        )
+                        await memory.save_message(session_id, "assistant", response_text, agent.id)
+                        session["history"].append({"role": "assistant", "content": response_text})
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "chat_stopped",
+                                "session_id": session_id,
+                                "message_id": message_id,
+                                "response": response_text,
+                                "partial": True,
+                                "stopped": True,
+                                "agent": agent.name,
+                            },
+                        )
+                        continue
                     except Exception as e:
                         # Never kill the connection on an agent failure — tell
                         # the client what happened so the UI unsticks instead of
@@ -3840,13 +3993,34 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
                         continue
+                    finally:
+                        # ── ADDITIVE (frontend ticket/chat-upgrade-frontend)
+                        _ACTIVE_GENERATIONS.pop(message_id, None)
+                        _CLIENT_ACTIVE_MESSAGE.pop(client_id, None)
 
                     final = result.get("result", response_text)
                     if isinstance(final, dict):
                         final = final.get("response", str(final))
 
-                    await memory.save_message(session_id, "assistant", str(final), agent.id)
+                    # Model transparency: observed model + usage + latency from the
+                    # last provider call of this execution (chat workstream C).
+                    usage_block = build_usage_block(getattr(agent, "_last_llm_call", None))
+                    await memory.save_message(
+                        session_id,
+                        "assistant",
+                        str(final),
+                        agent.id,
+                        metadata={"usage": usage_block} if usage_block else None,
+                    )
                     session["history"].append({"role": "assistant", "content": str(final)})
+
+                    # mem0 append-only memory capture (no-op unless MEM0_ENABLED + configured)
+                    try:
+                        from memory.mem0_store import add_turn_async  # noqa: PLC0415
+
+                        asyncio.create_task(add_turn_async(session_id, content, str(final)))
+                    except Exception:  # noqa: BLE001 - never break chat_complete
+                        pass
 
                     # Extract cognitive metadata from QALB-7 pipeline
                     cognitive = {
@@ -3899,6 +4073,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "success": result.get("success", True),
                             "cognitive": cognitive,
                             "thinking_trace": trace_dict,
+                            "usage": usage_block,
                         },
                     )
 

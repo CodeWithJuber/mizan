@@ -843,6 +843,7 @@ class BaseAgent:
                     response = None
             if response is None:
                 # Call the model via unified provider
+                _create_start = time.time()
                 response = self.ai_client.create(
                     model=self.ai_model,
                     max_tokens=max_tokens,
@@ -851,6 +852,7 @@ class BaseAgent:
                     messages=messages,
                     tools=tool_schemas,
                 )
+                self._record_llm_call(response, (time.time() - _create_start) * 1000)
 
             # Collect text output and tool calls from this turn. In streaming
             # mode the text was already yielded live above.
@@ -978,6 +980,23 @@ class BaseAgent:
 
         logger.warning(f"[FIKR] Agent {self.name} hit max_tool_turns ({self.max_tool_turns})")
 
+    def _record_llm_call(self, llm_response, latency_ms: float) -> None:
+        """Record the last provider call for model-transparency reporting.
+
+        Stash the provider's ``LLMResponse`` (observed model id, usage,
+        stop reason) plus the call latency on the agent instance. Chat
+        handlers (``backend/api/main.py``) read this after ``execute()`` to
+        build the per-message ``usage`` block. Additive and side-effect
+        free — never raises.
+        """
+        try:
+            self._last_llm_call = {
+                "response": llm_response,
+                "latency_ms": round(latency_ms, 1),
+            }
+        except Exception:
+            pass
+
     async def _streaming_create(
         self,
         system_prompt: str,
@@ -1000,6 +1019,7 @@ class BaseAgent:
         """
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
+        llm_start = time.time()
 
         def _runner() -> None:
             try:
@@ -1030,6 +1050,7 @@ class BaseAgent:
                     raise payload
                 else:  # "done"
                     final_holder["response"] = payload
+                    self._record_llm_call(payload, (time.time() - llm_start) * 1000)
                     return
         finally:
             if not runner_future.done():
@@ -1542,12 +1563,25 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             for hist in history[-10:]:
                 messages.append({"role": hist["role"], "content": hist["content"]})
 
-        messages.append(
-            {
-                "role": "user",
-                "content": f"Task: {task}\n\nContext: {json.dumps(context or {}, indent=2) if context else 'None'}",
-            }
+        # mem0 long-term memory recall (no-op unless MEM0_ENABLED + configured;
+        # guarded so a mem0 failure never breaks context building)
+        mem0_block = ""
+        try:
+            from memory.mem0_store import recall_block_sync  # noqa: PLC0415
+
+            _sid = (context or {}).get("session_id", "")
+            if _sid:
+                mem0_block = recall_block_sync(_sid, task, dhikr=self.memory)
+        except Exception:  # noqa: BLE001 - memory recall must never break chat
+            mem0_block = ""
+
+        user_content = (
+            f"Task: {task}\n\nContext: {json.dumps(context or {}, indent=2) if context else 'None'}"
         )
+        if mem0_block:
+            user_content = f"[RELEVANT MEMORIES]\n{mem0_block}\n\n{user_content}"
+
+        messages.append({"role": "user", "content": user_content})
 
         return messages
 
@@ -1595,6 +1629,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self.state = "acting"
         self.current_task = task
         self.total_tasks += 1
+        # Fresh per execution — model-transparency readers must never see a
+        # previous task's provider call.
+        self._last_llm_call = None
 
         async def emit_thinking(
             phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None
