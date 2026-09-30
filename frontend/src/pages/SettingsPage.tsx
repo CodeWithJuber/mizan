@@ -642,7 +642,23 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
               </div>
 
               <button
-                onClick={() => api.post("/memory/consolidate").catch(() => {})}
+                onClick={() =>
+                  api
+                    .post("/memory/consolidate")
+                    .then(() =>
+                      addToast({
+                        type: "success",
+                        title: "Memory consolidation shuru ho gayi",
+                      }),
+                    )
+                    .catch(() =>
+                      addToast({
+                        type: "error",
+                        title: "Consolidation fail ho gayi",
+                        description: "Phir se try karo.",
+                      }),
+                    )
+                }
                 className="btn-secondary text-sm"
               >
                 Run Memory Consolidation
