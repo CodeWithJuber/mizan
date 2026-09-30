@@ -79,8 +79,17 @@ class BaseLLMProvider:
         max_tokens: int,
         system: str,
         messages: list[dict],
+        tools=None,
+        temperature=None,
     ):
-        """Streaming interface for chat (no tools). Returns a context manager."""
+        """Streaming interface (supports tools). Returns a context manager.
+
+        The wrapper MUST expose:
+          - ``text_stream``: iterable of text deltas (str)
+          - ``get_final_response() -> LLMResponse``: the fully-accumulated
+            response (text + tool_use blocks + stop_reason), callable from
+            inside the ``with`` block after the stream is consumed.
+        """
         raise NotImplementedError
 
 
@@ -132,12 +141,69 @@ class AnthropicProvider(BaseLLMProvider):
             usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
         )
 
-    def stream(self, model, max_tokens, system, messages):
-        return self._client.messages.stream(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        kwargs = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return _AnthropicStreamWrapper(self._client.messages.stream(**kwargs))
+
+
+class _AnthropicStreamWrapper:
+    """Wraps the Anthropic SDK stream manager with Mizan's streaming contract.
+
+    Exposes ``text_stream`` (text deltas) and ``get_final_response()`` which
+    converts the SDK's accumulated final message — including tool_use blocks —
+    into a normalized ``LLMResponse``.
+    """
+
+    def __init__(self, stream_manager):
+        self._manager = stream_manager
+        self._stream = None
+
+    def __enter__(self):
+        self._stream = self._manager.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self._manager.__exit__(*args)
+
+    @property
+    def text_stream(self):
+        return self._stream.text_stream
+
+    def get_final_response(self) -> "LLMResponse":
+        message = self._stream.get_final_message()
+        blocks = []
+        for block in message.content:
+            if block.type == "text":
+                blocks.append(ContentBlock(type="text", text=block.text))
+            elif block.type == "tool_use":
+                blocks.append(
+                    ContentBlock(
+                        type="tool_use",
+                        id=block.id,
+                        name=block.name,
+                        input=block.input,
+                    )
+                )
+        usage = {}
+        if getattr(message, "usage", None):
+            usage = {
+                "input": message.usage.input_tokens,
+                "output": message.usage.output_tokens,
+            }
+        return LLMResponse(
+            content=blocks,
+            stop_reason=message.stop_reason,
+            model=message.model,
+            usage=usage,
         )
 
 
@@ -399,29 +465,52 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             },
         )
 
-    def stream(self, model, max_tokens, system, messages):
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
         """Return an OpenAI streaming wrapper that mimics Anthropic's interface."""
         openai_messages = self._convert_messages_to_openai(system, messages)
-        return _OpenAIStreamWrapper(self._client, model, max_tokens, openai_messages)
+        openai_tools = self._convert_tools_to_openai(tools) if tools else None
+        return _OpenAIStreamWrapper(
+            self._client,
+            model,
+            max_tokens,
+            openai_messages,
+            tools=openai_tools,
+            temperature=temperature,
+        )
 
 
 class _OpenAIStreamWrapper:
-    """Wraps OpenAI streaming to provide a text_stream interface like Anthropic."""
+    """Wraps OpenAI streaming to provide a text_stream interface like Anthropic.
 
-    def __init__(self, client, model, max_tokens, messages):
+    Also accumulates tool_call deltas and the finish reason so
+    ``get_final_response()`` can return a normalized ``LLMResponse``
+    (text + tool_use blocks + stop_reason).
+    """
+
+    def __init__(self, client, model, max_tokens, messages, tools=None, temperature=None):
         self._client = client
         self._model = model
         self._max_tokens = max_tokens
         self._messages = messages
+        self._tools = tools
+        self._temperature = temperature
         self._stream = None
+        self._acc_text: list[str] = []
+        self._acc_tool_calls: dict[int, dict] = {}
+        self._finish_reason: str | None = None
 
     def __enter__(self):
-        self._stream = self._client.chat.completions.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=self._messages,
-            stream=True,
-        )
+        kwargs = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "messages": self._messages,
+            "stream": True,
+        }
+        if self._tools:
+            kwargs["tools"] = self._tools
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+        self._stream = self._client.chat.completions.create(**kwargs)
         return self
 
     def __exit__(self, *args):
@@ -430,8 +519,59 @@ class _OpenAIStreamWrapper:
     @property
     def text_stream(self):
         for chunk in self._stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if delta.content:
+                self._acc_text.append(delta.content)
+                yield delta.content
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    acc = self._acc_tool_calls.setdefault(
+                        tc.index, {"id": "", "name": "", "args": []}
+                    )
+                    if tc.id:
+                        acc["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            acc["name"] = tc.function.name
+                        if tc.function.arguments:
+                            acc["args"].append(tc.function.arguments)
+            if choice.finish_reason:
+                self._finish_reason = choice.finish_reason
+
+    def get_final_response(self) -> "LLMResponse":
+        blocks: list[ContentBlock] = []
+        text = "".join(self._acc_text)
+        if text:
+            blocks.append(ContentBlock(type="text", text=text))
+        for acc in self._acc_tool_calls.values():
+            raw_args = "".join(acc["args"])
+            try:
+                parsed = json.loads(raw_args) if raw_args else {}
+            except (json.JSONDecodeError, ValueError):
+                parsed = {}
+            blocks.append(
+                ContentBlock(
+                    type="tool_use",
+                    id=acc["id"] or f"toolu_{uuid.uuid4().hex[:12]}",
+                    name=acc["name"],
+                    input=parsed,
+                )
+            )
+        stop_map = {
+            "stop": "end_turn",
+            "tool_calls": "tool_use",
+            "length": "max_tokens",
+            "content_filter": "end_turn",
+        }
+        return LLMResponse(
+            content=blocks,
+            stop_reason=stop_map.get(self._finish_reason or "", "end_turn"),
+            model=self._model,
+            usage={},
+        )
 
 
 # ───── Ollama Provider ─────
@@ -459,12 +599,21 @@ class OllamaProvider(BaseLLMProvider):
         provider.provider_name = "ollama"
         return provider.create(model, max_tokens, system, messages, tools, temperature)
 
-    def stream(self, model, max_tokens, system, messages):
-        openai_messages = [{"role": "system", "content": system}]
-        for msg in messages:
-            if isinstance(msg["content"], str):
-                openai_messages.append({"role": msg["role"], "content": msg["content"]})
-        return _OpenAIStreamWrapper(self._client, model, max_tokens, openai_messages)
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        openai_messages = OpenAICompatibleProvider._convert_messages_to_openai(
+            self, system, messages
+        )
+        openai_tools = (
+            OpenAICompatibleProvider._convert_tools_to_openai(self, tools) if tools else None
+        )
+        return _OpenAIStreamWrapper(
+            self._client,
+            model,
+            max_tokens,
+            openai_messages,
+            tools=openai_tools,
+            temperature=temperature,
+        )
 
 
 # ───── Provider Factory ─────
