@@ -1077,6 +1077,10 @@ function AppInner() {
         api={api}
         wsStatus={wsStatus}
         onComplete={() => setShowWelcome(false)}
+        onOpenSettings={() => {
+          setShowWelcome(false);
+          setActiveTab("settings");
+        }}
       />
     );
   }

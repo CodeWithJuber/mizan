@@ -79,9 +79,8 @@ export function ConnectionBanner({
             />
           </svg>
           <span>
-            Cannot connect to backend. Make sure the server is running:{" "}
-            <code className="code">mizan serve</code> or{" "}
-            <code className="code">make dev</code>
+            Cannot connect to backend. Ask the person who set up Mizan to start
+            the server.
           </span>
         </div>
         <button

@@ -12,6 +12,7 @@ interface WelcomePageProps {
   api: ApiClient;
   wsStatus: string;
   onComplete: () => void;
+  onOpenSettings?: () => void;
 }
 
 type Step = "login" | "welcome" | "provider" | "ready";
@@ -29,6 +30,7 @@ export default function WelcomePage({
   api,
   wsStatus,
   onComplete,
+  onOpenSettings,
 }: WelcomePageProps) {
   const [step, setStep] = useState<Step>(() =>
     localStorage.getItem("mizan_token") ? "welcome" : "login",
@@ -299,10 +301,7 @@ export default function WelcomePage({
                   Backend se connect nahi ho paya.
                 </p>
                 <p className="text-xs opacity-80">
-                  Self-host kar rahe ho to pehle backend start karo:{" "}
-                  <code className="bg-amber-100 dark:bg-amber-500/10 px-1.5 py-0.5 rounded">
-                    mizan serve
-                  </code>
+                  Ask the person who set up Mizan to start the backend server.
                 </p>
               </div>
             )}
@@ -333,7 +332,15 @@ export default function WelcomePage({
                 .
               </p>
               <button
-                onClick={onComplete}
+                onClick={() => {
+                  // Deep-link to Settings → AI Providers section
+                  localStorage.setItem("mizan_settings_section", "providers");
+                  if (onOpenSettings) {
+                    onOpenSettings();
+                  } else {
+                    onComplete();
+                  }
+                }}
                 className="text-sm text-mizan-gold hover:underline min-h-[44px] px-3"
               >
                 Open Settings → AI Providers

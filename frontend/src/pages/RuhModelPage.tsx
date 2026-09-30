@@ -350,12 +350,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
               {!ruhStatus?.enabled && (
                 <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg">
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Set{" "}
-                    <code className="font-mono bg-amber-100 dark:bg-amber-500/20 px-1 py-0.5 rounded">
-                      RUH_ENABLED=true
-                    </code>{" "}
-                    in <code className="font-mono">.env</code> and restart the
-                    backend to enable training &amp; inference.
+                    The Ruh Model is not enabled. Ask the person who set up
+                    Mizan to enable it on the server.
                   </p>
                 </div>
               )}
