@@ -16,6 +16,7 @@ import type {
   LearnerStats,
   TrainingRun,
 } from "../types/ruh";
+import { useToast } from "../components/Toast";
 import { useTrainingWebSocket } from "../hooks/useTrainingWebSocket";
 import { TrainingControls } from "../components/ruh/TrainingControls";
 import { LossCurveChart } from "../components/ruh/LossCurveChart";
@@ -48,6 +49,7 @@ interface GenerateResult {
 // ===== Page component =====
 
 export default function RuhModelPage({ api }: { api: ApiClient }) {
+  const { addToast } = useToast();
   const [tab, setTab] = useState<SubTab>("dashboard");
   const [ruhStatus, setRuhStatus] = useState<RuhStatus | null>(null);
   const [learnerStats, setLearnerStats] = useState<LearnerStats | null>(null);
@@ -88,41 +90,49 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
   // ===== Fetchers =====
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (): Promise<boolean> => {
     try {
       const data = await api.get("/ruh/status");
       setRuhStatus(data as unknown as RuhStatus);
+      return true;
     } catch {
       // Endpoint may not exist yet
+      return false;
     }
   }, [api]);
 
-  const fetchTrainingStatus = useCallback(async () => {
+  const fetchTrainingStatus = useCallback(async (): Promise<boolean> => {
     try {
       const data = await api.get("/training/status");
       setPolledMetrics(data as unknown as TrainingMetrics);
+      return true;
     } catch {
       // No training endpoint
+      return false;
     }
   }, [api]);
 
-  const fetchLearnerStats = useCallback(async () => {
+  const fetchLearnerStats = useCallback(async (): Promise<boolean> => {
     try {
       const data = (await api.get("/learner/stats")) as Record<string, unknown>;
       if (data && typeof data.total_interactions === "number") {
         setLearnerStats(data as unknown as LearnerStats);
       }
+      return true;
     } catch {
       // Optional — endpoint may 500 when learner isn't configured
+      return false;
     }
   }, [api]);
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (): Promise<boolean> => {
     try {
       const data = await api.get("/training/history");
       setTrainingHistory((data as { runs: TrainingRun[] }).runs ?? []);
+      return true;
     } catch {
       // Optional
+      return false;
     }
   }, [api]);
 
@@ -149,12 +159,20 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
+      const results = await Promise.all([
         fetchStatus(),
         fetchTrainingStatus(),
         fetchLearnerStats(),
         fetchHistory(),
       ]);
+      const failed = results.filter((r) => !r).length;
+      if (failed > 0) {
+        addToast({
+          type: "warning",
+          title: "Partial refresh",
+          description: `${failed} of ${results.length} sections could not be loaded. The model may not be set up yet.`,
+        });
+      }
     } finally {
       setRefreshing(false);
     }
