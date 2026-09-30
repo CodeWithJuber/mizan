@@ -91,10 +91,13 @@ export default function PerceptionPage({ api }: PageProps) {
       }
       if (audioFile) {
         body.audio_base64 = await fileToBase64(audioFile);
+        if (!imageFile) body.media_type = audioFile.type || "audio/webm";
       }
 
       const res = await api.post("/perception/analyze", body);
-      setResult(res as unknown as PerceptionResult);
+      const payload =
+        (res as unknown as { result?: PerceptionResult }).result ?? res;
+      setResult(payload as unknown as PerceptionResult);
     } catch (e) {
       setError((e as Error).message || "Analysis failed");
     } finally {
@@ -336,7 +339,9 @@ export default function PerceptionPage({ api }: PageProps) {
                         />
                       </div>
                       <span className="text-xs font-mono text-gray-500 dark:text-gray-400 w-10 text-right">
-                        {(result.perception.basirah.confidence * 100).toFixed(0)}
+                        {(result.perception.basirah.confidence * 100).toFixed(
+                          0,
+                        )}
                         %
                       </span>
                     </div>
@@ -356,16 +361,14 @@ export default function PerceptionPage({ api }: PageProps) {
                     {/* Key elements */}
                     {result.perception.basirah.key_elements?.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {result.perception.basirah.key_elements.map(
-                          (el, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded-md text-[11px] bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400"
-                            >
-                              {el}
-                            </span>
-                          ),
-                        )}
+                        {result.perception.basirah.key_elements.map((el, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-md text-[11px] bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400"
+                          >
+                            {el}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
