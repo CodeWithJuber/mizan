@@ -780,3 +780,24 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ===== CHAT UPGRADE: streaming block cursor ===== */
+@keyframes stream-cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.stream-block-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: #f59e0b;
+  animation: stream-cursor-blink 0.9s steps(1) infinite;
+}

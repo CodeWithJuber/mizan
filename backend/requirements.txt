@@ -45,6 +45,15 @@ youtube-transcript-api>=0.6.0
 # Optional: Vector Memory
 # chromadb>=0.5.0
 
+# Optional: mem0 long-term memory (backend/memory/mem0_store.py)
+# Verified 2026-09-30: PyPI name `mem0ai`, import `from mem0 import Memory`.
+# Local Qdrant vector store + SQLite history; LLM/embedder reuse the app's
+# existing provider env (ANTHROPIC_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY).
+# Optional on purpose: when missing or MEM0_ENABLED != true, everything
+# degrades to the dhikr memory with zero behavior change.
+# Install with: pip install mem0ai
+# mem0ai>=2.2.0
+
 # Optional: Voice
 # elevenlabs>=1.5.0
 
