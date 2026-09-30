@@ -101,7 +101,7 @@ async def cmd_web_search(args="", **kwargs):
     if not query:
         return "Usage: /web_search your search query"
     try:
-        from backend.skills.builtin.web_browse import WebBrowseSkill
+        from skills.builtin.web_browse import WebBrowseSkill
 
         skill = WebBrowseSkill()
         result = await skill.search(query)
