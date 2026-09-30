@@ -800,14 +800,20 @@ interface ChatMessageBubbleProps {
   selectedAgent?: { name: string } | null;
   // MORPH-FEAT: forwarded to ChatMessageContent; opens RootExplorerDrawer.
   onExploreWord?: (word: string) => void;
+  // Optional in-message CTA button (e.g. "AI Providers kholo" → settings tab).
+  onNavigateTab?: (tab: string) => void;
 }
 
 export function ChatMessageBubble({
   msg,
   selectedAgent,
   onExploreWord,
+  onNavigateTab,
 }: ChatMessageBubbleProps) {
   const [copied, setCopied] = useState(false);
+  const cta = (
+    msg as ChatMessageType & { cta?: { label: string; tab: string } }
+  ).cta;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -844,7 +850,7 @@ export function ChatMessageBubble({
       <div className="chat-message-row">
         <div className="chat-message-container flex justify-end">
           <div className="max-w-[80%] lg:max-w-[70%]">
-            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm">
+            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm break-words">
               {msg.content}
             </div>
             <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right font-mono px-1">
@@ -896,8 +902,18 @@ export function ChatMessageBubble({
             {/* Perception card */}
             {msg.perception && <PerceptionCard perception={msg.perception} />}
 
+            {/* In-message CTA button (e.g. navigate to Settings) */}
+            {cta && (
+              <button
+                onClick={() => onNavigateTab?.(cta.tab)}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors"
+              >
+                {cta.label}
+              </button>
+            )}
+
             {/* Action buttons — hover reveal */}
-            <div className="flex items-center gap-1 mt-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
+            <div className="flex items-center gap-1 mt-2 opacity-100 md:opacity-0 md:group-hover/msg:opacity-100 transition-opacity duration-200">
               <button
                 onClick={handleCopy}
                 className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"

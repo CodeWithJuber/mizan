@@ -3,8 +3,10 @@
  * Upload images and audio for vision and voice analysis through the QCA pipeline.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { PageProps, PerceptionResult } from "../types";
+import { useToast } from "../components/Toast";
+import { ApiError } from "../hooks/useApi";
 
 const QALB_STATES = [
   { value: "", label: "Auto-detect" },
@@ -42,7 +44,21 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function humanizeError(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.status === 401) return "Session expired — please log in again.";
+    if (e.status >= 500) return "Something went wrong on the server.";
+    return e.message || "Something went wrong.";
+  }
+  const msg = e instanceof Error ? e.message : "";
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "Couldn't reach the server — check your connection.";
+  }
+  return msg || "Analysis failed";
+}
+
 export default function PerceptionPage({ api }: PageProps) {
+  const { addToast } = useToast();
   const [text, setText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -52,12 +68,24 @@ export default function PerceptionPage({ api }: PageProps) {
   const [result, setResult] = useState<PerceptionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Track object URLs so we can revoke them (avoid memory leaks)
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    },
+    [],
+  );
+
   const handleImageSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        setImageFile(file);
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
         const url = URL.createObjectURL(file);
+        previewUrlRef.current = url;
+        setImageFile(file);
         setImagePreview(url);
       }
     },
@@ -99,13 +127,19 @@ export default function PerceptionPage({ api }: PageProps) {
         (res as unknown as { result?: PerceptionResult }).result ?? res;
       setResult(payload as unknown as PerceptionResult);
     } catch (e) {
-      setError((e as Error).message || "Analysis failed");
+      const friendly = humanizeError(e);
+      setError(friendly);
+      addToast({ type: "error", title: friendly });
     } finally {
       setLoading(false);
     }
   };
 
   const clearAll = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     setText("");
     setImageFile(null);
     setImagePreview(null);
@@ -121,7 +155,8 @@ export default function PerceptionPage({ api }: PageProps) {
         <div>
           <h2 className="page-title">Perception</h2>
           <p className="page-description">
-            Vision (Basirah) & Voice (Nutq) analysis through the QCA pipeline
+            Upload a photo to get a description, or a voice note to get it
+            transcribed.
           </p>
         </div>
         <button className="btn-secondary text-sm" onClick={clearAll}>
@@ -129,7 +164,7 @@ export default function PerceptionPage({ api }: PageProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Input Panel */}
           <div className="space-y-4">
@@ -141,7 +176,7 @@ export default function PerceptionPage({ api }: PageProps) {
               <textarea
                 className="input w-full text-sm"
                 rows={3}
-                placeholder="Optional text to provide context..."
+                placeholder="Optional hint, e.g. 'focus on the text in the image'"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
@@ -149,7 +184,10 @@ export default function PerceptionPage({ api }: PageProps) {
 
             {/* Image upload */}
             <div className="card p-4 space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label
+                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                title="Basirah — Mizan's vision sense: describes what it sees in a photo"
+              >
                 Image (Basirah)
               </label>
               <div
@@ -201,7 +239,10 @@ export default function PerceptionPage({ api }: PageProps) {
 
             {/* Audio upload */}
             <div className="card p-4 space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label
+                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                title="Nutq — Mizan's voice sense: transcribes what it hears in a voice note"
+              >
                 Audio (Nutq)
               </label>
               <div
@@ -258,20 +299,29 @@ export default function PerceptionPage({ api }: PageProps) {
             </div>
 
             {/* Qalb state + Analyze */}
-            <div className="flex items-center gap-3">
-              <select
-                className="input text-sm flex-1"
-                value={qalbState}
-                onChange={(e) => setQalbState(e.target.value)}
-              >
-                {QALB_STATES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-end gap-3">
+              <div className="flex-1 min-w-0">
+                <label
+                  htmlFor="perception-mood"
+                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                >
+                  Your mood — helps the analysis read tone
+                </label>
+                <select
+                  id="perception-mood"
+                  className="input text-sm w-full min-h-[44px]"
+                  value={qalbState}
+                  onChange={(e) => setQalbState(e.target.value)}
+                >
+                  {QALB_STATES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
-                className="btn-gold flex items-center gap-2 px-6"
+                className="btn-gold flex items-center gap-2 px-6 min-h-[44px]"
                 onClick={handleAnalyze}
                 disabled={loading || (!text && !imageFile && !audioFile)}
               >
@@ -298,10 +348,16 @@ export default function PerceptionPage({ api }: PageProps) {
           {/* Results Panel */}
           <div className="space-y-4">
             {error && (
-              <div className="card p-4 border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/5">
+              <div className="card p-4 border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/5 space-y-2">
                 <p className="text-sm text-red-600 dark:text-red-400">
                   {error}
                 </p>
+                <button
+                  className="btn-secondary text-sm min-h-[44px] px-4"
+                  onClick={handleAnalyze}
+                >
+                  Retry
+                </button>
               </div>
             )}
 
@@ -440,7 +496,7 @@ export default function PerceptionPage({ api }: PageProps) {
                     <div className="rounded-lg bg-gray-50 dark:bg-zinc-800/50 p-3 space-y-2">
                       <div>
                         <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                          Zahir (Apparent)
+                          Zahir — what it appears to be
                         </span>
                         <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
                           {result.zahir}
@@ -449,7 +505,7 @@ export default function PerceptionPage({ api }: PageProps) {
                       {result.batin && (
                         <div>
                           <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                            Batin (Hidden)
+                            Batin — what lies beneath the surface
                           </span>
                           <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
                             {result.batin}
@@ -464,7 +520,7 @@ export default function PerceptionPage({ api }: PageProps) {
                     Object.keys(result.roots_identified).length > 0 && (
                       <div>
                         <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Arabic Roots (ISM)
+                          Arabic Roots (ISM — base word-forms)
                         </span>
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {Object.entries(result.roots_identified).map(
@@ -472,7 +528,15 @@ export default function PerceptionPage({ api }: PageProps) {
                               <span
                                 key={root}
                                 className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                title={JSON.stringify(info)}
+                                title={
+                                  typeof info === "object" && info !== null
+                                    ? Object.entries(
+                                        info as Record<string, unknown>,
+                                      )
+                                        .map(([k, v]) => `${k}: ${String(v)}`)
+                                        .join(" · ")
+                                    : String(info)
+                                }
                               >
                                 {root}
                               </span>

@@ -25,7 +25,7 @@ export function MobileNav({ activeTab, setActiveTab }: MobileNavProps) {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg min-w-[60px] transition-colors cursor-pointer focus-ring ${
+            className={`relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg min-w-[60px] transition-colors cursor-pointer focus-ring ${
               isActive
                 ? "text-mizan-gold"
                 : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
