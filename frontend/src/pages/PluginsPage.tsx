@@ -276,15 +276,15 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
               {hooks.map((hook, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50"
                 >
-                  <span className="text-2xs font-mono text-blue-500 dark:text-blue-400 w-40 shrink-0">
+                  <span className="text-2xs font-mono text-blue-500 dark:text-blue-400 w-24 sm:w-40 shrink-0 truncate">
                     {hook.event}
                   </span>
-                  <span className="text-2xs text-gray-900 dark:text-gray-100">
+                  <span className="text-2xs text-gray-900 dark:text-gray-100 min-w-0 flex-1 truncate">
                     {hook.plugin}
                   </span>
-                  <span className="ml-auto text-micro font-mono text-gray-400 dark:text-gray-500">
+                  <span className="ml-auto text-micro font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap">
                     priority: {hook.priority}
                   </span>
                 </div>

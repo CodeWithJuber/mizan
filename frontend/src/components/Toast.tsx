@@ -3,7 +3,13 @@
  * Provides visual feedback for user actions.
  */
 
-import { useState, useCallback, useEffect, createContext, useContext } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  createContext,
+  useContext,
+} from "react";
 
 interface Toast {
   id: string;
@@ -38,25 +44,38 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ addToast }}>
       {children}
       {/* Toast container */}
-      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm">
+      <div className="fixed bottom-20 sm:bottom-4 right-4 left-4 sm:left-auto z-[9999] flex flex-col gap-2 sm:max-w-sm">
         {toasts.map((toast) => (
-          <ToastItem key={toast.id} toast={toast} onDismiss={() => removeToast(toast.id)} />
+          <ToastItem
+            key={toast.id}
+            toast={toast}
+            onDismiss={() => removeToast(toast.id)}
+          />
         ))}
       </div>
     </ToastContext.Provider>
   );
 }
 
-function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+function ToastItem({
+  toast,
+  onDismiss,
+}: {
+  toast: Toast;
+  onDismiss: () => void;
+}) {
   useEffect(() => {
     const timer = setTimeout(onDismiss, 4000);
     return () => clearTimeout(timer);
   }, [onDismiss]);
 
   const colors = {
-    success: "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300",
-    error: "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-300",
-    warning: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300",
+    success:
+      "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300",
+    error:
+      "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-300",
+    warning:
+      "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300",
     info: "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-800 dark:text-blue-300",
   };
 

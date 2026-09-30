@@ -62,8 +62,13 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
     null,
   );
 
-  // Merged metrics: prefer WebSocket, fall back to polled
-  const metrics: TrainingMetrics | null = wsMetrics ?? polledMetrics;
+  // Merged metrics: prefer WebSocket when it's delivering real data,
+  // otherwise fall back to polled status. (wsMetrics is never null —
+  // INITIAL_METRICS.message is "Connecting..." until real data arrives.)
+  const metrics: TrainingMetrics | null =
+    wsConnected && wsMetrics.message !== "Connecting..."
+      ? wsMetrics
+      : (polledMetrics ?? wsMetrics);
 
   // Generate playground state
   const [generatePrompt, setGeneratePrompt] = useState("");
@@ -88,16 +93,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
   const fetchTrainingStatus = useCallback(async () => {
     try {
-      const data = (await api.get("/training/status")) as Record<
-        string,
-        unknown
-      >;
-      // Shape-validate: a logged-out 401 body ({detail: ...}) is truthy but
-      // has no losses — never store it as metrics (LossCurveChart would
-      // crash on metrics.losses.map).
-      if (data && Array.isArray(data.losses)) {
-        setPolledMetrics(data as unknown as TrainingMetrics);
-      }
+      const data = await api.get("/training/status");
+      setPolledMetrics(data as unknown as TrainingMetrics);
     } catch {
       // No training endpoint
     }
@@ -224,12 +221,12 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
       </div>
 
       {/* Sub-tab bar */}
-      <div className="flex gap-1 px-5 pt-2 pb-0 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+      <div className="flex gap-1 px-4 sm:px-5 pt-2 pb-0 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto -webkit-overflow-scrolling-touch">
         {SUB_TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-2 text-xs font-medium rounded-t-lg transition-colors relative ${
+            className={`px-3 py-2 text-xs font-medium rounded-t-lg transition-colors relative whitespace-nowrap shrink-0 min-h-[44px] ${
               tab === t.id
                 ? "text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10"
                 : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
@@ -395,13 +392,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 ruhStatus={ruhStatus}
                 onStatusChange={refreshAll}
               />
-              {metrics && Array.isArray(metrics.losses) ? (
-                <LossCurveChart metrics={metrics} history={trainingHistory} />
-              ) : (
-                <div className="card flex items-center justify-center text-sm text-gray-400 dark:text-gray-500 py-10">
-                  Training metrics unavailable — log in to view.
-                </div>
-              )}
+              <LossCurveChart metrics={metrics} history={trainingHistory} />
             </div>
 
             {/* Generation playground */}
@@ -420,7 +411,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 rows={3}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 resize-none"
               />
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                 <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   Max tokens
                   <input
@@ -451,7 +442,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                     !generatePrompt.trim() ||
                     !ruhStatus?.enabled
                   }
-                  className="ml-auto px-4 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-full sm:w-auto sm:ml-auto px-4 py-2 min-h-[44px] text-sm font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {generateLoading ? "Generating..." : "Generate"}
                 </button>

@@ -13,6 +13,7 @@ import type {
   Halaqah,
   KnowledgeItem,
 } from "../types";
+import { useToast } from "../components/Toast";
 
 const NAFS_STYLES: Record<
   string,
@@ -89,6 +90,7 @@ interface LeaderboardAgent {
 }
 
 export default function MajlisPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("agents");
   const [agents, setAgents] = useState<MajlisAgent[]>([]);
   const [halaqahs, setHalaqahs] = useState<Halaqah[]>([]);
@@ -196,19 +198,30 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
   const sendMessage = async (toId: string) => {
     if (!messageText.trim()) return;
-    await exec("message", {
+    const data = await exec("message", {
       to_agent_id: toId,
       content: messageText,
       msg_type: "text",
     });
-    addTerminalLine?.(`Message sent to ${toId.slice(0, 8)}...`, "gold");
-    setMessageText("");
+    if (data) {
+      addToast({ type: "success", title: "Message sent" });
+      setMessageText("");
+    } else {
+      addToast({ type: "error", title: "Message nahi gaya — dobara try karo" });
+    }
   };
 
   const rateAgent = async (agentId: string, score: number) => {
-    await exec("rate", { agent_id: agentId, score });
-    addTerminalLine?.(`Rated agent: ${score}/5`, "gold");
-    loadAgents();
+    const data = await exec("rate", { agent_id: agentId, score });
+    if (data) {
+      addToast({ type: "success", title: `Rated ${score}/5` });
+      loadAgents();
+    } else {
+      addToast({
+        type: "error",
+        title: "Rating fail ho gayi — dobara try karo",
+      });
+    }
   };
 
   const searchKnowledgeBase = async () => {
