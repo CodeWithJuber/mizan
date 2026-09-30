@@ -479,6 +479,13 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                   !createForm.description ||
                   pendingAction === "create"
                 }
+                title={
+                  !createForm.name
+                    ? "Pehle plugin ka naam likho"
+                    : !createForm.description
+                      ? "Pehle description likho"
+                      : ""
+                }
               >
                 {pendingAction === "create"
                   ? "Ban raha hai…"
