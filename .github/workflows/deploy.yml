@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mizan-production
+  group: mizan-proxy-maintenance
   cancel-in-progress: false
 jobs:
   restore:
