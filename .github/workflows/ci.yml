@@ -114,6 +114,22 @@ jobs:
           assert BayanTokenizer().encode('knowledge')"
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build isolated coding images
+        run: |
+          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
+          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
+      - name: Verify the isolated runner and actual code execution
+        env:
+          MIZAN_DATA_DIR: ${{ runner.temp }}/isolated-coding-tests
+          DB_PATH: ${{ runner.temp }}/isolated-coding-tests/memory.db
+        run: |
+          python -m pip install -e '.[dev,nlp]'
+          mkdir -p "$MIZAN_DATA_DIR"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
+          pytest tests/test_coding_workspace.py tests/test_artifacts.py -q
 
   publish-production:
     name: Publish production images
@@ -146,3 +162,19 @@ jobs:
           file: docker/Dockerfile.frontend.prod
           push: true
           tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
+      - name: Publish isolated workspace runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.workspace-runtime
+          build-args: BASE_REGISTRY=mirror.gcr.io/library
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }}
+      - name: Publish private workspace runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.workspace-runner
+          build-args: BASE_REGISTRY=mirror.gcr.io/library
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }}
