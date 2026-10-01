@@ -92,13 +92,21 @@ def main():
             bundle.extractall(ROOT)
         source = ROOT / f"mizan-{revision}"
         with (ROOT / "job.log").open("w", buffering=1) as log:
+            import torch
+
+            if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
+                raise ValueError("A supported BF16 CUDA accelerator is required")
+            STATE.update(gpu=torch.cuda.get_device_name(0), torch=torch.__version__)
             STATE["phase"] = "dependencies"
+            dependencies = ROOT / "dependencies"
             run(
                 [
                     sys.executable,
                     "-m",
                     "pip",
                     "install",
+                    "--target",
+                    str(dependencies),
                     "kagglehub==1.0.2",
                     "huggingface_hub==1.33.0",
                     "pyarrow==25.0.1",
@@ -109,12 +117,10 @@ def main():
                 timeout=240,
                 log=log,
             )
+            sys.path.insert(0, str(dependencies))
+            os.environ["PYTHONPATH"] = str(dependencies) + os.pathsep + os.getenv("PYTHONPATH", "")
             import kagglehub
-            import torch
 
-            if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
-                raise ValueError("A supported BF16 CUDA accelerator is required")
-            STATE.update(gpu=torch.cuda.get_device_name(0), torch=torch.__version__)
             STATE["phase"] = "private_checkpoint_download"
             os.environ["KAGGLEHUB_CACHE"] = str(ROOT / "kaggle-cache")
             resume = ROOT / "resume"
@@ -171,6 +177,11 @@ def main():
                 log=log,
             )
             output = ROOT / "run"
+            training_budget = min(
+                6000, int(float(os.environ["RUH_DEADLINE_UTC"]) - time.time() - 600)
+            )
+            if training_budget < 60:
+                raise TimeoutError("Setup consumed the bounded training lifecycle")
             command = [
                 sys.executable,
                 "-m",
@@ -191,7 +202,7 @@ def main():
                 "--steps",
                 "100000",
                 "--max-seconds",
-                "6000",
+                str(training_budget),
                 "--batch-size",
                 "8",
                 "--lr",
@@ -202,7 +213,7 @@ def main():
                 '{"ar:dialogue":0.55,"en:dialogue":0.25,"ar:text":0.20}',
             ]
             STATE.update(phase="training", command=command, revision=revision)
-            run(command, cwd=source, timeout=6400, log=log)
+            run(command, cwd=source, timeout=training_budget + 400, log=log)
             STATE["phase"] = "artifact_manifest"
             ARTIFACTS.update(
                 {"candidate/" + name: output / "candidate" / name for name in manifest}

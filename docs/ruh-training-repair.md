@@ -117,7 +117,8 @@ with a complete model/optimizer/tokenizer continuation snapshot every 300 second
 Only the latest intermediate snapshot is kept, plus final output. The candidate
 and all snapshots remain private and unapproved for production.
 
-Validation:229 Ruh tests (including 10 new sequence tests) and 912 backend tests pass.
+Validation:236 Ruh tests (including 17 new training/acceleration/controller tests)
+pass; an earlier full backend run passed 912 tests.
 Ruff passes. `make check` reaches 27 Torch-aware mypy errors; an isolated unmodified
 45b6693 baseline reproduces the same 27, with no new errors introduced here.
 GitHub's optional-Torch-free typecheck context is separate from this local ML
