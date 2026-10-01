@@ -61,8 +61,8 @@ def test_public_nlp_routes_use_installed_package(client, monkeypatch, path, fiel
     original_import = builtins.__import__
 
     def installed_import(name, *args, **kwargs):
-        if name.startswith("tokenizer."):
-            raise ModuleNotFoundError("No standalone tokenizer package")
+        if name.startswith("tokenizer.") or name == "torch" or name.startswith("torch."):
+            raise ModuleNotFoundError("No standalone tokenizer package or optional Torch runtime")
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", installed_import)
