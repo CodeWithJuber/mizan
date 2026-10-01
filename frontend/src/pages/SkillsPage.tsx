@@ -6,6 +6,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { PageProps, Skill } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
+
+/** Readable names for agent-type slugs shown under "Best For". */
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  browser: "Browser",
+  mubashir: "Mubashir",
+  research: "Research",
+  general: "General",
+  code: "Code",
+  katib: "Katib",
+  communication: "Communication",
+};
 
 const BUILTIN_SKILLS: Skill[] = [
   {
@@ -149,11 +161,13 @@ const PERMISSION_LABELS: Record<string, string> = {
 };
 
 export default function SkillsPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [skills, setSkills] = useState<Skill[]>(BUILTIN_SKILLS);
   const [activeTab, setActiveTab] = useState<string>("installed");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [pendingSkill, setPendingSkill] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     setLoading(true);
@@ -174,28 +188,48 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
   }, [loadSkills]);
 
   const installSkill = async (skillName: string) => {
+    setPendingSkill(skillName);
     try {
       await api.post("/skills/install", { name: skillName });
-      addTerminalLine?.(`Skill installed: ${skillName}`, "gold");
+      addToast({
+        type: "success",
+        title: "Added — find it under Added",
+      });
+      addTerminalLine?.(`Skill added: ${skillName}`, "gold");
       setSkills((prev) =>
         prev.map((s) => (s.name === skillName ? { ...s, installed: true } : s)),
       );
-    } catch {
-      addTerminalLine?.(`Failed to install skill: ${skillName}`, "error");
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Add nahi ho paya",
+      });
+      addTerminalLine?.(`Failed to add skill: ${skillName}`, "error");
+    } finally {
+      setPendingSkill(null);
     }
   };
 
   const uninstallSkill = async (skillName: string) => {
+    if (!window.confirm(`"${skillName}" skill remove kar dun?`)) return;
+    setPendingSkill(skillName);
     try {
       await api.post("/skills/uninstall", { name: skillName });
-      addTerminalLine?.(`Skill uninstalled: ${skillName}`, "gold");
+      addToast({ type: "success", title: "Skill remove ho gaya" });
+      addTerminalLine?.(`Skill removed: ${skillName}`, "gold");
       setSkills((prev) =>
         prev.map((s) =>
           s.name === skillName ? { ...s, installed: false } : s,
         ),
       );
-    } catch {
-      addTerminalLine?.(`Failed to uninstall skill: ${skillName}`, "error");
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Remove nahi ho paya",
+      });
+      addTerminalLine?.(`Failed to remove skill: ${skillName}`, "error");
+    } finally {
+      setPendingSkill(null);
     }
   };
 
@@ -221,7 +255,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           </p>
         </div>
         <input
-          className="form-input w-48"
+          className="form-input w-full sm:w-48"
           placeholder="Search skills..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -235,7 +269,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
 
       <div className="tab-bar">
         {[
-          { id: "installed", label: "Installed" },
+          { id: "installed", label: "Added" },
           { id: "available", label: "Available" },
           { id: "all", label: "All Skills" },
         ].map((tab) => (
@@ -377,7 +411,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                               key={type}
                               className="text-xs px-1.5 py-0.5 bg-mizan-gold/10 border border-mizan-gold/20 rounded text-mizan-gold font-mono"
                             >
-                              {type}
+                              {AGENT_TYPE_LABELS[type] || type}
                             </span>
                           ))}
                         </div>
@@ -387,7 +421,8 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                 )}
 
                 <button
-                  className={`w-full ${skill.installed ? "btn-danger" : "btn-gold"} btn-sm`}
+                  className={`w-full ${skill.installed ? "btn-danger" : "btn-gold"} btn-sm min-h-[44px]`}
+                  disabled={pendingSkill === skill.name}
                   onClick={(e) => {
                     e.stopPropagation();
                     skill.installed
@@ -395,7 +430,13 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                       : installSkill(skill.name);
                   }}
                 >
-                  {skill.installed ? "Uninstall" : "Install"}
+                  {pendingSkill === skill.name
+                    ? skill.installed
+                      ? "Removing…"
+                      : "Adding…"
+                    : skill.installed
+                      ? "Remove"
+                      : "Add"}
                 </button>
               </div>
             );
@@ -404,9 +445,11 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           {filteredSkills.length === 0 && (
             <div className="empty-state col-span-full">
               <div className="empty-arabic">حكمة</div>
-              <div className="empty-text">No skills found</div>
+              <div className="empty-text">No skills in this view yet</div>
               <div className="empty-sub">
-                Search or browse the MizanHub registry
+                {searchQuery
+                  ? "Try a different search"
+                  : "Nayi skills install karke yahan dekho"}
               </div>
             </div>
           )}

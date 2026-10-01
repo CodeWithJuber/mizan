@@ -46,7 +46,9 @@ export function useTrainingWebSocket(): {
       wsRef.current = null;
     }
 
-    const wsUrl = `${config.WS_URL}/${clientId.current}`;
+    const token = localStorage.getItem("mizan_token") || "";
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    const wsUrl = `${config.WS_URL}/${clientId.current}${qs}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -86,9 +88,16 @@ export function useTrainingWebSocket(): {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       setConnected(false);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      // 4401 = fail-closed auth rejection (anonymous or expired token).
+      // Not a backend outage: do not reconnect-storm; the main app shell
+      // surfaces the "login required" state.
+      if (event.code === 4401) {
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+        return;
+      }
       // Auto-reconnect
       reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS);
     };

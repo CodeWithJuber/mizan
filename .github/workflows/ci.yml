@@ -16,8 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check backend/ tests/
-      - run: ruff format --check backend/ tests/
+      - run: ruff check backend/ nlp/ tests/
+      - run: ruff format --check backend/ nlp/ tests/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -63,6 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
-        run: docker build -f docker/Dockerfile.backend -t mizan-backend ./backend
+        run: docker build -f docker/Dockerfile.backend -t mizan-backend .
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend -t mizan-frontend ./frontend

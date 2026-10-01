@@ -1,51 +1,68 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-
   /* CSS Variables for light/dark mode — used by legacy inline styles */
   :root {
-    --text-primary: #1F2937;
-    --text-secondary: #4B5563;
-    --text-muted: #9CA3AF;
-    --gold: #D4AF37;
-    --amber: #F59E0B;
-    --emerald: #10B981;
-    --ruby: #EF4444;
-    --sapphire: #3B82F6;
+    --text-primary: #1f2937;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    --gold: #d4af37;
+    --amber: #f59e0b;
+    --emerald: #10b981;
+    --ruby: #ef4444;
+    --sapphire: #3b82f6;
     --border: #e5e7eb;
-    --font-display: 'Playfair Display', serif;
-    --font-mono: 'IBM Plex Mono', monospace;
+    --font-display: "Playfair Display", serif;
+    --font-mono: "IBM Plex Mono", monospace;
   }
 
   .dark {
-    --text-primary: #F9FAFB;
-    --text-secondary: #D1D5DB;
-    --text-muted: #6B7280;
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-muted: #6b7280;
     --border: rgba(255, 255, 255, 0.08);
   }
 
   html {
-    font-size: 16px;
+    /* Don't set font-size here — respect user's browser/OS font scaling (accessibility) */
   }
 
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
-    font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background-image: radial-gradient(circle at 50% 0%, #ffffff 0%, transparent 70%);
+    font-family:
+      "DM Sans",
+      "Inter",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    background-image: radial-gradient(
+      circle at 50% 0%,
+      #ffffff 0%,
+      transparent 70%
+    );
     background-size: 100% 1000px;
     background-repeat: no-repeat;
   }
 
   .dark body {
-    background-color: #0B0C10;
+    background-color: #0b0c10;
     @apply text-slate-100;
     background-image:
-      radial-gradient(circle at 15% 50%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
-      radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.03) 0%, transparent 50%);
+      radial-gradient(
+        circle at 15% 50%,
+        rgba(212, 175, 55, 0.03) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 85% 30%,
+        rgba(59, 130, 246, 0.03) 0%,
+        transparent 50%
+      );
   }
 
   /* Custom scrollbar */
@@ -67,7 +84,6 @@
 }
 
 @layer components {
-
   /* Slide-in animation for toasts */
   @keyframes slideIn {
     from {
@@ -88,11 +104,11 @@
   }
 
   .page-header {
-    @apply flex items-center justify-between px-6 py-5 border-b border-white/50 dark:border-white/5 bg-white/40 dark:bg-[#1F2833]/30 backdrop-blur-md z-10 relative shadow-sm;
+    @apply flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-white/50 dark:border-white/5 bg-white/40 dark:bg-[#1F2833]/30 backdrop-blur-md z-10 relative shadow-sm;
   }
 
   .page-body {
-    @apply flex-1 overflow-y-auto p-6 space-y-6 relative z-0;
+    @apply flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 relative z-0;
   }
 
   .quran-quote {
@@ -166,23 +182,32 @@
 
   .chat-textarea {
     @apply flex-1 resize-none bg-transparent border-none outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family:
+      "DM Sans",
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
   }
 
   .chat-input-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
     text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
   }
 
   .chat-send-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
     bg-amber-500 hover:bg-amber-600 text-white shadow-sm
     disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
   }
 
   .chat-stop-btn {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
     bg-red-500 hover:bg-red-600 text-white shadow-sm;
+  }
+
+  /* Safe-area padding for iPhone home indicator — used by MobileNav */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   /* ===== CARDS ===== */
@@ -206,7 +231,7 @@
 
   .form-panel-title {
     @apply text-sm font-semibold text-[#D4AF37] mb-3;
-    font-family: 'Cinzel', serif;
+    font-family: "Cinzel", serif;
   }
 
   /* Detail panel — subtle bg for expanded details, code snippets */
@@ -238,7 +263,7 @@
 
   /* Compact button variant */
   .btn-sm {
-    @apply text-xs px-3 py-1.5;
+    @apply text-xs px-3 py-1.5 min-h-[36px];
   }
 
   /* ===== INPUTS ===== */
@@ -276,12 +301,12 @@
   /* ===== TABS ===== */
 
   .tab-bar {
-    @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1 mx-5 mb-3;
+    @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1 mx-4 sm:mx-5 mb-3 overflow-x-auto;
     role: tablist;
   }
 
   .tab {
-    @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer text-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-ring;
+    @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer text-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-ring whitespace-nowrap min-h-[44px] flex items-center justify-center;
   }
 
   .tab.active {
@@ -292,7 +317,7 @@
 
   .page-title {
     @apply text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-gray-900 to-gray-600 dark:from-white dark:to-gray-400;
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: "Space Grotesk", sans-serif;
   }
 
   .page-description {
@@ -316,7 +341,7 @@
   }
 
   .modal {
-    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg p-6;
+    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85dvh] overflow-y-auto;
   }
 
   .modal-title {
@@ -446,8 +471,12 @@
   word-break: break-word;
 }
 
-.prose > *:first-child { margin-top: 0; }
-.prose > *:last-child { margin-bottom: 0; }
+.prose > *:first-child {
+  margin-top: 0;
+}
+.prose > *:last-child {
+  margin-bottom: 0;
+}
 
 /* --- Paragraphs --- */
 .prose p {
@@ -541,7 +570,7 @@
 
 .task-checkbox {
   @apply mr-2 rounded border-gray-300 dark:border-zinc-600 cursor-default;
-  accent-color: #D4AF37;
+  accent-color: #d4af37;
   width: 14px;
   height: 14px;
   vertical-align: middle;
@@ -556,8 +585,12 @@
          rounded-r-lg py-2 pr-3 italic;
 }
 
-.prose blockquote p:first-child { margin-top: 0; }
-.prose blockquote p:last-child { margin-bottom: 0; }
+.prose blockquote p:first-child {
+  margin-top: 0;
+}
+.prose blockquote p:last-child {
+  margin-bottom: 0;
+}
 
 /* --- Horizontal rule --- */
 .prose hr {
@@ -746,4 +779,25 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ===== CHAT UPGRADE: streaming block cursor ===== */
+@keyframes stream-cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.stream-block-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: #f59e0b;
+  animation: stream-cursor-blink 0.9s steps(1) infinite;
 }

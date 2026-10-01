@@ -7,6 +7,35 @@ import { useCallback, useMemo } from "react";
 import type { ApiClient } from "../types";
 import { config } from "../config";
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function handleResponse(res: Response): Promise<Record<string, unknown>> {
+  if (res.status === 401) {
+    localStorage.removeItem("mizan_token");
+    window.dispatchEvent(new CustomEvent("mizan:unauthorized"));
+  }
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    // non-JSON body — keep empty
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      `Request failed (${res.status})`;
+    throw new ApiError(res.status, msg);
+  }
+  return data;
+}
+
 export function useApi(): ApiClient {
   const getToken = useCallback(() => {
     return localStorage.getItem("mizan_token") || "";
@@ -24,7 +53,7 @@ export function useApi(): ApiClient {
       const res = await fetch(`${config.API_URL}${path}`, {
         headers: headers(),
       });
-      return res.json();
+      return handleResponse(res);
     },
     [headers],
   );
@@ -36,7 +65,7 @@ export function useApi(): ApiClient {
         headers: headers(),
         body: JSON.stringify(body),
       });
-      return res.json();
+      return handleResponse(res);
     },
     [headers],
   );
@@ -48,7 +77,19 @@ export function useApi(): ApiClient {
         headers: headers(),
         body: JSON.stringify(body),
       });
-      return res.json();
+      return handleResponse(res);
+    },
+    [headers],
+  );
+
+  const patch = useCallback(
+    async (path: string, body?: Record<string, unknown>) => {
+      const res = await fetch(`${config.API_URL}${path}`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify(body),
+      });
+      return handleResponse(res);
     },
     [headers],
   );
@@ -59,13 +100,13 @@ export function useApi(): ApiClient {
         method: "DELETE",
         headers: headers(),
       });
-      return res.json();
+      return handleResponse(res);
     },
     [headers],
   );
 
   return useMemo(
-    () => ({ get, post, put, del, API_URL: config.API_URL }),
-    [get, post, put, del],
+    () => ({ get, post, put, patch, del, API_URL: config.API_URL }),
+    [get, post, put, patch, del],
   );
 }

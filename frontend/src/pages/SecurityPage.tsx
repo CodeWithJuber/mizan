@@ -7,6 +7,9 @@
 import { useState, useEffect, useCallback } from "react";
 import type { PageProps } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { PasswordInput } from "../components/PasswordInput";
+import { useToast } from "../components/Toast";
+import { ApiError } from "../hooks/useApi";
 
 interface AuditEvent {
   timestamp: string;
@@ -22,6 +25,17 @@ interface AuditSummary {
   recent: AuditEvent[];
 }
 
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.status === 401) {
+    return "Wrong username or password";
+  }
+  const msg = err instanceof Error ? err.message : "";
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "Can't reach the server";
+  }
+  return "Login request failed";
+}
+
 const isLocalhost = () => {
   const host = window.location.hostname;
   return (
@@ -33,6 +47,7 @@ const isLocalhost = () => {
 };
 
 export default function SecurityPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [token, setToken] = useState(
     () => localStorage.getItem("mizan_token") || "",
@@ -51,21 +66,27 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   } | null>(null);
   const [auditData, setAuditData] = useState<AuditSummary | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState(false);
+  const [manualToken, setManualToken] = useState("");
   const local = isLocalhost();
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
+    setAuditError(false);
     try {
       const data = await api.get("/security/audit");
       setAuditData(data as unknown as AuditSummary);
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
-      // Fallback: empty audit data (may fail due to auth requirements)
-      setAuditData({ total_events: 0, warnings: 0, errors: 0, recent: [] });
+      setAuditError(true);
+      addToast({
+        type: "error",
+        title: "Couldn't load audit log — try again.",
+      });
     } finally {
       setAuditLoading(false);
     }
-  }, [api]);
+  }, [api, addToast]);
 
   useEffect(() => {
     if (activeTab === "audit") {
@@ -78,19 +99,22 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
     setMessage(null);
     try {
       const data = (await api.post("/auth/login", loginForm)) as {
-        access_token?: string;
+        token?: string;
         error?: string;
       };
-      if (data.access_token) {
-        localStorage.setItem("mizan_token", data.access_token);
-        setToken(data.access_token);
+      if (data.token) {
+        localStorage.setItem("mizan_token", data.token);
+        setToken(data.token);
         setMessage({ type: "success", text: "Logged in successfully" });
+        addToast({ type: "success", title: "Logged in successfully" });
         addTerminalLine?.("Authenticated", "gold");
       } else {
         setMessage({ type: "error", text: data.error || "Login failed" });
       }
-    } catch {
-      setMessage({ type: "error", text: "Login request failed" });
+    } catch (err) {
+      const friendly = loginErrorMessage(err);
+      setMessage({ type: "error", text: friendly });
+      addToast({ type: "error", title: friendly });
     }
     setLoading(false);
   };
@@ -106,10 +130,10 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
       const data = (await api.post("/auth/register", {
         username: registerForm.username,
         password: registerForm.password,
-      })) as { access_token?: string; error?: string };
-      if (data.access_token) {
-        localStorage.setItem("mizan_token", data.access_token);
-        setToken(data.access_token);
+      })) as { token?: string; error?: string };
+      if (data.token) {
+        localStorage.setItem("mizan_token", data.token);
+        setToken(data.token);
         setMessage({ type: "success", text: "Account created and logged in" });
         addTerminalLine?.("Account created", "gold");
       } else {
@@ -125,9 +149,11 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   };
 
   const logout = () => {
+    if (!window.confirm("Log out of Mizan?")) return;
     localStorage.removeItem("mizan_token");
     setToken("");
     setMessage({ type: "success", text: "Logged out" });
+    addToast({ type: "info", title: "Logged out" });
     addTerminalLine?.("Logged out", "info");
   };
 
@@ -216,11 +242,11 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 </div>
               </div>
               <div className="card text-center">
-                <div className="text-2xl font-mono text-gray-900 dark:text-gray-100 mb-1">
-                  {local ? "Local" : "Remote"}
+                <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  {local ? "This device" : "A remote server"}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Access Mode
+                  Where you&apos;re connected
                 </div>
               </div>
               <div className="card text-center">
@@ -331,7 +357,13 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">
                         Login
                       </h3>
-                      <div className="space-y-3">
+                      <form
+                        className="space-y-3"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          login();
+                        }}
+                      >
                         <div>
                           <label className="form-label">Username</label>
                           <input
@@ -348,22 +380,17 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                         </div>
                         <div>
                           <label className="form-label">Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Enter password"
                             value={loginForm.password}
-                            onChange={(e) =>
-                              setLoginForm({
-                                ...loginForm,
-                                password: e.target.value,
-                              })
+                            onChange={(v) =>
+                              setLoginForm({ ...loginForm, password: v })
                             }
                           />
                         </div>
                         <button
+                          type="submit"
                           className="btn-gold text-sm w-full"
-                          onClick={login}
                           disabled={
                             loading ||
                             !loginForm.username ||
@@ -372,7 +399,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                         >
                           {loading ? "Logging in..." : "Login"}
                         </button>
-                      </div>
+                      </form>
                     </div>
 
                     {/* Register */}
@@ -380,6 +407,9 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">
                         Create Account
                       </h3>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                        Admin only — ask your administrator for an account.
+                      </p>
                       <div className="space-y-3">
                         <div>
                           <label className="form-label">Username</label>
@@ -397,31 +427,23 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                         </div>
                         <div>
                           <label className="form-label">Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Choose a password"
                             value={registerForm.password}
-                            onChange={(e) =>
-                              setRegisterForm({
-                                ...registerForm,
-                                password: e.target.value,
-                              })
+                            autoComplete="new-password"
+                            onChange={(v) =>
+                              setRegisterForm({ ...registerForm, password: v })
                             }
                           />
                         </div>
                         <div>
                           <label className="form-label">Confirm Password</label>
-                          <input
-                            className="form-input"
-                            type="password"
+                          <PasswordInput
                             placeholder="Re-enter password"
                             value={registerForm.confirm}
-                            onChange={(e) =>
-                              setRegisterForm({
-                                ...registerForm,
-                                confirm: e.target.value,
-                              })
+                            autoComplete="new-password"
+                            onChange={(v) =>
+                              setRegisterForm({ ...registerForm, confirm: v })
                             }
                           />
                         </div>
@@ -472,9 +494,6 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                     >
                       Copy Token
                     </button>
-                    <button className="btn-danger text-xs" onClick={logout}>
-                      Revoke
-                    </button>
                   </div>
                 </>
               ) : (
@@ -495,19 +514,33 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 Paste a token from another session or API call.
               </p>
               <div className="flex gap-2">
-                <input
+                <PasswordInput
                   className="form-input flex-1"
-                  type="password"
                   placeholder="Paste token here..."
-                  onChange={(e) => {
-                    const val = e.target.value.trim();
-                    if (val) {
-                      localStorage.setItem("mizan_token", val);
-                      setToken(val);
-                      setMessage({ type: "success", text: "Token saved" });
-                    }
-                  }}
+                  value={manualToken}
+                  autoComplete="off"
+                  onChange={setManualToken}
                 />
+                <button
+                  className="btn-secondary text-xs shrink-0"
+                  onClick={() => {
+                    const v = manualToken.trim();
+                    if (!v || v.length < 20 || /\s/.test(v)) {
+                      addToast({
+                        type: "error",
+                        title: "That doesn't look like a valid token",
+                      });
+                      return;
+                    }
+                    localStorage.setItem("mizan_token", v);
+                    setToken(v);
+                    setManualToken("");
+                    setMessage({ type: "success", text: "Token saved" });
+                    addToast({ type: "success", title: "Token saved" });
+                  }}
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>
@@ -522,7 +555,21 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
 
-            {!auditLoading && auditData && (
+            {!auditLoading && auditError && (
+              <div className="card text-center py-6">
+                <p className="text-sm text-red-500 mb-3">
+                  Couldn&apos;t load audit log — try again.
+                </p>
+                <button
+                  className="btn-secondary text-sm min-h-[44px] px-3"
+                  onClick={loadAudit}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!auditLoading && !auditError && auditData && (
               <>
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -559,7 +606,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                       Recent Audit Events
                     </h3>
                     <button
-                      className="text-sm text-mizan-gold hover:text-mizan-gold-light transition-colors"
+                      className="text-sm min-h-[44px] px-3 text-mizan-gold hover:text-mizan-gold-light transition-colors"
                       onClick={loadAudit}
                     >
                       Refresh

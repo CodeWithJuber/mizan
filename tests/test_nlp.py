@@ -153,9 +153,9 @@ def test_packaged_manifest_validates_with_checksums():
     with open(ARTIFACT_DIR / "manifest.json", encoding="utf-8") as f:
         manifest = ArtifactManifest.from_dict(json.load(f))
     assert manifest.validate(ARTIFACT_DIR) == []
-    assert manifest.eval_accuracy == pytest.approx(0.7592)
+    assert manifest.eval_accuracy == pytest.approx(0.815)
     assert manifest.num_lemmas == 48
-    assert manifest.num_senses == 115
+    assert manifest.num_senses == 96
 
 
 def test_is_ready_true_with_packaged_artifact():

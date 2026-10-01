@@ -94,6 +94,35 @@ async def cmd_compact(session_id=None, sessions=None, **kwargs):
     return f"Compacted {len(older)} older messages into summary. Context preserved."
 
 
+@command("/web_search", "Search the web (usage: /web_search your query)")
+async def cmd_web_search(args="", **kwargs):
+    """Search the web using DuckDuckGo via the web_browse skill."""
+    query = args.strip()
+    if not query:
+        return "Usage: /web_search your search query"
+    try:
+        from skills.builtin.web_browse import WebBrowseSkill
+
+        skill = WebBrowseSkill()
+        result = await skill.search(query)
+        if "error" in result:
+            return f"Search failed: {result['error']}"
+        results = result.get("results", [])
+        if not results:
+            return f"No results found for '{query}'."
+        # Clean HTML tags from titles
+        import re
+
+        clean = [re.sub(r"<[^>]+>", "", r).strip() for r in results]
+        clean = [c for c in clean if c][:10]
+        lines = [f"**Web search results for '{query}':**", ""]
+        for i, title in enumerate(clean, 1):
+            lines.append(f"{i}. {title}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Search failed: {e}"
+
+
 async def handle_command(content: str, **context) -> dict:
     """Parse and execute a chat command. Returns {is_command, response}"""
     if not content.startswith("/"):

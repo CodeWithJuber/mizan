@@ -2,7 +2,7 @@
 
 > **Arabic-native language model built on triconsonantal root morphology.**
 
-Ruh is a pure-PyTorch transformer that operates in **root-space** instead of token-space. Where standard LLMs split text into BPE subwords, Ruh tokenizes text as `(root_id, pattern_id)` pairs — the same factored representation used by Arabic morphology for 1,400+ years. This yields **146× embedding compression** over standard lookup tables and enables cross-lingual understanding via shared Semitic roots.
+Ruh is a pure-PyTorch transformer that operates in **root-space** instead of token-space. Where standard LLMs split text into BPE subwords, Ruh tokenizes text as `(root_id, pattern_id)` pairs — the same factored representation used by Arabic morphology for 1,400+ years. This yields **~7.8× embedding-param compression** over standard lookup tables (`4000×512 ÷ (4000×64 + 200×32) = 7.8×`) and is designed to enable cross-lingual understanding via shared Semitic roots (unverified — no cross-lingual benchmark has been run yet).
 
 **Version:** 0.1.0
 
@@ -112,7 +112,7 @@ Input Text
                ▼
 ┌─────────────────────────────┐
 │   ISM Embedding (اسم)       │  (root_id, pattern_id) → d_model vector
-│   Factored: root + pattern  │  146× compression vs standard lookup
+│   Factored: root + pattern  │  ~7.8× param compression vs standard lookup
 │   Gated additive fusion     │
 │   + RoPE positional enc     │
 └──────────────┬──────────────┘
@@ -153,7 +153,7 @@ Input Text
 | Decision | Rationale |
 |----------|-----------|
 | Root-space tokenization | Arabic morphology is inherently root-based; BPE fragments roots |
-| Factored embedding | Root × Pattern decomposition gives 146× compression |
+| Factored embedding | Root × Pattern decomposition gives ~7.8× embedding-param compression (measured: 2,048,000 ÷ 262,400 params) |
 | Cardiac oscillation | Bio-inspired rhythmic attention modulation (Qalb = heart) |
 | Dual first layer | Separate causal (Sam'/hearing) and bidirectional (Basar/sight) pathways |
 | 5-component loss | Beyond CE: calibration, consistency, fitrah (entropy), hisbah (accountability) |
@@ -825,7 +825,7 @@ root_id  → root_embedding (d_root=64)   → root_proj (d_model)
 pattern_id → pattern_embedding (d_pattern=32) → pattern_proj (d_model)
 ```
 
-**Compression ratio:** Standard embedding for 4,000 roots at d_model=512 requires 2,048,000 parameters. ISM uses `4000×64 + 200×32 = 262,400` embedding params — a **146× reduction** with the factored representation.
+**Compression ratio (verified):** Standard embedding for 4,000 roots at d_model=512 requires 2,048,000 parameters. ISM uses `4000×64 + 200×32 = 262,400` embedding params — a **~7.8× reduction** (2,048,000 ÷ 262,400 = 7.8×). Earlier drafts claimed 146×; that figure fails the arithmetic and has been corrected here. No quality-parity benchmark (perplexity/downstream at matched model quality) has been run yet — the compression is real, the quality parity is unverified.
 
 **Weight tying:** Output projection reuses the root embedding via `root_embedding.weight @ root_proj.T`, so encoding and decoding share the same learned root representations.
 
@@ -939,7 +939,7 @@ ruh_model/
 │
 ├── embedding/
 │   ├── __init__.py
-│   ├── ism.py               # ISMEmbedding: factored root+pattern (146× compression)
+│   ├── ism.py               # ISMEmbedding: factored root+pattern (~7.8× embedding-param reduction)
 │   └── rope.py              # RotaryPositionEncoding + RMSNorm
 │
 ├── layers/

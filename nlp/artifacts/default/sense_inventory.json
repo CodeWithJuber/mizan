@@ -31,10 +31,6 @@
     "lemma": "آيَة",
     "sense": "verse"
   },
-  "qcsmp2:أَجْر:payment": {
-    "lemma": "أَجْر",
-    "sense": "payment"
-  },
   "qcsmp2:أَجْر:reward": {
     "lemma": "أَجْر",
     "sense": "reward"
@@ -50,10 +46,6 @@
   "qcsmp2:أَكْثَر:most": {
     "lemma": "أَكْثَر",
     "sense": "most"
-  },
-  "qcsmp2:أَكْثَر:most of": {
-    "lemma": "أَكْثَر",
-    "sense": "most of"
   },
   "qcsmp2:أَمْر:affair-matter": {
     "lemma": "أَمْر",
@@ -79,17 +71,13 @@
     "lemma": "أَوَّل",
     "sense": "former"
   },
-  "qcsmp2:أَيّ:mankind": {
-    "lemma": "أَيّ",
-    "sense": "mankind"
-  },
   "qcsmp2:أَيّ:so which": {
     "lemma": "أَيّ",
     "sense": "so which"
   },
-  "qcsmp2:أَيّ:you who believe": {
+  "qcsmp2:أَيّ:vocative": {
     "lemma": "أَيّ",
-    "sense": "you who believe"
+    "sense": "vocative"
   },
   "qcsmp2:أُمَّة:community": {
     "lemma": "أُمَّة",
@@ -111,17 +99,9 @@
     "lemma": "بَعْض",
     "sense": "part"
   },
-  "qcsmp2:بَعْض:some": {
-    "lemma": "بَعْض",
-    "sense": "some"
-  },
   "qcsmp2:بَعْض:some of": {
     "lemma": "بَعْض",
     "sense": "some of"
-  },
-  "qcsmp2:بَعْض:some of you": {
-    "lemma": "بَعْض",
-    "sense": "some of you"
   },
   "qcsmp2:بَيِّنَة:clear": {
     "lemma": "بَيِّنَة",
@@ -155,14 +135,6 @@
     "lemma": "خالِد",
     "sense": "abide forever"
   },
-  "qcsmp2:خالِد:abiding forever": {
-    "lemma": "خالِد",
-    "sense": "abiding forever"
-  },
-  "qcsmp2:خالِد:will abide forever": {
-    "lemma": "خالِد",
-    "sense": "will abide forever"
-  },
   "qcsmp2:خَيْر:any good": {
     "lemma": "خَيْر",
     "sense": "any good"
@@ -186,10 +158,6 @@
   "qcsmp2:دِين:religion": {
     "lemma": "دِين",
     "sense": "religion"
-  },
-  "qcsmp2:ذُو:owner": {
-    "lemma": "ذُو",
-    "sense": "owner"
   },
   "qcsmp2:ذُو:possessor": {
     "lemma": "ذُو",
@@ -239,10 +207,6 @@
     "lemma": "شَهِيد",
     "sense": "witness"
   },
-  "qcsmp2:شَهِيد:witnesses": {
-    "lemma": "شَهِيد",
-    "sense": "witnesses"
-  },
   "qcsmp2:شَىْء:anything": {
     "lemma": "شَىْء",
     "sense": "anything"
@@ -250,10 +214,6 @@
   "qcsmp2:شَىْء:thing": {
     "lemma": "شَىْء",
     "sense": "thing"
-  },
-  "qcsmp2:صالِحَة:good deeds": {
-    "lemma": "صالِحَة",
-    "sense": "good deeds"
   },
   "qcsmp2:صالِحَة:righteous deeds": {
     "lemma": "صالِحَة",
@@ -267,10 +227,6 @@
     "lemma": "عَبْد",
     "sense": "slave"
   },
-  "qcsmp2:عَدُوّ:enemies": {
-    "lemma": "عَدُوّ",
-    "sense": "enemies"
-  },
   "qcsmp2:عَدُوّ:enemy": {
     "lemma": "عَدُوّ",
     "sense": "enemy"
@@ -279,10 +235,6 @@
     "lemma": "عَلِيم",
     "sense": "all knower"
   },
-  "qcsmp2:عَلِيم:all knowing": {
-    "lemma": "عَلِيم",
-    "sense": "all knowing"
-  },
   "qcsmp2:عَيْن:eyes": {
     "lemma": "عَيْن",
     "sense": "eyes"
@@ -290,10 +242,6 @@
   "qcsmp2:عَيْن:spring": {
     "lemma": "عَيْن",
     "sense": "spring"
-  },
-  "qcsmp2:عِلْم:any knowledge": {
-    "lemma": "عِلْم",
-    "sense": "any knowledge"
   },
   "qcsmp2:عِلْم:knowledge": {
     "lemma": "عِلْم",
@@ -307,17 +255,9 @@
     "lemma": "فَضْل",
     "sense": "grace"
   },
-  "qcsmp2:قَرْيَة:cities": {
-    "lemma": "قَرْيَة",
-    "sense": "cities"
-  },
   "qcsmp2:قَرْيَة:town": {
     "lemma": "قَرْيَة",
     "sense": "town"
-  },
-  "qcsmp2:قَوْل:saying": {
-    "lemma": "قَوْل",
-    "sense": "saying"
   },
   "qcsmp2:قَوْل:speech": {
     "lemma": "قَوْل",
@@ -331,10 +271,6 @@
     "lemma": "كَثِير",
     "sense": "many"
   },
-  "qcsmp2:كَثِير:much": {
-    "lemma": "كَثِير",
-    "sense": "much"
-  },
   "qcsmp2:كِتاب:book": {
     "lemma": "كِتاب",
     "sense": "book"
@@ -342,10 +278,6 @@
   "qcsmp2:كِتاب:record": {
     "lemma": "كِتاب",
     "sense": "record"
-  },
-  "qcsmp2:كِتاب:scripture": {
-    "lemma": "كِتاب",
-    "sense": "scripture"
   },
   "qcsmp2:مَثَل:example": {
     "lemma": "مَثَل",
@@ -359,17 +291,9 @@
     "lemma": "مُؤْمِن",
     "sense": "believer"
   },
-  "qcsmp2:مُؤْمِن:believing men": {
-    "lemma": "مُؤْمِن",
-    "sense": "believing men"
-  },
   "qcsmp2:مُبِين:clear": {
     "lemma": "مُبِين",
     "sense": "clear"
-  },
-  "qcsmp2:مُبِين:manifest": {
-    "lemma": "مُبِين",
-    "sense": "manifest"
   },
   "qcsmp2:مِثْل:like": {
     "lemma": "مِثْل",

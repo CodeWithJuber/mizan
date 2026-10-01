@@ -8,6 +8,8 @@
 import { useState, useEffect } from "react";
 import type { ApiClient } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
+import { PasswordInput } from "../components/PasswordInput";
 
 interface ProviderConfig {
   name: string;
@@ -43,17 +45,40 @@ interface SettingsData {
 }
 
 export default function SettingsPage({ api }: { api: ApiClient }) {
+  const { addToast } = useToast();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingProvider, setSavingProvider] = useState<Record<string, boolean>>(
+    {},
+  );
   const [testResults, setTestResults] = useState<Record<string, string>>({});
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
-  const [activeSection, setActiveSection] = useState("providers");
+  const [channelTokens, setChannelTokens] = useState<Record<string, string>>(
+    {},
+  );
+  const [savingChannel, setSavingChannel] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [togglingChannel, setTogglingChannel] = useState<
+    Record<string, boolean>
+  >({});
+  const [activeSection, setActiveSection] = useState(
+    () => localStorage.getItem("mizan_settings_section") || "providers",
+  );
   const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     fetchSettings();
+    // One-shot deep link (e.g. from ProvidersPage) — clear after reading.
+    localStorage.removeItem("mizan_settings_section");
   }, []);
+
+  // Banner auto-dismiss: same 4s timeout for success AND failure.
+  useEffect(() => {
+    if (!saveMessage) return;
+    const t = setTimeout(() => setSaveMessage(""), 4000);
+    return () => clearTimeout(t);
+  }, [saveMessage]);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -128,19 +153,25 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
     setTestResults((prev) => ({ ...prev, [provider]: "testing" }));
     try {
       const result = (await api.get(`/providers/${provider}/health`)) as any;
-      setTestResults((prev) => ({
-        ...prev,
-        [provider]: result.healthy ? "success" : "failed",
-      }));
-    } catch {
-      setTestResults((prev) => ({ ...prev, [provider]: "failed" }));
+      if (result.healthy) {
+        setTestResults((prev) => ({ ...prev, [provider]: "passed" }));
+      } else {
+        const reason = result.error || result.message || "unknown error";
+        setTestResults((prev) => ({
+          ...prev,
+          [provider]: `failed: ${reason}`,
+        }));
+      }
+    } catch (e: any) {
+      const reason = e?.message || "request failed";
+      setTestResults((prev) => ({ ...prev, [provider]: `failed: ${reason}` }));
     }
   };
 
   const saveApiKey = async (provider: string) => {
     const key = apiKeyInputs[provider];
     if (!key) return;
-    setSaving(true);
+    setSavingProvider((prev) => ({ ...prev, [provider]: true }));
     try {
       await api.post("/settings", {
         section: "provider",
@@ -149,12 +180,72 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
       });
       setSaveMessage(`API key for ${provider} saved securely.`);
       setApiKeyInputs((prev) => ({ ...prev, [provider]: "" }));
-      setTimeout(() => setSaveMessage(""), 3000);
       fetchSettings();
-    } catch {
-      setSaveMessage(`Failed to save API key for ${provider}.`);
+    } catch (e: any) {
+      setSaveMessage(
+        `Failed to save API key for ${provider}: ${e?.message || "unknown error"}`,
+      );
+    } finally {
+      setSavingProvider((prev) => ({ ...prev, [provider]: false }));
     }
-    setSaving(false);
+  };
+
+  const saveChannelToken = async (channelName: string) => {
+    const token = channelTokens[channelName];
+    if (!token) return;
+    setSavingChannel((prev) => ({ ...prev, [channelName]: true }));
+    try {
+      await api.post("/settings", {
+        section: "channel",
+        provider: channelName,
+        api_key: token,
+      });
+      addToast({
+        type: "success",
+        title: "Token saved",
+        description: `${channelName} token saved securely.`,
+      });
+      setChannelTokens((prev) => ({ ...prev, [channelName]: "" }));
+      fetchSettings();
+    } catch (e: any) {
+      addToast({
+        type: "error",
+        title: "Couldn't save token",
+        description: e?.message || "Please try again.",
+      });
+    } finally {
+      setSavingChannel((prev) => ({ ...prev, [channelName]: false }));
+    }
+  };
+
+  const toggleChannelState = async (channel: ChannelConfig) => {
+    const action = channel.connected ? "stop" : "start";
+    if (
+      channel.connected &&
+      !window.confirm(`Stop the ${channel.name} channel?`)
+    ) {
+      return;
+    }
+    setTogglingChannel((prev) => ({ ...prev, [channel.name]: true }));
+    try {
+      await api.post(`/channels/${channel.name}/${action}`);
+      addToast({
+        type: "success",
+        title: channel.connected ? "Channel stopped" : "Channel started",
+        description: `${channel.name} channel ${channel.connected ? "stopped" : "started"}.`,
+      });
+      fetchSettings();
+    } catch (e: any) {
+      addToast({
+        type: "error",
+        title: channel.connected
+          ? "Couldn't stop channel"
+          : "Couldn't start channel",
+        description: e?.message || "Please try again.",
+      });
+    } finally {
+      setTogglingChannel((prev) => ({ ...prev, [channel.name]: false }));
+    }
   };
 
   const sections = [
@@ -213,17 +304,20 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Section Tabs */}
-        <div className="w-56 shrink-0 border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-4">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        {/* Section Tabs — horizontal scroll on mobile, sidebar on desktop */}
+        <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
           {sections.map((s) => (
             <button
               key={s.id}
-              onClick={() => setActiveSection(s.id)}
-              className={`w-full text-left px-6 py-3 text-sm transition-all duration-300 ${
+              onClick={() => {
+                setActiveSection(s.id);
+                localStorage.setItem("mizan_settings_section", s.id);
+              }}
+              className={`whitespace-nowrap text-left px-4 md:px-6 py-2.5 md:py-3 text-sm transition-all duration-300 ${
                 activeSection === s.id
-                  ? "text-mizan-gold font-medium bg-gradient-to-r from-mizan-gold/10 to-transparent border-r-2 border-mizan-gold"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40 hover:translate-x-1"
+                  ? "text-mizan-gold font-medium bg-gradient-to-r from-mizan-gold/10 to-transparent border-b-2 md:border-b-0 md:border-r-2 border-mizan-gold"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40"
               }`}
             >
               {s.label}
@@ -232,7 +326,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
         </div>
 
         {/* Section Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-6 relative z-10">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative z-10">
           {/* AI Providers */}
           {activeSection === "providers" && (
             <div className="space-y-4">
@@ -260,9 +354,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                           <span
                             className={`text-xs ${info?.key_set ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}
                           >
-                            {info?.key_set
-                              ? "Key configured"
-                              : "Not configured"}
+                            {info?.key_set ? "Connected" : "Not connected"}
                           </span>
                         </div>
                         {info?.healthy && (
@@ -270,39 +362,51 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                         )}
                       </div>
 
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          placeholder={`${provider.toUpperCase()}_API_KEY`}
-                          value={apiKeyInputs[provider] || ""}
-                          onChange={(e) =>
-                            setApiKeyInputs((prev) => ({
-                              ...prev,
-                              [provider]: e.target.value,
-                            }))
-                          }
-                          className="input flex-1 text-sm font-mono"
-                        />
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex-1 min-w-0">
+                          <PasswordInput
+                            value={apiKeyInputs[provider] || ""}
+                            onChange={(v) =>
+                              setApiKeyInputs((prev) => ({
+                                ...prev,
+                                [provider]: v,
+                              }))
+                            }
+                            placeholder={`${provider.toUpperCase()}_API_KEY`}
+                            className="input w-full text-sm font-mono"
+                            autoComplete="new-password"
+                          />
+                        </div>
                         <button
                           onClick={() => saveApiKey(provider)}
-                          disabled={!apiKeyInputs[provider] || saving}
-                          className="btn-primary text-sm disabled:opacity-50"
+                          disabled={
+                            !apiKeyInputs[provider] || savingProvider[provider]
+                          }
+                          className="btn-primary text-sm w-full sm:w-auto min-h-[44px] disabled:opacity-50"
                         >
-                          Save
+                          {savingProvider[provider] ? "Saving…" : "Save"}
                         </button>
                         <button
                           onClick={() => testApiKey(provider)}
-                          className="btn-secondary text-sm"
+                          disabled={testStatus === "testing"}
+                          className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] disabled:opacity-50"
                         >
-                          {testStatus === "testing"
-                            ? "Testing..."
-                            : testStatus === "success"
-                              ? "Connected"
-                              : testStatus === "failed"
-                                ? "Failed"
-                                : "Test"}
+                          {testStatus === "testing" ? "Testing…" : "Test key"}
                         </button>
                       </div>
+                      {testStatus && testStatus !== "testing" && (
+                        <p
+                          className={`mt-2 text-xs ${
+                            testStatus === "passed"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400"
+                          }`}
+                        >
+                          {testStatus === "passed"
+                            ? "Test passed"
+                            : `Test failed: ${testStatus.replace(/^failed:\s*/, "")}`}
+                        </p>
+                      )}
                     </div>
                   );
                 },
@@ -335,18 +439,46 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                     <span
                       className={`badge ${channel.connected ? "badge-success" : "badge-warning"}`}
                     >
-                      {channel.connected ? "Connected" : "Disconnected"}
+                      {channel.connected ? "Connected" : "Not connected"}
                     </span>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      placeholder={`${channel.name.toUpperCase()}_BOT_TOKEN`}
-                      className="input flex-1 text-sm font-mono"
-                    />
-                    <button className="btn-primary text-sm">Save</button>
-                    <button className="btn-secondary text-sm">
-                      {channel.connected ? "Stop" : "Start"}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1 min-w-0">
+                      <PasswordInput
+                        value={channelTokens[channel.name] || ""}
+                        onChange={(v) =>
+                          setChannelTokens((prev) => ({
+                            ...prev,
+                            [channel.name]: v,
+                          }))
+                        }
+                        placeholder={`${channel.name.toUpperCase()}_BOT_TOKEN`}
+                        className="input w-full text-sm font-mono"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <button
+                      onClick={() => saveChannelToken(channel.name)}
+                      disabled={
+                        !channelTokens[channel.name] ||
+                        savingChannel[channel.name]
+                      }
+                      className="btn-primary text-sm w-full sm:w-auto min-h-[44px] disabled:opacity-50"
+                    >
+                      {savingChannel[channel.name] ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => toggleChannelState(channel)}
+                      disabled={togglingChannel[channel.name]}
+                      className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] disabled:opacity-50"
+                    >
+                      {togglingChannel[channel.name]
+                        ? channel.connected
+                          ? "Stopping…"
+                          : "Starting…"
+                        : channel.connected
+                          ? "Stop"
+                          : "Start"}
                     </button>
                   </div>
                 </div>
@@ -369,36 +501,30 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                 <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
                   Rate Limiting
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label
-                      htmlFor="rate-limit"
-                      className="text-xs text-gray-500 dark:text-gray-400 block mb-1"
-                    >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-3">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
                       Requests per minute
-                    </label>
-                    <input
-                      id="rate-limit"
-                      type="number"
-                      value={settings?.security?.rate_limit_per_minute || 60}
-                      className="input w-full text-sm"
-                      readOnly
-                    />
+                    </div>
+                    <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      {settings?.security?.rate_limit_per_minute || 60}
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      How many requests are allowed each minute — blocks spam
+                      bursts.
+                    </p>
                   </div>
-                  <div>
-                    <label
-                      htmlFor="jwt-expiry"
-                      className="text-xs text-gray-500 dark:text-gray-400 block mb-1"
-                    >
-                      JWT expiry (hours)
-                    </label>
-                    <input
-                      id="jwt-expiry"
-                      type="number"
-                      value={settings?.security?.jwt_expiry_hours || 24}
-                      className="input w-full text-sm"
-                      readOnly
-                    />
+                  <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-3">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      Login session length (hours)
+                    </div>
+                    <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      {settings?.security?.jwt_expiry_hours || 24}
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      How long you stay logged in before needing to log in
+                      again.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -409,25 +535,51 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                 </h4>
                 <div className="space-y-2">
                   {[
-                    { name: "JWT Authentication", active: true },
-                    { name: "Rate Limiting", active: true },
-                    { name: "SSRF Prevention", active: true },
-                    { name: "Command Sandboxing", active: true },
-                    { name: "Path Traversal Prevention", active: true },
+                    {
+                      name: "JWT Authentication",
+                      desc: "Checks your identity on every request.",
+                      active: true,
+                    },
+                    {
+                      name: "Rate Limiting",
+                      desc: "Blocks spammy bursts of requests.",
+                      active: true,
+                    },
+                    {
+                      name: "SSRF Prevention",
+                      desc: "Stops the AI from reaching private network addresses.",
+                      active: true,
+                    },
+                    {
+                      name: "Command Sandboxing",
+                      desc: "AI commands run in a restricted sandbox.",
+                      active: true,
+                    },
+                    {
+                      name: "Path Traversal Prevention",
+                      desc: "Blocks access to files outside the workspace.",
+                      active: true,
+                    },
                     {
                       name: "Audit Logging",
+                      desc: "Keeps a record of security events.",
                       active: settings?.security?.audit_enabled ?? true,
                     },
                   ].map((feature) => (
                     <div
                       key={feature.name}
-                      className="flex items-center justify-between py-1.5"
+                      className="flex items-center justify-between gap-3 py-1.5"
                     >
-                      <span className="text-sm text-gray-700 dark:text-gray-300">
-                        {feature.name}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                          {feature.name}
+                        </div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500">
+                          {feature.desc}
+                        </div>
+                      </div>
                       <span
-                        className={`badge ${feature.active ? "badge-success" : "badge-error"}`}
+                        className={`badge shrink-0 ${feature.active ? "badge-success" : "badge-error"}`}
                       >
                         {feature.active ? "Active" : "Inactive"}
                       </span>
@@ -475,17 +627,38 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                     </span>
                     <span className="badge badge-success">Enabled</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Memory decay (Nisyan)
-                    </span>
-                    <span className="badge badge-success">Active</span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm text-gray-700 dark:text-gray-300">
+                        Memory decay (Nisyan)
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        Old, unused memories fade away automatically over time.
+                      </div>
+                    </div>
+                    <span className="badge badge-success shrink-0">Active</span>
                   </div>
                 </div>
               </div>
 
               <button
-                onClick={() => api.post("/memory/consolidate").catch(() => {})}
+                onClick={() =>
+                  api
+                    .post("/memory/consolidate")
+                    .then(() =>
+                      addToast({
+                        type: "success",
+                        title: "Memory consolidation shuru ho gayi",
+                      }),
+                    )
+                    .catch(() =>
+                      addToast({
+                        type: "error",
+                        title: "Consolidation fail ho gayi",
+                        description: "Phir se try karo.",
+                      }),
+                    )
+                }
                 className="btn-secondary text-sm"
               >
                 Run Memory Consolidation
@@ -503,6 +676,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                 API keys and tokens are encrypted at rest using AES-128. Unlike
                 other AI agents that store credentials in plaintext, MIZAN
                 encrypts everything.
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                AES-128 is a widely-used encryption standard — your keys are
+                unreadable without the vault password.
               </p>
 
               <div className="card">

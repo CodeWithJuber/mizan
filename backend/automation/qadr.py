@@ -86,6 +86,18 @@ class QadrScheduler:
             return True
         return False
 
+    async def set_job_enabled(self, job_id: str, enabled: bool) -> bool:
+        """Enable or pause a scheduled job"""
+        job = self.jobs.get(job_id)
+        if not job:
+            return False
+        job.enabled = enabled
+        if enabled:
+            # Recalculate next run when re-enabling
+            job.next_run = self._next_run_time(job.cron)
+        logger.info(f"[QADR] Job {'enabled' if enabled else 'paused'}: {job.name}")
+        return True
+
     async def start(self):
         """Start the scheduler loop"""
         if self._running:
