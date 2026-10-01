@@ -17,6 +17,32 @@ from workspace.store import WorkspaceStore
 from ..base import SkillBase, SkillManifest
 
 
+def allows_user_workspace_tool(
+    tool_name: str, registry, *, native_tools: dict | None = None
+) -> bool:
+    """Allow only this shipped skill's actual bound methods in the user chat dispatcher.
+
+    A similarly named plugin/native tool never inherits this exception. The
+    individual methods still check the principal, selected owner and editor role.
+    """
+    if registry is None or tool_name in (native_tools or {}):
+        return False
+    skill = registry.get_skill("coding_workspace")
+    if type(skill) is not CodingWorkspaceSkill:
+        return False
+    trusted = skill.get_tools().get(tool_name)
+    if trusted is None:
+        return False
+    actual = registry.get_all_tools().get(tool_name)
+    method_name = tool_name.removeprefix("workspace_")
+    expected = getattr(CodingWorkspaceSkill, method_name, None)
+    return (
+        actual is trusted
+        and getattr(actual, "__self__", None) is skill
+        and getattr(actual, "__func__", None) is expected
+    )
+
+
 class CodingWorkspaceSkill(SkillBase):
     manifest = SkillManifest(
         name="coding_workspace",
