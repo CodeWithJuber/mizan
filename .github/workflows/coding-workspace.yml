@@ -1,0 +1,52 @@
+name: Coding Workspace Isolation
+
+on:
+  pull_request:
+    paths:
+      - 'backend/workspace/**'
+      - 'backend/api/coding_workspace.py'
+      - 'backend/api/artifacts.py'
+      - 'backend/skills/builtin/coding_workspace.py'
+      - 'docker/Dockerfile.workspace-*'
+      - 'tests/test_coding_workspace.py'
+      - '.github/workflows/coding-workspace.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/workspace/**'
+      - 'backend/api/coding_workspace.py'
+      - 'backend/api/artifacts.py'
+      - 'backend/skills/builtin/coding_workspace.py'
+      - 'docker/Dockerfile.workspace-*'
+      - 'tests/test_coding_workspace.py'
+      - '.github/workflows/coding-workspace.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install API test dependencies
+        run: python -m pip install -e '.[dev,nlp]' 'Pillow==12.3.0'
+      - name: Build the pinned private runner and isolated runtime
+        run: |
+          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
+          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
+      - name: Verify runner image imports without Docker access
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 python -c 'from workspace.runner import app; assert app.docs_url is None'
+      - name: Test owner boundaries and real code execution
+        env:
+          MIZAN_DATA_DIR: ${{ runner.temp }}/coding-test-data
+          DB_PATH: ${{ runner.temp }}/coding-test-data/memory.db
+        run: |
+          mkdir -p "$MIZAN_DATA_DIR"
+          pytest tests/test_coding_workspace.py tests/test_artifacts.py -v --tb=short
