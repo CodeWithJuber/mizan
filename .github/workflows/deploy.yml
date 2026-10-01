@@ -1,97 +1,30 @@
-name: Deploy Production
-
+name: Restore Production Proxy
 on:
-  workflow_run:
-    workflows: [CI]
-    branches: [main, master]
-    types: [completed]
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/deploy.yml
-      - scripts/deploy_production.sh
-      - deploy/known_hosts
-
 permissions:
   contents: read
-  packages: read
-
 concurrency:
   group: mizan-production
   cancel-in-progress: false
-
 jobs:
-  connection-check:
-    if: github.event.repository.private == false && github.event_name == 'pull_request'
+  restore:
+    if: github.event.repository.private == false
     runs-on: ubuntu-24.04
-    steps:
-      - name: Check the production SSH handshake without credentials
-        env:
-          SSH_HOST: ${{ vars.SSH_COMPUTING_HOST || '172.104.164.165' }}
-        run: |
-          set -euo pipefail
-          keys=$(ssh-keyscan -T 15 -t ed25519 "$SSH_HOST")
-          test -n "$keys"
-          while IFS= read -r key; do
-            echo "::notice title=Production SSH host key::$key"
-          done <<< "$keys"
-
-  deploy:
-    if: >-
-      github.event.repository.private == false &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.conclusion == 'success'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
-      - name: Check deployment credentials
-        env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
-        run: |
-          for name in SSH_HOST SSH_USER SSHPASS; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub deployment setting: $name (see docs/deployment.md)"
-              exit 1
-            fi
-          done
-          test -s deploy/known_hosts || { echo '::error::Production SSH host key is not pinned'; exit 1; }
       - name: Install SSH password client
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-      - name: Deploy the tested images
-        id: production
+      - name: Refresh nginx and verify the public API
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER }}
           SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
-          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
         run: |
           set -euo pipefail
-          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" --jq .sha)
-          if [ "$current" != "$DEPLOY_SHA" ]; then
-            echo "A newer commit is on $DEPLOY_BRANCH; its CI run will deploy it."
-            exit 0
-          fi
-          remote_script="/tmp/mizan-deploy-$DEPLOY_SHA.sh"
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_script'\''" || true' EXIT
-          sshpass -e scp "${ssh_options[@]}" scripts/deploy_production.sh "$SSH_USER@$SSH_HOST:$remote_script"
-          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "bash '$remote_script' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}'"
-          printf '%s\n' "$DEPLOY_SHA" > deployed-sha.txt
-          echo 'deployed=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
-        if: steps.production.outputs.deployed == 'true'
-        with:
-          name: production-deployment
-          path: deployed-sha.txt
-          retention-days: 30
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" 'docker exec mizan-nginx nginx -t && docker exec mizan-nginx nginx -s reload'
+          curl --fail --silent --retry 3 --retry-delay 2 https://mizan.jubershaikh.com/api/health > /dev/null
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' https://mizan.jubershaikh.com/api/status)
+          test "$code" = 401
