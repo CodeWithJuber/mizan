@@ -25,6 +25,39 @@ class RuhRemoteProvider(BaseLLMProvider):
         self.api_key = api_key
         self.base_url = f"https://api.runpod.ai/v2/{endpoint_id}"
 
+    def _poll_until_done(self, job_id: str, headers: dict, timeout_s: int = 300) -> dict:
+        """Poll RunPod /status/{job_id} until COMPLETED, FAILED, or timeout."""
+        import json
+        import time
+        import urllib.request
+
+        url = f"{self.base_url}/status/{job_id}"
+        deadline = time.time() + timeout_s
+        delay = 2.0
+
+        while time.time() < deadline:
+            # URL is hardcoded to https://api.runpod.ai - S310 false positive
+            req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+                    result = json.loads(resp.read().decode("utf-8"))
+            except Exception as exc:
+                logger.warning("RunPod status poll failed: %s", exc)
+                time.sleep(delay)
+                continue
+
+            status = result.get("status")
+            if status == "COMPLETED":
+                return result
+            if status == "FAILED":
+                raise ValueError(f"RunPod job failed: {result}")
+
+            # IN_QUEUE or IN_PROGRESS — wait and retry with backoff
+            time.sleep(delay)
+            delay = min(delay * 1.5, 10.0)
+
+        raise TimeoutError(f"RunPod job {job_id} did not complete in {timeout_s}s")
+
     def create(
         self,
         model: str,
@@ -68,6 +101,15 @@ class RuhRemoteProvider(BaseLLMProvider):
         except Exception as exc:
             logger.error("RunPod request failed: %s", exc)
             raise
+
+        # Handle async: /runsync may return IN_QUEUE/IN_PROGRESS instead of
+        # waiting. Poll /status/{id} until COMPLETED or FAILED.
+        status = result.get("status")
+        if status in ("IN_QUEUE", "IN_PROGRESS"):
+            job_id = result.get("id")
+            if not job_id:
+                raise ValueError(f"RunPod returned {status} without job id: {result}")
+            result = self._poll_until_done(job_id, headers)
 
         # Parse response: {"output": {"choices": [...], "usage": {...}}}
         # or {"output": {...}} directly
