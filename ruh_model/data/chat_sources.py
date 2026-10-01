@@ -14,6 +14,13 @@ OASST = {
         "data/validation-00000-of-00001-134b8fd0c89408b6.parquet",
     ],
 }
+AYA = {
+    "path": "CohereForAI/aya_dataset",
+    "revision": "f9ea04583f02a8f86404ff6c58bf75fe637df8a2",
+    "license": "apache-2.0",
+    "files": ["data/train-00000-of-00001.parquet"],
+    "description": "Human multilingual instructions and answers, no annotation user IDs retained",
+}
 
 
 def conversation_pairs(rows: list[dict], languages=("ar", "en")):
@@ -78,3 +85,55 @@ def prepare_dialogues(output: Path, limit: int = 2500):
         "records": len(selected),
         "arabic_records": sum(row["lang"] == "ar" for row in selected),
     }
+
+
+def prepare_aya(output: Path, arabic_limit: int, english_limit: int):
+    import hashlib
+
+    import pyarrow.parquet as parquet
+    from huggingface_hub import hf_hub_download
+
+    if arabic_limit < 0 or english_limit < 0:
+        raise ValueError("Aya limits must be nonnegative")
+    limits, counts = {"arb": arabic_limit, "eng": english_limit}, {"arb": 0, "eng": 0}
+    file = hf_hub_download(
+        AYA["path"],
+        AYA["files"][0],
+        repo_type="dataset",
+        revision=AYA["revision"],
+        cache_dir=str(output.parent / ".hf-cache"),
+    )
+    reader = parquet.ParquetFile(file)
+    try:
+        with output.open("a", encoding="utf-8") as handle:
+            for batch in reader.iter_batches(
+                batch_size=512,
+                columns=["inputs", "targets", "language_code", "annotation_type"],
+                use_threads=False,
+            ):
+                for row in batch.to_pylist():
+                    language = row["language_code"]
+                    if language not in limits or counts[language] >= limits[language]:
+                        continue
+                    prompt, answer = row["inputs"], row["targets"]
+                    if not prompt.strip() or not answer.strip():
+                        continue
+                    example = {
+                        "messages": [
+                            {"role": "user", "content": prompt},
+                            {"role": "assistant", "content": answer},
+                        ],
+                        "group_id": hashlib.sha256(prompt.encode()).hexdigest(),
+                        "lang": "ar" if language == "arb" else "en",
+                        "source": AYA["path"],
+                        "annotation_type": row["annotation_type"],
+                    }
+                    handle.write(json.dumps(example, ensure_ascii=False) + "\n")
+                    counts[language] += 1
+                if counts == limits:
+                    break
+    finally:
+        reader.close()
+    if any(counts[lang] == 0 for lang, limit in limits.items() if limit > 0):
+        raise ValueError("Aya did not provide the requested language")
+    return {"source": AYA, "records_by_language": counts, "requested_limits": limits}

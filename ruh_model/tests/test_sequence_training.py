@@ -55,6 +55,18 @@ def test_conversation_groups_and_duplicate_content_cannot_leak():
     assert len(train) + len(validation) == 80
     assert not {row["group_id"] for row in train} & {row["group_id"] for row in validation}
     assert split_records(rows) == (train, validation)
+    repeated = [
+        {
+            "messages": [
+                {"role": "user", "content": "Same question"},
+                {"role": "assistant", "content": f"Answer {i}"},
+            ],
+            "group_id": f"source-{i}",
+        }
+        for i in range(3)
+    ]
+    train, validation = split_records(rows + repeated)
+    assert sum(row in train for row in repeated) in (0, 3)
 
 
 def test_oasst_filters_deleted_unreviewed_and_non_answers():
@@ -187,3 +199,67 @@ def test_sequence_training_refuses_legacy_resume(tmp_path):
     rows = [{"text": f"Sentence {index}"} for index in range(80)]
     with pytest.raises(ValueError, match="legacy root checkpoint"):
         run_training(rows, tmp_path / "invalid", config=config, resume_from=tmp_path / "legacy")
+
+
+def test_balanced_real_categories_and_continuation_resume(tmp_path):
+    from ruh_model.train_sequence import save_continuation
+
+    tokenizer = BayanTokenizer(version=2)
+    rows = []
+    for index in range(100):
+        language = "ar" if index % 2 else "en"
+        rows.append(
+            {
+                "messages": [
+                    {"role": "user", "content": f"Question number {index}?"},
+                    {"role": "assistant", "content": "لا. No."},
+                ],
+                "lang": language,
+                "group_id": str(index),
+            }
+        )
+    # Long document windows would dominate unweighted sampling.
+    rows += [
+        {"text": f"مقال {index} " + "المعرفة مفيدة. " * 20, "lang": "ar"} for index in range(100)
+    ]
+    config = RuhConfig(
+        d_model=32,
+        d_root=8,
+        d_pattern=8,
+        n_heads=4,
+        n_layers=1,
+        n_roots=tokenizer._vocab.n_roots,
+        max_seq_len=64,
+        tokenizer_version=2,
+        moe_interval=0,
+        dropout=0,
+    )
+    weights = {"ar:dialogue": 0.55, "en:dialogue": 0.25, "ar:text": 0.20}
+    report = run_training(
+        rows,
+        tmp_path / "balanced",
+        config=config,
+        steps=100,
+        batch_size=4,
+        max_seconds=30,
+        mixing_weights=weights,
+    )
+    counts = report["training"]["target_tokens_by_category"]
+    assert (counts["ar:dialogue"] + counts["en:dialogue"]) / sum(counts.values()) > 0.6
+    assert set(report["held_out_by_language_after"]) == {"ar", "en"}
+    model = RuhModel.from_pretrained(str(tmp_path / "balanced" / "candidate"))
+    optimizer = torch.optim.AdamW(model.parameters())
+    first = save_continuation(model, optimizer, tmp_path / "balanced", 100, None)
+    last = save_continuation(model, optimizer, tmp_path / "balanced", 200, first)
+    assert not first.exists()
+    assert (last / "candidate" / "tokenizer.json").is_file()
+    resumed = run_training(
+        rows,
+        tmp_path / "continued",
+        config=config,
+        steps=2,
+        max_seconds=30,
+        resume_from=last / "candidate",
+        mixing_weights=weights,
+    )
+    assert resumed["training"]["steps"] == 2
