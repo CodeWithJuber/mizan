@@ -24,11 +24,16 @@ change prevents generated files from overwriting the editor's work.
 For deployment, provide a dedicated Docker daemon (preferably rootless on an
 isolated worker) that has no production containers, credentials or host mounts.
 Do not use the production Docker socket. Build the two digest-pinned Dockerfiles,
-load `mizan-workspace-runtime:v1` into that daemon, and set a random runner token
+load the runtime into that daemon, and set a random runner token
 of at least 32 characters. The optional `docker-compose.workspace.yml` override
 requires `MIZAN_WORKSPACE_DOCKER_SOCKET` to identify that dedicated daemon and
 `MIZAN_WORKSPACE_RUNNER_TOKEN` to authenticate the private service. It exposes no
-host port. The backend and runner share only the private API token. The runner
+host port. Production images use immutable commit tags
+`ghcr.io/codewithjuber/mizan/workspace-runtime:<sha>` and
+`ghcr.io/codewithjuber/mizan/workspace-runner:<sha>`, published by the main CI
+pipeline after isolation checks. Set `MIZAN_WORKSPACE_RUNTIME_IMAGE` and
+`MIZAN_WORKSPACE_RUNNER_IMAGE` to those tags. The backend and runner share only
+the private API token. The runner
 receives no Mizan database or project volume. A remotely hosted runner can
 instead use `MIZAN_WORKSPACE_RUNNER_URL` and the same token through a private or
 TLS-protected connection. Missing or unhealthy isolation returns HTTP 503 and
