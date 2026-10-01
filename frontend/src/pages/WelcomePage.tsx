@@ -48,7 +48,7 @@ export default function WelcomePage({
   const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProviders();
+    if (localStorage.getItem("mizan_token")) void loadProviders();
   }, []);
 
   const loadProviders = async () => {
