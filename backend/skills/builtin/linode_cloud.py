@@ -18,6 +18,7 @@ Uses the Linode API v4: https://api.linode.com/v4/
 
 import logging
 import os
+from typing import cast
 
 import httpx
 
@@ -48,7 +49,7 @@ class LinodeCloudSkill(SkillBase):
         tags=["سماء", "Linode", "Cloud"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._token = os.environ.get("LINODE_API_TOKEN", "")
         self._tools = {
@@ -151,7 +152,7 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Instance Management ─────────────────────────────────
 
-    async def list_instances(self, params: dict = None) -> dict:
+    async def list_instances(self, params: dict | None = None) -> dict:
         """List all Linode instances."""
         result = await self._request("GET", "/linode/instances")
         if result.get("error"):
@@ -327,7 +328,7 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Reference Data ──────────────────────────────────────
 
-    async def list_regions(self, params: dict = None) -> dict:
+    async def list_regions(self, params: dict | None = None) -> dict:
         """List available Linode regions."""
         result = await self._request("GET", "/regions")
         if result.get("error"):
@@ -345,7 +346,7 @@ class LinodeCloudSkill(SkillBase):
             ],
         }
 
-    async def list_types(self, params: dict = None) -> dict:
+    async def list_types(self, params: dict | None = None) -> dict:
         """List available Linode instance types (plans)."""
         result = await self._request("GET", "/linode/types")
         if result.get("error"):
@@ -388,11 +389,11 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Execute (generic entry) ─────────────────────────────
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"linode_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}. Available: {list(self._tools.keys())}"}
 
     # ── Tool Schemas ────────────────────────────────────────

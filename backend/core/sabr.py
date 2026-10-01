@@ -195,7 +195,7 @@ class SabrEngine:
         return step
 
     def complete_step(
-        self, workflow_id: str, result: Any = None, error: str = None
+        self, workflow_id: str, result: Any = None, error: str | None = None
     ) -> SabrWorkflow | None:
         """Complete the current step and advance."""
         wf = self._workflows.get(workflow_id)
@@ -258,7 +258,7 @@ class SabrEngine:
     def get_workflow(self, workflow_id: str) -> SabrWorkflow | None:
         return self._workflows.get(workflow_id)
 
-    def get_active_workflows(self, agent_id: str = None) -> list[SabrWorkflow]:
+    def get_active_workflows(self, agent_id: str | None = None) -> list[SabrWorkflow]:
         """Get all active (non-completed) workflows."""
         active = [
             wf

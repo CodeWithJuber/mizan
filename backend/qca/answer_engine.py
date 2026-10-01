@@ -14,6 +14,7 @@ and DhikrMemorySystem for persistent storage.
 import logging
 import re
 import time
+from typing import cast
 
 from qca.engine import (
     AqlLayer,
@@ -39,10 +40,10 @@ class QCAAnswerEngine:
         result = engine.answer("What does this discuss?")
     """
 
-    def __init__(self, qca: QCAEngine = None):
+    def __init__(self, qca: QCAEngine | None = None):
         self.qca = qca or QCAEngine()
         self.current_paragraph = ""
-        self.paragraph_analysis = {}
+        self.paragraph_analysis: dict = {}
         self.session_memory: list[dict] = []
 
     @property
@@ -76,9 +77,9 @@ class QCAAnswerEngine:
             "sentences": re.split(r"[.!?]+", text),
             "word_count": len(text.split()),
         }
-        return analysis["perception"]["fuad"]
+        return cast(dict, analysis["perception"]["fuad"])
 
-    def answer(self, question: str, paragraph: str = None) -> dict:
+    def answer(self, question: str, paragraph: str | None = None) -> dict:
         """
         Full QCA pipeline answer to a question. All 7 layers invoked.
 
@@ -224,7 +225,7 @@ class QCAAnswerEngine:
             "lawh_stats": self.lawh.stats(),
         }
 
-    def batch_answer(self, questions: list[str], paragraph: str = None) -> list[dict]:
+    def batch_answer(self, questions: list[str], paragraph: str | None = None) -> list[dict]:
         """Answer multiple questions about the same paragraph."""
         if paragraph:
             self.load_paragraph(paragraph)
@@ -246,6 +247,6 @@ class QCAAnswerEngine:
     def reset_session(self):
         """Clear session memory (Tier 3) but preserve axioms and verified knowledge."""
         self.current_paragraph = ""
-        self.paragraph_analysis = {}
+        self.paragraph_analysis: dict = {}
         self.session_memory.clear()
         self.lawh.tiers[3].clear()

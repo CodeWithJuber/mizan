@@ -17,9 +17,12 @@ Each layer contributes what it does best:
 Results are merged, deduplicated, and ranked by (relevance × certainty × recency).
 """
 
+import asyncio
+import inspect
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import cast
 
 logger = logging.getLogger("mizan.memory_pyramid")
 
@@ -52,12 +55,12 @@ class MemoryHit:
         }
 
 
-def _recency_score(created_at_ts: float, now: float = None) -> float:
+def _recency_score(created_at_ts: float, now: float | None = None) -> float:
     """Convert timestamp to 0-1 recency score (1 = just now, 0 = very old)."""
     now = now or time.time()
     age_hours = (now - created_at_ts) / 3600
     # Half-life of 24 hours → score ~0.5 at 1 day old
-    return max(0.0, min(1.0, 0.5 ** (age_hours / 24)))
+    return cast(float, max(0.0, min(1.0, 0.5 ** (age_hours / 24))))
 
 
 class MemoryPyramid:
@@ -86,6 +89,14 @@ class MemoryPyramid:
         self.knowledge_graph = knowledge_graph
 
     def query(self, text: str, top_k: int = 10) -> list[MemoryHit]:
+        """Sync compatibility API; async runtime callers must use query_async."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.query_async(text, top_k))
+        raise RuntimeError("Use await query_async() inside an event loop")
+
+    async def query_async(self, text: str, top_k: int = 10) -> list[MemoryHit]:
         """
         Query all available layers and return merged, ranked results.
         Layers that are unavailable are silently skipped.
@@ -113,19 +124,12 @@ class MemoryPyramid:
                         )
                     )
             except Exception as e:
-                logger.debug("[PYRAMID] Masalik query failed: %s", e)
+                logger.warning("[PYRAMID] Masalik query failed: %s", e)
 
         # ── Layer 2: DhikrMemory (SQL keyword search) ──
         if self.dhikr:
             try:
-                import asyncio
-
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Use sync fallback if we're inside async context
-                    memories = self._dhikr_sync_recall(text, top_k)
-                else:
-                    memories = loop.run_until_complete(self.dhikr.recall(text, limit=top_k))
+                memories = await self.dhikr.recall(text, limit=top_k)
                 for mem in memories:
                     content_str = str(mem.content)
                     recency = _recency_score(mem.recency.timestamp(), now)
@@ -141,7 +145,7 @@ class MemoryPyramid:
                         )
                     )
             except Exception as e:
-                logger.debug("[PYRAMID] Dhikr query failed: %s", e)
+                logger.warning("[PYRAMID] Dhikr query failed: %s", e)
 
         # ── Layer 3: VectorStore (semantic embedding search) ──
         if self.vector_store and getattr(self.vector_store, "_available", False):
@@ -159,12 +163,14 @@ class MemoryPyramid:
                         )
                     )
             except Exception as e:
-                logger.debug("[PYRAMID] VectorStore query failed: %s", e)
+                logger.warning("[PYRAMID] VectorStore query failed: %s", e)
 
         # ── Layer 4: KnowledgeGraph (entity + relationship lookup) ──
         if self.knowledge_graph:
             try:
                 entities = self.knowledge_graph.search_entities(text, limit=top_k)
+                if inspect.isawaitable(entities):
+                    entities = await entities
                 for entity in entities:
                     props = entity.get("properties", {})
                     content = f"{entity.get('name', '')} ({entity.get('type', 'entity')})"
@@ -181,7 +187,7 @@ class MemoryPyramid:
                         )
                     )
             except Exception as e:
-                logger.debug("[PYRAMID] KnowledgeGraph query failed: %s", e)
+                logger.warning("[PYRAMID] KnowledgeGraph query failed: %s", e)
 
         # ── Layer 5: LawhMahfuz (immutable facts) ──
         if self.lawh_mahfuz:
@@ -200,7 +206,7 @@ class MemoryPyramid:
                         )
                     )
             except Exception as e:
-                logger.debug("[PYRAMID] LawhMahfuz query failed: %s", e)
+                logger.warning("[PYRAMID] LawhMahfuz query failed: %s", e)
 
         # ── Merge, deduplicate, rank ──
         deduplicated = self._deduplicate(hits)
@@ -227,7 +233,7 @@ class MemoryPyramid:
             # Run the coroutine in a separate thread with its own event loop
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(asyncio.run, self.dhikr.recall(query, limit=limit))
-                return future.result(timeout=5)
+                return cast(list, future.result(timeout=5))
         except Exception:
             return []
 
@@ -247,6 +253,14 @@ class MemoryPyramid:
             lines.append(f"  [{source}] {content_preview}")
 
         return "\n".join(lines)
+
+    async def format_for_prompt_async(self, text: str, top_k: int = 5) -> str:
+        hits = await self.query_async(text, top_k)
+        if not hits:
+            return ""
+        return "Unified Memory Recall:\n" + "\n".join(
+            f"  [{hit.source_layer.upper()}] {hit.content[:150]}" for hit in hits
+        )
 
     def stats(self) -> dict:
         """Return availability status of each memory layer."""

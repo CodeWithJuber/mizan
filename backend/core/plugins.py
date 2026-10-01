@@ -111,7 +111,7 @@ class PluginBase:
     - on_unload(): Called when plugin is unloaded
     """
 
-    def __init__(self, manifest: PluginManifest, config: dict = None):
+    def __init__(self, manifest: PluginManifest, config: dict | None = None):
         self.manifest = manifest
         self.config = config or {}
         self._registered_hooks: list[tuple] = []
@@ -140,7 +140,7 @@ class PluginBase:
         )
         self._registered_events.append((event_pattern, callback))
 
-    async def emit(self, event_name: str, data: dict = None):
+    async def emit(self, event_name: str, data: dict | None = None):
         """Emit an event from this plugin."""
         await event_bus.emit(event_name, data or {}, source=self.manifest.name)
 
@@ -178,7 +178,7 @@ class PluginManager:
             └── main.py
     """
 
-    def __init__(self, plugins_dir: str = None):
+    def __init__(self, plugins_dir: str | None = None):
         self.plugins_dir = plugins_dir or os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "plugins"
         )
@@ -188,7 +188,7 @@ class PluginManager:
 
     async def discover(self) -> list[PluginManifest]:
         """Discover all plugins in the plugins directory."""
-        manifests = []
+        manifests: list[PluginManifest] = []
 
         if not os.path.exists(self.plugins_dir):
             os.makedirs(self.plugins_dir, exist_ok=True)
@@ -245,6 +245,8 @@ class PluginManager:
         try:
             # Load the module dynamically
             spec = importlib.util.spec_from_file_location(f"plugins.{plugin_name}", main_path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot load plugin {plugin_name}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 

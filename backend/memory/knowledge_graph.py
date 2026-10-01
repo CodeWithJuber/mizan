@@ -13,6 +13,7 @@ import logging
 import sqlite3
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
 logger = logging.getLogger("mizan.knowledge")
 
@@ -65,7 +66,7 @@ class KnowledgeGraph:
         conn.close()
 
     async def add_entity(
-        self, name: str, entity_type: str = "concept", properties: dict = None
+        self, name: str, entity_type: str = "concept", properties: dict | None = None
     ) -> str:
         """Add or update an entity"""
         conn = sqlite3.connect(self.db_path)
@@ -91,7 +92,7 @@ class KnowledgeGraph:
 
         conn.commit()
         conn.close()
-        return entity_id
+        return cast(str, entity_id)
 
     async def add_relationship(
         self,
@@ -99,7 +100,7 @@ class KnowledgeGraph:
         target_name: str,
         rel_type: str,
         confidence: float = 0.5,
-        properties: dict = None,
+        properties: dict | None = None,
     ) -> str:
         """Add a relationship between two entities (creating them if needed)"""
         source_id = await self.add_entity(source_name)

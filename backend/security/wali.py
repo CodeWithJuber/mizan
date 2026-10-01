@@ -13,6 +13,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 logger = logging.getLogger("mizan.wali")
 
@@ -182,7 +183,7 @@ class AuditLog:
         if len(self._events) > self._max_events:
             self._events = self._events[-self._max_events :]
 
-    def get_recent(self, limit: int = 100, severity: str = None) -> list[dict]:
+    def get_recent(self, limit: int = 100, severity: str | None = None) -> list[dict]:
         events = self._events
         if severity:
             events = [e for e in events if e["severity"] == severity]
@@ -195,7 +196,7 @@ class WaliGuardian:
     All tool calls, API requests, and messages pass through here.
     """
 
-    def __init__(self, config: SecurityConfig = None, memory=None):
+    def __init__(self, config: SecurityConfig | None = None, memory=None):
         self.config = config or SecurityConfig.from_env()
         self.rate_limiter = RateLimiter(
             per_minute=self.config.rate_limit_per_minute,
@@ -329,7 +330,7 @@ class WaliGuardian:
                 {"url": url, "reason": reason},
                 severity="warning",
             )
-        return is_safe
+        return cast(bool, is_safe)
 
     def validate_input_length(self, text: str, field_name: str = "input") -> bool:
         """Check input doesn't exceed maximum length"""

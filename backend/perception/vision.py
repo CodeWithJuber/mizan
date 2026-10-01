@@ -11,6 +11,7 @@ Supports Anthropic Claude Vision, OpenAI GPT-4o Vision, and OpenRouter.
 import base64
 import logging
 import os
+from typing import cast
 
 from providers import create_provider, get_default_model
 
@@ -77,7 +78,7 @@ class VisionProcessor:
             # Extract text from normalized response
             for block in response.content:
                 if block.type == "text":
-                    return block.text
+                    return cast(str, block.text)
 
             return "No text response from vision analysis"
 

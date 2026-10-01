@@ -93,7 +93,7 @@ class MiddlewarePipeline:
         for pipeline in self._pipelines:
             self._pipelines[pipeline] = [e for e in self._pipelines[pipeline] if e.source != source]
 
-    async def execute(self, pipeline: str, data: Any, final_handler: Callable = None) -> Any:
+    async def execute(self, pipeline: str, data: Any, final_handler: Callable | None = None) -> Any:
         """
         Execute a middleware pipeline.
 

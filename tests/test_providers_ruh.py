@@ -188,7 +188,9 @@ class TestCreateWithMockedModel:
         mock_tokenizer.decode.return_value = "Bismillah"
 
         mock_model = MagicMock()
-        mock_model.generate.return_value = [101, 102, 103, 104]
+        import torch
+
+        mock_model.generate.return_value = torch.tensor([[1, 2, 3, 104]])
 
         provider._model = mock_model
         provider._tokenizer = mock_tokenizer
@@ -210,9 +212,11 @@ class TestCreateWithMockedModel:
         assert response.content[0].type == "text"
         assert response.content[0].text == "Bismillah"
         assert response.usage["input_tokens"] == 3
-        assert response.usage["output_tokens"] == 4
+        assert response.usage["output_tokens"] == 1
 
-        mock_tokenizer.encode.assert_called_once_with("What is Basmala?")
+        mock_tokenizer.encode.assert_called_once_with(
+            "system: You are a scholar.\nuser: What is Basmala?\nassistant:", add_eos=False
+        )
         mock_model.generate.assert_called_once()
 
     def test_generate_respects_max_tokens_cap(self) -> None:
@@ -226,7 +230,9 @@ class TestCreateWithMockedModel:
         mock_tokenizer.decode.return_value = "output"
 
         mock_model = MagicMock()
-        mock_model.generate.return_value = [1]
+        import torch
+
+        mock_model.generate.return_value = torch.tensor([[1]])
 
         provider._model = mock_model
         provider._tokenizer = mock_tokenizer
@@ -256,7 +262,9 @@ class TestCreateWithMockedModel:
         mock_tokenizer.decode.return_value = "result"
 
         mock_model = MagicMock()
-        mock_model.generate.return_value = [1]
+        import torch
+
+        mock_model.generate.return_value = torch.tensor([[1]])
 
         provider._model = mock_model
         provider._tokenizer = mock_tokenizer
@@ -284,7 +292,9 @@ class TestCreateWithMockedModel:
         mock_tokenizer.decode.return_value = "result"
 
         mock_model = MagicMock()
-        mock_model.generate.return_value = [1]
+        import torch
+
+        mock_model.generate.return_value = torch.tensor([[1]])
 
         provider._model = mock_model
         provider._tokenizer = mock_tokenizer

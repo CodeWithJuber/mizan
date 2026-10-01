@@ -36,6 +36,7 @@ import math
 import random
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 logger = logging.getLogger("mizan.creativity")
 
@@ -75,10 +76,11 @@ class ConceptVector:
 
     def landscape_score(self, alpha: float = ALPHA_NOVELTY, beta: float = BETA_UTILITY) -> float:
         """Ψ(z) = U^β × N^α × F"""
-        return (
+        return cast(
+            float,
             (self.utility_score**beta)
             * (self.novelty_score**alpha)
-            * max(0.01, self.feasibility_score)
+            * max(0.01, self.feasibility_score),
         )
 
 
@@ -553,7 +555,7 @@ class IbdaCreativityEngine:
             self.known_solutions.pop(0)
 
     def to_dict(self) -> dict:
-        mode_counts = {}
+        mode_counts: dict = {}
         for m in self.mode_history:
             mode_counts[m.value] = mode_counts.get(m.value, 0) + 1
         return {

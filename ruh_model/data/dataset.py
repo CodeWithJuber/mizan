@@ -48,6 +48,10 @@ class RuhDataset(Dataset):  # type: ignore[type-arg]
                 except json.JSONDecodeError:
                     continue
                 text = row.get("text", "")
+                if row.get("messages"):
+                    from ruh_model.tokenizer.conversation import serialize_messages
+
+                    text = serialize_messages(row["messages"], assistant_prefix=False)
                 if not text or not text.strip():
                     continue
                 tokens = tokenizer.encode(text)[:max_seq_len]
@@ -55,9 +59,12 @@ class RuhDataset(Dataset):  # type: ignore[type-arg]
                     continue
                 root_ids = [r for r, _ in tokens]
                 pattern_ids = [p for _, p in tokens]
-                self._samples.append(
-                    {"root_ids": root_ids, "pattern_ids": pattern_ids}
-                )
+                sample = {"root_ids": root_ids, "pattern_ids": pattern_ids}
+                if row.get("paraphrase"):
+                    paired = tokenizer.encode(row["paraphrase"])[:max_seq_len]
+                    sample["paraphrase_root_ids"] = [r for r, _ in paired]
+                    sample["paraphrase_pattern_ids"] = [p for _, p in paired]
+                self._samples.append(sample)
 
     @staticmethod
     def _collect_files(data_path: str) -> list[Path]:

@@ -115,7 +115,9 @@ class QalbProcessor:
             reasoning = f"KHUSHU: nafs_level={nafs_level} + extreme task"
         # 2. Emotional override
         elif emotional_state in _EMOTION_TO_STATE and _EMOTION_TO_STATE[emotional_state]:
-            state = _EMOTION_TO_STATE[emotional_state]
+            override_state = _EMOTION_TO_STATE[emotional_state]
+            assert override_state is not None
+            state = override_state
             reasoning = f"Emotional override: {emotional_state} → {state.value}"
         # 3. Cardiac oscillation
         else:
@@ -131,7 +133,7 @@ class QalbProcessor:
         params = _STATE_PARAMS[state]
         output = QalbOutput(
             state=state,
-            max_tokens=params["max_tokens"],
+            max_tokens=int(params["max_tokens"]),
             temperature=params["temperature"],
             reasoning=reasoning,
         )

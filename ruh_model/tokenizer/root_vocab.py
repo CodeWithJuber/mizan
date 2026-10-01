@@ -140,7 +140,12 @@ class RootVocab:
     def load(self, path: str) -> None:
         """Deserialize vocabulary from JSON file."""
         data = json.loads(Path(path).read_text())
-        self.root_to_id = data["root_to_id"]
+        roots = data["root_to_id"]
+        if sorted(roots.values()) != list(range(len(roots))) or any(
+            roots.get(name) != index for index, name in SPECIAL_TOKENS.items()
+        ):
+            raise ValueError("Invalid vocabulary ID mapping")
+        self.root_to_id = roots
         self.id_to_root = {int(v): k for k, v in self.root_to_id.items()}
         self.pattern_to_id = data["pattern_to_id"]
         self.id_to_pattern = {int(v): k for k, v in self.pattern_to_id.items()}

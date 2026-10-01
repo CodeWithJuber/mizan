@@ -15,7 +15,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -176,42 +176,57 @@ class TrainingManager:
         return self.get_status()
 
     async def _monitor_output(self) -> None:
-        """Read stdout JSON lines from the training subprocess."""
-        if not self._process or not self._process.stdout:
+        """Drain both pipes concurrently, retaining a bounded stderr tail."""
+        process = self._process
+        if not process or not process.stdout:
             return
+        stderr_tail = bytearray()
+
+        async def drain_stderr():
+            if process.stderr:
+                while chunk := await process.stderr.read(4096):
+                    stderr_tail.extend(chunk)
+                    del stderr_tail[:-4096]
+
+        async def drain_stdout():
+            # Read bounded chunks: a child can also emit a line beyond StreamReader's limit.
+            pending = b""
+            while chunk := await process.stdout.read(4096):
+                pending += chunk
+                while b"\n" in pending:
+                    line, pending = pending.split(b"\n", 1)
+                    try:
+                        data = json.loads(line)
+                        if isinstance(data, dict):
+                            await self._handle_progress(data)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        logger.debug("Train output: %s", line[:1000])
+                if len(pending) > 65536:
+                    pending = b""
 
         try:
-            async for line in self._process.stdout:
-                decoded = line.decode("utf-8", errors="replace").strip()
-                if not decoded:
-                    continue
-                try:
-                    data = json.loads(decoded)
-                    await self._handle_progress(data)
-                except json.JSONDecodeError:
-                    # Regular log line — ignore
-                    logger.debug("Train output: %s", decoded)
-
-            # Process ended
-            return_code = await self._process.wait()
+            await asyncio.gather(drain_stdout(), drain_stderr())
+            return_code = await process.wait()
             if self._state.running:
                 self._state.running = False
                 if return_code == 0:
                     self._state.message = "Training completed successfully"
                     self._save_run_to_history("completed")
                 else:
-                    stderr_bytes = (
-                        await self._process.stderr.read() if self._process.stderr else b""
-                    )
-                    stderr = stderr_bytes.decode("utf-8", errors="replace")[-500:]
-                    self._state.message = f"Training failed (exit {return_code}): {stderr}"
+                    tail = stderr_tail.decode("utf-8", errors="replace")[-500:]
+                    self._state.message = f"Training failed (exit {return_code}): {tail}"
                     self._save_run_to_history("failed")
                 await self._broadcast_state()
-
         except asyncio.CancelledError:
-            logger.info("Training monitor cancelled")
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+            raise
         except Exception as exc:
-            logger.error("Training monitor error: %s", exc)
+            logger.exception("Training monitor error")
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
             self._state.running = False
             self._state.message = f"Monitor error: {exc}"
             await self._broadcast_state()
@@ -306,7 +321,7 @@ class TrainingManager:
         if _HISTORY_FILE.exists():
             try:
                 with open(_HISTORY_FILE, encoding="utf-8") as fh:
-                    return json.load(fh)
+                    return cast(list[dict[str, Any]], json.load(fh))
             except (json.JSONDecodeError, OSError) as exc:
                 logger.warning("Failed to load training history: %s", exc)
         return []

@@ -89,7 +89,15 @@ def test_tajwid_dataclasses_construct(tajwid):
 # ---------------------------------------------------------------------------
 
 
-def test_export_onnx_skips_without_torch(onnx):
+def test_export_onnx_skips_without_torch(onnx, monkeypatch):
+    original = onnx._require
+
+    def missing(name, message):
+        if name == "torch":
+            raise onnx.ExportDependencyMissing("torch not installed")
+        return original(name, message)
+
+    monkeypatch.setattr(onnx, "_require", missing)
     result = onnx.export_onnx(model=None, path="/tmp/x.onnx")
     assert result.status == "skipped"
     assert "torch" in result.message.lower()

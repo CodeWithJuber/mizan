@@ -27,7 +27,7 @@ _CREATE_TABLE_SQL = """
 
 _RESTORE_SQL = (
     "SELECT task_id, priority, payload, status, agent_id, created_at "
-    "FROM tasks WHERE status = 'pending' ORDER BY priority, created_at"
+    " , result, error FROM tasks ORDER BY priority, created_at"
 )
 
 _INSERT_SQL = (
@@ -67,8 +67,21 @@ class MizanTaskQueue:
         """Create tables and restore pending tasks from DB."""
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(_CREATE_TABLE_SQL)
+            # Interrupted jobs may have produced side effects. Preserve them as failed
+            # for explicit operator retry rather than silently executing twice.
+            await db.execute(
+                "UPDATE tasks SET status = 'failed', error = ?, updated_at = ? WHERE status = 'running'",
+                (
+                    "Interrupted by worker restart; inspect side effects before retrying",
+                    time.time(),
+                ),
+            )
             await db.commit()
+            self._heap.clear()
+            self._tasks.clear()
             await self._restore_pending(db)
+            if self._heap:
+                self._event.set()
 
     async def _restore_pending(self, db: aiosqlite.Connection) -> None:
         """Load pending tasks from the database into the in-memory heap."""
@@ -81,8 +94,11 @@ class MizanTaskQueue:
                     payload=json.loads(row[2]),
                     status=row[3],
                     agent_id=row[4],
+                    result=json.loads(row[6]) if row[6] else None,
+                    error=row[7],
                 )
-                heapq.heappush(self._heap, task)
+                if task.status == "pending":
+                    heapq.heappush(self._heap, task)
                 self._tasks[task.task_id] = task
 
     async def enqueue(

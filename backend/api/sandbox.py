@@ -4,21 +4,19 @@ POST /api/sandbox/run — runs user-supplied Python/JavaScript code inside an
 isolated sandbox and returns captured output. Authentication is applied at
 router-mount time (see backend/api/main.py) so this module stays import-safe.
 
-Executor preference order (JEV-locked):
-  1. microsandbox (libkrun microVM) — preferred, when importable AND its
-     backend is reachable.
-  2. hardened Docker — `docker run --rm --cap-drop ALL --read-only
+Enabled executor:
+  1. hardened Docker — `docker run --rm --cap-drop ALL --read-only
      --no-new-privileges --network none` with CPU/memory/PID limits and an
      enforced wall-clock timeout.
-  3. Neither available → fail CLOSED with HTTP 503. Code is NEVER executed
+  2. Docker unavailable → fail CLOSED with HTTP 503. Code is NEVER executed
      outside a sandbox.
 
 Defense in depth: wall-clock timeout (process/sandbox killed on expiry),
 stdout/stderr size caps, CPU/memory/PID limits (Docker), and an append-only
 JSONL audit log of every run at ``{data_dir}/sandbox_audit.log``.
 
-microsandbox SDK surface verified against microsandbox-0.7.4
-(PyPI name ``microsandbox``, ``from microsandbox import Sandbox``).
+The microsandbox adapter is disabled until its network and privilege
+isolation contract can be independently verified.
 """
 
 from __future__ import annotations
@@ -30,6 +28,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -137,8 +136,6 @@ def _docker_available() -> bool:
 
 def detect_provider() -> str | None:
     """Return the preferred available sandbox provider, or None (fail closed)."""
-    if _microsandbox_importable():
-        return "microsandbox"
     if _docker_available():
         return "docker"
     return None
@@ -241,14 +238,21 @@ def _run_docker_sync(language: str, code: str, timeout_s: int) -> SandboxRunResu
         code_path.write_text(code, encoding="utf-8")
         # Mode 0444: the container only needs to read it.
         code_path.chmod(0o444)
+        Path(tmp).chmod(0o755)
+        container_name = f"mizan-sandbox-{uuid.uuid4().hex}"
         cmd = [
             "docker",
             "run",
             "--rm",
+            "--name",
+            container_name,
+            "--user",
+            "65534:65534",
             "--cap-drop",
             "ALL",
             "--read-only",
-            "--no-new-privileges",
+            "--security-opt",
+            "no-new-privileges",
             "--network",
             "none",
             "--cpus",
@@ -263,20 +267,18 @@ def _run_docker_sync(language: str, code: str, timeout_s: int) -> SandboxRunResu
             *_DOCKER_CMD[language],
         ]
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=timeout_s,
-                check=False,
-            )
-            stdout = proc.stdout.decode("utf-8", errors="replace")
-            stderr = proc.stderr.decode("utf-8", errors="replace")
-            exit_code, timed_out = proc.returncode, False
-        except subprocess.TimeoutExpired as e:
-            stdout = (e.stdout or b"").decode("utf-8", errors="replace")
-            stderr = (e.stderr or b"").decode("utf-8", errors="replace")
-            stderr += f"\n[sandbox] execution timed out after {timeout_s}s (killed)"
-            exit_code, timed_out = 124, True
+            stdout, stderr, exit_code, timed_out = _bounded_process(cmd, timeout_s)
+        finally:
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", container_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                logger.error("Could not remove sandbox container %s", container_name, exc_info=True)
 
     return SandboxRunResult(
         stdout=_cap(stdout),
@@ -286,6 +288,39 @@ def _run_docker_sync(language: str, code: str, timeout_s: int) -> SandboxRunResu
         duration_ms=int((time.monotonic() - started) * 1000),
         sandbox="docker",
     )
+
+
+def _bounded_process(cmd: list[str], timeout_s: int) -> tuple[str, str, int, bool]:
+    """Drain both pipes continuously without retaining unbounded host output."""
+    retained = [bytearray(), bytearray()]
+
+    def drain(pipe, buffer):
+        while chunk := pipe.read(32768):
+            room = MAX_OUTPUT_BYTES + 1 - len(buffer)
+            if room > 0:
+                buffer.extend(chunk[:room])
+
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+        readers = [
+            threading.Thread(target=drain, args=(pipe, buffer), daemon=True)
+            for pipe, buffer in zip((process.stdout, process.stderr), retained, strict=True)
+        ]
+        for reader in readers:
+            reader.start()
+        timed_out = False
+        try:
+            exit_code = process.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.kill()
+            process.wait()
+            exit_code = 124
+        for reader in readers:
+            reader.join()
+    stdout, stderr = (_cap(bytes(buffer).decode("utf-8", errors="replace")) for buffer in retained)
+    if timed_out:
+        stderr += f"\n[sandbox] execution timed out after {timeout_s}s (killed)"
+    return stdout, stderr, exit_code, timed_out
 
 
 async def _run_docker(language: str, code: str, timeout_s: int) -> SandboxRunResult:
@@ -352,7 +387,11 @@ async def execute_code(
 async def sandbox_run(req: SandboxRunRequest):
     """Execute code in an isolated sandbox. Auth applied at mount time."""
     # user id resolution is best-effort here; auth is enforced by the mount.
-    return await execute_code(req.language, req.code, req.timeout_s)
+    from security.auth import current_user_id
+
+    return await execute_code(
+        req.language, req.code, req.timeout_s, user_id=current_user_id() or ""
+    )
 
 
 @router.get("/api/sandbox/status", response_model=SandboxProviderStatus)
