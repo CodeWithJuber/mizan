@@ -65,6 +65,8 @@ def main():
     request.text = notebook_text
     request.language = "python"
     request.kernel_type = "notebook"
+    request.dataset_data_sources = metadata.get("dataset_sources", [])
+    request.kernel_data_sources = metadata.get("kernel_sources", [])
     request.is_private = True
     request.enable_gpu = True
     request.enable_internet = True
