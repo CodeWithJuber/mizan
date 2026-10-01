@@ -293,7 +293,7 @@ These are defense-in-depth application controls, not a substitute for container/
   - an OpenAI API key;
   - an OpenRouter API key; or
   - a reachable Ollama server for local inference
-- Node.js 20 or newer for frontend development
+- Node.js 24 LTS for frontend development
 - Docker and Docker Compose for the containerized path
 
 ### Docker Compose
