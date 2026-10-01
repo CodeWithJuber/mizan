@@ -11,7 +11,9 @@ name: Auto Release
 # Can also be triggered manually via workflow_dispatch.
 
 on:
-  push:
+  workflow_run:
+    workflows: [Deploy Production]
+    types: [completed]
     branches: [main, master]
   workflow_dispatch:
     inputs:
@@ -28,26 +30,72 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: read
+
+concurrency:
+  group: mizan-release
+  cancel-in-progress: false
 
 jobs:
   determine-release:
     name: Determine release type
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Skip release commits to avoid infinite loops
-    if: "!startsWith(github.event.head_commit.message, 'chore: release v')"
+    if: >-
+      github.event.repository.private == false &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       bump_type: ${{ steps.check.outputs.bump_type }}
       is_prerelease: ${{ steps.check.outputs.is_prerelease }}
+      release_sha: ${{ steps.source.outputs.sha }}
+      release_branch: ${{ steps.source.outputs.branch }}
     steps:
+      - name: Find the successful deployment proof
+        id: proof
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "production-deployment" and .expired == false)] | length')
+          echo "exists=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.proof.outputs.exists == 'true'
+        with:
+          name: production-deployment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: deployment-proof
+      - name: Select the verified source commit
+        id: source
+        env:
+          EVENT: ${{ github.event_name }}
+          PROOF_EXISTS: ${{ steps.proof.outputs.exists }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$EVENT" = 'workflow_run' ] && [ "$PROOF_EXISTS" != 'true' ]; then exit 0; fi
+          sha="$GITHUB_SHA"
+          if [ "$EVENT" = 'workflow_run' ]; then sha=$(cat deployment-proof/deployed-sha.txt); fi
+          [[ "$sha" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_BRANCH" --jq .sha)
+          if [ "$current" != "$sha" ]; then exit 0; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.source.outputs.sha != ''
         with:
           fetch-depth: 0
+          ref: ${{ steps.source.outputs.sha }}
 
       - name: Check release type
         id: check
+        if: steps.source.outputs.sha != ''
         env:
           MANUAL_BUMP: ${{ github.event.inputs.bump_type }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BUMP=""
           IS_PRE="false"
@@ -60,21 +108,25 @@ jobs:
             else
               BUMP="$MANUAL_BUMP"
             fi
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "bump_type=$BUMP" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+            {
+              echo "should_release=true"
+              echo "bump_type=$BUMP"
+              echo "is_prerelease=$IS_PRE"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Check merged PR labels
-          PR_NUMBER=$(gh pr list --state merged --base main --json number,mergedAt --jq 'sort_by(.mergedAt) | last | .number' 2>/dev/null || echo "")
+          PR_NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/pulls" --jq '[.[] | select(.merged_at != null)] | last | .number // empty')
           if [ -n "$PR_NUMBER" ]; then
             LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
 
             if echo "$LABELS" | grep -q "release:skip"; then
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-              echo "bump_type=" >> "$GITHUB_OUTPUT"
-              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+              {
+                echo "should_release=false"
+                echo "bump_type="
+                echo "is_prerelease=false"
+              } >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -104,20 +156,22 @@ jobs:
 
           # Default: no auto-release unless there's a clear signal
           if [ -z "$BUMP" ]; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "bump_type=" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "should_release=false"
+              echo "bump_type="
+              echo "is_prerelease=false"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "bump_type=$BUMP" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+            {
+              echo "should_release=true"
+              echo "bump_type=$BUMP"
+              echo "is_prerelease=$IS_PRE"
+            } >> "$GITHUB_OUTPUT"
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
 
   auto-release:
     name: Create release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: determine-release
     if: needs.determine-release.outputs.should_release == 'true'
     steps:
@@ -125,6 +179,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.determine-release.outputs.release_sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -139,12 +194,11 @@ jobs:
         id: bump
         run: |
           BUMP_TYPE="${{ needs.determine-release.outputs.bump_type }}"
-          IS_PRE="${{ needs.determine-release.outputs.is_prerelease }}"
-          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          CURRENT=$(tr -d '[:space:]' < VERSION)
 
           if [ "$BUMP_TYPE" = "beta" ]; then
             # Parse current version
-            BASE=$(echo "$CURRENT" | sed 's/-.*//')
+            BASE=${CURRENT%%-*}
             IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
             NEXT_MINOR="$MAJOR.$((MINOR + 1)).0"
 
@@ -157,7 +211,7 @@ jobs:
             fi
           else
             # Standard semantic version bump
-            BASE=$(echo "$CURRENT" | sed 's/-.*//')
+            BASE=${CURRENT%%-*}
             IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
             case "$BUMP_TYPE" in
               patch) NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
@@ -166,9 +220,11 @@ jobs:
             esac
           fi
 
-          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
-          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "current=$CURRENT"
+            echo "new_version=$NEW_VERSION"
+            echo "tag=v$NEW_VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Bumping $CURRENT → $NEW_VERSION"
 
           # Update all version files
@@ -185,9 +241,18 @@ jobs:
 
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
           sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+          NEW_VERSION="$NEW_VERSION" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("frontend/package-lock.json")
+          data = json.loads(path.read_text())
+          data["version"] = os.environ["NEW_VERSION"]
+          data["packages"][""]["version"] = os.environ["NEW_VERSION"]
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
 
           # CLI version
-          IFS='.' read -r NM NMI NP <<< "$(echo "$NEW_VERSION" | sed 's/-.*//')"
+          IFS='.' read -r NM NMI _ <<< "${NEW_VERSION%%-*}"
           SHORT_VER="$NM.$NMI"
           sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$SHORT_VER/" backend/cli.py
           sed -i "s/MIZAN v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/MIZAN v$NEW_VERSION/" backend/cli.py
@@ -246,6 +311,8 @@ jobs:
           fi
 
       - name: Commit and tag
+        env:
+          RELEASE_BRANCH: ${{ needs.determine-release.outputs.release_branch }}
         run: |
           git add -A
           git commit -m "chore: release v${{ steps.bump.outputs.new_version }}
@@ -254,7 +321,7 @@ jobs:
 
           [skip ci]"
           git tag -a "v${{ steps.bump.outputs.new_version }}" -m "Release v${{ steps.bump.outputs.new_version }}"
-          git push origin HEAD
+          git push origin "HEAD:$RELEASE_BRANCH"
           git push origin "v${{ steps.bump.outputs.new_version }}"
 
       - name: Create GitHub Release

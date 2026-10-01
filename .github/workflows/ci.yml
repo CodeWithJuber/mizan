@@ -9,7 +9,7 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,7 +21,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
@@ -42,7 +42,7 @@ jobs:
 
   build:
     name: Build package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint, test, typecheck, ruh, frontend]
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
           path: dist/
 
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,7 +67,7 @@ jobs:
       - run: PYTHONPATH=backend:. mypy backend/
 
   ruh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +78,7 @@ jobs:
       - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -96,11 +96,43 @@ jobs:
 
   docker:
     name: Docker build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint, test, typecheck, ruh, frontend]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
-        run: docker build -f docker/Dockerfile.backend -t mizan-backend .
+        run: docker build -f docker/Dockerfile.backend.prod -t mizan-backend .
       - name: Build frontend image
-        run: docker build -f docker/Dockerfile.frontend -t mizan-frontend ./frontend
+        run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
+
+  publish-production:
+    name: Publish production images
+    if: github.event_name == 'push' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    needs: [build, docker]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: repository
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Publish production backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.backend.prod
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/backend:${{ github.sha }}
+      - name: Publish production frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: docker/Dockerfile.frontend.prod
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
