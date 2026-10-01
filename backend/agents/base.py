@@ -1047,9 +1047,47 @@ class BaseAgent:
         Raises the provider's exception when streaming fails; the caller falls
         back to ``create()``.
         """
+        from concurrent.futures import TimeoutError as FutureTimeout
+        from threading import Event
+
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=64)
+        stopped = Event()
+        active_stream: dict[str, Any] = {}
         llm_start = time.time()
+
+        def publish(kind: str, payload: Any) -> bool:
+            if stopped.is_set() or loop.is_closed():
+                return False
+            pending = asyncio.run_coroutine_threadsafe(queue.put((kind, payload)), loop)
+            while not stopped.is_set():
+                try:
+                    pending.result(timeout=0.25)
+                    return True
+                except FutureTimeout:
+                    continue  # bounded queue backpressures the provider thread
+                except Exception:
+                    break
+            pending.cancel()
+            return False
+
+        def close_stream() -> None:
+            # SDK wrappers expose their live HTTP stream under one of these
+            # attributes. Closing it unblocks a pending read where supported;
+            # buffered providers can still finish work accepted upstream.
+            stream = active_stream.get("stream")
+            for candidate in (
+                stream,
+                getattr(stream, "stream", None),
+                getattr(stream, "_stream", None),
+            ):
+                close = getattr(candidate, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        logger.debug("Provider stream close failed", exc_info=True)
+                    break
 
         def _runner() -> None:
             try:
@@ -1062,16 +1100,24 @@ class BaseAgent:
                     temperature=temperature,
                 )
                 with stream_ctx as s:
+                    active_stream["stream"] = s
+                    if stopped.is_set():
+                        return
                     for chunk in s.text_stream:
-                        loop.call_soon_threadsafe(queue.put_nowait, ("text", chunk))
+                        for start in range(0, len(chunk), 2048):
+                            if not publish("text", chunk[start : start + 2048]):
+                                return
                     final = s.get_final_response()
-            except Exception as e:  # noqa: BLE001 — re-raised to caller via queue
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", e))
+            except Exception as exc:  # re-raised to caller through the queue
+                publish("error", exc)
                 return
-            loop.call_soon_threadsafe(queue.put_nowait, ("done", final))
+            finally:
+                active_stream.clear()
+            publish("done", final)
 
         runner_context = copy_context()
         runner_future = loop.run_in_executor(None, runner_context.run, _runner)
+        completed = False
         try:
             while True:
                 kind, payload = await queue.get()
@@ -1079,11 +1125,19 @@ class BaseAgent:
                     yield payload
                 elif kind == "error":
                     raise payload
-                else:  # "done"
+                else:
+                    completed = True
                     final_holder["response"] = payload
                     self._record_llm_call(payload, (time.time() - llm_start) * 1000)
                     return
         finally:
+            stopped.set()
+            if not completed and active_stream:
+                closer = loop.run_in_executor(None, close_stream)
+                try:
+                    await asyncio.wait_for(asyncio.shield(closer), timeout=1.0)
+                except TimeoutError:
+                    logger.debug("Provider stream close is still pending")
             if not runner_future.done():
                 runner_future.cancel()
 
