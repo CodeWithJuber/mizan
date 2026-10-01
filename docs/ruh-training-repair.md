@@ -117,7 +117,7 @@ with a complete model/optimizer/tokenizer continuation snapshot every 300 second
 Only the latest intermediate snapshot is kept, plus final output. The candidate
 and all snapshots remain private and unapproved for production.
 
-Validation:236 Ruh tests (including 17 new training/acceleration/controller tests)
+Validation:239 Ruh tests (including 20 new training/acceleration/controller tests)
 pass; an earlier full backend run passed 912 tests.
 Ruff passes. `make check` reaches 27 Torch-aware mypy errors; an isolated unmodified
 45b6693 baseline reproduces the same 27, with no new errors introduced here.
@@ -180,10 +180,20 @@ Sparse MoE dispatch computes each selected expert once on its selected tokens,
 preserving architecture and checkpoint weights. Forward values and input, router
 and expert gradients match the former dense reference with dropout disabled.
 CPU BF16 forward/backward and finite-gradient checks cover the mixed-precision
-path. The HTTPS status/artifact service requires a fresh random bearer token;
+path. The actual private V2 checkpoint exposed a BF16 attention singularity:
+learned amplitudes above one can round the oscillation denominator to zero.
+Computing its small projection/phase in Float32 and guarding only near-zero
+signed scales preserves the original weights and nonsingular negative factors.
+Actual46M batch8×384 validation gives finite BF16 loss/gradients, exact matching
+Float32 logits (maximum difference0.0), and retained prefix causality.
+The HTTPS status/artifact service requires a fresh random bearer token;
 only whitelisted artifacts are downloadable. The controller records its own pod
 ID, handles SIGTERM/KeyboardInterrupt, deletes that pod in `finally`, and verifies
 absence. No production endpoint or unrelated pod is changed.
+Setup consumes the same absolute lifecycle budget and shortens training when
+necessary. Near the deadline, a complete latest snapshot is hard-linked so
+rotation cannot remove its files, downloaded privately, then the pod is deleted.
+Intermediate recovery does not claim a completed generation evaluation.
 
 ```bash
 python -m scripts.launch_runpod_training --revision <reviewed-full-commit> \

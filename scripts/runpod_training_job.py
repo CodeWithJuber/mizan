@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path("/tmp/ruh-continuation")
 STATE = {"phase": "starting", "promotion_approved": False}
 ARTIFACTS: dict[str, Path] = {}
+RECOVERY_MANIFEST = {}
 
 
 def digest(path):
@@ -28,6 +29,33 @@ def digest(path):
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             hasher.update(block)
     return hasher.hexdigest()
+
+
+def recovery_artifacts():
+    """Hard-link a complete snapshot so rotating training cannot remove it."""
+    if RECOVERY_MANIFEST:
+        return RECOVERY_MANIFEST
+    pointer = ROOT / "run/latest-continuation.json"
+    if not pointer.is_file():
+        return {}
+    snapshot = ROOT / "run" / json.loads(pointer.read_text())["path"]
+    files = [*snapshot.joinpath("candidate").iterdir(), snapshot / "training_state.pt"]
+    manifest, artifacts = {}, {}
+    for source in files:
+        relative = source.relative_to(snapshot)
+        destination = ROOT / "recovery" / snapshot.name / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if not destination.exists():
+            os.link(source, destination)
+        key = "recovery/" + relative.as_posix()
+        artifacts[key] = destination
+        manifest[key] = {
+            "bytes": destination.stat().st_size,
+            "sha256": digest(destination),
+        }
+    ARTIFACTS.update(artifacts)
+    RECOVERY_MANIFEST.update(manifest)
+    return RECOVERY_MANIFEST
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -41,6 +69,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/status":
             value = dict(STATE)
+            if time.time() > float(os.environ["RUH_DEADLINE_UTC"]) - 400:
+                try:
+                    value["recovery_artifacts"] = recovery_artifacts()
+                except FileNotFoundError:
+                    # The next request reads the new complete pointer if normal
+                    # rotation removed a source before its hard-link was made.
+                    value["recovery_artifacts"] = {}
             log = ROOT / "job.log"
             if log.is_file():
                 value["log_tail"] = log.read_text(errors="replace")[-2000:]

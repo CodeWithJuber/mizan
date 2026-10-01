@@ -6,6 +6,7 @@ import pytest
 import torch
 from torch import nn
 
+from ruh_model.attention.qalb import QalbAttention, _scaled_dot_product_attention
 from ruh_model.config import RuhConfig
 from ruh_model.layers.shura_moe import ShuraMoE
 from ruh_model.model import RuhModel
@@ -98,3 +99,32 @@ def test_cuda_bf16_request_refused_on_cpu_before_training(tmp_path):
         run_training(
             [], tmp_path / "output", config=RuhConfig(tokenizer_version=2), precision="bfloat16"
         )
+
+
+def test_bf16_attention_survives_a_learned_zero_temperature():
+    layer = QalbAttention(RuhConfig(d_model=32, n_heads=4, alpha=1.0, dropout=0.0))
+    with torch.no_grad():
+        # Effective period4/3 at step1 gives sin(3*pi/2)=-1 and psi=0.
+        layer.T_base.fill_(1 / 3)
+        layer.complexity_proj.weight.zero_()
+        layer.complexity_proj.bias.zero_()
+    x = torch.randn(2, 12, 32, requires_grad=True)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        output = layer(x, torch.zeros(2, 12, dtype=torch.long), t_step=1)
+        loss = output.float().square().mean()
+    assert torch.isfinite(output).all()
+    loss.backward()
+    assert torch.isfinite(x.grad).all()
+    assert all(
+        torch.isfinite(parameter.grad).all()
+        for parameter in layer.parameters()
+        if parameter.grad is not None
+    )
+
+
+def test_attention_preserves_nonsingular_negative_checkpoint_scale():
+    query, key, value = [torch.randn(2, 4, 8, 8) for _ in range(3)]
+    scale = torch.tensor(-2.0)
+    expected = (query @ key.transpose(-2, -1) / scale).softmax(-1) @ value
+    actual = _scaled_dot_product_attention(query, key, value, scale, None, nn.Dropout(0))
+    torch.testing.assert_close(actual, expected)

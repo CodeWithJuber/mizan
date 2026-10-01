@@ -52,3 +52,24 @@ def test_controller_rejects_actual_price_and_deletes_before_poll(monkeypatch, tm
     with pytest.raises(ValueError, match="spending guard"):
         controller.launch(None, "a" * 40, tmp_path / "run")
     assert deleted == ["own-expensive-pod"]
+
+
+def test_recovery_snapshot_survives_normal_snapshot_rotation(monkeypatch, tmp_path):
+    from scripts import runpod_training_job as job
+
+    monkeypatch.setattr(job, "ROOT", tmp_path)
+    monkeypatch.setattr(job, "ARTIFACTS", {})
+    monkeypatch.setattr(job, "RECOVERY_MANIFEST", {})
+    snapshot = tmp_path / "run/continuation-000025"
+    snapshot.joinpath("candidate").mkdir(parents=True)
+    snapshot.joinpath("candidate/model.pt").write_bytes(b"private-test-weights")
+    snapshot.joinpath("training_state.pt").write_bytes(b"test-optimizer-state")
+    tmp_path.joinpath("run/latest-continuation.json").write_text(
+        json.dumps({"path": snapshot.name})
+    )
+    manifest = job.recovery_artifacts()
+    assert set(manifest) == {"recovery/candidate/model.pt", "recovery/training_state.pt"}
+    import shutil
+
+    shutil.rmtree(snapshot)
+    assert job.ARTIFACTS["recovery/candidate/model.pt"].read_bytes() == b"private-test-weights"
