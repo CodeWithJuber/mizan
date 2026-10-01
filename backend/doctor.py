@@ -464,15 +464,15 @@ def check_node() -> CheckResult:
         if result.returncode == 0:
             version = result.stdout.strip()
             major = int(version.lstrip("v").split(".")[0])
-            if major >= 18:
+            if major == 24:
                 return CheckResult("Node.js", CheckStatus.PASS, version)
-            return CheckResult("Node.js", CheckStatus.FAIL, f"{version} (need >= 18)")
+            return CheckResult("Node.js", CheckStatus.FAIL, f"{version} (need Node.js 24 LTS)")
     except FileNotFoundError:
         return CheckResult(
             "Node.js",
             CheckStatus.WARN,
             "Not installed (needed for frontend)",
-            fix_description="Install Node.js 18+ from https://nodejs.org",
+            fix_description="Install Node.js 24 LTS from https://nodejs.org",
         )
     except Exception as e:
         return CheckResult("Node.js", CheckStatus.WARN, str(e))
