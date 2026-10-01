@@ -13,7 +13,7 @@ jobs:
   # ──── Build & Test ────────────────────────────────────────────
   validate:
     name: Validate release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,8 +26,9 @@ jobs:
   # ──── PyPI ────────────────────────────────────────────────────
   publish-pypi:
     name: Publish to PyPI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: validate
+    if: vars.ENABLE_PYPI_PUBLISH == 'true' && github.event.repository.private == false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +42,7 @@ jobs:
   # ──── Docker ──────────────────────────────────────────────────
   publish-docker:
     name: Publish Docker images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: validate
     steps:
       - uses: actions/checkout@v4
@@ -64,8 +65,8 @@ jobs:
       # Backend image — tag with version + latest
       - uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: docker/Dockerfile.backend
+          context: .
+          file: docker/Dockerfile.backend.prod
           push: true
           tags: |
             ghcr.io/${{ steps.repo.outputs.name }}/backend:${{ github.ref_name }}
@@ -75,7 +76,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ./frontend
-          file: docker/Dockerfile.frontend
+          file: docker/Dockerfile.frontend.prod
           push: true
           tags: |
             ghcr.io/${{ steps.repo.outputs.name }}/frontend:${{ github.ref_name }}
@@ -84,8 +85,8 @@ jobs:
   # ──── GitHub Release ──────────────────────────────────────────
   github-release:
     name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [publish-pypi, publish-docker]
+    runs-on: ubuntu-24.04
+    needs: [validate, publish-docker]
     steps:
       - uses: actions/checkout@v4
         with:

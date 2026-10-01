@@ -22,23 +22,33 @@ concurrency:
 jobs:
   build:
     name: Build docs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Validate documentation files
+        run: |
+          test -s docs/index.html
+          test -s docs/nlp.md
+          test -s docs/TRAINING.md
+          python -c 'from html.parser import HTMLParser; from pathlib import Path; HTMLParser().feed(Path("docs/index.html").read_text())'
+
       - name: Setup Pages
+        if: vars.ENABLE_GITHUB_PAGES == 'true'
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
+        if: vars.ENABLE_GITHUB_PAGES == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
   deploy:
     name: Deploy to GitHub Pages
-    runs-on: ubuntu-latest
+    if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
     needs: build
     environment:
       name: github-pages
