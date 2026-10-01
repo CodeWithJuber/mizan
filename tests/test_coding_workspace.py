@@ -4,6 +4,8 @@ import base64
 import io
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -13,6 +15,7 @@ from api import coding_workspace as api
 from api.artifacts import add_artifact_version, get_artifact
 from security.auth import TokenPayload, bind_principal, reset_principal
 from skills.builtin.coding_workspace import CodingWorkspaceSkill
+from workspace import runner as runner_module
 from workspace.context import bind_workspace, reset_workspace
 from workspace.runner import app as runner_app
 from workspace.runner import execute
@@ -276,6 +279,22 @@ def test_private_runner_rejects_anonymous_and_wrong_token(monkeypatch):
     assert c.post("/run", json={}).status_code == 401
 
 
+def test_hung_daemon_cleanup_does_not_prevent_cli_termination(monkeypatch):
+    process = Mock()
+    process.stdin = io.BytesIO()
+    process.stdout = io.BytesIO()
+    process.stderr = io.BytesIO()
+    process.poll.return_value = None
+    process.wait.side_effect = [subprocess.TimeoutExpired("docker", 21), 0]
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(runner_module, "cleanup", Mock(side_effect=OSError("daemon unavailable")))
+    with pytest.raises(HTTPException) as exc:
+        execute({"language": "python", "command": "print(42)", "timeout_s": 1, "files": {}})
+    assert exc.value.status_code == 503
+    process.kill.assert_called_once()
+    assert process.wait.call_args_list[-1].kwargs == {"timeout": 5}
+
+
 def test_viewer_cannot_create_edit_or_execute(storage):
     viewer = TokenPayload("alice", "Read only", ["viewer"], 9999999999, 0, "viewer")
     workspace = storage.create("App")["id"]
@@ -290,6 +309,31 @@ def test_viewer_cannot_create_edit_or_execute(storage):
         == 403
     )
     assert c.post(f"/api/workspaces/{workspace}/run", json={"command": "id"}).status_code == 403
+
+
+def test_rename_at_entry_quota_and_concurrent_renames(storage, monkeypatch):
+    from workspace import store as store_module
+
+    monkeypatch.setattr(store_module, "MAX_FILES", 3)
+    workspace = storage.create("Full project")["id"]
+    for name in ("a", "b", "c"):
+        storage.write(workspace, name, name)
+    storage.rename(workspace, "a", "d")
+    assert {item["path"] for item in storage.tree(workspace)["files"]} == {"b", "c", "d"}
+    storage.delete(workspace, "c")
+
+    def rename(source, target):
+        try:
+            storage.rename(workspace, source, target)
+            return 200
+        except HTTPException as exc:
+            return exc.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        one = pool.submit(rename, "d", "first/d")
+        two = pool.submit(rename, "b", "second/b")
+        assert sorted((one.result(), two.result())) == [200, 413]
+    assert len(storage.tree(workspace)["files"]) == 3
 
 
 def runtime_available():

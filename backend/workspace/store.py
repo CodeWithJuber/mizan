@@ -270,27 +270,22 @@ class WorkspaceStore:
 
     def rename(self, workspace_id: str, path: str, new_path: str) -> dict:
         with _LOCK:
-            count = len(
-                {entry["path"] for entry in self.tree(workspace_id)["files"]}
-                | entry_paths(new_path)
-            )
+            entries = self.tree(workspace_id)["files"]
+            existing = {entry["path"]: entry for entry in entries}
+            if path not in existing:
+                raise HTTPException(404, "Project file not found")
+            if existing[path]["kind"] != "file":
+                raise HTTPException(422, "Rename supports regular files only")
+            if new_path in existing:
+                raise HTTPException(409, "Target path already exists")
+            count = len((existing.keys() - {path}) | entry_paths(new_path))
             if count > MAX_FILES:
                 raise HTTPException(413, "Workspace entry quota reached")
-        with (
-            _LOCK,
-            self.parent(workspace_id, path) as (source, old),
-            self.parent(workspace_id, new_path, create=True) as (target, new),
-        ):
-            info = os.stat(old, dir_fd=source, follow_symlinks=False)
-            if not stat.S_ISREG(info.st_mode):
-                raise HTTPException(422, "Rename supports regular files only")
-            try:
-                os.stat(new, dir_fd=target, follow_symlinks=False)
-            except FileNotFoundError:
-                pass
-            else:
-                raise HTTPException(409, "Target path already exists")
-            os.rename(old, new, src_dir_fd=source, dst_dir_fd=target)
+            with (
+                self.parent(workspace_id, path) as (source, old),
+                self.parent(workspace_id, new_path, create=True) as (target, new),
+            ):
+                os.rename(old, new, src_dir_fd=source, dst_dir_fd=target)
             self._touch(self.project(workspace_id))
             return {"path": new_path}
 
