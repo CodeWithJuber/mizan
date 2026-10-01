@@ -16,7 +16,8 @@ args = sys.argv[1:]
 state['commands'].append(args)
 if args[0] == 'inspect':
     fmt, name = args[2:4]
-    if 'working_dir' in fmt: print(state['root'])
+    if name == 'mizan-nginx': print('true')
+    elif 'working_dir' in fmt: print(state['root'])
     elif 'config_files' in fmt: print(state['root'] + '/compose.yml')
     elif 'project' in fmt: print('existing-project')
     elif 'Config.Env' in fmt:
@@ -39,7 +40,7 @@ state_file.write_text(json.dumps(state))
 """
 
 
-def deploy_fixture(tmp_path, fail_new):
+def deploy_fixture(tmp_path, fail_new, fail_public=False):
     root = tmp_path / "existing-project"
     root.mkdir()
     (root / "compose.yml").write_text("services: {}\n")
@@ -61,6 +62,13 @@ def deploy_fixture(tmp_path, fail_new):
     docker = binaries / "docker"
     docker.write_text(FAKE_DOCKER)
     docker.chmod(0o755)
+    curl = binaries / "curl"
+    curl.write_text(
+        "#!/usr/bin/env python3\nimport os,sys\n"
+        'if "/api/status" in " ".join(sys.argv):\n'
+        '    print("200" if os.getenv("FAIL_PUBLIC") == "1" else "401", end="")\n'
+    )
+    curl.chmod(0o755)
     deployment_dir = tmp_path / "deployment-state"
     result = subprocess.run(
         ["bash", str(SCRIPT), SHA, "codewithjuber/mizan"],
@@ -73,6 +81,7 @@ def deploy_fixture(tmp_path, fail_new):
             "FAKE_DOCKER_STATE": str(state),
             "MIZAN_DEPLOY_STATE_DIR": str(deployment_dir),
             "MIZAN_DEPLOY_HEALTH_ATTEMPTS": "1",
+            "FAIL_PUBLIC": "1" if fail_public else "0",
         },
         timeout=15,
     )
@@ -101,3 +110,16 @@ def test_failed_start_restores_both_images(tmp_path):
     assert result.returncode == 1
     assert state["images"] == {"mizan-backend": "old-backend", "mizan-frontend": "old-frontend"}
     assert not (directory / "deployed-sha").exists()
+
+
+def test_public_auth_failure_restores_images_and_refreshes_proxy(tmp_path):
+    result, state, directory = deploy_fixture(tmp_path, False, fail_public=True)
+    assert result.returncode == 1
+    assert state["images"] == {"mizan-backend": "old-backend", "mizan-frontend": "old-frontend"}
+    assert not (directory / "deployed-sha").exists()
+    reloads = [
+        args
+        for args in state["commands"]
+        if args[:3] == ["exec", "mizan-nginx", "nginx"] and "reload" in args
+    ]
+    assert len(reloads) == 2
