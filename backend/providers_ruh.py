@@ -76,6 +76,31 @@ class RuhModelProvider(BaseLLMProvider):
             usage={"input_tokens": len(tokens), "output_tokens": len(generated_root_ids)},
         )
 
+    def stream(
+        self,
+        model: str,
+        max_tokens: int,
+        system: str,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ):
+        """Stream an assistant turn.
+
+        The Ruh model generates whole responses at once (no token-by-token
+        streaming), so this wraps :meth:`create` and yields the complete text
+        as a single chunk, matching the :class:`BaseLLMProvider` stream
+        protocol used by the chat loop.
+        """
+        return _RuhStreamWrapper(
+            self,
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            temperature=temperature,
+        )
+
     def _extract_prompt(self, messages: list[dict]) -> str:
         """Get the text from the last user message."""
         for msg in reversed(messages):
@@ -95,3 +120,58 @@ class RuhModelProvider(BaseLLMProvider):
         root_ids = torch.tensor([[token[0] for token in tokens]], dtype=torch.long)
         pattern_ids = torch.tensor([[token[1] for token in tokens]], dtype=torch.long)
         return root_ids, pattern_ids
+
+
+class _RuhStreamWrapper:
+    """Adapt :meth:`RuhModelProvider.create` to the provider stream protocol.
+
+    The chat loop (``base.py`` / ``khalifah.py``) calls ``provider.stream(...)``
+    as a context manager and reads ``text_stream`` for deltas, then
+    ``get_final_response()`` for the complete response. Ruh has no native
+    token streaming, so the full response is generated on ``__enter__`` and
+    yielded as one chunk.
+    """
+
+    def __init__(
+        self,
+        provider: RuhModelProvider,
+        model: str,
+        max_tokens: int,
+        system: str,
+        messages: list[dict],
+        temperature: float | None,
+    ) -> None:
+        self._provider = provider
+        self._model = model
+        self._max_tokens = max_tokens
+        self._system = system
+        self._messages = messages
+        self._temperature = temperature
+        self._response: LLMResponse | None = None
+
+    def __enter__(self) -> "_RuhStreamWrapper":
+        self._response = self._provider.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=self._system,
+            messages=self._messages,
+            temperature=self._temperature,
+        )
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        return False
+
+    @property
+    def text_stream(self):
+        """Yield the response text as a single chunk."""
+        if self._response is None:
+            return
+        for block in self._response.content:
+            if block.type == "text" and block.text:
+                yield block.text
+
+    def get_final_response(self) -> LLMResponse:
+        if self._response is None:
+            raise RuntimeError("stream was not entered")
+        return self._response
