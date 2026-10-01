@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v3.3.0] — 2026-10-01
+
+### Added
+- feat: add bounded private full-size Ruh training run
+- feat: add private bounded Kaggle training validation
+
+### Fixed
+- fix: prevent learned attention temperature singularities in BF16
+- fix: verify pinned training source before allocating GPU
+- fix: isolate GPU job dependencies and include setup in deadline
+- fix: balance full Ruh training and verify continuation checkpoints
+- fix: repair Ruh sentence and dialogue training pipeline
+
+### Changed
+- perf: accelerate Ruh continuation with private bounded GPU lifecycle
+
+
 ## [v3.2.1] — 2026-10-01
 
 ### Fixed
