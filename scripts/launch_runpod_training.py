@@ -117,6 +117,7 @@ def launch(session, revision, output):
         },
     )
     job_session = requests.Session()
+    pending_name = None
     token = secrets.token_urlsafe(32)
     job_session.headers["Authorization"] = "Bearer " + token
 
@@ -126,12 +127,13 @@ def launch(session, revision, output):
     previous_handler = signal.signal(signal.SIGTERM, interrupted)
     try:
         for gpu in GPUS:
+            pending_name = "ruh-v2-continuation-" + secrets.token_hex(4)
+            recovery["pending_name"] = pending_name
+            (output / "pod-recovery.json").write_text(json.dumps(recovery, indent=2))
             try:
                 pod = graphql(
                     session,
-                    deploy_query(
-                        "ruh-v2-continuation-" + secrets.token_hex(4), gpu, revision, token
-                    ),
+                    deploy_query(pending_name, gpu, revision, token),
                 )["podFindAndDeployOnDemand"]
             except RuntimeError:
                 print(json.dumps({"gpu": gpu, "placement": "unavailable"}), flush=True)
@@ -173,11 +175,27 @@ def launch(session, revision, output):
                 download_artifacts(job_session, url, output, status["artifacts"], deadline - 30)
                 recovery["artifacts_verified"] = True
                 break
+            if time.monotonic() > deadline - 360 and status.get("recovery_artifacts"):
+                download_artifacts(
+                    job_session, url, output, status["recovery_artifacts"], deadline - 30
+                )
+                recovery.update(artifacts_verified=True, recovered_intermediate=True)
+                break
             time.sleep(15)
         else:
             raise TimeoutError("Training did not finish within the lifecycle budget")
     finally:
         try:
+            if pod_id is None and pending_name is not None:
+                # A transport error or SIGTERM may arrive after allocation but
+                # before its response is read. Reconcile only our unique name.
+                pods = graphql(session, "query { myself { pods { id name costPerHr } } }")[
+                    "myself"
+                ]["pods"]
+                matching = next((pod for pod in pods if pod["name"] == pending_name), None)
+                if matching is not None:
+                    pod_id = matching["id"]
+                    recovery.update(pod_id=pod_id, hourly_usd=float(matching["costPerHr"]))
             if pod_id is not None:
                 delete_and_verify(session, pod_id)
                 recovery.update(pod_deleted=True, lifecycle_seconds=time.monotonic() - started)
