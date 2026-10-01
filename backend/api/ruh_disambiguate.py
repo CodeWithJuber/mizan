@@ -37,9 +37,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ._ruh_loader import repo_root
+
 logger = logging.getLogger("mizan.api.ruh_disambiguate")
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = repo_root()
 SENSE_DIR = REPO_ROOT / "ruh_model" / "sense"
 
 HONEST_NOTE = (

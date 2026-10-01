@@ -21,8 +21,20 @@ from types import ModuleType
 
 
 def repo_root() -> Path:
-    """Absolute path of the repository root (this file lives in backend/api)."""
-    return Path(__file__).resolve().parents[2]
+    """Project root holding ``ruh_model/`` — layout-aware.
+
+    Repo checkout: ``<root>/backend/api/_ruh_loader.py`` -> parents[2] is <root>.
+    Container:     ``/app/api/_ruh_loader.py``            -> parents[1] is /app
+                   (Dockerfile: ``COPY backend/ ./`` with ``WORKDIR /app``,
+                   plus ``COPY ruh_model/ ./ruh_model/``).
+    The ancestor that actually contains ``ruh_model/`` wins; the historical
+    repo-root assumption is the fallback.
+    """
+    api_dir = Path(__file__).resolve().parent
+    for base in (api_dir.parent, api_dir.parents[1]):
+        if (base / "ruh_model").is_dir():
+            return base
+    return api_dir.parents[1]
 
 
 def load_ruh_module(relative_path: str, module_name: str) -> ModuleType:

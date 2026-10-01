@@ -81,10 +81,19 @@ class LookupResponse(BaseModel):
 
 
 def _db_path() -> Path:
-    """Resolve the annotation DB path (env override wins; read per call)."""
+    """Resolve the annotation DB path (env override wins; read per call).
+
+    The DB is runtime data: in the container it lives on the ``mizan-data``
+    volume (``/data``, see docker-compose.prod.yml). An existing volume DB
+    wins over the repo-relative default so a ``repo_root()`` layout change
+    can never silently orphan it.
+    """
     override = os.environ.get("RUH_READER_DB")
     if override:
         return Path(override)
+    volume_db = Path("/data/ruh_reader.sqlite")
+    if volume_db.exists():
+        return volume_db
     return repo_root() / "data" / "ruh_reader.sqlite"
 
 
