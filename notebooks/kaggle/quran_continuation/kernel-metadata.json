@@ -1,0 +1,20 @@
+{
+  "id": "zubairshaikh/ruh-quran-continuation",
+  "title": "Ruh Quran Continuation",
+  "code_file": "quranic_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaP100",
+  "session_timeout_seconds": 1800,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "zubairshaikh/ruh-full-training-repair"
+  ],
+  "training_revision": "37cdbd8452f252674d8a0e8a82a2d7fe46c96817",
+  "objective": "continuation",
+  "max_training_seconds": 900
+}

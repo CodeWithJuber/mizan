@@ -959,6 +959,11 @@ export function ChatMessageBubble({
             {msg.perception && <PerceptionCard perception={msg.perception} />}
 
             {/* Model transparency: observed model + usage + cost (workstreams C/E) */}
+            {msg.stopped && (
+              <p role="status" className="text-xs text-gray-500 mt-2">
+                Stopped · partial response saved
+              </p>
+            )}
             <MessageMeta meta={msg.meta} />
 
             {/* In-message CTA button (e.g. navigate to Settings) */}

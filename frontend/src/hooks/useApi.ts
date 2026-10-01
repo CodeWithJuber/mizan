@@ -6,6 +6,7 @@
 import { useCallback, useMemo } from "react";
 import type { ApiClient } from "../types";
 import { config } from "../config";
+import { authFetch } from "../utils/authFetch";
 
 export class ApiError extends Error {
   status: number;
@@ -16,10 +17,6 @@ export class ApiError extends Error {
 }
 
 async function handleResponse(res: Response): Promise<Record<string, unknown>> {
-  if (res.status === 401) {
-    localStorage.removeItem("mizan_token");
-    window.dispatchEvent(new CustomEvent("mizan:unauthorized"));
-  }
   let data: Record<string, unknown> = {};
   try {
     data = (await res.json()) as Record<string, unknown>;
@@ -50,7 +47,7 @@ export function useApi(): ApiClient {
 
   const get = useCallback(
     async (path: string) => {
-      const res = await fetch(`${config.API_URL}${path}`, {
+      const res = await authFetch(`${config.API_URL}${path}`, {
         headers: headers(),
       });
       return handleResponse(res);
@@ -60,7 +57,7 @@ export function useApi(): ApiClient {
 
   const post = useCallback(
     async (path: string, body?: Record<string, unknown>) => {
-      const res = await fetch(`${config.API_URL}${path}`, {
+      const res = await authFetch(`${config.API_URL}${path}`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify(body),
@@ -72,7 +69,7 @@ export function useApi(): ApiClient {
 
   const put = useCallback(
     async (path: string, body?: Record<string, unknown>) => {
-      const res = await fetch(`${config.API_URL}${path}`, {
+      const res = await authFetch(`${config.API_URL}${path}`, {
         method: "PUT",
         headers: headers(),
         body: JSON.stringify(body),
@@ -84,7 +81,7 @@ export function useApi(): ApiClient {
 
   const patch = useCallback(
     async (path: string, body?: Record<string, unknown>) => {
-      const res = await fetch(`${config.API_URL}${path}`, {
+      const res = await authFetch(`${config.API_URL}${path}`, {
         method: "PATCH",
         headers: headers(),
         body: JSON.stringify(body),
@@ -96,7 +93,7 @@ export function useApi(): ApiClient {
 
   const del = useCallback(
     async (path: string) => {
-      const res = await fetch(`${config.API_URL}${path}`, {
+      const res = await authFetch(`${config.API_URL}${path}`, {
         method: "DELETE",
         headers: headers(),
       });

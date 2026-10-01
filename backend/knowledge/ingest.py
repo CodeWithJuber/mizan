@@ -192,8 +192,9 @@ async def extract_youtube(url: str) -> dict:
         }
 
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        content = " ".join(entry["text"] for entry in transcript_list)
+        # The 1.x SDK returns typed transcript snippets and performs blocking HTTP.
+        transcript = await asyncio.to_thread(YouTubeTranscriptApi().fetch, video_id)
+        content = " ".join(snippet.text for snippet in transcript)
 
         return {
             "title": f"YouTube: {video_id}",
@@ -201,7 +202,7 @@ async def extract_youtube(url: str) -> dict:
             "source": url,
             "source_type": "youtube",
             "video_id": video_id,
-            "segment_count": len(transcript_list),
+            "segment_count": len(transcript),
             "char_count": len(content),
         }
     except Exception as exc:

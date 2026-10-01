@@ -1,0 +1,32 @@
+# Optional private runner override. The operator supplies a DEDICATED Docker socket.
+# Never point this socket at the production Docker daemon or mount it into backend.
+# Build/load the runtime image into that daemon before starting the runner.
+services:
+  backend:
+    environment:
+      MIZAN_WORKSPACE_RUNNER_URL: http://workspace-runner:8080
+      MIZAN_WORKSPACE_RUNNER_TOKEN: ${MIZAN_WORKSPACE_RUNNER_TOKEN:?A private runner token is required}
+  workspace-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.workspace-runner
+    image: ${MIZAN_WORKSPACE_RUNNER_IMAGE:-mizan-workspace-runner:v1}
+    restart: unless-stopped
+    user: '${MIZAN_WORKSPACE_RUNNER_UID:-65534}:${MIZAN_WORKSPACE_RUNNER_GID:-65534}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      MIZAN_WORKSPACE_RUNNER_TOKEN: ${MIZAN_WORKSPACE_RUNNER_TOKEN:?A private runner token is required}
+      MIZAN_WORKSPACE_RUNTIME_IMAGE: ${MIZAN_WORKSPACE_RUNTIME_IMAGE:-mizan-workspace-runtime:v1}
+    volumes:
+      - ${MIZAN_WORKSPACE_DOCKER_SOCKET:?A dedicated isolated daemon socket is required}:/var/run/docker.sock
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    networks:
+      - mizan-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 192M

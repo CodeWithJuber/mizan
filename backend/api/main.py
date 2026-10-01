@@ -31,7 +31,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import HTTPConnection
@@ -41,6 +41,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
+from api.chat_stream import (
+    HEARTBEAT_SECONDS,
+    MAX_RESPONSE_CHARACTERS,
+    TEXT_CHUNK_CHARACTERS,
+    ChatEventChannel,
+    ChatStreamingResponse,
+    ChatStreamLedger,
+    ChatTransportGuard,
+    StreamDeliveryError,
+)
 from api.commands import handle_command
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
@@ -526,6 +536,13 @@ class ChatMessage(BaseModel):
     model_override: str | None = Field(None, max_length=200)
 
 
+class StreamChatMessage(ChatMessage):
+    # Required rather than auto-generated: one browser action keeps one UUID
+    # through ambiguous network failures and never creates a second model call.
+    request_id: uuid.UUID
+    workspace_id: str | None = Field(None, min_length=1, max_length=100)
+
+
 class IntegrationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: str = Field(..., pattern=r"^(mcp|openai|anthropic|openrouter|ollama|webhook|email)$")
@@ -993,6 +1010,335 @@ async def authorize_session(session_id: str, user: TokenPayload, *, create: bool
 
 
 # === CHAT ===
+
+
+_stream_sessions: set[tuple[str, str]] = set()
+
+
+@app.post("/api/chat/stream", response_class=StreamingResponse)
+async def stream_chat(
+    req: StreamChatMessage,
+    user: TokenPayload = Depends(require_auth),
+):
+    """One authenticated POST produces one SSE stream; it is never replayed.
+
+    Disconnecting cancels subsequent agent/tool steps. A provider request
+    already accepted upstream may still complete or incur usage. Clients must
+    not automatically retry with a fresh request UUID after an uncertain
+    network outcome; read owned chat history instead.
+    """
+    await authorize_session(req.session_id, user, create=True)
+    workspace_context: Any = None
+    if req.workspace_id:
+        try:
+            from workspace import context as selected_workspace_context
+        except ImportError as exc:
+            raise HTTPException(503, "Coding workspaces are not available") from exc
+        workspace_context = selected_workspace_context
+        workspace_context.authorize_owned_workspace(req.workspace_id, user.user_id)
+    agent_id = req.agent_id or next(iter(active_agents), None)
+    if agent_id not in active_agents and not req.content.startswith("/"):
+        raise HTTPException(503, "No agents available")
+    agent = (
+        await chat_agent_for(user, active_agents[agent_id]) if agent_id in active_agents else None
+    )
+    request_id, message_id = str(req.request_id), str(uuid.uuid4())
+    ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
+    previous = ledger.claim(
+        user.user_id,
+        request_id,
+        req.session_id,
+        message_id,
+        req.model_dump(mode="json"),
+    )
+    if previous:
+        raise HTTPException(
+            409,
+            {
+                "code": "request_already_submitted",
+                "message": "Read session history; this request will not run again",
+                **previous,
+            },
+        )
+    stream_key = (user.user_id, req.session_id)
+    if (
+        stream_key in _stream_sessions
+        or len(_stream_sessions) >= security_config.ws_max_connections
+    ):
+        ledger.update(user.user_id, request_id, "rejected")
+        raise HTTPException(409, "A chat stream is already active; read session history")
+    _stream_sessions.add(stream_key)
+    channel = ChatEventChannel(
+        session_id=req.session_id, message_id=message_id, request_id=request_id
+    )
+
+    async def process_stream():
+        from api.usage import build_usage_summary
+
+        binding = bind_principal(user)
+        workspace_binding = (
+            workspace_context.bind_workspace(req.workspace_id) if workspace_context else None
+        )
+        session: dict | None = None
+        response_parts: list[str] = []
+        response_characters = 0
+        execution_started = False
+        persisted = False
+        terminal_status = "error"
+        trace = thinking_stream.create_trace(message_id)
+        artifact_ids: set[str] = set()
+
+        async def deliver(kind: str, **data):
+            try:
+                await channel.emit(kind, **data)
+            except StreamDeliveryError as exc:
+                # Delivery failures must stop the execution rather than trigger
+                # an agent recovery call or subsequent tools.
+                raise asyncio.CancelledError("Chat delivery stopped") from exc
+
+        async def saved_artifact(reference: Any):
+            # Agent/tool output is not an authorization source. Resolve only
+            # artifacts actually stored for this principal and this session.
+            from api.artifacts import get_artifact
+
+            artifact_id = reference.get("id") if isinstance(reference, dict) else None
+            if not isinstance(artifact_id, str) or artifact_id in artifact_ids:
+                return
+            artifact = get_artifact(user_id=user.user_id, artifact_id=artifact_id)
+            if not artifact or artifact["session_id"] != req.session_id:
+                return
+            artifact_ids.add(artifact_id)
+            # Large content is read from the owner-protected artifact endpoint.
+            await deliver(
+                "artifact", artifact={k: v for k, v in artifact.items() if k != "content"}
+            )
+
+        async def stream_cb(chunk: str, **kwargs):
+            nonlocal response_characters, execution_started
+            execution_started = True
+            kind = kwargs.get("chunk_type", "text")
+            if kind == "tool_use":
+                await deliver("tool_use", tool_name=kwargs.get("tool_name", "unknown"))
+                return
+            if kind == "artifact":
+                await saved_artifact(kwargs.get("artifact"))
+                return
+            response_characters += len(chunk)
+            if response_characters > MAX_RESPONSE_CHARACTERS:
+                raise asyncio.CancelledError("Chat response exceeds the output limit")
+            response_parts.append(chunk)
+            for start in range(0, len(chunk), TEXT_CHUNK_CHARACTERS):
+                await deliver("chat_stream", chunk=chunk[start : start + TEXT_CHUNK_CHARACTERS])
+
+        async def thinking_cb(phase: str, content: str, confidence: float, metadata: dict):
+            nonlocal execution_started
+            execution_started = True
+            thinking_stream.add_step(
+                trace.request_id, ThinkingPhase(phase), content, confidence, metadata
+            )
+            await deliver(
+                "thinking", phase=phase, content=content, confidence=confidence, metadata=metadata
+            )
+
+        async def persist_partial(status: str):
+            nonlocal persisted
+            if persisted or session is None:
+                return
+            usage = (
+                build_usage_summary(getattr(agent, "_llm_calls", []) or [])
+                if agent and execution_started
+                else {}
+            )
+            partial = "".join(response_parts)
+            await memory.save_message(
+                req.session_id,
+                "assistant",
+                partial,
+                agent_id,
+                metadata={
+                    "message_id": message_id,
+                    "request_id": request_id,
+                    "status": status,
+                    "partial": True,
+                    "usage": usage,
+                    "usage_incomplete": True,
+                },
+            )
+            session["history"].append({"role": "assistant", "content": partial})
+            persisted = True
+
+        try:
+            selected_model = req.model_override or (agent.ai_model if agent else None)
+            await channel.emit(
+                "status",
+                status="accepted",
+                streaming_mode="buffered" if str(selected_model).startswith("ruh") else "provider",
+                input_modalities=["text"],
+            )
+            session = active_sessions.get(req.session_id)
+            if session is None:
+                stored = await memory.get_messages(req.session_id, limit=50)
+                session = {
+                    "history": [{"role": m["role"], "content": m["content"]} for m in stored]
+                }
+                active_sessions[req.session_id] = session
+            await memory.save_message(
+                req.session_id,
+                "user",
+                req.content,
+                agent_id,
+                metadata={"request_id": request_id},
+            )
+            session["history"].append({"role": "user", "content": req.content})
+            ledger.update(user.user_id, request_id, "running")
+            await channel.emit("status", status="running")
+            cmd_result = await handle_command(
+                req.content,
+                agent=agent,
+                session_id=req.session_id,
+                sessions=active_sessions,
+                memory=memory,
+                active_agents=active_agents,
+            )
+            if cmd_result.get("is_command"):
+                result = {"success": True, "result": cmd_result["response"], "usage": {}}
+            else:
+                await channel.emit("typing", agent=agent.name)
+                result = await agent.execute(
+                    req.content,
+                    {"history": list(session["history"][-agent.max_tool_turns :])},
+                    stream_callback=stream_cb,
+                    thinking_callback=thinking_cb,
+                    model_override=req.model_override,
+                )
+            final = result.get("result", "".join(response_parts))
+            if isinstance(final, dict):
+                final = final.get("response", str(final))
+            final = str(final)
+            if len(final) > MAX_RESPONSE_CHARACTERS:
+                raise StreamDeliveryError("Chat response exceeds the output limit")
+            if not result.get("success", True):
+                await persist_partial("error")
+                await channel.emit(
+                    "error",
+                    code="agent_failed",
+                    message="The agent could not complete this request",
+                )
+                return
+            # Save before the terminal event: a disconnected browser can read
+            # the final response and exact observed usage without resubmitting.
+            await memory.save_message(
+                req.session_id,
+                "assistant",
+                final,
+                agent_id,
+                metadata={
+                    "message_id": message_id,
+                    "request_id": request_id,
+                    "status": "complete",
+                    "usage": result.get("usage", {}),
+                },
+            )
+            session["history"].append({"role": "assistant", "content": final})
+            persisted, terminal_status = True, "complete"
+            for reference in result.get("artifacts", []) or []:
+                await saved_artifact(reference)
+            tool_results = getattr(agent, "_last_tool_results", []) if execution_started else []
+            for tool in tool_results or []:
+                if tool.get("name") == "workspace_artifact" and isinstance(
+                    tool.get("result"), dict
+                ):
+                    tool_result = tool["result"]
+                    await saved_artifact(tool_result.get("artifact", tool_result))
+            thinking_stream.complete(message_id)
+            completed_trace = thinking_stream.get_trace(message_id)
+            await channel.emit(
+                "chat_complete",
+                response=final,
+                usage=result.get("usage", {}),
+                agent=agent.name if agent else None,
+                success=True,
+                cognitive={
+                    k: result[k]
+                    for k in (
+                        "nafs_level",
+                        "nafs_name",
+                        "ruh_energy",
+                        "qalb",
+                        "yaqin",
+                        "mizan_label",
+                        "cognitive_method",
+                        "lubb",
+                        "lawwama",
+                    )
+                    if result.get(k) is not None
+                },
+                thinking_trace=completed_trace.to_dict() if completed_trace else None,
+            )
+        except asyncio.CancelledError:
+            if terminal_status != "complete":
+                terminal_status = "cancelled"
+                await persist_partial("cancelled")
+            if not channel.closed:
+                try:
+                    await channel.emit(
+                        "error", code="delivery_stopped", message="Chat delivery was interrupted"
+                    )
+                except StreamDeliveryError:
+                    logger.warning("Cancelled chat reader unavailable for message %s", message_id)
+            raise
+        except Exception:
+            logger.exception("Chat stream failed for message %s", message_id)
+            if terminal_status != "complete":
+                await persist_partial("error")
+            if not channel.closed:
+                try:
+                    await channel.emit(
+                        "error", code="stream_failed", message="The chat stream could not complete"
+                    )
+                except StreamDeliveryError:
+                    logger.warning("Chat reader unavailable for message %s", message_id)
+        finally:
+            try:
+                ledger.update(user.user_id, request_id, terminal_status)
+                thinking_stream.complete(message_id)
+            finally:
+                if workspace_context and workspace_binding is not None:
+                    workspace_context.reset_workspace(workspace_binding)
+                reset_principal(binding)
+
+    async def event_frames():
+        producer = asyncio.create_task(process_stream(), name=f"chat-stream-{message_id}")
+        try:
+            while not producer.done() or not channel.queue.empty():
+                try:
+                    frame = await asyncio.wait_for(channel.queue.get(), timeout=HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    if not producer.done():
+                        yield ": heartbeat\n\n"
+                    continue
+                yield frame
+        finally:
+            channel.close()
+            if not producer.done():
+                producer.cancel()
+            # Shield cleanup from Starlette's disconnect cancellation scope.
+            try:
+                await asyncio.shield(producer)
+            except asyncio.CancelledError:
+                pass
+
+    return ChatStreamingResponse(
+        event_frames(),
+        release_stream=lambda: _stream_sessions.discard(stream_key),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "X-Accel-Buffering": "no",
+            "X-Chat-Request-ID": request_id,
+            "X-Chat-Message-ID": message_id,
+        },
+    )
 
 
 @app.post("/api/chat")
@@ -3879,15 +4225,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         manager.disconnect(client_id)
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
-
-
 # Imported after shared dependencies to keep deferred auth imports cycle safe.
 from api import (  # noqa: E402
     artifacts,
+    coding_workspace,
     modes,
     ruh_dialect,
     ruh_disambiguate,
@@ -3899,7 +4240,7 @@ from api import (  # noqa: E402
     sandbox,
 )
 
-for feature in (artifacts, modes, sandbox):
+for feature in (artifacts, modes, sandbox, coding_workspace):
     app.include_router(feature.router)
 
 for feature in (
@@ -3915,3 +4256,13 @@ for feature in (
     # there while retaining direct-app clients' existing /v1/ paths.
     app.include_router(feature.router, prefix="/api")
     app.include_router(feature.router, include_in_schema=False)
+
+# Added last so this pure ASGI layer surrounds the security HTTP middleware.
+# The response wrapper inside that middleware cannot bypass transport deadlines.
+app.add_middleware(ChatTransportGuard)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

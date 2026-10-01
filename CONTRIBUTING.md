@@ -17,7 +17,7 @@ Thank you for your interest in contributing to MIZAN! This document provides gui
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 20+ (for frontend)
+- Node.js 24 LTS (for frontend)
 - Git
 
 ### Development Setup

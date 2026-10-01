@@ -1,9 +1,11 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci
 
 COPY . .
 

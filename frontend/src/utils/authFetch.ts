@@ -14,5 +14,16 @@ export function authFetch(
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers }).then((response) => {
+    if (
+      response.status === 401 &&
+      token &&
+      headers.get("Authorization") === `Bearer ${token}` &&
+      localStorage.getItem("mizan_token") === token
+    ) {
+      localStorage.removeItem("mizan_token");
+      window.dispatchEvent(new CustomEvent("mizan:unauthorized"));
+    }
+    return response;
+  });
 }
