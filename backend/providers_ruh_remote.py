@@ -9,6 +9,7 @@ Env vars:
 """
 
 import logging
+from typing import cast
 
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 
@@ -48,7 +49,7 @@ class RuhRemoteProvider(BaseLLMProvider):
 
             status = result.get("status")
             if status == "COMPLETED":
-                return result
+                return cast(dict, result)
             if status == "FAILED":
                 raise ValueError(f"RunPod job failed: {result}")
 
@@ -131,10 +132,12 @@ class RuhRemoteProvider(BaseLLMProvider):
 
         return LLMResponse(
             content=blocks,
-            stop_reason=choices[0].get("finish_reason", "end_turn"),
+            stop_reason={"stop": "end_turn", "length": "max_tokens"}.get(
+                choices[0].get("finish_reason"), "end_turn"
+            ),
             usage={
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
             },
-            model=model,
+            model=output.get("model", ""),
         )

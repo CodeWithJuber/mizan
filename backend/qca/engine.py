@@ -21,6 +21,7 @@ import os
 import re
 import time
 from collections import Counter, defaultdict
+from typing import cast
 
 from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
@@ -353,7 +354,7 @@ class ISMLayer:
         "افْتِعَال": ("self-directed action", "doing action with effort"),
     }
 
-    def __init__(self, root_db: dict = None):
+    def __init__(self, root_db: dict | None = None):
         self.root_db = root_db or ARABIC_ROOTS
 
     def get_word_info(self, arabic_word: str) -> dict | None:
@@ -384,7 +385,7 @@ class ISMLayer:
     def find_root_family(self, root: str) -> dict:
         """Get all words sharing a root — the family cluster."""
         entry = self.root_db.get(root, {})
-        return entry.get("derivatives", {})
+        return cast(dict, entry.get("derivatives", {}))
 
     def root_distance(self, root1: str, root2: str) -> float:
         """Semantic distance between two roots based on domain."""
@@ -604,7 +605,7 @@ class AqlLayer:
         }
         self.graph[a].append(entry)
 
-    def query(self, concept: str, btype: str = None) -> list[dict]:
+    def query(self, concept: str, btype: str | None = None) -> list[dict]:
         """Query all bindings for a concept, optionally filtered by type."""
         results = self.graph.get(concept, [])
         if btype:
@@ -735,7 +736,12 @@ class LawhMemory:
         return count
 
     def store(
-        self, key: str, content: str, certainty: float, source: str = "inference", tier: int = None
+        self,
+        key: str,
+        content: str,
+        certainty: float,
+        source: str = "inference",
+        tier: int | None = None,
     ) -> bool:
         """Store knowledge in the appropriate tier."""
         if tier is None:
@@ -762,7 +768,7 @@ class LawhMemory:
         return None
 
     def search(
-        self, query_text: str, top_k: int = 5, tiers: list[int] = None
+        self, query_text: str, top_k: int = 5, tiers: list[int] | None = None
     ) -> list[tuple[int, str, dict]]:
         """Keyword search across tiers."""
         if tiers is None:
@@ -837,7 +843,7 @@ class FurqanBayan:
     "He taught him clear expression (Bayan)." — 55:4
     """
 
-    def __init__(self, mizan: MizanLayer = None, lawh: LawhMemory = None):
+    def __init__(self, mizan: MizanLayer | None = None, lawh: LawhMemory | None = None):
         self.mizan = mizan or MizanLayer()
         self.lawh = lawh
 
@@ -858,7 +864,7 @@ class FurqanBayan:
         self, claim: str, confidence: float, source: str = "inference"
     ) -> dict:
         """Validate a claim through Furqan checks and produce Bayan output."""
-        report = {
+        report: dict = {
             "passed": True,
             "checks": [],
             "confidence": confidence,
@@ -1075,7 +1081,7 @@ class QCAEngine:
             "has_audio": audio_bytes is not None,
         }
 
-    def reason(self, question: str, context_text: str = None) -> dict:
+    def reason(self, question: str, context_text: str | None = None) -> dict:
         """
         Full QCA reasoning pipeline for answering a question.
         Routes through all 7 layers.
@@ -1214,16 +1220,16 @@ class QCAEngine:
         """Weigh a claim through the Mizan layer."""
         weight = self.mizan.weigh(certainty_level, source)
         report = self.furqan.validate_and_express(claim, weight, source)
-        return report
+        return cast(dict, report)
 
     def trace_concept(self, concept: str, depth: int = 4) -> list[str]:
         """Trace causal chain through 'Aql bindings."""
-        return self.aql.tadabbur_trace(concept, depth)
+        return cast(list[str], self.aql.tadabbur_trace(concept, depth))
 
     def remember(self, key: str, content: str, certainty: float, source: str = "agent") -> bool:
         """Store knowledge in Lawh memory."""
-        return self.lawh.store(key, content, certainty, source)
+        return cast(bool, self.lawh.store(key, content, certainty, source))
 
     def recall(self, query: str, top_k: int = 5) -> list:
         """Search Lawh memory."""
-        return self.lawh.search(query, top_k, tiers=[1, 2, 3])
+        return cast(list, self.lawh.search(query, top_k, tiers=[1, 2, 3]))

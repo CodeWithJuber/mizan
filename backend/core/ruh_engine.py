@@ -189,7 +189,7 @@ class RuhEngine:
         if not agent_ids:
             return None
         best = None
-        best_energy = -1
+        best_energy = -1.0
         for aid in agent_ids:
             state = self.get_state(aid)
             if state.energy > best_energy:

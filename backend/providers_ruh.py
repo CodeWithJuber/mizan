@@ -1,7 +1,7 @@
 """Ruh Model LLM Provider for MIZAN."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 
@@ -32,7 +32,9 @@ class RuhModelProvider(BaseLLMProvider):
             self._model.to(self.device)
             # Set model to inference mode
             self._model.train(False)
-            self._tokenizer = BayanTokenizer()
+            self._tokenizer = self._model.tokenizer or BayanTokenizer.from_pretrained(
+                self.model_path
+            )
             self._loaded = True
             logger.info("Ruh Model loaded from %s on %s", self.model_path, self.device)
         except Exception as exc:
@@ -51,8 +53,13 @@ class RuhModelProvider(BaseLLMProvider):
         """Generate a response using the local Ruh Model."""
         self._ensure_loaded()
 
-        prompt = self._extract_prompt(messages)
-        tokens = self._tokenizer.encode(prompt)
+        from ruh_model.tokenizer.conversation import serialize_messages
+
+        prompt = serialize_messages(messages, system=system)
+        tokens = self._tokenizer.encode(prompt, add_eos=False)
+        context_limit = getattr(getattr(self._model, "config", None), "max_seq_len", 2048)
+        if isinstance(context_limit, int):
+            tokens = tokens[-context_limit:]
         root_ids, pattern_ids = self._tokens_to_tensors(tokens)
 
         import torch
@@ -62,11 +69,13 @@ class RuhModelProvider(BaseLLMProvider):
                 root_ids,
                 pattern_ids,
                 max_new_tokens=min(max_tokens or 256, 1024),
-                temperature=temperature or 1.0,
+                temperature=1.0 if temperature is None else temperature,
+                valid_n_roots=self._tokenizer._vocab.n_roots,
             )
 
         generated_root_ids = generated[0].tolist() if generated.ndim == 2 else generated.tolist()
-        generated_tokens = [(int(root_id), 0) for root_id in generated_root_ids]
+        generated_root_ids = generated_root_ids[len(tokens) :]
+        generated_tokens = [(int(root_id), 1) for root_id in generated_root_ids]
         output_text = self._tokenizer.decode(generated_tokens)
 
         return LLMResponse(
@@ -117,8 +126,12 @@ class RuhModelProvider(BaseLLMProvider):
         """Convert token pairs to root_id and pattern_id tensors."""
         import torch
 
-        root_ids = torch.tensor([[token[0] for token in tokens]], dtype=torch.long)
-        pattern_ids = torch.tensor([[token[1] for token in tokens]], dtype=torch.long)
+        root_ids = torch.tensor(
+            [[token[0] for token in tokens]], dtype=torch.long, device=self.device
+        )
+        pattern_ids = torch.tensor(
+            [[token[1] for token in tokens]], dtype=torch.long, device=self.device
+        )
         return root_ids, pattern_ids
 
 
@@ -159,7 +172,7 @@ class _RuhStreamWrapper:
         )
         return self
 
-    def __exit__(self, *exc_info: object) -> bool:
+    def __exit__(self, *exc_info: object) -> Literal[False]:
         return False
 
     @property

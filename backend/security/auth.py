@@ -80,6 +80,22 @@ def request_has_role(role: str) -> bool:
     return role in roles or "admin" in roles
 
 
+_request_user: ContextVar[str | None] = ContextVar("mizan_request_user", default=None)
+
+
+def bind_principal(user):
+    return (_request_user.set(user.user_id), _request_roles.set(tuple(user.roles)))
+
+
+def reset_principal(tokens):
+    _request_user.reset(tokens[0])
+    _request_roles.reset(tokens[1])
+
+
+def current_user_id() -> str | None:
+    return _request_user.get()
+
+
 @dataclass
 class TokenPayload:
     """Decoded JWT token data"""
@@ -133,7 +149,7 @@ class MizanAuth:
         self.expiry_hours = expiry_hours
         self.algorithm = "HS256"
 
-        self.data_dir = Path(data_dir or os.getenv("MIZAN_DATA_DIR", DEFAULT_DATA_DIR))
+        self.data_dir = Path(data_dir or (os.getenv("MIZAN_DATA_DIR") or DEFAULT_DATA_DIR))
         self._users_file = self.data_dir / USERS_FILENAME
         self._lock = threading.Lock()
 
@@ -225,7 +241,9 @@ class MizanAuth:
         if admin_pass and admin_user not in {u.username for u in self._users.values()}:
             self.create_user(admin_user, admin_pass, roles=["admin"])
 
-    def create_user(self, username: str, password: str, roles: list[str] = None) -> UserRecord:
+    def create_user(
+        self, username: str, password: str, roles: list[str] | None = None
+    ) -> UserRecord:
         """Create a new user"""
         user_id = str(uuid.uuid4())
         user = UserRecord(
@@ -323,7 +341,9 @@ class MizanAuth:
             jti=f"apikey_{key[:8]}",
         )
 
-    def extract_token(self, authorization: str = None, api_key: str = None) -> TokenPayload | None:
+    def extract_token(
+        self, authorization: str | None = None, api_key: str | None = None
+    ) -> TokenPayload | None:
         """
         Extract and verify token from various sources.
         Supports: Bearer token, API key, query param.

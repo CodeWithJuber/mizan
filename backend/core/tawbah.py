@@ -191,7 +191,7 @@ class TawbahProtocol:
 
         return record
 
-    def get_lessons(self, error_type: str = None) -> list[dict]:
+    def get_lessons(self, error_type: str | None = None) -> list[dict]:
         """Get lessons learned from past error recoveries."""
         if error_type:
             return [lesson for lesson in self._lessons if lesson["error_type"] == error_type]
@@ -208,9 +208,9 @@ class TawbahProtocol:
                 return lesson
         return None
 
-    def get_active_recoveries(self, agent_id: str = None) -> list[TawbahRecord]:
+    def get_active_recoveries(self, agent_id: str | None = None) -> list[TawbahRecord]:
         """Get active (uncompleted) recovery records."""
-        records = self._records.values()
+        records = list(self._records.values())
         if agent_id:
             records = [r for r in records if r.agent_id == agent_id]
         return [r for r in records if r.stage != TawbahStage.COMPLETE]

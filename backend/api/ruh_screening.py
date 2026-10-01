@@ -200,7 +200,7 @@ _LEXICON: list[tuple[str, bool, str, str, float]] = [
 
 def _find_flags(text: str) -> list[dict]:
     """Lexical flag scan. Returns flags sorted by span start, no overlaps."""
-    hits: list[dict] = []
+    hits: list[tuple[int, int, str, str, str, float]] = []
     for surface, is_regex, reason, receipt, confidence in _LEXICON:
         if is_regex:
             for m in re.finditer(surface, text, re.IGNORECASE):

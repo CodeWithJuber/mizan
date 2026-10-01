@@ -172,29 +172,32 @@ class NafsProfile:
 
         # Check for promotion
         for level in range(self.nafs_level + 1, 8):
-            threshold = self.EVOLUTION_THRESHOLDS.get(level)
-            if not threshold:
+            promotion_threshold = self.EVOLUTION_THRESHOLDS.get(level)
+            if not promotion_threshold:
                 break
             if (
-                self.success_rate >= threshold["success_rate"]
-                and self.total_tasks >= threshold["min_tasks"]
+                self.success_rate >= promotion_threshold["success_rate"]
+                and self.total_tasks >= promotion_threshold["min_tasks"]
             ):
                 # Check extra conditions
-                if "min_hikmah" in threshold and self.hikmah_count < threshold["min_hikmah"]:
-                    break
                 if (
-                    "min_hikmah_applied" in threshold
-                    and self.hikmah_applied < threshold["min_hikmah_applied"]
+                    "min_hikmah" in promotion_threshold
+                    and self.hikmah_count < promotion_threshold["min_hikmah"]
                 ):
                     break
                 if (
-                    "user_satisfaction" in threshold
-                    and self.user_satisfaction < threshold["user_satisfaction"]
+                    "min_hikmah_applied" in promotion_threshold
+                    and self.hikmah_applied < promotion_threshold["min_hikmah_applied"]
                 ):
                     break
                 if (
-                    "min_reliability_days" in threshold
-                    and self.reliability_days < threshold["min_reliability_days"]
+                    "user_satisfaction" in promotion_threshold
+                    and self.user_satisfaction < promotion_threshold["user_satisfaction"]
+                ):
+                    break
+                if (
+                    "min_reliability_days" in promotion_threshold
+                    and self.reliability_days < promotion_threshold["min_reliability_days"]
                 ):
                     break
                 self.nafs_level = level
@@ -275,7 +278,9 @@ class MizanBalancer:
         }
         self.load_weights[agent_id] = 0.0
 
-    def select_agent(self, role: AgentRole = None, min_capability: float = 0.0) -> str | None:
+    def select_agent(
+        self, role: AgentRole | None = None, min_capability: float = 0.0
+    ) -> str | None:
         """Select agent with least load (Adl - justice)"""
         eligible = {
             aid: data

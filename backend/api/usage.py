@@ -97,3 +97,22 @@ def build_usage_block(
             block["cost_usd"] = est
             block["cost_estimated"] = True
     return block
+
+
+def build_usage_summary(calls: list[dict]) -> dict:
+    """Preserve every observed call, summing only reported values."""
+    blocks = [build_usage_block(call) for call in calls]
+    if not blocks:
+        return {}
+    summary = dict(blocks[-1])
+    for field in ("input_tokens", "output_tokens", "latency_ms", "cost_usd"):
+        reported = [block[field] for block in blocks if field in block]
+        if reported:
+            summary[field] = sum(reported)
+    summary["calls"] = blocks
+    if any(block.get("cost_estimated") for block in blocks):
+        summary["cost_estimated"] = True
+    if any("cost_usd" not in block for block in blocks):
+        summary.pop("cost_usd", None)
+        summary.pop("cost_estimated", None)
+    return summary

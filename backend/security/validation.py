@@ -257,7 +257,7 @@ class InputValidator:
     def validate_memory_query(self, query: str) -> tuple:
         return validate_text_input(query, 5000, "query")
 
-    def validate_path(self, path: str, allowed_dirs: list = None) -> tuple:
+    def validate_path(self, path: str, allowed_dirs: list | None = None) -> tuple:
         resolved = sanitize_path(path)
         if allowed_dirs and not validate_path_in_sandbox(path, allowed_dirs):
             return False, "Path outside allowed directories", resolved

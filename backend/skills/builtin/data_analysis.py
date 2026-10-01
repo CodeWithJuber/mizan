@@ -23,14 +23,14 @@ class DataAnalysisSkill(SkillBase):
         tags=["data", "analysis", "statistics"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._tools = {
             "analyze_csv": self.analyze_csv,
             "analyze_json": self.analyze_json,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "analyze_csv")
         if action == "analyze_csv":
             return await self.analyze_csv(params.get("data", ""))
@@ -43,6 +43,8 @@ class DataAnalysisSkill(SkillBase):
         # Defensive: handle dict input from invoke system
         if isinstance(data, dict):
             data = data.get("data", "")
+        if not isinstance(data, str):
+            return {"error": "CSV data must be text"}
         try:
             reader = csv.DictReader(io.StringIO(data))
             rows = list(reader)
@@ -85,6 +87,8 @@ class DataAnalysisSkill(SkillBase):
         # Defensive: handle dict input from invoke system
         if isinstance(data, dict) and "data" in data:
             data = data.get("data", "")
+        if not isinstance(data, str):
+            return {"error": "JSON data must be text"}
         try:
             parsed = json.loads(data)
 

@@ -32,6 +32,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -274,7 +275,7 @@ class MoltBookBridge:
         timestamps.append(now)
         return True
 
-    def _audit(self, action: str, agent_id: str, details: dict = None) -> None:
+    def _audit(self, action: str, agent_id: str, details: dict | None = None) -> None:
         """Shahid (شاهد) audit log — witness of all bridge activity."""
         entry = {
             "action": action,
@@ -373,7 +374,7 @@ class MoltBookBridge:
         Process data received FROM MoltBook with full sanitization.
         Every field is sanitized against prompt injection.
         """
-        sanitized = {}
+        sanitized: dict = {}
         quarantined_fields = []
 
         for key, value in raw_data.items():
@@ -418,7 +419,7 @@ class MoltBookBridge:
         }
         return sanitized
 
-    def get_audit_log(self, agent_id: str = None, limit: int = 50) -> list[dict]:
+    def get_audit_log(self, agent_id: str | None = None, limit: int = 50) -> list[dict]:
         """Return audit trail, optionally filtered by agent."""
         logs = self._audit_log
         if agent_id:
@@ -464,7 +465,7 @@ class MajlisSocialSkill(SkillBase):
         tags=["مجلس", "Social", "Agents", "MoltBook"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._agents: dict[str, AgentProfile] = {}  # Diwan (ديوان)
         self._agent_keys: dict[str, str] = {}  # Secret keys — NEVER exposed
@@ -497,11 +498,11 @@ class MajlisSocialSkill(SkillBase):
             "majlis_moltbook_audit": self.moltbook_audit,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "discover")
         handler = self._tools.get(f"majlis_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {
             "error": f"Unknown action: {action}",
             "available": list(a.replace("majlis_", "") for a in self._tools),
@@ -980,7 +981,7 @@ class MajlisSocialSkill(SkillBase):
 
     # === LEADERBOARD ===
 
-    async def get_leaderboard(self, params: dict = None) -> dict:
+    async def get_leaderboard(self, params: dict | None = None) -> dict:
         """Taqwa leaderboard — top agents by reputation. (49:13)"""
         params = params or {}
         limit = min(params.get("limit", 10), 50)

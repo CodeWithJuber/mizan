@@ -63,6 +63,10 @@ async def test_send_logs_failure_instead_of_swallowing(caplog):
     ConnectionManager = _import_manager()
     manager = ConnectionManager()
     manager.connections["c1"] = _FailingSocket()
+    manager.owners["c1"] = "u1"
+    from security.auth import TokenPayload, bind_principal
+
+    bind_principal(TokenPayload("u1", "u1", ["user"], 9999999999, 0, "test"))
     with caplog.at_level(logging.ERROR, logger="mizan.api"):
         await manager.send("c1", {"type": "chat_complete"})
     assert "c1" not in manager.connections  # still disconnects
@@ -76,6 +80,10 @@ async def test_broadcast_logs_failure_instead_of_swallowing(caplog):
     ConnectionManager = _import_manager()
     manager = ConnectionManager()
     manager.connections["c1"] = _FailingSocket()
+    manager.owners["c1"] = "u1"
+    from security.auth import TokenPayload, bind_principal
+
+    bind_principal(TokenPayload("u1", "u1", ["user"], 9999999999, 0, "test"))
     with caplog.at_level(logging.ERROR, logger="mizan.api"):
         await manager.broadcast({"type": "chat_complete"})
     assert "c1" not in manager.connections

@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger("mizan.planner")
 
@@ -123,7 +123,7 @@ class TafakkurPlanner:
     def __init__(self):
         self._active_plans: dict[str, Plan] = {}
 
-    async def decompose(self, goal: str, agent, context: dict = None) -> Plan:
+    async def decompose(self, goal: str, agent, context: dict | None = None) -> Plan:
         """
         Decompose a complex goal into sub-tasks using AI.
         """
@@ -208,13 +208,13 @@ Return ONLY the JSON array, no other text.""",
         for agent_id, agent in agents.items():
             if agent.role == subtask.agent_role:
                 subtask.agent_id = agent_id
-                return agent_id
+                return cast(str | None, agent_id)
 
         # Fallback: use first available agent
         if agents:
             agent_id = list(agents.keys())[0]
             subtask.agent_id = agent_id
-            return agent_id
+            return cast(str | None, agent_id)
 
         return None
 

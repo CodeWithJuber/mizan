@@ -43,7 +43,7 @@ jobs:
   build:
     name: Build package
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, typecheck, ruh, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,10 +56,48 @@ jobs:
           name: dist
           path: dist/
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,nlp]"
+      - run: PYTHONPATH=backend:. mypy backend/
+
+  ruh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev,nlp]" datasets
+      - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: for test in src/utils/*.test.ts; do node "$test" || exit; done
+      - run: npm run build
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, typecheck, ruh, frontend]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image

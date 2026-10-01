@@ -109,16 +109,16 @@ class TestRootEndpoints:
 
 
 class TestAgentEndpoints:
-    def test_list_agents(self, client):
-        resp = client.get("/api/agents")
+    def test_list_agents(self, client, auth_headers):
+        resp = client.get("/api/agents", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "agents" in data
         assert "total" in data
         assert isinstance(data["agents"], list)
 
-    def test_list_agents_has_correct_structure(self, client):
-        resp = client.get("/api/agents")
+    def test_list_agents_has_correct_structure(self, client, auth_headers):
+        resp = client.get("/api/agents", headers=auth_headers)
         data = resp.json()
         for agent in data["agents"]:
             assert "id" in agent

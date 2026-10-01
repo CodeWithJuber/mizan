@@ -36,6 +36,7 @@ from torch import Tensor
 # Output container
 # ------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class MizanLossOutput:
     """Immutable container for loss breakdown."""
@@ -51,6 +52,7 @@ class MizanLossOutput:
 # ------------------------------------------------------------------
 # Loss module
 # ------------------------------------------------------------------
+
 
 class MizanLoss(nn.Module):
     """Mizan (balance) loss: truth-calibrated training objective.
@@ -90,6 +92,7 @@ class MizanLoss(nn.Module):
         labels: Tensor,
         confidence: Tensor | None = None,
         paraphrase_logits: Tensor | None = None,
+        consistency_logits: Tensor | None = None,
     ) -> MizanLossOutput:
         """Compute the composite Mizan loss.
 
@@ -105,7 +108,9 @@ class MizanLoss(nn.Module):
         """
         ce_loss = self._cross_entropy(logits, labels)
         cal_loss = self._calibration_loss(logits, labels, confidence)
-        con_loss = self._consistency_loss(logits, paraphrase_logits)
+        con_loss = self._consistency_loss(
+            logits if consistency_logits is None else consistency_logits, paraphrase_logits
+        )
         fit_loss = self._fitrah_loss(logits)
         hisb_loss = self._hisbah_loss(logits, labels, confidence)
 
@@ -132,6 +137,8 @@ class MizanLoss(nn.Module):
 
     def _cross_entropy(self, logits: Tensor, labels: Tensor) -> Tensor:
         """Standard cross-entropy ignoring padding tokens."""
+        if not (labels != self.pad_id).any():
+            raise ValueError("Batch has no supervised next-token targets")
         return F.cross_entropy(
             logits.view(-1, logits.size(-1)),
             labels.view(-1),
@@ -212,6 +219,7 @@ class MizanLoss(nn.Module):
 # Pure helpers
 # ------------------------------------------------------------------
 
+
 def _per_sample_accuracy(
     logits: Tensor,
     labels: Tensor,
@@ -227,12 +235,12 @@ def _per_sample_accuracy(
     Returns:
         (B,) accuracy for each sample in the batch.
     """
-    preds = logits.argmax(dim=-1)           # (B, S)
-    mask = labels != pad_id                 # (B, S)
+    preds = logits.argmax(dim=-1)  # (B, S)
+    mask = labels != pad_id  # (B, S)
 
     if not mask.any():
         return torch.zeros(logits.size(0), device=logits.device)
 
     correct = (preds == labels).float() * mask.float()
     counts = mask.float().sum(dim=-1).clamp(min=1)
-    return correct.sum(dim=-1) / counts     # (B,)
+    return correct.sum(dim=-1) / counts  # (B,)

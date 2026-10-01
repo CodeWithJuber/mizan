@@ -17,7 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import (
     BackgroundTasks,
@@ -33,6 +33,8 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.requests import HTTPConnection
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -65,7 +67,14 @@ from qca.cognitive_methods import select_method
 from qca.yaqin_engine import YaqinEngine
 from reasoning.context_manager import ContextManager
 from reasoning.planner import TafakkurPlanner
-from security.auth import MizanAuth, TokenPayload
+from security.auth import (
+    MizanAuth,
+    TokenPayload,
+    bind_principal,
+    current_user_id,
+    reset_principal,
+    set_request_roles,
+)
 from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
@@ -173,7 +182,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Could not restore provider preference: {exc}")
 
     # Initialize scheduler executor
-    async def execute_scheduled_task(task: str, agent_id: str = None):
+    async def execute_scheduled_task(task: str, agent_id: str | None = None):
         aid = agent_id or (list(active_agents.keys())[0] if active_agents else None)
         if aid and aid in active_agents:
             agent = active_agents[aid]
@@ -232,7 +241,7 @@ async def lifespan(app: FastAPI):
                 "result": result.get("response", str(result)),
             }
         )
-        return result
+        return cast(dict, result)
 
     task_worker = TaskWorker(task_queue, handle_queued_task, max_concurrent=3)
     asyncio.create_task(task_worker.start())
@@ -284,11 +293,80 @@ async def lifespan(app: FastAPI):
 
 # ===== APP INITIALIZATION =====
 
+# Every shipped API route requires a principal unless explicitly public.
+_PUBLIC_API = {
+    "/",
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/v1/root-analyze",
+    "/api/v1/tokenize",
+    "/api/v1/q28-features",
+}
+_ADMIN_PREFIXES = (
+    "/api/status",
+    "/api/integrations",
+    "/api/nafs",
+    "/api/settings",
+    "/api/security",
+    "/api/plugins",
+    "/api/training",
+    "/api/automation",
+    "/api/channels",
+    "/api/gateway",
+    "/api/doctor",
+    "/api/events",
+    "/api/hooks",
+    "/api/middleware",
+    "/api/extensibility",
+    "/api/tasks",
+    "/api/memory",
+    "/api/queue",
+    "/api/federation",
+    "/api/plan",
+    "/api/perception",
+    "/api/knowledge",
+)
+
+
+async def enforce_api_access(request: HTTPConnection):
+    if request.scope["type"] == "websocket":
+        yield
+        return
+    if request.url.path in _PUBLIC_API:
+        yield
+        return
+    principal = await require_auth(
+        request.headers.get("authorization"), request.headers.get("x-api-key")
+    )
+    path = request.url.path
+    administrative = path.startswith(_ADMIN_PREFIXES) or path == "/api/version"
+    if request.scope.get("method") not in {"GET", "HEAD", "OPTIONS"}:
+        administrative |= path.startswith(
+            (
+                "/api/agents",
+                "/api/providers",
+                "/api/preferences",
+                "/api/skills",
+                "/api/sandbox",
+                "/api/memory",
+            )
+        )
+    if administrative and not principal.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+    binding = bind_principal(principal)
+    try:
+        yield
+    finally:
+        reset_principal(binding)
+
+
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
     description="Production-ready agentic AI with Quranic Cognitive Architecture",
     version=__version__,
     lifespan=lifespan,
+    dependencies=[Depends(enforce_api_access)],
 )
 
 # ===== SECURITY INITIALIZATION =====
@@ -399,8 +477,7 @@ async def get_current_user(
     Returns None if no auth (allows open access with optional auth).
     For protected endpoints, use require_auth instead.
     """
-    token = auth.extract_token(authorization, x_api_key)
-    return token
+    return await require_auth(authorization, x_api_key)
 
 
 async def require_auth(
@@ -411,6 +488,7 @@ async def require_auth(
     token = auth.extract_token(authorization, x_api_key)
     if not token:
         raise HTTPException(401, "Authentication required")
+    set_request_roles(token.roles)
     return token
 
 
@@ -517,6 +595,7 @@ class ConnectionManager:
     def __init__(self, max_connections: int = 50):
         self.connections: dict[str, WebSocket] = {}
         self.max_connections = max_connections
+        self.owners: dict[str, str] = {}
 
     async def connect(self, ws_id: str, websocket: WebSocket) -> bool:
         if len(self.connections) >= self.max_connections:
@@ -528,21 +607,32 @@ class ConnectionManager:
 
     def disconnect(self, ws_id: str):
         self.connections.pop(ws_id, None)
+        self.owners.pop(ws_id, None)
 
     async def send(self, ws_id: str, data: dict):
         ws = self.connections.get(ws_id)
         if ws:
             try:
-                await ws.send_json(data)
+                await ws.send_json(json.loads(json.dumps(data, default=str)))
             except Exception:
+                logger.error("WebSocket send failed for %s", ws_id, exc_info=True)
                 self.disconnect(ws_id)
 
     async def broadcast(self, data: dict):
+        owner = current_user_id()
+        session_id = data.get("session_id")
+        if session_id:
+            owner = await memory.session_owner(session_id)
+            if not owner:
+                return
         disconnected = []
-        for ws_id, ws in self.connections.items():
+        for ws_id, ws in list(self.connections.items()):
+            if not owner or self.owners.get(ws_id) != owner:
+                continue
             try:
-                await ws.send_json(data)
+                await ws.send_json(json.loads(json.dumps(data, default=str)))
             except Exception:
+                logger.error("WebSocket broadcast failed for %s", ws_id, exc_info=True)
                 disconnected.append(ws_id)
         for ws_id in disconnected:
             self.disconnect(ws_id)
@@ -610,12 +700,18 @@ async def root():
 
 
 @app.get("/api/agents")
-async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
+async def list_agents(user: TokenPayload = Depends(require_auth)):
     """List all agents with their Nafs profile"""
     agents_data = []
     for agent in active_agents.values():
-        d = agent.to_dict()
-        d["load"] = balancer.load_weights.get(agent.id, 0)
+        if user.has_role("admin"):
+            d = agent.to_dict()
+            d["load"] = balancer.load_weights.get(agent.id, 0)
+        else:
+            private = await chat_agent_for(user, agent)
+            d = private.to_dict()
+            d["id"] = agent.id
+            d.pop("system_prompt", None)
         agents_data.append(d)
     return {"agents": agents_data, "total": len(agents_data)}
 
@@ -668,10 +764,15 @@ async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends
 
 
 @app.get("/api/agents/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
-    return active_agents[agent_id].to_dict()
+    agent = await chat_agent_for(user, active_agents[agent_id])
+    data = agent.to_dict()
+    data["id"] = agent_id
+    if not user.has_role("admin"):
+        data.pop("system_prompt", None)
+    return data
 
 
 @app.delete("/api/agents/{agent_id}")
@@ -849,6 +950,48 @@ async def get_task_history(agent_id: str | None = None, limit: int = 50):
     return {"history": history}
 
 
+_user_agents: dict[tuple[str, str], Any] = {}
+
+
+async def chat_agent_for(user: TokenPayload, template):
+    if user.has_role("admin"):
+        return template
+    key = (user.user_id, template.id)
+    if key not in _user_agents:
+        import hashlib
+
+        directory = (
+            Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
+            / "private"
+            / hashlib.sha256(user.user_id.encode()).hexdigest()
+        )
+        directory.mkdir(parents=True, exist_ok=True)
+        private_memory = DhikrMemorySystem(db_path=str(directory / "memory.db"))
+        instance = create_agent(
+            template.role,
+            name=template.name,
+            memory=private_memory,
+            knowledge_graph=private_memory.knowledge_graph,
+            config=dict(template.config),
+            wali=wali,
+            izn=izn,
+            skill_registry=skill_registry,
+            plugin_manager=None,
+        )
+        instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
+        _user_agents[key] = instance
+    return _user_agents[key]
+
+
+async def authorize_session(session_id: str, user: TokenPayload, *, create: bool = False):
+    if not session_id or len(session_id) > 100:
+        raise HTTPException(400, "Invalid session id")
+    if not await memory.authorize_session(
+        session_id, user.user_id, create=create, adopt_legacy=user.has_role("admin")
+    ):
+        raise HTTPException(404, "Session not found")
+
+
 # === CHAT ===
 
 
@@ -859,6 +1002,7 @@ async def chat(
     user: TokenPayload | None = Depends(get_current_user),
 ):
     """Chat with an agent"""
+    await authorize_session(req.session_id, user, create=True)
     session = active_sessions.get(req.session_id)
 
     # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
@@ -880,6 +1024,9 @@ async def chat(
 
     agent_id = req.agent_id or (list(active_agents.keys())[0] if active_agents else None)
     agent = active_agents.get(agent_id) if agent_id else None
+
+    if agent:
+        agent = await chat_agent_for(user, agent)
 
     # Check for in-chat commands
     cmd_result = await handle_command(
@@ -908,22 +1055,10 @@ async def chat(
     if not agent_id or agent_id not in active_agents:
         raise HTTPException(503, "No agents available")
 
-    agent = active_agents[agent_id]
+    agent = await chat_agent_for(user, active_agents[agent_id])
     message_id = str(uuid.uuid4())
 
     async def process_chat():
-        # Per-message model override: temporarily swap agent's model
-        # TODO(concurrency): use per-request LLM client instead of mutating agent
-        original_model = None
-        original_client = None
-        if req.model_override and req.model_override != agent.ai_model:
-            override_provider = create_provider(model=req.model_override)
-            if override_provider:
-                original_model = agent.ai_model
-                original_client = agent.ai_client
-                agent.ai_model = req.model_override
-                agent.ai_client = override_provider
-
         # Send typing indicator before starting agent execution
         await manager.broadcast(
             {
@@ -980,24 +1115,25 @@ async def chat(
                 }
             )
 
-        try:
-            result = await agent.execute(
-                req.content,
-                {"history": session["history"][-agent.max_tool_turns :]},
-                stream_callback=stream_cb,
-                thinking_callback=thinking_cb,
-            )
-        finally:
-            # Restore original model after per-message override
-            if original_model is not None:
-                agent.ai_model = original_model
-                agent.ai_client = original_client
+        result = await agent.execute(
+            req.content,
+            {"history": session["history"][-agent.max_tool_turns :]},
+            stream_callback=stream_cb,
+            thinking_callback=thinking_cb,
+            model_override=req.model_override,
+        )
 
         final_response = result.get("result", response) if result.get("success") else response
         if isinstance(final_response, dict):
             final_response = final_response.get("response", str(final_response))
 
-        await memory.save_message(req.session_id, "assistant", str(final_response), agent_id)
+        await memory.save_message(
+            req.session_id,
+            "assistant",
+            str(final_response),
+            agent_id,
+            metadata={"usage": result.get("usage", {})},
+        )
         session["history"].append({"role": "assistant", "content": str(final_response)})
 
         # Extract cognitive metadata from QALB-7 pipeline
@@ -1044,6 +1180,7 @@ async def chat(
                 "session_id": req.session_id,
                 "message_id": message_id,
                 "response": str(final_response),
+                "usage": result.get("usage", {}),
                 "agent": agent.name,
                 "cognitive": cognitive,
                 "thinking_trace": trace_dict,
@@ -1055,14 +1192,15 @@ async def chat(
 
 
 @app.get("/api/chat/sessions/list")
-async def list_sessions():
+async def list_sessions(user: TokenPayload = Depends(require_auth)):
     """List recent chat sessions from DB with metadata"""
-    db_sessions = await memory.list_sessions(limit=20)
+    db_sessions = await memory.list_sessions(limit=20, owner_id=user.user_id)
     return {"sessions": db_sessions}
 
 
 @app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str):
+async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
+    await authorize_session(session_id, user)
     messages = await memory.get_messages(session_id)
     return {"session_id": session_id, "messages": messages}
 
@@ -1264,7 +1402,10 @@ async def ingest_knowledge(req: KnowledgeIngest):
     if source_type == "youtube":
         result = await extract_youtube(req.source)
     elif source_type == "url":
-        result = await extract_url(req.source)
+        try:
+            result = await extract_url(req.source)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
     else:
         raise HTTPException(
             400, f"Use /api/knowledge/upload for file uploads. Got source_type: {source_type}"
@@ -1309,7 +1450,7 @@ async def upload_knowledge(request: Request):
 
     form = await request.form()
     file = form.get("file")
-    if not file:
+    if not isinstance(file, StarletteUploadFile):
         raise HTTPException(400, "No file provided. Send a multipart form with 'file' field.")
 
     filename = getattr(file, "filename", "upload.pdf")
@@ -2384,17 +2525,20 @@ class QalbAnalyzeRequest(BaseModel):
 
 
 @app.post("/api/qalb/analyze")
-async def analyze_emotion(req: QalbAnalyzeRequest):
+async def analyze_emotion(req: QalbAnalyzeRequest, user: TokenPayload = Depends(require_auth)):
     """Analyze emotional state from a message."""
     reading = qalb_engine.analyze(req.message)
-    if req.user_id:
-        qalb_engine.record(req.user_id, reading)
+    if req.user_id and req.user_id != user.user_id and not user.has_role("admin"):
+        raise HTTPException(403, "Cannot modify another user's emotional history")
+    qalb_engine.record(req.user_id or user.user_id, reading)
     return {"reading": reading.to_dict()}
 
 
 @app.get("/api/qalb/trend/{user_id}")
-async def emotional_trend(user_id: str):
+async def emotional_trend(user_id: str, user: TokenPayload = Depends(require_auth)):
     """Get emotional trend for a user."""
+    if user_id != user.user_id and not user.has_role("admin"):
+        raise HTTPException(403, "Cannot read another user's emotional history")
     trend = qalb_engine.get_trend(user_id)
     return {"trend": trend}
 
@@ -2480,6 +2624,7 @@ async def federation_route_task(
 
     agent = active_agents[agent_id]
     session_id = req.session_id or str(uuid.uuid4())
+    await authorize_session(session_id, user, create=True)
 
     result = await agent.execute(req.task, {"history": []})
     if result.get("success"):
@@ -2538,15 +2683,20 @@ async def ruh_generate(
 
     try:
         # Prefer RunPod remote when configured (avoids CPU freeze on VPS)
-        if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("RUNPOD_API_KEY"):
+        remote = bool(
+            os.getenv("RUNPOD_ENDPOINT_ID")
+            and (os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_API_TOKEN"))
+        )
+        if remote:
             provider = create_provider(provider="ruh", model="ruh-remote")
         else:
             provider = create_provider(provider="ruh")
         if not provider:
             raise HTTPException(503, "Rūḥ Model provider not available")
 
-        response = provider.create(
-            model="ruh-local",
+        response = await asyncio.to_thread(
+            provider.create,
+            model="ruh-remote" if remote else "ruh-local",
             max_tokens=req.max_tokens,
             system="",
             messages=[{"role": "user", "content": req.prompt}],
@@ -2625,7 +2775,7 @@ def _build_tokenizer_pipeline_trace(text: str, tokenizer: Any) -> list[dict[str,
     # Step 2: Morphological analysis
     morph_results = []
     for info in lang_detections:
-        word = info["word"]
+        word = str(info["word"])
         if info["is_stopword"]:
             morph_results.append(
                 {"word": word, "type": "stopword", "root": "", "pattern": "STOPWORD"}
@@ -2684,7 +2834,7 @@ def _build_tokenizer_pipeline_trace(text: str, tokenizer: Any) -> list[dict[str,
     # Step 4: Q28 articulatory features (sample for first few words)
     q28_results = []
     for info in lang_detections[:5]:  # Limit to first 5 words
-        word = info["word"]
+        word = str(info["word"])
         if info["is_stopword"]:
             continue
         try:
@@ -3251,7 +3401,7 @@ async def list_events():
 
 
 @app.get("/api/events/history")
-async def event_history(event_name: str = None, limit: int = 50):
+async def event_history(event_name: str | None = None, limit: int = 50):
     """Get recent event history."""
     limit = min(limit, 200)
     return {"history": event_bus.get_history(event_name, limit)}
@@ -3314,42 +3464,16 @@ async def extensibility_status():
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | None = None):
-    # Accept WebSocket connection
-    await websocket.accept()
-
-    # Authenticate via token (optional but recommended)
-    user = None
-    if token:
-        try:
-            user = auth.verify_token(token)
-            if user and user.is_expired:
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "message": "Token expired. Please reconnect with a valid token.",
-                    }
-                )
-                await websocket.close()
-                return
-        except Exception:
-            # Token validation failed - log warning but allow connection
-            wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
-
-    # Connect to WebSocket manager
-    manager.connections[client_id] = websocket
-    connected = True
-    if len(manager.connections) > manager.max_connections:
-        manager.disconnect(client_id)
-        connected = False
-    if not connected:
-        await websocket.send_json(
-            {
-                "type": "error",
-                "message": "Connection limit reached",
-            }
-        )
-        await websocket.close()
+    user = auth.verify_token(token) if token else None
+    if not user:
+        await websocket.close(code=4401, reason="Authentication required")
         return
+    bind_principal(user)
+    # The path label is only a client hint; never use it as a routing key.
+    client_id = str(uuid.uuid4())
+    if not await manager.connect(client_id, websocket):
+        return
+    manager.owners[client_id] = user.user_id
 
     wali.audit.log(
         "ws_connected",
@@ -3397,6 +3521,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
             elif msg_type == "chat":
                 session_id = data.get("session_id", client_id)
+                try:
+                    await authorize_session(session_id, user, create=True)
+                except HTTPException:
+                    await manager.send(client_id, {"type": "error", "message": "Session not found"})
+                    continue
                 content = data.get("content", "")
                 agent_id = data.get("agent_id")
 
@@ -3418,6 +3547,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 elif active_agents:
                     agent_for_cmd = list(active_agents.values())[0]
 
+                if agent_for_cmd:
+                    agent_for_cmd = await chat_agent_for(user, agent_for_cmd)
                 cmd_result = await handle_command(
                     content,
                     agent=agent_for_cmd,
@@ -3444,6 +3575,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     agent = list(active_agents.values())[0]
 
                 if agent:
+                    agent = await chat_agent_for(user, agent)
                     session = active_sessions.get(session_id, {"history": []})
                     active_sessions[session_id] = session
 
@@ -3533,7 +3665,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     if isinstance(final, dict):
                         final = final.get("response", str(final))
 
-                    await memory.save_message(session_id, "assistant", str(final), agent.id)
+                    await memory.save_message(
+                        session_id,
+                        "assistant",
+                        str(final),
+                        agent.id,
+                        metadata={"usage": result.get("usage", {})},
+                    )
                     session["history"].append({"role": "assistant", "content": str(final)})
 
                     # Extract cognitive metadata from QALB-7 pipeline
@@ -3580,6 +3718,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         {
                             "type": "chat_complete",
                             "response": str(final),
+                            "usage": result.get("usage", {}),
                             "content": str(final),
                             "agent": agent.name,
                             "session_id": session_id,
@@ -3634,6 +3773,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 import base64 as b64
 
                 session_id = data.get("session_id", client_id)
+                try:
+                    await authorize_session(session_id, user, create=True)
+                except HTTPException:
+                    await manager.send(client_id, {"type": "error", "message": "Session not found"})
+                    continue
                 text = data.get("content", "")
                 image_b64 = data.get("image_base64")
                 audio_b64 = data.get("audio_base64")
@@ -3689,6 +3833,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     )
                 elif cmd == "/new" or cmd == "new":
                     session_id = data.get("session_id", client_id)
+                    try:
+                        await authorize_session(session_id, user, create=True)
+                    except HTTPException:
+                        await manager.send(
+                            client_id, {"type": "error", "message": "Session not found"}
+                        )
+                        continue
                     active_sessions[session_id] = {"history": []}
                     await manager.send(
                         client_id,
@@ -3732,3 +3883,32 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+
+# Imported after shared dependencies to keep deferred auth imports cycle safe.
+from api import (  # noqa: E402
+    artifacts,
+    modes,
+    ruh_dialect,
+    ruh_disambiguate,
+    ruh_embeddings,
+    ruh_morphology,
+    ruh_reader,
+    ruh_screening,
+    ruh_tajwid,
+    sandbox,
+)
+
+for feature in (
+    artifacts,
+    modes,
+    sandbox,
+    ruh_reader,
+    ruh_dialect,
+    ruh_embeddings,
+    ruh_disambiguate,
+    ruh_morphology,
+    ruh_screening,
+    ruh_tajwid,
+):
+    app.include_router(feature.router)

@@ -31,7 +31,7 @@ class SecretVault:
     Falls back to plaintext if cryptography is not available.
     """
 
-    def __init__(self, vault_path: str = None, key_path: str = None):
+    def __init__(self, vault_path: str | None = None, key_path: str | None = None):
         self.vault_path = vault_path or os.path.join(
             os.path.dirname(os.path.dirname(__file__)), ".vault.json"
         )
@@ -125,7 +125,7 @@ class SecretVault:
         """Check if a secret exists."""
         return name in self._secrets
 
-    def get_or_env(self, name: str, env_var: str = None) -> str | None:
+    def get_or_env(self, name: str, env_var: str | None = None) -> str | None:
         """
         Get secret from vault, falling back to environment variable.
         This is the recommended way to retrieve API keys.

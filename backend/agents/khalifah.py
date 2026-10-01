@@ -24,7 +24,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from typing import Any
+from typing import Any, cast
 
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStep, ThinkingStream
 from learner.ruh_learner import RuhLearner
@@ -215,7 +215,7 @@ class KhalifahAgent:
             agent_id=client_id,
         )
         logger.info("Enqueued task %s for client %s", task_id, client_id)
-        return task_id
+        return cast(str, task_id)
 
     async def get_active_tasks(self, client_id: str) -> list[dict[str, Any]]:
         """Return pending and running tasks for a given client."""

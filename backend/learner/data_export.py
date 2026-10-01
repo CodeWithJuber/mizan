@@ -31,7 +31,7 @@ class DataExporter:
             async with db.execute(_EXPORT_SQL, (min_quality,)) as cursor:
                 with open(output_path, "w", encoding="utf-8") as file_handle:
                     async for row in cursor:
-                        entry = self._build_entry(row)
+                        entry = self._build_entry(tuple(row))
                         file_handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
                         count += 1
         return count

@@ -14,23 +14,15 @@ Like MolBook/Jupyter but with:
 - Multi-format cells: code, markdown, data, visualization
 """
 
-import importlib.util as _ilu
 import json
 import logging
 import os
-import subprocess
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
-# Direct file import to avoid triggering security/__init__.py which
-# pulls in heavy dependencies (jwt, cryptography) not needed here.
-_val_path = os.path.join(os.path.dirname(__file__), "..", "..", "security", "validation.py")
-_spec = _ilu.spec_from_file_location("security.validation", os.path.abspath(_val_path))
-_val_mod = _ilu.module_from_spec(_spec)
-_spec.loader.exec_module(_val_mod)
-validate_command_safe = _val_mod.validate_command_safe
-del _ilu, _val_path, _spec, _val_mod
+from security.auth import current_user_id, request_has_role
 
 from ..base import SkillBase, SkillManifest  # noqa: E402
 
@@ -152,100 +144,33 @@ class SandboxedExecutor:
         return True, "Valid"
 
     async def execute_python(self, code: str, cell_id: str) -> dict:
-        """Execute Python in sandboxed subprocess"""
-        safe, reason = self.validate_code(code)
-        if not safe:
-            return {"output_type": "error", "text": f"Security: {reason}", "execution_time": 0}
+        """Execute only inside the shared fail-closed isolation service."""
+        from fastapi import HTTPException
 
-        script_path = os.path.join(NOTEBOOKS_DIR, f"cell_{cell_id}.py")
+        from api.sandbox import execute_code
 
-        # Wrap code to capture stdout/stderr
-        indented = "\n".join("    " + line for line in code.split("\n"))
-        wrapped = f"""import sys, json, io
-_out, _err = io.StringIO(), io.StringIO()
-sys.stdout, sys.stderr = _out, _err
-try:
-{indented}
-except Exception as e:
-    print(f"Error: {{type(e).__name__}}: {{e}}", file=_err)
-finally:
-    sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
-    print(json.dumps({{"stdout": _out.getvalue()[:{MAX_CELL_OUTPUT}], "stderr": _err.getvalue()[:{MAX_CELL_OUTPUT}]}}))
-"""
+        if not request_has_role("admin") or not current_user_id():
+            return {"output_type": "error", "text": "Administrator authentication required"}
         try:
-            with open(script_path, "w") as f:
-                f.write(wrapped)
-
-            start = datetime.now(UTC)
-            proc = subprocess.run(
-                ["python3", script_path],
-                capture_output=True,
-                text=True,
-                timeout=MAX_CODE_EXECUTION_TIME,
-                cwd=NOTEBOOKS_DIR,
-                env={
-                    "PATH": "/usr/bin:/usr/local/bin",
-                    "HOME": NOTEBOOKS_DIR,
-                    "PYTHONDONTWRITEBYTECODE": "1",
-                },
-            )
-            elapsed = (datetime.now(UTC) - start).total_seconds()
-
-            try:
-                lines = proc.stdout.strip().split("\n")
-                data = json.loads(lines[-1])
-                return {
-                    "output_type": "execute_result",
-                    "stdout": data.get("stdout", ""),
-                    "stderr": data.get("stderr", "") or proc.stderr[:MAX_CELL_OUTPUT],
-                    "execution_time": elapsed,
-                }
-            except (json.JSONDecodeError, IndexError):
-                return {
-                    "output_type": "execute_result",
-                    "stdout": proc.stdout[:MAX_CELL_OUTPUT],
-                    "stderr": proc.stderr[:MAX_CELL_OUTPUT],
-                    "execution_time": elapsed,
-                }
-        except subprocess.TimeoutExpired:
-            return {
-                "output_type": "error",
-                "text": f"Timeout ({MAX_CODE_EXECUTION_TIME}s)",
-                "execution_time": MAX_CODE_EXECUTION_TIME,
-            }
-        except Exception as e:
-            return {"output_type": "error", "text": str(e), "execution_time": 0}
-        finally:
-            try:
-                os.remove(script_path)
-            except OSError:
-                pass
-
-    async def execute_shell(self, command: str) -> dict:
-        """Execute shell command with restrictions"""
-        # Use the comprehensive validation from security.validation
-        is_safe, reason = validate_command_safe(command)
-        if not is_safe:
-            return {"output_type": "error", "text": f"Command blocked: {reason}"}
-
-        try:
-            proc = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=MAX_CODE_EXECUTION_TIME,
-                cwd=NOTEBOOKS_DIR,
+            result = await execute_code(
+                "python", code, MAX_CODE_EXECUTION_TIME, user_id=current_user_id()
             )
             return {
-                "output_type": "execute_result",
-                "stdout": proc.stdout[:MAX_CELL_OUTPUT],
-                "stderr": proc.stderr[:MAX_CELL_OUTPUT],
+                "output_type": "error" if result.exit_code else "execute_result",
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "execution_time": result.duration_ms / 1000,
+                "timed_out": result.timed_out,
+                "sandbox": result.sandbox,
             }
-        except subprocess.TimeoutExpired:
-            return {"output_type": "error", "text": "Command timed out"}
-        except Exception as e:
-            return {"output_type": "error", "text": f"Execution failed: {str(e)}"}
+        except HTTPException as exc:
+            return {"output_type": "error", "text": exc.detail}
+
+    async def execute_shell(self, code: str) -> dict:
+        return {
+            "output_type": "error",
+            "text": "Shell notebook execution is unsupported; use Python in an isolated sandbox",
+        }
 
 
 class KitabNotebookSkill(SkillBase):
@@ -267,7 +192,7 @@ class KitabNotebookSkill(SkillBase):
         tags=["كتاب", "Notebook"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.notebooks: dict[str, KitabNotebook] = {}
         self.executor = SandboxedExecutor()
@@ -283,21 +208,24 @@ class KitabNotebookSkill(SkillBase):
             "notebook_export": self.export_notebook,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"notebook_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}"}
 
     async def create_notebook(self, params: dict) -> dict:
         """Create a new notebook — Bismillah"""
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
         nb = KitabNotebook(
             title=params.get("title", "Untitled Kitab"),
             description=params.get("description", ""),
             language=params.get("language", "python"),
             tags=params.get("tags", []),
-            owner=params.get("user_id"),
+            owner=principal,
         )
         # Bismillah intro cell
         nb.cells.append(
@@ -312,7 +240,13 @@ class KitabNotebookSkill(SkillBase):
 
     async def add_cell(self, params: dict) -> dict:
         """Add cell to notebook"""
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         if not nb:
             return {"error": "Notebook not found"}
         if len(nb.cells) >= MAX_NOTEBOOK_CELLS:
@@ -332,7 +266,13 @@ class KitabNotebookSkill(SkillBase):
 
     async def update_cell(self, params: dict) -> dict:
         """Update cell source code"""
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         if not nb:
             return {"error": "Notebook not found"}
         cell = next((c for c in nb.cells if c.id == params.get("cell_id")), None)
@@ -345,7 +285,13 @@ class KitabNotebookSkill(SkillBase):
 
     async def execute_cell(self, params: dict) -> dict:
         """Execute cell — Amal (action): 'Say: Work! Allah will see your work' — 9:105"""
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         if not nb:
             return {"error": "Notebook not found"}
         cell = next((c for c in nb.cells if c.id == params.get("cell_id")), None)
@@ -382,7 +328,13 @@ class KitabNotebookSkill(SkillBase):
 
     async def execute_all(self, params: dict) -> dict:
         """Execute all code cells sequentially"""
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         if not nb:
             return {"error": "Notebook not found"}
         results = []
@@ -392,15 +344,34 @@ class KitabNotebookSkill(SkillBase):
                 results.append(r)
         return {"notebook_id": nb.id, "executed": len(results), "results": results}
 
-    async def list_notebooks(self, params: dict = None) -> dict:
-        return {"notebooks": [nb.to_summary() for nb in self.notebooks.values()]}
+    async def list_notebooks(self, params: dict | None = None) -> dict:
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        return {
+            "notebooks": [
+                nb.to_summary() for nb in self.notebooks.values() if nb.owner == principal
+            ]
+        }
 
     async def get_notebook(self, params: dict) -> dict:
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         return nb.to_dict() if nb else {"error": "Notebook not found"}
 
     async def delete_notebook(self, params: dict) -> dict:
-        nb_id = params.get("notebook_id")
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb_id = params.get("notebook_id", "")
         if nb_id in self.notebooks:
             del self.notebooks[nb_id]
             return {"deleted": nb_id}
@@ -408,12 +379,18 @@ class KitabNotebookSkill(SkillBase):
 
     async def export_notebook(self, params: dict) -> dict:
         """Export — write into Lawh Al-Mahfuz (Preserved Tablet)"""
-        nb = self.notebooks.get(params.get("notebook_id"))
+        principal = current_user_id()
+        if not principal or not request_has_role("admin"):
+            return {"error": "Administrator authentication required"}
+        notebook = self.notebooks.get((params or {}).get("notebook_id", ""))
+        if notebook is None or notebook.owner != principal:
+            return {"error": "Notebook not found"}
+        nb = self.notebooks.get(params.get("notebook_id", ""))
         if not nb:
             return {"error": "Not found"}
         fmt = params.get("format", "json")
         os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
-        safe_title = nb.title.replace(" ", "_").replace("/", "_")[:50]
+        safe_title = nb.id
 
         if fmt == "json":
             path = os.path.join(NOTEBOOKS_DIR, f"{safe_title}.kitab.json")

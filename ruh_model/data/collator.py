@@ -23,9 +23,9 @@ class RuhCollator:
     def __init__(self, pad_id: int = 0) -> None:
         self.pad_id = pad_id
 
-    def __call__(
-        self, batch: list[dict[str, list[int]]]
-    ) -> dict[str, Tensor]:
+    def __call__(self, batch: list[dict[str, list[int]]]) -> dict[str, Tensor]:
+        if not batch:
+            raise ValueError("Cannot collate an empty batch")
         max_len = max(len(s["root_ids"]) for s in batch)
 
         root_ids = torch.full((len(batch), max_len), self.pad_id, dtype=torch.long)
@@ -40,10 +40,28 @@ class RuhCollator:
         labels = torch.full((len(batch), max_len), self.pad_id, dtype=torch.long)
         labels[:, :-1] = root_ids[:, 1:]
         # Positions that were padding in the input stay ignored.
-        labels[root_ids == self.pad_id] = self.pad_id
+        # Only true sequence padding is ignored, not rootless legacy stopwords.
+        for i, sample in enumerate(batch):
+            labels[i, max(0, len(sample["root_ids"]) - 1) :] = self.pad_id
 
-        return {
+        result = {
             "root_ids": root_ids,
             "pattern_ids": pattern_ids,
             "labels": labels,
         }
+        if any("paraphrase_root_ids" in sample for sample in batch):
+            paired = self(
+                [
+                    {
+                        "root_ids": s.get("paraphrase_root_ids", s["root_ids"]),
+                        "pattern_ids": s.get("paraphrase_pattern_ids", s["pattern_ids"]),
+                    }
+                    for s in batch
+                ]
+            )
+            result["paraphrase_root_ids"] = paired["root_ids"]
+            result["paraphrase_pattern_ids"] = paired["pattern_ids"]
+            result["paraphrase_mask"] = torch.tensor(
+                ["paraphrase_root_ids" in s for s in batch], dtype=torch.bool
+            )
+        return result

@@ -105,7 +105,7 @@ class ShukrSystem:
     def get_strengths(self, agent_id: str, min_success: int = 3) -> list[dict]:
         """Get agent's identified strengths, sorted by success rate."""
         records = self._strengths.get(agent_id, {})
-        strengths = [
+        strengths: list[dict] = [
             {
                 "pattern": r.pattern,
                 "category": r.category,
@@ -133,7 +133,7 @@ class ShukrSystem:
     def get_best_agent_for(self, agent_ids: list[str], category: str) -> str | None:
         """Find the agent with highest success rate in a category."""
         best_agent = None
-        best_rate = -1
+        best_rate = -1.0
 
         for aid in agent_ids:
             records = self._strengths.get(aid, {})
@@ -148,13 +148,13 @@ class ShukrSystem:
 
         return best_agent
 
-    def get_gratitude_milestones(self, agent_id: str = None) -> list[dict]:
+    def get_gratitude_milestones(self, agent_id: str | None = None) -> list[dict]:
         """Get gratitude milestones (celebration moments)."""
         if agent_id:
             return [g for g in self._gratitude_log if g["agent_id"] == agent_id]
         return list(self._gratitude_log)
 
-    def stats(self, agent_id: str = None) -> dict:
+    def stats(self, agent_id: str | None = None) -> dict:
         if agent_id:
             records = self._strengths.get(agent_id, {})
             return {

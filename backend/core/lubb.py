@@ -73,7 +73,7 @@ class MetaReport:
 
 
 # Bias detection patterns (keyword-based heuristics)
-_BIAS_PATTERNS = [
+_BIAS_PATTERNS: list[dict] = [
     {
         "type": "confirmation_bias",
         "signals": [
@@ -311,7 +311,7 @@ class LubbEngine:
         self,
         task: str,
         result: str,
-        steps: list = None,
+        steps: list | None = None,
     ) -> MetaReport:
         """
         Full metacognitive evaluation of a completed reasoning trace.

@@ -50,15 +50,28 @@ class RuhModel(nn.Module):
         # First block uses dual (Sam' + Basar) attention, rest use Qalb.
         # Blocks at MoE intervals get ShuraMoE instead of standard FFN.
         moe_on = config.moe_interval > 0
-        self.blocks = nn.ModuleList([
-            RuhBlock(
-                config,
-                use_dual=(i == 0),
-                use_moe=(moe_on and i > 0 and i % config.moe_interval == 0),
-            )
-            for i in range(config.n_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                RuhBlock(
+                    config,
+                    use_dual=(i == 0),
+                    use_moe=(moe_on and i > 0 and i % config.moe_interval == 0),
+                )
+                for i in range(config.n_layers)
+            ]
+        )
 
+        self.lubb_head = (
+            nn.Sequential(
+                nn.Linear(config.d_model, config.d_model // 4),
+                nn.GELU(),
+                nn.Linear(config.d_model // 4, 1),
+                nn.Sigmoid(),
+            )
+            if config.use_lubb
+            else None
+        )
+        self.tokenizer = None
         self.final_norm = RMSNorm(config.d_model)
         self.loss_fn = MizanLoss(
             pad_id=config.PAD_ROOT,
@@ -100,13 +113,21 @@ class RuhModel(nn.Module):
         hidden = self.final_norm(hidden)
 
         logits = self._compute_logits(hidden)
-        result: dict[str, Any] = {"logits": logits}
+        result: dict[str, Any] = {"logits": logits, "hidden_states": hidden}
+        from ruh_model.layers.shura_moe import ShuraMoE
+
+        auxiliary = [module.aux_loss for module in self.modules() if isinstance(module, ShuraMoE)]
+        result["moe_aux_loss"] = sum(auxiliary, logits.sum() * 0.0)
+        if self.lubb_head is not None and confidence is None:
+            # Mask actual padding; legacy rootless stopwords are real positions.
+            mask = ((root_ids != self.config.PAD_ROOT) | (pattern_ids != 0)).unsqueeze(-1)
+            pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+            confidence = self.lubb_head(pooled).squeeze(-1)
+        result["confidence"] = confidence
 
         if labels is not None:
-            loss_output = self.loss_fn(
-                logits, labels, confidence, paraphrase_logits
-            )
-            result["loss"] = loss_output.total
+            loss_output = self.loss_fn(logits, labels, confidence, paraphrase_logits)
+            result["loss"] = loss_output.total + self.config.moe_aux_weight * result["moe_aux_loss"]
             result["loss_breakdown"] = loss_output
 
         return result
@@ -131,6 +152,7 @@ class RuhModel(nn.Module):
         max_new_tokens: int = 128,
         temperature: float = 1.0,
         default_pattern_id: int = 1,
+        valid_n_roots: int | None = None,
     ) -> Tensor:
         """Autoregressive generation of root ID sequences.
 
@@ -143,16 +165,30 @@ class RuhModel(nn.Module):
             max_new_tokens: Maximum number of tokens to generate.
             temperature: Sampling temperature. Lower = more deterministic.
             default_pattern_id: Pattern ID to assign to generated tokens.
+            valid_n_roots: If set, restrict sampling to IDs < valid_n_roots.
 
         Returns:
             Tensor of shape (B, S + max_new_tokens) with generated root IDs.
         """
+        if valid_n_roots is None:
+            from ruh_model.tokenizer.bayan import BayanTokenizer
+
+            tokenizer = self.tokenizer or BayanTokenizer(version=self.config.tokenizer_version)
+            valid_n_roots = min(tokenizer._vocab.n_roots, self.config.n_roots)
+        if root_ids.shape[1] == 0:
+            raise ValueError("Generation prompt cannot be empty")
+        # Position embeddings and causal masks are bounded by the configured context.
+        root_ids = root_ids[:, -self.config.max_seq_len :]
+        pattern_ids = pattern_ids[:, -self.config.max_seq_len :]
         generated = root_ids.clone()
         patterns = pattern_ids.clone()
 
         for _ in range(max_new_tokens):
             next_token = self._sample_next_token(
-                generated, patterns, temperature
+                generated[:, -self.config.max_seq_len :],
+                patterns[:, -self.config.max_seq_len :],
+                temperature,
+                valid_n_roots,
             )
             generated = torch.cat([generated, next_token], dim=1)
 
@@ -171,6 +207,7 @@ class RuhModel(nn.Module):
         root_ids: Tensor,
         pattern_ids: Tensor,
         temperature: float,
+        valid_n_roots: int | None = None,
     ) -> Tensor:
         """Sample a single next token from model output.
 
@@ -178,13 +215,31 @@ class RuhModel(nn.Module):
             root_ids: Current sequence (B, S).
             pattern_ids: Current patterns (B, S).
             temperature: Sampling temperature.
+            valid_n_roots: If set, mask logits for IDs >= valid_n_roots
+                (model was trained with larger embedding than vocab).
 
         Returns:
             Sampled token IDs of shape (B, 1).
         """
-        result = self.forward(root_ids, pattern_ids)
-        logits = result["logits"][:, -1, :]
+        if valid_n_roots is None:
+            from ruh_model.tokenizer.bayan import BayanTokenizer
 
+            valid_n_roots = min(
+                (
+                    self.tokenizer or BayanTokenizer(version=self.config.tokenizer_version)
+                )._vocab.n_roots,
+                self.config.n_roots,
+            )
+        result = self.forward(root_ids, pattern_ids)
+        logits = result["logits"][:, -1, :].clone()
+
+        # Mask invalid root IDs (beyond actual vocab size)
+        if valid_n_roots is not None and valid_n_roots < logits.shape[-1]:
+            logits = logits.clone()
+            logits[..., valid_n_roots:] = float("-inf")
+
+        logits[:, self.config.PAD_ROOT] = float("-inf")
+        logits[:, self.config.BOS_ROOT] = float("-inf")
         if temperature <= 0:
             return logits.argmax(dim=-1, keepdim=True)
 
@@ -213,14 +268,19 @@ class RuhModel(nn.Module):
         save_dir.mkdir(parents=True, exist_ok=True)
 
         config_data = {
-            field: getattr(self.config, field)
-            for field in self.config.__dataclass_fields__
+            field: getattr(self.config, field) for field in self.config.__dataclass_fields__
         }
         config_path = save_dir / "config.json"
         config_path.write_text(json.dumps(config_data, indent=2))
 
         model_path = save_dir / "model.pt"
         torch.save(self.state_dict(), model_path)
+        from ruh_model.tokenizer.bayan import BayanTokenizer
+
+        tokenizer = self.tokenizer or BayanTokenizer(version=self.config.tokenizer_version)
+        if tokenizer._vocab.n_roots > self.config.n_roots:
+            raise ValueError("Tokenizer vocabulary exceeds model output classes")
+        tokenizer.save_pretrained(path)
 
     @classmethod
     def from_pretrained(cls, path: str) -> RuhModel:
@@ -246,6 +306,14 @@ class RuhModel(nn.Module):
 
         config_data = json.loads(config_path.read_text())
         config = RuhConfig(**config_data)
+        from ruh_model.tokenizer.bayan import BayanTokenizer
+
+        tokenizer = BayanTokenizer.from_pretrained(path, legacy_version=config.tokenizer_version)
+        if (
+            tokenizer.version != config.tokenizer_version
+            or tokenizer._vocab.n_roots > config.n_roots
+        ):
+            raise ValueError("Checkpoint tokenizer/config mismatch")
 
         model = cls(config)
 
@@ -255,5 +323,6 @@ class RuhModel(nn.Module):
 
         state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
         model.load_state_dict(state_dict)
+        model.tokenizer = tokenizer
 
         return model
