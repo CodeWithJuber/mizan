@@ -1302,7 +1302,6 @@ async def stream_chat(
                 ledger.update(user.user_id, request_id, terminal_status)
                 thinking_stream.complete(message_id)
             finally:
-                _stream_sessions.discard(stream_key)
                 if workspace_context and workspace_binding is not None:
                     workspace_context.reset_workspace(workspace_binding)
                 reset_principal(binding)
@@ -1327,10 +1326,10 @@ async def stream_chat(
                 await asyncio.shield(producer)
             except asyncio.CancelledError:
                 pass
-            _stream_sessions.discard(stream_key)
 
     return ChatStreamingResponse(
         event_frames(),
+        release_stream=lambda: _stream_sessions.discard(stream_key),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-store",
@@ -4234,6 +4233,7 @@ if __name__ == "__main__":
 # Imported after shared dependencies to keep deferred auth imports cycle safe.
 from api import (  # noqa: E402
     artifacts,
+    coding_workspace,
     modes,
     ruh_dialect,
     ruh_disambiguate,
@@ -4245,7 +4245,7 @@ from api import (  # noqa: E402
     sandbox,
 )
 
-for feature in (artifacts, modes, sandbox):
+for feature in (artifacts, modes, sandbox, coding_workspace):
     app.include_router(feature.router)
 
 for feature in (

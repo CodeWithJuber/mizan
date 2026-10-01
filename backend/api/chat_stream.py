@@ -32,15 +32,35 @@ class StreamDeliveryError(Exception):
 
 
 class ChatStreamingResponse(StreamingResponse):
-    """Close the producer also when an ASGI 2.4 socket send raises OSError."""
+    """Bound transport writes and release capacity even before body iteration."""
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+    def __init__(
+        self, *args: Any, release_stream: Callable[[], None] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._release_stream = release_stream
+
+    async def close(self) -> None:
         try:
-            await super().__call__(scope, receive, send)
-        finally:
             close = getattr(self.body_iterator, "aclose", None)
             if close:
                 await close()
+        finally:
+            if self._release_stream is not None:
+                release, self._release_stream = self._release_stream, None
+                release()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        async def bounded_send(message: Any) -> None:
+            try:
+                await asyncio.wait_for(send(message), timeout=SEND_TIMEOUT_SECONDS)
+            except TimeoutError as exc:
+                raise OSError("Chat transport exceeded the delivery deadline") from exc
+
+        try:
+            await super().__call__(scope, receive, bounded_send)
+        finally:
+            await self.close()
 
 
 class ChatStreamLedger:

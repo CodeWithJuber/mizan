@@ -405,7 +405,7 @@ async def test_heartbeat_and_active_request_conflicts_do_not_start_more_calls(ap
                 assert concurrent.value.status_code == 409
                 break
     finally:
-        await response.body_iterator.aclose()
+        await response.close()
     assert saw_heartbeat
     assert agent.cancelled.is_set()
     assert len(agent.calls) == 1
@@ -470,3 +470,67 @@ async def test_provider_queue_is_bounded_and_stream_closes_on_cancel():
     while not closed.is_set() and time.monotonic() < deadline:
         await asyncio.sleep(0.01)
     assert closed.is_set()
+
+
+@pytest.mark.parametrize("spec_version", ["2.0", "2.4"])
+@pytest.mark.parametrize("blocked_type", ["http.response.start", "http.response.body"])
+async def test_actual_transport_deadline_always_releases_capacity(
+    monkeypatch, spec_version, blocked_type
+):
+    import api.chat_stream as streams
+
+    monkeypatch.setattr(streams, "SEND_TIMEOUT_SECONDS", 0.01)
+    held = {"request"}
+    released = []
+    iterator_closed = asyncio.Event()
+    send_started = asyncio.Event()
+
+    async def body():
+        try:
+            yield "data: {}\n\n"
+        finally:
+            iterator_closed.set()
+
+    def release():
+        held.discard("request")
+        released.append(True)
+
+    async def receive():
+        await asyncio.Event().wait()
+
+    async def send(event):
+        if event["type"] == blocked_type:
+            send_started.set()
+            await asyncio.Event().wait()
+
+    response = streams.ChatStreamingResponse(body(), release_stream=release)
+    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": spec_version}}
+    with pytest.raises((ClientDisconnect, OSError)):
+        await asyncio.wait_for(response(scope, receive, send), timeout=0.3)
+    assert send_started.is_set()
+    assert not held
+    assert released == [True]
+    if blocked_type == "http.response.body":
+        assert iterator_closed.is_set()
+    await response.close()
+    assert released == [True]
+
+
+async def test_completed_producer_keeps_capacity_while_transport_drains(api):
+    main, _, tokens, _, _, agent, _ = api
+    principal = main.auth.verify_token(tokens["alice"])
+    response = await main.stream_chat(main.StreamChatMessage(**message()), principal)
+    assert await anext(response.body_iterator)
+    # The bounded fake agent finishes while the HTTP reader still owns queued frames.
+    for _ in range(100):
+        if len(agent.calls) == 1 and not any(
+            t.get_name().startswith("chat-stream-") for t in asyncio.all_tasks()
+        ):
+            break
+        await asyncio.sleep(0)
+    assert main._stream_sessions
+    with pytest.raises(HTTPException) as concurrent:
+        await main.stream_chat(main.StreamChatMessage(**message()), principal)
+    assert concurrent.value.status_code == 409
+    await response.close()
+    assert not main._stream_sessions
