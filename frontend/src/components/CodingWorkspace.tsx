@@ -161,7 +161,7 @@ export function CodingWorkspace({
   const save = async () => {
     const data = await api<{ sha256: string }>(
       `${base}/file`,
-      json("PUT", { path, content, ...(sha ? { expected_sha256: sha } : {}) }),
+      json("PUT", { path, content, expected_sha256: sha ?? "" }),
     );
     setOriginal(content);
     setSha(data.sha256);
