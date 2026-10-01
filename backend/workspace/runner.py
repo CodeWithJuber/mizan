@@ -100,10 +100,12 @@ def execute(payload: dict) -> dict:
         "HTTPS_PROXY",
         "ALL_PROXY",
         "NO_PROXY",
+        "FTP_PROXY",
         "http_proxy",
         "https_proxy",
         "all_proxy",
         "no_proxy",
+        "ftp_proxy",
     ):
         command.extend(["--env", f"{variable}="])
     command.extend(["-i", image, "python3", "/runtime.py"])
@@ -116,58 +118,64 @@ def execute(payload: dict) -> dict:
         finally:
             pipe.close()
 
+    process = None
     try:
-        with subprocess.Popen(
+        process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=environment(),
-        ) as process:
-            readers = [
-                threading.Thread(target=drain, args=(pipe, target), daemon=True)
-                for pipe, target in zip((process.stdout, process.stderr), retained, strict=True)
-            ]
-            for reader in readers:
-                reader.start()
+        )
+        readers = [
+            threading.Thread(target=drain, args=(pipe, target), daemon=True)
+            for pipe, target in zip((process.stdout, process.stderr), retained, strict=True)
+        ]
+        for reader in readers:
+            reader.start()
 
-            # Request is bounded. The runtime consumes stdin before executing the user's command.
-            def write_request():
-                try:
-                    process.stdin.write(json.dumps(payload).encode())
-                except BrokenPipeError:
-                    pass
-                finally:
-                    process.stdin.close()
+        def write_request():
+            try:
+                process.stdin.write(json.dumps(payload).encode())
+            except BrokenPipeError:
+                pass
+            finally:
+                process.stdin.close()
 
-            writer = threading.Thread(target=write_request, daemon=True)
-            writer.start()
-            try:
-                exit_code = process.wait(timeout=payload["timeout_s"] + 20)
-            except subprocess.TimeoutExpired:
-                cleanup(name)
-                process.kill()
-                process.wait(timeout=5)
-                raise HTTPException(504, "Isolated execution exceeded its deadline") from None
-            for reader in readers:
-                reader.join(timeout=5)
-            writer.join(timeout=5)
-            if exit_code != 0 or len(retained[0]) > MAX_RESPONSE:
-                raise HTTPException(
-                    503, "Isolated runtime failed or produced an oversized response"
-                )
-            try:
-                return cast(dict, json.loads(retained[0]))
-            except ValueError:
-                raise HTTPException(503, "Isolated runtime produced an invalid response") from None
+        writer = threading.Thread(target=write_request, daemon=True)
+        writer.start()
+        try:
+            exit_code = process.wait(timeout=payload["timeout_s"] + 20)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "Isolated execution exceeded its deadline") from None
+        for reader in readers:
+            reader.join(timeout=5)
+        writer.join(timeout=5)
+        if exit_code != 0 or len(retained[0]) > MAX_RESPONSE:
+            raise HTTPException(503, "Isolated runtime failed or produced an oversized response")
+        try:
+            return cast(dict, json.loads(retained[0]))
+        except ValueError:
+            raise HTTPException(503, "Isolated runtime produced an invalid response") from None
     except (OSError, BrokenPipeError, subprocess.TimeoutExpired):
         raise HTTPException(503, "Isolated runtime unavailable") from None
     finally:
+        termination_failed = False
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                termination_failed = True
+        # CLI termination is independent of daemon cleanup: a broken daemon can
+        # never leave Popen.__exit__ waiting indefinitely or keep the API slot.
         try:
             cleanup(name)
         except (OSError, subprocess.TimeoutExpired):
-            # Report cleanup failure; do not pretend a leaked job was safely removed.
             raise HTTPException(503, "Isolated job cleanup could not be verified") from None
+        if termination_failed:
+            raise HTTPException(503, "Isolated Docker client termination failed")
 
 
 @app.get("/health", dependencies=[Depends(require_runner_token)])
