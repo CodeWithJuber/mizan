@@ -1,8 +1,8 @@
 """Full-scale real-data training CLI for the Ruh Model.
 
-Streams data from HuggingFace datasets (Quran, Hadith, Arabic Wikipedia,
-OPUS parallel corpus, Tashkeela morphology) and trains through all four
-Nafs curriculum stages.
+Uses the verified full Tanzil Quran text and pinned Arabic Wikipedia by default.
+Hadith and other corpora require explicit attributed/licensed source configuration.
+See docs/quranic_training_paths.md for split-aware Quranic candidate evaluation.
 
 Usage:
     # Quick: single stage with defaults
@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import sys
 import time
 from pathlib import Path
@@ -53,8 +52,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _DEFAULT_RATIOS: dict[str, float] = {
     "quran": 0.30,
-    "hadith": 0.20,
-    "arabic_wiki": 0.25,
+    "hadith": 0.0,
+    "arabic_wiki": 0.70,
     "opus": 0.0,
     "morphology": 0.0,
 }
@@ -496,10 +495,13 @@ Examples:
         "--quran-weight", type=float, default=0.30, help="Quran weight (default: 0.30)"
     )
     mix.add_argument(
-        "--hadith-weight", type=float, default=0.20, help="Hadith weight (default: 0.20)"
+        "--hadith-weight",
+        type=float,
+        default=0.0,
+        help="Explicit licensed/attributed Hadith source weight (default: 0; requires RUH_DATA_SOURCES)",
     )
     mix.add_argument(
-        "--wiki-weight", type=float, default=0.25, help="Arabic Wikipedia weight (default: 0.25)"
+        "--wiki-weight", type=float, default=0.70, help="Arabic Wikipedia weight (default: 0.70)"
     )
     mix.add_argument(
         "--opus-weight",
