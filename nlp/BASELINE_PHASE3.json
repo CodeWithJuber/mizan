@@ -1,0 +1,744 @@
+{
+ "kind": "BASELINE_PHASE3",
+ "artifact": {
+  "name": "mizan-sense-wsd",
+  "version": "1.0.0",
+  "variant": "a (surface+context; PRIMARY)",
+  "model_sha256": "019f0795a51d371ca91714c37b1bd8a861dff2ea2bf3f36433c99a777dcf9c26",
+  "sense_inventory_sha256": "8b29859651b6c23e0593a3839004386892f3a7e33143c2548f56b227a39c5b09",
+  "sklearn_version_manifest": "1.9.1",
+  "runtime_versions": {
+   "sklearn": "1.9.1",
+   "joblib": "1.6.0",
+   "numpy": "2.5.3"
+  },
+  "version_warnings": []
+ },
+ "protocol": {
+  "preregistration": "nlp/PREREGISTRATION_PHASE3.md (frozen 2026-09-29, Amendment A1 same day)",
+  "dataset": "Q-CSMP v2",
+  "dataset_md5": "35c1a6bf0cbaa58aa7d52d3683d68b5d",
+  "split": "per-lemma whole-surah holdout, base items only",
+  "n_train": 4691,
+  "n_dev": 451,
+  "n_test": 627,
+  "label_universe_original": 115,
+  "merges_applied": [
+   [
+    [
+     "أَجْر",
+     "payment"
+    ],
+    [
+     "أَجْر",
+     "reward"
+    ]
+   ],
+   [
+    [
+     "بَعْض",
+     "some"
+    ],
+    [
+     "بَعْض",
+     "other"
+    ]
+   ],
+   [
+    [
+     "ذُو",
+     "owner"
+    ],
+    [
+     "ذُو",
+     "possessor"
+    ]
+   ],
+   [
+    [
+     "صالِحَة",
+     "good deeds"
+    ],
+    [
+     "صالِحَة",
+     "righteous deeds"
+    ]
+   ],
+   [
+    [
+     "عِلْم",
+     "any knowledge"
+    ],
+    [
+     "عِلْم",
+     "knowledge"
+    ]
+   ],
+   [
+    [
+     "قَرْيَة",
+     "cities"
+    ],
+    [
+     "قَرْيَة",
+     "town"
+    ]
+   ],
+   [
+    [
+     "قَوْل",
+     "saying"
+    ],
+    [
+     "قَوْل",
+     "word"
+    ]
+   ],
+   [
+    [
+     "كِتاب",
+     "scripture"
+    ],
+    [
+     "كِتاب",
+     "book"
+    ]
+   ],
+   [
+    [
+     "مُبِين",
+     "manifest"
+    ],
+    [
+     "مُبِين",
+     "clear"
+    ]
+   ]
+  ],
+  "label_universe_effective": 106,
+  "scoring": "symmetric remap of gold + predictions into the merged ontology",
+  "primary_model": "model_a_surface_ctx",
+  "bootstrap": {
+   "seed": 137,
+   "resamples": 10000
+  },
+  "run_at": "2026-09-29T10:00:54.216057+00:00"
+ },
+ "metrics": {
+  "accuracy": 0.802233,
+  "accuracy_ci95": [
+   0.7703,
+   0.8325
+  ],
+  "macro_f1": 0.615794,
+  "macro_f1_ci95": [
+   0.5378,
+   0.6117
+  ],
+  "mean_sense_recall": 0.838221,
+  "ece": 0.077146,
+  "per_sense_recall": {
+   "آباء :: fathers": {
+    "recall": null,
+    "n_test": 0
+   },
+   "آباء :: forefathers": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "آخَر :: another": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "آخَر :: other": {
+    "recall": 0.333333,
+    "n_test": 3
+   },
+   "آخِر :: hereafter": {
+    "recall": 1.0,
+    "n_test": 10
+   },
+   "آخِر :: last": {
+    "recall": 1.0,
+    "n_test": 7
+   },
+   "آيَة :: sign": {
+    "recall": 0.857143,
+    "n_test": 21
+   },
+   "آيَة :: verse": {
+    "recall": 0.363636,
+    "n_test": 11
+   },
+   "أَجْر :: reward": {
+    "recall": 1.0,
+    "n_test": 11
+   },
+   "أَرْض :: earth": {
+    "recall": 1.0,
+    "n_test": 24
+   },
+   "أَرْض :: land": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أَكْثَر :: most": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أَكْثَر :: most of": {
+    "recall": 1.0,
+    "n_test": 9
+   },
+   "أَمْر :: affair-matter": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "أَمْر :: command": {
+    "recall": 0.666667,
+    "n_test": 12
+   },
+   "أَهْل :: family": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أَهْل :: people": {
+    "recall": 1.0,
+    "n_test": 12
+   },
+   "أَوَّل :: first": {
+    "recall": 1.0,
+    "n_test": 4
+   },
+   "أَوَّل :: former": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "أَيّ :: mankind": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أَيّ :: so which": {
+    "recall": 0.0,
+    "n_test": 31
+   },
+   "أَيّ :: you who believe": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أُمَّة :: community": {
+    "recall": 1.0,
+    "n_test": 4
+   },
+   "أُمَّة :: religious-way": {
+    "recall": null,
+    "n_test": 0
+   },
+   "أُمَّة :: time-period": {
+    "recall": null,
+    "n_test": 0
+   },
+   "بَعْض :: other": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "بَعْض :: part": {
+    "recall": 0.333333,
+    "n_test": 3
+   },
+   "بَعْض :: some of": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "بَعْض :: some of you": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "بَيِّنَة :: clear": {
+    "recall": 0.5,
+    "n_test": 2
+   },
+   "بَيِّنَة :: clear proof": {
+    "recall": 1.0,
+    "n_test": 6
+   },
+   "بُنَىّ :: children": {
+    "recall": 0.5,
+    "n_test": 6
+   },
+   "بُنَىّ :: children of israel": {
+    "recall": null,
+    "n_test": 0
+   },
+   "بُنَىّ :: sons": {
+    "recall": 1.0,
+    "n_test": 3
+   },
+   "حَقّ :: right-due": {
+    "recall": 0.25,
+    "n_test": 4
+   },
+   "حَقّ :: truth": {
+    "recall": 1.0,
+    "n_test": 15
+   },
+   "خالِد :: abide forever": {
+    "recall": 0.833333,
+    "n_test": 6
+   },
+   "خالِد :: abiding forever": {
+    "recall": null,
+    "n_test": 0
+   },
+   "خالِد :: will abide forever": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "خَيْر :: any good": {
+    "recall": null,
+    "n_test": 0
+   },
+   "خَيْر :: best": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "خَيْر :: better": {
+    "recall": 0.636364,
+    "n_test": 11
+   },
+   "خَيْر :: good": {
+    "recall": 0.769231,
+    "n_test": 13
+   },
+   "دِين :: judgment-day": {
+    "recall": null,
+    "n_test": 0
+   },
+   "دِين :: religion": {
+    "recall": 1.0,
+    "n_test": 7
+   },
+   "ذُو :: possessor": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "ذُو :: what": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "ذِكْر :: remembrance": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "ذِكْر :: revealed-reminder": {
+    "recall": 1.0,
+    "n_test": 6
+   },
+   "زَوْج :: kind": {
+    "recall": null,
+    "n_test": 0
+   },
+   "زَوْج :: mate": {
+    "recall": null,
+    "n_test": 0
+   },
+   "زَوْج :: pair": {
+    "recall": null,
+    "n_test": 0
+   },
+   "زَوْج :: spouse": {
+    "recall": null,
+    "n_test": 0
+   },
+   "زَوْج :: wives": {
+    "recall": 0.333333,
+    "n_test": 9
+   },
+   "سَيِّئَة :: evil": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "سَيِّئَة :: evil deed": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "شَهِيد :: witness": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "شَهِيد :: witnesses": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "شَىْء :: anything": {
+    "recall": 0.5,
+    "n_test": 10
+   },
+   "شَىْء :: thing": {
+    "recall": 1.0,
+    "n_test": 12
+   },
+   "صالِحَة :: righteous deeds": {
+    "recall": 1.0,
+    "n_test": 4
+   },
+   "عَبْد :: servant": {
+    "recall": null,
+    "n_test": 0
+   },
+   "عَبْد :: slave": {
+    "recall": 0.6,
+    "n_test": 10
+   },
+   "عَدُوّ :: enemies": {
+    "recall": null,
+    "n_test": 0
+   },
+   "عَدُوّ :: enemy": {
+    "recall": 1.0,
+    "n_test": 6
+   },
+   "عَلِيم :: all knower": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "عَلِيم :: all knowing": {
+    "recall": 0.6,
+    "n_test": 15
+   },
+   "عَيْن :: eyes": {
+    "recall": 1.0,
+    "n_test": 3
+   },
+   "عَيْن :: spring": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "عِلْم :: knowledge": {
+    "recall": 1.0,
+    "n_test": 8
+   },
+   "فَضْل :: bounty": {
+    "recall": 0.875,
+    "n_test": 8
+   },
+   "فَضْل :: grace": {
+    "recall": 0.5,
+    "n_test": 2
+   },
+   "قَرْيَة :: town": {
+    "recall": 1.0,
+    "n_test": 6
+   },
+   "قَوْل :: speech": {
+    "recall": null,
+    "n_test": 0
+   },
+   "قَوْل :: word": {
+    "recall": 0.888889,
+    "n_test": 9
+   },
+   "كَثِير :: many": {
+    "recall": 1.0,
+    "n_test": 9
+   },
+   "كَثِير :: much": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "كِتاب :: book": {
+    "recall": 1.0,
+    "n_test": 32
+   },
+   "كِتاب :: record": {
+    "recall": null,
+    "n_test": 0
+   },
+   "مَثَل :: example": {
+    "recall": 1.0,
+    "n_test": 6
+   },
+   "مَثَل :: similitude": {
+    "recall": null,
+    "n_test": 0
+   },
+   "مُؤْمِن :: believer": {
+    "recall": 1.0,
+    "n_test": 18
+   },
+   "مُؤْمِن :: believing men": {
+    "recall": null,
+    "n_test": 0
+   },
+   "مُبِين :: clear": {
+    "recall": 1.0,
+    "n_test": 7
+   },
+   "مِثْل :: like": {
+    "recall": 1.0,
+    "n_test": 5
+   },
+   "مِثْل :: like of": {
+    "recall": null,
+    "n_test": 0
+   },
+   "ناس :: mankind": {
+    "recall": 0.769231,
+    "n_test": 13
+   },
+   "ناس :: people": {
+    "recall": 0.56,
+    "n_test": 25
+   },
+   "نَذِير :: warner": {
+    "recall": null,
+    "n_test": 0
+   },
+   "نَذِير :: warning": {
+    "recall": 0.0,
+    "n_test": 11
+   },
+   "نَفْس :: life": {
+    "recall": 1.0,
+    "n_test": 1
+   },
+   "نَفْس :: self": {
+    "recall": 0.958333,
+    "n_test": 24
+   },
+   "نَفْس :: soul": {
+    "recall": 0.875,
+    "n_test": 8
+   },
+   "نِساء :: wives": {
+    "recall": 0.0,
+    "n_test": 1
+   },
+   "نِساء :: women": {
+    "recall": 1.0,
+    "n_test": 18
+   },
+   "وَلِيّ :: allies": {
+    "recall": 0.666667,
+    "n_test": 3
+   },
+   "وَلِيّ :: any protector": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "وَلِيّ :: friend": {
+    "recall": 0.5,
+    "n_test": 2
+   },
+   "وَلِيّ :: protector": {
+    "recall": 1.0,
+    "n_test": 2
+   },
+   "يَد :: before": {
+    "recall": null,
+    "n_test": 0
+   },
+   "يَد :: hand": {
+    "recall": 0.8,
+    "n_test": 15
+   },
+   "يَمِين :: oath": {
+    "recall": 1.0,
+    "n_test": 7
+   },
+   "يَمِين :: right": {
+    "recall": null,
+    "n_test": 0
+   },
+   "يَمِين :: right hand": {
+    "recall": null,
+    "n_test": 0
+   },
+   "يَوْم :: judgment-day": {
+    "recall": 1.0,
+    "n_test": 13
+   },
+   "يَوْم :: ordinary-day": {
+    "recall": 0.75,
+    "n_test": 12
+   }
+  },
+  "per_lemma_accuracy": {
+   "آباء": 1.0,
+   "آخَر": 0.5,
+   "آخِر": 1.0,
+   "آيَة": 0.6875,
+   "أَجْر": 1.0,
+   "أَرْض": 1.0,
+   "أَكْثَر": 1.0,
+   "أَمْر": 0.692308,
+   "أَهْل": 1.0,
+   "أَوَّل": 1.0,
+   "أَيّ": 0.0,
+   "أُمَّة": 1.0,
+   "بَعْض": 0.857143,
+   "بَيِّنَة": 0.875,
+   "بُنَىّ": 0.666667,
+   "حَقّ": 0.842105,
+   "خالِد": 0.875,
+   "خَيْر": 0.730769,
+   "دِين": 1.0,
+   "ذُو": 1.0,
+   "ذِكْر": 1.0,
+   "زَوْج": 0.333333,
+   "سَيِّئَة": 1.0,
+   "شَهِيد": 1.0,
+   "شَىْء": 0.772727,
+   "صالِحَة": 1.0,
+   "عَبْد": 0.6,
+   "عَدُوّ": 1.0,
+   "عَلِيم": 0.7,
+   "عَيْن": 1.0,
+   "عِلْم": 1.0,
+   "فَضْل": 0.8,
+   "قَرْيَة": 1.0,
+   "قَوْل": 0.888889,
+   "كَثِير": 1.0,
+   "كِتاب": 1.0,
+   "مَثَل": 1.0,
+   "مُؤْمِن": 1.0,
+   "مُبِين": 1.0,
+   "مِثْل": 1.0,
+   "ناس": 0.631579,
+   "نَذِير": 0.0,
+   "نَفْس": 0.939394,
+   "نِساء": 0.947368,
+   "وَلِيّ": 0.777778,
+   "يَد": 0.8,
+   "يَمِين": 1.0,
+   "يَوْم": 0.88
+  },
+  "n_test": 627,
+  "universe_size": 106,
+  "secondary_variant_b": {
+   "accuracy": 0.795853,
+   "macro_f1": 0.603799,
+   "note": "informational only — no decision weight (Track-1 protocol)"
+  }
+ },
+ "target_senses": [
+  {
+   "target": "أَجْر :: payment",
+   "representative": "أَجْر :: reward",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 11,
+   "former_items_n": 10,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "أَيّ :: so which",
+   "representative": "أَيّ :: so which",
+   "merged": false,
+   "recall": 0.0,
+   "n_test": 31
+  },
+  {
+   "target": "بَعْض :: some",
+   "representative": "بَعْض :: other",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 5,
+   "former_items_n": 1,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "ذُو :: owner",
+   "representative": "ذُو :: possessor",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 5,
+   "former_items_n": 2,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "صالِحَة :: good deeds",
+   "representative": "صالِحَة :: righteous deeds",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 4,
+   "former_items_n": 1,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "عِلْم :: any knowledge",
+   "representative": "عِلْم :: knowledge",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 8,
+   "former_items_n": 1,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "قَرْيَة :: cities",
+   "representative": "قَرْيَة :: town",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 6,
+   "former_items_n": 4,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "قَوْل :: saying",
+   "representative": "قَوْل :: word",
+   "merged": true,
+   "recall": 0.888889,
+   "n_test": 9,
+   "former_items_n": 3,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "كِتاب :: scripture",
+   "representative": "كِتاب :: book",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 32,
+   "former_items_n": 1,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "مُبِين :: manifest",
+   "representative": "مُبِين :: clear",
+   "merged": true,
+   "recall": 1.0,
+   "n_test": 7,
+   "former_items_n": 3,
+   "former_items_resolve_to_target": 1.0
+  },
+  {
+   "target": "نَذِير :: warning",
+   "representative": "نَذِير :: warning",
+   "merged": false,
+   "recall": 0.0,
+   "n_test": 11
+  },
+  {
+   "target": "نِساء :: wives",
+   "representative": "نِساء :: wives",
+   "merged": false,
+   "recall": 0.0,
+   "n_test": 1
+  }
+ ],
+ "reference_original_space": {
+  "accuracy": 0.759171,
+  "macro_f1": 0.547097,
+  "mean_sense_recall": 0.751496,
+  "ece": 0.120208,
+  "n_test": 627,
+  "universe_size": 115,
+  "secondary_variant_b": {
+   "accuracy": 0.752791,
+   "macro_f1": 0.536947,
+   "note": "informational only — no decision weight (Track-1 protocol)"
+  },
+  "macro_f1_true_pred_union": 0.655376,
+  "true_pred_union_size": 96
+ },
+ "claim": "locked by eval_phase3.py --lock-baseline on the main artifact; all candidate deltas are computed against metrics (effective space)"
+}
