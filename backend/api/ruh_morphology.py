@@ -18,13 +18,14 @@ is loaded by file path; the coordinator wires this router into ``main.py``.
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-SERVICE_PATH = Path(__file__).resolve().parents[2] / "ruh_model" / "service" / "analyze.py"
+from ._ruh_loader import repo_root
+
+SERVICE_PATH = repo_root() / "ruh_model" / "service" / "analyze.py"
 
 
 def _load_service() -> object:

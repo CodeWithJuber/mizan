@@ -16,8 +16,9 @@ Section D — candidate artifact (Track 2, mizan-sense-wsd v1.1.0-data):
 import os
 from pathlib import Path
 
-import nlp
 import pytest
+
+import nlp
 from nlp import (
     DisambiguationResult,
     ModelNotReadyError,
@@ -227,7 +228,7 @@ def test_sense_ids_follow_scheme():
 
 
 def test_artifact_version_reported():
-    assert wsd.artifact_version() == "1.0.0"
+    assert wsd.artifact_version() == "1.2.1"
 
 
 # ── D. Candidate artifact (Track 2, mizan-sense-wsd v1.1.0-data) ───────────

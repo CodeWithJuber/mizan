@@ -473,13 +473,13 @@ def _include_ruh_router(module_name: str) -> None:
 
 
 for _ruh_module in (
-    "backend.api.ruh_morphology",  # POST /v1/analyze
-    "backend.api.ruh_disambiguate",  # POST /v1/disambiguate
-    "backend.api.ruh_reader",  # /v1/reader/*
-    "backend.api.ruh_dialect",  # POST /v1/normalize
-    "backend.api.ruh_screening",  # POST /v1/screen (pilot/beta)
-    "backend.api.ruh_embeddings",  # POST /v1/embed (beta/unverified)
-    "backend.api.ruh_tajwid",  # POST /v1/tajwid/analyze, GET /v1/tajwid/rules
+    "api.ruh_morphology",  # POST /v1/analyze
+    "api.ruh_disambiguate",  # POST /v1/disambiguate
+    "api.ruh_reader",  # /v1/reader/*
+    "api.ruh_dialect",  # POST /v1/normalize
+    "api.ruh_screening",  # POST /v1/screen (pilot/beta)
+    "api.ruh_embeddings",  # POST /v1/embed (beta/unverified)
+    "api.ruh_tajwid",  # POST /v1/tajwid/analyze, GET /v1/tajwid/rules
 ):
     _include_ruh_router(_ruh_module)
 del _ruh_module, _include_ruh_router
@@ -871,7 +871,7 @@ async def update_agent(
 
 
 class AgentModelRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -1685,7 +1685,7 @@ async def provider_health(provider_name: str, user: TokenPayload = Depends(requi
 
 
 class ProviderSwitchRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
