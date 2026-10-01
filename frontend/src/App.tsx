@@ -245,6 +245,8 @@ function AppInner() {
     return !localStorage.getItem("mizan_setup_complete");
   });
 
+  const [authRevision, setAuthRevision] = useState(0);
+  const lastAuthTokenRef = useRef(localStorage.getItem("mizan_token"));
   const [activeTab, setActiveTabState] = useState(() => {
     return localStorage.getItem("mizan_active_tab") || "chat";
   });
@@ -437,6 +439,52 @@ function AppInner() {
     ]);
   }, []);
 
+  useEffect(() => {
+    const changed = () => {
+      const token = localStorage.getItem("mizan_token");
+      if (token === lastAuthTokenRef.current) return;
+      lastAuthTokenRef.current = token;
+      sendControllerRef.current?.abort();
+      activeRequestIdRef.current = "";
+      streamBufferRef.current?.discard();
+      streamBufferRef.current = null;
+      setMessages([]);
+      setChatSessions([]);
+      setArtifacts([]);
+      setShowArtifacts(false);
+      setAttachedFiles([]);
+      setWorkspaceId("");
+      setAgents([]);
+      setSelectedAgent(null);
+      setProviderStatus(null);
+      setStreaming(false);
+      setTypingIndicator(false);
+      setToolStatus("");
+      setActiveThinkingId(null);
+      setThinkingTraces({});
+      setTerminalLines([]);
+      setHistoryLoadError(false);
+      const id = `session_${crypto.randomUUID()}`;
+      setSessionId(id);
+      sessionIdRef.current = id;
+      localStorage.removeItem("mizan_workspace_id");
+      localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
+      setAuthRevision((revision) => revision + 1);
+    };
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === "mizan_token") changed();
+    };
+    window.addEventListener("mizan:authchanged", changed);
+    window.addEventListener("mizan:unauthorized", changed);
+    window.addEventListener("storage", storageChanged);
+    return () => {
+      window.removeEventListener("mizan:authchanged", changed);
+      window.removeEventListener("mizan:unauthorized", changed);
+      window.removeEventListener("storage", storageChanged);
+    };
+  }, []);
+
   // Connect WebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -451,19 +499,26 @@ function AppInner() {
         return;
       }
       try {
-        if (attempts > 0) {
-          setWsStatus("reconnecting");
-        }
+        setWsStatus(attempts > 0 ? "reconnecting" : "connecting");
 
         const wsToken = localStorage.getItem("mizan_token");
         const wsUrl = wsToken
           ? `${config.WS_URL}/${clientId.current}?token=${encodeURIComponent(wsToken)}`
           : `${config.WS_URL}/${clientId.current}`;
-        socket = new WebSocket(wsUrl);
+        const currentSocket = new WebSocket(wsUrl);
+        socket = currentSocket;
+        const isCurrent = () =>
+          !disposed &&
+          socket === currentSocket &&
+          wsToken === localStorage.getItem("mizan_token");
 
-        socket.onopen = () => {
+        currentSocket.onopen = () => {
+          if (!isCurrent()) {
+            currentSocket.close();
+            return;
+          }
           setWsStatus("connected");
-          setWs(socket);
+          setWs(currentSocket);
           // attempts > 0 means this onopen follows a close → a reconnect.
           const wasReconnect = attempts > 0;
           attempts = 0;
@@ -477,20 +532,25 @@ function AppInner() {
           }
         };
 
-        socket.onmessage = (event) => {
+        currentSocket.onmessage = (event) => {
+          if (!isCurrent()) return;
           try {
             const data = JSON.parse(event.data);
             // Chat has a single SSE owner. Unrelated notification frames remain on WS.
-            if (data.request_id) return;
+            if (
+              data.request_id ||
+              (data.session_id && data.session_id !== sessionIdRef.current)
+            )
+              return;
             chatEventHandlerRef.current(data);
           } catch {
             addTerminalLine("Invalid notification ignored", "warn");
           }
         };
 
-        socket.onclose = (event) => {
+        currentSocket.onclose = (event) => {
+          if (!isCurrent()) return;
           setWs(null);
-          if (disposed) return;
           if (event.code === 4401 || event.code === 1008) {
             setWsStatus("auth_required");
             return;
@@ -507,7 +567,8 @@ function AppInner() {
           reconnectTimer = setTimeout(connect, delay);
         };
 
-        socket.onerror = () => {
+        currentSocket.onerror = () => {
+          if (!isCurrent()) return;
           addTerminalLine("Connection error", "error");
         };
       } catch (e: unknown) {
@@ -524,7 +585,7 @@ function AppInner() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) socket.close();
     };
-  }, []);
+  }, [authRevision]);
 
   // ===== CHAT UPGRADE: streaming / stop helpers =====
   // Mirrors `streaming` state for use inside stable callbacks and timeouts.
@@ -1198,6 +1259,7 @@ function AppInner() {
 
   const loadChatHistory = useCallback(
     async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean }) => {
+      const requestToken = localStorage.getItem("mizan_token");
       setHistoryLoading(true);
       setHistoryLoadError(false);
       try {
@@ -1205,6 +1267,11 @@ function AppInner() {
           () => authFetch(`${config.API_URL}/chat/${sid}`),
           3,
         );
+        if (
+          requestToken !== localStorage.getItem("mizan_token") ||
+          sid !== sessionIdRef.current
+        )
+          return;
         if (result.missing) {
           // Session expired or deleted server-side — the caller decides how
           // to start fresh. Never toast here: a missing session is normal.
@@ -1237,7 +1304,11 @@ function AppInner() {
         // optimistic echoes) are appended in order — no duplicates.
         setMessages((prev) => mergeHistoryMessages(history, prev));
       } finally {
-        setHistoryLoading(false);
+        if (
+          requestToken === localStorage.getItem("mizan_token") &&
+          sid === sessionIdRef.current
+        )
+          setHistoryLoading(false);
       }
     },
     [addToast],
@@ -1260,11 +1331,13 @@ function AppInner() {
   }, [resyncSession]);
 
   const loadChatSessions = useCallback(async () => {
+    const requestToken = localStorage.getItem("mizan_token");
     try {
       const res = await authFetch(`${config.API_URL}/chat/sessions/list`);
       if (!res.ok) return;
       const data = await res.json();
-      setChatSessions(data.sessions || []);
+      if (requestToken === localStorage.getItem("mizan_token"))
+        setChatSessions(data.sessions || []);
     } catch {
       // ignore
     }
@@ -1344,7 +1417,7 @@ function AppInner() {
       loadStatus();
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authRevision]);
 
   // On 401 (token expired/invalid), send user to Security tab to log in again
   useEffect(() => {
@@ -1358,7 +1431,7 @@ function AppInner() {
     window.addEventListener("mizan:unauthorized", onUnauthorized);
     return () =>
       window.removeEventListener("mizan:unauthorized", onUnauthorized);
-  }, []);
+  }, [authRevision]);
 
   // Persist chat sessionId to localStorage (migrates the legacy key)
   useEffect(() => {
