@@ -13,6 +13,7 @@ import math
 import random
 import shutil
 import time
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
 
@@ -144,11 +145,16 @@ def run_training(
     resume_from: Path | None = None,
     mixing_weights: dict[str, float] | None = None,
     checkpoint_every_seconds: int = 0,
+    precision: str = "float32",
 ):
     if steps < 1 or batch_size < 1 or not 0 < max_seconds <= 36000:
         raise ValueError("Positive steps/batch and bounded wall time are required")
     if config.tokenizer_version != 2:
         raise ValueError("New sequence training requires tokenizer_version=2")
+    if precision not in {"float32", "bfloat16"}:
+        raise ValueError("Unsupported precision")
+    if precision == "bfloat16" and (config.device != "cuda" or not torch.cuda.is_bf16_supported()):
+        raise ValueError("BF16 training requires a supported CUDA accelerator")
     if output.exists():
         raise ValueError("Use a new output directory; existing candidates are never overwritten")
     random.seed(seed)
@@ -249,7 +255,13 @@ def run_training(
         batch = {key: value.to(config.device) for key, value in batch.items()}
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        loss = token_loss(model, batch, include_auxiliary=True)
+        context = (
+            torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+            if precision == "bfloat16"
+            else nullcontext()
+        )
+        with context:
+            loss = token_loss(model, batch, include_auxiliary=True)
         if not torch.isfinite(loss):
             raise ValueError("Non-finite loss; optimizer step refused")
         loss.backward()
@@ -353,6 +365,7 @@ def run_training(
         "protocol": "role: content, assistant prefix without EOS",
         "config": asdict(config),
         "parameters": model.count_parameters(),
+        "precision": precision,
         "seed": seed,
         "resume_from": str(resume_from) if resume_from else None,
         "source_metadata": source_metadata or {},
@@ -425,6 +438,7 @@ def main():
     )
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--precision", choices=("float32", "bfloat16"), default="float32")
     parser.add_argument("--source-metadata", type=Path)
     parser.add_argument("--checkpoint-every-seconds", type=int, default=0)
     parser.add_argument(
@@ -465,6 +479,7 @@ def main():
         resume_from=args.resume_from,
         mixing_weights=json.loads(args.mixing_weights) if args.mixing_weights else None,
         checkpoint_every_seconds=args.checkpoint_every_seconds,
+        precision=args.precision,
     )
 
 

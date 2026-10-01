@@ -72,12 +72,14 @@ not a promise of chat quality:
 
 ```bash
 python -m scripts.prepare_sequence_data --output-dir /kaggle/working/full-data \
-  --dialogues 10000 --sentences 10000
+  --dialogues 3000 --sentences 1000 --aya-arabic 5000 --aya-english 1500
 python -m ruh_model.train_sequence --production-architecture \
   --data /kaggle/working/full-data/training.jsonl \
   --source-metadata /kaggle/working/full-data/sources.json \
   --output /kaggle/working/full-v2-phase1 --device cuda \
-  --steps 20000 --max-seconds 3600 --seq-len 384 --batch-size 2 --lr 3e-4
+  --steps 20000 --max-seconds 1350 --seq-len 384 --batch-size 2 --lr 3e-4 \
+  --checkpoint-every-seconds 300 \
+  --mixing-weights '{"ar:dialogue":0.55,"en:dialogue":0.25,"ar:text":0.20}'
 ```
 
 Check the Kaggle quota API before launching. The observed GPU allowance is 30
@@ -101,7 +103,7 @@ learning; it does not establish conversational quality or justify promotion.
 
 The full-size run adds the human Aya dataset (Apache-2.0, pinned revision
 `f9ea04583f02a8f86404ff6c58bf75fe637df8a2`) with 4,995 Arabic and 1,500 English
-instructions. Annotation user IDs are not retained. Source conversation groups
+instructions. Annotation user IDs are not retained in training examples. Source conversation groups
 are joined across shared prompts, preventing alternate answers from crossing
 training/validation even across corpora. Expected supervised byte sampling weights are 55% Arabic
 dialogue, 25% English dialogue, 20% Arabic documents; long Wikipedia articles
@@ -120,3 +122,70 @@ Ruff passes. `make check` reaches 27 Torch-aware mypy errors; an isolated unmodi
 45b6693 baseline reproduces the same 27, with no new errors introduced here.
 GitHub's optional-Torch-free typecheck context is separate from this local ML
 validation environment.
+
+Continuation uses a verified private V2 output directory; the CLI loads its
+stored model dimensions/context and optimizer state. Never point this option at
+legacy epoch19 or change its tokenizer metadata. Keep the same source revisions
+and seed so validation remains comparable. Choose a new output directory:
+
+```bash
+python -m ruh_model.train_sequence --production-architecture \
+  --data /kaggle/working/full-data/training.jsonl \
+  --source-metadata /kaggle/working/full-data/sources.json \
+  --resume-from /kaggle/input/verified-v2-run/candidate \
+  --output /kaggle/working/full-v2-continuation --device cuda \
+  --steps 20000 --max-seconds 1350 --batch-size 2 --lr 1e-4 \
+  --checkpoint-every-seconds 300 \
+  --mixing-weights '{"ar:dialogue":0.55,"en:dialogue":0.25,"ar:text":0.20}'
+```
+
+The candidate requires all four manifest files: `config.json`, `model.pt`,
+`tokenizer.json`, `vocab.json`. Existing worker download code that fetches only
+legacy config/weights must be updated before any V2 promotion. Synchronize V2
+pattern/default sampling behavior in the worker's copied package, then verify
+held-out generation and checkpoint digests. No candidate is promoted by this PR.
+
+## Full-size evaluation and temporary continuation
+
+Private `zubairshaikh/ruh-full-training-repair`, version 1, completed on 2026-10-01.
+The 45,985,563-parameter V2 model trained 8,437 steps in 1,350 seconds over
+4,475,738 supervised bytes; the complete notebook ran 1,480 seconds including
+setup, data downloads and artifact packaging. Kaggle again supplied two T4s;
+only cuda:0 was used. Measured Arabic dialogue / English dialogue / Arabic text
+shares were 54.6% / 25.2% / 20.2%.
+
+The bounded held-out conditional CE improved from 8.3464 to 1.7324 over 8,615
+targets; Arabic CE improved 8.3824→1.1403 and English 8.3461→1.7138. These losses
+cover the recorded first sixteen evaluation batches, not the complete held-out
+corpus. All six sampled outputs avoided immediate EOS and invalid UTF-8, but
+remained incoherent. Mean repeated four-gram fractions were 0.391 on three
+representative samples and 0.262 on three unseen prompts. All three independent
+yes/no/negation questions failed. The checkpoint stays private and **unapproved**.
+Its model SHA256 is `fcbd2dac0a95513b5cfd7da665b178d2ec3bfd032d49cfcbf062061ed5712fac`.
+
+`scripts/launch_runpod_training.py` provides a read-only quote by default and an
+explicit `--launch` for a disposable secure GPU. The authorized continuation uses
+one A100 80GB, with RTX4090 fallback, a 40GB container disk, no persistent volume,
+and a maximum 7,200-second lifecycle including startup and downloads. Allocation
+is rejected if its actual hourly price exceeds $1.65, keeping the two-hour compute
+cost below $3.30 within the $5 cap. The pinned PyTorch 2.10/CUDA12.8 image is reused;
+no large Torch installation is performed. The private Kaggle model and optimizer
+are downloaded directly inside the pod, verified against the checkpoint manifest,
+and continued using the same source revisions, data limits, seed and 384-byte
+context. BF16 is permitted only on a supported CUDA GPU. The bounded training
+command uses batch8, LR1e-4, up to 6,000 seconds and snapshots every 600 seconds.
+
+Sparse MoE dispatch computes each selected expert once on its selected tokens,
+preserving architecture and checkpoint weights. Forward values and input, router
+and expert gradients match the former dense reference with dropout disabled.
+CPU BF16 forward/backward and finite-gradient checks cover the mixed-precision
+path. The HTTPS status/artifact service requires a fresh random bearer token;
+only whitelisted artifacts are downloadable. The controller records its own pod
+ID, handles SIGTERM/KeyboardInterrupt, deletes that pod in `finally`, and verifies
+absence. No production endpoint or unrelated pod is changed.
+
+```bash
+python -m scripts.launch_runpod_training --revision <reviewed-full-commit> \
+  --output /workspace/training/evidence/private-continuation
+# Add --launch only for the authorized temporary run.
+```

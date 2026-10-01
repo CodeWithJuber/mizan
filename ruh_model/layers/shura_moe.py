@@ -125,20 +125,17 @@ def _combine_expert_outputs(
     Returns:
         Weighted combination of expert outputs (B, N, D).
     """
-    batch_size, seq_len, d_model = x.shape
-    k = top_k_indices.size(-1)
-
-    output = torch.zeros_like(x)
-    for expert_idx in range(k):
-        indices = top_k_indices[:, :, expert_idx]   # (B, N)
-        weights = top_k_weights[:, :, expert_idx]    # (B, N)
-
-        for eidx, expert in enumerate(experts):
-            mask = indices == eidx  # (B, N)
-            if not mask.any():
-                continue
-            expert_input = x * mask.unsqueeze(-1).float()
-            expert_out = expert(expert_input)
-            output = output + expert_out * (weights * mask.float()).unsqueeze(-1)
-
-    return output
+    flat = x.reshape(-1, x.shape[-1])
+    indices = top_k_indices.reshape(flat.shape[0], -1)
+    weights = top_k_weights.reshape(flat.shape[0], -1)
+    output = torch.zeros_like(flat)
+    # Dispatch only selected tokens, once per expert. The previous dense loop
+    # evaluated every expert on a full zero-masked batch for each routing slot.
+    for expert_index, expert in enumerate(experts):
+        token_indices, slots = torch.where(indices == expert_index)
+        if token_indices.numel() == 0:
+            continue
+        selected = flat.index_select(0, token_indices)
+        values = expert(selected) * weights[token_indices, slots].unsqueeze(-1)
+        output = output.index_add(0, token_indices, values.to(output.dtype))
+    return output.reshape_as(x)
