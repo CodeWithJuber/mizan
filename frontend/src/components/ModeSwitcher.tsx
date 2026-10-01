@@ -30,15 +30,15 @@ export default function ModeSwitcher({
 }: ModeSwitcherProps) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1 text-sm">
+      <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-1 text-sm">
         <button
           type="button"
           disabled={disabled}
           onClick={() => onModeChange("single")}
           className={`flex-1 rounded-md px-3 py-1.5 font-medium transition-colors ${
             mode === "single"
-              ? "bg-primary text-white"
-              : "text-secondary hover:text-primary"
+              ? "bg-amber-600 text-white"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
           }`}
           aria-pressed={mode === "single"}
         >
@@ -50,8 +50,8 @@ export default function ModeSwitcher({
           onClick={() => onModeChange("deep_research")}
           className={`flex-1 rounded-md px-3 py-1.5 font-medium transition-colors ${
             mode === "deep_research"
-              ? "bg-primary text-white"
-              : "text-secondary hover:text-primary"
+              ? "bg-amber-600 text-white"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
           }`}
           aria-pressed={mode === "deep_research"}
         >
@@ -60,7 +60,7 @@ export default function ModeSwitcher({
       </div>
 
       {mode === "deep_research" && (
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-secondary">
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
           <input
             type="checkbox"
             checked={confirmed}
