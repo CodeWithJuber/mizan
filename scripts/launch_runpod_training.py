@@ -47,6 +47,7 @@ def deploy_query(name, gpu, revision, job_token):
         "RUH_JOB_TOKEN": job_token,
         "RUH_REVISION": revision,
         "KAGGLE_API_TOKEN": os.environ["KAGGLE_API_TOKEN"],
+        "RUH_DEADLINE_UTC": str(time.time() + LIFECYCLE_SECONDS),
     }
     env_text = ",".join(
         "{key:" + json.dumps(key) + ",value:" + json.dumps(value) + "}"
@@ -103,10 +104,18 @@ def download_artifacts(session, url, output, artifacts, deadline):
 
 
 def launch(session, revision, output):
-    output.mkdir(parents=True, exist_ok=False)
+    output.mkdir(parents=True, exist_ok=False, mode=0o700)
     started = time.monotonic()
     deadline = started + LIFECYCLE_SECONDS
-    pod_id, recovery = None, {"revision": revision, "image": IMAGE, "promotion_approved": False}
+    pod_id, recovery = (
+        None,
+        {
+            "revision": revision,
+            "image": IMAGE,
+            "promotion_approved": False,
+            "started_utc_epoch": time.time(),
+        },
+    )
     job_session = requests.Session()
     token = secrets.token_urlsafe(32)
     job_session.headers["Authorization"] = "Bearer " + token
