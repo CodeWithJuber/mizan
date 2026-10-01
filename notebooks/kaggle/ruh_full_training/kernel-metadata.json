@@ -1,0 +1,16 @@
+{
+  "id": "zubairshaikh/ruh-full-training-repair",
+  "title": "Ruh Full Training Repair",
+  "code_file": "full_training_repair.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaP100",
+  "session_timeout_seconds": 1800,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "training_revision": "708a3dd810e828d2a1836fa72fccdc2f678bca03"
+}

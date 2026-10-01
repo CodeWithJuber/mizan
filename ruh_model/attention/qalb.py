@@ -15,10 +15,10 @@ multi-head attention for batching efficiency.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 from ruh_model.config import RuhConfig
@@ -99,7 +99,7 @@ def _scaled_dot_product_attention(
     key: Tensor,
     value: Tensor,
     scale: Tensor,
-    mask: Optional[Tensor],
+    mask: Tensor | None,
     dropout: nn.Dropout,
 ) -> Tensor:
     """Compute scaled dot-product attention with optional masking.
@@ -115,7 +115,12 @@ def _scaled_dot_product_attention(
     Returns:
         Attention output of shape (B, n_heads, N, head_dim).
     """
-    attn_weights = torch.matmul(query, key.transpose(-2, -1)) / scale
+    # Learned amplitudes may exceed one. Low-precision oscillation rounding can
+    # make the denominator exactly zero; retain the checkpoint's sign while
+    # guarding the singularity and computing softmax scores in Float32.
+    scale = scale.float()
+    scale = torch.where(scale < 0, -1.0, 1.0) * scale.abs().clamp(min=1e-4)
+    attn_weights = torch.matmul(query, key.transpose(-2, -1)).float() / scale
 
     if mask is not None:
         attn_weights = attn_weights.masked_fill(mask == 0, float("-inf"))
@@ -123,7 +128,7 @@ def _scaled_dot_product_attention(
     attn_weights = torch.softmax(attn_weights, dim=-1)
     attn_weights = dropout(attn_weights)
 
-    return torch.matmul(attn_weights, value)
+    return torch.matmul(attn_weights.to(value.dtype), value)
 
 
 class QalbAttention(nn.Module):
@@ -167,7 +172,7 @@ class QalbAttention(nn.Module):
         x: Tensor,
         root_ids: Tensor,
         t_step: int = 0,
-        mask: Optional[Tensor] = None,
+        mask: Tensor | None = None,
     ) -> Tensor:
         """Forward pass for Qalb attention.
 
@@ -197,23 +202,29 @@ class QalbAttention(nn.Module):
         # oscillation cycle, encouraging broader attention exploration.
         # Causal prefix mean (not whole-sequence mean): position i sees only
         # tokens 0..i, so no future information leaks into the statistic.
-        prefix_counts = torch.arange(
-            1, seq_len + 1, device=x.device, dtype=x.dtype
-        ).view(1, -1, 1)
-        prefix_mean = x.cumsum(dim=1) / prefix_counts  # (B, N, D)
-        complexity = torch.sigmoid(self.complexity_proj(prefix_mean))  # (B, N, 1)
-        T_effective = (self.T_base.abs() + 1.0) * (
-            0.5 + complexity.squeeze(-1)
-        )  # (B, N)
-
-        psi = _compute_cardiac_oscillation(t_step, T_effective, self.alpha)  # (B, N)
+        # This small projection controls a denominator, so BF16 rounding is
+        # unsafe even while the large QKV/FFN projections use autocast.
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            prefix_counts = torch.arange(1, seq_len + 1, device=x.device, dtype=torch.float32).view(
+                1, -1, 1
+            )
+            prefix_mean = x.float().cumsum(dim=1) / prefix_counts  # (B, N, D)
+            complexity = torch.sigmoid(
+                F.linear(
+                    prefix_mean,
+                    self.complexity_proj.weight.float(),
+                    self.complexity_proj.bias.float(),
+                )
+            )
+            T_effective = (self.T_base.float().abs() + 1.0) * (
+                0.5 + complexity.squeeze(-1)
+            )  # (B, N)
+            psi = _compute_cardiac_oscillation(t_step, T_effective, self.alpha.float())
 
         # Reshape for broadcasting over (B, n_heads, N, N)
         scale = math.sqrt(self.head_dim) * psi.view(-1, 1, seq_len, 1)
 
-        out = _scaled_dot_product_attention(
-            query, key, value, scale, mask, self.dropout
-        )
+        out = _scaled_dot_product_attention(query, key, value, scale, mask, self.dropout)
 
         # Merge heads and project output
         out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
