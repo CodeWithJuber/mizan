@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v3.2.0] — 2026-10-01
+
+### Added
+- Add ruh-remote provider (RunPod GPU) + fix architecture endpoint (#79)
+- feat: chat mega-upgrade — session hardening, streaming, transparency, export, artifacts, sandbox, modes, mem0
+- feat(bayan): PyPI-ready Bayan tokenizer package (#58)
+- feat(tajwid): full tajwid rules engine + API (#60)
+- feat(ruh): Ruh use-case study as code — eval, APIs, packaging (#57)
+- feat(ruh): sense-disambiguation API track (use-case #1)
+- feat(ruh): RootSpace Reader annotator/store/API + dialect->root normalization
+- feat(ruh): deterministic root-morphology chat features (sarf)
+- Add AYY:vocative sense split — 97→96 senses (#42)
+- feat(nlp): Phase-3 Track-2 — candidate data-side artifact (v1.1.0-data)
+- feat(nlp): Track-3 candidate_model_v1 — balanced class-weight winner (informational, pending Track-2 merge)
+- feat(nlp): lock Phase-3 baseline (post-merge space)
+
+### Fixed
+- fix: verify public access and refresh proxy after deployment
+- fix: pin the verified production SSH host key
+- fix: automate verified production deployments on free Actions runners
+- Fix access control, provider contracts, and Ruh training defects
+- Fix: poll RunPod /status on IN_PROGRESS (#80)
+- fix(ruh): add stream() to RuhModelProvider — chat loop streams via create() single-chunk wrapper; add contract tests
+- Fix Ruh router container imports + provider switch allowlist
+- fix: container-layout imports — usage.py + commands.py + regression test
+- fix: pass RUH_MODEL_PATH through to backend container in prod compose
+- fix: chat production-ready — streaming, parallel tools, session restore, memory, copy formats (#74)
+- fix: P0-10 webhook delete, P1 tooltips/confirms/pause-resume, P2 drafts/auth label (#73)
+- fix: P0 double-/api prefix (Channels/Settings/Automation 404s), RuhModelPage + WelcomePage toast wiring (#72)
+- fix: audit batch 3 — WelcomePage deep-link, X2 terminal-in-UI, X3 silent catches, /web_search command (#71)
+- Fix: agent no-response after tool call + Ruh 6500% display bug (#70)
+- fix: WS multimodal reads text or content key (backend half)
+- fix: deep audit batch 1 — functional P0s, responsive P0s, UX systemic (useApi throws on !ok + 401, WS multimodal content, Perception unwrap, Ruh metrics fallback, Channels honest toggle, Majlis/Notebook toasts, tab/page/btn CSS, Toast position, modal height, PasswordInput, Majlis+Scanner nav, delete confirm)
+- fix: SettingsPage mobile responsive — tabs stack on small screens (#67)
+- fix: WelcomePage login-first flow, no Skip on first visit, honest status (#66)
+- fix: SecurityPage login broken — backend returns token, frontend read access_token (#65)
+- fix: admin-only registration + wire MIZAN_ADMIN_PASS (#64)
+- fix: WS disconnect — absolute wss:// URL + accept-then-close 4401 (#63)
+- fix: chat_complete 'Thinking...' freeze — raw YaqinLevel enum in trace metadata
+- fix(morphology): handle Quranic alef-wasla U+0671 in analyzer (#61)
+- fix: restore PR #59 eval files dropped by stale-tree squash of #60
+- Hotfix: live-site stability — auth-aware connection state, map-crash fix, mobile sidebar verify (#56)
+- fix(tests): load ArabicMorphAnalyzer by path when torch is absent
+- fix(lint): I001 — aliased morphology imports inline in first-party block
+- fix(security): require auth on open endpoints + NEUTRAL leak (#53)
+- fix(backend): persist users to /data volume (#52)
+- fix(frontend): mobile navigation drawer + hamburger menu (#51)
+- Fix pymizan setup bugs: wizard key-drop, /data defaults, silent model override (#44)
+- fix(nlp): apply 9 Phase-3 sense merges — inventory 115→106 (ontology correction) (#41)
+- fix(nlp): eval_phase3 sys.path bootstrap before imports
+- fix: ruff I001 in tests after nlp packaging move; gate nlp/ in lint
+- fix: ruff I001 in tests after nlp packaging move; gate nlp/ in lint
+- fix(nlp): merge-aware Phase-3 eval harness + Amendment A1
+
+### Changed
+- docs(eval): honest baseline numbers from eval harness (#59)
+- docs: training results + retrain pipeline guide (#54)
+- docs(nlp): Track-3 prereg addenda A1 adoption + packaging move
+
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
