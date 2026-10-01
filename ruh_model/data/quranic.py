@@ -176,6 +176,9 @@ SOURCES = {
         "url": BASE + "data/meta/sources.json",
         "sha256": "117045528f8ab07e21f702d45437d1b7e8c9ed22ab580574df0b9b7db06c7723",
         "revision": REVISION,
+        "attribution": "Risan Bagja Pradana and quran-json contributors, source catalogue",
+        "license": "CC BY-SA 4.0; underlying sources retain their separately recorded terms",
+        "license_url": BASE + "LICENSE.txt",
     },
 }
 
