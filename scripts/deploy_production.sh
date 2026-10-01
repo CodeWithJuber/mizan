@@ -60,10 +60,16 @@ PY
 "${compose[@]}" -f "$tmp_dir/new.yml" pull backend frontend
 cp "$tmp_dir/rollback.yml" "$state_dir/rollback.yml"
 cp "$tmp_dir/new.yml" "$state_dir/current.yml"
+refresh_proxy() {
+  if [[ $(docker inspect -f '{{.State.Running}}' mizan-nginx 2>/dev/null || true) == true ]]; then
+    docker exec mizan-nginx nginx -t && docker exec mizan-nginx nginx -s reload
+  fi
+}
 rollback() {
   echo 'Deployment did not pass health/auth checks; restoring previous images.' >&2
   cp "$state_dir/rollback.yml" "$state_dir/current.yml"
   "${compose[@]}" -f "$state_dir/current.yml" up -d --no-deps --no-build backend frontend
+  refresh_proxy
 }
 if ! "${compose[@]}" -f "$state_dir/current.yml" up -d --no-deps --no-build backend frontend; then
   rollback
@@ -80,5 +86,12 @@ for attempt in $(seq 1 "${MIZAN_DEPLOY_HEALTH_ATTEMPTS:-45}"); do
   sleep 2
 done
 if [[ "$healthy" != true ]]; then rollback; exit 1; fi
+if ! refresh_proxy; then rollback; exit 1; fi
+public_url=${MIZAN_PUBLIC_URL:-https://mizan.jubershaikh.com}
+if ! curl --fail --silent --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 2 "$public_url/api/health" >/dev/null ||
+   [[ $(curl --silent --connect-timeout 15 --max-time 30 --output /dev/null --write-out '%{http_code}' "$public_url/api/status") != 401 ]]; then
+  rollback
+  exit 1
+fi
 printf '%s\n' "$sha" > "$state_dir/deployed-sha"
 echo "Mizan deployed: $sha; health and anonymous-auth denial passed."
