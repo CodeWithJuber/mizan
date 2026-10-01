@@ -31,10 +31,9 @@ import json
 import logging
 import sys
 
-import pytest
-
 import nlp
 import nlp.wsd
+import pytest
 from nlp import ModelNotReadyError, SenseCandidate, disambiguate
 
 FLAG_ENV = "MIZAN_NLP_NATIVE_WSD"

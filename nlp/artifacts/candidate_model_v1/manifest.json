@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "name": "mizan-sense-wsd",
+  "version": "1.0.0-track3-balanced",
+  "dataset": "Q-CSMP v2",
+  "dataset_doi": "10.5281/zenodo.23024527",
+  "architecture": "per-lemma sklearn LogisticRegression (lbfgs, C=1.0, max_iter=1000); char 2-4-gram surface+context features (variant 'a') + class_weight=balanced",
+  "model_file": "model.joblib",
+  "model_type": "sklearn-pipeline-dict",
+  "sklearn_version": "1.9.1",
+  "trained_at": "2026-09-29",
+  "variant": "track3-balanced (PRIMARY)",
+  "license": "Apache-2.0",
+  "num_lemmas": 48,
+  "num_senses": 115,
+  "eval_accuracy": 0.845295,
+  "eval_macro_f1": 0.61992,
+  "eval_n": 627,
+  "eval_protocol": "whole-surah holdout, base items, frozen eval_phase3.py",
+  "eval_verdict": "FAIL on Track-4 WIN leg (mean target recall lift +0.0648 < +0.10 bar). GUARD-A (acc +0.0431 vs 0.8022), GUARD-F (macro-F1 +0.0041 vs 0.6158), no-regression: PASS. Informational winner (JEV conf 0.73): fixes AYY:so-which 0/31 -> 31/31; NAZEER:warning and NISA:wives remain 0. Trained on PRE-merge inventory; pending application to Track-2 merged+mined inventory.",
+  "track3_variant": "balanced",
+  "sense_id_scheme": "qcsmp2:<lemma>:<sense-slug>",
+  "sense_inventory_sha256": "8b29859651b6c23e0593a3839004386892f3a7e33143c2548f56b227a39c5b09",
+  "model_sha256": "2e657db36e0cd8d3b0937625143d15929c9a71c394907b1dd8acd30887770a54",
+  "files": [
+    "manifest.json",
+    "model.joblib",
+    "sense_inventory.json"
+  ],
+  "trust_boundary": "model.joblib is a pickle-family file. Validate this manifest (schema + files + sha256) BEFORE unpickling; load only from the packaged artifact dir or operator-set MIZAN_NLP_ARTIFACT.",
+  "eval_accuracy_ci95": [
+    0.8166,
+    0.8724
+  ],
+  "eval_macro_f1_ci95": [
+    0.5434,
+    0.6161
+  ],
+  "eval_harness": "nlp/eval_phase3.py @acb1ef2ae9 (Amendment A1, post-merge 106-sense space)",
+  "preregistration": "nlp/PREREG_PHASE3_MODEL.md (frozen 2026-09-29; Addendum A1 + Addendum B)",
+  "track3": {
+    "intervention": "class_weight=balanced on per-lemma logreg (lbfgs, C=1.0, max_iter=1000)",
+    "status": "pending-track2-merge",
+    "winner_selection": "JEV choice conf 0.73; prereg rule: no rule-passer -> informational best-lift among guardrail-safe",
+    "disqualified": "focal lift +0.0926 but acc -0.3844, macro-F1 -0.3975, 29 regressions (guardrail breach)",
+    "null": "poss-sfx lift +0.0027 (essentially null)"
+  }
+}

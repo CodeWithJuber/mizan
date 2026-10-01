@@ -12,9 +12,16 @@ winner, and what counts as a fail. Nothing here may be edited after the
 first candidate evaluation begins; any change requires a new dated
 amendment with its own freeze attestation.
 
-**Path note:** the task brief named `backend/mizan/nlp/`; no such directory
-exists in the repo. The package lives at `nlp/` (verified at main
-`63dfb521`). All Phase-3 files go under `nlp/`.
+**Path remap (2026-09-29 ~14:10 +04):** the user moved the package
+`backend/nlp/` → top-level `nlp/` on main (commit `13504471`, "fix(packaging):
+move backend/nlp to top-level nlp package" — the wheel nested the module under
+`backend/`). All `backend/nlp/` references below now mean `nlp/`; the eval
+protocol, splits, metrics, and decision rule are UNCHANGED. This note is the
+only edit to the frozen body.
+
+**Path note (original, pre-move):** the task brief named `backend/mizan/nlp/`; no such directory
+existed in the repo. The package lived at `backend/nlp/` (verified at main
+`63dfb521`). All Phase-3 files went under `backend/nlp/` — now remapped to `nlp/`.
 
 ## 1. Eval split (identity — verified pre-freeze, all ✅)
 
@@ -176,6 +183,7 @@ post-hoc rule changes. The harness writes a JSON report per run.
 | 2 | 2026-09-29 ~14:00 | choice | max allowed accuracy/macro-F1 drop (0.01 / 0.02 / 0.05) | **≤ 0.02** (`drop_002`) | 0.73 |
 | 3 | 2026-09-29 ~14:00 | noul (thr 0.7) | "zero-regression hard-fail on ALL 76 previously-nonzero senses is appropriately strict" | **NO** — p=0.67 < 0.7, not confirmed | 0.67 |
 | 4 | 2026-09-29 ~14:01 | choice | zero-regression policy (hard-all / hard-supported-n≥5 / flag-only) | **hard on n_test ≥ 5; warnings below** (`hard_supported`) | 0.69 |
+| 5 | 2026-09-29 ~14:25 | choice | WIN-leg construction under the 9-sense merge: credit merged targets vs Phase-1 zeros (`lift_vs_phase1_zero`) or vs post-merge baseline (`lift_vs_postmerge_baseline`) | **`lift_vs_postmerge_baseline`** — merged targets contribute ~0 lift (baseline already resolves them post-merge, verified 26/26); the +0.10 bar must be cleared by the 3 unmerged real senses | 0.55 — moderate; disclosed |
 
 Call 3's weak NO + the measured fact (21/76 nonzero senses have n_test ≤ 2)
 motivated call 4's refinement. All four calls cached by `jev-ask`
@@ -198,5 +206,88 @@ frozen harness in the run being reported), 📋 from-earlier (Track-1 /
 stage-2, not recomputed), or ❌ could-not-verify (stated plainly).
 `BASELINE_PHASE3.json` carries the claim tags with the run that produced it.
 
+## 10. Amendment A1 — post-merge scoring space (2026-09-29 ~14:30 +04, pre-freeze)
+
+**Trigger.** Track 1's diagnosis (`nlp/DIAGNOSIS.md`, committed
+2026-09-29) cause-classified the 12 zero-recall senses: **9 are (c) label
+noise** — English-gloss synonym pairs / translator word-choice splits, two
+cases (أَجْر:payment, صالِحَة:good deeds) provably unlearnable (feature-identical
+inputs, contradictory labels). Track 2 is merging each into its sibling sense
+(9 merges, each JEV-confirmed in the diagnosis). Sense inventory: 115 → 106.
+
+**Why amend rather than silently change.** The merge is a legitimate fix of
+the inventory, not a dropped metric — but it changes the label space the
+decision rule was written against. This amendment is dated and frozen
+*before any candidate is evaluated* (no candidate artifact exists yet).
+The original §§1–9 stand; what follows overrides only the scoring space
+and the per-target mechanics.
+
+**The frozen merge map** (`nlp/SENSE_MERGES_PHASE3.json`):
+
+| # | merged-away sense | → merge target | former test items |
+|---|---|---|---|
+| 1 | `qcsmp2:أَجْر:payment` | `qcsmp2:أَجْر:reward` | 10 |
+| 2 | `qcsmp2:بَعْض:some` | `qcsmp2:بَعْض:other` | 1 |
+| 3 | `qcsmp2:ذُو:owner` | `qcsmp2:ذُو:possessor` | 2 |
+| 4 | `qcsmp2:صالِحَة:good deeds` | `qcsmp2:صالِحَة:righteous deeds` | 1 |
+| 5 | `qcsmp2:عِلْم:any knowledge` | `qcsmp2:عِلْم:knowledge` | 1 |
+| 6 | `qcsmp2:قَرْيَة:cities` | `qcsmp2:قَرْيَة:town` | 4 |
+| 7 | `qcsmp2:قَوْل:saying` | `qcsmp2:قَوْل:word` | 3 |
+| 8 | `qcsmp2:كِتاب:scripture` | `qcsmp2:كِتاب:book` | 1 |
+| 9 | `qcsmp2:مُبِين:manifest` | `qcsmp2:مُبِين:clear` | 3 |
+
+Total: 26 former test items across the 9 merged senses. The 3 unmerged
+targets stay as-is: `أَيّ:so which` (n=31), `نَذِير:warning` (n=11),
+`نِساء:wives` (n=1) — the genuinely learnable problems (data starvation /
+feature blindness).
+
+**Scoring space (effective for all Phase-3 comparisons).** The harness
+(`eval_phase3.py --merges`, default on) scores in the **post-merge 106-sense
+space**: gold labels AND predictions are remapped symmetrically through the
+merge map, so the old baseline and new candidates are both interpreted in the
+merged ontology. (For candidates trained on merged labels the prediction
+remap is a no-op; for the baseline it is the fair interpretation — a
+prediction of a merged-away label means its merge target.) `--no-merge`
+scores the original 115-sense space for reference only.
+
+**WIN leg (amended mechanics, JEV call 5, conf 0.55).** Mean recall lift over
+the 12 targets, **both sides scored in post-merge space**: each target maps
+to its post-merge representative (merged → the merge target; unmerged →
+itself); delta = candidate_recall − baseline_recall. Verified consequence:
+the baseline already resolves all 26 former test items to their merge
+targets in post-merge space (26/26 = 1.0 — the zeros were label-name
+artifacts, confirming the diagnosis), so the 9 merged targets contribute ~0
+lift; the +0.10 bar must be cleared by the 3 unmerged real senses (max
+achievable +0.25). The 9 merged senses are NOT dropped: they stay in the
+denominator, and the harness additionally verifies + reports per-target
+`former_items_resolve_to_target` (a candidate that breaks a merge shows
+negative lift there).
+
+**Guardrails (denominators stated explicitly).** GUARD-A (accuracy) and
+GUARD-F (macro-F1) compare candidate vs baseline **in the post-merge space**
+(macro-F1 over the 106-sense universe, absent-from-test → 0.0 — the frozen
+Track-1 recipe, unchanged). The no-regression leg likewise runs in
+post-merge space. The baseline lock records post-merge metrics as primary
+plus original-space reference numbers.
+
+**Denominator clarification (Track-1 bonus finding, verified).**
+- macro-F1 **0.5471** ✅ = frozen Track-1 rule over the 115-sense universe
+  (27 senses have n_test=0 → contribute 0.0).
+- Track-1's "0.6554 over the 88 evaluated senses" ✅ **reproduced**: it is
+  macro-F1 over the **96** true∪predicted classes (88 test-attested + 8
+  test-absent senses the model predicted). "19 with no test support" =
+  senses neither in test nor predicted (115 − 96); 27 have n_test=0, of which
+  8 were predicted (fp>0). Definitions, not discrepancies — recorded here so
+  the rule's denominator is unambiguous.
+- Post-merge baseline (new, locked by the harness): accuracy **0.8022**,
+  macro-F1 (106) **0.6158** — recomputed from the main artifact in the merged
+  ontology; these are the numbers the guardrails compare against.
+
+**Quran lens on the amendment.** *tabayyun*: the merge changes the claim, so
+the claim's basis is re-verified in writing before any candidate exists.
+*lā taqfu*: the merged senses are not claimed as model wins — their lift is
+~0 by construction, stated plainly. *amāna*: the frozen map is committed as
+data (`SENSE_MERGES_PHASE3.json`), validated fail-closed by the harness.
+
 ---
-*End of preregistration. Candidate measurements below this line are post-freeze.*
+*End of preregistration (incl. Amendment A1). Candidate measurements below this line are post-freeze.*
