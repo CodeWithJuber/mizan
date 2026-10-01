@@ -1,6 +1,6 @@
 """In-chat command handlers for MIZAN"""
 
-COMMANDS = {}
+COMMANDS: dict = {}
 
 
 def command(name, description):
@@ -42,7 +42,7 @@ async def cmd_status(agent=None, session_id=None, memory=None, **kwargs):
 @command("/new", "Start a new chat session")
 async def cmd_new(session_id=None, sessions=None, **kwargs):
     if session_id and sessions and session_id in sessions:
-        sessions[session_id] = {"history": []}
+        sessions.setdefault(session_id, {})["history"] = []
     return "Session cleared. Starting fresh conversation."
 
 

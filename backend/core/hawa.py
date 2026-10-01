@@ -46,7 +46,7 @@ class TemptationType(Enum):
 
 
 # Pattern bank: (type, severity, signals, restraint counsel)
-_TEMPTATION_PATTERNS = [
+_TEMPTATION_PATTERNS: list[dict] = [
     {
         "type": TemptationType.REWARD_HACK,
         "severity": "high",

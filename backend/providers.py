@@ -21,6 +21,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from dotenv import load_dotenv
 
@@ -68,8 +69,8 @@ class BaseLLMProvider:
         max_tokens: int,
         system: str,
         messages: list[dict],
-        tools: list[dict] = None,
-        temperature: float = None,
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         raise NotImplementedError
 
@@ -79,9 +80,11 @@ class BaseLLMProvider:
         max_tokens: int,
         system: str,
         messages: list[dict],
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
     ):
-        """Streaming interface for chat (no tools). Returns a context manager."""
-        raise NotImplementedError
+        """Return a context manager with text_stream and get_final_response."""
+        return _BufferedStreamWrapper(self, model, max_tokens, system, messages, tools, temperature)
 
 
 # ───── Anthropic Provider ─────
@@ -132,13 +135,13 @@ class AnthropicProvider(BaseLLMProvider):
             usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
         )
 
-    def stream(self, model, max_tokens, system, messages):
-        return self._client.messages.stream(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-        )
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        kwargs = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
+        if tools:
+            kwargs["tools"] = tools
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return _AnthropicStreamWrapper(self._client.messages.stream(**kwargs))
 
 
 # ───── OpenAI-Compatible Provider (OpenAI + OpenRouter) ─────
@@ -153,13 +156,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
     def __init__(
         self,
         api_key: str,
-        base_url: str = None,
-        default_headers: dict = None,
+        base_url: str | None = None,
+        default_headers: dict | None = None,
         provider_name: str = "openai",
     ):
         from openai import OpenAI
 
-        kwargs = {"api_key": api_key}
+        kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         if default_headers:
@@ -312,7 +315,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
                 # Emit a single assistant message with text + tool_calls combined
                 if role == "assistant" and (text_parts or tool_calls):
-                    assistant_msg = {"role": "assistant"}
+                    assistant_msg: dict[str, Any] = {"role": "assistant"}
                     combined_text = "\n".join(text_parts)
                     if combined_text:
                         assistant_msg["content"] = combined_text
@@ -386,52 +389,195 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         stop_reason = "end_turn"
         if choice.finish_reason == "tool_calls" or has_tool_blocks:
             stop_reason = "tool_use"
+        elif choice.finish_reason == "length":
+            stop_reason = "max_tokens"
         elif choice.finish_reason == "stop":
             stop_reason = "end_turn"
 
+        usage = {}
+        if response.usage is not None:
+            raw = (
+                response.usage.model_dump()
+                if hasattr(response.usage, "model_dump")
+                else vars(response.usage)
+            )
+            usage = {key: value for key, value in raw.items() if value is not None}
+            for native, normalized in (("prompt_tokens", "input"), ("completion_tokens", "output")):
+                if native in usage:
+                    usage[normalized] = usage[native]
         return LLMResponse(
             content=blocks,
             stop_reason=stop_reason,
             model=response.model,
-            usage={
-                "input": response.usage.prompt_tokens if response.usage else 0,
-                "output": response.usage.completion_tokens if response.usage else 0,
-            },
+            usage=usage,
         )
 
-    def stream(self, model, max_tokens, system, messages):
-        """Return an OpenAI streaming wrapper that mimics Anthropic's interface."""
-        openai_messages = self._convert_messages_to_openai(system, messages)
-        return _OpenAIStreamWrapper(self._client, model, max_tokens, openai_messages)
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        return _OpenAIStreamWrapper(
+            self._client,
+            model,
+            max_tokens,
+            self._convert_messages_to_openai(system, messages),
+            self._convert_tools_to_openai(tools) if tools else None,
+            temperature,
+        )
+
+
+class _BufferedStreamWrapper:
+    """Adapter for providers without native deltas; runs in the agent's worker thread."""
+
+    def __init__(self, provider, model, max_tokens, system, messages, tools=None, temperature=None):
+        self.provider = provider
+        self.kwargs = dict(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+        )
+        self.response = None
+
+    def __enter__(self):
+        self.response = self.provider.create(**self.kwargs)
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    @property
+    def text_stream(self):
+        for block in self.get_final_response().content:
+            if block.type == "text" and block.text:
+                yield block.text
+
+    def get_final_response(self):
+        if self.response is None:
+            raise RuntimeError("stream was not entered")
+        return self.response
+
+
+class _AnthropicStreamWrapper:
+    def __init__(self, manager):
+        self.manager = manager
+        self.stream = None
+
+    def __enter__(self):
+        self.stream = self.manager.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.manager.__exit__(*args)
+
+    @property
+    def text_stream(self):
+        return self.stream.text_stream
+
+    def get_final_response(self):
+        message = self.stream.get_final_message()
+        blocks = []
+        for block in message.content:
+            if block.type == "text":
+                blocks.append(ContentBlock(type="text", text=block.text))
+            elif block.type == "tool_use":
+                blocks.append(
+                    ContentBlock(type="tool_use", id=block.id, name=block.name, input=block.input)
+                )
+        return LLMResponse(
+            blocks,
+            message.stop_reason,
+            message.model,
+            {"input": message.usage.input_tokens, "output": message.usage.output_tokens},
+        )
 
 
 class _OpenAIStreamWrapper:
-    """Wraps OpenAI streaming to provide a text_stream interface like Anthropic."""
-
-    def __init__(self, client, model, max_tokens, messages):
-        self._client = client
-        self._model = model
-        self._max_tokens = max_tokens
-        self._messages = messages
+    def __init__(self, client, model, max_tokens, messages, tools=None, temperature=None):
+        self._client, self._model = client, model
+        self._max_tokens, self._messages = max_tokens, messages
+        self._tools, self._temperature = tools, temperature
         self._stream = None
+        self._text = ""
+        self._calls = {}
+        self._usage = {}
+        self._observed_model = ""
+        self._finish = "end_turn"
 
     def __enter__(self):
-        self._stream = self._client.chat.completions.create(
+        kwargs = dict(
             model=self._model,
             max_tokens=self._max_tokens,
             messages=self._messages,
             stream=True,
+            stream_options={"include_usage": True},
         )
+        if self._tools:
+            kwargs["tools"] = self._tools
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+        self._stream = self._client.chat.completions.create(**kwargs)
         return self
 
     def __exit__(self, *args):
-        pass
+        close = getattr(self._stream, "close", None)
+        if close:
+            close()
+        return False
 
     @property
     def text_stream(self):
         for chunk in self._stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            if getattr(chunk, "model", None):
+                self._observed_model = chunk.model
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                raw = usage.model_dump() if hasattr(usage, "model_dump") else vars(usage).copy()
+                self._usage = {"raw": raw}
+                for native, normalized in (
+                    ("prompt_tokens", "input"),
+                    ("completion_tokens", "output"),
+                    ("cost", "cost"),
+                ):
+                    if raw.get(native) is not None:
+                        self._usage[normalized] = raw[native]
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            finish = getattr(choice, "finish_reason", None)
+            if finish:
+                self._finish = {
+                    "stop": "end_turn",
+                    "length": "max_tokens",
+                    "tool_calls": "tool_use",
+                }.get(finish, finish)
+            delta = choice.delta
+            if getattr(delta, "content", None):
+                self._text += delta.content
+                yield delta.content
+            for part in getattr(delta, "tool_calls", None) or []:
+                call = self._calls.setdefault(part.index, {"id": "", "name": "", "arguments": ""})
+                call["id"] += getattr(part, "id", None) or ""
+                function = getattr(part, "function", None)
+                if function:
+                    call["name"] += getattr(function, "name", None) or ""
+                    call["arguments"] += getattr(function, "arguments", None) or ""
+
+    def get_final_response(self):
+        blocks = [ContentBlock(type="text", text=self._text)] if self._text else []
+        for index in sorted(self._calls):
+            call = self._calls[index]
+            # A malformed tool call must never be executed with silently substituted arguments.
+            params = json.loads(call["arguments"] or "{}")
+            if not isinstance(params, dict):
+                raise ValueError("tool arguments must be an object")
+            blocks.append(
+                ContentBlock(type="tool_use", id=call["id"], name=call["name"], input=params)
+            )
+        if self._tools and not self._calls and self._text:
+            blocks.extend(OpenAICompatibleProvider._parse_xml_tool_calls(self._text))
+        if any(b.type == "tool_use" for b in blocks):
+            self._finish = "tool_use"
+        return LLMResponse(blocks, self._finish, self._observed_model, self._usage)
 
 
 # ───── Ollama Provider ─────
@@ -459,20 +605,18 @@ class OllamaProvider(BaseLLMProvider):
         provider.provider_name = "ollama"
         return provider.create(model, max_tokens, system, messages, tools, temperature)
 
-    def stream(self, model, max_tokens, system, messages):
-        openai_messages = [{"role": "system", "content": system}]
-        for msg in messages:
-            if isinstance(msg["content"], str):
-                openai_messages.append({"role": msg["role"], "content": msg["content"]})
-        return _OpenAIStreamWrapper(self._client, model, max_tokens, openai_messages)
+    def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        provider = OpenAICompatibleProvider.__new__(OpenAICompatibleProvider)
+        provider._client = self._client
+        return provider.stream(model, max_tokens, system, messages, tools, temperature)
 
 
 # ───── Provider Factory ─────
 
 
 def create_provider(
-    provider: str = None,
-    model: str = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> BaseLLMProvider | None:
     """
     Create the appropriate LLM provider based on config.
@@ -555,13 +699,15 @@ def create_provider(
         # Remote (RunPod GPU) takes precedence when model is ruh-remote
         if model == "ruh-remote":
             endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID", "")
-            api_key = os.getenv("RUNPOD_API_KEY", "")
+            api_key = os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_API_TOKEN") or ""
             if not endpoint_id or not api_key:
                 logger.warning("RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY not set")
                 return None
             from providers_ruh_remote import RuhRemoteProvider
 
-            return RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
+            return cast(
+                BaseLLMProvider | None, RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
+            )
         # Local model
         model_path = os.getenv("RUH_MODEL_PATH", "")
         if not model_path:
@@ -570,17 +716,19 @@ def create_provider(
         from providers_ruh import RuhModelProvider
 
         device = os.getenv("RUH_DEVICE", "cpu")
-        return RuhModelProvider(model_path=model_path, device=device)
+        return cast(BaseLLMProvider | None, RuhModelProvider(model_path=model_path, device=device))
 
     elif provider == "ruh-remote":
         endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID", "")
-        api_key = os.getenv("RUNPOD_API_KEY", "")
+        api_key = os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_API_TOKEN") or ""
         if not endpoint_id or not api_key:
             logger.warning("RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY not set")
             return None
         from providers_ruh_remote import RuhRemoteProvider
 
-        return RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
+        return cast(
+            BaseLLMProvider | None, RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
+        )
 
     else:
         logger.error(f"Unknown provider: {provider}")
@@ -664,7 +812,7 @@ def get_provider_status() -> dict:
     Get status of all configured providers.
     Returns which providers have API keys set and are available.
     """
-    providers = []
+    providers: list[dict[str, Any]] = []
 
     # Anthropic
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")

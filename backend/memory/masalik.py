@@ -639,7 +639,7 @@ class MasalikNetwork:
 
     # ─── NISYAN: Forgetting (Pruning) ────────────────────────────────────
 
-    def apply_nisyan(self, force_hours: float = None) -> dict:
+    def apply_nisyan(self, force_hours: float | None = None) -> dict:
         """
         NISYAN (نسيان) — Forgetting as mercy and optimization.
 

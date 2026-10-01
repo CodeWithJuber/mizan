@@ -53,7 +53,7 @@ class TriggerManager:
         self._executor = executor
 
     async def register_webhook(
-        self, name: str, task_template: str, agent_id: str = None, secret: str = None
+        self, name: str, task_template: str, agent_id: str | None = None, secret: str | None = None
     ) -> WebhookTrigger:
         """Register a new webhook trigger"""
         webhook = WebhookTrigger(

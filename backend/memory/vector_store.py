@@ -10,6 +10,7 @@ Enables meaning-based retrieval rather than keyword matching.
 
 import logging
 import uuid
+from typing import Any, cast
 
 logger = logging.getLogger("mizan.vector")
 
@@ -26,7 +27,7 @@ class VectorStore:
         self.chroma_url = chroma_url
         self.collection_name = collection_name
         self._client = None
-        self._collection = None
+        self._collection: Any = None
         self._available = False
         self._init_client()
 
@@ -56,7 +57,9 @@ class VectorStore:
     def is_available(self) -> bool:
         return self._available
 
-    async def store(self, content: str, memory_id: str = None, metadata: dict = None) -> str | None:
+    async def store(
+        self, content: str, memory_id: str | None = None, metadata: dict | None = None
+    ) -> str | None:
         """Store content with auto-generated embedding"""
         if not self._available:
             return None
@@ -74,7 +77,7 @@ class VectorStore:
             logger.error(f"[VECTOR] Store failed: {e}")
             return None
 
-    async def search(self, query: str, limit: int = 10, filters: dict = None) -> list[dict]:
+    async def search(self, query: str, limit: int = 10, filters: dict | None = None) -> list[dict]:
         """Semantic similarity search"""
         if not self._available:
             return []
@@ -123,6 +126,6 @@ class VectorStore:
         if not self._available:
             return 0
         try:
-            return self._collection.count()
+            return cast(int, self._collection.count())
         except Exception:
             return 0

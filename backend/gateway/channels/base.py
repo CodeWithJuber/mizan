@@ -38,7 +38,7 @@ class ChannelAdapter(ABC):
     - set_message_callback(): Set handler for incoming messages
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         self.config = config or {}
         self.is_connected = False
         self._message_callback: Callable | None = None
@@ -58,7 +58,7 @@ class ChannelAdapter(ABC):
         pass
 
     @abstractmethod
-    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list | None = None):
         """Send a message to a recipient"""
         pass
 

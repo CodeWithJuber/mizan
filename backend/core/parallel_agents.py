@@ -22,6 +22,7 @@ import math
 import time
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 logger = logging.getLogger("mizan.parallel_agents")
 
@@ -391,7 +392,7 @@ class SkillAutomationTransfer:
         return skill_name in self.automated
 
     def get_mastery(self, skill_name: str) -> float:
-        return self.skill_stats.get(skill_name, {}).get("mastery", 0.0)
+        return cast(float, self.skill_stats.get(skill_name, {}).get("mastery", 0.0))
 
     def get_automated_skills(self) -> list[str]:
         return list(self.automated.keys())

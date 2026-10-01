@@ -28,7 +28,7 @@ node_modules/
 # Database (local only)
 *.db
 *.sqlite
-data/
+/data/
 
 # Model checkpoints (large binaries)
 ruh_model/checkpoints/

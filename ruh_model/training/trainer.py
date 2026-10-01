@@ -22,7 +22,6 @@ from torch.utils.data import DataLoader, Dataset
 
 from ruh_model.config import RuhConfig
 from ruh_model.data.collator import RuhCollator
-from ruh_model.layers.lubb import LubbMetacognition
 from ruh_model.loss.mizan_loss import MizanLoss
 from ruh_model.model import RuhModel
 from ruh_model.training.scheduler import WarmupCosineScheduler
@@ -82,12 +81,21 @@ class RuhTrainer:
         self.on_step = on_step
         self.on_epoch = on_epoch
 
-        self.optimizer = torch.optim.AdamW(
-            model.parameters(), lr=lr, weight_decay=weight_decay
-        )
+        if use_lubb:
+            if model.lubb_head is None:
+                model.lubb_head = torch.nn.Sequential(
+                    torch.nn.Linear(config.d_model, config.d_model // 4),
+                    torch.nn.GELU(),
+                    torch.nn.Linear(config.d_model // 4, 1),
+                    torch.nn.Sigmoid(),
+                ).to(config.device)
+            config.use_lubb = True
+        self.optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-        self.mizan_loss = MizanLoss(pad_id=config.PAD_ROOT) if use_mizan_loss else None
-        self.lubb = LubbMetacognition(config) if use_lubb else None
+        self.mizan_loss = (
+            MizanLoss(pad_id=config.PAD_ROOT, vocab_size=config.n_roots) if use_mizan_loss else None
+        )
+        self.lubb = model.lubb_head if use_lubb else None
 
     def train(
         self,
@@ -113,19 +121,26 @@ class RuhTrainer:
 
         for epoch in range(epochs):
             avg_loss = self._train_epoch(
-                epoch, epochs, loader, scheduler, log_every, total_steps,
+                epoch,
+                epochs,
+                loader,
+                scheduler,
+                log_every,
+                total_steps,
             )
             epoch_losses.append(avg_loss)
             self._save_checkpoint(epoch)
 
             if self.on_epoch:
-                self.on_epoch({
-                    "type": "epoch",
-                    "epoch": epoch + 1,
-                    "total_epochs": epochs,
-                    "avg_loss": avg_loss,
-                    "losses_so_far": list(epoch_losses),
-                })
+                self.on_epoch(
+                    {
+                        "type": "epoch",
+                        "epoch": epoch + 1,
+                        "total_epochs": epochs,
+                        "avg_loss": avg_loss,
+                        "losses_so_far": list(epoch_losses),
+                    }
+                )
 
         return epoch_losses
 
@@ -177,25 +192,32 @@ class RuhTrainer:
                 current_lr = self.optimizer.param_groups[0]["lr"]
                 global_step = epoch * steps_per_epoch + steps
                 elapsed = time.time() - start_time
-                self.on_step({
-                    "type": "step",
-                    "epoch": epoch + 1,
-                    "total_epochs": total_epochs,
-                    "step": steps,
-                    "total_steps": steps_per_epoch,
-                    "global_step": global_step,
-                    "total_global_steps": total_steps_all_epochs,
-                    "loss": loss,
-                    "lr": current_lr,
-                    "elapsed": round(elapsed, 2),
-                })
+                self.on_step(
+                    {
+                        "type": "step",
+                        "epoch": epoch + 1,
+                        "total_epochs": total_epochs,
+                        "step": steps,
+                        "total_steps": steps_per_epoch,
+                        "global_step": global_step,
+                        "total_global_steps": total_steps_all_epochs,
+                        "loss": loss,
+                        "loss_components": getattr(self, "last_loss_components", {}),
+                        "lr": current_lr,
+                        "elapsed": round(elapsed, 2),
+                    }
+                )
 
         elapsed = time.time() - start_time
         avg_loss = total_loss / max(steps, 1)
 
         logger.info(
             "Epoch %d/%d -- Avg Loss: %.4f, Steps: %d, Time: %.1fs",
-            epoch + 1, total_epochs, avg_loss, steps, elapsed,
+            epoch + 1,
+            total_epochs,
+            avg_loss,
+            steps,
+            elapsed,
         )
 
         return avg_loss
@@ -215,11 +237,11 @@ class RuhTrainer:
         )
 
         loss = self._compute_loss(result, batch)
+        if not torch.isfinite(loss):
+            raise ValueError("Non-finite training loss; optimizer step refused")
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(
-            self.model.parameters(), self.max_grad_norm
-        )
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
         self.optimizer.step()
         scheduler.step()
@@ -233,13 +255,38 @@ class RuhTrainer:
     ) -> Tensor:
         """Compute loss using either MizanLoss or the model's built-in CE."""
         if self.mizan_loss is not None:
-            confidence = self._get_confidence(result) if self.lubb else None
+            confidence = result.get("confidence")
+            paraphrase_logits = None
+            consistency_logits = None
+            if "paraphrase_root_ids" in batch:
+                paired = self.model(batch["paraphrase_root_ids"], batch["paraphrase_pattern_ids"])
+
+                # Average only real positions; paraphrases need not have equal lengths.
+                def pool(logits, roots):
+                    mask = (roots != self.config.PAD_ROOT).unsqueeze(-1)
+                    return (logits * mask).sum(1) / mask.sum(1).clamp_min(1)
+
+                selected = batch.get(
+                    "paraphrase_mask",
+                    torch.ones(
+                        len(batch["root_ids"]), device=batch["root_ids"].device, dtype=torch.bool
+                    ),
+                )
+                consistency_logits = pool(result["logits"], batch["root_ids"])[selected]
+                paraphrase_logits = pool(paired["logits"], batch["paraphrase_root_ids"])[selected]
             mizan_output = self.mizan_loss(
                 logits=result["logits"],
                 labels=batch["labels"],
                 confidence=confidence,
+                paraphrase_logits=paraphrase_logits,
+                consistency_logits=consistency_logits,
             )
-            return mizan_output.total
+            self.last_loss_components = {
+                name: getattr(mizan_output, name)
+                for name in ("ce", "calibration", "consistency", "fitrah", "hisbah")
+            }
+            self.last_loss_components["moe_aux"] = float(result["moe_aux_loss"].detach())
+            return mizan_output.total + self.config.moe_aux_weight * result["moe_aux_loss"]
 
         # Fallback to model's built-in cross-entropy
         return result["loss"]
@@ -249,9 +296,7 @@ class RuhTrainer:
         if self.lubb is None:
             return None
 
-        # Lubb expects the final hidden states; approximate with logits shape
-        # In practice, the model would expose hidden states. For now, we skip.
-        return None
+        return result.get("confidence")
 
     def _save_checkpoint(self, epoch: int) -> None:
         """Save model checkpoint for the given epoch."""
@@ -270,8 +315,13 @@ class RuhTrainer:
         """Log a training step."""
         current_lr = self.optimizer.param_groups[0]["lr"]
         logger.info(
-            "  Epoch %d/%d, Step %d, Loss: %.4f, LR: %.2e",
-            epoch + 1, total_epochs, step, loss, current_lr,
+            "  Epoch %d/%d, Step %d, Loss: %.4f, LR: %.2e, Components: %s",
+            epoch + 1,
+            total_epochs,
+            step,
+            loss,
+            current_lr,
+            getattr(self, "last_loss_components", {}),
         )
 
     def get_training_summary(self) -> dict[str, Any]:
@@ -287,9 +337,7 @@ class RuhTrainer:
         }
 
 
-def _move_batch_to_device(
-    batch: dict[str, Tensor], device: str
-) -> dict[str, Tensor]:
+def _move_batch_to_device(batch: dict[str, Tensor], device: str) -> dict[str, Tensor]:
     """Move all tensors in a batch dict to the target device.
 
     Returns a new dict (no mutation of original).

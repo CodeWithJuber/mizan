@@ -55,14 +55,15 @@ _DEFAULT_RATIOS: dict[str, float] = {
     "quran": 0.30,
     "hadith": 0.20,
     "arabic_wiki": 0.25,
-    "opus": 0.15,
-    "morphology": 0.10,
+    "opus": 0.0,
+    "morphology": 0.0,
 }
 
 
 # ===================================================================
 # Main entry point
 # ===================================================================
+
 
 def main() -> None:
     """Parse CLI args and dispatch to the appropriate workflow."""
@@ -83,6 +84,7 @@ def main() -> None:
 # Run modes
 # ===================================================================
 
+
 def _run_single_stage(args: argparse.Namespace) -> None:
     """Run training for a single curriculum stage."""
     curriculum = NafsCurriculum()
@@ -91,9 +93,11 @@ def _run_single_stage(args: argparse.Namespace) -> None:
 
     device = _resolve_device(args.device)
     config = _build_config(stage.max_seq_len, device)
-    tokenizer = BayanTokenizer()
+    tokenizer = BayanTokenizer(version=2)
 
     model = _create_or_resume_model(config, args.resume_from, device)
+    config = model.config
+    tokenizer = model.tokenizer or BayanTokenizer(version=config.tokenizer_version)
     _log_model_info(model, device)
 
     ratios = _build_mixing_ratios(args)
@@ -125,7 +129,7 @@ def _run_all_stages(args: argparse.Namespace) -> None:
     """Run all 4 curriculum stages in sequence."""
     curriculum = NafsCurriculum()
     device = _resolve_device(args.device)
-    tokenizer = BayanTokenizer()
+    tokenizer = BayanTokenizer(version=2)
     ratios = _build_mixing_ratios(args)
 
     resume_path = args.resume_from
@@ -138,6 +142,8 @@ def _run_all_stages(args: argparse.Namespace) -> None:
 
         config = _build_config(stage.max_seq_len, device)
         model = _create_or_resume_model(config, resume_path, device)
+        config = model.config
+        tokenizer = model.tokenizer or BayanTokenizer(version=config.tokenizer_version)
         _log_model_info(model, device)
 
         if args.data_dir:
@@ -173,7 +179,7 @@ def _prepare_data_to_disk(args: argparse.Namespace) -> None:
     """Download and materialize streaming data to JSONL files on disk."""
     from ruh_model.data.pipeline import RealDataPipeline
 
-    tokenizer = BayanTokenizer()
+    tokenizer = BayanTokenizer(version=2)
     ratios = _build_mixing_ratios(args)
     pipeline = RealDataPipeline(
         tokenizer=tokenizer,
@@ -211,7 +217,9 @@ def _prepare_data_to_disk(args: argparse.Namespace) -> None:
             if total % 10_000 == 0:
                 elapsed = time.time() - start_time
                 rate = total / elapsed if elapsed > 0 else 0
-                logger.info("  Prepared %d / %d samples (%.0f samples/sec)", total, samples_total, rate)
+                logger.info(
+                    "  Prepared %d / %d samples (%.0f samples/sec)", total, samples_total, rate
+                )
     finally:
         for writer in writers.values():
             writer.close()
@@ -222,12 +230,15 @@ def _prepare_data_to_disk(args: argparse.Namespace) -> None:
         logger.info("  %s: %d samples", file_key, count)
 
     logger.info("Files written to: %s", output_dir)
-    logger.info("Train with: python -m ruh_model.train_full --stage nutfah --data-dir %s", output_dir)
+    logger.info(
+        "Train with: python -m ruh_model.train_full --stage nutfah --data-dir %s", output_dir
+    )
 
 
 # ===================================================================
 # Training loops
 # ===================================================================
+
 
 def _train_streaming(
     model: RuhModel,
@@ -239,16 +250,25 @@ def _train_streaming(
 ) -> list[float]:
     """Train with streaming data from HuggingFace (no JSONL on disk)."""
     from ruh_model.data.pipeline import RealDataPipeline
+    from ruh_model.training.trainer import RuhTrainer
 
     samples_per_epoch = args.samples // stage.epochs
+    if samples_per_epoch < 1:
+        raise ValueError("--samples must provide at least one sample per epoch")
     collator = RuhCollator(pad_id=config.PAD_ROOT)
     device = config.device
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
+    trainer = RuhTrainer(
+        model,
+        config,
+        [],
+        collator,
         lr=stage.lr,
         weight_decay=args.weight_decay,
+        max_grad_norm=args.max_grad_norm,
+        checkpoint_dir=args.checkpoint_dir,
     )
+    optimizer = trainer.optimizer
 
     estimated_steps_per_epoch = max(1, samples_per_epoch // stage.batch_size)
     total_steps = estimated_steps_per_epoch * stage.epochs
@@ -260,7 +280,9 @@ def _train_streaming(
     )
 
     logger.info("Streaming training: %d samples/epoch × %d epochs", samples_per_epoch, stage.epochs)
-    logger.info("  Estimated steps/epoch: %d, total steps: %d", estimated_steps_per_epoch, total_steps)
+    logger.info(
+        "  Estimated steps/epoch: %d, total steps: %d", estimated_steps_per_epoch, total_steps
+    )
     logger.info("  LR: %s, warmup: %d steps", stage.lr, warmup_steps)
     logger.info("  Batch size: %d, max_seq_len: %d", stage.batch_size, stage.max_seq_len)
 
@@ -284,15 +306,20 @@ def _train_streaming(
             shuffle=True,
         ):
             batch = _move_to_device(batch, device)
-            loss = _train_step(model, optimizer, scheduler, batch, args.max_grad_norm)
+            loss = trainer._train_step(batch, scheduler)
             epoch_loss += loss
             steps += 1
 
             if steps % args.log_every == 0:
                 current_lr = optimizer.param_groups[0]["lr"]
                 logger.info(
-                    "  Epoch %d/%d, Step %d, Loss: %.4f, LR: %.2e",
-                    epoch + 1, stage.epochs, steps, loss, current_lr,
+                    "  Epoch %d/%d, Step %d, Loss: %.4f, LR: %.2e, Components: %s",
+                    epoch + 1,
+                    stage.epochs,
+                    steps,
+                    loss,
+                    current_lr,
+                    trainer.last_loss_components,
                 )
 
         elapsed = time.time() - epoch_start
@@ -301,7 +328,11 @@ def _train_streaming(
 
         logger.info(
             "Epoch %d/%d complete — Avg Loss: %.4f, Steps: %d, Time: %.1fs",
-            epoch + 1, stage.epochs, avg_loss, steps, elapsed,
+            epoch + 1,
+            stage.epochs,
+            avg_loss,
+            steps,
+            elapsed,
         )
 
         # Checkpoint per epoch
@@ -347,7 +378,9 @@ def _train_from_jsonl(
     )
 
     summary = trainer.get_training_summary()
-    logger.info("JSONL training: %d samples, %d params", summary["dataset_size"], summary["model_params"])
+    logger.info(
+        "JSONL training: %d samples, %d params", summary["dataset_size"], summary["model_params"]
+    )
 
     return trainer.train(
         epochs=stage.epochs,
@@ -359,6 +392,7 @@ def _train_from_jsonl(
 # ===================================================================
 # Training step
 # ===================================================================
+
 
 def _train_step(
     model: RuhModel,
@@ -377,6 +411,8 @@ def _train_step(
     )
 
     loss = result["loss"]
+    if not torch.isfinite(loss):
+        raise ValueError("Non-finite training loss; optimizer step refused")
     loss.backward()
 
     nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -389,6 +425,7 @@ def _train_step(
 # ===================================================================
 # Helpers
 # ===================================================================
+
 
 def _parse_args() -> argparse.Namespace:
     """Build and parse CLI arguments."""
@@ -418,62 +455,98 @@ Examples:
     # --- Mode ---
     mode = parser.add_argument_group("Training mode")
     mode.add_argument(
-        "--stage", default="nutfah", choices=VALID_STAGE_NAMES,
+        "--stage",
+        default="nutfah",
+        choices=VALID_STAGE_NAMES,
         help="Curriculum stage (default: nutfah)",
     )
     mode.add_argument(
-        "--all-stages", action="store_true",
+        "--all-stages",
+        action="store_true",
         help="Run all 4 curriculum stages in sequence",
     )
     mode.add_argument(
-        "--prepare-only", action="store_true",
+        "--prepare-only",
+        action="store_true",
         help="Download and materialize data to JSONL without training",
     )
 
     # --- Data ---
     data = parser.add_argument_group("Data sources")
     data.add_argument(
-        "--samples", type=int, default=100_000,
+        "--samples",
+        type=int,
+        default=100_000,
         help="Total samples to stream from HuggingFace (default: 100,000)",
     )
     data.add_argument(
-        "--data-dir", default=None,
+        "--data-dir",
+        default=None,
         help="Train from pre-materialized JSONL instead of streaming",
     )
     data.add_argument(
-        "--output-dir", default=None,
+        "--output-dir",
+        default=None,
         help="Output directory for --prepare-only (default: ruh_model/data/real)",
     )
 
     # --- Mixing ratios ---
     mix = parser.add_argument_group("Data mixing weights (proportional, need not sum to 1)")
-    mix.add_argument("--quran-weight", type=float, default=0.30, help="Quran weight (default: 0.30)")
-    mix.add_argument("--hadith-weight", type=float, default=0.20, help="Hadith weight (default: 0.20)")
-    mix.add_argument("--wiki-weight", type=float, default=0.25, help="Arabic Wikipedia weight (default: 0.25)")
-    mix.add_argument("--opus-weight", type=float, default=0.15, help="OPUS parallel corpus weight (default: 0.15)")
-    mix.add_argument("--morpho-weight", type=float, default=0.10, help="Tashkeela morphology weight (default: 0.10)")
+    mix.add_argument(
+        "--quran-weight", type=float, default=0.30, help="Quran weight (default: 0.30)"
+    )
+    mix.add_argument(
+        "--hadith-weight", type=float, default=0.20, help="Hadith weight (default: 0.20)"
+    )
+    mix.add_argument(
+        "--wiki-weight", type=float, default=0.25, help="Arabic Wikipedia weight (default: 0.25)"
+    )
+    mix.add_argument(
+        "--opus-weight",
+        type=float,
+        default=0.0,
+        help="Custom OPUS corpus weight (default: 0; requires RUH_DATA_SOURCES)",
+    )
+    mix.add_argument(
+        "--morpho-weight",
+        type=float,
+        default=0.0,
+        help="Custom morphology source weight (default: 0; requires RUH_DATA_SOURCES)",
+    )
 
     # --- Training hyperparams ---
     train = parser.add_argument_group("Training hyperparameters")
-    train.add_argument("--device", default="auto", help="Device: cpu, cuda, mps, or auto (default: auto)")
-    train.add_argument("--weight-decay", type=float, default=0.01, help="AdamW weight decay (default: 0.01)")
-    train.add_argument("--max-grad-norm", type=float, default=1.0, help="Gradient clip norm (default: 1.0)")
-    train.add_argument("--warmup-fraction", type=float, default=0.1, help="LR warmup fraction (default: 0.1)")
+    train.add_argument(
+        "--device", default="auto", help="Device: cpu, cuda, mps, or auto (default: auto)"
+    )
+    train.add_argument(
+        "--weight-decay", type=float, default=0.01, help="AdamW weight decay (default: 0.01)"
+    )
+    train.add_argument(
+        "--max-grad-norm", type=float, default=1.0, help="Gradient clip norm (default: 1.0)"
+    )
+    train.add_argument(
+        "--warmup-fraction", type=float, default=0.1, help="LR warmup fraction (default: 0.1)"
+    )
 
     # --- Checkpointing ---
     ckpt = parser.add_argument_group("Checkpointing")
     ckpt.add_argument(
-        "--checkpoint-dir", default="ruh_model/checkpoints",
+        "--checkpoint-dir",
+        default="ruh_model/checkpoints",
         help="Directory to save checkpoints (default: ruh_model/checkpoints)",
     )
     ckpt.add_argument(
-        "--resume-from", default=None,
+        "--resume-from",
+        default=None,
         help="Path to a checkpoint directory to resume from",
     )
 
     # --- Logging ---
     log = parser.add_argument_group("Logging")
-    log.add_argument("--log-every", type=int, default=50, help="Log loss every N steps (default: 50)")
+    log.add_argument(
+        "--log-every", type=int, default=50, help="Log loss every N steps (default: 50)"
+    )
     log.add_argument("--verbose", action="store_true", help="Enable debug-level logging")
 
     return parser.parse_args()
@@ -507,7 +580,7 @@ def _resolve_device(device_arg: str) -> str:
 
 def _build_config(max_seq_len: int, device: str) -> RuhConfig:
     """Build a RuhConfig with the given sequence length and device."""
-    return RuhConfig(max_seq_len=max_seq_len, device=device)
+    return RuhConfig(max_seq_len=max_seq_len, device=device, tokenizer_version=2, use_lubb=True)
 
 
 def _build_mixing_ratios(args: argparse.Namespace) -> dict[str, float]:
@@ -521,9 +594,7 @@ def _build_mixing_ratios(args: argparse.Namespace) -> dict[str, float]:
     }
 
 
-def _create_or_resume_model(
-    config: RuhConfig, resume_from: str | None, device: str
-) -> RuhModel:
+def _create_or_resume_model(config: RuhConfig, resume_from: str | None, device: str) -> RuhModel:
     """Create a new model or load from checkpoint, then move to device."""
     if resume_from is not None:
         logger.info("Resuming from checkpoint: %s", resume_from)
@@ -532,6 +603,8 @@ def _create_or_resume_model(
         model = RuhModel(config)
 
     model = model.to(device)
+    model.config.device = device
+    model.config.max_seq_len = config.max_seq_len
     return model
 
 
@@ -542,9 +615,7 @@ def _log_model_info(model: RuhModel, device: str) -> None:
     logger.info("Model: %d params (%.1f MB float32) on %s", param_count, param_mb, device)
 
 
-def _move_to_device(
-    batch: dict[str, torch.Tensor], device: str
-) -> dict[str, torch.Tensor]:
+def _move_to_device(batch: dict[str, torch.Tensor], device: str) -> dict[str, torch.Tensor]:
     """Move all tensors in a batch to the target device (immutable)."""
     return {key: tensor.to(device) for key, tensor in batch.items()}
 
@@ -559,9 +630,7 @@ def _save_epoch_checkpoint(
     return path
 
 
-def _save_final_checkpoint(
-    model: RuhModel, checkpoint_dir: str, stage_name: str
-) -> str:
+def _save_final_checkpoint(model: RuhModel, checkpoint_dir: str, stage_name: str) -> str:
     """Save the final checkpoint for a stage. Returns the checkpoint path."""
     path = str(Path(checkpoint_dir) / f"{stage_name}_final")
     model.save_pretrained(path)

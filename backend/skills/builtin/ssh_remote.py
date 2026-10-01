@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -78,7 +79,7 @@ class JisrRemoteSkill(SkillBase):
     DEFAULT_KEY_DIR = "/data/.ssh"
     DEFAULT_KEY_PATH = "/data/.ssh/mizan_id_ed25519"
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.servers: dict[str, ServerConnection] = {}
         self._tools = {
@@ -93,11 +94,11 @@ class JisrRemoteSkill(SkillBase):
             "ssh_copy_id": self.ssh_copy_id,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list_servers")
         handler = self._tools.get(f"ssh_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown SSH action: {action}"}
 
     def _build_ssh_cmd(self, server: ServerConnection, command: str) -> list[str]:
@@ -409,14 +410,14 @@ class JisrRemoteSkill(SkillBase):
         except Exception as e:
             return {"reachable": False, "server": server.host, "error": str(e)}
 
-    async def list_servers(self, params: dict = None) -> dict:
+    async def list_servers(self, params: dict | None = None) -> dict:
         """List all registered servers."""
         return {
             "servers": [s.to_dict() for s in self.servers.values()],
             "count": len(self.servers),
         }
 
-    async def ssh_keygen(self, params: dict = None) -> dict:
+    async def ssh_keygen(self, params: dict | None = None) -> dict:
         """Generate an SSH key pair for MIZAN to use for passwordless auth.
 
         Creates an ed25519 key at /data/.ssh/mizan_id_ed25519.

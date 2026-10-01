@@ -31,6 +31,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -162,7 +163,7 @@ class ClawHubBridge:
         timestamps.append(now)
         return True
 
-    def _audit(self, action: str, details: dict = None) -> None:
+    def _audit(self, action: str, details: dict | None = None) -> None:
         entry = {
             "action": action,
             "timestamp": datetime.now(UTC).isoformat(),
@@ -188,7 +189,7 @@ class ClawHubBridge:
         sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", sanitized)
         return sanitized
 
-    def search_clawhub(self, query: str, category: str = None) -> dict:
+    def search_clawhub(self, query: str, category: str | None = None) -> dict:
         """
         Build a secure search request to ClawHub.
         Returns request structure (actual HTTP call done by caller).
@@ -196,7 +197,7 @@ class ClawHubBridge:
         if not self._check_rate_limit():
             return {"error": "Rate limit exceeded (20 requests/minute to ClawHub)"}
 
-        request = {
+        request: dict = {
             "url": f"{self.CLAWHUB_API_BASE}/skills/search",
             "method": "GET",
             "params": {"q": query},
@@ -345,7 +346,7 @@ class SuqRegistrySkill(SkillBase):
         tags=["سوق", "Registry", "ClawHub"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.packages: dict[str, SurahPackage] = {}
         self.installed: dict[str, SurahPackage] = {}
@@ -491,11 +492,11 @@ class SuqRegistrySkill(SkillBase):
         for pkg in builtins:
             self.packages[pkg.id] = pkg
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"suq_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}"}
 
     async def search(self, params: dict) -> dict:
@@ -583,7 +584,7 @@ class SuqRegistrySkill(SkillBase):
 
     async def install(self, params: dict) -> dict:
         """Install a package from the Suq"""
-        pkg_id = params.get("package_id")
+        pkg_id = params.get("package_id", "")
         pkg_name = params.get("name")
 
         pkg = None
@@ -613,7 +614,7 @@ class SuqRegistrySkill(SkillBase):
 
     async def uninstall(self, params: dict) -> dict:
         """Uninstall a package"""
-        pkg_id = params.get("package_id")
+        pkg_id = params.get("package_id", "")
         if pkg_id in self.installed:
             del self.installed[pkg_id]
             return {"uninstalled": True}
@@ -621,7 +622,7 @@ class SuqRegistrySkill(SkillBase):
 
     async def rate(self, params: dict) -> dict:
         """Rate a package — community accountability (Hisab)"""
-        pkg_id = params.get("package_id")
+        pkg_id = params.get("package_id", "")
         rating = params.get("rating", 0)
         pkg = self.packages.get(pkg_id)
         if not pkg:
@@ -641,7 +642,7 @@ class SuqRegistrySkill(SkillBase):
         'And consult them in affairs' — 3:159
         Elevates trust level from Ammara to Lawwama or Mutmainna.
         """
-        pkg_id = params.get("package_id")
+        pkg_id = params.get("package_id", "")
         verdict = params.get("verdict", "approve")  # approve, reject
         pkg = self.packages.get(pkg_id)
         if not pkg:
@@ -660,7 +661,7 @@ class SuqRegistrySkill(SkillBase):
             return {"rejected": True, "package": pkg.name}
         return {"error": "verdict must be 'approve' or 'reject'"}
 
-    async def list_packages(self, params: dict = None) -> dict:
+    async def list_packages(self, params: dict | None = None) -> dict:
         """List all packages in the Suq"""
         category = (params or {}).get("category")
         packages = [
@@ -671,13 +672,13 @@ class SuqRegistrySkill(SkillBase):
         packages.sort(key=lambda x: -x.get("install_count", 0))
         return {"packages": packages, "total": len(packages)}
 
-    async def list_installed(self, params: dict = None) -> dict:
+    async def list_installed(self, params: dict | None = None) -> dict:
         """List installed packages"""
         return {"installed": [p.to_dict() for p in self.installed.values()]}
 
     async def security_scan_package(self, params: dict) -> dict:
         """Re-scan a package for security issues"""
-        pkg_id = params.get("package_id")
+        pkg_id = params.get("package_id", "")
         pkg = self.packages.get(pkg_id)
         if not pkg:
             return {"error": "Package not found"}

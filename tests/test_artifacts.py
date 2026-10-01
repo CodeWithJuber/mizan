@@ -218,7 +218,8 @@ class TestMountInMain:
     def test_router_mounted_in_main(self):
         main_py = Path(__file__).parent.parent / "backend" / "api" / "main.py"
         src = main_py.read_text(encoding="utf-8")
-        assert "app.include_router(_artifacts_module.router)" in src
-        assert "from . import artifacts as _artifacts_module" in src
+        from api.main import app
+
+        assert "/api/artifacts/" in app.openapi()["paths"]
         # require_auth must be defined in main for delegation to find it
         assert "async def require_auth(" in src

@@ -86,19 +86,17 @@ def test_docker_fallback_uses_hardened_flags(monkeypatch, tmp_path):
     """The docker command must carry the hardening flags; stdout/stderr captured."""
     seen = {}
 
-    class FakeProc:
-        stdout = b"hello\n"
-        stderr = b""
-        returncode = 0
-
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd, timeout_s):
+        if cmd[1] == "rm":
+            seen["cleanup"] = cmd
+            return ("", "", 0, False)
         seen["cmd"] = cmd
-        seen["timeout"] = kwargs.get("timeout")
+        seen["timeout"] = timeout_s
         assert cmd[0] == "docker"
         for flag in (
             "--cap-drop",
             "--read-only",
-            "--no-new-privileges",
+            "--security-opt",
             "--network",
             "--cpus",
             "--memory",
@@ -107,9 +105,12 @@ def test_docker_fallback_uses_hardened_flags(monkeypatch, tmp_path):
         ):
             assert flag in cmd, f"missing hardening flag {flag}"
         assert "none" in cmd  # --network none
-        return FakeProc()
+        assert "no-new-privileges" in cmd
+        assert "65534:65534" in cmd
+        return ("hello\n", "", 0, False)
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(sandbox, "_bounded_process", fake_run)
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: seen.update(cleanup=cmd))
     result = _run_docker_sync("python", "print('hello')", 10)
     assert isinstance(result, SandboxRunResult)
     assert result.stdout == "hello\n"
@@ -120,10 +121,11 @@ def test_docker_fallback_uses_hardened_flags(monkeypatch, tmp_path):
 
 
 def test_docker_timeout_kills_and_flags(monkeypatch):
-    def fake_run(cmd, **kwargs):
-        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"), b"partial", b"err")
+    def fake_run(cmd, timeout_s):
+        return ("partial", "err: timed out", 124, True)
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(sandbox, "_bounded_process", fake_run)
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
     result = _run_docker_sync("javascript", "while(true){}", 3)
     assert result.timed_out is True
     assert result.exit_code == 124
@@ -153,33 +155,15 @@ def test_audit_log_written(monkeypatch, tmp_path):
     assert record["provider"] is None
 
 
-def test_microsandbox_preferred_over_docker(monkeypatch):
-    calls = []
+def test_unverified_microsandbox_is_disabled(monkeypatch):
     monkeypatch.setattr(sandbox, "_microsandbox_importable", lambda: True)
-    monkeypatch.setattr(sandbox, "_docker_available", lambda: True)
-
-    async def fake_ms(language, code, timeout_s):
-        calls.append("microsandbox")
-        return SandboxRunResult(
-            stdout="ok",
-            stderr="",
-            exit_code=0,
-            timed_out=False,
-            duration_ms=1,
-            sandbox="microsandbox",
-        )
-
-    async def fake_docker(language, code, timeout_s):
-        calls.append("docker")
-        raise AssertionError("docker must not run when microsandbox is available")
-
-    monkeypatch.setattr(sandbox, "_run_microsandbox", fake_ms)
-    monkeypatch.setattr(sandbox, "_run_docker", fake_docker)
+    monkeypatch.setattr(sandbox, "_docker_available", lambda: False)
+    assert sandbox.detect_provider() is None
     import asyncio
 
-    result = asyncio.run(execute_code("python", "print(1)", 5))
-    assert result.sandbox == "microsandbox"
-    assert calls == ["microsandbox"]
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(execute_code("python", "print(1)", 5))
+    assert exc.value.status_code == 503
 
 
 def test_microsandbox_failure_falls_back_to_docker(monkeypatch):
