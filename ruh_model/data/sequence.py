@@ -23,6 +23,26 @@ def split_records(rows: Iterable[dict], validation_fraction: float = 0.1, seed: 
     if not 0 < validation_fraction < 1:
         raise ValueError("validation_fraction must be between zero and one")
     train, validation, seen = [], [], set()
+    rows = list(rows)
+    parents = {}
+
+    def find(key):
+        parents.setdefault(key, key)
+        if parents[key] != key:
+            parents[key] = find(parents[key])
+        return parents[key]
+
+    # Connect source thread IDs across repeated prompts, including different
+    # licensed corpora. Alternative answers to the same question never leak.
+    for row in rows:
+        group = "group:" + record_id(row)
+        find(group)
+        for message in row.get("messages", []):
+            if message["role"] == "user":
+                normalized = " ".join(message["content"].casefold().split())
+                prompt = "prompt:" + hashlib.sha256(normalized.encode()).hexdigest()
+                a, b = find(group), find(prompt)
+                parents[max(a, b)] = min(a, b)
     for row in rows:
         identity = record_id(row)
         content = (
@@ -34,7 +54,8 @@ def split_records(rows: Iterable[dict], validation_fraction: float = 0.1, seed: 
         if content_id in seen:
             continue
         seen.add(content_id)
-        bucket = int(hashlib.sha256(f"{seed}:{identity}".encode()).hexdigest()[:16], 16) / 2**64
+        component = find("group:" + identity)
+        bucket = int(hashlib.sha256(f"{seed}:{component}".encode()).hexdigest()[:16], 16) / 2**64
         (validation if bucket < validation_fraction else train).append(row)
     if not train or not validation:
         raise ValueError("Both training and validation need examples; increase the source limit")

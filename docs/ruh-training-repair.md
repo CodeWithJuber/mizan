@@ -41,7 +41,7 @@ Saved candidates are explicitly marked **not approved for production**.
 ## Private bounded Kaggle validation
 
 `notebooks/kaggle/ruh_training_repair/` contains a commit-pinned notebook and Kaggle
-metadata. The validation requests one P100, uses Kaggle's installed Torch, and sets
+metadata. The validation requests a P100, uses Kaggle's installed Torch, and sets
 an API session timeout of 900 seconds including setup/download. Training itself is
 limited to 480 seconds and 1,000 steps. The 3.58M-parameter dense pilot uses four
 256-wide layers, a 384-byte context, batch size 2 and learning rate 3e-4. It validates
@@ -58,11 +58,11 @@ python -m ruh_model.train_sequence \
   --steps 1000 --max-seconds 480 --seq-len 384 --batch-size 2
 ```
 
-## Full 46M architecture after quota reset
+## Full 46M architecture
 
 The separate `--production-architecture` flag preserves the original Ruh
 512-wide, eight-layer, eight-head, four-expert/top-two MoE architecture with
-4,000 output classes (45,994,799 parameters). This starts new v2 training; changing
+4,000 output classes (45,985,563 parameters). This starts new v2 training; changing
 the tokenizer of epoch19 cannot recover discarded surface words. A longer run
 must use enough real data and evaluate held-out Arabic and English generations.
 The initial sentence phase can use a 384-byte context; subsequent fresh runs can
@@ -80,8 +80,43 @@ python -m ruh_model.train_sequence --production-architecture \
   --steps 20000 --max-seconds 3600 --seq-len 384 --batch-size 2 --lr 3e-4
 ```
 
-Check the Kaggle quota API before launching. The observed GPU allowance is six
-hours per week; pay-to-scale is disabled. At inspection about 39 minutes remained,
-with reset at 2026-10-03 00:00 UTC. The full run remains a later quota-reset task.
+Check the Kaggle quota API before launching. The observed GPU allowance is 30
+hours per week; pay-to-scale is disabled. After the pilot about 24 hours 38 minutes
+remained, with reset at 2026-10-03 00:00 UTC. Use SDK timedelta.total_seconds();
+its JSON string serializer drops the days and incorrectly suggests only 39 minutes.
 Promotion requires useful held-out sentence/dialogue output, comparison against
 baseline, valid UTF-8 and negation tests, and a versioned worker checkpoint manifest.
+
+
+## Verified pilot results
+
+Kaggle private notebook `zubairshaikh/ruh-training-repair-validation`, version 1,
+completed successfully. Kaggle allocated two Tesla T4 devices despite the P100
+request; training used cuda:0. The notebook ran about 66 seconds, with 1,000 steps
+in 25.2 seconds over 741,045 supervised byte targets. Held-out CE fell from 6.9170
+to 2.0985 (perplexity 1009.3→8.15) over 8,259 targets, with 1,793 training / 199 validation
+records. Three Arabic greedy samples avoided immediate EOS and invalid UTF-8 but
+repeated essentially the same phrase. This verifies pipeline repair and finite
+learning; it does not establish conversational quality or justify promotion.
+
+The full-size run adds the human Aya dataset (Apache-2.0, pinned revision
+`f9ea04583f02a8f86404ff6c58bf75fe637df8a2`) with 4,995 Arabic and 1,500 English
+instructions. Annotation user IDs are not retained. Source conversation groups
+are joined across shared prompts, preventing alternate answers from crossing
+training/validation even across corpora. Expected supervised byte sampling weights are 55% Arabic
+dialogue, 25% English dialogue, 20% Arabic documents; long Wikipedia articles
+cannot consume most supervised target bytes. Reports include target-byte counts per
+category, per-language conditional loss, unseen negation challenges, EOS and
+empty-output rates, duplicate outputs and repeated four-gram fractions.
+Full-size MoE training retains router load-balancing auxiliary loss.
+
+The full notebook uses a 1,800-second session cap and 1,350-second training cap,
+with a complete model/optimizer/tokenizer continuation snapshot every 300 seconds.
+Only the latest intermediate snapshot is kept, plus final output. The candidate
+and all snapshots remain private and unapproved for production.
+
+Validation:227 Ruh tests (including 8 new sequence tests) and 912 backend tests pass.
+Ruff passes. `make check` reaches 27 Torch-aware mypy errors; an isolated unmodified
+45b6693 baseline reproduces the same 27, with no new errors introduced here.
+GitHub's optional-Torch-free typecheck context is separate from this local ML
+validation environment.
