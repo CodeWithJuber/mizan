@@ -3899,10 +3899,10 @@ from api import (  # noqa: E402
     sandbox,
 )
 
+for feature in (artifacts, modes, sandbox):
+    app.include_router(feature.router)
+
 for feature in (
-    artifacts,
-    modes,
-    sandbox,
     ruh_reader,
     ruh_dialect,
     ruh_embeddings,
@@ -3911,4 +3911,7 @@ for feature in (
     ruh_screening,
     ruh_tajwid,
 ):
-    app.include_router(feature.router)
+    # Production forwards /api/ to the backend; expose versioned features
+    # there while retaining direct-app clients' existing /v1/ paths.
+    app.include_router(feature.router, prefix="/api")
+    app.include_router(feature.router, include_in_schema=False)

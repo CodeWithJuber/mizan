@@ -71,6 +71,16 @@ def test_public_nlp_routes_use_installed_package(client, monkeypatch, path, fiel
     assert response.json()[field]
 
 
+def test_versioned_features_work_through_production_api_prefix(client, auth_headers):
+    body = {"texts": ["علم"], "dims": 8}
+    assert client.post("/api/v1/embed", json=body).status_code == 401
+    response = client.post("/api/v1/embed", json=body, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["vectors"][0]["dims"] == 8
+    assert response.json()["note"] == "beta/unverified"
+    assert client.post("/v1/embed", json=body, headers=auth_headers).json() == response.json()
+
+
 class TestAgentEndpoints:
     def test_list_agents(self, client, auth_headers):
         resp = client.get("/api/agents", headers=auth_headers)
