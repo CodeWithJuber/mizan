@@ -30,8 +30,8 @@ except ImportError:  # pragma: no cover
     try:
         from backend.qca.roots import ARABIC_ROOTS, CONCEPT_MAP  # type: ignore[no-redef]
     except ImportError:  # pragma: no cover
-        ARABIC_ROOTS: dict[str, dict[str, Any]] = {}
-        CONCEPT_MAP: dict[str, str] = {}
+        ARABIC_ROOTS = {}
+        CONCEPT_MAP = {}
 
 
 def _load_analyzer():

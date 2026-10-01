@@ -140,7 +140,7 @@ class UmmahNetwork:
         SharingLevel.FULL: 0.8,
     }
 
-    def __init__(self, instance_id: str = None, instance_name: str = "MIZAN"):
+    def __init__(self, instance_id: str | None = None, instance_name: str = "MIZAN"):
         self.instance_id = instance_id or str(uuid.uuid4())
         self.instance_name = instance_name
         self.nodes: dict[str, UmmahNode] = {}
@@ -326,8 +326,8 @@ class UmmahNetwork:
             return {"error": "Shard not found"}
 
         # Collect votes from active, trusted nodes
-        votes_for = 0
-        votes_against = 0
+        votes_for = 0.0
+        votes_against = 0.0
         voters = 0
 
         for _node_id, node in self.nodes.items():

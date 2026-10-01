@@ -26,6 +26,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -93,7 +94,7 @@ class AmanahVault:
         self._secrets: dict[str, str] = {}  # key -> value
         self._metadata: dict[str, dict] = {}
 
-    def store(self, key: str, value: str, meta: dict = None) -> str:
+    def store(self, key: str, value: str, meta: dict | None = None) -> str:
         """Store a secret — returns masked reference"""
         secret_id = hashlib.sha256(key.encode()).hexdigest()[:12]
         self._secrets[secret_id] = value
@@ -151,7 +152,7 @@ class SahabCloudSkill(SkillBase):
         tags=["سحاب", "Cloud"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.services: dict[str, CloudService] = {}
         self.endpoints: dict[str, ApiEndpoint] = {}
@@ -175,11 +176,11 @@ class SahabCloudSkill(SkillBase):
             "cloud_vault_delete": self.vault_delete,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list_services")
         handler = self._tools.get(f"cloud_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}"}
 
     # === SERVICE MANAGEMENT ===
@@ -196,7 +197,7 @@ class SahabCloudSkill(SkillBase):
         logger.info(f"[SAHAB] Service registered: {svc.name} ({svc.service_type})")
         return svc.to_dict()
 
-    async def list_services(self, params: dict = None) -> dict:
+    async def list_services(self, params: dict | None = None) -> dict:
         return {"services": [s.to_dict() for s in self.services.values()]}
 
     async def check_health(self, params: dict) -> dict:
@@ -329,7 +330,7 @@ class SahabCloudSkill(SkillBase):
 
     # === DOCKER OPERATIONS — Cloud container orchestration ===
 
-    async def docker_list(self, params: dict = None) -> dict:
+    async def docker_list(self, params: dict | None = None) -> dict:
         """List Docker containers"""
         try:
             proc = subprocess.run(
@@ -480,7 +481,7 @@ class SahabCloudSkill(SkillBase):
         """Chain multiple API calls — like clouds gathering into rain"""
         steps = params.get("steps", [])
         results = []
-        context = {}
+        context: dict = {}
 
         for i, step in enumerate(steps):
             # Replace {prev.field} references with previous results
@@ -513,7 +514,7 @@ class SahabCloudSkill(SkillBase):
         secret_id = self.vault.store(key, value)
         return {"stored": True, "secret_id": secret_id, "key": key}
 
-    async def vault_list(self, params: dict = None) -> dict:
+    async def vault_list(self, params: dict | None = None) -> dict:
         """List vault secrets (masked)"""
         return {"secrets": self.vault.list_secrets()}
 

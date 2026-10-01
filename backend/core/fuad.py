@@ -110,7 +110,7 @@ class FuadEngine:
         self,
         claim: str,
         sources: list[str],
-        contradicting_sources: list[str] = None,
+        contradicting_sources: list[str] | None = None,
     ) -> ConvictionAssessment:
         """
         Evaluate or update conviction for a claim.
@@ -149,7 +149,7 @@ class FuadEngine:
 
         # Count independent supporting sources
         independent_count = 0
-        seen_sources = []
+        seen_sources: list[str] = []
         for src in assessment.supporting:
             if all(_are_independent(src, prev) for prev in seen_sources):
                 independent_count += 1

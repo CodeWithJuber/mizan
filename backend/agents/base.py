@@ -21,10 +21,12 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from typing import Any
+from contextvars import ContextVar, copy_context
+from typing import Any, cast
 
 import httpx
 
@@ -65,7 +67,7 @@ from providers import create_provider, get_default_model, normalize_model_for_pr
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
-from security.auth import request_has_role
+from security.auth import current_user_id, request_has_role
 from security.validation import (
     sanitize_path,
     validate_command_safe,
@@ -168,6 +170,10 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
     return bits
 
 
+_execution_provider: ContextVar[tuple | None] = ContextVar("mizan_execution_provider", default=None)
+_execution_stack: ContextVar[tuple[int, ...]] = ContextVar("mizan_execution_stack", default=())
+
+
 class BaseAgent:
     """
     Quranic Agent Architecture
@@ -181,15 +187,33 @@ class BaseAgent:
     7. Learning (تعلم)
     """
 
+    @property
+    def ai_model(self):
+        context = _execution_provider.get()
+        return context[1] if context and context[0] == id(self) else self._configured_model
+
+    @ai_model.setter
+    def ai_model(self, value):
+        self._configured_model = value
+
+    @property
+    def ai_client(self):
+        context = _execution_provider.get()
+        return context[2] if context and context[0] == id(self) else self._configured_client
+
+    @ai_client.setter
+    def ai_client(self, value):
+        self._configured_client = value
+
     # Tool schemas for Claude tool_use API
     TOOL_SCHEMAS: list[dict] = []
 
     def __init__(
         self,
-        agent_id: str = None,
+        agent_id: str | None = None,
         name: str = "",
         role: str = "wakil",
-        config: dict = None,
+        config: dict | None = None,
         memory=None,
         wali=None,
         izn=None,
@@ -659,24 +683,24 @@ class BaseAgent:
     @property
     def max_tool_turns(self) -> int:
         """Dynamic tool turn limit from DevelopmentalGate stage."""
-        return self.dev_gate.get_capabilities(self.nafs_level).max_turns
+        return cast(int, self.dev_gate.get_capabilities(self.nafs_level).max_turns)
 
     @property
     def can_delegate(self) -> bool:
         """Whether agent can delegate — from DevelopmentalGate capabilities."""
-        return self.dev_gate.get_capabilities(self.nafs_level).can_delegate
+        return cast(bool, self.dev_gate.get_capabilities(self.nafs_level).can_delegate)
 
-    def _check_tool_permission(self, tool_name: str, params: dict = None) -> dict:
+    def _check_tool_permission(self, tool_name: str, params: dict | None = None) -> dict:
         """Check Izn permissions before tool execution"""
         if self.izn:
-            return self.izn.check_permission(self.id, self.role, tool_name, params)
+            return cast(dict, self.izn.check_permission(self.id, self.role, tool_name, params))
         return {"allowed": True, "reason": "No Izn configured", "requires_approval": False}
 
     # Maximum agentic loop iterations — dynamically adjusted by Nafs level
     MAX_TOOL_TURNS = 15  # Fallback default; actual limit comes from max_tool_turns property
 
     async def think(
-        self, task: str, context: dict = None, stream: bool = False, qalb_reading=None
+        self, task: str, context: dict | None = None, stream: bool = False, qalb_reading=None
     ) -> AsyncGenerator[str, None]:
         """
         Fikr (فكر) - Deep cognitive processing with full agentic loop.
@@ -688,7 +712,7 @@ class BaseAgent:
         self.state = "thinking"
 
         system_prompt = await self._build_system_prompt(qalb_reading=qalb_reading)
-        messages = self._build_messages(task, context)
+        messages = await asyncio.to_thread(self._build_messages, task, context)
         tool_schemas = self.get_tool_schemas()
 
         # DevelopmentalGate — filter available tools to this agent's capability level
@@ -844,7 +868,8 @@ class BaseAgent:
             if response is None:
                 # Call the model via unified provider
                 _create_start = time.time()
-                response = self.ai_client.create(
+                response = await asyncio.to_thread(
+                    self.ai_client.create,
                     model=self.ai_model,
                     max_tokens=max_tokens,
                     temperature=temperature,
@@ -856,6 +881,8 @@ class BaseAgent:
 
             # Collect text output and tool calls from this turn. In streaming
             # mode the text was already yielded live above.
+            if response is None:
+                raise ValueError("Provider returned no response")
             tool_blocks = []
 
             for block in response.content:
@@ -990,10 +1017,13 @@ class BaseAgent:
         free — never raises.
         """
         try:
-            self._last_llm_call = {
+            self._last_llm_call: dict[str, Any] | None = {
                 "response": llm_response,
                 "latency_ms": round(latency_ms, 1),
             }
+            if not hasattr(self, "_llm_calls"):
+                self._llm_calls = []
+            self._llm_calls.append(self._last_llm_call)
         except Exception:
             pass
 
@@ -1040,7 +1070,8 @@ class BaseAgent:
                 return
             loop.call_soon_threadsafe(queue.put_nowait, ("done", final))
 
-        runner_future = loop.run_in_executor(None, _runner)
+        runner_context = copy_context()
+        runner_future = loop.run_in_executor(None, runner_context.run, _runner)
         try:
             while True:
                 kind, payload = await queue.get()
@@ -1085,7 +1116,9 @@ class BaseAgent:
                 yield chunk
         except Exception:
             logger.warning("[AGENT] Summarization stream failed, using create()")
-            response = self.ai_client.create(
+            llm_start = time.time()
+            response = await asyncio.to_thread(
+                self.ai_client.create,
                 model=self.ai_model,
                 max_tokens=max_tokens,
                 temperature=0.4,
@@ -1093,6 +1126,7 @@ class BaseAgent:
                 messages=messages,
                 tools=None,
             )
+            self._record_llm_call(response, (time.time() - llm_start) * 1000)
             for block in response.content:
                 if block.type == "text":
                     yield block.text
@@ -1110,6 +1144,14 @@ class BaseAgent:
         - Adapts parameter passing for skill tools (dict vs kwargs)
         - Logs errors for learning
         """
+        if (
+            current_user_id()
+            and not request_has_role("admin")
+            and tool_name
+            not in {"recall_memory", "query_knowledge", "disambiguate_sense", "compact_context"}
+        ):
+            return {"error": "Administrator role required for this tool"}
+
         # Anti-hallucination: validate tool inputs before execution
         validation_error = self._validate_tool_inputs(tool_name, params)
         if validation_error:
@@ -1262,7 +1304,7 @@ class BaseAgent:
         # Retries scale with developmental stage: L1-2=1, L3-4=2, L5+=3
         caps = self.dev_gate.get_capabilities(self.nafs_level)
         max_retries = min(3, 1 + caps.max_turns // 10)
-        last_error = None
+        last_error: Exception | None = None
 
         for attempt in range(max_retries + 1):
             try:
@@ -1395,7 +1437,7 @@ class BaseAgent:
             logger.error(f"[TAWBAH] Install failed: {e}")
             return False
 
-    async def _structured_reasoning(self, task: str, context: dict = None) -> str:
+    async def _structured_reasoning(self, task: str, context: dict | None = None) -> str:
         """Fallback reasoning without AI"""
         return f"Task received: {task}\nContext: {json.dumps(context or {}, indent=2)}\nStatus: Processing without AI provider configured."
 
@@ -1455,7 +1497,9 @@ class BaseAgent:
         if self.memory and self.current_task:
             try:
                 if hasattr(self.memory, "recall_unified_for_prompt"):
-                    unified_ctx = self.memory.recall_unified_for_prompt(self.current_task, top_k=5)
+                    unified_ctx = await self.memory.recall_unified_for_prompt_async(
+                        self.current_task, top_k=5
+                    )
                     if unified_ctx and len(unified_ctx) > 10:
                         knowledge_context = f"\nRelevant Knowledge (unified):\n{unified_ctx}"
                 elif hasattr(self.memory, "recall_pathways"):
@@ -1541,7 +1585,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             return custom_prompt + "\n\n" + base_prompt
         return base_prompt
 
-    def _build_messages(self, task: str, context: dict = None) -> list[dict]:
+    def _build_messages(self, task: str, context: dict | None = None) -> list[dict]:
         messages = []
 
         if context and context.get("history"):
@@ -1605,11 +1649,47 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
     async def execute(
         self,
+        task,
+        context=None,
+        stream_callback=None,
+        tool_callback=None,
+        thinking_callback=None,
+        model_override=None,
+    ) -> dict:
+        # All callers share this boundary: chat, scheduler, federation and delegates.
+        stack = _execution_stack.get()
+        if id(self) in stack:
+            raise ValueError("Cyclic agent delegation is not permitted")
+        if not hasattr(self, "_execution_lock"):
+            self._execution_lock = asyncio.Lock()
+        async with self._execution_lock:
+            model, provider = self.ai_model, self.ai_client
+            if model_override and model_override != model:
+                provider = create_provider(model=model_override)
+                if provider is None:
+                    raise ValueError("Requested model provider is unavailable")
+                model = model_override
+            binding = _execution_provider.set((id(self), model, provider))
+            stack_binding = _execution_stack.set((*stack, id(self)))
+            try:
+                result = await self._execute_impl(
+                    task, context, stream_callback, tool_callback, thinking_callback
+                )
+                from api.usage import build_usage_summary
+
+                result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+                return result
+            finally:
+                _execution_stack.reset(stack_binding)
+                _execution_provider.reset(binding)
+
+    async def _execute_impl(
+        self,
         task: str,
-        context: dict = None,
-        stream_callback: Callable = None,
-        tool_callback: Callable = None,
-        thinking_callback: Callable = None,
+        context: dict | None = None,
+        stream_callback: Callable | None = None,
+        tool_callback: Callable | None = None,
+        thinking_callback: Callable | None = None,
     ) -> dict:
         """
         Execute a task - full Quranic cycle:
@@ -1632,6 +1712,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         # Fresh per execution — model-transparency readers must never see a
         # previous task's provider call.
         self._last_llm_call = None
+        self._llm_calls = []
 
         async def emit_thinking(
             phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None
@@ -2400,7 +2481,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e), "returncode": -1}
 
-    async def _tool_http_get(self, url: str, headers: dict = None) -> dict:
+    async def _tool_http_get(self, url: str, headers: dict | None = None) -> dict:
         """HTTP GET with SSRF prevention"""
         is_safe, reason = validate_url(url)
         if not is_safe:
@@ -2420,7 +2501,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception as e:
             return {"error": str(e)}
 
-    async def _tool_http_post(self, url: str, data: dict = None, headers: dict = None) -> dict:
+    async def _tool_http_post(
+        self, url: str, data: dict | None = None, headers: dict | None = None
+    ) -> dict:
         """HTTP POST with SSRF prevention"""
         is_safe, reason = validate_url(url)
         if not is_safe:
@@ -2621,7 +2704,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             )
 
     async def _tool_create_skill(
-        self, name: str, description: str = "", code: str = "", tools: dict = None, **kwargs
+        self, name: str, description: str = "", code: str = "", tools: dict | None = None, **kwargs
     ) -> str:
         """
         Dynamically create a new skill at runtime (Khalq al-Hikmah).
@@ -2632,7 +2715,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         The skill is saved to skills/builtin/ and immediately registered.
         """
-        import importlib
         import re
 
         # Validate skill name
@@ -2690,8 +2772,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             if self.skill_registry:
                 module_path = f"skills.builtin.{name}"
                 # Force reimport if already loaded
-                if module_path in importlib.sys.modules:
-                    del importlib.sys.modules[module_path]
+                if module_path in sys.modules:
+                    del sys.modules[module_path]
                 self.skill_registry._load_skill_module(module_path)
 
                 logger.info(f"[KHALQ] Dynamic skill created: {name}")
@@ -2808,7 +2890,7 @@ class {class_name}(SkillBase):
     _COMPACT_THRESHOLD = 0.80  # 80% of context window triggers compaction
     _PRESERVE_RECENT = 10  # keep last N messages intact
 
-    async def _tool_compact_context(self, conversation_history: list[dict] = None) -> str:
+    async def _tool_compact_context(self, conversation_history: list[dict] | None = None) -> str:
         """
         Compact (condense) conversation context when it approaches the context
         window limit.
@@ -2928,7 +3010,7 @@ class {class_name}(SkillBase):
         # Use unified MemoryPyramid when available (all 5 layers)
         if hasattr(self.memory, "recall_unified"):
             try:
-                hits = self.memory.recall_unified(query, top_k=min(limit, 20))
+                hits = await self.memory.recall_unified_async(query, top_k=min(limit, 20))
                 if hits:
                     lines = []
                     for hit in hits:
@@ -3019,7 +3101,7 @@ class {class_name}(SkillBase):
             return {"found": False, "note": "Knowledge graph not available"}
         try:
             result = await self.knowledge_graph.query_entity(entity)
-            return result
+            return cast(dict, result)
         except Exception as e:
             return {"found": False, "error": str(e)}
 
@@ -3125,13 +3207,13 @@ class {class_name}(SkillBase):
 
         return facts[:30]
 
-    async def compact_context(self, conversation_history: list[dict] = None) -> dict:
+    async def compact_context(self, conversation_history: list[dict] | None = None) -> dict:
         """
         Public API for context compaction — usable from /compact command.
         Wraps _tool_compact_context and returns parsed result.
         """
         raw = await self._tool_compact_context(conversation_history or [])
-        return json.loads(raw)
+        return cast(dict, json.loads(raw))
 
     def _get_all_available_tool_names(self) -> list[str]:
         """Get names of all tools available to this agent (built-in + skills + plugins)."""

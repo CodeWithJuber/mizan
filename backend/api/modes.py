@@ -36,6 +36,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from security.auth import current_user_id
+
 logger = logging.getLogger("mizan.modes")
 
 router = APIRouter(tags=["modes"])
@@ -94,9 +96,14 @@ def _chat_completion_sync(
     resp = provider.create(
         model=resolved_model, max_tokens=max_tokens, system=system, messages=messages
     )
-    text = (resp.text or "").strip()
-    in_est = sum(len(m.get("content", "")) for m in messages) // 4 + len(system) // 4
-    out_est = len(text) // 4
+    text = "".join(block.text for block in resp.content if block.type == "text").strip()
+    usage = resp.usage or {}
+    in_est = usage.get("input", usage.get("input_tokens", usage.get("prompt_tokens")))
+    out_est = usage.get("output", usage.get("output_tokens", usage.get("completion_tokens")))
+    if in_est is None:
+        in_est = sum(len(str(m.get("content", ""))) for m in messages) // 4 + len(system) // 4
+    if out_est is None:
+        out_est = len(text) // 4
     return text, in_est, out_est
 
 
@@ -466,13 +473,14 @@ async def compare(req: CompareRequest):
     ]
     _COMPARE_STORE[compare_id] = {
         "created_at": time.time(),
+        "owner_id": current_user_id(),
         "prompt": req.prompt,
         "mapping": mapping,
         "results": results,
     }
     resp = CompareResponse(compare_id=compare_id, results=results)
     if req.judge:
-        return await reveal(compare_id, RevealRequest(judge=True))
+        return await reveal(compare_id, RevealRequest(judge=True, choice=None))
     return resp
 
 
@@ -480,7 +488,9 @@ async def compare(req: CompareRequest):
 async def reveal(compare_id: str, req: RevealRequest):
     """Reveal the model mapping; optionally run the LLM judge rubric."""
     entry = _COMPARE_STORE.get(compare_id)
-    if entry is None:
+    from security.auth import current_user_id
+
+    if entry is None or entry.get("owner_id") != current_user_id():
         raise HTTPException(404, "unknown or expired compare_id")
     if req.choice is not None and req.choice not in entry["mapping"]:
         raise HTTPException(400, f"choice must be one of {list(entry['mapping'])}")

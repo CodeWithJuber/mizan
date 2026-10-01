@@ -1,8 +1,14 @@
 # Ruh Model (روح)
 
-> **Arabic-native language model built on triconsonantal root morphology.**
+> **Experimental transformer with legacy Arabic root generation and a lossless tokenizer for new training.**
 
 Ruh is a pure-PyTorch transformer that operates in **root-space** instead of token-space. Where standard LLMs split text into BPE subwords, Ruh tokenizes text as `(root_id, pattern_id)` pairs — the same factored representation used by Arabic morphology for 1,400+ years. This yields **~7.8× embedding-param compression** over standard lookup tables (`4000×512 ÷ (4000×64 + 200×32) = 7.8×`) and is designed to enable cross-lingual understanding via shared Semitic roots (unverified — no cross-lingual benchmark has been run yet).
+
+**Checkpoint compatibility:** the published epoch-19 checkpoint uses Bayan v1 (62 mapped IDs) and remains a constrained root generator. Its original seed corpus does not establish sentence-level chat, English NLP accuracy, or reliable instruction following. Removing inference EOS fixes a formatting defect; it does not supply missing training.
+
+New training uses **Bayan v2**, preserving UTF-8 surface bytes, negation, punctuation, unknown words, and function words. Byte IDs occupy a separate range after the frozen root IDs. This changes the prediction task and requires a newly trained checkpoint; do not change an old checkpoint's tokenizer version. Checkpoints save `vocab.json` and `tokenizer.json` with the weights/config. Missing vocabularies are rejected for v2; only legacy v1 may use the frozen compatibility vocabulary.
+
+The confidence head and MoE balance term now receive gradients. Consistency is conditional on records containing `paraphrase`; it compares the masked mean distributions of paired sequences, not unaligned token positions. Ordinary records do not enable this objective. These losses are experimental regularizers, not proof of truthfulness.
 
 **Version:** 0.1.0
 
@@ -360,175 +366,43 @@ Required YAML keys: `name`, `max_seq_len`, `lr`, `epochs`, `batch_size`.
 
 ### Full Real-Data Training
 
-The `train_full.py` CLI streams data directly from **5 HuggingFace datasets** and trains through the Nafs curriculum. No manual data download required.
+The CLI reads bounded batches from pinned public Parquet corpora using synchronous decoding. Install `datasets`, `pyarrow`, and `huggingface-hub` alongside PyTorch. Dataset scripts are not executed.
+
+| Domain | Pinned dataset | Text column | Default weight |
+|---|---|---|---|
+| Quran | `Buraaq/quran-md-ayahs` (first reciter shard) | `ayah_ar` | 0.30 |
+| Hadith | `arbml/Hadith` | `Text` | 0.20 |
+| Arabic Wikipedia | `wikimedia/wikipedia`, `20231101.ar` | `text` | 0.25 |
+
+Exact revisions are recorded in `data/pipeline.py`. OPUS and morphology have weight zero until explicit sources are configured. To add sources, set `RUH_DATA_SOURCES` to a JSON file mapping domain names to `path`, immutable `revision`, optional `name`, `split`, `column`, and `lang`; adjust the corresponding CLI weights. Curate the corpus, check licenses, remove duplicates, and separate held-out examples before a large training run. Corpus stages do not automatically create grammar or instruction examples.
 
 ```bash
-pip install datasets  # one-time dependency
+# Bounded preparation smoke test; no GPU or training job is started.
+python -m ruh_model.train_full --prepare-only --samples 10 \
+    --quran-weight 1 --hadith-weight 0 --wiki-weight 0 --output-dir data/real
+
+# New training uses v2. Supply curated sentence/dialogue records for chat.
+python -m ruh_model.train_full --stage nutfah --data-dir data/real --device cuda
 ```
-
-**Data sources streamed automatically:**
-
-| Loader | HuggingFace Dataset | Default Weight | Content |
-|--------|-------------------|---------------|---------|
-| `QuranLoader` | `ImruQays/Quran-Classical-Arabic-English-Parallel-texts` | 30% | 6,236 Quranic verses (Arabic + English) |
-| `HadithLoader` | `SaiedAlshahrani/Hadith-Corpus` | 20% | Hadith collections (Arabic) |
-| `ArabicWikiLoader` | `wikimedia/wikipedia` (ar) | 25% | Arabic Wikipedia articles (~10 GB, streamed) |
-| `OpusLoader` | `Helsinki-NLP/opus-100` (ar-en) | 15% | Parallel Arabic-English sentences |
-| `MorphoLoader` | `Bakbak/tashkeela-arabic-diacritized-text-corpus` | 10% | Diacritized morphological text |
-
-#### Single-Stage Training
-
-```bash
-# Train Stage 1: nutfah (simple sentences, 128 seq len)
-python -m ruh_model.train_full --stage nutfah --samples 100000
-
-# Train Stage 2: alaqah (paragraphs, 512 seq len)
-python -m ruh_model.train_full --stage alaqah --samples 200000 \
-    --resume-from ruh_model/checkpoints/nutfah_final
-
-# Train Stage 3: mudghah (documents, 1024 seq len)
-python -m ruh_model.train_full --stage mudghah --samples 300000 \
-    --resume-from ruh_model/checkpoints/alaqah_final
-
-# Train Stage 4: khalq_akhar (full capability, 2048 seq len)
-python -m ruh_model.train_full --stage khalq_akhar --samples 500000 \
-    --resume-from ruh_model/checkpoints/mudghah_final
-```
-
-#### Full 4-Stage Curriculum (End-to-End)
-
-```bash
-# Run ALL stages automatically — each resumes from the previous
-python -m ruh_model.train_full --all-stages --samples 500000 --device cuda --verbose
-
-# With Apple Silicon (MPS)
-python -m ruh_model.train_full --all-stages --samples 500000 --device mps
-
-# Auto-detect best device
-python -m ruh_model.train_full --all-stages --samples 500000 --device auto
-```
-
-#### Custom Data Mixing
-
-```bash
-# More Quran, less Wikipedia
-python -m ruh_model.train_full --stage nutfah --samples 100000 \
-    --quran-weight 0.5 --wiki-weight 0.1
-
-# Hadith-heavy training
-python -m ruh_model.train_full --stage alaqah --samples 200000 \
-    --hadith-weight 0.5 --quran-weight 0.2 --wiki-weight 0.15 \
-    --opus-weight 0.10 --morpho-weight 0.05
-```
-
-#### GPU Training (CUDA / MPS)
-
-```bash
-# NVIDIA GPU
-python -m ruh_model.train_full --all-stages --samples 1000000 --device cuda
-
-# Apple Silicon (M1/M2/M3/M4)
-python -m ruh_model.train_full --all-stages --samples 500000 --device mps
-
-# Multi-GPU note: not yet supported — use single GPU or DataParallel wrapper manually
-```
-
-#### train_full.py CLI Reference
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--stage` | `nutfah` | Curriculum stage: `nutfah`, `alaqah`, `mudghah`, `khalq_akhar` |
-| `--all-stages` | false | Run all 4 stages in sequence (auto-resume between stages) |
-| `--samples` | `100000` | Total samples to stream from HuggingFace |
-| `--device` | `auto` | Device: `cpu`, `cuda`, `mps`, or `auto` |
-| `--data-dir` | None | Train from pre-materialized JSONL instead of streaming |
-| `--prepare-only` | false | Download + save to JSONL only (no training) |
-| `--output-dir` | `ruh_model/data/real` | Output directory for `--prepare-only` |
-| `--resume-from` | None | Checkpoint directory to resume from |
-| `--checkpoint-dir` | `ruh_model/checkpoints` | Where to save checkpoints |
-| `--quran-weight` | 0.30 | Quran data proportion |
-| `--hadith-weight` | 0.20 | Hadith data proportion |
-| `--wiki-weight` | 0.25 | Arabic Wikipedia proportion |
-| `--opus-weight` | 0.15 | OPUS parallel corpus proportion |
-| `--morpho-weight` | 0.10 | Tashkeela morphology proportion |
-| `--weight-decay` | 0.01 | AdamW weight decay |
-| `--max-grad-norm` | 1.0 | Gradient clipping norm |
-| `--warmup-fraction` | 0.1 | LR warmup fraction |
-| `--log-every` | 50 | Log loss every N steps |
-| `--verbose` | false | Debug-level logging |
 
 ### Prepare Data to Disk
 
-For offline training or repeated experiments, materialize HuggingFace data to JSONL first:
-
-```bash
-# Download 500K samples, split by domain+language
-python -m ruh_model.train_full --prepare-only --samples 500000 --output-dir data/real
-
-# Creates files like:
-#   data/real/quran_ar.jsonl     (Quran Arabic)
-#   data/real/quran_en.jsonl     (Quran English translations)
-#   data/real/hadith_ar.jsonl    (Hadith)
-#   data/real/general_ar.jsonl   (Wikipedia)
-#   data/real/parallel_ar.jsonl  (OPUS Arabic side)
-#   data/real/parallel_en.jsonl  (OPUS English side)
-#   data/real/morphology_ar.jsonl (Tashkeela)
-
-# Then train from disk (much faster re-runs, no network needed)
-python -m ruh_model.train_full --stage nutfah --data-dir data/real
-python -m ruh_model.train_full --stage alaqah --data-dir data/real \
-    --resume-from ruh_model/checkpoints/nutfah_final
-```
+`--prepare-only` writes `{domain}_{lang}.jsonl`. Records may contain `text`, conversation `messages`, and optional `paraphrase` text. These fields reach the tokenizer and paired training objective. A raw corpus preparation success is not a model-quality evaluation.
 
 ### Real Data Pipeline (Programmatic)
-
-For custom training scripts, use `RealDataPipeline` directly:
 
 ```python
 from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.data.pipeline import RealDataPipeline
 
-tokenizer = BayanTokenizer()
-pipeline = RealDataPipeline(
-    tokenizer=tokenizer,
-    max_seq_len=512,
-    mixing_ratios={
-        "quran": 0.3,
-        "hadith": 0.2,
-        "arabic_wiki": 0.25,
-        "opus": 0.15,
-        "morphology": 0.1,
-    },
-)
-
-# Stream raw samples
-for sample in pipeline.stream(max_samples=1000):
-    print(sample["text"][:80], sample["lang"], sample["domain"])
-
-# Get tensor batches directly
+pipeline = RealDataPipeline(BayanTokenizer(version=2), max_seq_len=512,
+                            mixing_ratios={"quran": 0.3, "hadith": 0.2, "arabic_wiki": 0.25})
 for batch in pipeline.get_dataloader(max_samples=5000, batch_size=8):
-    print(batch["root_ids"].shape)  # (B, S)
-    break
-```
-
-Or use the `StreamingRuhDataset` for PyTorch `DataLoader` integration:
-
-```python
-from ruh_model.data.streaming_dataset import StreamingRuhDataset
-from ruh_model.data.collator import RuhCollator
-from torch.utils.data import DataLoader
-
-dataset = StreamingRuhDataset(
-    tokenizer=tokenizer,
-    max_seq_len=512,
-    max_samples=100000,
-)
-loader = DataLoader(dataset, batch_size=8, collate_fn=RuhCollator(pad_id=0))
-
-for batch in loader:
     print(batch["root_ids"].shape)
     break
 ```
+
+Inference serializes system instructions, all conversation turns, and tool results, requests `encode(..., add_eos=False)`, and decodes/counts only the continuation. The legacy checkpoint was not trained on this conversation protocol. Temperature zero uses greedy sampling; generation masks IDs missing from the checkpoint vocabulary.
 
 ### Resuming Training
 

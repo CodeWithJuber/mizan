@@ -24,6 +24,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -47,7 +48,7 @@ class SecurityFinding:
     cvss_score: float | None = None
 
     def to_dict(self) -> dict:
-        d = {
+        d: dict = {
             "id": self.id,
             "severity": self.severity,
             "category": self.category,
@@ -359,7 +360,7 @@ KNOWN_VULN_DEPS = {
 }
 
 # === CONFIG SECURITY CHECKS ===
-CONFIG_CHECKS = [
+CONFIG_CHECKS: list[dict] = [
     {
         "file": ".env",
         "pattern": r"(?i)(password|secret|key|token)\s*=\s*\S+",
@@ -406,7 +407,7 @@ class RaqibScannerSkill(SkillBase):
         tags=["رقيب", "Security"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.scan_history: list[ScanReport] = []
         self._tools = {
@@ -420,13 +421,13 @@ class RaqibScannerSkill(SkillBase):
             "security_history": self.get_history,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "full")
         handler = self._tools.get(f"security_scan_{action}") or self._tools.get(
             f"security_{action}"
         )
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}"}
 
     async def full_scan(self, params: dict) -> dict:
@@ -854,7 +855,7 @@ class RaqibScannerSkill(SkillBase):
                 return report.to_dict()
         return {"error": "Report not found"}
 
-    async def get_history(self, params: dict = None) -> dict:
+    async def get_history(self, params: dict | None = None) -> dict:
         """Get scan history"""
         return {
             "scans": [
@@ -874,7 +875,7 @@ class RaqibScannerSkill(SkillBase):
         """Calculate risk score 0-100 based on findings"""
         weights = {"critical": 25, "high": 15, "medium": 5, "low": 1, "info": 0}
         score = sum(count * weights.get(sev, 0) for sev, count in severity_counts.items())
-        return min(100.0, score)
+        return cast(float, min(100.0, score))
 
     def _verdict(self, severity_counts: dict) -> str:
         """Quranic-inspired security verdict"""

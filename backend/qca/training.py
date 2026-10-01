@@ -250,7 +250,7 @@ class UGRLTrainer:
         "SEND": "movement",
     }
 
-    DOMAIN_VECS = {
+    DOMAIN_VECS: dict[str, list[float]] = {
         "epistemology": [1, 0, 0, 0, 0],
         "perception": [0, 1, 0, 0, 0],
         "creation": [0, 0, 1, 0, 0],
@@ -268,7 +268,7 @@ class UGRLTrainer:
         else:
             self.alignment = None
 
-    def build_seed_vectors(self, root_db: dict = None):
+    def build_seed_vectors(self, root_db: dict | None = None):
         """Build seed root vectors (15 concepts x 10 languages)."""
         if not HAS_NUMPY:
             logger.warning("numpy not available — UGRL vectors not built")
@@ -276,7 +276,7 @@ class UGRLTrainer:
 
         for concept, lang_roots in self.SEED_ALIGNMENTS.items():
             dom = self.CONCEPT_DOMAINS.get(concept, "existence")
-            dv = self.DOMAIN_VECS.get(dom, [0] * 5)
+            dv = list(self.DOMAIN_VECS.get(dom, [0] * 5))
             vec = np.array(
                 dv + [1, 0, 0] + [0.5, 0.5] + [0.5, 0.5] + [0.7, 0.5, 0.3],
                 dtype=np.float32,
@@ -525,7 +525,7 @@ class MizanCalibrationTrainer:
             for level, markers in self.MARKERS.items()
         }
         sw = self.SOURCE_WEIGHTS.get(source, 0.5)
-        best = max(scores, key=scores.get) if any(scores.values()) else "zann"
+        best = max(scores, key=lambda name: scores[name]) if any(scores.values()) else "zann"
         base = dict(
             zip(
                 [level for level, _ in self.CERTAINTY_LEVELS],

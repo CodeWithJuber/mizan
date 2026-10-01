@@ -1420,7 +1420,7 @@ function AppInner() {
     setTypingIndicator(true);
     setToolStatus("Deep research shuru ho rahi hai…");
     try {
-      const res = await authFetch(`${config.API_URL}/api/modes/deep-research`, {
+      const res = await authFetch(`${config.API_URL}/modes/deep-research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

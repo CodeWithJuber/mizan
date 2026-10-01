@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from pathlib import Path
+import json
 
 from ruh_model.tokenizer.english_bridge import EnglishRootBridge
 from ruh_model.tokenizer.morphology import ArabicMorphAnalyzer
@@ -23,6 +25,7 @@ from ruh_model.tokenizer.root_vocab import (
     BOS_ID,
     EOS_ID,
     PAD_ID,
+    PATTERN_NONE,
     PATTERN_STOPWORD,
     PATTERN_UNKNOWN,
     RootVocab,
@@ -31,34 +34,139 @@ from ruh_model.tokenizer.root_vocab import (
 )
 
 # Arabic character range detection
-_ARABIC_RE = re.compile("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+_ARABIC_RE = re.compile("[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]")
 
 # Tokenization: split on whitespace and punctuation (keep words only)
-_WORD_SPLIT_RE = re.compile(r"[^\w\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+")
+_WORD_SPLIT_RE = re.compile(
+    r"[^\w\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+"
+)
 
 # English stopwords that carry no semantic root
-_ENGLISH_STOPWORDS: frozenset[str] = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could",
-    "of", "in", "to", "for", "with", "on", "at", "from", "by",
-    "and", "or", "but", "not", "no", "nor",
-    "it", "its", "this", "that", "these", "those",
-    "i", "me", "my", "we", "us", "our",
-    "he", "him", "his", "she", "her", "they", "them", "their",
-    "who", "whom", "which", "what", "where", "when", "how", "why",
-    "if", "then", "so", "as", "than", "too", "very",
-    "just", "about", "up", "out", "into", "over",
-})
+_ENGLISH_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "from",
+        "by",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "nor",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "me",
+        "my",
+        "we",
+        "us",
+        "our",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "they",
+        "them",
+        "their",
+        "who",
+        "whom",
+        "which",
+        "what",
+        "where",
+        "when",
+        "how",
+        "why",
+        "if",
+        "then",
+        "so",
+        "as",
+        "than",
+        "too",
+        "very",
+        "just",
+        "about",
+        "up",
+        "out",
+        "into",
+        "over",
+    }
+)
 
 # Arabic stopwords (common particles with no trilateral root)
-_ARABIC_STOPWORDS: frozenset[str] = frozenset({
-    "في", "من", "إلى", "على", "عن", "مع",
-    "هو", "هي", "هم", "هن", "أنا", "نحن", "أنت", "أنتم",
-    "هذا", "هذه", "ذلك", "تلك", "هؤلاء", "أولئك",
-    "لا", "لم", "لن", "ما", "إن", "أن", "كان", "ليس",
-    "قد", "ثم", "أو", "بل", "لكن", "حتى",
-})
+_ARABIC_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "في",
+        "من",
+        "إلى",
+        "على",
+        "عن",
+        "مع",
+        "هو",
+        "هي",
+        "هم",
+        "هن",
+        "أنا",
+        "نحن",
+        "أنت",
+        "أنتم",
+        "هذا",
+        "هذه",
+        "ذلك",
+        "تلك",
+        "هؤلاء",
+        "أولئك",
+        "لا",
+        "لم",
+        "لن",
+        "ما",
+        "إن",
+        "أن",
+        "كان",
+        "ليس",
+        "قد",
+        "ثم",
+        "أو",
+        "بل",
+        "لكن",
+        "حتى",
+    }
+)
 
 
 def _contains_arabic(text: str) -> bool:
@@ -85,8 +193,23 @@ class BayanTokenizer:
     grounded representations.
     """
 
-    def __init__(self, vocab: RootVocab | None = None) -> None:
+    def __init__(self, vocab: RootVocab | None = None, version: int = 1) -> None:
+        if version not in (1, 2):
+            raise ValueError("Unsupported Bayan tokenizer version")
+        self.version = version
         self._vocab = vocab if vocab is not None else build_default_vocab()
+        if vocab is None and version == 1:
+            frozen = Path(__file__).with_name("legacy-v1.json")
+            if frozen.exists():
+                self._vocab.load(str(frozen))
+        if version == 2 and "<BYTE:0>" not in self._vocab.root_to_id:
+            # Append stable UTF-8 fallback IDs; legacy root IDs never change.
+            for byte in range(256):
+                token = f"<BYTE:{byte}>"
+                index = self._vocab.n_roots
+                self._vocab.root_to_id[token] = index
+                self._vocab.id_to_root[index] = token
+        self._byte_start = self._vocab.root_to_id.get("<BYTE:0>")
         self._arabic_analyzer = ArabicMorphAnalyzer()
         self._english_bridge = self._build_english_bridge()
         self._q28 = Q28ArticulatoryBasis()
@@ -96,13 +219,21 @@ class BayanTokenizer:
         roots_mod = _load_roots_module()
         return EnglishRootBridge(roots_mod.CONCEPT_MAP)
 
-    def encode(self, text: str) -> list[tuple[int, int]]:
+    def encode(self, text: str, *, add_eos: bool = True) -> list[tuple[int, int]]:
         """Encode text into a list of (root_id, pattern_id) tuples.
 
         Prepends BOS and appends EOS. Stopwords get (PAD_ID, STOPWORD).
         """
+        if self.version == 2:
+            # Lossless surface representation for new training: preserve function
+            # words, punctuation, whitespace, negation and unknown spellings.
+            # Root-v1 remains an explicit checkpoint compatibility mode.
+            tokens = [(BOS_ID, 0)] + [
+                (self._byte_start + b, PATTERN_NONE) for b in text.encode("utf-8")
+            ]
+            return tokens + ([(EOS_ID, 0)] if add_eos else [])
         if not text or not text.strip():
-            return [(BOS_ID, 0), (EOS_ID, 0)]
+            return [(BOS_ID, 0)] + ([(EOS_ID, 0)] if add_eos else [])
 
         tokens: list[tuple[int, int]] = [(BOS_ID, 0)]
         words = _tokenize_text(text)
@@ -111,7 +242,8 @@ class BayanTokenizer:
             root_id, pattern_id = self._encode_word(word)
             tokens.append((root_id, pattern_id))
 
-        tokens.append((EOS_ID, 0))
+        if add_eos:
+            tokens.append((EOS_ID, 0))
         return tokens
 
     def _encode_word(self, word: str) -> tuple[int, int]:
@@ -158,6 +290,20 @@ class BayanTokenizer:
         Best-effort reconstruction using the root string and first
         derivative found for the pattern. BOS/EOS/PAD tokens are skipped.
         """
+        if self.version == 2:
+            fragments = []
+            surface = bytearray()
+            for root_id, pattern_id in tokens:
+                if self._byte_start <= root_id < self._byte_start + 256:
+                    surface.append(root_id - self._byte_start)
+                elif root_id not in {PAD_ID, BOS_ID, EOS_ID}:
+                    if surface:
+                        fragments.append(surface.decode("utf-8", errors="replace"))
+                        surface.clear()
+                    fragments.append(self._decode_token(root_id, pattern_id))
+            if surface:
+                fragments.append(surface.decode("utf-8", errors="replace"))
+            return "".join(fragments)
         words: list[str] = []
         skip_ids = {PAD_ID, BOS_ID, EOS_ID}
 
@@ -259,6 +405,28 @@ class BayanTokenizer:
     def vocab_size(self) -> int:
         """Total vocabulary size (roots * patterns)."""
         return self._vocab.n_roots * self._vocab.n_patterns
+
+    def save_pretrained(self, directory: str) -> None:
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+        self._vocab.save(str(path / "vocab.json"))
+        (path / "tokenizer.json").write_text(json.dumps({"version": self.version}))
+
+    @classmethod
+    def from_pretrained(cls, directory: str, *, legacy_version: int = 1):
+        path = Path(directory)
+        version = (
+            json.loads((path / "tokenizer.json").read_text())["version"]
+            if (path / "tokenizer.json").exists()
+            else legacy_version
+        )
+        vocab = None
+        if (path / "vocab.json").exists():
+            vocab = RootVocab()
+            vocab.load(str(path / "vocab.json"))
+        elif version != 1:
+            raise ValueError("Versioned checkpoint is missing its vocabulary")
+        return cls(vocab=vocab, version=version)
 
 
 def _pattern_to_derivative_hint(pattern_name: str) -> str:

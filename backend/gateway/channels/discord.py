@@ -22,7 +22,7 @@ class DiscordChannel(ChannelAdapter):
     - guild_ids: Optional list of guild IDs to operate in
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._client = None
         self._task = None
@@ -94,7 +94,7 @@ class DiscordChannel(ChannelAdapter):
             self._task.cancel()
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list | None = None):
         """Send a message via Discord DM"""
         if not self._client or not self.is_connected:
             return

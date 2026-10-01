@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Optional
+from typing import Optional, cast
 
 logger = logging.getLogger("mizan.qadr")
 
@@ -63,7 +63,9 @@ class QadrScheduler:
         """Set the function to execute scheduled tasks"""
         self._executor = executor
 
-    async def add_job(self, name: str, cron: str, task: str, agent_id: str = None) -> ScheduledJob:
+    async def add_job(
+        self, name: str, cron: str, task: str, agent_id: str | None = None
+    ) -> ScheduledJob:
         """Add a new scheduled job"""
         job = ScheduledJob(
             name=name,
@@ -152,7 +154,7 @@ class QadrScheduler:
             now = datetime.now(UTC)
             cron_iter = croniter(cron, now)
             next_time = cron_iter.get_next(datetime)
-            return next_time.isoformat()
+            return cast(str | None, next_time.isoformat())
         except ImportError:
             logger.warning("[QADR] croniter not installed, using 1-hour interval")
             return (datetime.now(UTC) + timedelta(hours=1)).isoformat()

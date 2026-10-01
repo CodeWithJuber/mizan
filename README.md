@@ -59,7 +59,7 @@ Full local setup (Docker, source install, provider configuration): [Run locally]
 - **Agentic loop** — bounded model → tool → result → model execution with permission gates (`BaseAgent`).
 - **Provider normalization** — Anthropic native `tool_use`, OpenAI-compatible function calling, and Ollama behind one interface.
 - **Persistent memory** — SQLite episodic/semantic/procedural memory (Dhikr), pathway graphs (Masalik), knowledge graph; Chroma adapter present but not on the default path.
-- **mizan.nlp — native Qur'anic Arabic word-sense disambiguation.** 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2 (test accuracy 0.7592, 95% CI 0.7241–0.7927; macro-F1 0.5471). CPU-only, 5.9 MB, no LLM call. Unknown lemmas return `[]` — abstention, not a guess. Wired into the agent loop at four integration points behind `MIZAN_NLP_NATIVE_WSD=1` (default off); a sense is admitted only at confidence ≥ 0.8 with ≥ 0.2 margin over the runner-up. [Full documentation](docs/nlp.md).
+- **mizan.nlp — native Qur'anic Arabic word-sense disambiguation.** 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2 (test accuracy 0.8150 on merged 96-sense labels; macro-F1 0.6380). CPU-only, 5.9 MB, no LLM call. Unknown lemmas return `[]` — abstention, not a guess. Wired into the agent loop at four integration points behind `MIZAN_NLP_NATIVE_WSD=1` (default off); a sense is admitted only at confidence ≥ 0.8 with ≥ 0.2 margin over the runner-up. [Full documentation](docs/nlp.md).
 - **QALB-7 cognitive controls** — deterministic ethical/action gates (Fitrah), evidence tracking (Fu'ad), trace compression (Lubb), developmental capability gates; heuristic research modules, not validated cognition claims.
 - **Extensibility** — plugins, skills/tools, events, hooks, middleware, channel adapters (Telegram, Discord, Slack, WhatsApp).
 - **Operations** — FastAPI + WebSocket API, CLI (`mizan setup/chat/serve/status/doctor`), Docker Compose, self-healing doctor experiments.
@@ -83,7 +83,7 @@ MIZAN explores how a self-hostable personal assistant can combine LLM reasoning,
 | Guardrails            | Permission levels, tool validation, rate limits, SSRF/path/command checks and audit events                                                                | [`backend/security/izn.py`](backend/security/izn.py), [`backend/security/wali.py`](backend/security/wali.py), [`tests/test_security_comprehensive.py`](tests/test_security_comprehensive.py) | Deterministic application controls, not a complete enterprise security boundary                                                                                                                                                                           |
 | Python engineering    | Async FastAPI services, Pydantic configuration, provider adapters, task queue, SQLite and PyTorch experiments                                             | [`backend`](backend), [`ruh_model`](ruh_model), [`pyproject.toml`](pyproject.toml)                                                                                                           | Demonstrates implementation breadth; it does not establish deployment scale by itself                                                                                                                                                                     |
 | Delivery scaffolding  | Python-version CI matrix, linting, tests, package build and Docker image builds                                                                           | [CI workflow](.github/workflows/ci.yml), [`docker-compose.prod.yml`](docker-compose.prod.yml), [`docker/Dockerfile.backend.prod`](docker/Dockerfile.backend.prod)                            | Deployable scaffolding, not evidence of a live production service                                                                                                                                                                                         |
-| mizan.nlp             | Native Qur'anic Arabic word-sense disambiguation: 48 per-lemma sklearn LogisticRegression classifiers, shipped 5.9 MB joblib + manifest + sense inventory | [`backend/nlp/`](backend/nlp), [`backend/nlp/artifacts/default/manifest.json`](backend/nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py), [docs](docs/nlp.md)   | Test accuracy 0.7592 (CI 0.7241–0.7927), macro-F1 0.5471, 12/88 rare senses at zero recall per training-track eval; labels carry a keyword-rule component; all four agent-loop integration points are wired behind `MIZAN_NLP_NATIVE_WSD=1` (default off) |
+| mizan.nlp             | Native Qur'anic Arabic word-sense disambiguation: 48 per-lemma sklearn LogisticRegression classifiers, shipped 5.9 MB joblib + manifest + sense inventory | [`backend/nlp/`](backend/nlp), [`backend/nlp/artifacts/default/manifest.json`](backend/nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py), [docs](docs/nlp.md)   | Test accuracy 0.8150, macro-F1 0.6380 on merged 96-sense labels, 12/88 rare senses at zero recall per training-track eval; labels carry a keyword-rule component; all four agent-loop integration points are wired behind `MIZAN_NLP_NATIVE_WSD=1` (default off) |
 
 ### Test and build proof
 
@@ -131,8 +131,8 @@ if is_ready():
 
 What the code provides:
 
-- **Measured, not marketed** — test accuracy 0.7592 (95% CI 0.7241–0.7927),
-  macro-F1 0.5471, whole-surah holdout (n=627), preregistered before
+- **Measured, not marketed** — test accuracy 0.8150 against the merged 96-sense labels,
+  macro-F1 0.6380 on merged labels, whole-surah holdout (n=627), preregistered before
   evaluation. 12 of 88 rare senses sit at zero recall; the labels carry a
   keyword-rule component. All of it is in
   [`manifest.json`](backend/nlp/artifacts/default/manifest.json), including
@@ -613,7 +613,7 @@ Yes — when the operator sets `MIZAN_NLP_NATIVE_WSD=1` (default off). All four 
 
 ### Is mizan.nlp a neural model or an LLM call?
 
-Neither. It is 48 per-lemma scikit-learn LogisticRegression classifiers over character n-gram features — CPU-only, 5.9 MB, no network. Test accuracy 0.7592 on the Q-CSMP v2 whole-surah holdout.
+Neither. It is 48 per-lemma scikit-learn LogisticRegression classifiers over character n-gram features — CPU-only, 5.9 MB, no network. Test accuracy 0.8150 on the merged 96-sense Q-CSMP v2 holdout; this ontology change is not a retraining gain.
 
 ### Is MIZAN a multi-agent system?
 

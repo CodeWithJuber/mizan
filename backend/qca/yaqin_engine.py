@@ -129,7 +129,11 @@ class YaqinEngine:
         )
 
     def tag_observation(
-        self, claim: str, confidence: float = 0.75, source: str = "tool", evidence: list[str] = None
+        self,
+        claim: str,
+        confidence: float = 0.75,
+        source: str = "tool",
+        evidence: list[str] | None = None,
     ) -> YaqinTag:
         """
         Tag knowledge as Ayn al-Yaqin — witnessed/observed.

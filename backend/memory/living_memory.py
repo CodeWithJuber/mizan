@@ -29,6 +29,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 logger = logging.getLogger("mizan.living_memory")
 
@@ -298,7 +299,7 @@ class LivingMemorySystem:
                 activations[tid] = sim * trace.strength
 
         # Wave 2: Spread through links (1-hop)
-        wave2 = {}
+        wave2: dict = {}
         for tid, activation in list(activations.items()):
             trace = self.traces[tid]
             for linked_id in trace.links:
@@ -309,7 +310,7 @@ class LivingMemorySystem:
             activations[tid] = max(activations.get(tid, 0), act)
 
         # Wave 3: Spread through links (2-hop)
-        wave3 = {}
+        wave3: dict = {}
         for tid, activation in wave2.items():
             trace = self.traces[tid]
             for linked_id in trace.links:
@@ -682,7 +683,7 @@ class LivingMemorySystem:
             # Already in async context — run in thread to avoid nested loop
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(asyncio.run, self._vector_store.search(query, limit=limit))
-                return future.result(timeout=5)
+                return cast(list[dict], future.result(timeout=5))
         except RuntimeError:
             # No running event loop — safe to run directly
             return asyncio.run(self._vector_store.search(query, limit=limit))

@@ -38,12 +38,12 @@ class SkillBase(ABC):
 
     manifest: SkillManifest = SkillManifest()
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         self.config = config or {}
         self._tools: dict[str, Callable] = {}
 
     @abstractmethod
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         """Execute the skill with given parameters"""
         pass
 

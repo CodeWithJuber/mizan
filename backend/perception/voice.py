@@ -9,6 +9,7 @@ Text-to-Speech and Speech-to-Text with multiple backends.
 
 import logging
 import os
+from typing import cast
 
 logger = logging.getLogger("mizan.voice")
 
@@ -19,7 +20,7 @@ class VoiceProcessor:
     Supports ElevenLabs for TTS and Whisper for STT.
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         self.config = config or {}
         self._elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
         self._openai_key = os.getenv("OPENAI_API_KEY", "")
@@ -77,7 +78,7 @@ class VoiceProcessor:
                 )
 
                 if response.status_code == 200:
-                    return response.json().get("text", "")
+                    return cast(str | None, response.json().get("text", ""))
                 else:
                     logger.error(f"[VOICE] Whisper API error: {response.text}")
                     return None

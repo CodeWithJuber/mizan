@@ -329,7 +329,7 @@ class CausalEngine:
             summary=summary,
         )
 
-    def analyze_query(self, query: str, data: dict[str, float] = None) -> dict:
+    def analyze_query(self, query: str, data: dict[str, float] | None = None) -> dict:
         """
         Auto-detect the required causal rung and run the appropriate analysis.
         Entry point for agent tool use.
@@ -358,10 +358,10 @@ class CausalEngine:
             parts = query.lower().split("instead of")
             alt = parts[0].strip() if parts else query
             factual = parts[1].strip() if len(parts) > 1 else "current state"
-            result = self.counterfactual(model.model, factual, alt)
+            counterfactual_result = self.counterfactual(model.model, factual, alt)
             return {
                 "rung": 3,
                 "type": "counterfactual",
-                "result": result.summary,
-                **result.to_dict(),
+                "result": counterfactual_result.summary,
+                **counterfactual_result.to_dict(),
             }

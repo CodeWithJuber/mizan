@@ -103,7 +103,7 @@ class Mem0Store:
     """Thin append-only wrapper around mem0 OSS v3 (``from mem0 import Memory``)."""
 
     def __init__(self) -> None:
-        self._memory = None
+        self._memory: Any = None
         self._init_error: str | None = None
 
     # ── lifecycle ──────────────────────────────────────────────────────────

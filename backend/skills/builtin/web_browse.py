@@ -45,14 +45,14 @@ class WebBrowseSkill(SkillBase):
         tags=["web", "browse", "scrape"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._tools = {
             "web_browse": self.browse,
             "web_search": self.search,
         }
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "browse")
         if action == "browse":
             return await self.browse(params.get("url", ""))
@@ -65,6 +65,8 @@ class WebBrowseSkill(SkillBase):
         # Defensive: handle dict input from invoke system
         if isinstance(url, dict):
             url = url.get("url", "")
+        if not isinstance(url, str):
+            return {"error": "URL must be text"}
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 response = await client.get(
@@ -93,6 +95,8 @@ class WebBrowseSkill(SkillBase):
         encoded = urllib.parse.quote(str(query))
         url = f"https://duckduckgo.com/html/?q={encoded}"
 
+        if not isinstance(url, str):
+            return {"error": "URL must be text"}
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 response = await client.get(

@@ -11,6 +11,7 @@ Rasul (رسول) - Communication Agent: "Messenger" - sends and receives message
 """
 
 import os
+from typing import cast
 
 from .base import BaseAgent
 
@@ -114,7 +115,7 @@ class BrowserAgent(BaseAgent):
         except Exception as e:
             return {"error": str(e), "url": url}
 
-    async def _tool_navigate(self, url: str, wait_for: str = None) -> dict:
+    async def _tool_navigate(self, url: str, wait_for: str | None = None) -> dict:
         """
         Navigate to a URL. Uses Playwright when available for full JS
         rendering; falls back to httpx for basic HTML fetching.
@@ -203,7 +204,7 @@ class BrowserAgent(BaseAgent):
         except Exception as e:
             return {"error": str(e), "query": query}
 
-    async def _tool_extract_content(self, url: str, selector: str = None) -> dict:
+    async def _tool_extract_content(self, url: str, selector: str | None = None) -> dict:
         """Extract specific content from a URL"""
         # Try Playwright if a CSS selector is given
         if selector and self._check_playwright():
@@ -650,6 +651,12 @@ class CommunicationAgent(BaseAgent):
             messages = []
             for msg_id in ids:
                 _, msg_data = mail.fetch(msg_id, "(RFC822)")
+                if (
+                    not msg_data
+                    or not isinstance(msg_data[0], tuple)
+                    or not isinstance(msg_data[0][1], bytes)
+                ):
+                    continue
                 msg = email.message_from_bytes(msg_data[0][1])
                 messages.append(
                     {
@@ -1030,4 +1037,4 @@ def create_agent(agent_type: str, **kwargs) -> BaseAgent:
 
         return GeneralAgent(**kwargs)
 
-    return agent_class(**kwargs)
+    return cast(BaseAgent, agent_class(**kwargs))

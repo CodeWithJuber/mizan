@@ -16,6 +16,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 logger = logging.getLogger("mizan.tawakkul")
 
@@ -156,7 +157,7 @@ class TawakkulProtocol:
 
         if candidates:
             candidates.sort(key=lambda x: -x[1])
-            return candidates[0][0]
+            return cast(str | None, candidates[0][0])
 
         return None
 

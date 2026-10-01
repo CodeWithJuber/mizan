@@ -23,8 +23,11 @@ class RuhConfig:
     n_layers: int = 8
 
     # --- Vocabulary ---
-    n_roots: int = 4000       # Root vocabulary size, IDs 0-3999
-    n_patterns: int = 200     # Morphological pattern count
+    n_roots: int = 4000  # Root vocabulary size, IDs 0-3999
+    tokenizer_version: int = 1
+    use_lubb: bool = False
+    moe_aux_weight: float = 0.01
+    n_patterns: int = 200  # Morphological pattern count
 
     # --- Sequence ---
     max_seq_len: int = 2048
@@ -39,9 +42,9 @@ class RuhConfig:
     alpha: float = 0.1  # Amplitude for Qalb-inspired sinusoidal modulation
 
     # --- Shura MoE ---
-    n_experts: int = 4       # Number of FFN experts per MoE layer
-    moe_top_k: int = 2       # Top-k experts activated per token
-    moe_interval: int = 2    # Insert MoE layer every N blocks (0 = disabled)
+    n_experts: int = 4  # Number of FFN experts per MoE layer
+    moe_top_k: int = 2  # Top-k experts activated per token
+    moe_interval: int = 2  # Insert MoE layer every N blocks (0 = disabled)
 
     # --- Adaptive depth ---
     adaptive_depth_threshold: float = 0.8
@@ -88,11 +91,5 @@ class RuhConfig:
         # Output head
         output_proj = self.d_model * self.n_roots
 
-        total = (
-            root_embed
-            + pattern_embed
-            + input_proj
-            + self.n_layers * per_layer
-            + output_proj
-        )
+        total = root_embed + pattern_embed + input_proj + self.n_layers * per_layer + output_proj
         return total

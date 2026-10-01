@@ -9,6 +9,7 @@ Skills are verified before activation.
 import importlib
 import logging
 import os
+from collections.abc import Callable
 
 from .base import SkillBase, SkillManifest
 
@@ -21,7 +22,7 @@ class SkillRegistry:
     Manages skill discovery, loading, verification, and lifecycle.
     """
 
-    def __init__(self, skills_dir: str = None, wali=None):
+    def __init__(self, skills_dir: str | None = None, wali=None):
         self.skills_dir = skills_dir or os.path.join(os.path.dirname(__file__), "builtin")
         self.wali = wali
         self._loaded: dict[str, SkillBase] = {}
@@ -226,7 +227,7 @@ class SkillRegistry:
             return True
         return False
 
-    def get_all_tools(self) -> dict[str, any]:
+    def get_all_tools(self) -> dict[str, Callable]:
         """Get all tools from all loaded skills"""
         tools = {}
         for skill in self._loaded.values():

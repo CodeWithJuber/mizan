@@ -93,7 +93,7 @@ class TafakkurEngine:
     def _decompose(self, query: str) -> list[str]:
         """Break query into logical components."""
         # Split on sentence boundaries and conjunctions
-        parts = []
+        parts: list[str] = []
         for sep in ["?", ".", " and ", " or ", " but "]:
             if sep in query:
                 parts.extend(p.strip() for p in query.split(sep) if p.strip())
@@ -150,7 +150,7 @@ class TafakkurEngine:
             return "No components to synthesize"
 
         # Collect all key concepts across analyses
-        all_concepts = []
+        all_concepts: list[str] = []
         for analysis in analyses:
             if "Key concepts:" in analysis:
                 concepts_part = analysis.split("Key concepts:")[1].split("|")[0].strip()
@@ -252,7 +252,9 @@ class TadabburEngine:
                 key_words = [w for w in content.split() if len(w) > 4][:3]
                 recent_topics.extend(key_words)
             if recent_topics:
-                parts.append(f"Conversation trajectory: {', '.join(set(recent_topics)[:5])}")
+                parts.append(
+                    f"Conversation trajectory: {', '.join(list(dict.fromkeys(recent_topics))[:5])}"
+                )
 
         if facts:
             parts.append(f"Known facts: {'; '.join(f[:60] for f in facts[:3])}")

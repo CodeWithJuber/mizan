@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 from .channels.base import ChannelAdapter, IncomingMessage
 
@@ -87,15 +88,15 @@ class MessageRouter:
         # Try to find agent matching the role
         for agent_id, agent in agents.items():
             if agent.role == intent:
-                return agent_id
+                return cast(str | None, agent_id)
 
         # Fallback to load balancer
         if balancer:
-            return balancer.select_agent()
+            return cast(str | None, balancer.select_agent())
 
         # Fallback to first available
         if agents:
-            return list(agents.keys())[0]
+            return cast(str | None, list(agents.keys())[0])
 
         return None
 
@@ -111,7 +112,7 @@ class MizanGateway:
     - DM verification (Amanah trust model)
     """
 
-    def __init__(self, config: GatewayConfig = None, wali=None, memory=None):
+    def __init__(self, config: GatewayConfig | None = None, wali=None, memory=None):
         self.config = config or GatewayConfig()
         self.wali = wali
         self.memory = memory
@@ -255,9 +256,9 @@ class MizanGateway:
                 # Increase trust over time
                 session.trust_level = min(1.0, session.trust_level + 0.01)
 
-    def get_sessions(self, channel: str = None) -> list[dict]:
+    def get_sessions(self, channel: str | None = None) -> list[dict]:
         """Get active sessions, optionally filtered by channel"""
-        sessions = self.sessions.values()
+        sessions = list(self.sessions.values())
         if channel:
             sessions = [s for s in sessions if s.channel == channel]
         return [s.to_dict() for s in sessions]

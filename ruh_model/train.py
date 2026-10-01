@@ -45,8 +45,10 @@ def main() -> None:
     logger.info("Stage: %s -- %s", stage_config["name"], stage_config["description"])
     logger.info("Data path: %s", data_path)
 
-    config = RuhConfig(max_seq_len=stage_config["max_seq_len"])
-    tokenizer = BayanTokenizer()
+    config = RuhConfig(max_seq_len=stage_config["max_seq_len"], tokenizer_version=2, use_lubb=True)
+    model = _create_model(config, args.resume_from)
+    config = model.config
+    tokenizer = model.tokenizer or BayanTokenizer(version=config.tokenizer_version)
     dataset = RuhDataset(
         data_path=data_path,
         tokenizer=tokenizer,
@@ -58,7 +60,6 @@ def main() -> None:
         logger.error("No training samples found. Use --generate-data to create seed data.")
         sys.exit(1)
 
-    model = _create_model(config, args.resume_from)
     collator = RuhCollator(pad_id=config.PAD_ROOT)
 
     # Build progress callbacks for JSON output mode
@@ -82,11 +83,16 @@ def main() -> None:
     _log_training_summary(trainer, stage_config)
 
     if args.json_progress:
-        _emit_json({"type": "start", "stage": stage_config["name"],
-                    "epochs": stage_config["epochs"],
-                    "batch_size": stage_config["batch_size"],
-                    "dataset_size": len(dataset),
-                    "model_params": model.count_parameters()})
+        _emit_json(
+            {
+                "type": "start",
+                "stage": stage_config["name"],
+                "epochs": stage_config["epochs"],
+                "batch_size": stage_config["batch_size"],
+                "dataset_size": len(dataset),
+                "model_params": model.count_parameters(),
+            }
+        )
 
     epoch_losses = trainer.train(
         epochs=stage_config["epochs"],
@@ -95,9 +101,14 @@ def main() -> None:
     )
 
     if args.json_progress:
-        _emit_json({"type": "complete", "stage": stage_config["name"],
-                    "final_loss": epoch_losses[-1] if epoch_losses else None,
-                    "losses": epoch_losses})
+        _emit_json(
+            {
+                "type": "complete",
+                "stage": stage_config["name"],
+                "final_loss": epoch_losses[-1] if epoch_losses else None,
+                "losses": epoch_losses,
+            }
+        )
 
     _log_final_results(epoch_losses)
 
@@ -215,9 +226,7 @@ def _stage_to_dict(stage_name: str) -> dict[str, Any]:
     }
 
 
-def _ensure_training_data(
-    args: argparse.Namespace, stage_config: dict[str, Any]
-) -> str:
+def _ensure_training_data(args: argparse.Namespace, stage_config: dict[str, Any]) -> str:
     """Generate seed data if requested, return the data directory path."""
     data_dir = args.data_dir
 
@@ -244,7 +253,9 @@ def _create_model(config: RuhConfig, resume_from: str | None) -> RuhModel:
     """Create a new model or load from checkpoint."""
     if resume_from is not None:
         logger.info("Resuming from checkpoint: %s", resume_from)
-        return RuhModel.from_pretrained(resume_from)
+        model = RuhModel.from_pretrained(resume_from)
+        model.config.max_seq_len = config.max_seq_len
+        return model
 
     model = RuhModel(config)
     param_count = model.count_parameters()
@@ -252,9 +263,7 @@ def _create_model(config: RuhConfig, resume_from: str | None) -> RuhModel:
     return model
 
 
-def _log_training_summary(
-    trainer: RuhTrainer, stage_config: dict[str, Any]
-) -> None:
+def _log_training_summary(trainer: RuhTrainer, stage_config: dict[str, Any]) -> None:
     """Log a summary before training begins."""
     summary = trainer.get_training_summary()
     logger.info("Training Summary:")
@@ -292,15 +301,19 @@ def _emit_json(data: dict[str, Any]) -> None:
 
 def _make_json_step_callback(stage: str):
     """Return a step callback that emits JSON progress."""
+
     def _on_step(info: dict[str, Any]) -> None:
         _emit_json({**info, "stage": stage})
+
     return _on_step
 
 
 def _make_json_epoch_callback(stage: str):
     """Return an epoch callback that emits JSON progress."""
+
     def _on_epoch(info: dict[str, Any]) -> None:
         _emit_json({**info, "stage": stage})
+
     return _on_epoch
 
 

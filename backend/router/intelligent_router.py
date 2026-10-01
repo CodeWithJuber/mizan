@@ -112,6 +112,8 @@ class IntelligentRouter:
     ) -> tuple[LLMResponse, RouteDecision]:
         """Try Ruh Model first; fall back to external on failure."""
         try:
+            if self._ruh is None:
+                raise RuntimeError("Ruh provider is unavailable")
             response = self._ruh.create(
                 model,
                 max_tokens,

@@ -198,9 +198,9 @@ def check_api_keys() -> CheckResult:
     except Exception:
         try:
             sys.path.insert(0, str(_get_project_root() / "backend"))
-            from settings import get_settings
+            from settings import get_settings as fallback_get_settings
 
-            settings = get_settings()
+            settings = fallback_get_settings()
         except Exception as e:
             return CheckResult("API keys", CheckStatus.WARN, f"Cannot load settings: {e}")
 
@@ -488,9 +488,9 @@ def check_provider_connectivity() -> CheckResult:
         settings = get_settings()
     except Exception:
         try:
-            from settings import get_settings
+            from settings import get_settings as fallback_get_settings
 
-            settings = get_settings()
+            settings = fallback_get_settings()
         except Exception:
             return CheckResult("Provider connectivity", CheckStatus.SKIP, "Cannot load settings")
 

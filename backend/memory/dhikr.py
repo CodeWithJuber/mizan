@@ -36,7 +36,8 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger("mizan.dhikr")
 
@@ -154,7 +155,7 @@ class Memory:
         """
         half_life_hours = self.importance * 720  # Max 30 days half-life
         decay_factor = 0.5 ** (hours_elapsed / max(half_life_hours, 1))
-        return self.importance * decay_factor * (1 + 0.1 * self.access_count)
+        return cast(float, self.importance * decay_factor * (1 + 0.1 * self.access_count))
 
 
 class DhikrMemorySystem:
@@ -182,7 +183,13 @@ class DhikrMemorySystem:
         # ── Masalik: Neural pathway network (the real memory) ──
         from memory.masalik import MasalikNetwork
 
-        self.masalik = MasalikNetwork()
+        self.masalik = MasalikNetwork(
+            persist_path=(
+                str(Path(db_path).with_name("masalik_network.json"))
+                if db_path != ":memory:"
+                else None
+            )
+        )
 
         # ── KnowledgeGraph: Entity + relationship store ──
         try:
@@ -354,7 +361,7 @@ class DhikrMemorySystem:
         memory_type: str = "episodic",
         importance: float = 0.5,
         agent_id: str = "",
-        tags: list[str] = None,
+        tags: list[str] | None = None,
     ) -> str:
         """
         Store a new memory — dual pathway:
@@ -413,7 +420,11 @@ class DhikrMemorySystem:
         return caches.get(memory_type, self._episodic_cache)
 
     async def recall(
-        self, query: str, memory_type: str = None, agent_id: str = None, limit: int = 10
+        self,
+        query: str,
+        memory_type: str | None = None,
+        agent_id: str | None = None,
+        limit: int = 10,
     ) -> list[Memory]:
         """
         Recall memories — dual pathway:
@@ -432,7 +443,7 @@ class DhikrMemorySystem:
         c = conn.cursor()
 
         sql = "SELECT * FROM memories WHERE 1=1"
-        params = []
+        params: list = []
 
         if memory_type:
             sql += " AND memory_type = ?"
@@ -489,7 +500,19 @@ class DhikrMemorySystem:
         Pure pathway recall — returns associated concepts from the neural network.
         Use this for agent system prompts where you need semantic context.
         """
-        return self.masalik.recall_context(query, top_k=top_k)
+        return cast(str, self.masalik.recall_context(query, top_k=top_k))
+
+    async def recall_unified_async(self, query: str, top_k: int = 10) -> list:
+        return await self.pyramid.query_async(query, top_k) if self.pyramid else []
+
+    async def recall_unified_for_prompt_async(self, query: str, top_k: int = 5) -> str:
+        advisory = _native_sense_advisory(query)
+        base = (
+            await self.pyramid.format_for_prompt_async(query, top_k)
+            if self.pyramid
+            else self.recall_pathways(query, top_k)
+        )
+        return f"{base}\n{advisory}" if advisory and base else advisory or base
 
     def recall_unified(self, query: str, top_k: int = 10) -> list:
         """
@@ -498,7 +521,7 @@ class DhikrMemorySystem:
         Falls back to standard dhikr recall if pyramid not available.
         """
         if self.pyramid:
-            return self.pyramid.query(query, top_k=top_k)
+            return cast(list, self.pyramid.query(query, top_k=top_k))
         return []
 
     def recall_unified_for_prompt(self, query: str, top_k: int = 5) -> str:
@@ -555,7 +578,7 @@ class DhikrMemorySystem:
         conn.commit()
         self._release_conn(conn)
 
-    async def consolidate(self, agent_id: str = None):
+    async def consolidate(self, agent_id: str | None = None):
         """
         Memory consolidation — two processes:
 
@@ -585,7 +608,7 @@ class DhikrMemorySystem:
             AND recency < ?
             AND access_count < 3
         """
-        params = [cutoff.isoformat()]
+        params: list = [cutoff.isoformat()]
         if agent_id:
             sql += " AND agent_id = ?"
             params.append(agent_id)
@@ -657,8 +680,55 @@ class DhikrMemorySystem:
             )
         return agents
 
+    def _session_table(self, conn):
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_sessions (session_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL)"
+        )
+
+    async def session_owner(self, session_id: str) -> str | None:
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            row = conn.execute(
+                "SELECT owner_id FROM chat_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            conn.commit()
+            return row[0] if row else None
+        finally:
+            self._release_conn(conn)
+
+    async def authorize_session(
+        self, session_id: str, owner_id: str, *, create=False, adopt_legacy=False
+    ) -> bool:
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            # One SQLite transaction makes concurrent first claims atomic.
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT owner_id FROM chat_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if row:
+                allowed = row[0] == owner_id
+            else:
+                legacy = conn.execute(
+                    "SELECT 1 FROM agent_messages WHERE session_id = ? LIMIT 1", (session_id,)
+                ).fetchone()
+                allowed = (create and not legacy) or (adopt_legacy and bool(legacy))
+                if allowed:
+                    conn.execute("INSERT INTO chat_sessions VALUES (?, ?)", (session_id, owner_id))
+            conn.commit()
+            return cast(bool, allowed)
+        finally:
+            self._release_conn(conn)
+
     async def save_message(
-        self, session_id: str, role: str, content: str, agent_id: str = "", metadata: dict = None
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        agent_id: str = "",
+        metadata: dict | None = None,
     ) -> str:
         """Save chat message"""
         import uuid
@@ -712,9 +782,10 @@ class DhikrMemorySystem:
             for r in rows
         ]
 
-    async def list_sessions(self, limit: int = 20) -> list[dict]:
+    async def list_sessions(self, limit: int = 20, owner_id: str | None = None) -> list[dict]:
         """List recent chat sessions with metadata"""
         conn = self._get_conn()
+        self._session_table(conn)
         c = conn.cursor()
         c.execute(
             """
@@ -726,11 +797,12 @@ class DhikrMemorySystem:
                     WHERE session_id = m.session_id AND role = 'user'
                     ORDER BY created_at LIMIT 1) as first_message
             FROM agent_messages m
+            WHERE (? IS NULL OR m.session_id IN (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
             GROUP BY m.session_id
             ORDER BY MAX(m.created_at) DESC
             LIMIT ?
         """,
-            (limit,),
+            (owner_id, owner_id, limit),
         )
         rows = c.fetchall()
         self._release_conn(conn)
@@ -867,7 +939,7 @@ class DhikrMemorySystem:
         result: str,
         success: bool,
         duration_ms: float,
-        metadata: dict = None,
+        metadata: dict | None = None,
     ) -> str:
         """Save task history"""
         import uuid
@@ -895,7 +967,7 @@ class DhikrMemorySystem:
         self._release_conn(conn)
         return task_id
 
-    async def get_task_history(self, agent_id: str = None, limit: int = 100) -> list[dict]:
+    async def get_task_history(self, agent_id: str | None = None, limit: int = 100) -> list[dict]:
         """Get task history"""
         conn = self._get_conn()
         c = conn.cursor()
@@ -978,7 +1050,7 @@ class DhikrMemorySystem:
         user_id: str = "",
         ip_address: str = "",
         resource: str = "",
-        details: dict = None,
+        details: dict | None = None,
         success: bool = True,
     ):
         """Persist an audit log entry to SQLite."""
@@ -1005,13 +1077,13 @@ class DhikrMemorySystem:
         self._release_conn(conn)
 
     async def get_audit_logs(
-        self, limit: int = 100, severity: str = None, event_type: str = None
+        self, limit: int = 100, severity: str | None = None, event_type: str | None = None
     ) -> list[dict]:
         """Query audit logs with optional filtering."""
         conn = self._get_conn()
         c = conn.cursor()
         query = "SELECT * FROM audit_log"
-        params = []
+        params: list = []
         conditions = []
         if severity:
             conditions.append("severity = ?")
@@ -1090,7 +1162,7 @@ class DhikrMemorySystem:
         memory_type: str = "episodic",
         importance: float = 0.5,
         agent_id: str = "",
-        tags: list[str] = None,
+        tags: list[str] | None = None,
         certainty_level: str = "zann",
     ) -> str:
         """

@@ -233,7 +233,7 @@ class HidayahEngine:
         else:
             entries = [e for elist in self._history.values() for e in elist]
 
-        by_type = {}
+        by_type: dict[str, int] = {}
         for e in entries:
             by_type[e.guidance_type.value] = by_type.get(e.guidance_type.value, 0) + 1
 

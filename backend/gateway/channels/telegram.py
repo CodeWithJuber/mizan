@@ -20,7 +20,7 @@ class TelegramChannel(ChannelAdapter):
     - bot_token: Telegram bot token from @BotFather
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._app = None
 
@@ -67,7 +67,7 @@ class TelegramChannel(ChannelAdapter):
                 logger.error(f"[TELEGRAM] Disconnect error: {e}")
         self.is_connected = False
 
-    async def send_message(self, recipient_id: str, content: str, attachments: list = None):
+    async def send_message(self, recipient_id: str, content: str, attachments: list | None = None):
         """Send a message via Telegram"""
         if not self._app or not self.is_connected:
             return

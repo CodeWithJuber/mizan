@@ -46,8 +46,8 @@ class TestRootEndpoint:
 
 
 class TestAgentEndpoints:
-    def test_list_agents(self, client):
-        resp = client.get("/api/agents")
+    def test_list_agents(self, client, auth_headers):
+        resp = client.get("/api/agents", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "agents" in data
