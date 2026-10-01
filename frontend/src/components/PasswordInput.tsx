@@ -4,6 +4,8 @@
 import { useState } from "react";
 
 interface PasswordInputProps {
+  id?: string;
+  ariaLabel?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -12,6 +14,8 @@ interface PasswordInputProps {
 }
 
 export function PasswordInput({
+  id,
+  ariaLabel,
   value,
   onChange,
   placeholder,
@@ -22,6 +26,8 @@ export function PasswordInput({
   return (
     <div className="relative">
       <input
+        id={id}
+        aria-label={ariaLabel}
         className={`${className} pr-12`}
         type={show ? "text" : "password"}
         placeholder={placeholder}

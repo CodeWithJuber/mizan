@@ -34,7 +34,9 @@ import { ThinkingStream } from "./components/ThinkingStream";
 import { QueueDashboard } from "./components/QueueDashboard";
 import { config } from "./config";
 import { useApi } from "./hooks/useApi";
+import { ChatAttachments } from "./components/ChatAttachments";
 import { authFetch } from "./utils/authFetch";
+import { consumeChatStream } from "./utils/chatSse";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import ComparePanel from "./components/ComparePanel";
 import {
@@ -45,7 +47,16 @@ import {
   downloadExport,
   type ExportFormatId,
 } from "./utils/exportChat";
-import { ArtifactsPanel } from "./components/ArtifactsPanel";
+const ArtifactsPanel = lazy(() =>
+  import("./components/ArtifactsPanel").then((module) => ({
+    default: module.ArtifactsPanel,
+  })),
+);
+const CodingWorkspace = lazy(() =>
+  import("./components/CodingWorkspace").then((module) => ({
+    default: module.CodingWorkspace,
+  })),
+);
 import { ToastProvider, useToast } from "./components/Toast";
 import { Icons } from "./components/Icons";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -215,7 +226,7 @@ function readStoredChatSessionId(): string | null {
 }
 
 function loadStoredChatSessionId(): string {
-  return readStoredChatSessionId() || `session_${Date.now()}`;
+  return readStoredChatSessionId() || `session_${crypto.randomUUID()}`;
 }
 
 // Disabled-send-button tooltips (repo convention: disabled buttons explain why)
@@ -234,10 +245,22 @@ function AppInner() {
     return !localStorage.getItem("mizan_setup_complete");
   });
 
+  const [authRevision, setAuthRevision] = useState(0);
+  const lastAuthTokenRef = useRef(localStorage.getItem("mizan_token"));
   const [activeTab, setActiveTabState] = useState(() => {
     return localStorage.getItem("mizan_active_tab") || "chat";
   });
+  const workspaceDirtyRef = useRef(false);
+  const setWorkspaceDirty = useCallback((dirty: boolean) => {
+    workspaceDirtyRef.current = dirty;
+  }, []);
   const setActiveTab = useCallback((tab: string) => {
+    if (
+      tab !== "workspace" &&
+      workspaceDirtyRef.current &&
+      !window.confirm("Leave the editor and discard unsaved changes?")
+    )
+      return;
     setActiveTabState(tab);
     localStorage.setItem("mizan_active_tab", tab);
   }, []);
@@ -345,6 +368,13 @@ function AppInner() {
   const [showArtifacts, setShowArtifacts] = useState(false);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [workspaceId, setWorkspaceId] = useState(
+    () => localStorage.getItem("mizan_workspace_id") || "",
+  );
+  const selectWorkspace = (id: string) => {
+    setWorkspaceId(id);
+    localStorage.setItem("mizan_workspace_id", id);
+  };
 
   const CHAT_COMMANDS = [
     { name: "/help", description: "Show available commands" },
@@ -383,6 +413,10 @@ function AppInner() {
   const streamBufferRef = useRef<StreamBuffer | null>(null);
   const sendControllerRef = useRef<AbortController | null>(null);
   const activeMessageIdRef = useRef<string>("");
+  const activeRequestIdRef = useRef<string>("");
+  const chatEventHandlerRef = useRef<(data: Record<string, unknown>) => void>(
+    () => {},
+  );
   const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string>("");
   const resyncRef = useRef<(() => void) | null>(null);
@@ -391,16 +425,12 @@ function AppInner() {
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Send-button state: disabled while the socket is down, always with a
-  // tooltip explaining why (repo convention).
+  // Text chat uses HTTP SSE and remains available when notification WS is down.
   const hasSendableInput = input.trim().length > 0 || attachedFiles.length > 0;
-  const sendDisabled = !hasSendableInput || wsStatus !== "connected";
-  const sendTitle =
-    wsStatus === "connected"
-      ? hasSendableInput
-        ? "Send message"
-        : "Type a message to send"
-      : `Cannot send — ${WS_STATUS_HINTS[wsStatus] ?? "not connected to server"}`;
+  const sendDisabled = !hasSendableInput;
+  const sendTitle = hasSendableInput
+    ? "Send message"
+    : "Type a message to send";
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
     setTerminalLines((prev) => [
@@ -409,27 +439,86 @@ function AppInner() {
     ]);
   }, []);
 
+  useEffect(() => {
+    const changed = () => {
+      const token = localStorage.getItem("mizan_token");
+      if (token === lastAuthTokenRef.current) return;
+      lastAuthTokenRef.current = token;
+      sendControllerRef.current?.abort();
+      activeRequestIdRef.current = "";
+      streamBufferRef.current?.discard();
+      streamBufferRef.current = null;
+      setMessages([]);
+      setChatSessions([]);
+      setArtifacts([]);
+      setShowArtifacts(false);
+      setAttachedFiles([]);
+      setWorkspaceId("");
+      setAgents([]);
+      setSelectedAgent(null);
+      setProviderStatus(null);
+      setStreaming(false);
+      setTypingIndicator(false);
+      setToolStatus("");
+      setActiveThinkingId(null);
+      setThinkingTraces({});
+      setTerminalLines([]);
+      setHistoryLoadError(false);
+      const id = `session_${crypto.randomUUID()}`;
+      setSessionId(id);
+      sessionIdRef.current = id;
+      localStorage.removeItem("mizan_workspace_id");
+      localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
+      setAuthRevision((revision) => revision + 1);
+    };
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === "mizan_token") changed();
+    };
+    window.addEventListener("mizan:authchanged", changed);
+    window.addEventListener("mizan:unauthorized", changed);
+    window.addEventListener("storage", storageChanged);
+    return () => {
+      window.removeEventListener("mizan:authchanged", changed);
+      window.removeEventListener("mizan:unauthorized", changed);
+      window.removeEventListener("storage", storageChanged);
+    };
+  }, []);
+
   // Connect WebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let attempts = 0;
+    let disposed = false;
 
     const connect = () => {
+      if (disposed) return;
+      if (!localStorage.getItem("mizan_token")) {
+        setWsStatus("auth_required");
+        return;
+      }
       try {
-        if (attempts > 0) {
-          setWsStatus("reconnecting");
-        }
+        setWsStatus(attempts > 0 ? "reconnecting" : "connecting");
 
         const wsToken = localStorage.getItem("mizan_token");
         const wsUrl = wsToken
           ? `${config.WS_URL}/${clientId.current}?token=${encodeURIComponent(wsToken)}`
           : `${config.WS_URL}/${clientId.current}`;
-        socket = new WebSocket(wsUrl);
+        const currentSocket = new WebSocket(wsUrl);
+        socket = currentSocket;
+        const isCurrent = () =>
+          !disposed &&
+          socket === currentSocket &&
+          wsToken === localStorage.getItem("mizan_token");
 
-        socket.onopen = () => {
+        currentSocket.onopen = () => {
+          if (!isCurrent()) {
+            currentSocket.close();
+            return;
+          }
           setWsStatus("connected");
-          setWs(socket);
+          setWs(currentSocket);
           // attempts > 0 means this onopen follows a close → a reconnect.
           const wasReconnect = attempts > 0;
           attempts = 0;
@@ -443,13 +532,29 @@ function AppInner() {
           }
         };
 
-        socket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          handleWsMessage(data);
+        currentSocket.onmessage = (event) => {
+          if (!isCurrent()) return;
+          try {
+            const data = JSON.parse(event.data);
+            // Chat has a single SSE owner. Unrelated notification frames remain on WS.
+            if (
+              data.request_id ||
+              (data.session_id && data.session_id !== sessionIdRef.current)
+            )
+              return;
+            chatEventHandlerRef.current(data);
+          } catch {
+            addTerminalLine("Invalid notification ignored", "warn");
+          }
         };
 
-        socket.onclose = () => {
+        currentSocket.onclose = (event) => {
+          if (!isCurrent()) return;
           setWs(null);
+          if (event.code === 4401 || event.code === 1008) {
+            setWsStatus("auth_required");
+            return;
+          }
           attempts++;
           setReconnectAttempts(attempts);
           if (attempts >= 5) {
@@ -462,7 +567,8 @@ function AppInner() {
           reconnectTimer = setTimeout(connect, delay);
         };
 
-        socket.onerror = () => {
+        currentSocket.onerror = () => {
+          if (!isCurrent()) return;
           addTerminalLine("Connection error", "error");
         };
       } catch (e: unknown) {
@@ -475,10 +581,11 @@ function AppInner() {
     connect();
 
     return () => {
+      disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) socket.close();
     };
-  }, []);
+  }, [authRevision]);
 
   // ===== CHAT UPGRADE: streaming / stop helpers =====
   // Mirrors `streaming` state for use inside stable callbacks and timeouts.
@@ -502,6 +609,7 @@ function AppInner() {
   const finalizeStop = useCallback(
     (text: string) => {
       if (!streamingRef.current) return;
+      streamingRef.current = false;
       clearStopFallback();
       streamBufferRef.current?.discard();
       streamBufferRef.current = null;
@@ -529,7 +637,7 @@ function AppInner() {
     [addTerminalLine, clearStopFallback, selectedAgent],
   );
 
-  const MAX_AUTO_CONTINUATIONS = 3;
+  // Length-limited replies continue only when the user chooses Continue.
   const CONTINUE_PROMPT =
     "Continue from exactly where you stopped. Do not repeat what you already wrote.";
 
@@ -543,65 +651,57 @@ function AppInner() {
   /** Send a "continue" request for a length-truncated answer (no user bubble). */
   const requestContinuation = useCallback(async () => {
     const sid = sessionIdRef.current;
-    if (!sid || !streamingRef.current) return;
+    if (!sid) return;
     const controller = new AbortController();
     sendControllerRef.current = controller;
     appendToLastRef.current = true;
     streamBufferRef.current = new StreamBuffer((text) =>
       setStreamingText(text),
     );
+    const requestId = crypto.randomUUID();
+    activeRequestIdRef.current = requestId;
+    streamingRef.current = true;
+    setStreaming(true);
+    setTypingIndicator(true);
     try {
-      const res = await authFetch(`${config.API_URL}/chat`, {
+      const response = await authFetch(`${config.API_URL}/chat/stream`, {
         method: "POST",
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
         body: JSON.stringify({
           session_id: sid,
           content: CONTINUE_PROMPT,
           agent_id: selectedAgent?.id,
+          request_id: requestId,
+          ...(workspaceId ? { workspace_id: workspaceId } : {}),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json().catch(() => ({}))) as {
-        message_id?: string;
-      };
-      activeMessageIdRef.current = body.message_id || "";
-    } catch {
-      // Continuation failed — leave the partial answer as-is; the manual
-      // Continue button stays available.
+      await consumeChatStream(response, {
+        sessionId: sid,
+        requestId,
+        signal: controller.signal,
+        onEvent: (event) => chatEventHandlerRef.current(event),
+      });
+    } catch (error) {
       appendToLastRef.current = false;
-      streamBufferRef.current?.discard();
-      streamBufferRef.current = null;
-      sendControllerRef.current = null;
-    }
-  }, [selectedAgent]);
-
-  /** Real Stop: abort the HTTP POST AND cancel server-side generation. */
-  const stopGeneration = useCallback(() => {
-    // 1. Abort the in-flight HTTP POST (AbortController end-to-end).
-    try {
-      sendControllerRef.current?.abort();
-    } catch {
-      /* ignore */
-    }
-    sendControllerRef.current = null;
-    // 2. Ask the server to cancel the generation task (backend stop handler).
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: "stop",
-          message_id: activeMessageIdRef.current,
-          session_id: sessionIdRef.current,
-        }),
-      );
-    }
-    // 3. Fallback: if the server never answers (older backend), finalize
-    //    locally after 3s so the UI never hangs on "Thinking…" forever.
-    clearStopFallback();
-    stopFallbackRef.current = setTimeout(() => {
+      if (!controller.signal.aborted)
+        addToast({
+          type: "error",
+          title: "Continuation interrupted",
+          description: (error as Error).message,
+        });
       finalizeStop(streamBufferRef.current?.getText() ?? "");
-    }, 3000);
-  }, [ws, clearStopFallback, finalizeStop]);
+    }
+  }, [selectedAgent, addToast, finalizeStop, workspaceId]);
+
+  /** Abort the authenticated fetch; the server cancels the owned generation. */
+  const stopGeneration = useCallback(() => {
+    sendControllerRef.current?.abort();
+    finalizeStop(streamBufferRef.current?.getText() ?? "");
+  }, [finalizeStop]);
 
   const handleWsMessage = useCallback(
     (data: Record<string, unknown>) => {
@@ -718,22 +818,12 @@ function AppInner() {
           const finishReason = (data.finish_reason as string) || "";
           const hitLengthLimit =
             finishReason === "length" || finishReason === "max_tokens";
-          if (
-            hitLengthLimit &&
-            continuationRef.current < MAX_AUTO_CONTINUATIONS
-          ) {
-            continuationRef.current += 1;
-            addTerminalLine(
-              `Length limit hit — auto-continuing (${continuationRef.current}/${MAX_AUTO_CONTINUATIONS})`,
-              "warn",
-            );
-            void requestContinuation();
-          } else if (hitLengthLimit) {
+          if (hitLengthLimit) {
             setTruncatedContinue({ messageId });
             addToast({
               type: "warning",
-              title: "Jawab adhoora reh gaya (length limit)",
-              description: "Continue dabao — wahin se aage likhega",
+              title: "Response reached its length limit",
+              description: "Choose Continue to request the remaining answer.",
             });
           }
           addTerminalLine(`Response from ${data.agent}`, "info");
@@ -760,6 +850,10 @@ function AppInner() {
           }
           break;
         }
+        case "status":
+          if (data.streaming_mode === "buffered")
+            setToolStatus("Waiting for the model's complete response…");
+          break;
         case "typing":
           setTypingIndicator(true);
           break;
@@ -829,6 +923,11 @@ function AppInner() {
           break;
         }
         case "error": {
+          const partial = streamBufferRef.current?.getText() ?? "";
+          if (partial) finalizeStop(partial);
+          streamBufferRef.current?.discard();
+          streamBufferRef.current = null;
+          sendControllerRef.current = null;
           setStreaming(false);
           setStreamingText("");
           setTypingIndicator(false);
@@ -899,7 +998,9 @@ function AppInner() {
           // "version"/"content"; the panel lazily loads full history.
           const payload = data.artifact as ArtifactWsPayload;
           const kind: ArtifactKind =
-            payload.kind === "code" || payload.kind === "html"
+            payload.kind === "code" ||
+            payload.kind === "html" ||
+            payload.kind === "image"
               ? payload.kind
               : "markdown";
           const versionNum = (payload.version as number) ?? 1;
@@ -909,16 +1010,34 @@ function AppInner() {
             title: payload.title ?? "Untitled artifact",
             kind,
             language: payload.language,
-            versions: [
-              {
-                version: versionNum,
-                content: payload.content ?? "",
-                created_at: payload.created_at ?? new Date().toISOString(),
-              },
-            ],
+            current_version: versionNum,
+            versions:
+              typeof payload.content === "string"
+                ? [
+                    {
+                      version: versionNum,
+                      content: payload.content ?? "",
+                      created_at:
+                        payload.created_at ?? new Date().toISOString(),
+                    },
+                  ]
+                : [],
           };
           setArtifacts((prev) =>
-            prev.some((a) => a.id === artifact.id) ? prev : [...prev, artifact],
+            prev.some((a) => a.id === artifact.id)
+              ? prev.map((a) =>
+                  a.id === artifact.id
+                    ? {
+                        ...a,
+                        ...artifact,
+                        versions: [
+                          ...a.versions.filter((v) => v.version !== versionNum),
+                          ...artifact.versions,
+                        ],
+                      }
+                    : a,
+                )
+              : [...prev, artifact],
           );
           addTerminalLine(
             `Artifact ready: ${artifact.title} (v${versionNum})`,
@@ -940,6 +1059,17 @@ function AppInner() {
       finalizeStop,
       requestContinuation,
     ],
+  );
+
+  useEffect(() => {
+    chatEventHandlerRef.current = handleWsMessage;
+  }, [handleWsMessage]);
+  useEffect(
+    () => () => {
+      sendControllerRef.current?.abort();
+      streamBufferRef.current?.discard();
+    },
+    [],
   );
 
   const loadAgents = async () => {
@@ -1103,7 +1233,11 @@ function AppInner() {
       content: string;
       agent_id?: string;
       created_at?: string;
-      metadata?: { usage?: MessageUsageMeta };
+      metadata?: {
+        usage?: MessageUsageMeta;
+        status?: string;
+        partial?: boolean;
+      };
     },
     idx: number,
   ): ChatMessage => {
@@ -1118,11 +1252,14 @@ function AppInner() {
       model: usageMeta?.model,
       ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
       meta: usageMeta,
+      stopped:
+        m.metadata?.status === "cancelled" || m.metadata?.partial === true,
     };
   };
 
   const loadChatHistory = useCallback(
     async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean }) => {
+      const requestToken = localStorage.getItem("mizan_token");
       setHistoryLoading(true);
       setHistoryLoadError(false);
       try {
@@ -1130,6 +1267,11 @@ function AppInner() {
           () => authFetch(`${config.API_URL}/chat/${sid}`),
           3,
         );
+        if (
+          requestToken !== localStorage.getItem("mizan_token") ||
+          sid !== sessionIdRef.current
+        )
+          return;
         if (result.missing) {
           // Session expired or deleted server-side — the caller decides how
           // to start fresh. Never toast here: a missing session is normal.
@@ -1162,7 +1304,11 @@ function AppInner() {
         // optimistic echoes) are appended in order — no duplicates.
         setMessages((prev) => mergeHistoryMessages(history, prev));
       } finally {
-        setHistoryLoading(false);
+        if (
+          requestToken === localStorage.getItem("mizan_token") &&
+          sid === sessionIdRef.current
+        )
+          setHistoryLoading(false);
       }
     },
     [addToast],
@@ -1185,11 +1331,13 @@ function AppInner() {
   }, [resyncSession]);
 
   const loadChatSessions = useCallback(async () => {
+    const requestToken = localStorage.getItem("mizan_token");
     try {
       const res = await authFetch(`${config.API_URL}/chat/sessions/list`);
       if (!res.ok) return;
       const data = await res.json();
-      setChatSessions(data.sessions || []);
+      if (requestToken === localStorage.getItem("mizan_token"))
+        setChatSessions(data.sessions || []);
     } catch {
       // ignore
     }
@@ -1197,6 +1345,14 @@ function AppInner() {
 
   const switchSession = useCallback(
     async (sid: string) => {
+      sendControllerRef.current?.abort();
+      activeRequestIdRef.current = "";
+      streamBufferRef.current?.discard();
+      streamBufferRef.current = null;
+      setStreaming(false);
+      setTypingIndicator(false);
+      setArtifacts([]);
+      setShowArtifacts(false);
       setSessionId(sid);
       setMessages([]);
       setShowSessionHistory(false);
@@ -1216,6 +1372,7 @@ function AppInner() {
   );
 
   useEffect(() => {
+    if (!localStorage.getItem("mizan_token")) return;
     loadAgents();
     loadProviders();
     // Restore the previous chat session after a refresh. A stored id that the
@@ -1260,18 +1417,21 @@ function AppInner() {
       loadStatus();
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authRevision]);
 
   // On 401 (token expired/invalid), send user to Security tab to log in again
   useEffect(() => {
+    let shown = false;
     const onUnauthorized = () => {
+      if (shown) return;
+      shown = true;
       addToast({ type: "error", title: "Session expired — dobara login karo" });
       setActiveTab("security");
     };
     window.addEventListener("mizan:unauthorized", onUnauthorized);
     return () =>
       window.removeEventListener("mizan:unauthorized", onUnauthorized);
-  }, []);
+  }, [authRevision]);
 
   // Persist chat sessionId to localStorage (migrates the legacy key)
   useEffect(() => {
@@ -1331,7 +1491,15 @@ function AppInner() {
   }, []);
 
   const startNewSession = useCallback(() => {
-    const newId = `session_${Date.now()}`;
+    sendControllerRef.current?.abort();
+    activeRequestIdRef.current = "";
+    streamBufferRef.current?.discard();
+    streamBufferRef.current = null;
+    setStreaming(false);
+    setTypingIndicator(false);
+    setArtifacts([]);
+    setShowArtifacts(false);
+    const newId = `session_${crypto.randomUUID()}`;
     setSessionId(newId);
     setMessages([]);
     setStreamingText("");
@@ -1529,6 +1697,33 @@ function AppInner() {
       (f) => f.type.startsWith("image/") || f.type.startsWith("audio/"),
     );
 
+    if (
+      hasMedia &&
+      (
+        chatModelOverride ||
+        selectedAgent?.model ||
+        providerStatus?.default_model ||
+        ""
+      ).startsWith("ruh")
+    ) {
+      addToast({
+        type: "warning",
+        title: "Ruh currently accepts text",
+        description:
+          "You can view this attachment, but image or audio analysis needs a compatible provider.",
+      });
+      return;
+    }
+    if (hasMedia && wsStatus !== "connected") {
+      addToast({
+        type: "warning",
+        title: "Image analysis needs an active media connection",
+        description:
+          "Text chat is still available. Keep your attachment and reconnect before sending it.",
+      });
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: Date.now(),
       role: "user",
@@ -1538,6 +1733,7 @@ function AppInner() {
       ts: new Date().toLocaleTimeString(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    streamingRef.current = true;
     setStreaming(true);
     setStreamingText("");
     setTypingIndicator(true);
@@ -1588,69 +1784,56 @@ function AppInner() {
       return;
     }
 
-    // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
-    // Fall back to WebSocket direct send if HTTP fails
+    const requestId = crypto.randomUUID();
+    activeRequestIdRef.current = requestId;
     try {
-      const res = await authFetch(`${config.API_URL}/chat`, {
+      const response = await authFetch(`${config.API_URL}/chat/stream`, {
         method: "POST",
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          Accept: "text/event-stream",
         },
         body: JSON.stringify({
           session_id: sessionId,
           content,
           agent_id: selectedAgent?.id,
+          request_id: requestId,
+          ...(workspaceId ? { workspace_id: workspaceId } : {}),
           ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Capture the server message_id so Stop can target this generation.
-      const postBody = (await res.json().catch(() => ({}))) as {
-        message_id?: string;
-      };
-      activeMessageIdRef.current = postBody.message_id || "";
+      await consumeChatStream(response, {
+        sessionId,
+        requestId,
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (activeRequestIdRef.current !== requestId) return;
+          activeMessageIdRef.current =
+            (event.message_id as string) || activeMessageIdRef.current;
+          handleWsMessage(event);
+        },
+      });
       if (chatModelOverride) setChatModelOverride("");
-    } catch {
-      if (controller.signal.aborted) {
-        // User pressed Stop while the POST was in flight — do NOT fall back
-        // to WS; settle the (empty) stream quietly.
-        setStreaming(false);
-        setTypingIndicator(false);
-        return;
-      }
-      // Fallback: send via WebSocket directly
-      if (ws) {
-        ws.send(
-          JSON.stringify({
-            type: "chat",
-            session_id: sessionId,
-            content,
-            agent_id: selectedAgent?.id,
-          }),
-        );
-      } else {
-        streamBufferRef.current?.discard();
-        streamBufferRef.current = null;
-        sendControllerRef.current = null;
-        setStreaming(false);
-        setTypingIndicator(false);
-        addTerminalLine("Not connected - cannot send message", "error");
-        const errMsg: ChatMessage = {
-          id: Date.now(),
-          role: "assistant",
-          content:
-            "⚠️ Message nahi bheja ja saka — server se connection nahi hai. Dobara try karo.",
-          ts: new Date().toLocaleTimeString(),
-        };
-        setMessages((prev) => [...prev, errMsg]);
+    } catch (error) {
+      if (activeRequestIdRef.current !== requestId) return;
+      finalizeStop(streamBufferRef.current?.getText() ?? "");
+      if (!controller.signal.aborted) {
+        const detail = (error as Error).message;
+        addTerminalLine(detail, "error");
         addToast({
           type: "error",
-          title: "Not connected",
-          description:
-            "Server se connection nahi hai — message nahi bheja gaya",
+          title: "Chat interrupted",
+          description: detail,
         });
+      }
+    } finally {
+      if (activeRequestIdRef.current === requestId) {
+        activeRequestIdRef.current = "";
+        sendControllerRef.current = null;
+        streamingRef.current = false;
+        setStreaming(false);
+        setTypingIndicator(false);
       }
     }
   };
@@ -1777,6 +1960,12 @@ function AppInner() {
           label: "Chat",
           desc: "Talk to your AI",
           icon: <Icons.Chat />,
+        },
+        {
+          id: "workspace",
+          label: "Coding workspace",
+          desc: "Edit files, run tests and preview artifacts",
+          icon: <Icons.Terminal />,
         },
         {
           id: "agents",
@@ -1926,6 +2115,43 @@ function AppInner() {
   // ===== RENDER CONTENT =====
   const renderContent = () => {
     switch (activeTab) {
+      case "workspace":
+        return (
+          <CodingWorkspace
+            sessionId={sessionId}
+            selectedId={workspaceId}
+            onSelect={selectWorkspace}
+            onDirtyChange={setWorkspaceDirty}
+            onArtifact={(artifact) => {
+              const full = {
+                ...artifact,
+                versions:
+                  artifact.versions ??
+                  (typeof artifact.content === "string"
+                    ? [
+                        {
+                          version: artifact.current_version ?? 1,
+                          content: artifact.content,
+                          created_at:
+                            artifact.created_at ?? new Date().toISOString(),
+                        },
+                      ]
+                    : []),
+              };
+              setArtifacts((previous) => [
+                ...previous.filter((item) => item.id !== artifact.id),
+                full,
+              ]);
+              setShowArtifacts(true);
+            }}
+            onAskAgent={(content) => {
+              workspaceDirtyRef.current = false;
+              setActiveTab("chat");
+              setInput(content);
+              chatTextareaRef.current?.focus();
+            }}
+          />
+        );
       case "agents":
         return (
           <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -2124,7 +2350,7 @@ function AppInner() {
                       <svg
                         viewBox="0 0 20 20"
                         fill="currentColor"
-                        className="w-4.5 h-4.5"
+                        className="w-[18px] h-[18px]"
                       >
                         <path
                           fillRule="evenodd"
@@ -2189,7 +2415,7 @@ function AppInner() {
                       <svg
                         viewBox="0 0 20 20"
                         fill="currentColor"
-                        className="w-4.5 h-4.5"
+                        className="w-[18px] h-[18px]"
                       >
                         <path
                           fillRule="evenodd"
@@ -2236,7 +2462,7 @@ function AppInner() {
                     <svg
                       viewBox="0 0 20 20"
                       fill="currentColor"
-                      className="w-4.5 h-4.5"
+                      className="w-[18px] h-[18px]"
                     >
                       <path
                         fillRule="evenodd"
@@ -2260,7 +2486,7 @@ function AppInner() {
                     <svg
                       viewBox="0 0 20 20"
                       fill="currentColor"
-                      className="w-4.5 h-4.5"
+                      className="w-[18px] h-[18px]"
                     >
                       <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
                       <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
@@ -2404,7 +2630,10 @@ function AppInner() {
                         <button
                           key={action.label}
                           className="text-left p-3.5 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group cursor-pointer"
-                          onClick={() => sendMessage(action.prompt)}
+                          onClick={() => {
+                            setInput(action.prompt);
+                            chatTextareaRef.current?.focus();
+                          }}
                         >
                           <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
                             {action.label}
@@ -2609,6 +2838,23 @@ function AppInner() {
                 {/* Input box */}
                 {/* CHAT UPGRADE (H): agent mode switcher — single vs deep_research */}
                 <div className="px-1 pb-2">
+                  {workspaceId && (
+                    <div className="max-w-3xl mx-auto text-xs text-gray-500 mb-2 flex items-center gap-2">
+                      <span>Workspace selected</span>
+                      <button
+                        className="underline"
+                        onClick={() => setActiveTab("workspace")}
+                      >
+                        Open files
+                      </button>
+                      <button
+                        className="underline"
+                        onClick={() => selectWorkspace("")}
+                      >
+                        Detach
+                      </button>
+                    </div>
+                  )}
                   <ModeSwitcher
                     mode={agentMode}
                     confirmed={deepResearchConfirmed}
@@ -2617,61 +2863,17 @@ function AppInner() {
                     disabled={streaming}
                   />
                 </div>
+                {attachedFiles.length > 0 && (
+                  <ChatAttachments
+                    files={attachedFiles}
+                    onRemove={(index) =>
+                      setAttachedFiles((previous) =>
+                        previous.filter((_, i) => i !== index),
+                      )
+                    }
+                  />
+                )}
                 <div className="chat-input-box">
-                  {/* Attached files preview */}
-                  {attachedFiles.length > 0 && (
-                    <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-wrap gap-2 px-3">
-                      {attachedFiles.map((file, idx) => (
-                        <div
-                          key={idx}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-xs"
-                        >
-                          {file.type.startsWith("image/") ? (
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              className="w-3.5 h-3.5 text-amber-500"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81V14.75c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.06l-2.22-2.22a.75.75 0 00-1.06 0L9.72 14.72a.75.75 0 01-1.06 0l-1.94-1.94a.75.75 0 00-1.06 0L2.5 11.06zM12 7a1 1 0 11-2 0 1 1 0 012 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              className="w-3.5 h-3.5 text-indigo-500"
-                            >
-                              <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
-                              <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
-                            </svg>
-                          )}
-                          <span className="text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
-                            {file.name}
-                          </span>
-                          <button
-                            className="text-gray-400 hover:text-red-500 transition-colors"
-                            onClick={() =>
-                              setAttachedFiles((prev) =>
-                                prev.filter((_, i) => i !== idx),
-                              )
-                            }
-                          >
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              className="w-3 h-3"
-                            >
-                              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Left action buttons */}
                   <div className="flex items-center shrink-0 self-end">
                     {/* Attach / Upload button */}
@@ -2681,15 +2883,33 @@ function AppInner() {
                       onClick={() => {
                         const fileInput = document.createElement("input");
                         fileInput.type = "file";
-                        fileInput.multiple = true;
-                        fileInput.accept = "image/*,audio/*";
+                        fileInput.multiple = false;
+                        fileInput.accept =
+                          "image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/webm";
                         fileInput.onchange = (e) => {
                           const files = (e.target as HTMLInputElement).files;
                           if (files && files.length > 0) {
-                            setAttachedFiles((prev) => [
-                              ...prev,
-                              ...Array.from(files),
-                            ]);
+                            const file = files[0];
+                            const allowed = [
+                              "image/png",
+                              "image/jpeg",
+                              "image/webp",
+                              "audio/mpeg",
+                              "audio/wav",
+                              "audio/webm",
+                            ];
+                            if (
+                              !allowed.includes(file.type) ||
+                              file.size > 10 * 1024 ** 2
+                            ) {
+                              addToast({
+                                type: "warning",
+                                title:
+                                  "Choose a PNG, JPEG, WebP or audio file under 10 MB",
+                              });
+                              return;
+                            }
+                            setAttachedFiles([file]);
                           }
                         };
                         fileInput.click();
@@ -2698,7 +2918,7 @@ function AppInner() {
                       <svg
                         viewBox="0 0 20 20"
                         fill="currentColor"
-                        className="w-4.5 h-4.5"
+                        className="w-[18px] h-[18px]"
                       >
                         <path d="M10 5a.75.75 0 01.75.75v3.5h3.5a.75.75 0 010 1.5h-3.5v3.5a.75.75 0 01-1.5 0v-3.5h-3.5a.75.75 0 010-1.5h3.5v-3.5A.75.75 0 0110 5z" />
                       </svg>
@@ -2733,6 +2953,7 @@ function AppInner() {
                     ref={chatTextareaRef}
                     className="chat-textarea"
                     placeholder="Message MIZAN..."
+                    aria-label="Message Mizan"
                     value={input}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -2866,9 +3087,9 @@ function AppInner() {
                     <span className="sm:hidden">Enter to send</span>
                   </span>
                   {wsStatus !== "connected" && (
-                    <span className="text-[10px] text-red-400 font-mono flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
-                      Disconnected
+                    <span className="text-[10px] text-gray-400 font-mono hidden sm:flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                      Notifications offline · text chat available
                     </span>
                   )}
                 </div>
@@ -3422,7 +3643,7 @@ function AppInner() {
       />
 
       {/* Header */}
-      <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
+      <header className="flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
         <button
           className="md:hidden p-2 -ml-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors focus-ring"
           onClick={() => setMobileNavOpen(true)}
@@ -3455,8 +3676,8 @@ function AppInner() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
             <div className={`w-2 h-2 rounded-full ${statusDot}`} />
             <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
               {statusLabel}
@@ -3548,11 +3769,19 @@ function AppInner() {
       )}
       {/* ===== Artifacts slide-over (workstream F) ===== */}
       {showArtifacts && (
-        <ArtifactsPanel
-          artifacts={artifacts}
-          sessionId={sessionId}
-          onClose={() => setShowArtifacts(false)}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed right-0 top-0 bottom-0 p-6 bg-white dark:bg-zinc-900">
+              Loading artifacts…
+            </div>
+          }
+        >
+          <ArtifactsPanel
+            artifacts={artifacts}
+            sessionId={sessionId}
+            onClose={() => setShowArtifacts(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

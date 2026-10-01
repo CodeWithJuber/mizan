@@ -1,4 +1,10 @@
-import { memo, useState, useCallback, type ReactNode } from "react";
+import {
+  memo,
+  useState,
+  useCallback,
+  isValidElement,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,7 +20,7 @@ function extractText(node: ReactNode): string {
   if (typeof node === "number") return String(node);
   if (!node) return "";
   if (Array.isArray(node)) return node.map(extractText).join("");
-  if (typeof node === "object" && "props" in node) {
+  if (isValidElement<{ children?: ReactNode }>(node)) {
     return extractText(node.props.children);
   }
   return "";

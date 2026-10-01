@@ -48,7 +48,7 @@ export default function WelcomePage({
   const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProviders();
+    if (localStorage.getItem("mizan_token")) void loadProviders();
   }, []);
 
   const loadProviders = async () => {
@@ -62,6 +62,17 @@ export default function WelcomePage({
       };
       const list = res.providers || [];
       setProviders([
+        {
+          id: "ruh",
+          name: "Ruh",
+          description:
+            "Your Arabic model. Chat and tool capabilities depend on the deployed checkpoint.",
+          configured: list.some(
+            (provider) =>
+              provider.name.startsWith("ruh") && provider.configured,
+          ),
+          link: "https://github.com/CodeWithJuber/ruh-serverless",
+        },
         {
           id: "anthropic",
           name: "Anthropic Claude",
@@ -155,6 +166,8 @@ export default function WelcomePage({
       };
       if (data.token) {
         localStorage.setItem("mizan_token", data.token);
+        window.dispatchEvent(new CustomEvent("mizan:authchanged"));
+        void loadProviders();
         setStep("welcome");
       } else {
         setLoginError(
@@ -203,12 +216,12 @@ export default function WelcomePage({
 
   const wsLabel =
     wsStatus === "connected"
-      ? "Backend connected"
+      ? "Live notifications connected"
       : wsStatus === "connecting" || wsStatus === "reconnecting"
-        ? "Connecting to backend..."
+        ? "Connecting live notifications..."
         : wsStatus === "auth_required"
           ? "Login required"
-          : "Connection failed";
+          : "Live notifications unavailable";
   const wsDot =
     wsStatus === "connected"
       ? "bg-emerald-500"
@@ -247,10 +260,14 @@ export default function WelcomePage({
               }}
             >
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                <label
+                  htmlFor="welcome-username"
+                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                >
                   Username
                 </label>
                 <input
+                  id="welcome-username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -261,10 +278,14 @@ export default function WelcomePage({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                <label
+                  htmlFor="welcome-password"
+                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                >
                   Password
                 </label>
                 <PasswordInput
+                  id="welcome-password"
                   value={password}
                   onChange={setPassword}
                   placeholder="••••••••"
@@ -314,18 +335,10 @@ export default function WelcomePage({
             </div>
 
             {wsStatus !== "connected" && (
-              <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-300 max-w-md mx-auto">
-                <p className="font-medium mb-1">
-                  {wsStatus === "auth_required"
-                    ? "Login karo — backend chal raha hai."
-                    : "Backend se connect nahi ho paya."}
-                </p>
-                <p className="text-xs opacity-80">
-                  {wsStatus === "auth_required"
-                    ? "Apna username aur password daalke login karo."
-                    : "Ask the person who set up Mizan to start the backend server."}
-                </p>
-              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Text chat uses a separate connection. Live notifications can
+                reconnect in the background.
+              </p>
             )}
 
             <div className="flex justify-center pt-4">
