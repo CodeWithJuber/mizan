@@ -28,7 +28,10 @@ load the runtime into that daemon, and set a random runner token
 of at least 32 characters. The optional `docker-compose.workspace.yml` override
 requires `MIZAN_WORKSPACE_DOCKER_SOCKET` to identify that dedicated daemon and
 `MIZAN_WORKSPACE_RUNNER_TOKEN` to authenticate the private service. It exposes no
-host port. Production images use immutable commit tags
+host port. Set `MIZAN_WORKSPACE_RUNNER_UID` and `MIZAN_WORKSPACE_RUNNER_GID` to
+the dedicated daemon socket owner's numeric UID/GID; the runner drops all Linux
+capabilities and cannot bypass socket permissions. The image supports an
+unprivileged runner user. Production images use immutable commit tags
 `ghcr.io/codewithjuber/mizan/workspace-runtime:<sha>` and
 `ghcr.io/codewithjuber/mizan/workspace-runner:<sha>`, published by the main CI
 pipeline after isolation checks. Set `MIZAN_WORKSPACE_RUNTIME_IMAGE` and

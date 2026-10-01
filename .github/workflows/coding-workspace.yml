@@ -44,7 +44,7 @@ jobs:
           docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
       - name: Verify runner image imports without Docker access
         run: |
-          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
+          docker run --rm --user 65534:65534 --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
       - name: Test owner boundaries and real code execution
         env:
           MIZAN_DATA_DIR: ${{ runner.temp }}/coding-test-data
