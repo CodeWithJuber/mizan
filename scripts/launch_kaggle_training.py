@@ -31,9 +31,9 @@ def main():
     if (
         metadata["is_private"] is not True
         or metadata["machine_shape"] != "NvidiaTeslaP100"
-        or metadata["session_timeout_seconds"] != 900
+        or metadata["session_timeout_seconds"] not in {900, 1800}
     ):
-        raise ValueError("Validation requires private, one P100, and a 900-second session limit")
+        raise ValueError("Training requires private, requested P100, and a 900/1800-second limit")
     notebook_text = (args.notebook_dir / metadata["code_file"]).read_text()
     notebook = json.loads(notebook_text)
     for cell in notebook["cells"]:
@@ -51,7 +51,7 @@ def main():
         "ref": metadata["id"],
         "private": True,
         "machine_shape": metadata["machine_shape"],
-        "session_timeout_seconds": 900,
+        "session_timeout_seconds": metadata["session_timeout_seconds"],
         "free_gpu_seconds_remaining": remaining,
         "pay_to_scale_enabled": False,
         "training_revision": metadata["training_revision"],
@@ -69,7 +69,7 @@ def main():
     request.enable_gpu = True
     request.enable_internet = True
     request.machine_shape = "NvidiaTeslaP100"
-    request.session_timeout_seconds = 900
+    request.session_timeout_seconds = metadata["session_timeout_seconds"]
     response = client.save_kernel(request)
     if response.error:
         raise ValueError(f"Kaggle rejected the private validation: {response.error}")
