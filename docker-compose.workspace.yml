@@ -10,7 +10,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.workspace-runner
-    image: mizan-workspace-runner:v1
+    image: ${MIZAN_WORKSPACE_RUNNER_IMAGE:-mizan-workspace-runner:v1}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]

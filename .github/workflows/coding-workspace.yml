@@ -52,33 +52,3 @@ jobs:
         run: |
           mkdir -p "$MIZAN_DATA_DIR"
           pytest tests/test_coding_workspace.py tests/test_artifacts.py -v --tb=short
-
-  publish:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: isolation
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build reviewed images from the tested main commit
-        run: |
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
-      - name: Publish tested immutable images for main
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
-        run: |
-          registry_config="$RUNNER_TEMP/coding-registry-config"
-          mkdir -m 700 "$registry_config"
-          export DOCKER_CONFIG="$registry_config"
-          trap 'rm -rf "$registry_config"' EXIT
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
-          for component in runtime runner; do
-            destination="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/mizan-workspace-$component:$GITHUB_SHA"
-            docker tag "mizan-workspace-$component:v1" "$destination"
-            docker push "$destination"
-          done
