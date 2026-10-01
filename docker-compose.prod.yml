@@ -54,10 +54,14 @@ services:
       - DEBUG=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DB_PATH=/data/mizan.db
+      - MIZAN_DATA_DIR=/data/mizan
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost}}
       - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-}
       - RUH_ENABLED=${RUH_ENABLED:-}
       - RUH_MODEL_PATH=${RUH_MODEL_PATH:-}
+      - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+      - RUNPOD_API_TOKEN=${RUNPOD_API_TOKEN:-}
+      - RUNPOD_ENDPOINT_ID=${RUNPOD_ENDPOINT_ID:-}
     volumes:
       - mizan-data:/data
     networks:
