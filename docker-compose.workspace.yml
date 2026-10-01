@@ -12,6 +12,7 @@ services:
       dockerfile: docker/Dockerfile.workspace-runner
     image: ${MIZAN_WORKSPACE_RUNNER_IMAGE:-mizan-workspace-runner:v1}
     restart: unless-stopped
+    user: '${MIZAN_WORKSPACE_RUNNER_UID:-65534}:${MIZAN_WORKSPACE_RUNNER_GID:-65534}'
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
