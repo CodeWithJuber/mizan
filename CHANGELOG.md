@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v3.2.1] — 2026-10-01
+
+### Fixed
+- fix: expose versioned features through the production API proxy
+- fix: use packaged tokenizer imports in public NLP routes
+
+
 ## [v3.2.0] — 2026-10-01
 
 ### Added
