@@ -75,7 +75,8 @@ class RuhModelProvider(BaseLLMProvider):
 
         generated_root_ids = generated[0].tolist() if generated.ndim == 2 else generated.tolist()
         generated_root_ids = generated_root_ids[len(tokens) :]
-        generated_tokens = [(int(root_id), 1) for root_id in generated_root_ids]
+        generation_pattern = 0 if getattr(self._tokenizer, "version", 1) == 2 else 1
+        generated_tokens = [(int(root_id), generation_pattern) for root_id in generated_root_ids]
         output_text = self._tokenizer.decode(generated_tokens)
 
         return LLMResponse(

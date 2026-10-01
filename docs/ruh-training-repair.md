@@ -1,0 +1,202 @@
+# Ruh sentence and dialogue training repair
+
+The owner's private `zubairshaikh/ruh-model-training` notebook was inspected
+through the authenticated official Kaggle API. Every curriculum stage invokes
+`ruh_model.train --generate-data`: the same tiny root-exposure templates are
+regenerated for all 50 epochs. The notebook copies a stale `ruh-model-code` dataset
+snapshot and pipes commands through `tail`, which can hide training failures.
+The live epoch19 checkpoint still has a 128-token context and a legacy Bayan v1
+vocabulary. Stage names and training loss therefore do not demonstrate chat ability.
+
+The repaired pipeline uses Bayan v2, whose UTF-8 representation preserves Arabic,
+English, punctuation, function words and negation. Legacy v1 remains available for
+existing checkpoint inference and root-analysis APIs. V1 weights are never silently
+reinterpreted as v2 text weights. The new training path refuses a legacy resume.
+Root analysis and surface sequence modeling serve different purposes; byte targets
+add lossless text coverage to the existing Ruh architecture.
+
+`python -m scripts.prepare_sequence_data` prepares reviewed direct replies from
+OpenAssistant/oasst1 (Apache-2.0) and Arabic Wikipedia articles (CC-BY-SA-3.0/GFDL),
+with exact pinned revisions and attribution in `sources.json`. Source loader scripts
+are never executed. No private production conversations or private checkpoint data
+are uploaded. Whole source conversation trees are assigned deterministically to
+training or validation; duplicate content is removed. The scarce approved Arabic
+OpenAssistant replies are retained before the English limit is applied.
+
+`python -m ruh_model.train_sequence` windows all bytes with one-token overlap,
+trains only assistant continuation targets for conversations, and trains all text
+for sentence/document records. Only the final document window contains EOS.
+The role protocol matches `serialize_messages` and the RunPod handler: the prompt
+ends with `assistant:` without EOS; the assistant's separating space is a target.
+V2 generation uses pattern 0, matching byte training, and masks legacy root IDs.
+
+The run refuses nonfinite losses/gradients and existing output directories, records
+token-weighted held-out loss before and after, and produces greedy held-out samples.
+It saves the candidate, tokenizer version, exact vocabulary, file hashes,
+`training_state.pt` (optimizer state), source/split metadata, and `evaluation.json`.
+A v2 candidate can resume with `--resume-from <run>/candidate`; its stored dimensions
+and context remain authoritative. The loader starts a new deterministic shuffle.
+Saved candidates are explicitly marked **not approved for production**.
+
+## Private bounded Kaggle validation
+
+`notebooks/kaggle/ruh_training_repair/` contains a commit-pinned notebook and Kaggle
+metadata. The validation requests a P100, uses Kaggle's installed Torch, and sets
+an API session timeout of 900 seconds including setup/download. Training itself is
+limited to 480 seconds and 1,000 steps. The 3.58M-parameter dense pilot uses four
+256-wide layers, a 384-byte context, batch size 2 and learning rate 3e-4. It validates
+the repaired code/data path and does **not** replace the 46M production checkpoint.
+No paid capacity is enabled and no RunPod or production mutations occur.
+
+```bash
+python -m scripts.prepare_sequence_data --output-dir /kaggle/working/data \
+  --dialogues 1500 --sentences 500
+python -m ruh_model.train_sequence \
+  --data /kaggle/working/data/training.jsonl \
+  --source-metadata /kaggle/working/data/sources.json \
+  --output /kaggle/working/validation-run --device cuda \
+  --steps 1000 --max-seconds 480 --seq-len 384 --batch-size 2
+```
+
+## Full 46M architecture
+
+The separate `--production-architecture` flag preserves the original Ruh
+512-wide, eight-layer, eight-head, four-expert/top-two MoE architecture with
+4,000 output classes (45,985,563 parameters). This starts new v2 training; changing
+the tokenizer of epoch19 cannot recover discarded surface words. A longer run
+must use enough real data and evaluate held-out Arabic and English generations.
+The initial sentence phase can use a 384-byte context; subsequent fresh runs can
+use 1,024 or more bytes when GPU memory and quota permit. Resuming preserves the
+checkpoint's stored context. The following is a reproducible, bounded first phase,
+not a promise of chat quality:
+
+```bash
+python -m scripts.prepare_sequence_data --output-dir /kaggle/working/full-data \
+  --dialogues 3000 --sentences 1000 --aya-arabic 5000 --aya-english 1500
+python -m ruh_model.train_sequence --production-architecture \
+  --data /kaggle/working/full-data/training.jsonl \
+  --source-metadata /kaggle/working/full-data/sources.json \
+  --output /kaggle/working/full-v2-phase1 --device cuda \
+  --steps 20000 --max-seconds 1350 --seq-len 384 --batch-size 2 --lr 3e-4 \
+  --checkpoint-every-seconds 300 \
+  --mixing-weights '{"ar:dialogue":0.55,"en:dialogue":0.25,"ar:text":0.20}'
+```
+
+Check the Kaggle quota API before launching. The observed GPU allowance is 30
+hours per week; pay-to-scale is disabled. After the pilot about 24 hours 38 minutes
+remained, with reset at 2026-10-03 00:00 UTC. Use SDK timedelta.total_seconds();
+its JSON string serializer drops the days and incorrectly suggests only 39 minutes.
+Promotion requires useful held-out sentence/dialogue output, comparison against
+baseline, valid UTF-8 and negation tests, and a versioned worker checkpoint manifest.
+
+
+## Verified pilot results
+
+Kaggle private notebook `zubairshaikh/ruh-training-repair-validation`, version 1,
+completed successfully. Kaggle allocated two Tesla T4 devices despite the P100
+request; training used cuda:0. The notebook ran about 66 seconds, with 1,000 steps
+in 25.2 seconds over 741,045 supervised byte targets. Held-out CE fell from 6.9170
+to 2.0985 (perplexity 1009.3→8.15) over 8,259 targets, with 1,793 training / 199 validation
+records. Three Arabic greedy samples avoided immediate EOS and invalid UTF-8 but
+repeated essentially the same phrase. This verifies pipeline repair and finite
+learning; it does not establish conversational quality or justify promotion.
+
+The full-size run adds the human Aya dataset (Apache-2.0, pinned revision
+`f9ea04583f02a8f86404ff6c58bf75fe637df8a2`) with 4,995 Arabic and 1,500 English
+instructions. Annotation user IDs are not retained in training examples. Source conversation groups
+are joined across shared prompts, preventing alternate answers from crossing
+training/validation even across corpora. Expected supervised byte sampling weights are 55% Arabic
+dialogue, 25% English dialogue, 20% Arabic documents; long Wikipedia articles
+cannot consume most supervised target bytes. Reports include target-byte counts per
+category, per-language conditional loss, unseen negation challenges, EOS and
+empty-output rates, duplicate outputs and repeated four-gram fractions.
+Full-size MoE training retains router load-balancing auxiliary loss.
+
+The full notebook uses a 1,800-second session cap and 1,350-second training cap,
+with a complete model/optimizer/tokenizer continuation snapshot every 300 seconds.
+Only the latest intermediate snapshot is kept, plus final output. The candidate
+and all snapshots remain private and unapproved for production.
+
+Validation:239 Ruh tests (including 20 new training/acceleration/controller tests)
+pass; an earlier full backend run passed 912 tests.
+Ruff passes. `make check` reaches 27 Torch-aware mypy errors; an isolated unmodified
+45b6693 baseline reproduces the same 27, with no new errors introduced here.
+GitHub's optional-Torch-free typecheck context is separate from this local ML
+validation environment.
+
+Continuation uses a verified private V2 output directory; the CLI loads its
+stored model dimensions/context and optimizer state. Never point this option at
+legacy epoch19 or change its tokenizer metadata. Keep the same source revisions
+and seed so validation remains comparable. Choose a new output directory:
+
+```bash
+python -m ruh_model.train_sequence --production-architecture \
+  --data /kaggle/working/full-data/training.jsonl \
+  --source-metadata /kaggle/working/full-data/sources.json \
+  --resume-from /kaggle/input/verified-v2-run/candidate \
+  --output /kaggle/working/full-v2-continuation --device cuda \
+  --steps 20000 --max-seconds 1350 --batch-size 2 --lr 1e-4 \
+  --checkpoint-every-seconds 300 \
+  --mixing-weights '{"ar:dialogue":0.55,"en:dialogue":0.25,"ar:text":0.20}'
+```
+
+The candidate requires all four manifest files: `config.json`, `model.pt`,
+`tokenizer.json`, `vocab.json`. Existing worker download code that fetches only
+legacy config/weights must be updated before any V2 promotion. Synchronize V2
+pattern/default sampling behavior in the worker's copied package, then verify
+held-out generation and checkpoint digests. No candidate is promoted by this PR.
+
+## Full-size evaluation and temporary continuation
+
+Private `zubairshaikh/ruh-full-training-repair`, version 1, completed on 2026-10-01.
+The 45,985,563-parameter V2 model trained 8,437 steps in 1,350 seconds over
+4,475,738 supervised bytes; the complete notebook ran 1,480 seconds including
+setup, data downloads and artifact packaging. Kaggle again supplied two T4s;
+only cuda:0 was used. Measured Arabic dialogue / English dialogue / Arabic text
+shares were 54.6% / 25.2% / 20.2%.
+
+The bounded held-out conditional CE improved from 8.3464 to 1.7324 over 8,615
+targets; Arabic CE improved 8.3824→1.1403 and English 8.3461→1.7138. These losses
+cover the recorded first sixteen evaluation batches, not the complete held-out
+corpus. All six sampled outputs avoided immediate EOS and invalid UTF-8, but
+remained incoherent. Mean repeated four-gram fractions were 0.391 on three
+representative samples and 0.262 on three unseen prompts. All three independent
+yes/no/negation questions failed. The checkpoint stays private and **unapproved**.
+Its model SHA256 is `fcbd2dac0a95513b5cfd7da665b178d2ec3bfd032d49cfcbf062061ed5712fac`.
+
+`scripts/launch_runpod_training.py` provides a read-only quote by default and an
+explicit `--launch` for a disposable secure GPU. The authorized continuation uses
+one A100 80GB, with RTX4090 fallback, a 40GB container disk, no persistent volume,
+and a maximum 7,200-second lifecycle including startup and downloads. Allocation
+is rejected if its actual hourly price exceeds $1.65, keeping the two-hour compute
+cost below $3.30 within the $5 cap. The pinned PyTorch 2.10/CUDA12.8 image is reused;
+no large Torch installation is performed. The private Kaggle model and optimizer
+are downloaded directly inside the pod, verified against the checkpoint manifest,
+and continued using the same source revisions, data limits, seed and 384-byte
+context. BF16 is permitted only on a supported CUDA GPU. The bounded training
+command uses batch8, LR1e-4, up to 6,000 seconds and snapshots every 600 seconds.
+
+Sparse MoE dispatch computes each selected expert once on its selected tokens,
+preserving architecture and checkpoint weights. Forward values and input, router
+and expert gradients match the former dense reference with dropout disabled.
+CPU BF16 forward/backward and finite-gradient checks cover the mixed-precision
+path. The actual private V2 checkpoint exposed a BF16 attention singularity:
+learned amplitudes above one can round the oscillation denominator to zero.
+Computing its small projection/phase in Float32 and guarding only near-zero
+signed scales preserves the original weights and nonsingular negative factors.
+Actual46M batch8×384 validation gives finite BF16 loss/gradients, exact matching
+Float32 logits (maximum difference0.0), and retained prefix causality.
+The HTTPS status/artifact service requires a fresh random bearer token;
+only whitelisted artifacts are downloadable. The controller records its own pod
+ID, handles SIGTERM/KeyboardInterrupt, deletes that pod in `finally`, and verifies
+absence. No production endpoint or unrelated pod is changed.
+Setup consumes the same absolute lifecycle budget and shortens training when
+necessary. Near the deadline, a complete latest snapshot is hard-linked so
+rotation cannot remove its files, downloaded privately, then the pod is deleted.
+Intermediate recovery does not claim a completed generation evaluation.
+
+```bash
+python -m scripts.launch_runpod_training --revision <reviewed-full-commit> \
+  --output /workspace/training/evidence/private-continuation
+# Add --launch only for the authorized temporary run.
+```

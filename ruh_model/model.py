@@ -151,7 +151,7 @@ class RuhModel(nn.Module):
         pattern_ids: Tensor,
         max_new_tokens: int = 128,
         temperature: float = 1.0,
-        default_pattern_id: int = 1,
+        default_pattern_id: int | None = None,
         valid_n_roots: int | None = None,
     ) -> Tensor:
         """Autoregressive generation of root ID sequences.
@@ -170,6 +170,8 @@ class RuhModel(nn.Module):
         Returns:
             Tensor of shape (B, S + max_new_tokens) with generated root IDs.
         """
+        if default_pattern_id is None:
+            default_pattern_id = 0 if self.config.tokenizer_version == 2 else 1
         if valid_n_roots is None:
             from ruh_model.tokenizer.bayan import BayanTokenizer
 
@@ -240,6 +242,13 @@ class RuhModel(nn.Module):
 
         logits[:, self.config.PAD_ROOT] = float("-inf")
         logits[:, self.config.BOS_ROOT] = float("-inf")
+        if self.config.tokenizer_version == 2:
+            # Surface training targets byte IDs and EOS. Legacy roots/UNK were
+            # never targets in this protocol and cannot reconstruct its text.
+            from ruh_model.tokenizer.bayan import BayanTokenizer
+
+            tokenizer = self.tokenizer or BayanTokenizer(version=2)
+            logits[:, self.config.UNK_ROOT : tokenizer._byte_start] = float("-inf")
         if temperature <= 0:
             return logits.argmax(dim=-1, keepdim=True)
 

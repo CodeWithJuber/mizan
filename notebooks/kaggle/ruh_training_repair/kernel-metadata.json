@@ -1,0 +1,16 @@
+{
+  "id": "zubairshaikh/ruh-training-repair-validation",
+  "title": "Ruh Training Repair Validation",
+  "code_file": "ruh_training_repair.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaP100",
+  "session_timeout_seconds": 900,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "training_revision": "aaf2e9e5cfab389448214da0a19cf4c28a534df3"
+}

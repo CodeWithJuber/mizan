@@ -43,6 +43,14 @@ class RuhCollator:
         # Only true sequence padding is ignored, not rootless legacy stopwords.
         for i, sample in enumerate(batch):
             labels[i, max(0, len(sample["root_ids"]) - 1) :] = self.pad_id
+            if "target_mask" in sample:
+                mask = sample["target_mask"]
+                if len(mask) != len(sample["root_ids"]):
+                    raise ValueError("target_mask must match the token sequence length")
+                # A mask describes the token being predicted, so shift it with labels.
+                for position, supervised in enumerate(mask[1:]):
+                    if not supervised:
+                        labels[i, position] = self.pad_id
 
         result = {
             "root_ids": root_ids,
