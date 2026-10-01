@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   Component,
   lazy,
   Suspense,
@@ -22,12 +23,29 @@ import type {
   Integration,
   SystemStatus,
   PerceptionResult,
+  ProviderStatus,
+  MessageUsageMeta,
+  Artifact,
+  ArtifactKind,
+  ArtifactWsPayload,
 } from "./types";
 import type { ThinkingTrace, ThinkingStep } from "./types/ruh";
 import { ThinkingStream } from "./components/ThinkingStream";
 import { QueueDashboard } from "./components/QueueDashboard";
 import { config } from "./config";
 import { useApi } from "./hooks/useApi";
+import { authFetch } from "./utils/authFetch";
+import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
+import ComparePanel from "./components/ComparePanel";
+import {
+  exportMarkdown,
+  exportText,
+  exportJSON,
+  buildExportFilename,
+  downloadExport,
+  type ExportFormatId,
+} from "./utils/exportChat";
+import { ArtifactsPanel } from "./components/ArtifactsPanel";
 import { ToastProvider, useToast } from "./components/Toast";
 import { Icons } from "./components/Icons";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -38,10 +56,22 @@ import {
   ChatMessageBubble,
   TypingIndicator,
 } from "./components/ChatMessage";
+import { SessionUsageFooter } from "./components/MessageMeta";
 import { Sidebar } from "./components/Sidebar";
 import { MobileNav } from "./components/MobileNav";
 import { AgentModal } from "./components/AgentModal";
 import { SkeletonCard } from "./components/Skeleton";
+
+// ===== CHAT UPGRADE (ticket/chat-upgrade-frontend) =====
+// Session hardening + token streaming helpers live in small modules so
+// App.tsx diffs stay mergeable across the parallel workstreams.
+import { StreamBuffer } from "./utils/streaming";
+import {
+  fetchChatHistoryWithRetry,
+  mergeHistoryMessages,
+} from "./utils/historySync";
+import { cacheMessages, readCachedMessages } from "./utils/sessionCache";
+import { StreamingMarkdown } from "./components/StreamingMarkdown";
 
 // ===== ERROR BOUNDARY =====
 interface ErrorBoundaryProps {
@@ -95,39 +125,42 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                 Something went wrong
               </h2>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                An unexpected error occurred while rendering this page. You can
-                try again or refresh the browser.
+                Kuch galat ho gaya hai. Dobara try karo ya page reload karo —
+                tumhara data safe hai.
               </p>
-              {this.state.error && (
-                <p className="mt-3 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-zinc-900 rounded-lg p-3 text-left break-all">
-                  {this.state.error.message}
-                </p>
-              )}
             </div>
-            <button
-              onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors shadow-sm"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="w-4 h-4"
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={this.handleRetry}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors shadow-sm"
               >
-                <path
-                  d="M1 4v6h6M23 20v-6h-6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Retry
-            </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="w-4 h-4"
+                >
+                  <path
+                    d="M1 4v6h6M23 20v-6h-6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Retry
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-200 hover:bg-gray-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Reload
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -164,6 +197,35 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// ===== CHAT SESSION PERSISTENCE =====
+// The backend chat session survives a page refresh via localStorage.
+// Key renamed from "mizan_session_id" (legacy, still read as fallback).
+const CHAT_SESSION_STORAGE_KEY = "mizan_chat_session_id";
+const LEGACY_CHAT_SESSION_KEY = "mizan_session_id";
+
+function readStoredChatSessionId(): string | null {
+  try {
+    return (
+      localStorage.getItem(CHAT_SESSION_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_CHAT_SESSION_KEY)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function loadStoredChatSessionId(): string {
+  return readStoredChatSessionId() || `session_${Date.now()}`;
+}
+
+// Disabled-send-button tooltips (repo convention: disabled buttons explain why)
+const WS_STATUS_HINTS: Record<string, string> = {
+  connecting: "Connecting to server…",
+  reconnecting: "Reconnecting to server — please wait",
+  disconnected: "Disconnected from server — check your connection",
+  auth_required: "Login required — Security tab me login karo",
+};
+
 // ===== MAIN APP INNER =====
 function AppInner() {
   const { addToast } = useToast();
@@ -179,11 +241,43 @@ function AppInner() {
     setActiveTabState(tab);
     localStorage.setItem("mizan_active_tab", tab);
   }, []);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Session usage totals (workstream E) — summed only over messages whose
+  // provider actually reported usage. Renders only when >0 messages have it.
+  const sessionUsage = useMemo(() => {
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalCost = 0;
+    let estimated = false;
+    let messageCount = 0;
+    for (const m of messages) {
+      const meta = m.meta;
+      if (
+        !meta ||
+        (meta.input_tokens == null &&
+          meta.output_tokens == null &&
+          meta.cost_usd == null)
+      )
+        continue;
+      messageCount++;
+      totalInput += meta.input_tokens ?? 0;
+      totalOutput += meta.output_tokens ?? 0;
+      if (meta.cost_usd != null) {
+        totalCost += meta.cost_usd;
+        if (meta.cost_estimated) estimated = true;
+      }
+    }
+    return { totalInput, totalOutput, totalCost, estimated, messageCount };
+  }, [messages]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // CHAT UPGRADE (H): multi-agentic mode. "single" = default ReAct path;
+  // "deep_research" = planner→workers→aggregator→verifier (gated + budgeted).
+  const [agentMode, setAgentMode] = useState<AgentMode>("single");
+  const [deepResearchConfirmed, setDeepResearchConfirmed] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState<string>("connecting");
@@ -193,9 +287,9 @@ function AppInner() {
     { text: "Connecting to backend...", type: "" },
   ]);
   const [taskInput, setTaskInput] = useState("");
-  const [sessionId, setSessionId] = useState(() => {
-    return localStorage.getItem("mizan_session_id") || `session_${Date.now()}`;
-  });
+  const [sessionId, setSessionId] = useState<string>(() =>
+    loadStoredChatSessionId(),
+  );
   const [typingIndicator, setTypingIndicator] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
   const [thinkingTraces, setThinkingTraces] = useState<
@@ -220,6 +314,9 @@ function AppInner() {
   >([]);
   const [knowledgeResult, setKnowledgeResult] = useState<string | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(
+    null,
+  );
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [newAgent, setNewAgent] = useState({
     name: "",
@@ -243,6 +340,10 @@ function AppInner() {
     }[]
   >([]);
   const [showSessionHistory, setShowSessionHistory] = useState(false);
+  // ===== Chat export (workstream D) + Artifacts (workstream F) =====
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showArtifacts, setShowArtifacts] = useState(false);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const CHAT_COMMANDS = [
@@ -273,7 +374,33 @@ function AppInner() {
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const commandMenuRef = useRef<HTMLDivElement>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  // Tracks whether the user is near the bottom (synced on scroll events).
+  // Auto-scroll only fires when true — never yanks while reading history.
+  const nearBottomRef = useRef(true);
   const clientId = useRef(`client_${Date.now()}`);
+
+  // ===== CHAT UPGRADE: session hardening + streaming state/refs =====
+  const streamBufferRef = useRef<StreamBuffer | null>(null);
+  const sendControllerRef = useRef<AbortController | null>(null);
+  const activeMessageIdRef = useRef<string>("");
+  const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionIdRef = useRef<string>("");
+  const resyncRef = useRef<(() => void) | null>(null);
+  // Bounded auto-continuations when a stream ends with finish_reason=length
+  const continuationRef = useRef(0);
+  const [historyLoadError, setHistoryLoadError] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Send-button state: disabled while the socket is down, always with a
+  // tooltip explaining why (repo convention).
+  const hasSendableInput = input.trim().length > 0 || attachedFiles.length > 0;
+  const sendDisabled = !hasSendableInput || wsStatus !== "connected";
+  const sendTitle =
+    wsStatus === "connected"
+      ? hasSendableInput
+        ? "Send message"
+        : "Type a message to send"
+      : `Cannot send — ${WS_STATUS_HINTS[wsStatus] ?? "not connected to server"}`;
 
   const addTerminalLine = useCallback((text: string, type: string = "") => {
     setTerminalLines((prev) => [
@@ -294,14 +421,26 @@ function AppInner() {
           setWsStatus("reconnecting");
         }
 
-        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
+        const wsToken = localStorage.getItem("mizan_token");
+        const wsUrl = wsToken
+          ? `${config.WS_URL}/${clientId.current}?token=${encodeURIComponent(wsToken)}`
+          : `${config.WS_URL}/${clientId.current}`;
+        socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
           setWsStatus("connected");
           setWs(socket);
+          // attempts > 0 means this onopen follows a close → a reconnect.
+          const wasReconnect = attempts > 0;
           attempts = 0;
           setReconnectAttempts(0);
           addTerminalLine("Connected to backend", "gold");
+          // CHAT UPGRADE: resync on reconnect — stream events may have been
+          // missed while the socket was down; merge server history into
+          // local state (deduped, never duplicated).
+          if (wasReconnect) {
+            resyncRef.current?.();
+          }
         };
 
         socket.onmessage = (event) => {
@@ -341,6 +480,129 @@ function AppInner() {
     };
   }, []);
 
+  // ===== CHAT UPGRADE: streaming / stop helpers =====
+  // Mirrors `streaming` state for use inside stable callbacks and timeouts.
+  const streamingRef = useRef(false);
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
+
+  const clearStopFallback = useCallback(() => {
+    if (stopFallbackRef.current) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Finalize the in-flight generation locally: discard the stream buffer,
+   * settle UI state, and keep whatever text arrived as an assistant message
+   * marked `stopped` — never silently dropped. Idempotent.
+   */
+  const finalizeStop = useCallback(
+    (text: string) => {
+      if (!streamingRef.current) return;
+      clearStopFallback();
+      streamBufferRef.current?.discard();
+      streamBufferRef.current = null;
+      setStreamingText("");
+      setStreaming(false);
+      setTypingIndicator(false);
+      setToolStatus("");
+      setActiveThinkingId(null);
+      sendControllerRef.current = null;
+      activeMessageIdRef.current = "";
+      const final = text.trim();
+      if (final) {
+        const stoppedMsg: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content: final,
+          agent: selectedAgent?.name,
+          ts: new Date().toLocaleTimeString(),
+          stopped: true,
+        };
+        setMessages((prev) => [...prev, stoppedMsg]);
+      }
+      addTerminalLine("Generation stopped", "warn");
+    },
+    [addTerminalLine, clearStopFallback, selectedAgent],
+  );
+
+  const MAX_AUTO_CONTINUATIONS = 3;
+  const CONTINUE_PROMPT =
+    "Continue from exactly where you stopped. Do not repeat what you already wrote.";
+
+  // When true, the next chat_complete extends the last assistant message
+  // (same bubble) instead of appending a new one — used for continuations.
+  const appendToLastRef = useRef(false);
+  const [truncatedContinue, setTruncatedContinue] = useState<{
+    messageId: string;
+  } | null>(null);
+
+  /** Send a "continue" request for a length-truncated answer (no user bubble). */
+  const requestContinuation = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid || !streamingRef.current) return;
+    const controller = new AbortController();
+    sendControllerRef.current = controller;
+    appendToLastRef.current = true;
+    streamBufferRef.current = new StreamBuffer((text) =>
+      setStreamingText(text),
+    );
+    try {
+      const res = await authFetch(`${config.API_URL}/chat`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sid,
+          content: CONTINUE_PROMPT,
+          agent_id: selectedAgent?.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json().catch(() => ({}))) as {
+        message_id?: string;
+      };
+      activeMessageIdRef.current = body.message_id || "";
+    } catch {
+      // Continuation failed — leave the partial answer as-is; the manual
+      // Continue button stays available.
+      appendToLastRef.current = false;
+      streamBufferRef.current?.discard();
+      streamBufferRef.current = null;
+      sendControllerRef.current = null;
+    }
+  }, [selectedAgent]);
+
+  /** Real Stop: abort the HTTP POST AND cancel server-side generation. */
+  const stopGeneration = useCallback(() => {
+    // 1. Abort the in-flight HTTP POST (AbortController end-to-end).
+    try {
+      sendControllerRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    sendControllerRef.current = null;
+    // 2. Ask the server to cancel the generation task (backend stop handler).
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: "stop",
+          message_id: activeMessageIdRef.current,
+          session_id: sessionIdRef.current,
+        }),
+      );
+    }
+    // 3. Fallback: if the server never answers (older backend), finalize
+    //    locally after 3s so the UI never hangs on "Thinking…" forever.
+    clearStopFallback();
+    stopFallbackRef.current = setTimeout(() => {
+      finalizeStop(streamBufferRef.current?.getText() ?? "");
+    }, 3000);
+  }, [ws, clearStopFallback, finalizeStop]);
+
   const handleWsMessage = useCallback(
     (data: Record<string, unknown>) => {
       switch (data.type) {
@@ -355,9 +617,21 @@ function AppInner() {
         case "stream":
         case "chat_stream":
           setTypingIndicator(false);
-          setStreamingText((prev) => prev + (data.chunk as string));
+          // CHAT UPGRADE: buffer chunks — StreamBuffer flushes to state on
+          // rAF (~50ms throttle), not per token.
+          if (!streamBufferRef.current) {
+            streamBufferRef.current = new StreamBuffer((text) =>
+              setStreamingText(text),
+            );
+          }
+          streamBufferRef.current.push(data.chunk as string);
           break;
         case "response":
+          clearStopFallback();
+          streamBufferRef.current?.finalize();
+          streamBufferRef.current = null;
+          sendControllerRef.current = null;
+          activeMessageIdRef.current = "";
           setStreamingText("");
           setStreaming(false);
           setTypingIndicator(false);
@@ -376,6 +650,13 @@ function AppInner() {
           setActiveThinkingId(null);
           break;
         case "chat_complete": {
+          // CHAT UPGRADE: flush the stream buffer (final text may exceed
+          // what was flushed to state) and settle stop-related state.
+          clearStopFallback();
+          const buffered = streamBufferRef.current?.finalize() ?? "";
+          streamBufferRef.current = null;
+          sendControllerRef.current = null;
+          activeMessageIdRef.current = "";
           setStreamingText("");
           setStreaming(false);
           setTypingIndicator(false);
@@ -383,8 +664,7 @@ function AppInner() {
           const messageId = (data.message_id as string) || `msg_${Date.now()}`;
           // Store server-provided trace if available
           const serverTrace = data.thinking_trace as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           if (serverTrace) {
             setThinkingTraces((prev) => ({
               ...prev,
@@ -397,21 +677,87 @@ function AppInner() {
             }));
           }
           setActiveThinkingId(null);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now(),
-              role: "assistant" as const,
-              content:
-                (data.response as string) || (data.content as string) || "",
-              agent: data.agent as string,
-              ts: new Date().toLocaleTimeString(),
-              cognitive: data.cognitive as CognitiveMetadata | undefined,
-              thinkingMessageId: messageId,
-            },
-          ]);
+          const completeContent =
+            (data.response as string) || (data.content as string) || buffered;
+          // Model transparency (workstreams C/E): the backend's observed
+          // usage block; absent fields mean "not reported" — never fill in.
+          const usageMeta = data.usage as MessageUsageMeta | undefined;
+          const newAssistantMsg: ChatMessage = {
+            id: Date.now(),
+            role: "assistant" as const,
+            content: completeContent,
+            agent: data.agent as string,
+            model: usageMeta?.model as string | undefined,
+            ts: new Date().toLocaleTimeString(),
+            cognitive: data.cognitive as CognitiveMetadata | undefined,
+            thinkingMessageId: messageId,
+            meta: usageMeta,
+          };
+          if (appendToLastRef.current) {
+            // Continuation chunk — extend the SAME bubble, never a new one.
+            appendToLastRef.current = false;
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === "assistant") {
+                next[next.length - 1] = {
+                  ...last,
+                  content: last.content + completeContent,
+                };
+              } else {
+                next.push(newAssistantMsg);
+              }
+              return next;
+            });
+          } else {
+            setMessages((prev) => [...prev, newAssistantMsg]);
+          }
+          // CHAT UPGRADE: max_tokens cutoff — never render a truncation as a
+          // finished answer. Auto-continue into the same bubble (bounded);
+          // when the budget is spent, show a warning + manual Continue.
+          const finishReason = (data.finish_reason as string) || "";
+          const hitLengthLimit =
+            finishReason === "length" || finishReason === "max_tokens";
+          if (
+            hitLengthLimit &&
+            continuationRef.current < MAX_AUTO_CONTINUATIONS
+          ) {
+            continuationRef.current += 1;
+            addTerminalLine(
+              `Length limit hit — auto-continuing (${continuationRef.current}/${MAX_AUTO_CONTINUATIONS})`,
+              "warn",
+            );
+            void requestContinuation();
+          } else if (hitLengthLimit) {
+            setTruncatedContinue({ messageId });
+            addToast({
+              type: "warning",
+              title: "Jawab adhoora reh gaya (length limit)",
+              description: "Continue dabao — wahin se aage likhega",
+            });
+          }
           addTerminalLine(`Response from ${data.agent}`, "info");
           loadChatSessions();
+          break;
+        }
+        case "chat_stopped": {
+          // CHAT UPGRADE: server cancelled generation (our stop request).
+          // Prefer the server's full partial text over the local buffer —
+          // the buffer may be missing tail tokens lost on the wire.
+          const serverPartial = (data.response as string) || "";
+          const bufferedText = streamBufferRef.current?.finalize() ?? "";
+          streamBufferRef.current = null;
+          finalizeStop(serverPartial || bufferedText);
+          loadChatSessions();
+          break;
+        }
+        case "stop_ack": {
+          // CHAT UPGRADE: server acknowledged the stop. If it reports no
+          // active generation (already finished / unknown id), finalize now
+          // instead of waiting for the 3s fallback.
+          if (data.cancelled === false) {
+            finalizeStop(streamBufferRef.current?.getText() ?? "");
+          }
           break;
         }
         case "typing":
@@ -449,6 +795,15 @@ function AppInner() {
           setToolStatus(`Agent is using ${data.tool_name as string}...`);
           addTerminalLine(`Tool: ${data.tool_name as string}`, "info");
           break;
+        case "mode_progress": {
+          // CHAT UPGRADE (H): live deep-research progress + cost meter.
+          const stage = (data.stage as string) || "working";
+          const cost = Number(data.cost_so_far || 0);
+          setToolStatus(
+            `Deep research: ${stage}… (~$${cost.toFixed(4)} spent)`,
+          );
+          break;
+        }
         case "command_result": {
           setStreaming(false);
           setStreamingText("");
@@ -473,18 +828,30 @@ function AppInner() {
           addTerminalLine(`Command: ${cmdContent.substring(0, 60)}`, "gold");
           break;
         }
-        case "error":
+        case "error": {
           setStreaming(false);
           setStreamingText("");
           setTypingIndicator(false);
           setToolStatus("");
-          addTerminalLine(`Error: ${data.message as string}`, "error");
+          const errText = data.message as string;
+          addTerminalLine(`Error: ${errText}`, "error");
+          const errMsg: ChatMessage = {
+            id: Date.now(),
+            role: "assistant",
+            content: `\u26a0\ufe0f ${errText}`,
+            ts: new Date().toLocaleTimeString(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
           break;
+        }
         case "task_stream":
           addTerminalLine(data.chunk as string, "");
           break;
         case "task_done":
-          addTerminalLine("Task completed", "gold");
+          addTerminalLine(
+            `Task completed: ${(data.result as string)?.substring(0, 500)}`,
+            "gold",
+          );
           loadAgents();
           break;
         case "queue_update":
@@ -526,14 +893,58 @@ function AppInner() {
           );
           loadAgents();
           break;
+        case "artifact": {
+          // Workstream F: the agent pipeline emitted an artifact — add it to
+          // the session's artifact list and announce it. Version payloads use
+          // "version"/"content"; the panel lazily loads full history.
+          const payload = data.artifact as ArtifactWsPayload;
+          const kind: ArtifactKind =
+            payload.kind === "code" || payload.kind === "html"
+              ? payload.kind
+              : "markdown";
+          const versionNum = (payload.version as number) ?? 1;
+          const artifact: Artifact = {
+            id: payload.id,
+            session_id: payload.session_id ?? sessionId,
+            title: payload.title ?? "Untitled artifact",
+            kind,
+            language: payload.language,
+            versions: [
+              {
+                version: versionNum,
+                content: payload.content ?? "",
+                created_at: payload.created_at ?? new Date().toISOString(),
+              },
+            ],
+          };
+          setArtifacts((prev) =>
+            prev.some((a) => a.id === artifact.id) ? prev : [...prev, artifact],
+          );
+          addTerminalLine(
+            `Artifact ready: ${artifact.title} (v${versionNum})`,
+            "gold",
+          );
+          addToast({
+            type: "success",
+            title: "Artifact ready",
+            description: `${artifact.title} — v${versionNum}`,
+          });
+          break;
+        }
       }
     },
-    [addTerminalLine],
+    [
+      addTerminalLine,
+      addToast,
+      clearStopFallback,
+      finalizeStop,
+      requestContinuation,
+    ],
   );
 
   const loadAgents = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/agents`);
+      const res = await authFetch(`${config.API_URL}/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
       if (!selectedAgent && data.agents?.length > 0) {
@@ -553,7 +964,7 @@ function AppInner() {
 
   const loadStatus = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/status`);
+      const res = await authFetch(`${config.API_URL}/status`);
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -561,11 +972,20 @@ function AppInner() {
     }
   };
 
+  const loadProviders = async () => {
+    try {
+      const data = (await api.get("/providers")) as unknown as ProviderStatus;
+      setProviderStatus(data);
+    } catch {
+      /* ignore — provider check skipped if this fails */
+    }
+  };
+
   const loadMemories = async (query: string = "", typeFilter?: string) => {
     try {
       let data;
       if (query.trim()) {
-        const res = await fetch(`${config.API_URL}/memory/query`, {
+        const res = await authFetch(`${config.API_URL}/memory/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -582,7 +1002,7 @@ function AppInner() {
         if (typeFilter && typeFilter !== "all") {
           params.set("memory_type", typeFilter);
         }
-        const res = await fetch(
+        const res = await authFetch(
           `${config.API_URL}/memory/list?${params.toString()}`,
         );
         data = await res.json();
@@ -595,7 +1015,7 @@ function AppInner() {
 
   const loadKnowledgeSources = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/knowledge/sources`);
+      const res = await authFetch(`${config.API_URL}/knowledge/sources`);
       const data = await res.json();
       setKnowledgeSources(data.sources || []);
     } catch {
@@ -608,7 +1028,7 @@ function AppInner() {
     setKnowledgeLoading(true);
     setKnowledgeResult(null);
     try {
-      const res = await fetch(`${config.API_URL}/knowledge/ingest`, {
+      const res = await authFetch(`${config.API_URL}/knowledge/ingest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source: knowledgeUrl.trim() }),
@@ -638,7 +1058,7 @@ function AppInner() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`${config.API_URL}/knowledge/upload`, {
+      const res = await authFetch(`${config.API_URL}/knowledge/upload`, {
         method: "POST",
         body: formData,
       });
@@ -662,7 +1082,7 @@ function AppInner() {
 
   const loadIntegrations = async () => {
     try {
-      const res = await fetch(`${config.API_URL}/integrations`);
+      const res = await authFetch(`${config.API_URL}/integrations`);
       const data = await res.json();
       setIntegrations(data.integrations || []);
     } catch {
@@ -670,40 +1090,103 @@ function AppInner() {
     }
   };
 
-  const loadChatHistory = useCallback(async (sid: string) => {
-    try {
-      const res = await fetch(`${config.API_URL}/chat/${sid}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const history = (data.messages || []).map(
-        (
-          m: {
+  // ===== CHAT UPGRADE: resilient history load =====
+  // Retries GET /api/chat/{sid} with exponential backoff (3 attempts).
+  // On final failure shows a VISIBLE retry UI — the chat never silently
+  // renders empty when a session id exists. Server history is MERGED with
+  // locally held messages (cache render + optimistic echoes), deduped by
+  // historyDedupeKey (see utils/historySync.ts).
+  const mapServerMessage = (
+    m: {
+      id?: number;
+      role: string;
+      content: string;
+      agent_id?: string;
+      created_at?: string;
+      metadata?: { usage?: MessageUsageMeta };
+    },
+    idx: number,
+  ): ChatMessage => {
+    // Model transparency (workstreams C/E): persisted usage block rides in
+    // agent_messages.metadata.usage; render only when present.
+    const usageMeta = m.metadata?.usage;
+    return {
+      id: m.id ?? idx,
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+      agent: m.agent_id,
+      model: usageMeta?.model,
+      ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
+      meta: usageMeta,
+    };
+  };
+
+  const loadChatHistory = useCallback(
+    async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean }) => {
+      setHistoryLoading(true);
+      setHistoryLoadError(false);
+      try {
+        const result = await fetchChatHistoryWithRetry(
+          () => authFetch(`${config.API_URL}/chat/${sid}`),
+          3,
+        );
+        if (result.missing) {
+          // Session expired or deleted server-side — the caller decides how
+          // to start fresh. Never toast here: a missing session is normal.
+          opts?.onMissing?.();
+          return;
+        }
+        if (!result.ok) {
+          // Final failure after retries — visible retry UI, never silent.
+          if (!opts?.quiet) {
+            setHistoryLoadError(true);
+            addToast({
+              type: "error",
+              title: "Chat history load nahi hui",
+              description:
+                result.error?.message || "Retry dabao ya connection check karo",
+            });
+          }
+          return;
+        }
+        const history = (
+          result.messages as {
             id?: number;
             role: string;
             content: string;
             agent_id?: string;
             created_at?: string;
-          },
-          idx: number,
-        ) => ({
-          id: m.id || idx,
-          role: m.role as "user" | "assistant" | "system",
-          content: m.content,
-          agent: m.agent_id,
-          ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
-        }),
-      );
-      if (history.length > 0) {
-        setMessages(history);
+          }[]
+        ).map(mapServerMessage);
+        // Merge: server wins on content; local-only messages (cache render,
+        // optimistic echoes) are appended in order — no duplicates.
+        setMessages((prev) => mergeHistoryMessages(history, prev));
+      } finally {
+        setHistoryLoading(false);
       }
-    } catch {
-      // No history available — start fresh
-    }
-  }, []);
+    },
+    [addToast],
+  );
+
+  /**
+   * CHAT UPGRADE: resync after a WS reconnect — stream events may have been
+   * missed while the socket was down. Quiet: a failed resync must not pop
+   * banners; the cache still guards the UI.
+   */
+  const resyncSession = useCallback(() => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    addTerminalLine("Reconnected — resyncing chat history", "info");
+    void loadChatHistory(sid, { quiet: true });
+  }, [addTerminalLine, loadChatHistory]);
+
+  useEffect(() => {
+    resyncRef.current = resyncSession;
+  }, [resyncSession]);
 
   const loadChatSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${config.API_URL}/chat/sessions/list`);
+      const res = await authFetch(`${config.API_URL}/chat/sessions/list`);
       if (!res.ok) return;
       const data = await res.json();
       setChatSessions(data.sessions || []);
@@ -717,6 +1200,16 @@ function AppInner() {
       setSessionId(sid);
       setMessages([]);
       setShowSessionHistory(false);
+      setHistoryLoadError(false);
+      // CHAT UPGRADE: render cache instantly, then merge server history.
+      try {
+        const cached = await readCachedMessages(sid);
+        if (cached && cached.length > 0) {
+          setMessages(cached as ChatMessage[]);
+        }
+      } catch {
+        /* cache is best-effort */
+      }
       await loadChatHistory(sid);
     },
     [loadChatHistory],
@@ -724,7 +1217,36 @@ function AppInner() {
 
   useEffect(() => {
     loadAgents();
-    loadChatHistory(sessionId);
+    loadProviders();
+    // Restore the previous chat session after a refresh. A stored id that the
+    // backend no longer knows (404) starts fresh silently — no error toast.
+    // CHAT UPGRADE: render the client-side cache INSTANTLY (never an empty
+    // flash on flaky networks), then fetch the server history with retry
+    // and merge — the UI never shows empty when data exists locally.
+    const storedSid = readStoredChatSessionId();
+    if (storedSid) {
+      void (async () => {
+        try {
+          const cached = await readCachedMessages(storedSid);
+          if (cached && cached.length > 0) {
+            setMessages(cached as ChatMessage[]);
+          }
+        } catch {
+          /* cache is best-effort — the server fetch still runs */
+        }
+        await loadChatHistory(storedSid, {
+          onMissing: () => {
+            try {
+              localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+              localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+            } catch {
+              /* ignore */
+            }
+            startNewSession();
+          },
+        });
+      })();
+    }
     loadChatSessions();
     // Fetch version from backend
     fetch(`${config.API_URL}/version`)
@@ -740,10 +1262,40 @@ function AppInner() {
     return () => clearInterval(interval);
   }, []);
 
-  // Persist sessionId to localStorage
+  // On 401 (token expired/invalid), send user to Security tab to log in again
   useEffect(() => {
-    localStorage.setItem("mizan_session_id", sessionId);
+    const onUnauthorized = () => {
+      addToast({ type: "error", title: "Session expired — dobara login karo" });
+      setActiveTab("security");
+    };
+    window.addEventListener("mizan:unauthorized", onUnauthorized);
+    return () =>
+      window.removeEventListener("mizan:unauthorized", onUnauthorized);
+  }, []);
+
+  // Persist chat sessionId to localStorage (migrates the legacy key)
+  useEffect(() => {
+    // CHAT UPGRADE: keep the ref mirror in sync for reconnect resync.
+    sessionIdRef.current = sessionId;
+    try {
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+      localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
+    } catch {
+      // storage unavailable — the session just won't survive a refresh
+    }
   }, [sessionId]);
+
+  // ===== CHAT UPGRADE: client-side message cache =====
+  // Debounced write of the visible messages to IndexedDB (localStorage
+  // fallback). On the next mount these render instantly while the server
+  // fetch is in flight — the UI never shows empty when data exists locally.
+  useEffect(() => {
+    if (!sessionId || messages.length === 0) return;
+    const timer = setTimeout(() => {
+      void cacheMessages(sessionId, messages);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [sessionId, messages]);
 
   // Persist selected agent ID
   useEffect(() => {
@@ -759,13 +1311,18 @@ function AppInner() {
   }, [activeTab]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll when the user is already near the bottom — never yank
+    // them away while they're scrolled up reading history.
+    if (nearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, streamingText]);
 
   const handleChatScroll = useCallback(() => {
     const el = chatScrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = distanceFromBottom < 150;
     setShowScrollDown(distanceFromBottom > 150);
   }, []);
 
@@ -778,12 +1335,195 @@ function AppInner() {
     setSessionId(newId);
     setMessages([]);
     setStreamingText("");
+    // CHAT UPGRADE: reset per-session upgrade state.
+    setHistoryLoadError(false);
+    setTruncatedContinue(null);
+    continuationRef.current = 0;
     addTerminalLine("New chat session started", "gold");
   }, []);
 
-  const sendMessage = async () => {
-    if ((!input.trim() && attachedFiles.length === 0) || streaming) return;
-    const content = input;
+  // "New chat" discards the visible session (recoverable via History), so it
+  // confirms first. The /new chat command keeps its no-confirm behavior.
+  const handleNewChatClick = useCallback(() => {
+    if (
+      messages.length > 0 &&
+      !window.confirm(
+        "Start a new chat? The current conversation will be cleared from view (you can reopen it from History).",
+      )
+    ) {
+      return;
+    }
+    startNewSession();
+  }, [messages.length, startNewSession]);
+
+  // ===== Chat export (workstream D) =====
+  // Client-side only: renders the current in-memory conversation to
+  // Markdown / plain text / JSON and downloads it. No server round-trip.
+  // Non-destructive — confirm() only when the chat is large.
+  const handleExportChat = useCallback(
+    (format: ExportFormatId) => {
+      setShowExportMenu(false);
+      if (messages.length === 0) {
+        addToast({
+          type: "info",
+          title: "Export karne ke liye koi message nahi hai",
+        });
+        return;
+      }
+      if (
+        messages.length > 300 &&
+        !window.confirm(
+          `${messages.length} messages export karna hai — ${format === "markdown" ? ".md" : format === "text" ? ".txt" : ".json"} file download hogi. Continue?`,
+        )
+      ) {
+        return;
+      }
+      const meta = { sessionId };
+      const body =
+        format === "markdown"
+          ? exportMarkdown(messages, meta)
+          : format === "text"
+            ? exportText(messages, meta)
+            : exportJSON(messages, meta);
+      const mime: Record<ExportFormatId, string> = {
+        markdown: "text/markdown;charset=utf-8",
+        text: "text/plain;charset=utf-8",
+        json: "application/json;charset=utf-8",
+      };
+      const filename = buildExportFilename(sessionId, format);
+      downloadExport(filename, mime[format], body);
+      addToast({
+        type: "success",
+        title: `Chat exported — ${messages.length} messages`,
+        description: filename,
+      });
+    },
+    [messages, sessionId, addToast],
+  );
+
+  /**
+   * CHAT UPGRADE (H): deep_research mode — routes the query to the
+   * planner→workers→aggregator→verifier pipeline instead of /api/chat.
+   * The backend requires explicit per-request confirmation (409 otherwise)
+   * and enforces a server-side cost/token budget.
+   */
+  const runDeepResearch = async (query: string) => {
+    const userMsg: ChatMessage = {
+      id: Date.now(),
+      role: "user",
+      content: query,
+      ts: new Date().toLocaleTimeString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setStreaming(true);
+    setTypingIndicator(true);
+    setToolStatus("Deep research shuru ho rahi hai…");
+    try {
+      const res = await authFetch(`${config.API_URL}/api/modes/deep-research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          session_id: sessionId,
+          confirmed: deepResearchConfirmed,
+        }),
+      });
+      if (res.status === 409) {
+        addToast({
+          type: "warning",
+          title: "Confirmation chahiye",
+          description:
+            "Deep research mehenga hai — confirm checkbox tick karo, phir bhejo",
+        });
+        return;
+      }
+      if (res.status === 402) {
+        const err = (await res.json().catch(() => ({}))) as { detail?: string };
+        addToast({
+          type: "error",
+          title: "Budget khatam",
+          description: err.detail || "Deep-research budget cap hit ho gaya",
+        });
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        answer?: string;
+        unsupported_claims?: string[];
+        tokens_used?: number;
+        cost_usd?: number;
+      };
+      const unsupported = (data.unsupported_claims || []).length
+        ? `\n\n⚠️ Unverified claims: ${(data.unsupported_claims || []).join("; ")}`
+        : "";
+      const assistantMsg: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content: (data.answer || "") + unsupported,
+        agent: selectedAgent?.id,
+        model: "deep_research",
+        ts: new Date().toLocaleTimeString(),
+        meta: {
+          model: "deep_research",
+          output_tokens: data.tokens_used,
+          cost_usd: data.cost_usd,
+          cost_estimated: true,
+        },
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      addTerminalLine(
+        `Deep research done — ${data.tokens_used ?? "?"} tokens, ~$${(data.cost_usd ?? 0).toFixed(4)}`,
+        "info",
+      );
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: "Deep research fail ho gayi",
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setStreaming(false);
+      setTypingIndicator(false);
+      setToolStatus("");
+    }
+  };
+
+  const sendMessage = async (contentOverride?: string) => {
+    const text = contentOverride ?? input;
+    if ((!text.trim() && attachedFiles.length === 0) || streaming) return;
+    // Auth gate: chat requires login (token from Security page)
+    const authToken = localStorage.getItem("mizan_token");
+    if (!authToken) {
+      const loginMsg: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content:
+          "🔒 Login required — Security tab me login karo (account ke liye admin se sampark karo), phir dubara bhejo",
+        ts: new Date().toLocaleTimeString(),
+      };
+      setMessages((prev) => [...prev, loginMsg]);
+      return;
+    }
+    // Provider check: guide the user to Settings if no AI provider is set up
+    if (providerStatus && !providerStatus.providers.some((p) => p.configured)) {
+      const providerMsg = {
+        id: Date.now(),
+        role: "assistant" as const,
+        content:
+          "⚠️ Koi AI provider set nahi hai — Settings → AI Providers me key add karo",
+        ts: new Date().toLocaleTimeString(),
+        cta: { label: "AI Providers kholo", tab: "settings" },
+      } as ChatMessage & { cta: { label: string; tab: string } };
+      setMessages((prev) => [...prev, providerMsg]);
+      return;
+    }
+    const content = text;
+    // CHAT UPGRADE (H): deep_research mode bypasses /api/chat entirely.
+    if (agentMode === "deep_research") {
+      await runDeepResearch(content);
+      return;
+    }
     const files = [...attachedFiles];
     const hasMedia = files.some(
       (f) => f.type.startsWith("image/") || f.type.startsWith("audio/"),
@@ -803,6 +1543,15 @@ function AppInner() {
     setTypingIndicator(true);
     setToolStatus("");
     setActiveThinkingId(null);
+    // CHAT UPGRADE: per-send AbortController (Stop cancels the HTTP POST
+    // end-to-end) + a fresh stream buffer; reset the auto-continue budget.
+    const controller = new AbortController();
+    sendControllerRef.current = controller;
+    continuationRef.current = 0;
+    setTruncatedContinue(null);
+    streamBufferRef.current = new StreamBuffer((text) =>
+      setStreamingText(text),
+    );
     setInput("");
     setAttachedFiles([]);
     // Reset textarea height after clearing
@@ -817,6 +1566,7 @@ function AppInner() {
         const payload: Record<string, unknown> = {
           type: "multimodal",
           text: content,
+          content: content,
           agent_id: selectedAgent?.id,
           session_id: sessionId,
         };
@@ -841,9 +1591,13 @@ function AppInner() {
     // Prefer HTTP POST /api/chat (returns message_id, streams via WebSocket)
     // Fall back to WebSocket direct send if HTTP fails
     try {
-      const res = await fetch(`${config.API_URL}/chat`, {
+      const res = await authFetch(`${config.API_URL}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
           session_id: sessionId,
           content,
@@ -852,8 +1606,20 @@ function AppInner() {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Capture the server message_id so Stop can target this generation.
+      const postBody = (await res.json().catch(() => ({}))) as {
+        message_id?: string;
+      };
+      activeMessageIdRef.current = postBody.message_id || "";
       if (chatModelOverride) setChatModelOverride("");
     } catch {
+      if (controller.signal.aborted) {
+        // User pressed Stop while the POST was in flight — do NOT fall back
+        // to WS; settle the (empty) stream quietly.
+        setStreaming(false);
+        setTypingIndicator(false);
+        return;
+      }
       // Fallback: send via WebSocket directly
       if (ws) {
         ws.send(
@@ -865,9 +1631,26 @@ function AppInner() {
           }),
         );
       } else {
+        streamBufferRef.current?.discard();
+        streamBufferRef.current = null;
+        sendControllerRef.current = null;
         setStreaming(false);
         setTypingIndicator(false);
         addTerminalLine("Not connected - cannot send message", "error");
+        const errMsg: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "⚠️ Message nahi bheja ja saka — server se connection nahi hai. Dobara try karo.",
+          ts: new Date().toLocaleTimeString(),
+        };
+        setMessages((prev) => [...prev, errMsg]);
+        addToast({
+          type: "error",
+          title: "Not connected",
+          description:
+            "Server se connection nahi hai — message nahi bheja gaya",
+        });
       }
     }
   };
@@ -958,7 +1741,9 @@ function AppInner() {
   const deleteAgent = async (agentId: string) => {
     if (!confirm("Delete this agent?")) return;
     try {
-      await fetch(`${config.API_URL}/agents/${agentId}`, { method: "DELETE" });
+      await authFetch(`${config.API_URL}/agents/${agentId}`, {
+        method: "DELETE",
+      });
       if (selectedAgent?.id === agentId) setSelectedAgent(null);
       loadAgents();
       addToast({ type: "success", title: "Agent deleted" });
@@ -974,6 +1759,10 @@ function AppInner() {
         api={api}
         wsStatus={wsStatus}
         onComplete={() => setShowWelcome(false)}
+        onOpenSettings={() => {
+          setShowWelcome(false);
+          setActiveTab("settings");
+        }}
       />
     );
   }
@@ -1006,6 +1795,12 @@ function AppInner() {
           label: "Queue",
           desc: "Task queue & workers",
           icon: <Icons.Clock />,
+        },
+        {
+          id: "majlis",
+          label: "Majlis",
+          desc: "Agent community",
+          icon: <Icons.Users />,
         },
       ],
     },
@@ -1047,6 +1842,18 @@ function AppInner() {
           label: "Plugins",
           desc: "Extend with add-ons",
           icon: <Icons.Plugin />,
+        },
+        {
+          id: "scanner",
+          label: "Scanner",
+          desc: "Scan for issues",
+          icon: <Icons.Search />,
+        },
+        {
+          id: "compare",
+          label: "Compare",
+          desc: "Blind model comparison",
+          icon: <Icons.Brain />,
         },
       ],
     },
@@ -1372,10 +2179,82 @@ function AppInner() {
                     )}
                   </div>
 
+                  {/* ===== Chat export (workstream D) ===== */}
+                  <div className="relative">
+                    <button
+                      className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                      onClick={() => setShowExportMenu(!showExportMenu)}
+                      title="Export chat"
+                    >
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4.5 h-4.5"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z"
+                          clipRule="evenodd"
+                        />
+                        <path
+                          fillRule="evenodd"
+                          d="M3 14.5a.75.75 0 01.75.75v2A.75.75 0 004.5 18h11a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0115.5 19.5h-11A2.25 2.25 0 012.25 17.25v-2a.75.75 0 01.75-.75z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                    {showExportMenu && (
+                      <div className="absolute top-full right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in">
+                        {(
+                          [
+                            ["markdown", "Markdown (.md)"],
+                            ["text", "Plain text (.txt)"],
+                            ["json", "JSON (.json)"],
+                          ] as [ExportFormatId, string][]
+                        ).map(([format, label]) => (
+                          <button
+                            key={format}
+                            onClick={() => handleExportChat(format)}
+                            className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* ===== Artifacts toggle (workstream F) ===== */}
+                  <button
+                    className={`p-2 rounded-lg transition-colors relative ${
+                      showArtifacts
+                        ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10"
+                        : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                    }`}
+                    onClick={() => setShowArtifacts(!showArtifacts)}
+                    title="Artifacts"
+                  >
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-4.5 h-4.5"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4 3.5A1.5 1.5 0 015.5 2h9A1.5 1.5 0 0116 3.5v13a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 014 16.5v-13zM5.5 3.5A.5.5 0 016 3h8a.5.5 0 01.5.5v13a.5.5 0 01-.5.5H6a.5.5 0 01-.5-.5v-13z"
+                        clipRule="evenodd"
+                      />
+                      <path d="M8 6.5a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5A.75.75 0 018 6.5zm0 3a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5A.75.75 0 018 9.5zm0 3a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H8.75a.75.75 0 01-.75-.75z" />
+                    </svg>
+                    {artifacts.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
+                        {artifacts.length}
+                      </span>
+                    )}
+                  </button>
                   {/* New chat */}
                   <button
                     className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                    onClick={startNewSession}
+                    onClick={handleNewChatClick}
                     title="New chat"
                   >
                     <svg
@@ -1397,66 +2276,147 @@ function AppInner() {
               ref={chatScrollRef}
               onScroll={handleChatScroll}
             >
-              {messages.length === 0 && !streaming ? (
-                /* ===== Empty state — centered like ChatGPT ===== */
-                <div className="flex flex-col items-center justify-center h-full px-4">
-                  <div className="text-center space-y-4 mb-8">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
-                      <svg viewBox="0 0 24 24" fill="white" className="w-7 h-7">
-                        <path d="M12 2a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V2.75A.75.75 0 0112 2zM6.05 4.05a.75.75 0 011.06 0l1.59 1.59a.75.75 0 11-1.06 1.06L6.05 5.11a.75.75 0 010-1.06zm11.9 0a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zM12 8a4 4 0 100 8 4 4 0 000-8zM4 12.75a.75.75 0 01-.75-.75 .75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H4zm13.75-.75a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H18.5a.75.75 0 01-.75-.75zM7.7 16.3a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zm8.6 0a.75.75 0 011.06 0l1.59 1.59a.75.75 0 01-1.06 1.06l-1.59-1.59a.75.75 0 010-1.06zM12 18a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18z" />
-                      </svg>
+              {/* ===== CHAT UPGRADE: history load failure — visible retry =====
+                  The chat never silently renders empty when a session id
+                  exists; the cached messages (if any) stay visible above. */}
+              {historyLoadError && (
+                <div className="mx-4 mt-3 p-3 rounded-xl border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 flex items-center gap-3">
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-5 h-5 text-red-500 shrink-0"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-red-700 dark:text-red-300">
+                      Chat history load nahi hui
                     </div>
-                    <div>
-                      <h2
-                        className="text-xl font-semibold text-gray-900 dark:text-gray-100"
-                        style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-                      >
-                        How can I help you today?
-                      </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">
-                        Ask anything, run code, browse the web, or try a
-                        suggestion below.
-                      </p>
+                    <div className="text-xs text-red-600/80 dark:text-red-400/80">
+                      Connection check karo, phir dobara try karo
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2.5 max-w-lg w-full">
-                    {[
-                      {
-                        label: "Write code",
-                        desc: "Generate or debug code",
-                        prompt: "Help me write a Python script that ",
-                      },
-                      {
-                        label: "Analyze data",
-                        desc: "Find patterns and insights",
-                        prompt: "Analyze this data and help me understand ",
-                      },
-                      {
-                        label: "Research topic",
-                        desc: "Deep dive into any subject",
-                        prompt: "Research and summarize the key points about ",
-                      },
-                      {
-                        label: "Brainstorm",
-                        desc: "Creative thinking together",
-                        prompt: "Help me brainstorm ideas for ",
-                      },
-                    ].map((action) => (
-                      <button
-                        key={action.label}
-                        className="text-left p-3.5 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group cursor-pointer"
-                        onClick={() => setInput(action.prompt)}
-                      >
-                        <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
-                          {action.label}
-                        </div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          {action.desc}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors cursor-pointer shrink-0"
+                    onClick={() => {
+                      const sid = sessionIdRef.current || sessionId;
+                      if (sid) void loadChatHistory(sid);
+                    }}
+                  >
+                    Retry
+                  </button>
                 </div>
+              )}
+              {/* ===== CHAT UPGRADE: length-truncated answer — Continue ===== */}
+              {truncatedContinue && !streaming && (
+                <div className="mx-4 mt-3 p-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      Jawab adhoora reh gaya (length limit)
+                    </div>
+                    <div className="text-xs text-amber-700/80 dark:text-amber-300/80">
+                      Continue dabao — wahin se aage, usi bubble me likhega
+                    </div>
+                  </div>
+                  <button
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors cursor-pointer shrink-0"
+                    onClick={() => {
+                      setTruncatedContinue(null);
+                      continuationRef.current += 1;
+                      setStreaming(true);
+                      void requestContinuation();
+                    }}
+                  >
+                    Continue
+                  </button>
+                  <button
+                    className="px-2 py-1.5 rounded-lg text-xs text-amber-700 dark:text-amber-300 hover:underline cursor-pointer shrink-0"
+                    onClick={() => setTruncatedContinue(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {messages.length === 0 && !streaming ? (
+                historyLoading ? (
+                  /* ===== CHAT UPGRADE: history loading — never a bare
+                     empty screen while the retry-fetch is in flight ===== */
+                  <div className="flex flex-col items-center justify-center h-full px-4">
+                    <div className="w-10 h-10 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+                      Chat history load ho rahi hai…
+                    </p>
+                  </div>
+                ) : (
+                  /* ===== Empty state — centered like ChatGPT ===== */
+                  <div className="flex flex-col items-center justify-center h-full px-4">
+                    <div className="text-center space-y-4 mb-8">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="white"
+                          className="w-7 h-7"
+                        >
+                          <path d="M12 2a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V2.75A.75.75 0 0112 2zM6.05 4.05a.75.75 0 011.06 0l1.59 1.59a.75.75 0 11-1.06 1.06L6.05 5.11a.75.75 0 010-1.06zm11.9 0a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zM12 8a4 4 0 100 8 4 4 0 000-8zM4 12.75a.75.75 0 01-.75-.75 .75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H4zm13.75-.75a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H18.5a.75.75 0 01-.75-.75zM7.7 16.3a.75.75 0 010 1.06l-1.59 1.59a.75.75 0 01-1.06-1.06l1.59-1.59a.75.75 0 011.06 0zm8.6 0a.75.75 0 011.06 0l1.59 1.59a.75.75 0 01-1.06 1.06l-1.59-1.59a.75.75 0 010-1.06zM12 18a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2
+                          className="text-xl font-semibold text-gray-900 dark:text-gray-100"
+                          style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                        >
+                          How can I help you today?
+                        </h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">
+                          Ask anything, run code, browse the web, or try a
+                          suggestion below.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 max-w-lg w-full">
+                      {[
+                        {
+                          label: "Write code",
+                          desc: "Generate or debug code",
+                          prompt: "Help me write a Python script that ",
+                        },
+                        {
+                          label: "Analyze data",
+                          desc: "Find patterns and insights",
+                          prompt: "Analyze this data and help me understand ",
+                        },
+                        {
+                          label: "Research topic",
+                          desc: "Deep dive into any subject",
+                          prompt:
+                            "Research and summarize the key points about ",
+                        },
+                        {
+                          label: "Brainstorm",
+                          desc: "Creative thinking together",
+                          prompt: "Help me brainstorm ideas for ",
+                        },
+                      ].map((action) => (
+                        <button
+                          key={action.label}
+                          className="text-left p-3.5 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group cursor-pointer"
+                          onClick={() => sendMessage(action.prompt)}
+                        >
+                          <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">
+                            {action.label}
+                          </div>
+                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {action.desc}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
               ) : (
                 /* ===== Messages list ===== */
                 <div className="py-4 space-y-0">
@@ -1478,6 +2438,8 @@ function AppInner() {
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
+                        agents={agents}
+                        onNavigateTab={setActiveTab}
                       />
                     </div>
                   ))}
@@ -1563,8 +2525,10 @@ function AppInner() {
                               {selectedAgent?.name || "MIZAN"}
                             </div>
                             <div className="prose">
-                              <ChatMessageContent content={streamingText} />
-                              <span className="inline-block w-0.5 h-4 bg-amber-500 ml-0.5 align-middle animate-pulse rounded-full" />
+                              {/* CHAT UPGRADE: incremental streaming markdown —
+                                  stable blocks parse once, only the live tail
+                                  re-parses per flush; block cursor included. */}
+                              <StreamingMarkdown content={streamingText} />
                             </div>
                           </div>
                         </div>
@@ -1598,6 +2562,14 @@ function AppInner() {
 
             {/* ===== Chat Input — anchored bottom, ChatGPT-style ===== */}
             <div className="chat-input-area">
+              {/* Session usage totals (workstream E) — subtle, only when data exists */}
+              <SessionUsageFooter
+                totalInput={sessionUsage.totalInput}
+                totalOutput={sessionUsage.totalOutput}
+                totalCost={sessionUsage.totalCost}
+                estimated={sessionUsage.estimated}
+                messageCount={sessionUsage.messageCount}
+              />
               <div className="chat-input-container">
                 {/* Command autocomplete */}
                 {showCommandMenu && filteredCommands.length > 0 && (
@@ -1635,6 +2607,16 @@ function AppInner() {
                 )}
 
                 {/* Input box */}
+                {/* CHAT UPGRADE (H): agent mode switcher — single vs deep_research */}
+                <div className="px-1 pb-2">
+                  <ModeSwitcher
+                    mode={agentMode}
+                    confirmed={deepResearchConfirmed}
+                    onModeChange={setAgentMode}
+                    onConfirmedChange={setDeepResearchConfirmed}
+                    disabled={streaming}
+                  />
+                </div>
                 <div className="chat-input-box">
                   {/* Attached files preview */}
                   {attachedFiles.length > 0 && (
@@ -1845,12 +2827,7 @@ function AppInner() {
                     {streaming ? (
                       <button
                         className="chat-stop-btn"
-                        onClick={() => {
-                          // Signal stop — close and reconnect WS
-                          if (ws) {
-                            ws.close();
-                          }
-                        }}
+                        onClick={stopGeneration}
                         title="Stop generating"
                         aria-label="Stop generating"
                       >
@@ -1865,10 +2842,9 @@ function AppInner() {
                     ) : (
                       <button
                         className="chat-send-btn"
-                        onClick={sendMessage}
-                        disabled={
-                          (!input.trim() && attachedFiles.length === 0) || !ws
-                        }
+                        onClick={() => sendMessage()}
+                        disabled={sendDisabled}
+                        title={sendTitle}
                         aria-label="Send message"
                       >
                         <svg
@@ -2000,9 +2976,9 @@ function AppInner() {
                   What your AI remembers from past interactions
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
-                  className="input text-sm py-1.5 w-48"
+                  className="input text-sm py-1.5 w-full sm:w-48"
                   placeholder="Search memories..."
                   value={memoryQuery}
                   onChange={(e) => setMemoryQuery(e.target.value)}
@@ -2020,7 +2996,7 @@ function AppInner() {
                 <button
                   className="btn-secondary text-sm"
                   onClick={async () => {
-                    await fetch(`${config.API_URL}/memory/consolidate`, {
+                    await authFetch(`${config.API_URL}/memory/consolidate`, {
                       method: "POST",
                     });
                     addToast({
@@ -2052,7 +3028,7 @@ function AppInner() {
                     setNewMemory({ ...newMemory, content: e.target.value })
                   }
                 />
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex flex-wrap items-center gap-3 mt-2">
                   <select
                     className="input text-sm py-1.5"
                     value={newMemory.memory_type}
@@ -2085,7 +3061,7 @@ function AppInner() {
                     className="btn-gold text-sm ml-auto"
                     disabled={!newMemory.content.trim()}
                     onClick={async () => {
-                      await fetch(`${config.API_URL}/memory/store`, {
+                      await authFetch(`${config.API_URL}/memory/store`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -2359,6 +3335,8 @@ function AppInner() {
         return <NotebookPage api={api} addTerminalLine={addTerminalLine} />;
       case "scanner":
         return <ScannerPage api={api} addTerminalLine={addTerminalLine} />;
+      case "compare":
+        return <ComparePanel />;
       case "majlis":
         return <MajlisPage api={api} addTerminalLine={addTerminalLine} />;
       case "plugins":
@@ -2411,9 +3389,12 @@ function AppInner() {
                   <button
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                     onClick={async () => {
-                      await fetch(`${config.API_URL}/integrations/${int.id}`, {
-                        method: "DELETE",
-                      });
+                      await authFetch(
+                        `${config.API_URL}/integrations/${int.id}`,
+                        {
+                          method: "DELETE",
+                        },
+                      );
                       loadIntegrations();
                     }}
                   >
@@ -2433,10 +3414,31 @@ function AppInner() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-body transition-colors duration-500">
       {/* Connection banner */}
-      <ConnectionBanner status={wsStatus} attempts={reconnectAttempts} />
+      <ConnectionBanner
+        status={wsStatus}
+        attempts={reconnectAttempts}
+        backendUp={null}
+        onLogin={() => setActiveTab("security")}
+      />
 
       {/* Header */}
       <header className="flex items-center gap-4 px-6 py-3 bg-white/70 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border-b border-white/50 dark:border-white/10 z-50 shrink-0 shadow-[0_1px_12px_rgba(0,0,0,0.03)] transition-all">
+        <button
+          className="md:hidden p-2 -ml-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors focus-ring"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open navigation"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className="w-6 h-6"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
         <div className="flex items-center gap-2.5">
           <div className="text-2xl leading-none select-none text-mizan-gold font-arabic">
             &#1605;&#1610;&#1586;&#1575;&#1606;
@@ -2477,6 +3479,28 @@ function AppInner() {
           setActiveTab={setActiveTab}
           selectedAgent={selectedAgent}
         />
+        {mobileNavOpen && (
+          <div
+            className="fixed inset-0 z-[60] md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={() => setMobileNavOpen(false)}
+              aria-hidden="true"
+            />
+            <Sidebar
+              navSections={navSections}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              selectedAgent={selectedAgent}
+              isMobileDrawer
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          </div>
+        )}
 
         {/* Content */}
         <main
@@ -2520,6 +3544,14 @@ function AppInner() {
             setShowCreateAgent(false);
             setEditingAgent(null);
           }}
+        />
+      )}
+      {/* ===== Artifacts slide-over (workstream F) ===== */}
+      {showArtifacts && (
+        <ArtifactsPanel
+          artifacts={artifacts}
+          sessionId={sessionId}
+          onClose={() => setShowArtifacts(false)}
         />
       )}
     </div>

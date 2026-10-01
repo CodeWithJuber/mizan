@@ -1,1 +1,70 @@
-{"architecture":"per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b')","dataset":"Q-CSMP v2","dataset_doi":"10.5281/zenodo.23024527","dataset_note":"Derived weights + sense inventory only. The dataset itself is NOT redistributed.","eval_accuracy":0.7592,"eval_accuracy_ci95":[0.7241,0.7927],"eval_macro_f1":0.5471,"eval_macro_f1_ci95":[0.4725,0.5432],"eval_n":627,"eval_protocol":"whole-surah holdout, single test run, preregistered 2026-09-29 11:40 +04 before any test eval (Track-1 PREREGISTRATION.md)","eval_verdict":"FAIL on the frozen accuracy leg (delta-acc 0.1436 < 0.20 bar; bar miscalibrated against per-lemma majority 0.6156 — documented in Track-1 EVAL_REPORT.md). Ships as the first real Mizan-owned NLP module: SANE gate passed (|0.7592-0.7656|=0.0064 vs stage-2 reference), bootstrap-CI lower bounds clear baseline points.","files":["manifest.json","model.joblib","sense_inventory.json"],"joblib_version":"1.6.0","license":"Apache-2.0","model_file":"model.joblib","model_sha256":"019f0795a51d371ca91714c37b1bd8a861dff2ea2bf3f36433c99a777dcf9c26","model_type":"sklearn-pipeline-dict","name":"mizan-sense-wsd","num_lemmas":48,"num_senses":115,"numpy_version":"2.5.3","schema_version":"1","sense_id_example":"qcsmp2:يَوْم:judgment-day","sense_id_scheme":"qcsmp2:<lemma>:<sense-slug>","sense_inventory_sha256":"8b29859651b6c23e0593a3839004386892f3a7e33143c2548f56b227a39c5b09","sklearn_version":"1.9.1","trained_at":"2026-09-29","trust_boundary":"model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files.","variant":"a (surface+context; PRIMARY)","version":"1.0.0"}
+{
+ "schema_version": "1",
+ "name": "mizan-sense-wsd",
+ "version": "1.2.1",
+ "dataset": "Q-CSMP v2",
+ "dataset_doi": "10.5281/zenodo.23024527",
+ "dataset_note": "Derived weights + sense inventory only. The dataset itself (Q-CSMP v2) is NOT redistributed. Train = Q-CSMP v2 base train split with PR-41's 9 frozen label-noise merges (nlp/SENSE_MERGES.json) PLUS Phase-A's 9 MASAQ-grounded merges (nlp/SENSE_MERGES_PHASEA.json) PLUS the أَيّ:vocative micro-merge (nlp/SENSE_MERGES_AYY.json, PR #42): qcsmp2:أَيّ:mankind + qcsmp2:أَيّ:you who believe -> qcsmp2:أَيّ:vocative ('O — vocative address particle (يا أيها + complement)'). Those two senses were gloss-leakage artifacts (the label was the next word: النَّاسُ vs الَّذِينَ; MASAQ 2:21 segmentation proof); 34/34 unique contexts vocative (يَٰٓأَيُّهَا), 0 ambiguous. Inventory 97->96 senses, 170 records relabeled (34 base).",
+ "architecture": "per-lemma sklearn LogisticRegression (lbfgs, C=1.0); char 2-4-gram surface+context features (variant 'a') + optional morph family (variant 'b'); single-sense lemmas use a constant prior predictor",
+ "model_file": "model.joblib",
+ "model_type": "sklearn-pipeline-dict",
+ "sklearn_version": "1.9.1",
+ "joblib_version": "1.6.0",
+ "numpy_version": "2.5.3",
+ "trained_at": "2026-09-29",
+ "variant": "a (surface+context; PRIMARY)",
+ "license": "Apache-2.0",
+ "num_lemmas": 48,
+ "num_senses": 96,
+ "eval_accuracy": 0.815,
+ "eval_macro_f1": 0.638,
+ "eval_n": 627,
+ "eval_protocol": "whole-surah holdout, single test run on the frozen Phase-1 test split (n=627), gold labels merged to the 96-sense space; macro-F1 over the full 96-sense universe (absent senses contribute 0.0). Win bar = remapped-baseline comparator (spec v2 §5.2): EXACT AYY mapping applied to v1.2.0 baseline y_true AND y_pred first, then retrained model compared on the same collapsed ontology — 4/4 gates PASS (vocative N/A).",
+ "sense_id_scheme": "qcsmp2:<lemma>:<sense-slug>",
+ "sense_id_example": "qcsmp2:يَوْم:judgment-day",
+ "sense_inventory_sha256": "adb724ea749223130294ea12fd984be526106b8e3a30d8fc333b88be56cc3580",
+ "model_sha256": "00f7580bfb4613550ac072cd479c53e0722a45ad66e69601dcb2228cc9c95d27",
+ "files": [
+  "manifest.json",
+  "model.joblib",
+  "sense_inventory.json"
+ ],
+ "trust_boundary": "model.joblib is a pickle-family file. The loader validates this manifest (schema + files + sha256 checksums) BEFORE unpickling, and loads ONLY from the packaged artifacts/default/ directory or an operator-set MIZAN_NLP_ARTIFACT dir. Never load remote/untrusted files.",
+ "eval_accuracy_exact": 0.8149920255183413,
+ "eval_macro_f1_exact": 0.6380097109349441,
+ "win_bar": {
+  "comparator": "remapped baseline (EXACT AYY mapping applied to v1.2.0 y_true+y_pred)",
+  "accuracy": {
+   "got": 0.8149920255183413,
+   "bar": 0.8099920255183413,
+   "pass": true
+  },
+  "macro_f1": {
+   "got": 0.6380097109349441,
+   "bar": 0.6280097109349441,
+   "pass": true
+  },
+  "no_new_drywells": {
+   "got": [],
+   "pass": true
+  },
+  "vocative_recall": {
+   "status": "N/A",
+   "reason": "frozen test split has 0 vocative items (both sides)",
+   "dev_check": "6 dev vocative items, new-model accuracy=1.0000"
+  },
+  "overall": "PASS 4/4 (vocative N/A)"
+ },
+ "honest_note": "Retrained model predictions are bit-for-bit identical to the remapped baseline (627/627 test items). All measured gain vs the 97-sense baseline comes from ontology simplification, not from retraining.",
+ "reproducibility": {
+  "config_hash": "d1e7deb49d06c0e2",
+  "mapping_composition": "Q-CSMP v2 115 labels -> PR-41 mapping (nlp/SENSE_MERGES.json) -> 106 -> Phase-A mapping (nlp/SENSE_MERGES_PHASEA.json) -> 97 -> AYY mapping (nlp/SENSE_MERGES_AYY.json) -> 96 final",
+  "assertions": {
+   "final_class_count": 96,
+   "ayy_relabeled_base": 34,
+   "ayy_relabeled_all": 170,
+   "unmapped_labels": 0
+  }
+ },
+ "eval_note": "Point estimates on frozen n=627 split; bootstrap CIs not recomputed (v1.2.0 CIs were 97-sense space, not comparable)."
+}

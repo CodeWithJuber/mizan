@@ -8,8 +8,10 @@ Purifies all input before it enters the system.
 Prevents injection attacks, path traversal, and overflow.
 """
 
+import ipaddress
 import os
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 # === Path Validation ===
@@ -30,9 +32,20 @@ def sanitize_path(path: str) -> str:
 
 
 def validate_path_in_sandbox(path: str, allowed_dirs: list) -> bool:
-    """Check if resolved path is within allowed directories"""
-    resolved = sanitize_path(path)
-    return any(resolved.startswith(os.path.realpath(d)) for d in allowed_dirs)
+    """
+    Check if resolved path is within allowed directories.
+
+    Uses proper path containment (not str.startswith): a sibling such as
+    /tmp/mizan-evil/x must NOT pass for an allowed dir /tmp/mizan.
+    """
+    resolved = Path(sanitize_path(path))
+    for d in allowed_dirs:
+        try:
+            if resolved.is_relative_to(Path(os.path.realpath(d))):
+                return True
+        except (ValueError, OSError):
+            continue
+    return False
 
 
 # === Command Validation ===
@@ -120,42 +133,62 @@ def validate_url(url: str) -> tuple:
 
     hostname = parsed.hostname.lower()
 
-    # Block private/internal networks
-    private_prefixes = [
-        "localhost",
-        "127.",
-        "0.0.0.0",
-        "10.",
-        "172.16.",
-        "172.17.",
-        "172.18.",
-        "172.19.",
-        "172.20.",
-        "172.21.",
-        "172.22.",
-        "172.23.",
-        "172.24.",
-        "172.25.",
-        "172.26.",
-        "172.27.",
-        "172.28.",
-        "172.29.",
-        "172.30.",
-        "172.31.",
-        "192.168.",
-        "169.254.",
-        "[::1]",
-    ]
+    # Resolve the host to an IP when it is an IP literal in any notation:
+    # dotted decimal, integer decimal (http://2130706433/ = 127.0.0.1),
+    # hex (http://0x7f000001/) or octal. urlparse keeps brackets off IPv6,
+    # so strip them defensively.
+    ip = _hostname_to_ip(hostname)
+    if ip is not None:
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return False, f"Blocked non-public IP: {hostname}"
+        return True, "OK"
 
-    for prefix in private_prefixes:
-        if hostname.startswith(prefix) or hostname == prefix.rstrip("."):
-            return False, f"Blocked private/internal host: {hostname}"
+    # DNS name: block obvious local names. NOTE - DNS rebinding means a name
+    # that resolves to a public IP now may resolve to a private IP later;
+    # full protection requires re-checking the resolved IP at connection
+    # time and on every redirect, or an egress allowlist.
+    local_names = ("localhost",)
+    if hostname in local_names or hostname.endswith((".localhost", ".local", ".internal")):
+        return False, f"Blocked local hostname: {hostname}"
 
     # Block metadata endpoints (cloud SSRF)
-    if hostname in ("metadata.google.internal", "169.254.169.254"):
+    if hostname in ("metadata.google.internal", "metadata.google.com"):
         return False, "Blocked cloud metadata endpoint"
 
     return True, "OK"
+
+
+def _hostname_to_ip(hostname: str):
+    """
+    Interpret a hostname as an IP address when it is an IP literal.
+
+    Handles dotted notation, plain integers (decimal), 0x-hex and
+    0-octal forms. Returns an ipaddress object or None for DNS names.
+    """
+    host = hostname.strip().strip("[]")
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    try:
+        if host.lower().startswith("0x"):
+            num = int(host, 16)
+        elif host.isdigit():
+            num = int(host, 10)
+        elif len(host) > 1 and host.startswith("0") and all(c in "01234567" for c in host):
+            num = int(host, 8)
+        else:
+            return None
+        return ipaddress.ip_address(num)
+    except ValueError:
+        return None
 
 
 # === Input Text Validation ===

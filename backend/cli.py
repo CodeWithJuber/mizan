@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import re
 from pathlib import Path
 
 import click
@@ -182,6 +183,23 @@ def status():
         console.print(f"[red]Error: {e}[/]")
 
 
+def _set_env_line(env_content: str, key: str, value: str) -> str:
+    """Set KEY=value in .env content: replace the existing line or append.
+
+    Never relies on placeholder text matching — the old str.replace()
+    approach silently dropped keys when the template was absent (wheel
+    installs) or used different placeholders, and could corrupt a key by
+    leaving a trailing placeholder behind.
+    """
+    pattern = re.compile(rf"(?m)^{re.escape(key)}=.*$")
+    replacement = f"{key}={value}"
+    if pattern.search(env_content):
+        return pattern.sub(replacement, env_content)
+    if env_content and not env_content.endswith("\n"):
+        env_content += "\n"
+    return env_content + replacement + "\n"
+
+
 @main.command()
 def setup():
     """Interactive setup wizard for first-time configuration."""
@@ -212,13 +230,16 @@ def setup():
     console.print("\n[bold]AI Provider Configuration[/]")
     console.print("[dim]You need at least one API key to use MIZAN.[/]\n")
 
+    entered: list[tuple[str, str]] = []
+
     api_key = Prompt.ask(
         "Anthropic API Key (sk-ant-...)",
         default="",
         password=True,
     )
     if api_key:
-        env_content = env_content.replace("sk-ant-your-key-here", api_key)
+        env_content = _set_env_line(env_content, "ANTHROPIC_API_KEY", api_key)
+        entered.append(("ANTHROPIC_API_KEY", api_key))
 
     openrouter_key = Prompt.ask(
         "OpenRouter API Key (sk-or-... — optional, 300+ models)",
@@ -226,14 +247,22 @@ def setup():
         password=True,
     )
     if openrouter_key:
-        env_content = env_content.replace(
-            "OPENROUTER_API_KEY=",
-            f"OPENROUTER_API_KEY={openrouter_key}",
-        )
+        env_content = _set_env_line(env_content, "OPENROUTER_API_KEY", openrouter_key)
+        entered.append(("OPENROUTER_API_KEY", openrouter_key))
 
     # Write .env
     env_file.write_text(env_content)
     console.print(f"\n[green]Wrote {env_file}[/]")
+
+    # Verify: every entered key must be present verbatim — never claim
+    # success while silently dropping a key.
+    written = env_file.read_text()
+    missing = [key for key, value in entered if value not in written]
+    if missing:
+        console.print(
+            f"[bold red]Setup FAILED: could not write {', '.join(missing)} to {env_file}[/]"
+        )
+        raise SystemExit(1)
 
     # Create data directory
     data_dir = project_root / "data"

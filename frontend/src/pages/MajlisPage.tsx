@@ -13,6 +13,7 @@ import type {
   Halaqah,
   KnowledgeItem,
 } from "../types";
+import { useToast } from "../components/Toast";
 
 const NAFS_STYLES: Record<
   string,
@@ -79,6 +80,14 @@ const STATUS_DOT: Record<string, string> = {
   offline: "status-dot-offline",
 };
 
+const TAB_SUBTITLES: Record<string, string> = {
+  agents: "AI agents in your circle — tap a card to message or rate an agent.",
+  halaqahs:
+    "Halaqahs are study circles — small groups of agents discussing one topic.",
+  knowledge: "Notes and lessons agents have shared with the circle.",
+  leaderboard: "Agents ranked by ★ reputation from peer ratings.",
+};
+
 interface LeaderboardAgent {
   agent_id: string;
   name: string;
@@ -89,6 +98,7 @@ interface LeaderboardAgent {
 }
 
 export default function MajlisPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("agents");
   const [agents, setAgents] = useState<MajlisAgent[]>([]);
   const [halaqahs, setHalaqahs] = useState<Halaqah[]>([]);
@@ -115,7 +125,22 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     source: "",
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [messageText, setMessageText] = useState("");
+  // Draft message keyed by agent_id so typing in agent A's box doesn't
+  // leak into agent B's box when expanding a different panel.
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
+    {},
+  );
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [showNafsInfo, setShowNafsInfo] = useState(false);
+
+  const setBusyKey = (key: string, v: boolean) =>
+    setBusy((p) => (p[key] === v ? p : { ...p, [key]: v }));
+
+  // Backend skill errors come back as {error: "..."} with HTTP 200 — truthy but failed
+  const errOf = (data: Record<string, unknown> | null): string | null => {
+    if (!data) return "Server se jawab nahi mila";
+    return typeof data.error === "string" ? data.error : null;
+  };
 
   const exec = useCallback(
     async (action: string, extra: Record<string, unknown> = {}) => {
@@ -155,6 +180,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
   }, [loadAgents, loadHalaqahs, loadLeaderboard]);
 
   const registerAgent = async () => {
+    setBusyKey("register", true);
     const caps = regForm.capabilities
       .split(",")
       .map((c) => c.trim())
@@ -164,7 +190,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
       arabic_name: regForm.arabic_name,
       capabilities: caps,
     });
-    if (data?.agent_id) {
+    setBusyKey("register", false);
+    const err = errOf(data);
+    if (!err && data?.agent_id) {
+      addToast({
+        type: "success",
+        title: `Agent "${regForm.name}" registered`,
+      });
       addTerminalLine?.(
         `Agent registered: ${regForm.name} (${data.agent_id})`,
         "gold",
@@ -172,48 +204,141 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
       setShowRegister(false);
       setRegForm({ name: "", arabic_name: "", capabilities: "" });
       loadAgents();
+    } else {
+      addToast({
+        type: "error",
+        title: "Agent register nahi hua",
+        description: err || undefined,
+      });
     }
   };
 
   const createHalaqah = async () => {
+    setBusyKey("halaqah", true);
     const data = await exec("create_halaqah", halaqahForm);
-    if (data?.halaqah_id) {
+    setBusyKey("halaqah", false);
+    const err = errOf(data);
+    if (!err && data?.halaqah_id) {
+      addToast({
+        type: "success",
+        title: `Study circle "${halaqahForm.name}" ban gaya`,
+      });
       addTerminalLine?.(`Halaqah created: ${halaqahForm.name}`, "gold");
       setShowHalaqah(false);
       setHalaqahForm({ name: "", topic: "", description: "" });
       loadHalaqahs();
+    } else {
+      addToast({
+        type: "error",
+        title: "Circle ban nahi paya",
+        description: err || undefined,
+      });
     }
   };
 
   const shareKnowledge = async () => {
+    setBusyKey("share", true);
     const data = await exec("share_knowledge", shareForm);
-    if (data?.knowledge_id) {
+    setBusyKey("share", false);
+    const err = errOf(data);
+    if (!err && data?.knowledge_id) {
+      addToast({ type: "success", title: "Knowledge Majlis me share ho gaya" });
       addTerminalLine?.("Knowledge shared to Majlis", "gold");
       setShowShare(false);
       setShareForm({ topic: "", content: "", source: "" });
+    } else {
+      addToast({
+        type: "error",
+        title: "Share nahi hua",
+        description: err || undefined,
+      });
     }
   };
 
-  const sendMessage = async (toId: string) => {
-    if (!messageText.trim()) return;
-    await exec("message", {
+  const joinHalaqah = async (h: Halaqah) => {
+    setBusyKey(`join:${h.halaqah_id}`, true);
+    const data = await exec("join_halaqah", { halaqah_id: h.halaqah_id });
+    setBusyKey(`join:${h.halaqah_id}`, false);
+    const err = errOf(data);
+    if (!err) {
+      addToast({ type: "success", title: `"${h.name}" me shamil ho gaye` });
+      addTerminalLine?.(`Joined halaqah: ${h.name}`, "gold");
+      loadHalaqahs();
+    } else {
+      addToast({
+        type: "error",
+        title: "Join nahi hua",
+        description: err,
+      });
+    }
+  };
+
+  const sendMessage = async (toId: string, toName?: string) => {
+    const text = (messageDrafts[toId] || "").trim();
+    if (!text) return;
+    setBusyKey(`send:${toId}`, true);
+    const data = await exec("message", {
       to_agent_id: toId,
-      content: messageText,
+      content: text,
       msg_type: "text",
     });
-    addTerminalLine?.(`Message sent to ${toId.slice(0, 8)}...`, "gold");
-    setMessageText("");
+    setBusyKey(`send:${toId}`, false);
+    const err = errOf(data);
+    if (!err) {
+      addToast({
+        type: "success",
+        title: `Message sent to ${toName || "agent"}`,
+      });
+      setMessageDrafts((prev) => ({ ...prev, [toId]: "" }));
+    } else {
+      addToast({
+        type: "error",
+        title: "Message nahi gaya",
+        description: err,
+      });
+    }
   };
 
   const rateAgent = async (agentId: string, score: number) => {
-    await exec("rate", { agent_id: agentId, score });
-    addTerminalLine?.(`Rated agent: ${score}/5`, "gold");
-    loadAgents();
+    setBusyKey(`rate:${agentId}`, true);
+    const data = await exec("rate", { agent_id: agentId, score });
+    setBusyKey(`rate:${agentId}`, false);
+    const err = errOf(data);
+    if (!err) {
+      addToast({ type: "success", title: `Rated ${score}/5` });
+      loadAgents();
+    } else {
+      addToast({
+        type: "error",
+        title: "Rating fail ho gayi",
+        description: err,
+      });
+    }
   };
 
   const searchKnowledgeBase = async () => {
+    if (!searchQuery.trim()) return;
+    setBusyKey("search", true);
     const data = await exec("search_knowledge", { query: searchQuery });
-    if (data?.results) setKnowledge(data.results as KnowledgeItem[]);
+    setBusyKey("search", false);
+    const err = errOf(data);
+    if (!err && data?.results) {
+      const results = data.results as KnowledgeItem[];
+      setKnowledge(results);
+      addToast({
+        type: "info",
+        title:
+          results.length === 0
+            ? "Kuch nahi mila — alag lafz try karo"
+            : `${results.length} result${results.length === 1 ? "" : "s"} found`,
+      });
+    } else {
+      addToast({
+        type: "error",
+        title: "Search fail ho gayi",
+        description: err || undefined,
+      });
+    }
   };
 
   return (
@@ -246,6 +371,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
             {tab.label}
           </button>
         ))}
+      </div>
+
+      <div className="px-1 -mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
+        {TAB_SUBTITLES[activeTab]}
       </div>
 
       <div className="page-body">
@@ -312,11 +441,11 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    className="btn-gold btn-sm"
+                    className="btn-gold btn-sm min-h-[44px]"
                     onClick={registerAgent}
-                    disabled={!regForm.name}
+                    disabled={!regForm.name || busy.register}
                   >
-                    Register
+                    {busy.register ? "Registering…" : "Register"}
                   </button>
                   <button
                     className="btn-secondary btn-sm"
@@ -372,22 +501,38 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    <div className={`status-dot ${statusDot}`} />
-                    <span className="font-arabic text-lg text-mizan-gold">
-                      {agent.arabic_name || "عميل"}
-                    </span>
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {agent.name}
-                    </span>
-                    <span
-                      className={`text-micro font-mono px-1.5 py-0.5 rounded ${nafs.bg} ${nafs.text} border ${nafs.border}`}
+                    <div className={`status-dot ${statusDot} shrink-0`} />
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span className="font-arabic text-lg text-mizan-gold shrink-0">
+                        {agent.arabic_name || "عميل"}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {agent.name}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`text-micro font-mono px-1.5 py-0.5 rounded ${nafs.bg} ${nafs.text} border ${nafs.border} shrink-0 min-h-[36px]`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNafsInfo((v) => !v);
+                      }}
+                      title="Nafs level kya hai? Tap karo"
+                      aria-label="Nafs level ki jankari dekho"
                     >
-                      {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
-                    </span>
-                    <span className="ml-auto text-2xs font-mono text-amber-500">
+                      ⓘ {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
+                    </button>
+                    <span className="ml-auto text-2xs font-mono text-amber-500 shrink-0">
                       ★ {(agent.reputation_score || 0).toFixed(1)}
                     </span>
                   </div>
+                  {showNafsInfo && (
+                    <div className="text-2xs text-gray-500 dark:text-gray-400 mt-1.5 px-1">
+                      Nafs level = agent ka bharosa / maturity stage (Ammara →
+                      Kamila). ★ = doosre agents ki rating se bana reputation
+                      score.
+                    </div>
+                  )}
 
                   {agent.capabilities && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
@@ -415,29 +560,47 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       <div className="flex gap-2 mb-2">
                         <input
                           className="form-input flex-1 text-xs"
-                          value={messageText}
-                          onChange={(e) => setMessageText(e.target.value)}
+                          value={messageDrafts[agent.agent_id] || ""}
+                          onChange={(e) =>
+                            setMessageDrafts((prev) => ({
+                              ...prev,
+                              [agent.agent_id]: e.target.value,
+                            }))
+                          }
                           placeholder="Send a message..."
                           onKeyDown={(e) =>
-                            e.key === "Enter" && sendMessage(agent.agent_id)
+                            e.key === "Enter" &&
+                            sendMessage(agent.agent_id, agent.name)
                           }
                         />
                         <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => sendMessage(agent.agent_id)}
+                          className="btn-secondary btn-sm min-h-[44px]"
+                          onClick={() =>
+                            sendMessage(agent.agent_id, agent.name)
+                          }
+                          disabled={busy[`send:${agent.agent_id}`]}
                         >
-                          Send
+                          {busy[`send:${agent.agent_id}`] ? "…" : "Send"}
                         </button>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
                         <span className="text-2xs text-gray-400 dark:text-gray-500 mr-1">
                           Rate:
+                          {(agent.reputation_score ?? 0) > 0 && (
+                            <>
+                              {" "}
+                              (abhi ★ {(agent.reputation_score ?? 0).toFixed(1)}
+                              )
+                            </>
+                          )}
                         </span>
                         {[1, 2, 3, 4, 5].map((s) => (
                           <button
                             key={s}
-                            className="btn-secondary btn-sm text-micro px-1.5 py-0.5"
+                            className="btn-secondary btn-sm text-micro px-3 py-2 min-h-[44px]"
                             onClick={() => rateAgent(agent.agent_id, s)}
+                            disabled={busy[`rate:${agent.agent_id}`]}
+                            aria-label={`${s} out of 5 rate karo`}
                           >
                             {"★".repeat(s)}
                           </button>
@@ -517,11 +680,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    className="btn-gold btn-sm"
+                    className="btn-gold btn-sm min-h-[44px]"
                     onClick={createHalaqah}
-                    disabled={!halaqahForm.name || !halaqahForm.topic}
+                    disabled={
+                      !halaqahForm.name || !halaqahForm.topic || busy.halaqah
+                    }
                   >
-                    Create
+                    {busy.halaqah ? "Creating…" : "Create"}
                   </button>
                   <button
                     className="btn-secondary btn-sm"
@@ -566,14 +731,11 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 )}
                 <div className="mt-2">
                   <button
-                    className="btn-secondary btn-sm"
-                    onClick={async () => {
-                      await exec("join_halaqah", { halaqah_id: h.halaqah_id });
-                      addTerminalLine?.(`Joined halaqah: ${h.name}`, "gold");
-                      loadHalaqahs();
-                    }}
+                    className="btn-secondary btn-sm min-h-[44px]"
+                    onClick={() => joinHalaqah(h)}
+                    disabled={busy[`join:${h.halaqah_id}`]}
                   >
-                    Join Circle
+                    {busy[`join:${h.halaqah_id}`] ? "Joining…" : "Join Circle"}
                   </button>
                 </div>
               </div>
@@ -592,10 +754,11 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 onKeyDown={(e) => e.key === "Enter" && searchKnowledgeBase()}
               />
               <button
-                className="btn-secondary btn-sm"
+                className="btn-secondary btn-sm min-h-[44px]"
                 onClick={searchKnowledgeBase}
+                disabled={busy.search || !searchQuery.trim()}
               >
-                Search
+                {busy.search ? "Searching…" : "Search"}
               </button>
               <button
                 className="btn-gold btn-sm"
@@ -652,11 +815,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    className="btn-gold btn-sm"
+                    className="btn-gold btn-sm min-h-[44px]"
                     onClick={shareKnowledge}
-                    disabled={!shareForm.topic || !shareForm.content}
+                    disabled={
+                      !shareForm.topic || !shareForm.content || busy.share
+                    }
                   >
-                    Share
+                    {busy.share ? "Sharing…" : "Share"}
                   </button>
                   <button
                     className="btn-secondary btn-sm"

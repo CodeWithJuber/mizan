@@ -39,7 +39,9 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
           setStatus("connecting");
         }
 
-        socket = new WebSocket(`${config.WS_URL}/${clientId.current}`);
+        const token = localStorage.getItem("mizan_token") || "";
+        const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+        socket = new WebSocket(`${config.WS_URL}/${clientId.current}${qs}`);
 
         socket.onopen = () => {
           setStatus("connected");
@@ -53,8 +55,17 @@ export function useWebSocket(onMessage: (data: WsMessage) => void): UseWebSocket
           onMessageRef.current?.(data);
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event: CloseEvent) => {
           setWs(null);
+          // 4401 = fail-closed auth rejection (anonymous or expired token).
+          // This is NOT a backend outage: stop the reconnect storm and
+          // surface an explicit "login required" state instead.
+          if (event.code === 4401) {
+            attempts = 0;
+            setReconnectAttempts(0);
+            setStatus("auth_required");
+            return;
+          }
           attempts++;
           setReconnectAttempts(attempts);
           if (attempts >= 5) {

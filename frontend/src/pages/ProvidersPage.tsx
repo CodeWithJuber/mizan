@@ -12,6 +12,7 @@ import type {
   ProviderHealth,
 } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 
 const PROVIDER_ICONS: Record<string, string> = {
   anthropic: "A",
@@ -41,7 +42,8 @@ const PROVIDER_ACCENT: Record<string, string> = {
 const DYNAMIC_PROVIDERS = new Set(["openrouter", "ollama"]);
 const MODEL_PAGE_SIZE = 50;
 
-export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
+export default function ProvidersPage({ api }: PageProps) {
+  const { addToast } = useToast();
   const [status, setStatus] = useState<ProviderStatus | null>(null);
   const [health, setHealth] = useState<Record<string, ProviderHealth>>({});
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
@@ -51,7 +53,6 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
   // Expand-to-select state
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
   const [pendingModel, setPendingModel] = useState("");
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // OpenRouter search/filter/pagination
   const [modelSearch, setModelSearch] = useState("");
@@ -60,16 +61,28 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
   const [modelTotal, setModelTotal] = useState(0);
   const [browseLoading, setBrowseLoading] = useState(false);
 
+  // Deep-link to Settings → AI Providers (where keys are actually entered).
+  // App.tsx boots activeTab from localStorage, so a reload lands there.
+  const goToAIProvidersSettings = useCallback(() => {
+    localStorage.setItem("mizan_active_tab", "settings");
+    localStorage.setItem("mizan_settings_section", "providers");
+    window.location.reload();
+  }, []);
+
   const fetchStatus = useCallback(async () => {
     try {
       const data = (await api.get("/providers")) as unknown as ProviderStatus;
       setStatus(data);
     } catch {
-      addTerminalLine?.("Failed to fetch provider status", "error");
+      addToast({
+        type: "error",
+        title: "Couldn't load providers",
+        description: "Check your connection and try again.",
+      });
     } finally {
       setLoading(false);
     }
-  }, [api, addTerminalLine]);
+  }, [api, addToast]);
 
   useEffect(() => {
     fetchStatus();
@@ -119,14 +132,22 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
       setModelTotal(data.total ?? data.models?.length ?? 0);
       setModelOffset(offset);
     } catch {
-      addTerminalLine?.(`Failed to fetch models for ${providerName}`, "error");
+      addToast({
+        type: "error",
+        title: "Couldn't load models",
+        description: `Failed to fetch models for ${providerName}.`,
+      });
     } finally {
       setBrowseLoading(false);
     }
   };
 
   const handleCardClick = (provider: ProviderInfo) => {
-    if (!provider.configured) return;
+    // "Not configured" cards are not dead ends — deep-link to key entry.
+    if (!provider.configured) {
+      goToAIProvidersSettings();
+      return;
+    }
 
     if (expandedProvider === provider.name) {
       setExpandedProvider(null);
@@ -158,11 +179,20 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
       await fetchStatus();
       setExpandedProvider(null);
       setPendingModel("");
-      setSuccessMessage(`Switched to ${provider} / ${model}`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-      addTerminalLine?.(`Switched to ${provider} / ${model}`, "gold");
+      const displayName =
+        status?.providers?.find((p) => p.name === provider)?.display ||
+        provider;
+      addToast({
+        type: "success",
+        title: `Now using ${displayName}`,
+        description: model,
+      });
     } catch {
-      addTerminalLine?.("Failed to switch provider", "error");
+      addToast({
+        type: "error",
+        title: "Couldn't switch provider",
+        description: "Please try again.",
+      });
     } finally {
       setSwitching(false);
     }
@@ -197,24 +227,6 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       <div className="page-body">
-        {/* Success toast */}
-        {successMessage && (
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-sm animate-in">
-            <svg
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="w-4 h-4 shrink-0"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {successMessage}
-          </div>
-        )}
-
         {/* Provider Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(status?.providers ?? []).map((provider: ProviderInfo) => {
@@ -248,7 +260,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
 
                 {/* Card header — clickable */}
                 <div
-                  className={`flex items-center gap-3 ${provider.configured ? "cursor-pointer" : ""}`}
+                  className="flex items-center gap-3 cursor-pointer"
                   onClick={() => handleCardClick(provider)}
                 >
                   <div
@@ -263,16 +275,20 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       {provider.configured ? (
                         <span className="text-emerald-600 dark:text-emerald-400">
-                          Configured
+                          Connected
                         </span>
                       ) : (
                         <span className="text-red-500 dark:text-red-400">
-                          Not configured
+                          Not connected
                         </span>
                       )}
                     </div>
                   </div>
-                  {provider.configured && (
+                  {!provider.configured ? (
+                    <span className="text-xs font-medium text-mizan-gold whitespace-nowrap">
+                      Add key →
+                    </span>
+                  ) : (
                     <span className="text-gray-400 dark:text-gray-500 text-xs">
                       {isExpanded ? "\u25B2" : "\u25BC"}
                     </span>
@@ -305,7 +321,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                           e.stopPropagation();
                           checkHealth(provider.name);
                         }}
-                        className="btn-secondary btn-sm"
+                        className="btn-secondary btn-sm min-h-[44px]"
                       >
                         Health Check
                       </button>
@@ -320,7 +336,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                   <div className="mt-3 pt-3 border-t border-gray-200/60 dark:border-zinc-700/60 space-y-3">
                     {/* Search + filter for dynamic providers */}
                     {provider.name === "openrouter" && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="text"
                           placeholder="Search models..."
@@ -347,7 +363,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                               0,
                             )
                           }
-                          className="btn-secondary btn-sm"
+                          className="btn-secondary btn-sm min-h-[44px]"
                         >
                           Search
                         </button>
@@ -386,12 +402,14 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                         </div>
                       ) : providerModels.length === 0 && isDynamic ? (
                         <div className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
-                          No models found.{" "}
-                          {provider.name === "ollama"
-                            ? "Is Ollama running?"
-                            : modelSearch
-                              ? "Try a different search."
-                              : "Check API key."}
+                          We couldn't find any models. Add your key in{" "}
+                          <button
+                            onClick={goToAIProvidersSettings}
+                            className="text-mizan-gold underline underline-offset-2 min-h-[44px] px-1"
+                          >
+                            Settings → AI Providers
+                          </button>
+                          .
                         </div>
                       ) : (
                         providerModels.map((m) => (
@@ -429,7 +447,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                                 )
                               }
                               disabled={modelOffset === 0}
-                              className="btn-secondary btn-sm disabled:opacity-30"
+                              className="btn-secondary btn-sm min-h-[44px] disabled:opacity-30"
                             >
                               Prev
                             </button>
@@ -445,7 +463,7 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                               disabled={
                                 modelOffset + MODEL_PAGE_SIZE >= modelTotal
                               }
-                              className="btn-secondary btn-sm disabled:opacity-30"
+                              className="btn-secondary btn-sm min-h-[44px] disabled:opacity-30"
                             >
                               Next
                             </button>
@@ -464,29 +482,20 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
                           !pendingModel ||
                           (isActive && status?.default_model === pendingModel)
                         }
-                        className="btn-gold btn-sm disabled:opacity-30"
+                        className="btn-gold btn-sm min-h-[44px] disabled:opacity-30"
                       >
                         {switching
                           ? "Switching..."
                           : isActive && status?.default_model === pendingModel
-                            ? "Already Active"
-                            : "Activate"}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          checkHealth(provider.name);
-                        }}
-                        className="btn-secondary btn-sm"
-                      >
-                        Health Check
+                            ? "Current provider"
+                            : "Use this provider"}
                       </button>
                       <button
                         onClick={() => {
                           setExpandedProvider(null);
                           setPendingModel("");
                         }}
-                        className="ml-auto text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                        className="btn-secondary btn-sm min-h-[44px] px-3 flex items-center"
                       >
                         Cancel
                       </button>
@@ -505,42 +514,14 @@ export default function ProvidersPage({ api, addTerminalLine }: PageProps) {
           <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
             Quick Setup
           </h3>
-          <div className="space-y-2 text-sm font-mono">
-            <div>
-              <span className="text-amber-600 dark:text-amber-400">
-                Anthropic:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                ANTHROPIC_API_KEY=sk-ant-...
-              </span>
-            </div>
-            <div>
-              <span className="text-purple-600 dark:text-purple-400">
-                OpenRouter:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OPENROUTER_API_KEY=sk-or-...
-              </span>{" "}
-              <span className="text-gray-400 dark:text-gray-500">
-                (300+ models)
-              </span>
-            </div>
-            <div>
-              <span className="text-emerald-600 dark:text-emerald-400">
-                OpenAI:
-              </span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OPENAI_API_KEY=sk-...
-              </span>
-            </div>
-            <div>
-              <span className="text-blue-600 dark:text-blue-400">Ollama:</span>{" "}
-              <span className="text-gray-600 dark:text-gray-400">
-                OLLAMA_URL=http://localhost:11434
-              </span>{" "}
-              <span className="text-gray-400 dark:text-gray-500">(local)</span>
-            </div>
-          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Add your API keys in{" "}
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              Settings → AI Providers
+            </span>{" "}
+            — no server access needed. Keys are stored securely on your Mizan
+            server.
+          </p>
         </div>
       </div>
     </div>
@@ -612,7 +593,11 @@ function HealthBadge({ health }: { health: ProviderHealth }) {
           : "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400"
       }`}
     >
-      {health.healthy ? "Healthy" : `Unhealthy: ${health.error || "unknown"}`}
+      {health.healthy
+        ? "Healthy"
+        : health.error === "Request failed"
+          ? "Couldn't reach the provider — check your connection or API key."
+          : `Unhealthy: ${health.error || "unknown"}`}
       {health.usage !== undefined && (
         <span className="ml-2 text-gray-500 dark:text-gray-400">
           Usage: ${(health.usage || 0).toFixed(4)}

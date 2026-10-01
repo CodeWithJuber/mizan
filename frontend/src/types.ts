@@ -15,6 +15,10 @@ export interface ApiClient {
     path: string,
     body?: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
+  patch: (
+    path: string,
+    body?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
   del: (path: string) => Promise<Record<string, unknown>>;
   API_URL: string;
 }
@@ -22,11 +26,7 @@ export interface ApiClient {
 // ===== Agent Types =====
 
 export type AgentState =
-  | "resting"
-  | "thinking"
-  | "acting"
-  | "learning"
-  | "error";
+  "resting" | "thinking" | "acting" | "learning" | "error";
 export type NafsLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type NafsName =
   | "Ammara"
@@ -80,11 +80,7 @@ export interface YaqinTag {
 // ===== Cognitive Method Types =====
 
 export type CognitiveMethod =
-  | "tafakkur"
-  | "tadabbur"
-  | "istidlal"
-  | "qiyas"
-  | "ijma";
+  "tafakkur" | "tadabbur" | "istidlal" | "qiyas" | "ijma";
 
 // ===== Qalb Emotional Types =====
 
@@ -97,12 +93,7 @@ export type EmotionalState =
   | "determined"
   | "fatigued";
 export type ToneStyle =
-  | "standard"
-  | "encouraging"
-  | "patient"
-  | "concise"
-  | "warm"
-  | "focused";
+  "standard" | "encouraging" | "patient" | "concise" | "warm" | "focused";
 
 export interface QalbReading {
   state: EmotionalState;
@@ -190,6 +181,66 @@ export interface ChatMessage {
   cognitive?: CognitiveMetadata;
   perception?: PerceptionResult;
   thinkingMessageId?: string;
+  /** Per-message model transparency (usage workstream C/E). Optional —
+   *  present only when the backend observed real provider metadata.
+   *  Never contains invented numbers; absent fields mean "not reported". */
+  meta?: MessageUsageMeta;
+  /** CHAT UPGRADE: true when the user stopped generation mid-stream — the
+      content is a partial answer, not a finished one. */
+  stopped?: boolean;
+}
+
+// ===== Model Transparency / Cost Types (chat upgrade workstreams C + E) =====
+
+/** Observed per-message LLM metadata from the provider's response.
+ *  `model` is the OBSERVED model id from the wire, not the requested one.
+ *  `cost_usd` is provider-reported (authoritative) when `cost_estimated`
+ *  is false, else an estimate from the built-in price table — the UI must
+ *  render estimates with a "≈" prefix. Absent fields = not reported. */
+export interface MessageUsageMeta {
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  latency_ms?: number;
+  finish_reason?: string;
+  cost_usd?: number;
+  cost_estimated?: boolean;
+  /** Byte-for-byte raw usage chunk from the stream (auditability). */
+  raw?: Record<string, unknown>;
+}
+
+// ===== Artifact Types =====
+// Chat artifacts (workstream F): versioned agent-produced documents.
+// Backend: backend/api/artifacts.py. WS convention: {"type": "artifact", "artifact": ArtifactWsPayload}.
+
+export type ArtifactKind = "code" | "html" | "markdown";
+
+export interface ArtifactVersion {
+  version: number;
+  title?: string;
+  content: string;
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  session_id: string;
+  title: string;
+  kind: ArtifactKind;
+  language?: string;
+  versions: ArtifactVersion[];
+}
+
+/** Payload the agent pipeline emits over the chat WS when an artifact is created. */
+export interface ArtifactWsPayload {
+  id: string;
+  session_id?: string;
+  title?: string;
+  kind?: string;
+  language?: string;
+  content?: string;
+  version?: number;
+  created_at?: string;
 }
 
 // ===== Memory Types =====
@@ -469,16 +520,9 @@ export interface PerceptionResult {
 // ===== Queue Types =====
 
 export type QueueTaskStatus =
-  | "pending"
-  | "running"
-  | "complete"
-  | "failed"
-  | "cancelled";
+  "pending" | "running" | "complete" | "failed" | "cancelled";
 export type QueuePriority =
-  | "dharurah"
-  | "hajah"
-  | "tahsiniyyah"
-  | "takmiliyyah";
+  "dharurah" | "hajah" | "tahsiniyyah" | "takmiliyyah";
 
 export interface QueueTask {
   task_id: string;
@@ -509,6 +553,7 @@ export type WsConnectionStatus =
   | "connecting"
   | "reconnecting"
   | "disconnected"
+  | "auth_required"
   | "error";
 
 export interface WsMessage {

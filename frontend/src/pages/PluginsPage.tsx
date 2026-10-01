@@ -11,6 +11,8 @@ import {
   TrustLevel,
   PluginHook,
 } from "../types";
+import { useToast } from "../components/Toast";
+import { SkeletonCard } from "../components/Skeleton";
 
 const TYPE_STYLES: Record<
   string,
@@ -59,7 +61,22 @@ const TYPE_LABELS: Record<string, string> = {
 const TRUST_STYLES: Record<string, { text: string; bg: string }> = {
   ammara: { text: "text-red-500", bg: "bg-red-500/10" },
   lawwama: { text: "text-amber-500", bg: "bg-amber-500/10" },
+  mulhama: { text: "text-amber-500", bg: "bg-amber-500/10" },
   mutmainna: { text: "text-emerald-500", bg: "bg-emerald-500/10" },
+  radiya: { text: "text-emerald-500", bg: "bg-emerald-500/10" },
+  mardiyya: { text: "text-emerald-500", bg: "bg-emerald-500/10" },
+  kamila: { text: "text-emerald-500", bg: "bg-emerald-500/10" },
+};
+
+/** Plain-English trust labels with the Arabic nafs-stage as secondary text. */
+const TRUST_LABELS: Record<string, { en: string; ar: string }> = {
+  ammara: { en: "Unverified", ar: "أمّارة" },
+  lawwama: { en: "Review needed", ar: "لوّامة" },
+  mulhama: { en: "Review needed", ar: "مُلهَمة" },
+  mutmainna: { en: "Trusted", ar: "مُطمئِنّة" },
+  radiya: { en: "Trusted", ar: "راضية" },
+  mardiyya: { en: "Trusted", ar: "مَرضيّة" },
+  kamila: { en: "Trusted", ar: "كاملة" },
 };
 
 interface CreateForm {
@@ -75,12 +92,17 @@ interface PluginCardProps {
   onDeactivate: (name: string) => void;
   onReload: (name: string) => void;
   onVerify: (name: string) => void;
+  pendingAction: string | null;
 }
 
 export default function PluginsPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("installed");
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [hooks, setHooks] = useState<PluginHook[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<boolean>(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<CreateForm>({
     name: "",
@@ -97,79 +119,139 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
           action,
           ...extra,
         });
-      } catch {
+      } catch (e) {
+        addToast({
+          type: "error",
+          title: (e as Error).message || "Plugin action fail ho gaya",
+        });
         return null;
       }
     },
-    [api],
+    [api, addToast],
   );
 
   const loadPlugins = useCallback(async () => {
     const data = await exec("list");
-    if (data?.plugins) setPlugins(data.plugins as Plugin[]);
+    if (data?.plugins) {
+      setPlugins(data.plugins as Plugin[]);
+      return true;
+    }
+    return false;
   }, [exec]);
 
   const loadHooks = useCallback(async () => {
     const data = await exec("hooks");
-    if (data?.hooks) setHooks(data.hooks as PluginHook[]);
+    if (data?.hooks) {
+      setHooks(data.hooks as PluginHook[]);
+      return true;
+    }
+    return false;
   }, [exec]);
 
-  useEffect(() => {
-    loadPlugins();
-    loadHooks();
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    const [pluginsOk, hooksOk] = await Promise.all([
+      loadPlugins(),
+      loadHooks(),
+    ]);
+    if (!pluginsOk && !hooksOk) setLoadError(true);
+    setLoading(false);
   }, [loadPlugins, loadHooks]);
 
-  const activatePlugin = async (name: string) => {
-    const data = await exec("activate", { name });
-    if (data?.status === "activated") {
-      addTerminalLine?.(`Plugin activated: ${name}`, "gold");
-      loadPlugins();
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const runAction = async (key: string, fn: () => Promise<void>) => {
+    setPendingAction(key);
+    try {
+      await fn();
+    } finally {
+      setPendingAction(null);
     }
   };
 
-  const deactivatePlugin = async (name: string) => {
-    const data = await exec("deactivate", { name });
-    if (data?.status === "deactivated") {
-      addTerminalLine?.(`Plugin deactivated: ${name}`, "warn");
-      loadPlugins();
-    }
-  };
+  const activatePlugin = (name: string) =>
+    runAction(`activate:${name}`, async () => {
+      const data = await exec("activate", { name });
+      if (data?.status === "activated") {
+        addToast({
+          type: "success",
+          title: "Added — find it under Added",
+        });
+        addTerminalLine?.(`Plugin added: ${name}`, "gold");
+        loadPlugins();
+      } else if (data) {
+        addToast({ type: "error", title: "Add nahi ho paya" });
+      }
+    });
 
-  const reloadPlugin = async (name: string) => {
-    const data = await exec("reload", { name });
-    if (data?.status === "reloaded") {
-      addTerminalLine?.(`Plugin hot-reloaded: ${name}`, "gold");
-      loadPlugins();
-    }
-  };
+  const deactivatePlugin = (name: string) =>
+    runAction(`deactivate:${name}`, async () => {
+      const data = await exec("deactivate", { name });
+      if (data?.status === "deactivated") {
+        addToast({ type: "success", title: "Plugin remove ho gaya" });
+        addTerminalLine?.(`Plugin removed: ${name}`, "warn");
+        loadPlugins();
+      } else if (data) {
+        addToast({ type: "error", title: "Remove nahi ho paya" });
+      }
+    });
 
-  const verifyPlugin = async (name: string) => {
-    const data = await exec("verify", { name });
-    addTerminalLine?.(
-      data?.verified
-        ? `Plugin verified: ${name} ✓`
-        : `Plugin verification failed: ${name}`,
-      data?.verified ? "gold" : "error",
-    );
-  };
+  const reloadPlugin = (name: string) =>
+    runAction(`reload:${name}`, async () => {
+      const data = await exec("reload", { name });
+      if (data?.status === "reloaded") {
+        addToast({ type: "success", title: "Plugin reload ho gaya" });
+        addTerminalLine?.(`Plugin hot-reloaded: ${name}`, "gold");
+        loadPlugins();
+      } else if (data) {
+        addToast({ type: "error", title: "Reload nahi ho paya" });
+      }
+    });
 
-  const createPlugin = async () => {
-    const data = await exec(
-      "create",
-      createForm as unknown as Record<string, unknown>,
-    );
-    if (data?.created) {
-      addTerminalLine?.(`Plugin scaffold created: ${createForm.name}`, "gold");
-      setShowCreate(false);
-      setCreateForm({
-        name: "",
-        description: "",
-        plugin_type: "ayah",
-        author: "",
+  const verifyPlugin = (name: string) =>
+    runAction(`verify:${name}`, async () => {
+      const data = await exec("verify", { name });
+      if (!data) return;
+      const ok = !!data.verified;
+      addToast({
+        type: ok ? "success" : "error",
+        title: ok ? "Plugin verified ✓" : "Verification fail ho gaya",
       });
-      loadPlugins();
-    }
-  };
+      addTerminalLine?.(
+        ok
+          ? `Plugin verified: ${name} ✓`
+          : `Plugin verification failed: ${name}`,
+        ok ? "gold" : "error",
+      );
+    });
+
+  const createPlugin = () =>
+    runAction("create", async () => {
+      const data = await exec(
+        "create",
+        createForm as unknown as Record<string, unknown>,
+      );
+      if (data?.created) {
+        addToast({ type: "success", title: "Plugin scaffold ban gaya" });
+        addTerminalLine?.(
+          `Plugin scaffold created: ${createForm.name}`,
+          "gold",
+        );
+        setShowCreate(false);
+        setCreateForm({
+          name: "",
+          description: "",
+          plugin_type: "ayah",
+          author: "",
+        });
+        loadPlugins();
+      } else if (data) {
+        addToast({ type: "error", title: "Scaffold ban nahi paya" });
+      }
+    });
 
   const installed = plugins.filter((p) => p.active);
   const available = plugins.filter((p) => !p.active);
@@ -179,7 +261,9 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Plugin System</h2>
-          <p className="page-description">وَحْي (Wahy) — Extensibility</p>
+          <p className="page-description">
+            وَحْي (Wahy) — Extend Mizan with new abilities
+          </p>
         </div>
       </div>
 
@@ -190,7 +274,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
 
       <div className="tab-bar">
         {[
-          { id: "installed", label: `Active (${installed.length})` },
+          { id: "installed", label: `Added (${installed.length})` },
           { id: "available", label: `Available (${available.length})` },
           { id: "hooks", label: "Hooks" },
           { id: "create", label: "Create" },
@@ -208,14 +292,30 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       <div className="page-body">
-        {activeTab === "installed" && (
+        {loading && <SkeletonCard count={3} />}
+        {!loading && loadError && (
+          <div className="empty-state">
+            <div className="empty-arabic">وحي</div>
+            <div className="empty-text">Load nahi ho paya</div>
+            <div className="empty-sub">
+              Plugin list fetch fail ho gayi — connection check karo
+            </div>
+            <button
+              className="btn-gold btn-sm min-h-[44px] mt-3"
+              onClick={loadAll}
+            >
+              Dobara try karo
+            </button>
+          </div>
+        )}
+        {!loading && !loadError && activeTab === "installed" && (
           <>
             {installed.length === 0 && (
               <div className="empty-state">
                 <div className="empty-arabic">وحي</div>
-                <div className="empty-text">No active plugins</div>
+                <div className="empty-text">No added plugins</div>
                 <div className="empty-sub">
-                  Activate plugins from the Available tab
+                  Add plugins from the Available tab
                 </div>
               </div>
             )}
@@ -227,12 +327,13 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                 onDeactivate={deactivatePlugin}
                 onReload={reloadPlugin}
                 onVerify={verifyPlugin}
+                pendingAction={pendingAction}
               />
             ))}
           </>
         )}
 
-        {activeTab === "available" && (
+        {!loading && !loadError && activeTab === "available" && (
           <>
             {available.length === 0 && (
               <div className="empty-state">
@@ -248,15 +349,19 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                 onDeactivate={deactivatePlugin}
                 onReload={reloadPlugin}
                 onVerify={verifyPlugin}
+                pendingAction={pendingAction}
               />
             ))}
           </>
         )}
 
-        {activeTab === "hooks" && (
+        {!loading && !loadError && activeTab === "hooks" && (
           <>
             <div className="mb-3">
-              <button className="btn-secondary btn-sm" onClick={loadHooks}>
+              <button
+                className="btn-secondary btn-sm min-h-[44px]"
+                onClick={loadAll}
+              >
                 Refresh
               </button>
             </div>
@@ -276,15 +381,15 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
               {hooks.map((hook, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50"
                 >
-                  <span className="text-2xs font-mono text-blue-500 dark:text-blue-400 w-40 shrink-0">
+                  <span className="text-2xs font-mono text-blue-500 dark:text-blue-400 w-24 sm:w-40 shrink-0 truncate">
                     {hook.event}
                   </span>
-                  <span className="text-2xs text-gray-900 dark:text-gray-100">
+                  <span className="text-2xs text-gray-900 dark:text-gray-100 min-w-0 flex-1 truncate">
                     {hook.plugin}
                   </span>
-                  <span className="ml-auto text-micro font-mono text-gray-400 dark:text-gray-500">
+                  <span className="ml-auto text-micro font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap">
                     priority: {hook.priority}
                   </span>
                 </div>
@@ -296,9 +401,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
         {activeTab === "create" && (
           <div className="max-w-xl space-y-4">
             <div className="form-panel">
-              <div className="form-panel-title">
-                Create Plugin Scaffold · إنشاء
-              </div>
+              <div className="form-panel-title">Build a new plugin · إنشاء</div>
               <div className="form-group">
                 <label className="form-label" htmlFor="plugin-name">
                   Plugin Name
@@ -327,7 +430,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                       description: e.target.value,
                     })
                   }
-                  placeholder="What does this plugin do?"
+                  placeholder="e.g. Birthday Reminder"
                 />
               </div>
               <div className="form-group">
@@ -369,11 +472,24 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                 />
               </div>
               <button
-                className="btn-gold w-full py-2.5"
+                className="btn-gold w-full py-2.5 min-h-[44px]"
                 onClick={createPlugin}
-                disabled={!createForm.name || !createForm.description}
+                disabled={
+                  !createForm.name ||
+                  !createForm.description ||
+                  pendingAction === "create"
+                }
+                title={
+                  !createForm.name
+                    ? "Pehle plugin ka naam likho"
+                    : !createForm.description
+                      ? "Pehle description likho"
+                      : ""
+                }
               >
-                Create Plugin Scaffold
+                {pendingAction === "create"
+                  ? "Ban raha hai…"
+                  : "Create Plugin Scaffold"}
               </button>
             </div>
 
@@ -417,6 +533,7 @@ function PluginCard({
   onDeactivate,
   onReload,
   onVerify,
+  pendingAction,
 }: PluginCardProps) {
   const [expanded, setExpanded] = useState<boolean>(false);
   const ts = TYPE_STYLES[plugin.plugin_type] || {
@@ -429,6 +546,9 @@ function PluginCard({
     text: "text-gray-500",
     bg: "bg-gray-500/10",
   };
+  const trustLabel =
+    (plugin.trust_level && TRUST_LABELS[plugin.trust_level]) || null;
+  const isPending = (key: string) => pendingAction === key;
 
   return (
     <div
@@ -450,11 +570,12 @@ function PluginCard({
         >
           {TYPE_LABELS[plugin.plugin_type] || plugin.plugin_type}
         </span>
-        {plugin.trust_level && (
+        {trustLabel && (
           <span
             className={`text-micro font-mono px-1.5 py-0.5 rounded ${trust.bg} ${trust.text}`}
+            title={plugin.trust_level}
           >
-            {plugin.trust_level}
+            {trustLabel.en} <span className="font-arabic">{trustLabel.ar}</span>
           </span>
         )}
         <span
@@ -496,51 +617,61 @@ function PluginCard({
             </div>
           )}
           {plugin.checksum && (
-            <div className="text-micro font-mono text-gray-400 dark:text-gray-500 mb-2">
-              SHA-256: {plugin.checksum.slice(0, 16)}...
+            <div className="mb-2">
+              <div className="text-micro font-mono text-gray-400 dark:text-gray-500">
+                SHA-256: {plugin.checksum.slice(0, 16)}...
+              </div>
+              <div className="text-micro text-gray-400 dark:text-gray-500">
+                Ye code ka fingerprint hai — Verify dabane se file badli to
+                nahi, ye check hota hai
+              </div>
             </div>
           )}
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 mt-2 flex-wrap">
             {plugin.active ? (
               <>
                 <button
-                  className="btn-secondary btn-sm"
+                  className="btn-secondary btn-sm min-h-[44px]"
+                  disabled={isPending(`deactivate:${plugin.name}`)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeactivate(plugin.name);
                   }}
                 >
-                  Deactivate
+                  {isPending(`deactivate:${plugin.name}`) ? "Ruko…" : "Remove"}
                 </button>
                 <button
-                  className="btn-secondary btn-sm"
+                  className="btn-secondary btn-sm min-h-[44px]"
+                  disabled={isPending(`reload:${plugin.name}`)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onReload(plugin.name);
                   }}
                 >
-                  Reload
+                  {isPending(`reload:${plugin.name}`) ? "Ruko…" : "Reload"}
                 </button>
               </>
             ) : (
               <button
-                className="btn-gold btn-sm"
+                className="btn-gold btn-sm min-h-[44px]"
+                disabled={isPending(`activate:${plugin.name}`)}
                 onClick={(e) => {
                   e.stopPropagation();
                   onActivate(plugin.name);
                 }}
               >
-                Activate
+                {isPending(`activate:${plugin.name}`) ? "Ruko…" : "Add"}
               </button>
             )}
             <button
-              className="btn-secondary btn-sm"
+              className="btn-secondary btn-sm min-h-[44px]"
+              disabled={isPending(`verify:${plugin.name}`)}
               onClick={(e) => {
                 e.stopPropagation();
                 onVerify(plugin.name);
               }}
             >
-              Verify
+              {isPending(`verify:${plugin.name}`) ? "Ruko…" : "Verify"}
             </button>
           </div>
         </div>

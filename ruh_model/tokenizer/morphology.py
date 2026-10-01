@@ -69,6 +69,17 @@ _HAMZA_MAP = {
     "ئ": "ي",
 }
 
+# U+0671 ARABIC LETTER SUPERSCRIPT ALEF (alef wasla). Quranic orthography
+# writes word-initial alefs with ٱ instead of ا — the definite article
+# (ٱلـ for الـ, e.g. ٱلناس for الناس) and other initial alefs (e.g. ٱقْرَأْ
+# for اقرأ, وَٱلشَّمْسِ for والشمس). It always corresponds to U+0627 ALEF in
+# standard orthography and never occurs word-medially/finally, so mapping it
+# to plain alef before affix stripping makes Quranic spellings behave
+# exactly like their standard equivalents. Kept separate from _HAMZA_MAP:
+# wasla is not a hamza variant, and the mapping must be auditable on its own.
+_WASLA_ALEF = "\u0671"
+_PLAIN_ALEF = "\u0627"
+
 
 def _strip_tashkeel(text: str) -> str:
     """Remove all Arabic diacritical marks."""
@@ -78,6 +89,24 @@ def _strip_tashkeel(text: str) -> str:
 def _normalize_hamza(text: str) -> str:
     """Normalize hamza variants to their base letters."""
     return "".join(_HAMZA_MAP.get(char, char) for char in text)
+
+
+def _normalize_wasla(text: str) -> str:
+    """Map Quranic alef-wasla (U+0671) to plain alef (U+0627).
+
+    No-op for text without U+0671, so standard-orthography words are
+    unaffected by construction.
+    """
+    return text.replace(_WASLA_ALEF, _PLAIN_ALEF)
+
+
+def _clean_word(word: str) -> str:
+    """Full normalization pipeline: tashkeel strip, wasla, hamza.
+
+    Single choke point so every consumer (prefix stripping, root
+    extraction, pattern classification) sees the same normalized form.
+    """
+    return _normalize_hamza(_normalize_wasla(_strip_tashkeel(word)))
 
 
 def _is_arabic(text: str) -> bool:
@@ -104,8 +133,7 @@ class ArabicMorphAnalyzer:
         if not word or not _is_arabic(word):
             return ("", "UNKNOWN")
 
-        cleaned = _strip_tashkeel(word)
-        cleaned = _normalize_hamza(cleaned)
+        cleaned = _clean_word(word)
 
         stem = self._strip_prefixes(cleaned)
         stem, suffix_type = self._strip_suffixes(stem)
@@ -171,7 +199,7 @@ class ArabicMorphAnalyzer:
 
     def _classify_ta_marbuta_word(self, original: str) -> str:
         """Words ending in ta-marbuta are usually nouns or verbal nouns."""
-        cleaned = _strip_tashkeel(_normalize_hamza(original))
+        cleaned = _clean_word(original)
         # Pattern: maf3ala -> PLACE_NOUN
         if cleaned.startswith("م") and len(cleaned) >= 5:
             return "PLACE_NOUN"
@@ -179,7 +207,7 @@ class ArabicMorphAnalyzer:
 
     def _classify_by_shape(self, original: str, stem: str) -> str:
         """Classify based on word shape (prefix patterns, stem length)."""
-        cleaned = _strip_tashkeel(_normalize_hamza(original))
+        cleaned = _clean_word(original)
 
         # Verbal prefixes: ya-, ta-, na- (present tense markers)
         if cleaned and cleaned[0] in ("ي", "ت", "ن") and len(cleaned) >= 4:
