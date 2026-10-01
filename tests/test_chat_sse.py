@@ -534,3 +534,58 @@ async def test_completed_producer_keeps_capacity_while_transport_drains(api):
     assert concurrent.value.status_code == 409
     await response.close()
     assert not main._stream_sessions
+
+
+@pytest.mark.parametrize("spec_version", ["2.0", "2.4"])
+@pytest.mark.parametrize("blocked_type", ["http.response.start", "http.response.body"])
+async def test_full_application_bounds_actual_network_transport(
+    api, monkeypatch, spec_version, blocked_type
+):
+    import api.chat_stream as streams
+
+    main, _, tokens, _, _, _, _ = api
+    monkeypatch.setattr(streams, "SEND_TIMEOUT_SECONDS", 0.05)
+    payload = message()
+    body_sent = False
+    send_started = asyncio.Event()
+
+    async def receive():
+        nonlocal body_sent
+        if not body_sent:
+            body_sent = True
+            return {
+                "type": "http.request",
+                "body": json.dumps(payload).encode(),
+                "more_body": False,
+            }
+        await asyncio.Event().wait()
+
+    async def send(event):
+        if event["type"] == blocked_type:
+            send_started.set()
+            assert main._stream_sessions
+            await asyncio.sleep(0.01)
+            assert main._stream_sessions
+            await asyncio.Event().wait()
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": spec_version},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/api/chat/stream",
+        "raw_path": b"/api/chat/stream",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"authorization", ("Bearer " + tokens["alice"]).encode()),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 443),
+    }
+    with pytest.raises((ClientDisconnect, OSError)):
+        await asyncio.wait_for(main.app(scope, receive, send), timeout=0.5)
+    assert send_started.is_set()
+    assert not main._stream_sessions

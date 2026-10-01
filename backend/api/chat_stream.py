@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from starlette.responses import StreamingResponse
-from starlette.types import Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 HEARTBEAT_SECONDS = 15.0
 SEND_TIMEOUT_SECONDS = 20.0
@@ -57,10 +57,46 @@ class ChatStreamingResponse(StreamingResponse):
             except TimeoutError as exc:
                 raise OSError("Chat transport exceeded the delivery deadline") from exc
 
+        # BaseHTTPMiddleware may wrap this iterator in another response. Its
+        # final network transport is bounded by the outer ASGI guard, which
+        # must retain the reservation until that transport and app finish.
+        if scope.get("mizan.chat_stream_guard"):
+            scope["mizan.chat_stream_release"] = self._release_stream
+            self._release_stream = None
         try:
             await super().__call__(scope, receive, bounded_send)
         finally:
             await self.close()
+
+
+class ChatTransportGuard:
+    """Bound the actual ASGI transport outside HTTP response-wrapping middleware."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or scope.get("method") != "POST"
+            or scope.get("path") != "/api/chat/stream"
+        ):
+            await self.app(scope, receive, send)
+            return
+        scope["mizan.chat_stream_guard"] = True
+
+        async def bounded_send(message: Any) -> None:
+            try:
+                await asyncio.wait_for(send(message), timeout=SEND_TIMEOUT_SECONDS)
+            except TimeoutError as exc:
+                raise OSError("Chat transport exceeded the delivery deadline") from exc
+
+        try:
+            await self.app(scope, receive, bounded_send)
+        finally:
+            release = scope.pop("mizan.chat_stream_release", None)
+            if release is not None:
+                release()
 
 
 class ChatStreamLedger:

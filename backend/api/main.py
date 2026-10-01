@@ -48,6 +48,7 @@ from api.chat_stream import (
     ChatEventChannel,
     ChatStreamingResponse,
     ChatStreamLedger,
+    ChatTransportGuard,
     StreamDeliveryError,
 )
 from api.commands import handle_command
@@ -4224,12 +4225,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
         manager.disconnect(client_id)
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
-
-
 # Imported after shared dependencies to keep deferred auth imports cycle safe.
 from api import (  # noqa: E402
     artifacts,
@@ -4261,3 +4256,13 @@ for feature in (
     # there while retaining direct-app clients' existing /v1/ paths.
     app.include_router(feature.router, prefix="/api")
     app.include_router(feature.router, include_in_schema=False)
+
+# Added last so this pure ASGI layer surrounds the security HTTP middleware.
+# The response wrapper inside that middleware cannot bypass transport deadlines.
+app.add_middleware(ChatTransportGuard)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
