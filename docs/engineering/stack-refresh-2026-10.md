@@ -45,6 +45,7 @@ The old backend minimums were unbounded, so existing fresh installs already reso
 - Production assets rendered in Chromium at desktop/mobile sizes with API fixtures and no page errors.
 - `npm audit`: zero known vulnerabilities after refreshing transitive versions.
 - Isolated Python 3.12 install: 910 application tests passed; 8 optional tests skipped. Focused doctor, transcript, and security repairs: 40 passed.
+- Provider SDK contract regressions call the actual SDK HTTP stacks and Mizan adapters, preserving structured tool schemas, arguments, text, and usage; neither test contacts a model API.
 - Ruff lint/format and mypy across 137 backend source files passed.
 - Node 24 Alpine frontend Docker build and CPU-only backend Docker build passed, using the official GCR mirror when Docker Hub rate-limited the cloud environment.
 - The initial CPU image imported Torch, both provider SDKs, Pillow, the tokenizer, and Ruh model code; CUDA was absent. Container health returned 200 and anonymous status stayed 401. Its inherited installer audit identified pip/setuptools issues fixed in the final Dockerfile; the final installer-upgrade image is verified by CI.
