@@ -97,3 +97,19 @@ successful local copy alone does not establish that a cloud backup is durable.
 The existing trainer stores model and optimizer continuation snapshots. Exact
 bit-for-bit future replay also needs sampler/RNG state; objective runs must
 record that limitation rather than promise identical replay after restart.
+
+The older `ruh_model.train_full` streaming CLI now uses verified Tanzil text
+instead of one Quran-MD audio shard. Its Quran rows retain verse IDs and source
+provenance, reject conflicting texts for one verse, deduplicate repeated reciter
+rows, and window every V2 byte instead of truncating long verses. The default
+Hadith weight is zero. Hadith and custom Quran sources require an explicit
+`RUH_DATA_SOURCES` configuration with actual licence, attribution, revision and
+`training_permission: true`; custom Quran also requires `edition` and a two-item
+`verse_columns` list. The CLI warns that source sample counts do not establish
+complete Quran coverage or Hadith authenticity. Text-only preparation never
+downloads 35 GB of recitation audio.
+
+The split-aware `train_quranic_paths` CLI is the appropriate entry point for
+candidate comparison and held-out generation. The older curriculum CLI does
+not itself provide an independent validation split and must not be presented
+as a validated model simply because its training epochs finish.
