@@ -40,7 +40,6 @@ from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
 from api.commands import handle_command
-from api.usage import build_usage_block
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
@@ -61,19 +60,12 @@ from providers import (
     set_active_state,
 )
 from qca.cognitive_methods import select_method
-from qca.morphology_api import analyze_word as _morph_analyze_word
-from qca.morphology_api import bridge_concept as _morph_bridge_concept
-from qca.morphology_api import build_explain_prompt as _morph_build_explain_prompt
-from qca.morphology_api import get_occurrences as _morph_get_occurrences
-from qca.morphology_api import get_pattern_siblings as _morph_get_pattern_siblings
-from qca.morphology_api import get_root_family as _morph_get_root_family
-from qca.morphology_api import get_senses as _morph_get_senses
 
 # New Quranic systems
 from qca.yaqin_engine import YaqinEngine
 from reasoning.context_manager import ContextManager
 from reasoning.planner import TafakkurPlanner
-from security.auth import MizanAuth, TokenPayload, set_request_roles
+from security.auth import MizanAuth, TokenPayload
 from security.izn import IznPermission
 from security.validation import InputValidator
 from security.wali import SecurityConfig, WaliGuardian
@@ -176,19 +168,7 @@ async def lifespan(app: FastAPI):
                     agent.ai_client = restored
                     agent.ai_model = saved_model
                 set_active_state(saved_provider, saved_model)
-                env_model = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
-                if saved_model != env_model:
-                    logger.warning(
-                        "Persisted model preference %s/%s overrides "
-                        "DEFAULT_MODEL=%s from the environment. Change it via "
-                        "POST /api/providers/switch or clear the "
-                        "'active_provider'/'active_model' preferences.",
-                        saved_provider,
-                        saved_model,
-                        env_model,
-                    )
-                else:
-                    logger.info(f"Restored provider: {saved_provider}/{saved_model}")
+                logger.info(f"Restored provider: {saved_provider}/{saved_model}")
     except Exception as exc:
         logger.warning(f"Could not restore provider preference: {exc}")
 
@@ -306,7 +286,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
-    description="Agentic AI with Quranic Cognitive Architecture (beta)",
+    description="Production-ready agentic AI with Quranic Cognitive Architecture",
     version=__version__,
     lifespan=lifespan,
 )
@@ -331,61 +311,15 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
-# ===== DATA DIRECTORY =====
-# Default storage lives next to the package (writable by the installing
-# user). The old hardcoded /data/* defaults crashed installs where /data
-# is absent or read-only (sqlite OperationalError at import time).
-_PACKAGE_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-_PACKAGE_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _default_path(env_var: str, filename: str) -> str:
-    """Env override wins; otherwise a file inside the package data dir."""
-    explicit = os.getenv(env_var)
-    if explicit:
-        return explicit
-    return str(_PACKAGE_DATA_DIR / filename)
-
-
 # ===== GLOBAL STATE =====
-memory = DhikrMemorySystem(db_path=_default_path("DB_PATH", "mizan_memory.db"))
-knowledge_graph = KnowledgeGraph(db_path=_default_path("DB_PATH", "mizan_memory.db"))
+memory = DhikrMemorySystem(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
+knowledge_graph = KnowledgeGraph(db_path=os.getenv("DB_PATH", "/data/mizan_memory.db"))
 context_manager = ContextManager()
 planner = TafakkurPlanner()
 balancer = MizanBalancer()
 shura = ShuraCouncil()
 active_agents: dict[str, Any] = {}
 active_sessions: dict[str, dict] = {}
-
-#: Conversation history window sent to the LLM per chat turn. This is
-#: deliberately separate from the agent's max_tool_turns (a ReAct-loop safety
-#: limit): conflating the two truncated context to as few as 5 messages at low
-#: Nafs levels, which users experienced as "context kaam nahi karta".
-MAX_CHAT_HISTORY = 30
-
-
-async def get_or_restore_session(session_id: str) -> dict:
-    """Return the in-memory session, restoring history from DB on a miss.
-
-    Without this, a backend restart (or a fresh worker) wipes the in-memory
-    ``active_sessions`` dict and the agent answers with zero prior context —
-    even though every message is persisted in SQLite.
-    """
-    session = active_sessions.get(session_id)
-    if session is None:
-        db_messages = await memory.get_messages(session_id, limit=MAX_CHAT_HISTORY)
-        restored = [{"role": msg["role"], "content": msg["content"]} for msg in db_messages]
-        session = {"history": restored}
-        if restored:
-            logger.info(
-                "[SESSION] Restored %d messages for session %s from DB",
-                len(restored),
-                session_id[:12],
-            )
-    active_sessions[session_id] = session
-    return session
-
-
 scheduler = QadrScheduler()
 trigger_manager = TriggerManager()
 skill_registry = SkillRegistry()
@@ -397,7 +331,7 @@ federation = AgentFederation()
 thinking_stream = ThinkingStream()
 
 # Task queue + worker
-task_queue = MizanTaskQueue(db_path=_default_path("QUEUE_DB_PATH", "mizan_queue.db"))
+task_queue = MizanTaskQueue(db_path=os.getenv("QUEUE_DB_PATH", "/data/mizan_queue.db"))
 task_worker: TaskWorker | None = None
 
 
@@ -453,38 +387,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ===== RUH USE-CASE ROUTERS (feat/ruh-usecases) =====
-# Deterministic, torch-free Ruh API surface. Each router is optional:
-# a failed import must never take down the main app.
-
-
-def _include_ruh_router(module_name: str) -> None:
-    try:
-        module = __import__(module_name, fromlist=["router"])
-    except Exception as e:  # noqa: BLE001 - startup resilience, logged
-        logger.warning("Ruh router %s not loaded: %s", module_name, e)
-        return
-    router = getattr(module, "router", None)
-    if router is not None:
-        app.include_router(router)
-        logger.info("Ruh router loaded: %s", module_name)
-    else:
-        logger.warning("Ruh router %s has no router (deps missing?)", module_name)
-
-
-for _ruh_module in (
-    "api.ruh_morphology",  # POST /v1/analyze
-    "api.ruh_disambiguate",  # POST /v1/disambiguate
-    "api.ruh_reader",  # /v1/reader/*
-    "api.ruh_dialect",  # POST /v1/normalize
-    "api.ruh_screening",  # POST /v1/screen (pilot/beta)
-    "api.ruh_embeddings",  # POST /v1/embed (beta/unverified)
-    "api.ruh_tajwid",  # POST /v1/tajwid/analyze, GET /v1/tajwid/rules
-):
-    _include_ruh_router(_ruh_module)
-del _ruh_module, _include_ruh_router
-
-
 # ===== AUTH DEPENDENCY =====
 
 
@@ -509,18 +411,7 @@ async def require_auth(
     token = auth.extract_token(authorization, x_api_key)
     if not token:
         raise HTTPException(401, "Authentication required")
-    # Bind the principal's roles to this request scope so downstream
-    # privileged tools (bash/python_exec) can enforce role gates.
-    set_request_roles(token.roles)
     return token
-
-
-# ===== CHAT ARTIFACTS ROUTER (ticket/chat-upgrade-artifacts) =====
-# JWT is enforced inside backend.api.artifacts via its own require_auth,
-# which delegates to the function above (avoids a circular import).
-from . import artifacts as _artifacts_module  # noqa: E402
-
-app.include_router(_artifacts_module.router)
 
 
 # ===== PYDANTIC MODELS (with validation) =====
@@ -595,10 +486,6 @@ class ScheduleJobRequest(BaseModel):
     agent_id: str | None = None
 
 
-class JobToggleRequest(BaseModel):
-    enabled: bool
-
-
 class WebhookCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     task_template: str = Field(..., min_length=1, max_length=10000)
@@ -647,11 +534,7 @@ class ConnectionManager:
         if ws:
             try:
                 await ws.send_json(data)
-            except Exception as e:
-                # Never swallow serialization/transport failures silently:
-                # a TypeError here (e.g. raw Enum in payload) kills chat_complete
-                # and freezes the UI on "Thinking..." with zero log evidence.
-                logger.error("ConnectionManager.send failed for %s: %r", ws_id, e)
+            except Exception:
                 self.disconnect(ws_id)
 
     async def broadcast(self, data: dict):
@@ -659,42 +542,13 @@ class ConnectionManager:
         for ws_id, ws in self.connections.items():
             try:
                 await ws.send_json(data)
-            except Exception as e:
-                logger.error("ConnectionManager.broadcast failed for %s: %r", ws_id, e)
+            except Exception:
                 disconnected.append(ws_id)
         for ws_id in disconnected:
             self.disconnect(ws_id)
 
 
 manager = ConnectionManager(max_connections=security_config.ws_max_connections)
-
-
-# ===== CHAT-UPGRADE ROUTERS (ticket/chat-upgrade-backend) =====
-# sandbox + modes routers are mounted here with JWT auth enforced via
-# include_router(dependencies=...), keeping those modules import-safe
-# (no circular import of require_auth).
-
-try:
-    from api import modes as _modes_router_mod
-    from api import sandbox as _sandbox_router_mod
-
-    app.include_router(_sandbox_router_mod.router, dependencies=[Depends(require_auth)])
-    app.include_router(_modes_router_mod.router, dependencies=[Depends(require_auth)])
-    _modes_router_mod.set_progress_sink(manager.broadcast)
-    logger.info("chat-upgrade routers mounted: sandbox, modes")
-except Exception as e:  # noqa: BLE001 - startup resilience, matches ruh pattern
-    logger.warning("chat-upgrade routers not loaded: %s", e)
-
-# ── ADDITIVE (frontend ticket/chat-upgrade-frontend) ──────────────────────────
-# Server-side generation registry for the client "Stop" button.
-# POST /api/chat runs generation as a background task and the WS "chat" path
-# awaits agent.execute() inline; both register here so a {"type": "stop"}
-# message can cancel the actual LLM work instead of just hiding it in the UI.
-# Keyed by message_id; _CLIENT_ACTIVE_MESSAGE lets a stop without a
-# message_id fall back to the sender's in-flight generation.
-_ACTIVE_GENERATIONS: dict[str, "asyncio.Task"] = {}
-_CLIENT_ACTIVE_MESSAGE: dict[str, str] = {}
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ===== AUTH ROUTES =====
@@ -716,19 +570,17 @@ async def login(req: LoginRequest):
 
 
 @app.post("/api/auth/register")
-async def register(req: LoginRequest, user: TokenPayload = Depends(require_auth)):
-    """Register a new user (admin only)"""
-    if not user.has_role("admin"):
-        raise HTTPException(403, "Admin access required")
+async def register(req: LoginRequest):
+    """Register a new user"""
     # Check if username already exists
     for u in auth._users.values():
         if u.username == req.username:
             raise HTTPException(409, "Username already exists")
 
-    new_user = auth.create_user(req.username, req.password, roles=["user"])
-    token = auth.create_token(new_user)
-    wali.audit.log("user_registered", {"username": new_user.username, "user_id": new_user.id})
-    return {"token": token, "user_id": new_user.id, "username": new_user.username}
+    user = auth.create_user(req.username, req.password, roles=["user"])
+    token = auth.create_token(user)
+    wali.audit.log("user_registered", {"username": req.username, "user_id": user.id})
+    return {"token": token, "user_id": user.id, "username": user.username}
 
 
 @app.post("/api/auth/api-key")
@@ -769,7 +621,7 @@ async def list_agents(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/agents")
-async def create_new_agent(req: AgentCreate, user: TokenPayload = Depends(require_auth)):
+async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
     """Create a new agent"""
     config = {
         "model": req.model,
@@ -816,14 +668,14 @@ async def create_new_agent(req: AgentCreate, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/agents/{agent_id}")
-async def get_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_agent(agent_id: str):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     return active_agents[agent_id].to_dict()
 
 
 @app.delete("/api/agents/{agent_id}")
-async def delete_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
+async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_current_user)):
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
     del active_agents[agent_id]
@@ -838,7 +690,7 @@ async def delete_agent(agent_id: str, user: TokenPayload = Depends(require_auth)
 async def update_agent(
     agent_id: str,
     req: AgentUpdate,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Update an existing agent's name, model, or system prompt."""
     agent = active_agents.get(agent_id)
@@ -871,7 +723,7 @@ async def update_agent(
 
 
 class AgentModelRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -879,7 +731,7 @@ class AgentModelRequest(BaseModel):
 async def set_agent_model(
     agent_id: str,
     req: AgentModelRequest,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Set model for a specific agent (does not affect other agents)."""
     agent = active_agents.get(agent_id)
@@ -913,7 +765,7 @@ async def set_agent_model(
 async def run_task(
     req: TaskRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Execute a task - single or parallel"""
 
@@ -991,9 +843,7 @@ async def run_task(
 
 
 @app.get("/api/tasks/history")
-async def get_task_history(
-    agent_id: str | None = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
-):
+async def get_task_history(agent_id: str | None = None, limit: int = 50):
     limit = min(limit, 200)
     history = await memory.get_task_history(agent_id, limit)
     return {"history": history}
@@ -1006,10 +856,24 @@ async def get_task_history(
 async def chat(
     req: ChatMessage,
     background_tasks: BackgroundTasks,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
-    """Chat with an agent (requires authentication)"""
-    session = await get_or_restore_session(req.session_id)
+    """Chat with an agent"""
+    session = active_sessions.get(req.session_id)
+
+    # Auto-restore session from DB if not in memory (fixes cross-restart amnesia)
+    if session is None:
+        db_messages = await memory.get_messages(req.session_id, limit=50)
+        restored_history = [{"role": msg["role"], "content": msg["content"]} for msg in db_messages]
+        session = {"history": restored_history}
+        if restored_history:
+            logger.info(
+                "[SESSION] Restored %d messages for session %s from DB",
+                len(restored_history),
+                req.session_id[:12],
+            )
+
+    active_sessions[req.session_id] = session
 
     await memory.save_message(req.session_id, "user", req.content)
     session["history"].append({"role": "user", "content": req.content})
@@ -1116,87 +980,25 @@ async def chat(
                 }
             )
 
-        # ── ADDITIVE (frontend ticket/chat-upgrade-frontend): register this
-        # generation so a client "stop" message can cancel it server-side.
-        _ACTIVE_GENERATIONS[message_id] = asyncio.current_task()  # type: ignore[assignment]
-        _CLIENT_ACTIVE_MESSAGE[req.session_id] = message_id
         try:
-            try:
-                result = await agent.execute(
-                    req.content,
-                    {
-                        "history": session["history"][-MAX_CHAT_HISTORY:],
-                        "session_id": req.session_id,
-                    },
-                    stream_callback=stream_cb,
-                    thinking_callback=thinking_cb,
-                )
-            except asyncio.CancelledError:
-                # Client pressed Stop — persist what streamed so far and tell
-                # the client the generation ended early (never a silent hang).
-                logger.info(
-                    "[CHAT] generation stopped by client (session %s)",
-                    req.session_id[:12],
-                )
-                await memory.save_message(req.session_id, "assistant", response, agent_id)
-                session["history"].append({"role": "assistant", "content": response})
-                await manager.broadcast(
-                    {
-                        "type": "chat_stopped",
-                        "session_id": req.session_id,
-                        "message_id": message_id,
-                        "response": response,
-                        "partial": True,
-                        "stopped": True,
-                        "agent": agent.name,
-                    }
-                )
-                return
-            except Exception as e:
-                # A background-task exception is invisible to the client — it
-                # would hang on "Thinking..." forever. Surface it instead.
-                logger.exception("[CHAT] agent.execute failed (session %s)", req.session_id[:12])
-                await manager.broadcast(
-                    {
-                        "type": "error",
-                        "message": f"Agent error: {str(e)[:300]}",
-                        "session_id": req.session_id,
-                        "message_id": message_id,
-                    }
-                )
-                return
+            result = await agent.execute(
+                req.content,
+                {"history": session["history"][-agent.max_tool_turns :]},
+                stream_callback=stream_cb,
+                thinking_callback=thinking_cb,
+            )
         finally:
             # Restore original model after per-message override
             if original_model is not None:
                 agent.ai_model = original_model
                 agent.ai_client = original_client
-            # ── ADDITIVE (frontend ticket/chat-upgrade-frontend)
-            _ACTIVE_GENERATIONS.pop(message_id, None)
-            _CLIENT_ACTIVE_MESSAGE.pop(req.session_id, None)
 
         final_response = result.get("result", response) if result.get("success") else response
         if isinstance(final_response, dict):
             final_response = final_response.get("response", str(final_response))
 
-        # Model transparency: observed model + usage + latency from the
-        # last provider call of this execution (chat workstream C).
-        usage_block = build_usage_block(getattr(agent, "_last_llm_call", None))
-        await memory.save_message(
-            req.session_id,
-            "assistant",
-            str(final_response),
-            agent_id,
-            metadata={"usage": usage_block} if usage_block else None,
-        )
+        await memory.save_message(req.session_id, "assistant", str(final_response), agent_id)
         session["history"].append({"role": "assistant", "content": str(final_response)})
-
-        # mem0 append-only memory capture (no-op unless MEM0_ENABLED + configured)
-        try:
-            from memory.mem0_store import add_turn_async  # noqa: PLC0415
-
-            asyncio.create_task(add_turn_async(req.session_id, req.content, str(final_response)))
-        except Exception:  # noqa: BLE001 - never break chat_complete
-            pass
 
         # Extract cognitive metadata from QALB-7 pipeline
         cognitive = {
@@ -1228,7 +1030,7 @@ async def chat(
                         "content": s.content,
                         "confidence": s.confidence,
                         "timestamp": s.timestamp,
-                        "metadata": json.loads(json.dumps(s.metadata, default=str)),
+                        "metadata": s.metadata,
                     }
                     for s in completed_trace.steps
                 ],
@@ -1245,7 +1047,6 @@ async def chat(
                 "agent": agent.name,
                 "cognitive": cognitive,
                 "thinking_trace": trace_dict,
-                "usage": usage_block,
             }
         )
 
@@ -1254,14 +1055,14 @@ async def chat(
 
 
 @app.get("/api/chat/sessions/list")
-async def list_sessions(user: TokenPayload = Depends(require_auth)):
-    """List recent chat sessions from DB with metadata (requires authentication)"""
+async def list_sessions():
+    """List recent chat sessions from DB with metadata"""
     db_sessions = await memory.list_sessions(limit=20)
     return {"sessions": db_sessions}
 
 
 @app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_chat_history(session_id: str):
     messages = await memory.get_messages(session_id)
     return {"session_id": session_id, "messages": messages}
 
@@ -1278,7 +1079,7 @@ class PlanRequest(BaseModel):
 async def create_plan(
     req: PlanRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Decompose a complex goal into sub-tasks using TafakkurPlanner"""
     agent_id = req.agent_id or (list(active_agents.keys())[0] if active_agents else None)
@@ -1295,7 +1096,7 @@ async def create_plan(
 async def execute_plan(
     plan_id: str,
     background_tasks: BackgroundTasks,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Execute a previously created plan"""
     plan = planner.get_plan(plan_id)
@@ -1317,7 +1118,7 @@ async def execute_plan(
 
 
 @app.get("/api/plan/{plan_id}")
-async def get_plan(plan_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_plan(plan_id: str):
     """Get status of a plan"""
     plan = planner.get_plan(plan_id)
     if not plan:
@@ -1329,7 +1130,7 @@ async def get_plan(plan_id: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/memory/query")
-async def query_memory(req: MemoryQuery, user: TokenPayload = Depends(require_auth)):
+async def query_memory(req: MemoryQuery):
     memories = await memory.recall(req.query, req.memory_type, req.agent_id, req.limit)
     return {
         "query": req.query,
@@ -1350,21 +1151,19 @@ async def query_memory(req: MemoryQuery, user: TokenPayload = Depends(require_au
 
 
 @app.post("/api/memory/store")
-async def store_memory(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
+async def store_memory(req: MemoryStore):
     mem_id = await memory.remember(req.content, req.memory_type, req.importance, tags=req.tags)
     return {"id": mem_id, "stored": True}
 
 
 @app.post("/api/memory/consolidate")
-async def consolidate_memory(user: TokenPayload = Depends(require_auth)):
+async def consolidate_memory():
     result = await memory.consolidate()
     return result
 
 
 @app.get("/api/memory/list")
-async def list_memories(
-    memory_type: str | None = None, limit: int = 30, user: TokenPayload = Depends(require_auth)
-):
+async def list_memories(memory_type: str | None = None, limit: int = 30):
     """List recent memories without search filtering."""
     conn = memory._get_conn()
     c = conn.cursor()
@@ -1406,7 +1205,7 @@ async def list_memories(
 @app.post("/api/perception/analyze")
 async def analyze_multimodal(
     req: MultimodalInput,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Analyze multimodal input through the QCA perception pipeline.
 
@@ -1449,7 +1248,7 @@ class KnowledgeIngest(BaseModel):
 
 
 @app.post("/api/knowledge/ingest")
-async def ingest_knowledge(req: KnowledgeIngest, user: TokenPayload = Depends(require_auth)):
+async def ingest_knowledge(req: KnowledgeIngest):
     """Ingest knowledge from a URL or YouTube video into memory."""
     from knowledge.ingest import (
         chunk_content,
@@ -1504,7 +1303,7 @@ async def ingest_knowledge(req: KnowledgeIngest, user: TokenPayload = Depends(re
 
 
 @app.post("/api/knowledge/upload")
-async def upload_knowledge(request: Request, user: TokenPayload = Depends(require_auth)):
+async def upload_knowledge(request: Request):
     """Upload a PDF file and ingest its content into memory."""
     from knowledge.ingest import chunk_content, extract_pdf
 
@@ -1556,7 +1355,7 @@ async def upload_knowledge(request: Request, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/knowledge/sources")
-async def list_knowledge_sources(user: TokenPayload = Depends(require_auth)):
+async def list_knowledge_sources():
     """List ingested knowledge sources."""
     conn = memory._get_conn()
     cursor = conn.cursor()
@@ -1602,7 +1401,7 @@ _MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 @app.post("/api/upload")
 async def upload_file(
     file: UploadFile,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ) -> dict:
     """Accept file uploads (PDF, images, docs) for processing."""
     suffix = Path(file.filename or "").suffix.lower()
@@ -1615,7 +1414,7 @@ async def upload_file(
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large. Maximum 20 MB.")
 
-    upload_dir = Path(os.getenv("UPLOAD_DIR", str(_PACKAGE_DATA_DIR / "uploads")))
+    upload_dir = Path(os.getenv("UPLOAD_DIR", "/data/uploads"))
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     file_id = str(uuid.uuid4())
@@ -1632,7 +1431,7 @@ async def upload_file(
 
 
 @app.get("/api/providers")
-async def list_providers(user: TokenPayload = Depends(require_auth)):
+async def list_providers():
     """
     List all LLM providers with their status, models, and configuration.
     Inspired by OpenClaw's multi-provider architecture.
@@ -1647,7 +1446,6 @@ async def list_provider_models(
     offset: int = 0,
     search: str = "",
     free_only: bool = False,
-    user: TokenPayload = Depends(require_auth),
 ):
     """
     List available models for a specific provider.
@@ -1675,7 +1473,7 @@ async def list_provider_models(
 
 
 @app.get("/api/providers/{provider_name}/health")
-async def provider_health(provider_name: str, user: TokenPayload = Depends(require_auth)):
+async def provider_health(provider_name: str):
     """
     Health check for a specific provider.
     Verifies API keys are valid and the provider is reachable.
@@ -1685,12 +1483,14 @@ async def provider_health(provider_name: str, user: TokenPayload = Depends(requi
 
 
 class ProviderSwitchRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
 @app.post("/api/providers/switch")
-async def switch_provider(req: ProviderSwitchRequest, user: TokenPayload = Depends(require_auth)):
+async def switch_provider(
+    req: ProviderSwitchRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """
     Switch the active LLM provider and model for all agents.
     Persists choice to database so it survives restarts.
@@ -1734,14 +1534,14 @@ async def switch_provider(req: ProviderSwitchRequest, user: TokenPayload = Depen
 
 
 @app.get("/api/preferences")
-async def get_preferences(user: TokenPayload = Depends(require_auth)):
+async def get_preferences():
     """Return all persisted user preferences."""
     prefs = await memory.get_all_preferences()
     return {"preferences": prefs}
 
 
 @app.post("/api/preferences")
-async def save_preferences(req: dict, user: TokenPayload = Depends(require_auth)):
+async def save_preferences(req: dict):
     """Save one or more preferences. Body: {"key": "value", ...}"""
     saved = []
     for key, value in req.items():
@@ -1756,13 +1556,15 @@ async def save_preferences(req: dict, user: TokenPayload = Depends(require_auth)
 
 
 @app.get("/api/integrations")
-async def list_integrations(user: TokenPayload = Depends(require_auth)):
+async def list_integrations():
     integrations = await memory.get_integrations()
     return {"integrations": integrations}
 
 
 @app.post("/api/integrations")
-async def add_integration(req: IntegrationCreate, user: TokenPayload = Depends(require_auth)):
+async def add_integration(
+    req: IntegrationCreate, user: TokenPayload | None = Depends(get_current_user)
+):
     int_id = await memory.save_integration(
         {
             "name": req.name,
@@ -1775,7 +1577,7 @@ async def add_integration(req: IntegrationCreate, user: TokenPayload = Depends(r
 
 
 @app.delete("/api/integrations/{int_id}")
-async def delete_integration(int_id: str, user: TokenPayload = Depends(require_auth)):
+async def delete_integration(int_id: str, user: TokenPayload | None = Depends(get_current_user)):
     import sqlite3
 
     conn = sqlite3.connect(memory.db_path)
@@ -1808,7 +1610,7 @@ async def list_permissions(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/status")
-async def system_status(user: TokenPayload = Depends(require_auth)):
+async def system_status():
     """Full system status - Mizan dashboard"""
     agent_stats = []
     for agent in active_agents.values():
@@ -1918,20 +1720,7 @@ async def version_info():
 
 @app.get("/api/health")
 async def health_check():
-    """Lightweight public liveness probe.
-
-    Unauthenticated by design: the web UI polls this to distinguish
-    "backend down" from "login required" (the WebSocket handshake closes
-    with 4401 for anonymous clients, which is NOT a backend outage).
-    Always HTTP 200 — UI reachability must never depend on subsystem
-    health; use /api/health/detailed for that.
-    """
-    return {"status": "ok", "version": __version__}
-
-
-@app.get("/api/health/detailed")
-async def health_check_detailed(user: TokenPayload = Depends(require_auth)):
-    """Detailed subsystem health — authenticated (exposes internals)."""
+    """Health check endpoint for monitoring and Docker"""
     import time
 
     checks = {
@@ -1970,7 +1759,7 @@ async def health_check_detailed(user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/v1/root-analyze")
-async def api_v1_root_analyze(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
+async def api_v1_root_analyze(request: dict) -> dict:
     """Analyze Arabic text to extract root-pattern decomposition.
 
     Public API endpoint for root analysis as a service.
@@ -1990,7 +1779,7 @@ async def api_v1_root_analyze(request: dict, user: TokenPayload = Depends(requir
 
 
 @app.post("/api/v1/tokenize")
-async def api_v1_tokenize(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
+async def api_v1_tokenize(request: dict) -> dict:
     """Tokenize text into (root_id, pattern_id) tuples.
 
     Public API endpoint for Q28-aware tokenization.
@@ -2014,7 +1803,7 @@ async def api_v1_tokenize(request: dict, user: TokenPayload = Depends(require_au
 
 
 @app.post("/api/v1/q28-features")
-async def api_v1_q28_features(request: dict, user: TokenPayload = Depends(require_auth)) -> dict:
+async def api_v1_q28_features(request: dict) -> dict:
     """Extract Q28 articulatory features for any text.
 
     Maps input through IPA to Q28 articulatory coordinates.
@@ -2045,7 +1834,7 @@ async def api_v1_q28_features(request: dict, user: TokenPayload = Depends(requir
 
 
 @app.get("/api/doctor")
-async def doctor_check(user: TokenPayload = Depends(require_auth)):
+async def doctor_check():
     """
     Self-healing diagnostic — check system health and auto-fix issues.
     "And We send down of the Quran that which is a healing (shifa)" — 17:82
@@ -2060,7 +1849,7 @@ async def doctor_check(user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/doctor/fix")
-async def doctor_fix(user: TokenPayload = Depends(require_auth)):
+async def doctor_fix():
     """Run doctor with auto-fix enabled."""
     try:
         from doctor import report_to_dict, run_doctor
@@ -2147,7 +1936,9 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/settings")
-async def update_settings(req: SettingsUpdate, user: TokenPayload = Depends(require_auth)):
+async def update_settings(
+    req: SettingsUpdate, user: TokenPayload | None = Depends(get_current_user)
+):
     """Update a setting (API key, config value, etc.)"""
     if req.section == "provider" and req.provider and req.api_key:
         env_key = f"{req.provider.upper()}_API_KEY"
@@ -2221,7 +2012,7 @@ async def update_settings(req: SettingsUpdate, user: TokenPayload = Depends(requ
 
 
 @app.post("/api/channels/{name}/start")
-async def start_channel(name: str, user: TokenPayload = Depends(require_auth)):
+async def start_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Start a channel adapter"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2240,14 +2031,14 @@ async def start_channel(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/channels/{name}/stop")
-async def stop_channel(name: str, user: TokenPayload = Depends(require_auth)):
+async def stop_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Stop a channel adapter"""
     wali.audit.log("channel_stop", {"channel": name})
     return {"status": "stopped", "channel": name}
 
 
 @app.get("/api/channels/{name}/status")
-async def channel_status(name: str, user: TokenPayload = Depends(require_auth)):
+async def channel_status(name: str):
     """Get real-time channel status"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2267,7 +2058,7 @@ async def channel_status(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/channels/{name}/test")
-async def test_channel(name: str, user: TokenPayload = Depends(require_auth)):
+async def test_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Send a test message through a channel"""
     token_map = {
         "telegram": "TELEGRAM_BOT_TOKEN",
@@ -2283,7 +2074,7 @@ async def test_channel(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/shura")
-async def shura_consult(req: ShuraRequest, user: TokenPayload = Depends(require_auth)):
+async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(get_current_user)):
     """Multi-agent Shura consultation"""
     result = await shura.consult(req.question, req.context, list(active_agents.keys()))
     return result
@@ -2299,7 +2090,9 @@ async def list_jobs(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/jobs")
-async def create_job(req: ScheduleJobRequest, user: TokenPayload = Depends(require_auth)):
+async def create_job(
+    req: ScheduleJobRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Create a new scheduled job"""
     job = await scheduler.add_job(req.name, req.cron, req.task, req.agent_id)
     wali.audit.log("job_created", {"name": req.name, "cron": req.cron})
@@ -2307,24 +2100,12 @@ async def create_job(req: ScheduleJobRequest, user: TokenPayload = Depends(requi
 
 
 @app.delete("/api/automation/jobs/{job_id}")
-async def delete_job(job_id: str, user: TokenPayload = Depends(require_auth)):
+async def delete_job(job_id: str, user: TokenPayload | None = Depends(get_current_user)):
     """Remove a scheduled job"""
     removed = await scheduler.remove_job(job_id)
     if not removed:
         raise HTTPException(404, "Job not found")
     return {"deleted": job_id}
-
-
-@app.patch("/api/automation/jobs/{job_id}")
-async def toggle_job(
-    job_id: str, req: JobToggleRequest, user: TokenPayload = Depends(require_auth)
-):
-    """Enable or pause a scheduled job"""
-    updated = await scheduler.set_job_enabled(job_id, req.enabled)
-    if not updated:
-        raise HTTPException(404, "Job not found")
-    wali.audit.log("job_toggled", {"job_id": job_id, "enabled": req.enabled})
-    return {"job_id": job_id, "enabled": req.enabled}
 
 
 @app.get("/api/automation/webhooks")
@@ -2334,7 +2115,9 @@ async def list_webhooks(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/automation/webhooks")
-async def create_webhook(req: WebhookCreateRequest, user: TokenPayload = Depends(require_auth)):
+async def create_webhook(
+    req: WebhookCreateRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Create a new webhook trigger"""
     webhook = await trigger_manager.register_webhook(
         req.name, req.task_template, req.agent_id, req.secret
@@ -2344,9 +2127,7 @@ async def create_webhook(req: WebhookCreateRequest, user: TokenPayload = Depends
 
 
 @app.post("/api/automation/webhooks/{webhook_id}/trigger")
-async def trigger_webhook(
-    webhook_id: str, request: Request, user: TokenPayload = Depends(require_auth)
-):
+async def trigger_webhook(webhook_id: str, request: Request):
     """Handle an incoming webhook trigger"""
     try:
         payload = await request.json()
@@ -2354,16 +2135,6 @@ async def trigger_webhook(
         payload = {}
     result = await trigger_manager.handle_webhook(webhook_id, payload)
     return result
-
-
-@app.delete("/api/automation/webhooks/{webhook_id}")
-async def delete_webhook(webhook_id: str, user: TokenPayload = Depends(require_auth)):
-    """Delete a webhook trigger"""
-    if webhook_id not in trigger_manager.webhooks:
-        raise HTTPException(404, "Webhook not found")
-    del trigger_manager.webhooks[webhook_id]
-    wali.audit.log("webhook_deleted", {"webhook_id": webhook_id})
-    return {"deleted": webhook_id}
 
 
 # === SKILLS (Hikmah) ===
@@ -2376,7 +2147,9 @@ async def list_skills(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/skills/install")
-async def install_skill(req: SkillInstallRequest, user: TokenPayload = Depends(require_auth)):
+async def install_skill(
+    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Install a skill"""
     result = skill_registry.install_skill(req.name)
     if result:
@@ -2386,7 +2159,9 @@ async def install_skill(req: SkillInstallRequest, user: TokenPayload = Depends(r
 
 
 @app.post("/api/skills/uninstall")
-async def uninstall_skill(req: SkillInstallRequest, user: TokenPayload = Depends(require_auth)):
+async def uninstall_skill(
+    req: SkillInstallRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Uninstall a skill"""
     result = skill_registry.uninstall_skill(req.name)
     if result:
@@ -2403,7 +2178,9 @@ class SkillExecuteRequest(BaseModel):
 
 
 @app.post("/api/skills/execute")
-async def execute_skill(req: SkillExecuteRequest, user: TokenPayload = Depends(require_auth)):
+async def execute_skill(
+    req: SkillExecuteRequest, user: TokenPayload | None = Depends(get_current_user)
+):
     """Execute a skill action — routes to the appropriate built-in skill"""
     skill = skill_registry.get_skill(req.skill)
     if not skill:
@@ -2484,7 +2261,7 @@ async def list_channels(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.get("/api/nafs/tiers")
-async def get_nafs_tiers(user: TokenPayload = Depends(require_auth)):
+async def get_nafs_tiers():
     """Get all 7 Nafs tiers and their permission mappings."""
     tiers = []
     for level in range(1, 8):
@@ -2493,7 +2270,7 @@ async def get_nafs_tiers(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/nafs/{agent_id}")
-async def get_nafs_status(agent_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_nafs_status(agent_id: str):
     """Get 7-level Nafs status for an agent."""
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
@@ -2520,7 +2297,7 @@ async def get_nafs_status(agent_id: str, user: TokenPayload = Depends(require_au
 
 
 @app.get("/api/nafs/{agent_id}/faculties")
-async def get_agent_faculties(agent_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_agent_faculties(agent_id: str):
     """Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status.
 
     Basira (insight) and Hawa (restraint) are per-task signals returned in the
@@ -2555,7 +2332,7 @@ class YaqinTagRequest(BaseModel):
 
 
 @app.post("/api/yaqin/tag")
-async def tag_with_yaqin(req: YaqinTagRequest, user: TokenPayload = Depends(require_auth)):
+async def tag_with_yaqin(req: YaqinTagRequest):
     """Tag a piece of knowledge with its Yaqin certainty level."""
     if req.source == "proven":
         tag = yaqin_engine.tag_proven(
@@ -2569,7 +2346,7 @@ async def tag_with_yaqin(req: YaqinTagRequest, user: TokenPayload = Depends(requ
 
 
 @app.get("/api/yaqin/stats")
-async def yaqin_stats(user: TokenPayload = Depends(require_auth)):
+async def yaqin_stats():
     """Get Yaqin engine statistics."""
     return {"stats": yaqin_engine.stats()}
 
@@ -2583,9 +2360,7 @@ class CognitiveRouteRequest(BaseModel):
 
 
 @app.post("/api/cognitive/route")
-async def route_cognitive_method(
-    req: CognitiveRouteRequest, user: TokenPayload = Depends(require_auth)
-):
+async def route_cognitive_method(req: CognitiveRouteRequest):
     """Route a query to the best Quranic cognitive method."""
     method = select_method(req.query)
     return {
@@ -2609,7 +2384,7 @@ class QalbAnalyzeRequest(BaseModel):
 
 
 @app.post("/api/qalb/analyze")
-async def analyze_emotion(req: QalbAnalyzeRequest, user: TokenPayload = Depends(require_auth)):
+async def analyze_emotion(req: QalbAnalyzeRequest):
     """Analyze emotional state from a message."""
     reading = qalb_engine.analyze(req.message)
     if req.user_id:
@@ -2618,7 +2393,7 @@ async def analyze_emotion(req: QalbAnalyzeRequest, user: TokenPayload = Depends(
 
 
 @app.get("/api/qalb/trend/{user_id}")
-async def emotional_trend(user_id: str, user: TokenPayload = Depends(require_auth)):
+async def emotional_trend(user_id: str):
     """Get emotional trend for a user."""
     trend = qalb_engine.get_trend(user_id)
     return {"trend": trend}
@@ -2628,7 +2403,7 @@ async def emotional_trend(user_id: str, user: TokenPayload = Depends(require_aut
 
 
 @app.get("/api/federation/status")
-async def federation_status(user: TokenPayload = Depends(require_auth)):
+async def federation_status():
     """Get federation network status."""
     # Register active agents with federation
     for aid, agent in active_agents.items():
@@ -2648,7 +2423,7 @@ class DiscoverRequest(BaseModel):
 
 
 @app.post("/api/federation/discover")
-async def discover_agents(req: DiscoverRequest, user: TokenPayload = Depends(require_auth)):
+async def discover_agents(req: DiscoverRequest):
     """Discover agents by capability."""
     matches = federation.discover(req.capabilities)
     return {"agents": [m.to_dict() for m in matches]}
@@ -2663,7 +2438,7 @@ class FederationTaskRequest(BaseModel):
 async def federation_route_task(
     req: FederationTaskRequest,
     background_tasks: BackgroundTasks,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Route a task to the best agent via Federation intelligence.
 
@@ -2739,7 +2514,7 @@ class RuhTokenizeRequest(BaseModel):
 
 
 @app.get("/api/ruh/status")
-async def get_ruh_model_status(user: TokenPayload = Depends(require_auth)):
+async def get_ruh_model_status():
     """Get Rūḥ Model availability and configuration."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
     ruh_path = os.getenv("RUH_MODEL_PATH", "")
@@ -2754,7 +2529,7 @@ async def get_ruh_model_status(user: TokenPayload = Depends(require_auth)):
 @app.post("/api/ruh/generate")
 async def ruh_generate(
     req: RuhGenerateRequest,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Generate text using the local Rūḥ Model."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
@@ -2762,7 +2537,11 @@ async def ruh_generate(
         raise HTTPException(503, "Rūḥ Model is not enabled")
 
     try:
-        provider = create_provider(provider="ruh")
+        # Prefer RunPod remote when configured (avoids CPU freeze on VPS)
+        if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("RUNPOD_API_KEY"):
+            provider = create_provider(provider="ruh", model="ruh-remote")
+        else:
+            provider = create_provider(provider="ruh")
         if not provider:
             raise HTTPException(503, "Rūḥ Model provider not available")
 
@@ -2786,7 +2565,7 @@ async def ruh_generate(
 
 
 @app.post("/api/ruh/tokenize")
-async def ruh_tokenize(req: RuhTokenizeRequest, user: TokenPayload = Depends(require_auth)):
+async def ruh_tokenize(req: RuhTokenizeRequest):
     """Tokenize text using the Bayān tokenizer and return analysis."""
     try:
         from ruh_model.tokenizer.bayan import BayanTokenizer
@@ -2950,7 +2729,7 @@ class TasrifDemoRequest(BaseModel):
 
 
 @app.post("/api/ruh/tasrif-demo")
-async def tasrif_demo(req: TasrifDemoRequest, user: TokenPayload = Depends(require_auth)):
+async def tasrif_demo(req: TasrifDemoRequest):
     """Apply tasrif morphophonemic operators to articulatory feature vectors."""
     try:
         import numpy as np
@@ -2998,185 +2777,8 @@ async def tasrif_demo(req: TasrifDemoRequest, user: TokenPayload = Depends(requi
         raise HTTPException(500, f"Tasrif demo failed: {exc}") from exc
 
 
-# ===== RUH MORPHOLOGY API (sarf) — deterministic root-morphology endpoints =====
-# Every response carries provenance (verified | heuristic | unavailable) + source
-# so the UI can tag claims. Must stay BEFORE the /api/ruh/{agent_id} catch-all.
-
-
-class MorphAnalyzeRequest(BaseModel):
-    word: str = Field(..., min_length=1, max_length=100)
-
-
-class MorphSensesRequest(BaseModel):
-    word: str = Field(..., min_length=1, max_length=100)
-    context: str | None = Field(default=None, max_length=1000)
-
-
-class MorphProvenance(BaseModel):
-    provenance: str = Field(..., description="verified | heuristic | unavailable")
-    source: str = Field(..., description="Data source of the claim")
-    note: str | None = Field(default=None)
-
-
-class MorphAnalyzeResponse(MorphProvenance):
-    word: str
-    root: str
-    root_provenance: str
-    pattern: str
-    pattern_provenance: str
-    wazn: str | None
-    wazn_provenance: str
-
-
-class MorphDerivative(BaseModel):
-    surface: str
-    gloss: str
-
-
-class MorphRootResponse(MorphProvenance):
-    root: str
-    meaning: str
-    meaning_en: str
-    domain: str
-    derivatives: list[MorphDerivative]
-    patterns: list[str]
-    patterns_provenance: str
-    frequency: int | None
-
-
-class MorphSense(BaseModel):
-    surface: str
-    gloss: str
-    kind: str
-    pattern: str | None
-
-
-class MorphSensesResponse(MorphProvenance):
-    word: str
-    root: str
-    senses: list[MorphSense]
-    ranked_by_context: bool
-
-
-class MorphBridgeResponse(MorphProvenance):
-    concept: str
-    arabic_root: str
-    root_entry: dict
-
-
-class MorphSiblingsResponse(MorphProvenance):
-    wazn: str
-    available: bool
-    siblings: list
-    reason: str | None = None
-
-
-class MorphOccurrencesResponse(MorphProvenance):
-    root: str
-    available: bool
-    occurrences: list
-    frequency: int | None = None
-    frequency_note: str | None = None
-    reason: str | None = None
-
-
-class MorphExplainPromptResponse(MorphProvenance):
-    word: str
-    verified_facts: dict
-    system_instruction: str
-
-
-@app.post("/api/ruh/morphology/analyze", response_model=MorphAnalyzeResponse)
-async def ruh_morphology_analyze(
-    req: MorphAnalyzeRequest, user: TokenPayload = Depends(require_auth)
-):
-    """Analyze one word into (root, pattern, wazn) with provenance tags."""
-    try:
-        return _morph_analyze_word(req.word)
-    except Exception as exc:
-        logger.error("Morphology analyze failed: %s", exc)
-        raise HTTPException(500, f"Morphology analysis failed: {exc}") from exc
-
-
-@app.get("/api/ruh/morphology/root/{root}", response_model=MorphRootResponse)
-async def ruh_morphology_root(root: str, user: TokenPayload = Depends(require_auth)):
-    """Verified root family: meaning, domain, derivatives, frequency."""
-    try:
-        family = _morph_get_root_family(root)
-        if family is None:
-            raise HTTPException(404, f"Root '{root}' not in the verified root database")
-        return family
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Morphology root lookup failed: %s", exc)
-        raise HTTPException(500, f"Root lookup failed: {exc}") from exc
-
-
-@app.post("/api/ruh/morphology/senses", response_model=MorphSensesResponse)
-async def ruh_morphology_senses(
-    req: MorphSensesRequest, user: TokenPayload = Depends(require_auth)
-):
-    """Sense options for a word, grouped from the verified root entry."""
-    try:
-        return _morph_get_senses(req.word, req.context)
-    except Exception as exc:
-        logger.error("Morphology senses failed: %s", exc)
-        raise HTTPException(500, f"Sense lookup failed: {exc}") from exc
-
-
-@app.get("/api/ruh/morphology/bridge", response_model=MorphBridgeResponse)
-async def ruh_morphology_bridge(concept: str, user: TokenPayload = Depends(require_auth)):
-    """Bridge an English concept to an Arabic root. 404 if unknown — never invented."""
-    try:
-        bridged = _morph_bridge_concept(concept)
-        if bridged is None:
-            raise HTTPException(404, f"No verified concept bridge for '{concept}'")
-        return bridged
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Morphology bridge failed: %s", exc)
-        raise HTTPException(500, f"Concept bridge failed: {exc}") from exc
-
-
-@app.get("/api/ruh/morphology/pattern/{wazn}", response_model=MorphSiblingsResponse)
-async def ruh_morphology_pattern(wazn: str, user: TokenPayload = Depends(require_auth)):
-    """Sibling words sharing a pattern. Currently available=false (no verified
-    pattern data in the root DB) — honest empty rather than synthesized."""
-    try:
-        return _morph_get_pattern_siblings(wazn)
-    except Exception as exc:
-        logger.error("Morphology pattern lookup failed: %s", exc)
-        raise HTTPException(500, f"Pattern lookup failed: {exc}") from exc
-
-
-@app.get("/api/ruh/morphology/occurrences", response_model=MorphOccurrencesResponse)
-async def ruh_morphology_occurrences(root: str, user: TokenPayload = Depends(require_auth)):
-    """Quranic occurrences for a root. No static per-verse data exists, so this
-    returns available=false with the aggregate frequency count as context."""
-    try:
-        return _morph_get_occurrences(root)
-    except Exception as exc:
-        logger.error("Morphology occurrences failed: %s", exc)
-        raise HTTPException(500, f"Occurrence lookup failed: {exc}") from exc
-
-
-@app.post("/api/ruh/morphology/explain-prompt", response_model=MorphExplainPromptResponse)
-async def ruh_morphology_explain_prompt(
-    req: MorphAnalyzeRequest, user: TokenPayload = Depends(require_auth)
-):
-    """Constrained LLM prompt: verified facts + system instruction so the model
-    explains morphology without inventing roots, verses, or wazn."""
-    try:
-        return _morph_build_explain_prompt(req.word)
-    except Exception as exc:
-        logger.error("Morphology explain-prompt failed: %s", exc)
-        raise HTTPException(500, f"Explain prompt failed: {exc}") from exc
-
-
 @app.get("/api/ruh/{agent_id}")
-async def get_ruh_energy(agent_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_ruh_energy(agent_id: str):
     """Get Ruh energy state for an agent."""
     if agent_id not in active_agents:
         raise HTTPException(404, "Agent not found")
@@ -3226,7 +2828,7 @@ class QueueTaskRequest(BaseModel):
 @app.post("/api/queue/tasks")
 async def enqueue_task(
     req: QueueTaskRequest,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Add a task to the priority queue."""
     priority = PRIORITY_MAP.get(req.priority.lower(), TaskPriority.TAHSINIYYAH)
@@ -3244,9 +2846,7 @@ async def enqueue_task(
 
 
 @app.get("/api/queue/tasks")
-async def list_queued_tasks(
-    status: str | None = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
-):
+async def list_queued_tasks(status: str | None = None, limit: int = 50):
     """List tasks in the queue, optionally filtered by status."""
     tasks = await task_queue.list_tasks(status=status)
     tasks = tasks[: min(limit, 200)]
@@ -3254,7 +2854,7 @@ async def list_queued_tasks(
 
 
 @app.get("/api/queue/status")
-async def get_queue_status(user: TokenPayload = Depends(require_auth)):
+async def get_queue_status():
     """Get overall queue status with counts and worker state."""
     all_tasks = await task_queue.list_tasks()
     counts: dict[str, int] = {}
@@ -3287,7 +2887,7 @@ async def get_queued_task(task_id: str) -> dict:
 @app.delete("/api/queue/tasks/{task_id}")
 async def cancel_queued_task(
     task_id: str,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ) -> dict:
     """Cancel a pending queued task."""
     cancelled = await task_queue.cancel(task_id)
@@ -3309,7 +2909,7 @@ async def cancel_queued_task(
 
 
 @app.get("/api/learner/stats")
-async def get_learner_stats(user: TokenPayload = Depends(require_auth)):
+async def get_learner_stats():
     """Get learning data capture statistics."""
     try:
         from learner.ruh_learner import RuhLearner
@@ -3327,7 +2927,7 @@ async def get_learner_stats(user: TokenPayload = Depends(require_auth)):
 
 @app.post("/api/learner/export")
 async def export_learner_data(
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Export captured learning data as JSONL for Rūḥ Model training."""
     try:
@@ -3347,13 +2947,13 @@ async def export_learner_data(
 
 
 @app.get("/api/training/status")
-async def get_training_status(user: TokenPayload = Depends(require_auth)):
+async def get_training_status():
     """Get current Rūḥ Model training status."""
     return training_manager.get_status()
 
 
 @app.get("/api/training/history")
-async def get_training_history(user: TokenPayload = Depends(require_auth)):
+async def get_training_history():
     """Get history of past training runs."""
     return {"runs": training_manager.get_history()}
 
@@ -3369,7 +2969,7 @@ class TrainingStartRequest(BaseModel):
 @app.post("/api/training/start")
 async def start_training(
     req: TrainingStartRequest,
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Start a Rūḥ Model training run."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
@@ -3394,7 +2994,7 @@ async def start_training(
 
 @app.post("/api/training/stop")
 async def stop_training(
-    user: TokenPayload = Depends(require_auth),
+    user: TokenPayload | None = Depends(get_current_user),
 ):
     """Stop the currently running training."""
     try:
@@ -3408,7 +3008,7 @@ async def stop_training(
 
 
 @app.get("/api/ruh/checkpoints")
-async def list_checkpoints(user: TokenPayload = Depends(require_auth)):
+async def list_checkpoints():
     """List available model checkpoints with metadata."""
     checkpoint_dir = Path("ruh_model/checkpoints")
     if not checkpoint_dir.exists():
@@ -3444,7 +3044,7 @@ async def list_checkpoints(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/ruh/data-stats")
-async def get_data_stats(user: TokenPayload = Depends(require_auth)):
+async def get_data_stats():
     """Get training data composition and statistics."""
     data_dir = Path("ruh_model/data/training")
     sources = []
@@ -3495,20 +3095,46 @@ async def get_data_stats(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/ruh/architecture")
-async def get_model_architecture(user: TokenPayload = Depends(require_auth)):
+async def get_model_architecture():
     """Get model architecture info and parameter counts."""
     try:
-        from ruh_model.config import RuhConfig
+        # Default config values (from RuhConfig) - used if import fails
+        config_values = {
+            "n_layers": 12,
+            "d_model": 768,
+            "d_root": 256,
+            "d_pattern": 256,
+            "n_heads": 12,
+            "n_roots": 5000,
+            "n_patterns": 500,
+            "max_seq_len": 512,
+        }
+        try:
+            from ruh_model.config import RuhConfig
 
-        config = RuhConfig()
+            config = RuhConfig()
+            config_values = {
+                "n_layers": config.n_layers,
+                "d_model": config.d_model,
+                "d_root": config.d_root,
+                "d_pattern": config.d_pattern,
+                "n_heads": config.n_heads,
+                "n_roots": config.n_roots,
+                "n_patterns": config.n_patterns,
+                "max_seq_len": config.max_seq_len,
+            }
+        except ImportError:
+            # Use defaults if ruh_model not available
+            pass
 
         # Try to count actual parameters
         total_params = 0
         components = []
         try:
+            from ruh_model.config import RuhConfig as RC
             from ruh_model.model import RuhModel
 
-            model = RuhModel(config)
+            model = RuhModel(RC())
             total_params = model.count_parameters()
 
             # Per-module parameter counts
@@ -3526,14 +3152,14 @@ async def get_model_architecture(user: TokenPayload = Depends(require_auth)):
 
         return {
             "total_params": total_params,
-            "n_layers": config.n_layers,
-            "d_model": config.d_model,
-            "d_root": config.d_root,
-            "d_pattern": config.d_pattern,
-            "n_heads": config.n_heads,
-            "n_roots": config.n_roots,
-            "n_patterns": config.n_patterns,
-            "max_seq_len": config.max_seq_len,
+            "n_layers": config_values["n_layers"],
+            "d_model": config_values["d_model"],
+            "d_root": config_values["d_root"],
+            "d_pattern": config_values["d_pattern"],
+            "n_heads": config_values["n_heads"],
+            "n_roots": config_values["n_roots"],
+            "n_patterns": config_values["n_patterns"],
+            "max_seq_len": config_values["max_seq_len"],
             "components": components,
             "architecture_layers": [
                 {"name": "ISMEmbedding", "desc": "Factored (root, pattern) → d_model embedding"},
@@ -3554,8 +3180,6 @@ async def get_model_architecture(user: TokenPayload = Depends(require_auth)):
                 },
             ],
         }
-    except ImportError as exc:
-        raise HTTPException(503, "Rūḥ Model package not installed") from exc
     except Exception as exc:
         logger.error("Architecture query failed: %s", exc)
         raise HTTPException(500, f"Failed to get architecture: {exc}") from exc
@@ -3571,7 +3195,7 @@ async def list_plugins(user: TokenPayload | None = Depends(get_current_user)):
 
 
 @app.post("/api/plugins/{name}/load")
-async def load_plugin(name: str, user: TokenPayload = Depends(require_auth)):
+async def load_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Load (activate) a plugin."""
     result = await plugin_manager.load(name)
     if result:
@@ -3580,7 +3204,7 @@ async def load_plugin(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/plugins/{name}/unload")
-async def unload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
+async def unload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Unload (deactivate) a plugin."""
     result = await plugin_manager.unload(name)
     if result:
@@ -3589,7 +3213,7 @@ async def unload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.post("/api/plugins/{name}/reload")
-async def reload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
+async def reload_plugin(name: str, user: TokenPayload | None = Depends(get_current_user)):
     """Reload a plugin (unload + load)."""
     result = await plugin_manager.reload(name)
     if result:
@@ -3598,7 +3222,7 @@ async def reload_plugin(name: str, user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/plugins/tools")
-async def list_plugin_tools(user: TokenPayload = Depends(require_auth)):
+async def list_plugin_tools():
     """List all tools provided by loaded plugins."""
     tools = []
     for plugin in plugin_manager._loaded.values():
@@ -3617,7 +3241,7 @@ async def list_plugin_tools(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/events")
-async def list_events(user: TokenPayload = Depends(require_auth)):
+async def list_events():
     """List all standard events and registered handlers."""
     return {
         "standard_events": EVENTS,
@@ -3627,9 +3251,7 @@ async def list_events(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/events/history")
-async def event_history(
-    event_name: str = None, limit: int = 50, user: TokenPayload = Depends(require_auth)
-):
+async def event_history(event_name: str = None, limit: int = 50):
     """Get recent event history."""
     limit = min(limit, 200)
     return {"history": event_bus.get_history(event_name, limit)}
@@ -3639,7 +3261,7 @@ async def event_history(
 
 
 @app.get("/api/hooks")
-async def list_hooks(user: TokenPayload = Depends(require_auth)):
+async def list_hooks():
     """List all standard hooks and registered handlers."""
     return {
         "standard_hooks": HOOKS,
@@ -3651,7 +3273,7 @@ async def list_hooks(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/middleware")
-async def list_middleware(user: TokenPayload = Depends(require_auth)):
+async def list_middleware():
     """List all registered middleware pipelines."""
     return {"pipelines": middleware_pipeline.list_middleware()}
 
@@ -3660,7 +3282,7 @@ async def list_middleware(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/extensibility")
-async def extensibility_status(user: TokenPayload = Depends(require_auth)):
+async def extensibility_status():
     """
     Overview of all extensibility points in MIZAN.
     Useful for developers who want to build plugins.
@@ -3692,31 +3314,26 @@ async def extensibility_status(user: TokenPayload = Depends(require_auth)):
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | None = None):
-    # Authenticate BEFORE accepting (fail closed). A missing, invalid or
-    # expired token is rejected at the handshake - the socket is never
-    # accepted for an unauthenticated principal.
+    # Accept WebSocket connection
+    await websocket.accept()
+
+    # Authenticate via token (optional but recommended)
     user = None
     if token:
         try:
             user = auth.verify_token(token)
             if user and user.is_expired:
-                user = None
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": "Token expired. Please reconnect with a valid token.",
+                    }
+                )
+                await websocket.close()
+                return
         except Exception:
-            user = None
-    if not user:
-        wali.audit.log("ws_auth_rejected", {"client_id": client_id}, severity="warning")
-        # Accept BEFORE closing: closing a not-yet-accepted socket surfaces as
-        # HTTP 403 to the browser (onclose code 1006), so the client would never
-        # see 4401 and would loop "reconnecting" instead of "login required".
-        # No message is processed before this point, so fail-closed holds.
-        await websocket.accept()
-        await websocket.close(code=4401, reason="Authentication required")
-        return
-
-    # Bind principal roles for this connection's scope (privileged tool gates)
-    set_request_roles(user.roles)
-
-    await websocket.accept()
+            # Token validation failed - log warning but allow connection
+            wali.audit.log("ws_auth_failed", {"client_id": client_id}, severity="warning")
 
     # Connect to WebSocket manager
     manager.connections[client_id] = websocket
@@ -3778,44 +3395,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             if msg_type == "ping":
                 await manager.send(client_id, {"type": "pong"})
 
-            elif msg_type == "stop":
-                # ── ADDITIVE (frontend ticket/chat-upgrade-frontend) ──────────
-                # Client "Stop" button: cancel the server-side generation task
-                # so the LLM stops working, not just the UI. The cancelled
-                # task sends back {"type": "chat_stopped"} with the partial
-                # text; we always ack so the client never hangs.
-                stop_mid = str(data.get("message_id") or "")
-                task = _ACTIVE_GENERATIONS.pop(stop_mid, None) if stop_mid else None
-                if task is None:
-                    # Fall back to this client's in-flight generation…
-                    fallback_mid = _CLIENT_ACTIVE_MESSAGE.pop(client_id, None)
-                    if fallback_mid:
-                        task = _ACTIVE_GENERATIONS.pop(fallback_mid, None)
-                        stop_mid = fallback_mid
-                if task is None:
-                    # …or the session's in-flight generation (POST /api/chat
-                    # path registers under session_id).
-                    fallback_mid = _CLIENT_ACTIVE_MESSAGE.pop(
-                        str(data.get("session_id") or ""), None
-                    )
-                    if fallback_mid:
-                        task = _ACTIVE_GENERATIONS.pop(fallback_mid, None)
-                        stop_mid = fallback_mid
-                cancelled = False
-                if task is not None and not task.done():
-                    task.cancel()
-                    cancelled = True
-                await manager.send(
-                    client_id,
-                    {
-                        "type": "stop_ack",
-                        "message_id": stop_mid,
-                        "session_id": data.get("session_id", ""),
-                        "cancelled": cancelled,
-                    },
-                )
-                # ─────────────────────────────────────────────────────────────
-
             elif msg_type == "chat":
                 session_id = data.get("session_id", client_id)
                 content = data.get("content", "")
@@ -3865,7 +3444,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     agent = list(active_agents.values())[0]
 
                 if agent:
-                    session = await get_or_restore_session(session_id)
+                    session = active_sessions.get(session_id, {"history": []})
+                    active_sessions[session_id] = session
 
                     await memory.save_message(session_id, "user", content, agent.id)
                     session["history"].append({"role": "user", "content": content})
@@ -3942,85 +3522,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
-                    # ── ADDITIVE (frontend ticket/chat-upgrade-frontend): register
-                    # so a client "stop" message can cancel this generation.
-                    _ACTIVE_GENERATIONS[message_id] = asyncio.current_task()  # type: ignore[assignment]
-                    _CLIENT_ACTIVE_MESSAGE[client_id] = message_id
-                    try:
-                        result = await agent.execute(
-                            content,
-                            {
-                                "history": session["history"][-MAX_CHAT_HISTORY:],
-                                "session_id": session_id,
-                            },
-                            stream_callback=ws_stream,
-                            thinking_callback=ws_thinking,
-                        )
-                    except asyncio.CancelledError:
-                        # Client pressed Stop — persist the partial response
-                        # and tell the client the generation ended early.
-                        logger.info(
-                            "[WS] generation stopped by client (session %s)",
-                            session_id[:12],
-                        )
-                        await memory.save_message(session_id, "assistant", response_text, agent.id)
-                        session["history"].append({"role": "assistant", "content": response_text})
-                        await manager.send(
-                            client_id,
-                            {
-                                "type": "chat_stopped",
-                                "session_id": session_id,
-                                "message_id": message_id,
-                                "response": response_text,
-                                "partial": True,
-                                "stopped": True,
-                                "agent": agent.name,
-                            },
-                        )
-                        continue
-                    except Exception as e:
-                        # Never kill the connection on an agent failure — tell
-                        # the client what happened so the UI unsticks instead of
-                        # hanging on "Thinking..." forever.
-                        logger.exception("[WS] agent.execute failed (session %s)", session_id[:12])
-                        await manager.send(
-                            client_id,
-                            {
-                                "type": "error",
-                                "message": f"Agent error: {str(e)[:300]}",
-                                "session_id": session_id,
-                                "message_id": message_id,
-                            },
-                        )
-                        continue
-                    finally:
-                        # ── ADDITIVE (frontend ticket/chat-upgrade-frontend)
-                        _ACTIVE_GENERATIONS.pop(message_id, None)
-                        _CLIENT_ACTIVE_MESSAGE.pop(client_id, None)
+                    result = await agent.execute(
+                        content,
+                        {"history": session["history"][-agent.max_tool_turns :]},
+                        stream_callback=ws_stream,
+                        thinking_callback=ws_thinking,
+                    )
 
                     final = result.get("result", response_text)
                     if isinstance(final, dict):
                         final = final.get("response", str(final))
 
-                    # Model transparency: observed model + usage + latency from the
-                    # last provider call of this execution (chat workstream C).
-                    usage_block = build_usage_block(getattr(agent, "_last_llm_call", None))
-                    await memory.save_message(
-                        session_id,
-                        "assistant",
-                        str(final),
-                        agent.id,
-                        metadata={"usage": usage_block} if usage_block else None,
-                    )
+                    await memory.save_message(session_id, "assistant", str(final), agent.id)
                     session["history"].append({"role": "assistant", "content": str(final)})
-
-                    # mem0 append-only memory capture (no-op unless MEM0_ENABLED + configured)
-                    try:
-                        from memory.mem0_store import add_turn_async  # noqa: PLC0415
-
-                        asyncio.create_task(add_turn_async(session_id, content, str(final)))
-                    except Exception:  # noqa: BLE001 - never break chat_complete
-                        pass
 
                     # Extract cognitive metadata from QALB-7 pipeline
                     cognitive = {
@@ -4053,7 +3567,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                                     "content": s.content,
                                     "confidence": s.confidence,
                                     "timestamp": s.timestamp,
-                                    "metadata": json.loads(json.dumps(s.metadata, default=str)),
+                                    "metadata": s.metadata,
                                 }
                                 for s in completed_trace.steps
                             ],
@@ -4073,7 +3587,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "success": result.get("success", True),
                             "cognitive": cognitive,
                             "thinking_trace": trace_dict,
-                            "usage": usage_block,
                         },
                     )
 
@@ -4121,7 +3634,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 import base64 as b64
 
                 session_id = data.get("session_id", client_id)
-                text = data.get("content", data.get("text", ""))
+                text = data.get("content", "")
                 image_b64 = data.get("image_base64")
                 audio_b64 = data.get("audio_base64")
                 media_type = data.get("media_type", "image/png")
