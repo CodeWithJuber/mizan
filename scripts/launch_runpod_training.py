@@ -234,6 +234,11 @@ def main():
             )
         )
         return
+    source = requests.get(
+        f"https://raw.githubusercontent.com/CodeWithJuber/mizan/{args.revision}/scripts/runpod_training_job.py",
+        timeout=30,
+    )
+    source.raise_for_status()
     launch(session, args.revision, args.output)
 
 
