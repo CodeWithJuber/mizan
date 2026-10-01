@@ -10,7 +10,9 @@ backend/frontend images tagged with the exact commit. `Deploy Production`
 runs only after that CI succeeds, skips an obsolete commit, checks the pinned
 SSH host key, and updates the existing Compose project's backend/frontend.
 The running reverse proxy, database volume, host configuration and `.env`
-are preserved. A failed health or anonymous-auth denial check restores the
+are preserved. Nginx reloads to resolve the new container addresses; checks
+then verify health and authentication through the public HTTPS URL.
+A failed health or anonymous-auth denial check restores the
 previous images. Deployment state is stored in `/var/lib/mizan-deploy`.
 
 Required Mizan Actions secrets:
