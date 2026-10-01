@@ -29,9 +29,12 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   code: "Code",
   html: "HTML",
   markdown: "Docs",
+  image: "Image",
 };
 
 const KIND_BADGE: Record<ArtifactKind, string> = {
+  image:
+    "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
   code: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
   html: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
   markdown:
@@ -51,6 +54,39 @@ export function ArtifactsPanel({
   onClose,
 }: ArtifactsPanelProps) {
   const { addToast } = useToast();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+      }
+      if (event.key !== "Tab") return;
+      const controls = [
+        ...(panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],iframe",
+        ) ?? []),
+      ].filter((element) => element.offsetParent !== null);
+      const first = controls[0],
+        last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
+  }, []);
   const [listed, setListed] = useState<Artifact[]>([]);
   const [versions, setVersions] = useState<Record<string, ArtifactVersion[]>>(
     {},
@@ -64,31 +100,42 @@ export function ArtifactsPanel({
     Record<string, number>
   >({});
   const [restoring, setRestoring] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [listError, setListError] = useState("");
+  const [reload, setReload] = useState(0);
 
   // Merge WS artifacts with the server-side session list (dedup by id).
-  const all = [
-    ...listed,
-    ...artifacts.filter((a) => !listed.some((l) => l.id === a.id)),
-  ];
+  const byId = new Map(listed.map((artifact) => [artifact.id, artifact]));
+  for (const artifact of artifacts)
+    byId.set(artifact.id, { ...byId.get(artifact.id), ...artifact });
+  const all = [...byId.values()];
 
   useEffect(() => {
     let cancelled = false;
+    setListed([]);
+    setVersions({});
+    setSelectedVersion({});
+    setExpandedId(null);
+    setEditingId(null);
+    setListError("");
     api<Array<Omit<Artifact, "versions">>>(
       `/?session_id=${encodeURIComponent(sessionId)}`,
     )
       .then((items) => {
         if (cancelled) return;
+        if (!Array.isArray(items)) throw new Error("Invalid artifact list");
         setListed(items.map((a) => ({ ...a, versions: [] })));
         if (items.length > 0)
           setExpandedId((prev) => prev ?? items[items.length - 1].id);
       })
       .catch(() => {
-        /* panel still shows WS-arrived artifacts */
+        if (!cancelled) setListError("Saved artifacts could not be loaded.");
       });
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, reload]);
 
   const cancelledRef = useRef(false);
   useEffect(() => {
@@ -100,7 +147,13 @@ export function ArtifactsPanel({
 
   const ensureVersions = useCallback(
     async (artifact: Artifact) => {
-      if (versions[artifact.id]) return;
+      const cached = versions[artifact.id];
+      const desired =
+        artifact.current_version ??
+        artifact.versions?.[artifact.versions.length - 1]?.version ??
+        1;
+      if (cached?.length && cached[cached.length - 1].version >= desired)
+        return;
       setLoadingVersions((p) => ({ ...p, [artifact.id]: true }));
       try {
         // Seed v1 from the WS payload when present so the panel works offline.
@@ -119,6 +172,10 @@ export function ArtifactsPanel({
           }
         }
       } catch {
+        if (!cancelledRef.current)
+          setListError(
+            "Artifact content could not be loaded. Retry to refresh saved versions.",
+          );
         if (!cancelledRef.current && artifact.versions?.length) {
           setVersions((p) => ({ ...p, [artifact.id]: artifact.versions }));
           setSelectedVersion((p) => ({
@@ -132,6 +189,12 @@ export function ArtifactsPanel({
     },
     [versions],
   );
+
+  useEffect(() => {
+    const artifact = all.find((item) => item.id === expandedId);
+    if (artifact && !loadingVersions[artifact.id])
+      void ensureVersions(artifact);
+  }, [expandedId, versions, artifacts, listed]);
 
   const toggleExpand = (artifact: Artifact) => {
     const next = expandedId === artifact.id ? null : artifact.id;
@@ -171,6 +234,65 @@ export function ArtifactsPanel({
     }
   };
 
+  const saveEdit = async (artifact: Artifact) => {
+    setRestoring(true);
+    try {
+      const result = await api<{ version: number }>(
+        `/${artifact.id}/versions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: draft }),
+        },
+      );
+      const refreshed = await api<ArtifactVersion[]>(
+        `/${artifact.id}/versions`,
+      );
+      setVersions((previous) => ({ ...previous, [artifact.id]: refreshed }));
+      setSelectedVersion((previous) => ({
+        ...previous,
+        [artifact.id]: result.version,
+      }));
+      setEditingId(null);
+      addToast({ type: "success", title: `Saved version ${result.version}` });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Could not save this version",
+        description: (error as Error).message,
+      });
+    } finally {
+      setRestoring(false);
+    }
+  };
+  const download = (artifact: Artifact, content: string) => {
+    const extension =
+      artifact.kind === "html"
+        ? "html"
+        : artifact.kind === "markdown"
+          ? "md"
+          : artifact.language === "python"
+            ? "py"
+            : artifact.language || "txt";
+    const filename =
+      artifact.title.replace(/[^a-zA-Z0-9_.-]/g, "_") || "artifact";
+    const href =
+      artifact.kind === "image" &&
+      /^data:image\/(png|jpeg|webp);base64,/.test(content)
+        ? content
+        : URL.createObjectURL(
+            new Blob([content], { type: "text/plain;charset=utf-8" }),
+          );
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = /\.[a-z0-9]+$/i.test(filename)
+      ? filename
+      : `${filename}.${artifact.kind === "image" ? "png" : extension}`;
+    anchor.click();
+    if (href.startsWith("blob:"))
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+  };
+
   const currentContent = (artifact: Artifact): ArtifactVersion | undefined => {
     const vers = versions[artifact.id] ?? artifact.versions ?? [];
     const sel = selectedVersion[artifact.id];
@@ -178,7 +300,13 @@ export function ArtifactsPanel({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white dark:bg-zinc-900 border-l border-gray-200 dark:border-zinc-700 shadow-2xl z-50 flex flex-col animate-slide-in-right">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Artifacts"
+      className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white dark:bg-zinc-900 border-l border-gray-200 dark:border-zinc-700 shadow-2xl z-50 flex flex-col animate-slide-in-right"
+    >
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-700">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -192,6 +320,7 @@ export function ArtifactsPanel({
           onClick={onClose}
           className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
           title="Close artifacts"
+          aria-label="Close artifacts"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
             <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -200,6 +329,20 @@ export function ArtifactsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {listError && (
+          <div
+            role="alert"
+            className="text-sm text-amber-700 dark:text-amber-300"
+          >
+            {listError}{" "}
+            <button
+              className="underline"
+              onClick={() => setReload((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {all.length === 0 && (
           <div className="text-center text-sm text-gray-400 dark:text-gray-500 py-12">
             No artifacts yet.
@@ -311,7 +454,53 @@ export function ArtifactsPanel({
                       </span>
                     )}
                   </div>
-                  {cur ? (
+                  {cur && (
+                    <div className="flex gap-2 pb-3">
+                      <button
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700"
+                        onClick={() => download(artifact, cur.content)}
+                      >
+                        Download
+                      </button>
+                      {artifact.kind !== "image" && (
+                        <button
+                          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700"
+                          onClick={() => {
+                            setDraft(cur.content);
+                            setEditingId(artifact.id);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {editingId === artifact.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        aria-label={`Edit ${artifact.title}`}
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        spellCheck={false}
+                        className="w-full min-h-[360px] p-3 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-950 text-sm font-mono"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          disabled={restoring}
+                          onClick={() => void saveEdit(artifact)}
+                          className="px-3 py-2 rounded-lg bg-amber-600 text-white text-sm"
+                        >
+                          {restoring ? "Saving…" : "Save version"}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-2 text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : cur ? (
                     <ArtifactPreview
                       kind={artifact.kind}
                       language={artifact.language}
