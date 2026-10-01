@@ -2,6 +2,7 @@
 Tests for the API endpoints
 """
 
+import builtins
 from unittest.mock import patch
 
 import pytest
@@ -43,6 +44,31 @@ class TestRootEndpoint:
         assert data["system"] == "MIZAN (ميزان)"
         assert "version" in data
         assert data["status"] == "active"
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/api/v1/root-analyze", "analysis"),
+        ("/api/v1/tokenize", "tokens"),
+        ("/api/v1/q28-features", "features"),
+    ],
+)
+def test_public_nlp_routes_use_installed_package(client, monkeypatch, path, field):
+    # Production contains ruh_model, without a standalone tokenizer package.
+    # Other model tests may have exposed its directory on sys.path, so reject
+    # that development-only import explicitly to reproduce the deployed layout.
+    original_import = builtins.__import__
+
+    def installed_import(name, *args, **kwargs):
+        if name.startswith("tokenizer."):
+            raise ModuleNotFoundError("No standalone tokenizer package")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", installed_import)
+    response = client.post(path, json={"text": "علم", "lang": "ar"})
+    assert response.status_code == 200, response.text
+    assert response.json()[field]
 
 
 class TestAgentEndpoints:

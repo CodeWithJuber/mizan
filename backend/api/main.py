@@ -1910,7 +1910,7 @@ async def api_v1_root_analyze(request: dict) -> dict:
         raise HTTPException(status_code=400, detail="text field required")
 
     try:
-        from tokenizer.bayan import BayanTokenizer
+        from ruh_model.tokenizer.bayan import BayanTokenizer
 
         tokenizer = BayanTokenizer()
         analysis = tokenizer.analyze(text)
@@ -1930,7 +1930,7 @@ async def api_v1_tokenize(request: dict) -> dict:
         raise HTTPException(status_code=400, detail="text field required")
 
     try:
-        from tokenizer.bayan import BayanTokenizer
+        from ruh_model.tokenizer.bayan import BayanTokenizer
 
         tokenizer = BayanTokenizer()
         tokens = tokenizer.encode(text)
@@ -1955,7 +1955,7 @@ async def api_v1_q28_features(request: dict) -> dict:
         raise HTTPException(status_code=400, detail="text field required")
 
     try:
-        from tokenizer.q28_articulatory import Q28ArticulatoryBasis
+        from ruh_model.tokenizer.q28_articulatory import Q28ArticulatoryBasis
 
         q28 = Q28ArticulatoryBasis()
         coords = q28.text_to_q28(text, lang=lang)
