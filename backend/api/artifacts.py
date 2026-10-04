@@ -44,6 +44,8 @@ history / restore go through the HTTP routes above.
 
 from __future__ import annotations
 
+import base64
+import io
 import os
 import sqlite3
 import sys
@@ -53,7 +55,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from security.auth import TokenPayload
 
@@ -75,6 +77,35 @@ def _db_path() -> str:
 
 def _utcnow() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def validate_image(content: str) -> None:
+    """Accept decoded raster images only; never accept SVG or external image URLs."""
+    try:
+        header, encoded = content.split(",", 1)
+        formats = {
+            "data:image/png;base64": "PNG",
+            "data:image/jpeg;base64": "JPEG",
+            "data:image/webp;base64": "WEBP",
+        }
+        expected = formats.get(header)
+        if expected is None or len(content) > 500000:
+            raise ValueError("Unsupported or oversized image")
+        data = base64.b64decode(encoded, validate=True)
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != expected or image.width * image.height > 16000000:
+                raise ValueError("Invalid image format or dimensions")
+            image.verify()
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+    except ImportError:
+        raise HTTPException(503, "Image support requires the Pillow runtime dependency") from None
+    except Exception as exc:
+        raise HTTPException(
+            422, "A valid PNG, JPEG or WebP image up to 500000 encoded characters is required"
+        ) from exc
 
 
 def _connect() -> sqlite3.Connection:
@@ -152,6 +183,8 @@ def create_artifact(
     language: str | None = None,
 ) -> dict:
     """Persist a new artifact (version 1). Returns {id, version}."""
+    if kind == "image":
+        validate_image(content)
     artifact_id = uuid.uuid4().hex
     now = _utcnow()
     conn = _connect()
@@ -193,11 +226,13 @@ def add_artifact_version(
     try:
         _init_tables(conn)
         row = conn.execute(
-            "SELECT current_version, title FROM artifacts WHERE id = ? AND user_id = ?",
+            "SELECT current_version, title, kind FROM artifacts WHERE id = ? AND user_id = ?",
             (artifact_id, user_id),
         ).fetchone()
         if row is None:
             return None
+        if row["kind"] == "image":
+            validate_image(content)
         new_version = int(row["current_version"]) + 1
         new_title = title if title is not None else row["title"]
         conn.execute(
@@ -321,6 +356,7 @@ class ArtifactKind(StrEnum):
     code = "code"
     html = "html"
     markdown = "markdown"
+    image = "image"
 
 
 class ArtifactCreate(BaseModel):
@@ -329,6 +365,12 @@ class ArtifactCreate(BaseModel):
     kind: ArtifactKind
     content: str = Field(..., min_length=1, max_length=500_000)
     language: str | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        if self.kind == ArtifactKind.image:
+            validate_image(self.content)
+        return self
 
 
 class ArtifactVersionCreate(BaseModel):
