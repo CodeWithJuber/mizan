@@ -10,7 +10,7 @@
  * async so it never blocks the render path) with a synchronous
  * localStorage fallback when IndexedDB is unavailable (private mode, etc).
  *
- * Cache key: `mizan_chat_cache_v1:<session_id>` — versioned so a future
+ * Cache key: `mizan_chat_cache_v2:<token_sha256>:<session_id>` — versioned so a future
  * schema change can bump the version and ignore stale entries.
  */
 
@@ -24,7 +24,7 @@ export interface CachedChatMessage {
   cachedAt: number;
 }
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const MAX_CACHED_MESSAGES = 200;
 /** Drop cache entries older than 7 days on read. */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -34,6 +34,24 @@ const STORE_NAME = "sessions";
 
 function cacheKey(sessionId: string): string {
   return `mizan_chat_cache_${CACHE_VERSION}:${sessionId}`;
+}
+
+// Authentication namespaces prevent another signed-in account seeing cached history.
+// The token itself is never written to the cache key or message records.
+async function authNamespace(
+  sessionId: string,
+): Promise<{ key: string; token: string } | null> {
+  const token = localStorage.getItem("mizan_token");
+  if (!token || !globalThis.crypto?.subtle) return null;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token),
+  );
+  const hash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  if (localStorage.getItem("mizan_token") !== token) return null;
+  return { key: `${hash}:${sessionId}`, token };
 }
 
 // ---------- IndexedDB layer ----------
@@ -177,6 +195,8 @@ export async function cacheMessages(
   messages: CacheableMessage[],
 ): Promise<void> {
   if (!sessionId || messages.length === 0) return;
+  const namespace = await authNamespace(sessionId);
+  if (!namespace) return;
   const now = Date.now();
   const trimmed = messages.slice(-MAX_CACHED_MESSAGES).map((m) => ({
     id: m.id,
@@ -187,8 +207,9 @@ export async function cacheMessages(
     cachedAt: now,
   }));
   // Prefer IndexedDB; fall back to localStorage only if IDB failed.
-  const ok = await idbWrite(sessionId, trimmed);
-  if (!ok) lsWrite(sessionId, trimmed);
+  const ok = await idbWrite(namespace.key, trimmed);
+  if (!ok && localStorage.getItem("mizan_token") === namespace.token)
+    lsWrite(namespace.key, trimmed);
 }
 
 /** Read cached messages for a session. Returns null when nothing usable is cached. */
@@ -196,16 +217,20 @@ export async function readCachedMessages(
   sessionId: string,
 ): Promise<CacheableMessage[] | null> {
   if (!sessionId) return null;
-  const fromIdb = await idbRead(sessionId);
-  if (fromIdb) return fromIdb;
-  return lsRead(sessionId);
+  const namespace = await authNamespace(sessionId);
+  if (!namespace) return null;
+  const fromIdb = await idbRead(namespace.key);
+  if (localStorage.getItem("mizan_token") !== namespace.token) return null;
+  return fromIdb ?? lsRead(namespace.key);
 }
 
 /** Drop the cache for a session (e.g. after the user deletes it). */
 export async function clearCachedMessages(sessionId: string): Promise<void> {
-  await idbDelete(sessionId);
+  const namespace = await authNamespace(sessionId);
+  if (!namespace) return;
+  await idbDelete(namespace.key);
   try {
-    localStorage.removeItem(cacheKey(sessionId));
+    localStorage.removeItem(cacheKey(namespace.key));
   } catch {
     /* ignore */
   }

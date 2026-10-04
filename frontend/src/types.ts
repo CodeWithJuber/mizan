@@ -213,7 +213,7 @@ export interface MessageUsageMeta {
 // Chat artifacts (workstream F): versioned agent-produced documents.
 // Backend: backend/api/artifacts.py. WS convention: {"type": "artifact", "artifact": ArtifactWsPayload}.
 
-export type ArtifactKind = "code" | "html" | "markdown";
+export type ArtifactKind = "code" | "html" | "markdown" | "image";
 
 export interface ArtifactVersion {
   version: number;
@@ -229,6 +229,9 @@ export interface Artifact {
   kind: ArtifactKind;
   language?: string;
   versions: ArtifactVersion[];
+  content?: string;
+  current_version?: number;
+  created_at?: string;
 }
 
 /** Payload the agent pipeline emits over the chat WS when an artifact is created. */

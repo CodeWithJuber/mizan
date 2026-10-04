@@ -104,6 +104,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
       };
       if (data.token) {
         localStorage.setItem("mizan_token", data.token);
+        window.dispatchEvent(new CustomEvent("mizan:authchanged"));
         setToken(data.token);
         setMessage({ type: "success", text: "Logged in successfully" });
         addToast({ type: "success", title: "Logged in successfully" });
@@ -133,6 +134,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
       })) as { token?: string; error?: string };
       if (data.token) {
         localStorage.setItem("mizan_token", data.token);
+        window.dispatchEvent(new CustomEvent("mizan:authchanged"));
         setToken(data.token);
         setMessage({ type: "success", text: "Account created and logged in" });
         addTerminalLine?.("Account created", "gold");
@@ -151,6 +153,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
   const logout = () => {
     if (!window.confirm("Log out of Mizan?")) return;
     localStorage.removeItem("mizan_token");
+    window.dispatchEvent(new CustomEvent("mizan:authchanged"));
     setToken("");
     setMessage({ type: "success", text: "Logged out" });
     addToast({ type: "info", title: "Logged out" });
@@ -533,6 +536,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                       return;
                     }
                     localStorage.setItem("mizan_token", v);
+                    window.dispatchEvent(new CustomEvent("mizan:authchanged"));
                     setToken(v);
                     setManualToken("");
                     setMessage({ type: "success", text: "Token saved" });
