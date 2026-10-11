@@ -93,6 +93,15 @@ class ProvenanceOut(BaseModel):
     weight: float
 
 
+class Qwen3RerankInfo(BaseModel):
+    """Provenance for the optional Qwen3 sense rerank (null when not applied)."""
+
+    applied: bool
+    model: str
+    order: list[str]
+    reason: str | None = None
+
+
 class DisambiguateResponse(BaseModel):
     word: str
     lemma: str
@@ -106,6 +115,11 @@ class DisambiguateResponse(BaseModel):
     inventory_version: str
     threshold_used: float | None
     abstained: bool
+    qwen3: Qwen3RerankInfo | None = Field(
+        default=None,
+        description="Set when the QWEN3_ENABLED rerank reordered the alternatives; "
+        "null keeps the deterministic order (the fallback).",
+    )
 
 
 def _load_sense_module(name: str):
@@ -171,6 +185,24 @@ def get_inventory():
         return _INVENTORY
 
 
+def response_from_result(d: dict) -> DisambiguateResponse:
+    """Build the response model from a disambiguation result dict."""
+    return DisambiguateResponse(
+        word=d["word"],
+        lemma=d["lemma"],
+        status=d["status"],
+        sense_id=d["sense_id"],
+        confidence=d["confidence"],
+        gloss_ar=d["gloss_ar"],
+        gloss_en=d["gloss_en"],
+        alternatives=[SenseAlternativeOut(**a) for a in d["alternatives"]],
+        provenance=[ProvenanceOut(**p) for p in d["provenance"]],
+        inventory_version=d["inventory_version"],
+        threshold_used=d["threshold_used"],
+        abstained=d["abstained"],
+    )
+
+
 @router.post(
     "/disambiguate",
     response_model=DisambiguateResponse,
@@ -188,17 +220,21 @@ def disambiguate_word(req: DisambiguateRequest) -> DisambiguateResponse:
         threshold=req.threshold,
     )
     d = result.to_dict()
-    return DisambiguateResponse(
-        word=d["word"],
-        lemma=d["lemma"],
-        status=d["status"],
-        sense_id=d["sense_id"],
-        confidence=d["confidence"],
-        gloss_ar=d["gloss_ar"],
-        gloss_en=d["gloss_en"],
-        alternatives=[SenseAlternativeOut(**a) for a in d["alternatives"]],
-        provenance=[ProvenanceOut(**p) for p in d["provenance"]],
-        inventory_version=d["inventory_version"],
-        threshold_used=d["threshold_used"],
-        abstained=d["abstained"],
-    )
+    resp = response_from_result(d)
+    # Optional Qwen3 rerank (QWEN3_ENABLED): best-effort enrichment — the
+    # deterministic result above is the fallback and stays authoritative
+    # for sense_id/confidence/abstention.
+    try:
+        from api.qwen3 import maybe_rerank_disambiguation
+
+        reranked = maybe_rerank_disambiguation(req.word, req.context, list(d["alternatives"]))
+    except Exception as exc:  # noqa: BLE001 — rerank must never break disambiguation
+        logger.warning("qwen3 rerank wiring failed: %s", exc)
+        reranked = None
+    if reranked is not None:
+        resp.alternatives = [SenseAlternativeOut(**a) for a in reranked["alternatives"]]
+        resp.provenance.append(
+            ProvenanceOut(signal="qwen3_rerank", source="qwen3-serverless", weight=0.5)
+        )
+        resp.qwen3 = Qwen3RerankInfo(**reranked["info"])
+    return resp
