@@ -1303,6 +1303,7 @@ async def stream_chat(
                 ledger.update(user.user_id, request_id, terminal_status)
                 thinking_stream.complete(message_id)
             finally:
+
                 if workspace_context and workspace_binding is not None:
                     workspace_context.reset_workspace(workspace_binding)
                 reset_principal(binding)

@@ -14,7 +14,8 @@ from fastapi.testclient import TestClient
 from api import coding_workspace as api
 from api.artifacts import add_artifact_version, get_artifact
 from security.auth import TokenPayload, bind_principal, reset_principal
-from skills.builtin.coding_workspace import CodingWorkspaceSkill
+from skills.builtin.coding_workspace import CodingWorkspaceSkill, allows_user_workspace_tool
+from skills.registry import SkillRegistry
 from workspace import runner as runner_module
 from workspace.context import bind_workspace, reset_workspace
 from workspace.runner import app as runner_app
@@ -269,6 +270,46 @@ async def test_agent_tools_require_principal_and_respect_selected_project(storag
     finally:
         reset_workspace(selected)
         reset_principal(principal)
+
+
+async def test_user_tool_dispatch_accepts_only_shipped_bound_handlers(storage):
+    skill = CodingWorkspaceSkill()
+    registry = SkillRegistry()
+    registry.register(skill)
+    workspace = storage.create("Selected project")["id"]
+    selected = bind_workspace(workspace)
+    principal = bind_principal(USER)
+    try:
+        assert allows_user_workspace_tool("workspace_write", registry, native_tools={})
+        result = await registry.get_all_tools()["workspace_write"](
+            path="agent.py", content="print(42)"
+        )
+        assert result["path"] == "agent.py"
+        assert storage.read(workspace, "agent.py")["content"] == "print(42)"
+        assert not allows_user_workspace_tool("bash", registry)
+        assert not allows_user_workspace_tool("workspace_unregistered", registry)
+        assert not allows_user_workspace_tool(
+            "workspace_write", registry, native_tools={"workspace_write": lambda: None}
+        )
+        # A different plugin with the same tool name cannot gain the user exception.
+        impostor = Mock()
+        impostor.get_tools.return_value = {"workspace_write": lambda: {"unsafe": True}}
+        registry._loaded["impostor"] = impostor
+        assert not allows_user_workspace_tool("workspace_write", registry)
+        registry._loaded.pop("impostor")
+    finally:
+        reset_principal(principal)
+    viewer = TokenPayload(USER.user_id, "Viewer", ["viewer"], 9999999999, 0, "viewer")
+    principal = bind_principal(viewer)
+    try:
+        # Recognition does not bypass the shipped handler's editor permission.
+        assert allows_user_workspace_tool("workspace_write", registry)
+        with pytest.raises(HTTPException) as exc:
+            await registry.get_all_tools()["workspace_write"](path="agent.py", content="overwrite")
+        assert exc.value.status_code == 403
+    finally:
+        reset_principal(principal)
+        reset_workspace(selected)
 
 
 def test_private_runner_rejects_anonymous_and_wrong_token(monkeypatch):
