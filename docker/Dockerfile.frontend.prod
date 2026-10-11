@@ -3,12 +3,14 @@
 # Multi-stage: build static assets, serve via Nginx
 # ═══════════════════════════════════════════════════════════════
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --silent
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --silent
 
 COPY . .
 
