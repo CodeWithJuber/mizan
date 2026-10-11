@@ -611,6 +611,51 @@ class OllamaProvider(BaseLLMProvider):
         return provider.stream(model, max_tokens, system, messages, tools, temperature)
 
 
+# ───── Qwen3 Serverless Provider ─────
+
+
+class Qwen3ServerlessProvider(BaseLLMProvider):
+    """Qwen3-0.6B (Quran/Hadith fine-tune) via a RunPod serverless endpoint.
+
+    Speaks the OpenAI chat-completions protocol (see api/qwen3_client.py).
+    Only constructed when QWEN3_ENABLED=1 — create_provider returns None
+    otherwise, so the agent keeps its previous provider (the fallback).
+
+    Tool calls are not supported by the fine-tune: ``tools`` are ignored
+    (logged) and the model answers in plain text.
+    """
+
+    provider_name = "qwen3"
+
+    def __init__(self, config=None) -> None:
+        from api.qwen3_client import Qwen3Config
+
+        self.config = config or Qwen3Config.from_env()
+
+    def create(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        from api.qwen3_client import Qwen3Unavailable, get_client
+
+        if tools:
+            logger.debug("qwen3 provider: ignoring %d tool definitions (unsupported)", len(tools))
+        client = get_client(self.config)
+        try:
+            result = client.generate_sync(
+                messages,
+                system=system,
+                model=model or self.config.model,
+                max_tokens=max_tokens,
+                temperature=temperature if temperature is not None else 0.7,
+            )
+        except Qwen3Unavailable as exc:
+            raise RuntimeError(f"qwen3 unavailable: [{exc.code}] {exc.detail}") from exc
+        return LLMResponse(
+            content=[ContentBlock(type="text", text=result.text)],
+            stop_reason="end_turn",
+            model=result.model,
+            usage=result.usage,
+        )
+
+
 # ───── Provider Factory ─────
 
 
@@ -730,6 +775,18 @@ def create_provider(
             BaseLLMProvider | None, RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
         )
 
+    elif provider == "qwen3":
+        from api.qwen3_client import Qwen3Config
+
+        cfg = Qwen3Config.from_env()
+        if not cfg.enabled:
+            logger.warning("QWEN3_ENABLED is not set — qwen3 provider unavailable")
+            return None
+        if not cfg.configured:
+            logger.warning("QWEN3_ENDPOINT_URL / QWEN3_API_KEY not set")
+            return None
+        return Qwen3ServerlessProvider(cfg)
+
     else:
         logger.error(f"Unknown provider: {provider}")
         return None
@@ -760,6 +817,7 @@ def get_default_model(provider_name: str) -> str:
         "openai": "gpt-4o",
         "ollama": "llama3.2",
         "ruh": "ruh-local",
+        "qwen3": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
     }
     return defaults.get(provider_name, "claude-sonnet-4-20250514")
 
@@ -793,6 +851,14 @@ PROVIDER_MODELS = {
     "ruh": [
         {"id": "ruh-local", "name": "Rūḥ Model (Local)", "context": 2048, "vision": False},
         {"id": "ruh-remote", "name": "Rūḥ Model (RunPod GPU)", "context": 2048, "vision": False},
+    ],
+    "qwen3": [
+        {
+            "id": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
+            "name": "Qwen3-0.6B (Quran/Hadith, RunPod Serverless)",
+            "context": 8192,
+            "vision": False,
+        },
     ],
 }
 
@@ -873,6 +939,20 @@ def get_provider_status() -> dict:
             "configured": bool(ruh_enabled and ruh_model_path),
             "models": PROVIDER_MODELS["ruh"],
             "default_model": "ruh-local",
+        }
+    )
+
+    # Qwen3 serverless (RunPod) — feature-flagged via QWEN3_ENABLED
+    qwen3_on = os.getenv("QWEN3_ENABLED", "").lower() in ("true", "1", "yes")
+    providers.append(
+        {
+            "name": "qwen3",
+            "display": "Qwen3-0.6B Serverless (Quran/Hadith)",
+            "configured": bool(
+                qwen3_on and os.getenv("QWEN3_ENDPOINT_URL", "") and os.getenv("QWEN3_API_KEY", "")
+            ),
+            "models": PROVIDER_MODELS["qwen3"],
+            "default_model": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
         }
     )
 
@@ -1056,5 +1136,19 @@ async def check_provider_health(provider_name: str) -> dict:
                 }
         except Exception:
             return {"provider": "ollama", "healthy": False, "error": "Ollama not running"}
+
+    elif provider_name == "qwen3":
+        from api.qwen3_client import Qwen3Config
+
+        cfg = Qwen3Config.from_env()
+        if not cfg.enabled or not cfg.configured:
+            return {"provider": "qwen3", "healthy": False, "error": "Qwen3 not enabled/configured"}
+        return {
+            "provider": "qwen3",
+            "healthy": True,
+            "endpoint_host": cfg.endpoint_host(),
+            "model": cfg.model,
+            "note": "config check only; use /v1/qwen3/health?probe=true for a live probe",
+        }
 
     return {"provider": provider_name, "healthy": False, "error": "Unknown provider"}

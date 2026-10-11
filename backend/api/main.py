@@ -41,17 +41,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
-from api.chat_stream import (
-    HEARTBEAT_SECONDS,
-    MAX_RESPONSE_CHARACTERS,
-    TEXT_CHUNK_CHARACTERS,
-    ChatEventChannel,
-    ChatStreamingResponse,
-    ChatStreamLedger,
-    ChatTransportGuard,
-    StreamDeliveryError,
-)
-from api.commands import handle_command
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
@@ -63,18 +52,6 @@ from core.plugins import plugin_manager
 from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
-from providers import (
-    check_provider_health,
-    create_provider,
-    fetch_ollama_models,
-    fetch_openrouter_models,
-    get_provider_status,
-    set_active_state,
-)
-from qca.cognitive_methods import select_method
-
-# New Quranic systems
-from qca.yaqin_engine import YaqinEngine
 from reasoning.context_manager import ContextManager
 from reasoning.planner import TafakkurPlanner
 from security.auth import (
@@ -93,6 +70,30 @@ from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
 from task_queue.worker import TaskWorker
 from training_manager import training_manager
+
+from api.chat_stream import (
+    HEARTBEAT_SECONDS,
+    MAX_RESPONSE_CHARACTERS,
+    TEXT_CHUNK_CHARACTERS,
+    ChatEventChannel,
+    ChatStreamingResponse,
+    ChatStreamLedger,
+    ChatTransportGuard,
+    StreamDeliveryError,
+)
+from api.commands import handle_command
+from providers import (
+    check_provider_health,
+    create_provider,
+    fetch_ollama_models,
+    fetch_openrouter_models,
+    get_provider_status,
+    set_active_state,
+)
+from qca.cognitive_methods import select_method
+
+# New Quranic systems
+from qca.yaqin_engine import YaqinEngine
 
 logger = logging.getLogger("mizan.api")
 
@@ -841,7 +842,7 @@ async def update_agent(
 
 
 class AgentModelRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|qwen3)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -1252,8 +1253,20 @@ async def stream_chat(
                     await saved_artifact(tool_result.get("artifact", tool_result))
             thinking_stream.complete(message_id)
             completed_trace = thinking_stream.get_trace(message_id)
+            # Qwen3 = generation → attach the QG understanding layer
+            # (root/pattern/role) to every response. Best-effort: a failure
+            # here must never break the chat stream.
+            understanding_kw: dict = {}
+            if getattr(getattr(agent, "ai_client", None), "provider_name", "") == "qwen3":
+                try:
+                    from api.qwen3_understanding import analyze_understanding
+
+                    understanding_kw = {"understanding": analyze_understanding(final)}
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("qwen3 understanding layer failed: %s", exc)
             await channel.emit(
                 "chat_complete",
+                **understanding_kw,
                 response=final,
                 usage=result.get("usage", {}),
                 agent=agent.name if agent else None,
@@ -4231,6 +4244,7 @@ from api import (  # noqa: E402
     artifacts,
     coding_workspace,
     modes,
+    qwen3,
     ruh_dialect,
     ruh_disambiguate,
     ruh_embeddings,
@@ -4252,6 +4266,7 @@ for feature in (
     ruh_morphology,
     ruh_screening,
     ruh_tajwid,
+    qwen3,
 ):
     # Production forwards /api/ to the backend; expose versioned features
     # there while retaining direct-app clients' existing /v1/ paths.
