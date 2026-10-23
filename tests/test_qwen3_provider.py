@@ -18,6 +18,10 @@ def qwen3_env(monkeypatch):
     monkeypatch.setenv("QWEN3_API_KEY", "test-key-123")
     monkeypatch.setenv("QWEN3_BACKOFF_BASE", "0")
     monkeypatch.delenv("QWEN3_MODEL", raising=False)
+    # get_default_model() honors a global DEFAULT_MODEL override (e.g. from
+    # a repo-root .env that other tests can create via the doctor fix);
+    # clear it so the per-provider default assertions stay hermetic.
+    monkeypatch.delenv("DEFAULT_MODEL", raising=False)
 
 
 class TestCreateProvider:

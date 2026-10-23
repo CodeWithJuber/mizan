@@ -203,7 +203,7 @@ def is_retryable_status(status: int) -> bool:
 
 def backoff_delay(attempt: int, base: float) -> float:
     """Deterministic exponential backoff: base * 2**attempt, capped at 30s."""
-    return min(base * (2**attempt), 30.0)
+    return min(base * (2.0**attempt), 30.0)
 
 
 @dataclass
