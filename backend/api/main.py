@@ -41,6 +41,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
+from api.chat_stream import (
+    HEARTBEAT_SECONDS,
+    MAX_RESPONSE_CHARACTERS,
+    TEXT_CHUNK_CHARACTERS,
+    ChatEventChannel,
+    ChatStreamingResponse,
+    ChatStreamLedger,
+    ChatTransportGuard,
+    StreamDeliveryError,
+)
+from api.commands import handle_command
 from automation.qadr import QadrScheduler
 from automation.triggers import TriggerManager
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStream
@@ -52,6 +63,18 @@ from core.plugins import plugin_manager
 from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
+from providers import (
+    check_provider_health,
+    create_provider,
+    fetch_ollama_models,
+    fetch_openrouter_models,
+    get_provider_status,
+    set_active_state,
+)
+from qca.cognitive_methods import select_method
+
+# New Quranic systems
+from qca.yaqin_engine import YaqinEngine
 from reasoning.context_manager import ContextManager
 from reasoning.planner import TafakkurPlanner
 from security.auth import (
@@ -70,30 +93,6 @@ from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
 from task_queue.worker import TaskWorker
 from training_manager import training_manager
-
-from api.chat_stream import (
-    HEARTBEAT_SECONDS,
-    MAX_RESPONSE_CHARACTERS,
-    TEXT_CHUNK_CHARACTERS,
-    ChatEventChannel,
-    ChatStreamingResponse,
-    ChatStreamLedger,
-    ChatTransportGuard,
-    StreamDeliveryError,
-)
-from api.commands import handle_command
-from providers import (
-    check_provider_health,
-    create_provider,
-    fetch_ollama_models,
-    fetch_openrouter_models,
-    get_provider_status,
-    set_active_state,
-)
-from qca.cognitive_methods import select_method
-
-# New Quranic systems
-from qca.yaqin_engine import YaqinEngine
 
 logger = logging.getLogger("mizan.api")
 
@@ -1316,7 +1315,6 @@ async def stream_chat(
                 ledger.update(user.user_id, request_id, terminal_status)
                 thinking_stream.complete(message_id)
             finally:
-
                 if workspace_context and workspace_binding is not None:
                     workspace_context.reset_workspace(workspace_binding)
                 reset_principal(binding)

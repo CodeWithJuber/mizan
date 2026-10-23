@@ -93,7 +93,7 @@ def analyze_understanding(
     clipped = text[:MAX_UNDERSTANDING_CHARS]
     service_tokens = _service_tokens(clipped)
     degraded = service_tokens is None
-    if degraded:
+    if service_tokens is None:
         # Last resort: whitespace tokens with provenance-only enrichment.
         service_tokens = [{"surface": t} for t in clipped.split()]
     total_tokens = len(service_tokens)

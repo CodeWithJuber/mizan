@@ -383,20 +383,20 @@ def _verify_draft(question: str, paragraph: str, draft: str) -> dict[str, Any]:
         return " ".join(s.split())
 
     para_norm = norm(paragraph)
-    quotes = []
+    quotes: list[dict[str, Any]] = []
     for span in _ARABIC_RUN_RE.findall(draft):
         span_norm = norm(span)
         if len(span_norm) >= 2:
             quotes.append({"quote": span_norm, "found_in_source": span_norm in para_norm})
     # Deduplicate while keeping order.
     seen: set[str] = set()
-    unique_quotes = []
+    unique_quotes: list[dict[str, Any]] = []
     for q in quotes:
         if q["quote"] not in seen:
             seen.add(q["quote"])
             unique_quotes.append(q)
 
-    roots = []
+    roots: list[dict[str, Any]] = []
     try:
         from qca.morphology_api import analyze_word
 
@@ -470,7 +470,8 @@ async def grounded_qa(question: str, paragraph: str, **opts: Any) -> dict[str, A
 
 @router.get("/health", summary="Qwen3 integration status (never exposes the API key)")
 async def qwen3_health(probe: bool = False) -> dict[str, Any]:
-    return await get_client().health(probe=probe)
+    report: dict[str, Any] = await get_client().health(probe=probe)
+    return report
 
 
 @router.post("/chat", response_model=ChatResponse, summary="Qwen3 chat + understanding layer")

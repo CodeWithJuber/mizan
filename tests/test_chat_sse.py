@@ -586,6 +586,10 @@ async def test_full_application_bounds_actual_network_transport(
         "server": ("testserver", 443),
     }
     with pytest.raises((ClientDisconnect, OSError)):
-        await asyncio.wait_for(main.app(scope, receive, send), timeout=0.5)
+        # Outer bound only: the behaviour under test is the 0.05s send
+        # timeout above. 0.5s here flaked under full-suite load (the app
+        # still has to boot the whole stack before the first frame), so
+        # allow scheduling headroom without weakening the assertion.
+        await asyncio.wait_for(main.app(scope, receive, send), timeout=5.0)
     assert send_started.is_set()
     assert not main._stream_sessions
