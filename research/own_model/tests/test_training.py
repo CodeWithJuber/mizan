@@ -116,9 +116,13 @@ def test_two_rank_matches_single_rank_unequal_lengths_and_empty_last_rank(tmp_pa
     for name, tensor in single.state_dict().items():
         torch.testing.assert_close(tensor, distributed["model"][name], atol=2e-7, rtol=2e-6)
     assert expected["target_tokens"] == distributed["metrics"]["target_tokens"]
-    assert expected["hinge_per_target_token"] == pytest.approx(distributed["metrics"]["hinge_per_target_token"], abs=2e-7)
+    # CPU batching/all-reduce changes FP32 summation order. CI observed a 3.95e-7
+    # difference at loss 2.57 with matching weights and exact token counts.
+    # Match the relative tolerance of the parameter-parity assertion above;
+    # this is numerical parity, not a bitwise-equality or accuracy claim.
+    assert expected["hinge_per_target_token"] == pytest.approx(distributed["metrics"]["hinge_per_target_token"], abs=2e-7, rel=2e-6)
     assert single_eval["examples"] == distributed["evaluation"]["examples"] == 5
-    assert single_eval["hinge_per_target_token"] == pytest.approx(distributed["evaluation"]["hinge_per_target_token"], abs=2e-7)
+    assert single_eval["hinge_per_target_token"] == pytest.approx(distributed["evaluation"]["hinge_per_target_token"], abs=2e-7, rel=2e-6)
 
 
 def test_exact_epoch_resume_model_optimizer_rng_and_hash_refusal(tmp_path):

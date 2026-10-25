@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]" jsonschema
+      - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pytest tests/test_mizan_owned*.py research/own_model/tests -q
 

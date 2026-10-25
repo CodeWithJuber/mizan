@@ -150,7 +150,7 @@ rollback restores the previous path and restarts. No candidate is auto-promoted.
 Tests cover owned routing, scoped replay, spoofed-review rejection, explicit
 corrections, retraction, teacher/tool isolation, authenticated HTTP routes,
 finite/existential ambiguity, pinned source hashes, safe archive import and the
-real checkpoint adapter. The preserved research suite exercises actual tensor
+real checkpoint adapter. The research suite exercises actual tensor
 updates, causal/cache invariants, Unicode decoding and exact resume.
 
 Full independence is a development target, not an achieved capability or a
@@ -159,3 +159,10 @@ reasoning/learning mechanisms into owned code. Useful open-ended language,
 autonomous tool planning, universal root semantics and general accuracy still
 need data and independent evaluation. Archived experimental programs are not
 automatically live algorithms merely because their bytes are present.
+
+The distributed parity test uses the same `rtol=2e-6, atol=2e-7` for loss metrics
+as for parameters. The original archive used absolute tolerance alone for
+metrics; GitHub CPU execution exposed a 3.95e-7 reduction-order difference at
+loss 2.57. Exact token/sample counts and all parameter comparisons remain
+checked. The 12 runtime source files are unchanged; this adjustment is confined
+to test portability.
