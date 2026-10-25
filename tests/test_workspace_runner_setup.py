@@ -356,6 +356,21 @@ def test_restore_failure_does_not_remove_runner_or_erase_recovery_state(rollback
     assert not any("rm" in command for command in fake.calls)
 
 
+@pytest.mark.parametrize("failure", [BrokenPipeError, OSError, ValueError])
+def test_closed_ssh_output_cannot_interrupt_backend_restoration(
+    rollback_case, monkeypatch, failure
+):
+    installer, fake, _, override = rollback_case
+
+    def closed_stream(*_args, **_kwargs):
+        raise failure("SSH output disconnected")
+
+    monkeypatch.setattr(setup, "print", closed_stream, raising=False)
+    installer.rollback()
+    assert any("up" in command and command[-1] == "backend" for command in fake.calls)
+    assert not override.exists() and installer.state["phase"] == "rolled_back"
+
+
 def test_changed_original_compose_blocks_rollback_mutations(rollback_case):
     installer, fake, base, _ = rollback_case
     base.write_text("changed externally")

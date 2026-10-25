@@ -53,6 +53,15 @@ def require(condition: bool, message: str) -> None:
         raise SetupError(message)
 
 
+def report(message: str, *, error: bool = False) -> None:
+    """An SSH/logging disconnect must never prevent a restoration command."""
+    try:
+        print(message, file=sys.stderr if error else sys.stdout, flush=True)
+    except (OSError, ValueError):
+        # EPIPE/closed streams are diagnostic failures, not deployment failures.
+        pass
+
+
 def validate_target(sha: str, repository: str) -> None:
     require(bool(re.fullmatch(r"[a-f0-9]{40}", sha)), "Expected a full lowercase commit SHA")
     require(repository == REPOSITORY, "This installer is scoped to codewithjuber/mizan")
@@ -429,7 +438,7 @@ class Installer:
     def run_command(self, argv: list[str], **kwargs) -> subprocess.CompletedProcess:
         stage = kwargs["stage"]
         if stage not in self.reported_stages:
-            print(f"Workspace runner: {stage}.", flush=True)
+            report(f"Workspace runner: {stage}.")
             self.reported_stages.add(stage)
         remaining = int(self.deadline - time.monotonic())
         require(remaining > 0, "Setup operation budget exceeded; rollback budget is reserved")
@@ -1274,10 +1283,7 @@ class Installer:
         self.state["phase"] = "rolled_back"
         self.state.pop("pending_override_sha256", None)
         self.save()
-        print(
-            "Rollback verified: original backend restored; volumes and worker data retained.",
-            flush=True,
-        )
+        report("Rollback verified: original backend restored; volumes and worker data retained.")
 
     def apply(self) -> None:
         backend = self.backend()
@@ -1385,9 +1391,8 @@ class Installer:
         self.state.pop("pending_override_sha256", None)
         self.state["verified_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         self.save()
-        print(
-            f"Workspace runner verified for {self.sha}: rootless, resource-limited, authenticated; Python/JS/shell, files, isolation, timeout and cleanup passed.",
-            flush=True,
+        report(
+            f"Workspace runner verified for {self.sha}: rootless, resource-limited, authenticated; Python/JS/shell, files, isolation, timeout and cleanup passed."
         )
 
     def setup(self, registry_token: str) -> None:
@@ -1396,9 +1401,7 @@ class Installer:
         self.preflight(recovering=recovering)
         self.load_state()
         if self.state.get("phase") == "applying":
-            print(
-                "Resuming interrupted setup: restoring its saved backend before retry.", flush=True
-            )
+            report("Resuming interrupted setup: restoring its saved backend before retry.")
             self.rollback()
             self.deadline = time.monotonic() + 1800
             self.preflight()
@@ -1417,12 +1420,9 @@ class Installer:
             self.smoke("mizan-backend")
             self.health()
             self.public_health()
-            print(
-                "Existing managed workspace runner reverified; no service replacement needed.",
-                flush=True,
-            )
+            report("Existing managed workspace runner reverified; no service replacement needed.")
             return
-        print("Provisioning only the dedicated rootless workspace account and daemon.", flush=True)
+        report("Provisioning only the dedicated rootless workspace account and daemon.")
         self.install_packages()
         self.account()
         self.setup_daemon()
@@ -1499,7 +1499,7 @@ def main() -> int:
                 installer.setup(credential)
     except (SetupError, OSError, ValueError, KeyError) as error:
         message = str(error) if isinstance(error, SetupError) else type(error).__name__
-        print(f"Workspace runner setup stopped: {message}", file=sys.stderr, flush=True)
+        report(f"Workspace runner setup stopped: {message}", error=True)
         return 1
     return 0
 
