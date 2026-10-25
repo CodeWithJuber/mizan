@@ -54,6 +54,11 @@ def extract_llm_meta(llm_response: Any) -> dict:
         # Preserve Mizan's bounded gate/advisory metadata for audit and UI display.
         if isinstance(usage.get("mizan"), dict):
             meta["mizan"] = usage["mizan"]
+        for key in ("owned_status", "owned_reason", "proposal_id"):
+            if isinstance(usage.get(key), (str, int)):
+                meta[key] = usage[key]
+        if isinstance(usage.get("owned_prompt"), dict):
+            meta["owned_prompt"] = usage["owned_prompt"]
         # Authoritative provider-reported cost, if the provider sends one.
         if usage.get("cost") is not None:
             meta["provider_cost"] = usage.get("cost")

@@ -41,6 +41,13 @@ from typing import Any, cast
 
 logger = logging.getLogger("mizan.dhikr")
 
+CHAT_PREFERENCE_LIMITS = {
+    "language": 120,
+    "greeting": 120,
+    "avoid_greetings": 300,
+    "custom_instructions": 2000,
+}
+
 
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-4) ──────────────────────────
 # Flag-gated: MIZAN_NLP_NATIVE_WSD=1 adds an ADVISORY native-sense note for
@@ -343,6 +350,15 @@ class DhikrMemorySystem:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS chat_preferences (
+                owner_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (owner_id, key)
             )
         """)
         # Performance indexes
@@ -882,6 +898,79 @@ class DhikrMemorySystem:
         ]
 
     # ── Preferences ─────────────────────────────────────────────
+
+    @staticmethod
+    def _validate_chat_preference(owner_id: str, key: str | None = None) -> None:
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("An authenticated owner is required")
+        if key is not None and key not in CHAT_PREFERENCE_LIMITS:
+            raise ValueError("Unsupported chat preference")
+
+    async def get_chat_preferences(self, owner_id: str) -> list[dict]:
+        """Read explicitly saved user preferences, independent of transcript age.
+
+        These are user instructions, not verified knowledge or model training.
+        Global provider settings and legacy chat text are never promoted here.
+        """
+        self._validate_chat_preference(owner_id)
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT key, value, updated_at FROM chat_preferences "
+                "WHERE owner_id = ? ORDER BY key",
+                (owner_id,),
+            ).fetchall()
+            return [
+                {
+                    "key": row[0],
+                    "value": row[1],
+                    "updated_at": row[2],
+                    "source": "explicit_user_preference",
+                }
+                for row in rows
+            ]
+        finally:
+            self._release_conn(conn)
+
+    async def set_chat_preference(self, owner_id: str, key: str, value: str) -> dict:
+        """Replace one preference for the authenticated owner only."""
+        self._validate_chat_preference(owner_id, key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Preference value must not be empty; delete it to forget it")
+        value = value.strip()
+        if len(value) > CHAT_PREFERENCE_LIMITS[key]:
+            raise ValueError(f"Preference exceeds {CHAT_PREFERENCE_LIMITS[key]} characters")
+        updated_at = datetime.now(UTC).isoformat()
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO chat_preferences (owner_id, key, value, updated_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(owner_id, key) DO UPDATE SET "
+                "value = excluded.value, updated_at = excluded.updated_at",
+                (owner_id, key, value, updated_at),
+            )
+            conn.commit()
+        finally:
+            self._release_conn(conn)
+        return {
+            "key": key,
+            "value": value,
+            "updated_at": updated_at,
+            "source": "explicit_user_preference",
+        }
+
+    async def delete_chat_preference(self, owner_id: str, key: str) -> bool:
+        """Forget a saved preference without changing another owner's record."""
+        self._validate_chat_preference(owner_id, key)
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM chat_preferences WHERE owner_id = ? AND key = ?", (owner_id, key)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            self._release_conn(conn)
 
     # ── Hikmah (Wisdom Patterns) ─────────────────────────────────
 

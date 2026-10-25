@@ -26,6 +26,7 @@ import { ModelArchitectureView } from "../components/ruh/ModelArchitectureView";
 import { TokenizerPipeline } from "../components/ruh/TokenizerPipeline";
 import { TasrifVisualizer } from "../components/ruh/TasrifVisualizer";
 import { TrainingHistory } from "../components/ruh/TrainingHistory";
+import { LearningReviewPanel } from "../components/ruh/LearningReviewPanel";
 
 // ===== Sub-tab definitions =====
 
@@ -183,8 +184,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
   const handleGenerate = async () => {
     if (!generatePrompt.trim()) return;
-    if (!Number.isFinite(maxTokens) || maxTokens < 1 || maxTokens > 4000) {
-      setGenValidationError("Max tokens must be between 1 and 4000.");
+    if (!Number.isFinite(maxTokens) || maxTokens < 1 || maxTokens > 2048) {
+      setGenValidationError("Max tokens must be between 1 and 2048.");
       return;
     }
     if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
@@ -459,6 +460,13 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
             )}
 
             {/* Training controls + loss curve side by side */}
+            {metrics?.data_source && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Run data: {metrics.data_source === "generated_seed_examples"
+                  ? "Includes generated seed examples"
+                  : "Supplied data — source provenance has not been verified"}
+              </p>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               <TrainingControls
                 api={api}
@@ -475,7 +483,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 Generation Playground
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Generate text using the local Ruh Model.
+                Generate text using the configured Ruh provider. A configured remote endpoint takes priority.
                 {!ruhStatus?.enabled && " (Requires RUH_ENABLED=true)"}
               </p>
               <textarea
@@ -490,7 +498,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                   <span>
                     Max tokens{" "}
                     <span className="opacity-70">
-                      — how long the answer can be (1–4000)
+                      — how long the answer can be (1–2048)
                     </span>
                   </span>
                   <input
@@ -498,7 +506,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                     value={maxTokens}
                     onChange={(e) => setMaxTokens(Number(e.target.value))}
                     min={1}
-                    max={4000}
+                    max={2048}
                     className="w-20 px-2 py-1.5 min-h-[44px] text-xs rounded border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100"
                   />
                 </label>
@@ -600,12 +608,12 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                       {(learnerStats.exportable_count ?? 0).toLocaleString()}
                     </div>
                     <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
-                      Exportable Samples
+                      Reviewed Candidates
                     </div>
                   </div>
                   <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 text-center border border-gray-100 dark:border-zinc-700/50">
                     <div className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
-                      {learnerStats.last_export ?? "Never"}
+                      {learnerStats.last_export ?? "Not tracked"}
                     </div>
                     <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
                       Last Export
@@ -614,6 +622,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 </div>
               </div>
             )}
+            <LearningReviewPanel />
           </>
         )}
       </div>

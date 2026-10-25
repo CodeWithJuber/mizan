@@ -75,25 +75,30 @@ def test_sensitive_endpoints_deny_anonymous_and_user_admin_alias(api_fixture):
 async def test_request_local_provider_and_delegation_cycle(monkeypatch):
     from agents import base
 
-    agent = object.__new__(base.BaseAgent)
-    agent.ai_model, agent.ai_client = "configured", "original-provider"
-    monkeypatch.setattr(base, "create_provider", lambda **kw: kw["model"] + "-provider")
+    monkeypatch.setattr(
+        base,
+        "create_provider",
+        lambda **kw: SimpleNamespace(
+            provider_name="test-provider", label=kw["model"] + "-provider"
+        ),
+    )
+    agent = base.BaseAgent(name="Request-local provider test", config={"model": "configured"})
     entered, release = asyncio.Event(), asyncio.Event()
 
     async def impl(self, task, *args):
         entered.set()
         await release.wait()
-        return {"result": [self.ai_model, self.ai_client]}
+        return {"result": [self.ai_model, self.ai_client.label]}
 
     agent._execute_impl = MethodType(impl, agent)
     first = asyncio.create_task(agent.execute("first", model_override="requested"))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 1)
     assert agent.ai_model == "configured"
     agent.ai_model = "changed-default"
     release.set()
     assert (await first)["result"] == ["requested", "requested-provider"]
     assert agent.ai_model == "changed-default"
-    other = object.__new__(base.BaseAgent)
+    other = base.BaseAgent(name="Delegation-cycle test", config={"model": "other"})
     other.ai_model, other.ai_client = "other", None
 
     async def a(self, task, *args):
@@ -108,19 +113,20 @@ async def test_request_local_provider_and_delegation_cycle(monkeypatch):
     assert not agent._execution_lock.locked() and not other._execution_lock.locked()
 
 
-async def test_summarization_fallback_records_billed_call():
+async def test_summarization_fallback_records_billed_call(monkeypatch):
     from agents.base import BaseAgent
     from providers import ContentBlock, LLMResponse
 
-    agent = object.__new__(BaseAgent)
-    agent.ai_model = "requested"
-    agent.ai_client = SimpleNamespace(
+    provider = SimpleNamespace(
+        provider_name="test-provider",
         create=lambda **kw: LLMResponse(
             [ContentBlock("text", "summary")],
             model="observed",
             usage={"input": 7, "output": 3, "cost": 0.01},
-        )
+        ),
     )
+    monkeypatch.setattr("agents.base.create_provider", lambda **kw: provider)
+    agent = BaseAgent(name="Summary accounting test", config={"model": "requested"})
 
     async def broken(*args):
         raise RuntimeError("stream unavailable")

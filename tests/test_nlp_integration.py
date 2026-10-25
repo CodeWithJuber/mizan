@@ -23,7 +23,8 @@ hook exists; if not, it pytest.skip()s with a contract reason instead of
 failing (JEV `choice`, confidence 0.86). Flag-OFF tests run unconditionally.
 
 Conventions: backend/ on sys.path via tests/conftest.py; pytest-asyncio
-auto mode; fixtures mirror tests/test_agents.py. No network, no GPU.
+auto mode; fixtures mirror tests/test_agents.py. Agent replies use a
+deterministic provider implementing the real response protocol. No network, no GPU.
 """
 
 import inspect
@@ -36,10 +37,12 @@ import pytest
 import nlp
 import nlp.wsd
 from nlp import ModelNotReadyError, SenseCandidate, disambiguate
+from providers import BaseLLMProvider, ContentBlock, LLMResponse
 
 FLAG_ENV = "MIZAN_NLP_NATIVE_WSD"
 SENSES_MARKER = "[NLP Senses:"
 ADVISORY_MARKER = "[Native sense advisory:"
+FIXTURE_RESPONSE = "Deterministic NLP integration response."
 
 AR_TEXT = "إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ"
 AR_LEMMA = "عمل"
@@ -146,10 +149,25 @@ def _fallback_logged(caplog):
     )
 
 
-def _build_agent(mock_wali, mock_izn, temp_db):
+class NlpFixtureProvider(BaseLLMProvider):
+    """Exercise the agent loop without a hosted model or a no-provider placeholder."""
+
+    provider_name = "nlp-fixture"
+    supports_tools = True
+
+    def create(self, **kwargs):
+        return LLMResponse(
+            [ContentBlock(type="text", text=FIXTURE_RESPONSE)],
+            stop_reason="end_turn",
+            model="nlp-fixture-model",
+        )
+
+
+def _build_agent(mock_wali, mock_izn, temp_db, monkeypatch):
     from agents.specialized import create_agent
     from memory.dhikr import DhikrMemorySystem
 
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: NlpFixtureProvider())
     memory = DhikrMemorySystem(db_path=temp_db)
     agent = create_agent(
         "general",
@@ -159,7 +177,6 @@ def _build_agent(mock_wali, mock_izn, temp_db):
         wali=mock_wali,
         izn=mock_izn,
     )
-    agent.ai_client = None  # force the _structured_reasoning path: no network
     return agent
 
 
@@ -170,7 +187,7 @@ def _build_agent(mock_wali, mock_izn, temp_db):
 def agent(mock_wali, mock_izn, temp_db, monkeypatch):
     """General agent with the flag explicitly OFF (deterministic)."""
     _flag_off(monkeypatch)
-    return _build_agent(mock_wali, mock_izn, temp_db)
+    return _build_agent(mock_wali, mock_izn, temp_db, monkeypatch)
 
 
 @pytest.fixture
@@ -178,7 +195,7 @@ def agent_nlp(mock_wali, mock_izn, temp_db, monkeypatch):
     """General agent with the flag ON before construction (IP-2 registers
     its tool in _register_base_tools based on the flag at build time)."""
     _flag_on(monkeypatch)
-    return _build_agent(mock_wali, mock_izn, temp_db)
+    return _build_agent(mock_wali, mock_izn, temp_db, monkeypatch)
 
 
 # ── Group A: nlp package contract, no wiring needed ─────────────────────────
@@ -244,7 +261,7 @@ class TestIP1ThinkInjection:
 
         _patch_nlp(monkeypatch, boom)
         out = await _drain_think(agent, AR_TEXT)
-        assert "Task received" in out  # think() completed normally
+        assert out == FIXTURE_RESPONSE  # think() completed through the provider protocol
 
     async def test_ip1_flag_on_consults_nlp(self, agent_nlp, monkeypatch):
         """(a) Flag ON + Arabic input -> agent consults mizan.nlp; marker appears."""
@@ -278,7 +295,7 @@ class TestIP1ThinkInjection:
         _patch_nlp(monkeypatch, fake)
         with caplog.at_level(logging.INFO):
             out = await _drain_think(agent_nlp, AR_TEXT)
-        assert "Task received" in out  # no exception escaped; LLM path taken
+        assert out == FIXTURE_RESPONSE  # no exception escaped; provider path taken
         assert _fallback_logged(caplog), "fallback was not logged"
         assert SENSES_MARKER not in captured["messages"][-1]["content"]
 
@@ -289,7 +306,7 @@ class TestIP1ThinkInjection:
         captured = _capture_messages(agent_nlp, monkeypatch)
         _patch_nlp(monkeypatch, lambda text, lemma: [])
         out = await _drain_think(agent_nlp, AR_TEXT)
-        assert "Task received" in out
+        assert out == FIXTURE_RESPONSE
         assert SENSES_MARKER not in captured["messages"][-1]["content"]
 
     async def test_ip1_unknown_stays_unknown_no_coercion(self, agent_nlp, monkeypatch):
@@ -314,7 +331,7 @@ class TestIP1ThinkInjection:
 
         _patch_nlp(monkeypatch, weak)
         out = await _drain_think(agent_nlp, AR_TEXT)
-        assert "Task received" in out
+        assert out == FIXTURE_RESPONSE
         content = captured["messages"][-1]["content"]
         assert SENSES_MARKER not in content
         assert "qcsmp2:" not in content
@@ -330,7 +347,7 @@ class TestIP1ThinkInjection:
         _patch_nlp(monkeypatch, fake)
         with caplog.at_level(logging.INFO):
             out = await _drain_think(agent_nlp, AR_TEXT)
-        assert "Task received" in out  # native WSD is never a single point of failure
+        assert out == FIXTURE_RESPONSE  # native WSD is never a single point of failure
         assert _fallback_logged(caplog)
 
     async def test_ip1_native_output_never_memory(self, agent_nlp, monkeypatch, caplog):
@@ -346,7 +363,7 @@ class TestIP1ThinkInjection:
         _patch_nlp(monkeypatch, fake)
         with caplog.at_level(logging.INFO):
             out = await _drain_think(agent_nlp, AR_TEXT)
-        assert "Task received" in out  # answer came from the fallback path
+        assert out == FIXTURE_RESPONSE  # provider answered after the native WSD fallback
         assert CANNED_SENSE_ID not in out
         assert CANNED_SENSE_ID not in captured["messages"][-1]["content"]
         assert _fallback_logged(caplog)

@@ -3,7 +3,7 @@
  *
  * Wraps fetch with the stored JWT (same pattern as PR #50 for /api/chat).
  * Extracted from App.tsx so panels/components can share one implementation.
- * Public endpoints (/version) keep using plain fetch().
+ * Public endpoints (/health) keep using plain fetch().
  */
 export function authFetch(
   input: string,

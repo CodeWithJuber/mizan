@@ -163,3 +163,8 @@ before activation — advisory-only.
 10. **ruff I001 in `tests/test_nlp.py`** (2026-09-29): import order corrected
     (`import pytest` before `import nlp`) — the earlier fix attempt had the
     order backwards and CI's lint job caught it.
+11. **Chat reliability fixture update:** the agent now rejects a missing response
+    provider instead of presenting a placeholder as a completed answer. IP-1 uses
+    a deterministic in-process `BaseLLMProvider` returning `LLMResponse` and checks
+    its explicit fixture response. All native-WSD injection, flag, confidence and
+    fallback-log assertions remain unchanged; no hosted model is contacted.

@@ -87,12 +87,21 @@ def _chat_completion_sync(
     """Call the existing LLM provider layer (blocking). Returns
     (text, input_tokens_est, output_tokens_est)."""
     # Imported lazily to keep module import cheap and avoid import cycles.
-    from providers import create_provider  # noqa: PLC0415
+    from providers import (  # noqa: PLC0415
+        create_provider,
+        get_provider_status,
+        normalize_model_for_provider,
+    )
 
-    provider = create_provider(model=model)
+    selected_provider = None
+    if not model:
+        selected = get_provider_status()
+        selected_provider = selected["active"]
+        model = selected["default_model"]
+    provider = create_provider(provider=selected_provider, model=model)
     if provider is None:
         raise RuntimeError("no LLM provider configured (set an API key)")
-    resolved_model = model or os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
+    resolved_model = normalize_model_for_provider(model, provider.provider_name)
     resp = provider.create(
         model=resolved_model, max_tokens=max_tokens, system=system, messages=messages
     )

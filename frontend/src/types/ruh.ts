@@ -48,6 +48,9 @@ export interface TrainingMetrics {
   model_params: number;
   message: string;
   losses: number[];
+  data_source?: "supplied_unverified" | "generated_seed_examples" | null;
+  original_data_verified?: boolean;
+  automatic_weight_training?: boolean;
 }
 
 export interface TrainingRun {
@@ -61,6 +64,9 @@ export interface TrainingRun {
   losses: number[];
   dataset_size: number;
   model_params: number;
+  data_source?: "supplied_unverified" | "generated_seed_examples" | null;
+  original_data_verified?: boolean;
+  automatic_weight_training?: boolean;
 }
 
 // ===== Checkpoint Types =====

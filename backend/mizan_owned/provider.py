@@ -5,6 +5,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from mizan_owned.prompt import OwnedPromptOverflow, prepare_prompt
 from mizan_owned.store import ReviewStore
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.auth import current_user_id
@@ -56,10 +57,15 @@ class OwnedProvider(BaseLLMProvider):
         self._lock = threading.Lock()
 
     def _decode(self, request: dict, max_tokens: int) -> tuple[str, bool]:
+        text, complete, _ = self._decode_with_receipt(request, max_tokens)
+        return text, complete
+
+    def _decode_with_receipt(self, request: dict, max_tokens: int) -> tuple[str, bool, dict]:
         if self.decoder is not None:
-            return self.decoder(request, max_tokens)
+            text, complete = self.decoder(request, max_tokens)
+            return text, complete, {}
         if not self._checkpoint:
-            return "", False
+            return "", False, {}
         from mizan_reply.data import encode_prompt
         from mizan_reply.evaluate import inference_device, load_inference_model
         from mizan_reply.generation import generate
@@ -71,17 +77,15 @@ class OwnedProvider(BaseLLMProvider):
                 self._model, _, self._sha = load_inference_model(
                     self._checkpoint, self._device, include_sha256=True
                 )
-            messages = request["messages"]
-            if request["system"]:
-                messages = [{"role": "system", "content": request["system"]}, *messages]
+            messages, receipt = prepare_prompt(request, self._model.config.max_seq_len, max_tokens)
             prompt = encode_prompt(messages, [], None, self._model.config.max_seq_len)
             result = generate(
                 self._model,
                 prompt["input_ids"].to(self._device),
                 roots=prompt["roots"].to(self._device),
-                max_new_tokens=min(max_tokens, 1024),
+                max_new_tokens=receipt["output_tokens"],
             )
-            return result.text, result.eos
+            return result.text, result.eos, receipt
 
     def create(
         self,
@@ -102,15 +106,33 @@ class OwnedProvider(BaseLLMProvider):
                 model=MODEL,
                 usage={"owned_status": "reviewed_memory", "proposal_id": recalled["id"]},
             )
+        receipt: dict = {}
+        reason = ""
         try:
-            text, complete = self._decode(request, max_tokens)
+            text, complete, receipt = self._decode_with_receipt(request, max_tokens)
             if not text.strip() or not complete or "\ufffd" in text or len(text) > 100_000:
                 text, status = ABSTAIN, "abstained"
             else:
                 status = "own_model_unverified"
+        except OwnedPromptOverflow as exc:
+            receipt = exc.receipt
+            reason = "context_budget_exceeded"
+            text = (
+                "Mizan's local reply checkpoint cannot fit the preserved instructions and "
+                f"conversation ({receipt['prompt_tokens']} byte/framing tokens) while reserving "
+                f"{receipt['minimum_output_tokens']} output tokens within its "
+                f"{receipt['context_limit']}-token limit. No instructions, preferences, history "
+                "or current input were removed. Use a larger-context local checkpoint or start "
+                "a shorter conversation. OpenRouter support must be requested separately."
+            )
+            status = "abstained"
         except (ValueError, RuntimeError, OSError, ImportError, KeyError, TypeError):
             text, status = ABSTAIN, "abstained"
-        usage = {"owned_status": status}
+        usage: dict = {"owned_status": status}
+        if receipt:
+            usage["owned_prompt"] = receipt
+        if reason:
+            usage["owned_reason"] = reason
         if owner and status == "own_model_unverified":
             row = self.store.save(owner, request, text, "mizan-reply", True)
             usage["proposal_id"] = row["id"]

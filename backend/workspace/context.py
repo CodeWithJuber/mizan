@@ -43,6 +43,11 @@ def reset_workspace(token):
     _selected.reset(token)
 
 
+def bound_workspace_id() -> str | None:
+    """Return the server-bound project for tool-policy checks, never a model argument."""
+    return _selected.get()
+
+
 def selected_workspace(workspace_id: str | None) -> str:
     selected = _selected.get()
     if selected and workspace_id and selected != workspace_id:

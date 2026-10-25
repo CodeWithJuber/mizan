@@ -127,6 +127,9 @@ export function CodingWorkspace({
     void refresh().catch((error) => setError(error.message));
   }, [refresh]);
   useEffect(() => {
+    setFiles([]);
+    setError("");
+    setNotice("");
     setPath("");
     setContent("");
     setOriginal("");
@@ -136,7 +139,6 @@ export function CodingWorkspace({
     setDiff("");
     setCheckpoints([]);
     if (!selectedId) {
-      setFiles([]);
       return;
     }
     void loadTree(selectedId).catch((error) => setError(error.message));
@@ -302,7 +304,9 @@ export function CodingWorkspace({
                 className="text-xs hover:underline"
                 disabled={Boolean(busy)}
                 onClick={() =>
-                  void action("Refreshing", () => loadTree(selectedId))
+                  void action("Refreshing", async () => {
+                    await Promise.all([loadTree(selectedId), refresh()]);
+                  })
                 }
               >
                 Refresh
@@ -515,7 +519,11 @@ export function CodingWorkspace({
                   onChange={(event) => setCommand(event.target.value)}
                   className={`${field} flex-1 min-w-[120px] font-mono`}
                   placeholder={
-                    language === "shell" ? "python main.py" : "print('Hello')"
+                    language === "shell"
+                      ? "python main.py"
+                      : language === "javascript"
+                        ? "console.log('Hello')"
+                        : "print('Hello')"
                   }
                 />
                 <button

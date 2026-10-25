@@ -17,6 +17,11 @@ import { ArtifactPreview } from "./ArtifactPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { config } from "../config.ts";
 import { authFetch } from "../utils/authFetch.ts";
+import {
+  artifactDownloadName,
+  artifactVersion,
+  mergeSessionArtifacts,
+} from "../utils/artifacts.ts";
 import type { Artifact, ArtifactKind, ArtifactVersion } from "../types.ts";
 
 interface ArtifactsPanelProps {
@@ -48,7 +53,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function ArtifactsPanel({
+export function ArtifactsPanel(props: ArtifactsPanelProps) {
+  // Session changes must discard drafts and in-flight content fetches together.
+  return <SessionArtifactsPanel key={props.sessionId} {...props} />;
+}
+
+function SessionArtifactsPanel({
   artifacts,
   sessionId,
   onClose,
@@ -104,20 +114,22 @@ export function ArtifactsPanel({
   const [draft, setDraft] = useState("");
   const [listError, setListError] = useState("");
   const [reload, setReload] = useState(0);
+  const requestedVersions = useRef<Record<string, number>>({});
+  const generation = useRef(0);
 
   // Merge WS artifacts with the server-side session list (dedup by id).
-  const byId = new Map(listed.map((artifact) => [artifact.id, artifact]));
-  for (const artifact of artifacts)
-    byId.set(artifact.id, { ...byId.get(artifact.id), ...artifact });
-  const all = [...byId.values()];
+  const all = mergeSessionArtifacts(sessionId, listed, artifacts);
 
   useEffect(() => {
     let cancelled = false;
+    generation.current += 1;
+    requestedVersions.current = {};
     setListed([]);
     setVersions({});
     setSelectedVersion({});
     setExpandedId(null);
     setEditingId(null);
+    setLoadingVersions({});
     setListError("");
     api<Array<Omit<Artifact, "versions">>>(
       `/?session_id=${encodeURIComponent(sessionId)}`,
@@ -126,8 +138,7 @@ export function ArtifactsPanel({
         if (cancelled) return;
         if (!Array.isArray(items)) throw new Error("Invalid artifact list");
         setListed(items.map((a) => ({ ...a, versions: [] })));
-        if (items.length > 0)
-          setExpandedId((prev) => prev ?? items[items.length - 1].id);
+        if (items.length > 0) setExpandedId((prev) => prev ?? items[0].id);
       })
       .catch(() => {
         if (!cancelled) setListError("Saved artifacts could not be loaded.");
@@ -136,6 +147,16 @@ export function ArtifactsPanel({
       cancelled = true;
     };
   }, [sessionId, reload]);
+
+  const latestIncomingId = artifacts
+    .filter((item) => item.session_id === sessionId)
+    .slice(-1)[0]?.id;
+  useEffect(() => {
+    if (latestIncomingId) {
+      setExpandedId(latestIncomingId);
+      setEditingId(null);
+    }
+  }, [latestIncomingId, reload]);
 
   const cancelledRef = useRef(false);
   useEffect(() => {
@@ -148,12 +169,18 @@ export function ArtifactsPanel({
   const ensureVersions = useCallback(
     async (artifact: Artifact) => {
       const cached = versions[artifact.id];
-      const desired =
-        artifact.current_version ??
-        artifact.versions?.[artifact.versions.length - 1]?.version ??
-        1;
+      const desired = artifactVersion(artifact);
       if (cached?.length && cached[cached.length - 1].version >= desired)
         return;
+      // Failed version loads retry only on an explicit refresh or a new version.
+      // Otherwise a seeded older version can trigger an endless effect/fetch loop.
+      if ((requestedVersions.current[artifact.id] ?? 0) >= desired) return;
+      requestedVersions.current[artifact.id] = desired;
+      const requestGeneration = generation.current;
+      const isCurrent = () =>
+        !cancelledRef.current &&
+        generation.current === requestGeneration &&
+        requestedVersions.current[artifact.id] === desired;
       setLoadingVersions((p) => ({ ...p, [artifact.id]: true }));
       try {
         // Seed v1 from the WS payload when present so the panel works offline.
@@ -162,7 +189,7 @@ export function ArtifactsPanel({
           `/${artifact.id}/versions`,
         );
         const merged = fetched.length > 0 ? fetched : seeded;
-        if (!cancelledRef.current) {
+        if (isCurrent()) {
           setVersions((p) => ({ ...p, [artifact.id]: merged }));
           if (merged.length > 0) {
             setSelectedVersion((p) => ({
@@ -172,19 +199,20 @@ export function ArtifactsPanel({
           }
         }
       } catch {
-        if (!cancelledRef.current)
+        if (isCurrent())
           setListError(
             "Artifact content could not be loaded. Retry to refresh saved versions.",
           );
-        if (!cancelledRef.current && artifact.versions?.length) {
+        if (isCurrent() && artifact.versions?.length) {
           setVersions((p) => ({ ...p, [artifact.id]: artifact.versions }));
           setSelectedVersion((p) => ({
             ...p,
-            [artifact.id]: artifact.versions[0].version,
+            [artifact.id]: artifact.versions[artifact.versions.length - 1].version,
           }));
         }
       } finally {
-        setLoadingVersions((p) => ({ ...p, [artifact.id]: false }));
+        if (isCurrent())
+          setLoadingVersions((p) => ({ ...p, [artifact.id]: false }));
       }
     },
     [versions],
@@ -220,6 +248,7 @@ export function ArtifactsPanel({
       const refreshed = await api<ArtifactVersion[]>(
         `/${artifact.id}/versions`,
       );
+      if (cancelledRef.current) return;
       setVersions((p) => ({ ...p, [artifact.id]: refreshed }));
       setSelectedVersion((p) => ({ ...p, [artifact.id]: res.version }));
       addToast({
@@ -228,6 +257,7 @@ export function ArtifactsPanel({
         description: artifact.title,
       });
     } catch {
+      if (cancelledRef.current) return;
       addToast({ type: "error", title: "Restore failed — dobara try karo" });
     } finally {
       setRestoring(false);
@@ -248,6 +278,7 @@ export function ArtifactsPanel({
       const refreshed = await api<ArtifactVersion[]>(
         `/${artifact.id}/versions`,
       );
+      if (cancelledRef.current) return;
       setVersions((previous) => ({ ...previous, [artifact.id]: refreshed }));
       setSelectedVersion((previous) => ({
         ...previous,
@@ -256,6 +287,7 @@ export function ArtifactsPanel({
       setEditingId(null);
       addToast({ type: "success", title: `Saved version ${result.version}` });
     } catch (error) {
+      if (cancelledRef.current) return;
       addToast({
         type: "error",
         title: "Could not save this version",
@@ -266,16 +298,6 @@ export function ArtifactsPanel({
     }
   };
   const download = (artifact: Artifact, content: string) => {
-    const extension =
-      artifact.kind === "html"
-        ? "html"
-        : artifact.kind === "markdown"
-          ? "md"
-          : artifact.language === "python"
-            ? "py"
-            : artifact.language || "txt";
-    const filename =
-      artifact.title.replace(/[^a-zA-Z0-9_.-]/g, "_") || "artifact";
     const href =
       artifact.kind === "image" &&
       /^data:image\/(png|jpeg|webp);base64,/.test(content)
@@ -285,9 +307,7 @@ export function ArtifactsPanel({
           );
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = /\.[a-z0-9]+$/i.test(filename)
-      ? filename
-      : `${filename}.${artifact.kind === "image" ? "png" : extension}`;
+    anchor.download = artifactDownloadName(artifact, content);
     anchor.click();
     if (href.startsWith("blob:"))
       setTimeout(() => URL.revokeObjectURL(href), 1000);

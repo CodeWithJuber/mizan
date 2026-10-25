@@ -214,3 +214,330 @@ async def test_stream_without_final_receipt_does_not_replay(agent, monkeypatch):
     assert not result["success"]
     assert agent.ai_client.calls == 0
     assert [c.args[0] for c in chunks.await_args_list] == ["Saved prefix"]
+
+
+async def test_tool_body_type_error_never_replays_a_committed_action(agent):
+    calls = []
+
+    async def save(*args, **kwargs):
+        calls.append("saved")
+        raise TypeError("serialization failed after save")
+
+    result = await agent._invoke_with_healing(save, {"path": "a.txt"}, "save")
+    assert calls == ["saved"]
+    assert "serialization failed" in result["error"]
+
+
+async def test_missing_dependency_does_not_install_or_replay(agent, monkeypatch):
+    calls = []
+    installer = AsyncMock(return_value=True)
+    monkeypatch.setattr(agent, "_auto_install_package", installer)
+
+    async def save(path):
+        calls.append(path)
+        raise ModuleNotFoundError("No module named 'httpx'")
+
+    result = await agent._invoke_with_healing(save, {"path": "a.txt"}, "save")
+    assert calls == ["a.txt"]
+    assert "No module named" in result["error"]
+    installer.assert_not_awaited()
+
+
+async def test_signature_style_is_adapted_before_execution(agent):
+    calls = []
+
+    async def save(params):
+        calls.append(params)
+        return {"saved": True}
+
+    assert await agent._invoke_with_healing(save, {"path": "a.txt"}, "save") == {"saved": True}
+    assert calls == [{"path": "a.txt"}]
+
+
+async def test_depleted_heuristic_energy_does_not_block_chat(agent):
+    agent.ruh.get_state(agent.id).energy = 0
+    agent.ai_client = ScriptedProvider([answer("Here is the requested answer")])
+    result = await agent.execute("review the design")
+    assert result["success"]
+    assert agent.ai_client.calls == 1
+    assert agent.current_task is None
+    assert agent.state == "resting"
+    assert result["task_verified"] is False
+
+
+async def test_cancellation_clears_in_progress_state(agent, monkeypatch):
+    import asyncio
+
+    started = asyncio.Event()
+
+    async def waiting(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()
+        yield "unreachable"
+
+    monkeypatch.setattr(agent, "think", waiting)
+    task = asyncio.create_task(agent.execute("hello"))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert agent.current_task is None
+    assert agent.state == "resting"
+    assert not agent._execution_lock.locked()
+
+
+async def test_tool_marker_without_stream_is_not_an_answer(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider(
+        [
+            LLMResponse(
+                [ContentBlock(type="tool_use", id="t1", name="workspace_write", input={})],
+                "tool_use",
+                "observed-model",
+            ),
+            LLMResponse([], "end_turn", "observed-model"),
+        ]
+    )
+    monkeypatch.setattr(agent, "_execute_tool_safe", AsyncMock(return_value={"error": "denied"}))
+    summary = AsyncMock()
+
+    async def empty_summary(*args):
+        await summary()
+        if False:
+            yield ""
+
+    monkeypatch.setattr(agent, "_summarize_tool_results", empty_summary)
+    result = await agent.execute("save a file")
+    assert not result["success"]
+    assert agent.success_count == 0
+    summary.assert_awaited_once()
+    assert agent.ai_client.calls == 2
+
+
+async def test_whitespace_after_retry_is_not_success(agent):
+    agent.ai_client = ScriptedProvider([RuntimeError("upstream unavailable"), answer("   ")])
+    result = await agent.execute("hello")
+    assert not result["success"]
+    assert agent.success_count == 0
+    assert agent.ai_client.calls == 2
+
+
+async def test_summary_without_final_receipt_fails_without_replaying(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider([])
+
+    async def missing_receipt(*args):
+        yield "A partial summary"
+
+    monkeypatch.setattr(agent, "_streaming_create", missing_receipt)
+    chunks = []
+    with pytest.raises(RuntimeError, match="completion record"):
+        async for chunk in agent._summarize_tool_results("task", [{"name": "read", "result": {}}]):
+            chunks.append(chunk)
+    assert chunks == ["A partial summary"]
+    assert agent.ai_client.calls == 0
+
+
+async def test_abstention_is_delivered_without_success_learning_or_capture(agent, monkeypatch):
+    from mizan_owned.provider import ABSTAIN
+
+    agent.ai_client = ScriptedProvider(
+        [
+            LLMResponse(
+                [ContentBlock(type="text", text=ABSTAIN)],
+                "end_turn",
+                "mizan-owned",
+                {"owned_status": "abstained"},
+            )
+        ]
+    )
+    reflection = AsyncMock()
+    monkeypatch.setattr(agent, "_tafakkur", reflection)
+    token = bind_principal(TokenPayload("alice", "Alice", ["user"], 9999999999, 0, "test"))
+    try:
+        result = await agent.execute("hello", {"session_id": "s"})
+    finally:
+        reset_principal(token)
+    assert result["success"]  # Transport delivered the limitation honestly.
+    assert result["completion_status"] == "abstained"
+    assert result["usage"]["completion_status"] == "abstained"
+    assert result["task_verified"] is False
+    assert not result["capture_eligible"]
+    assert "learning_capture" not in result
+    assert agent.success_count == 0
+    assert agent.shukr.stats(agent.id)["total_successes"] == 0
+    reflection.assert_not_awaited()
+
+
+async def test_no_configured_provider_is_an_error_not_a_fake_response(agent):
+    agent.ai_client = None
+    result = await agent.execute("hello")
+    assert not result["success"]
+    assert "No response model" in result["error"]
+    assert agent.success_count == 0
+
+
+async def test_failed_tool_receipt_is_not_a_verified_observation(agent, monkeypatch):
+    from unittest.mock import Mock
+
+    observation = Mock(wraps=agent.yaqin.tag_observation)
+    monkeypatch.setattr(agent.yaqin, "tag_observation", observation)
+    monkeypatch.setattr(agent, "_execute_tool_safe", AsyncMock(return_value={"exit_code": 1}))
+    agent.ai_client = ScriptedProvider(
+        [
+            LLMResponse(
+                [ContentBlock(type="tool_use", id="t1", name="workspace_run", input={})],
+                "tool_use",
+                "observed-model",
+            ),
+            answer("The command failed."),
+        ]
+    )
+    result = await agent.execute("run the program")
+    assert result["success"]
+    assert result["task_verified"] is False
+    observation.assert_not_called()
+
+
+async def test_pre_execution_tool_failure_does_not_repeat_other_actions(agent, monkeypatch):
+    calls = []
+
+    async def execute_tool(name, params):
+        calls.append(name)
+        if name == "failing_check":
+            raise RuntimeError("permission service unavailable")
+        return {"saved": True}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", execute_tool)
+    agent.ai_client = ScriptedProvider(
+        [
+            LLMResponse(
+                [
+                    ContentBlock(type="tool_use", id="t1", name="save", input={}),
+                    ContentBlock(type="tool_use", id="t2", name="failing_check", input={}),
+                ],
+                "tool_use",
+                "observed-model",
+            )
+        ]
+    )
+    result = await agent.execute("hello")
+    assert not result["success"]
+    assert calls == ["save", "failing_check"]
+    assert agent.ai_client.calls == 1
+
+
+def test_explicit_preferences_are_attributed_once_and_override_old_context(agent):
+    messages = agent._build_messages(
+        "Use English just for this reply",
+        {
+            "history": [{"role": "assistant", "content": "I am AGI"}],
+            "user_preferences": [
+                {"key": "language", "value": "Hinglish", "source": "explicit_user_preference"}
+            ],
+        },
+    )
+    text = messages[-1]["content"]
+    assert text.count('"value": "Hinglish"') == 1
+    assert "EXPLICIT USER PREFERENCES" in text
+    assert "current request take precedence" in text
+    assert "Context:" not in text
+
+
+async def test_council_waits_for_active_execution_and_cannot_use_tools(agent, monkeypatch):
+    import asyncio
+
+    agent.ai_client = ScriptedProvider([])
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    async def execute_impl(task, *args):
+        calls.append(task)
+        if task == "first":
+            entered.set()
+            await release.wait()
+        else:
+            assert agent.get_tool_schemas() == []
+            result = await agent._execute_tool_safe("write_file", {"path": "should-not-exist"})
+            assert "read-only council" in result["error"]
+        return {"success": True, "result": "Advice"}
+
+    monkeypatch.setattr(agent, "_execute_impl", execute_impl)
+    first = asyncio.create_task(agent.execute("first"))
+    await entered.wait()
+    council = asyncio.create_task(agent.evaluate("the plan", {}))
+    await asyncio.sleep(0)
+    assert calls == ["first"]
+    release.set()
+    await first
+    result = await council
+    assert calls == ["first", "Evaluate: the plan"]
+    assert result["response"] == "Advice"
+    assert result["task_verified"] is False
+    assert agent.get_tool_schemas()  # Evaluation mode cannot leak to later requests.
+
+
+def test_saved_agent_provider_override_survives_default_provider_change(monkeypatch):
+    from unittest.mock import Mock
+
+    from agents.base import BaseAgent
+
+    provider = ScriptedProvider([])
+    provider.provider_name = "openrouter"
+    factory = Mock(return_value=provider)
+    monkeypatch.setattr("agents.base.create_provider", factory)
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    agent = BaseAgent(
+        config={
+            "provider_override": {"provider": "openrouter", "model": "anthropic/claude-example"}
+        }
+    )
+    factory.assert_called_once_with(provider="openrouter", model="anthropic/claude-example")
+    assert agent.ai_client is provider
+    assert agent.ai_model == "anthropic/claude-example"
+
+
+async def test_request_model_override_is_normalized_for_actual_adapter(agent, monkeypatch):
+    from unittest.mock import Mock
+
+    agent.ai_client = ScriptedProvider([])
+    provider = ScriptedProvider([answer("Hello")])
+    provider.provider_name = "openrouter"
+    create = Mock(wraps=provider.create)
+    provider.create = create
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: provider)
+    result = await agent.execute("hello", model_override="claude-sonnet-4-20250514")
+    assert result["success"]
+    assert create.call_args.kwargs["model"] == "anthropic/claude-sonnet-4"
+    assert agent.ai_model == "requested-model"
+
+
+@pytest.mark.parametrize("provider_succeeds", [True, False])
+async def test_secondary_task_telemetry_cannot_change_provider_outcome(agent, provider_succeeds):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    save_task = AsyncMock(side_effect=RuntimeError("task metrics DB unavailable"))
+    encode = Mock(side_effect=RuntimeError("pathway cache unavailable"))
+    agent.memory = SimpleNamespace(
+        save_task=save_task,
+        masalik=SimpleNamespace(
+            stats=lambda: {"total_concepts": 0, "total_pathways": 0, "hikmah_pathways": 0},
+            encode=encode,
+        ),
+    )
+    agent.ai_client = ScriptedProvider(
+        [answer("The requested answer")]
+        if provider_succeeds
+        else [RuntimeError("original upstream failure")] * 2
+    )
+    result = await agent.execute("hello")
+    assert result["success"] is provider_succeeds
+    assert agent.success_count == int(provider_succeeds)
+    assert agent.error_count == int(not provider_succeeds)
+    assert agent.ai_client.calls == (1 if provider_succeeds else 2)
+    save_task.assert_awaited_once()
+    encode.assert_called_once()
+    if provider_succeeds:
+        assert "The requested answer" in result["result"]
+    else:
+        assert result["error"] == "original upstream failure"

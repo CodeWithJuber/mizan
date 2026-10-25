@@ -417,6 +417,46 @@ class TestRealRuntime:
         assert result["exit_code"] == 0 and result["stdout"] == "isolated\n"
         assert base64.b64decode(result["files"]["result.txt"]) == b"saved"
 
+    def test_plot_is_generated_isolated_and_saved_as_validated_artifact(self, storage):
+        from PIL import Image
+
+        code = """import os
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+from PIL import Image
+assert matplotlib.get_backend().lower() == 'agg'
+assert os.environ['OPENBLAS_NUM_THREADS'] == '1'
+x = np.linspace(0, 2 * np.pi, 40)
+fig, ax = plt.subplots(figsize=(4, 3), dpi=80)
+ax.plot(x, np.sin(x))
+fig.savefig('curve.png')
+plt.close(fig)
+with Image.open('curve.png') as image:
+    assert image.size == (320, 240)
+print('plot created')
+"""
+        result = execute({"language": "python", "command": code, "timeout_s": 30, "files": {}})
+        assert result["exit_code"] == 0, result["stderr"]
+        assert result["stdout"] == "plot created\n"
+        assert result["export_error"] is False
+        assert set(result["files"]) == {"curve.png"}
+        data = base64.b64decode(result["files"]["curve.png"])
+        with Image.open(io.BytesIO(data)) as image:
+            assert image.format == "PNG" and image.size == (320, 240)
+            image.verify()
+        workspace = storage.create("Isolated chart")["id"]
+        storage.apply_run(workspace, {}, result["files"], result["directories"])
+        response = client().post(
+            f"/api/workspaces/{workspace}/artifact",
+            json={"path": "curve.png", "session_id": "chart-chat"},
+        )
+        assert response.status_code == 201
+        artifact = response.json()["artifact"]
+        assert artifact["kind"] == "image" and artifact["session_id"] == "chart-chat"
+        assert base64.b64decode(artifact["content"].split(",", 1)[1]) == data
+        assert get_artifact(user_id=OTHER.user_id, artifact_id=artifact["id"]) is None
+
     def test_timeout_output_cap_and_cleanup(self):
         result = execute(
             {

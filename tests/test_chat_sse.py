@@ -147,6 +147,40 @@ def test_unicode_completion_usage_and_no_websocket_leaks(api):
     manager.send.assert_not_called()
 
 
+def test_abstention_receipt_survives_stream_and_history(api):
+    _, client, tokens, _, memory, agent, _ = api
+    original = agent.execute
+
+    async def abstain(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        result.update(completion_status="abstained", task_verified=False, answer_delivered=True)
+        result["usage"].update(owned_status="abstained", completion_status="abstained")
+        return result
+
+    agent.execute = abstain
+    body = message()
+    response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+    final = frames(response.text)[-1]
+    assert final["type"] == "chat_complete"
+    assert final["completion_status"] == "abstained"
+    assert final["task_verified"] is False
+    assert final["usage"]["owned_status"] == "abstained"
+    stored = asyncio.run(memory.get_messages(body["session_id"]))[-1]["metadata"]
+    assert stored["completion_status"] == "abstained"
+    assert stored["task_verified"] is False
+
+
+def test_shared_council_is_not_accessible_to_ordinary_users(api, monkeypatch):
+    main, client, tokens, _, _, _, _ = api
+    council = SimpleNamespace(consult=AsyncMock())
+    monkeypatch.setattr(main, "shura", council)
+    response = client.post(
+        "/api/shura", json={"question": "Recall shared notes"}, headers=headers(tokens["alice"])
+    )
+    assert response.status_code == 403
+    council.consult.assert_not_awaited()
+
+
 def test_cross_user_session_denied_before_agent_call(api):
     _, client, tokens, _, _, agent, _ = api
     assert (
