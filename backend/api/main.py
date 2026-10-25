@@ -841,7 +841,7 @@ async def update_agent(
 
 
 class AgentModelRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|qwen3)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -1982,7 +1982,7 @@ async def provider_health(provider_name: str):
 
 
 class ProviderSwitchRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama)$")
+    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid)$")
     model: str = Field(..., min_length=1, max_length=200)
 
 
