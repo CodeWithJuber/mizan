@@ -2,9 +2,12 @@
 """Read-only, secret-free diagnostics for an interrupted workspace setup."""
 
 import hashlib
+import importlib.util
 import json
 import os
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 DOCKER = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock"]
@@ -12,10 +15,20 @@ ROOT = Path("/opt/mizan")
 STATE = Path("/var/lib/mizan-deploy/workspace-runner")
 
 
-def run(args, timeout=30):
+def run(args, timeout=30, stdin=None):
     try:
-        result = subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False,
-            env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
+        result = subprocess.run(
+            args,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            input=stdin,
+            env={
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG": "C.UTF-8",
+            },
+        )
         return result.returncode, result.stdout, result.stderr
     except (OSError, subprocess.TimeoutExpired):
         return -1, "", "command unavailable or timed out"
@@ -35,6 +48,41 @@ def error_class(stderr):
         for name, needles in patterns.items()
         if any(needle in stderr.lower() for needle in needles)
     ] or ["unclassified; raw output withheld"]
+
+
+def environment_values(config):
+    values = []
+    for service in config.get("services", {}).values():
+        environment = service.get("environment", {})
+        if isinstance(environment, dict):
+            values.extend(str(value) for value in environment.values() if value is not None)
+        elif isinstance(environment, list):
+            values.extend(value.partition("=")[2] for value in environment if "=" in value)
+    return values
+
+
+def safe_error_detail(stderr, values):
+    """Bounded diagnostic after redacting values AND every quoted string."""
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stderr)
+    variants = set()
+    for value in values:
+        if value:
+            variants.update(
+                (value, value.replace("$", "$$"), json.dumps(value)[1:-1], repr(value)[1:-1])
+            )
+    for value in sorted(variants, key=len, reverse=True):
+        text = text.replace(value, "<redacted>")
+    for pattern in (r'"(?:[^"\\]|\\.)*"', r"'(?:[^'\\]|\\.)*'", r"`[^`]*`", r"“[^”]*”", r"‘[^’]*’"):
+        text = re.sub(pattern, "<quoted>", text, flags=re.DOTALL)
+    text = re.sub(r"[A-Za-z][A-Za-z0-9+.-]{1,20}://[^\s\"'<>]+", "<url>", text)
+    text = re.sub(r"(?i)bearer\s+\S+", "Bearer <credential>", text)
+    text = re.sub(
+        r"(?i)(token|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=<credential>", text
+    )
+    text = re.sub(r"(?:gh[pousr]_|github_pat_|sk[-_])[A-Za-z0-9_-]+", "<credential>", text)
+    text = re.sub(r"[A-Za-z0-9_+/=-]{24,}", "<opaque>", text)
+    text = "".join(character for character in text if character in "\n\t" or ord(character) >= 32)
+    return "\n".join(text.splitlines()[:8])[:1200]
 
 
 def main():
@@ -159,8 +207,11 @@ def main():
             command.extend(["-f", filename])
         code, output, stderr = run([*command, "config", "--format", "json"])
         report["original_compose_exit"] = code
+        known_values = list(snapshot["backend_env"].values())
+        original_parsed = code == 0
         if code == 0:
             config = json.loads(output)
+            known_values.extend(environment_values(config))
             report["original_networks"] = {
                 key: {"name": value.get("name"), "external": value.get("external", False)}
                 for key, value in config.get("networks", {}).items()
@@ -171,17 +222,59 @@ def main():
         else:
             report["original_error_classes"] = error_class(stderr)
         override = ROOT / "docker-compose.workspace-runtime.yml"
+        candidate_content = None
         if override.is_file():
+            known_values.extend(environment_values(json.loads(override.read_text())))
             report["override_hash_matches_managed"] = hashlib.sha256(
                 override.read_bytes()
             ).hexdigest() in {state.get("override_sha256"), state.get("pending_override_sha256")}
             candidate = [*command, "-f", str(override)]
+        else:
+            # Recovery removes the invalid override. Reconstruct it in memory
+            # using only the adjacent reviewed installer and protected state.
+            installer_path = Path(__file__).with_name("setup_workspace_runner.py")
+            if installer_path.is_file():
+                spec = importlib.util.spec_from_file_location(
+                    "reviewed_runner_setup", installer_path
+                )
+                installer = importlib.util.module_from_spec(spec)
+                previous = sys.dont_write_bytecode
+                sys.dont_write_bytecode = True
+                try:
+                    spec.loader.exec_module(installer)
+                finally:
+                    sys.dont_write_bytecode = previous
+                token = (STATE / "runner-token").read_text().strip()
+                document = installer.workspace_override(
+                    state["uid"],
+                    state["gid"],
+                    token,
+                    runtime_image=state["images"]["runtime"]["id"],
+                    runner_image=state["images"]["runner"]["id"],
+                    research_dir=state.get("research_dir"),
+                )
+                candidate_content = installer.compose_document(document)
+                known_values.extend(environment_values(document))
+                known_values.append(token)
+                candidate = [*command, "-f", "-"]
+                report["candidate_reconstructed_from_reviewed_installer"] = hashlib.sha256(
+                    installer_path.read_bytes()
+                ).hexdigest()
+            else:
+                candidate = None
+                report["candidate_unavailable"] = (
+                    "Upload reviewed setup_workspace_runner.py beside this diagnostic to reconstruct without writing server configuration"
+                )
+        if candidate is not None:
             current = attempt / "current-backend.yml"
             if current.is_file():
+                known_values.extend(environment_values(json.loads(current.read_text())))
                 candidate.extend(["-f", str(current)])
-            code, _, stderr = run([*candidate, "config", "--quiet"])
+            code, _, stderr = run([*candidate, "config", "--quiet"], stdin=candidate_content)
             report["candidate_compose_exit"] = code
             report["candidate_error_classes"] = error_class(stderr) if code else []
+            if code and original_parsed:
+                report["candidate_error_detail_redacted"] = safe_error_detail(stderr, known_values)
     print(json.dumps(report, indent=2))
 
 

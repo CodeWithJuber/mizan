@@ -34,4 +34,8 @@ jobs:
           test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
           test -s deploy/known_hosts
           ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'python3 -' < scripts/workspace_runner_diagnostics.py
+          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-diagnostics.XXXXXXXX')
+          [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-diagnostics\.[A-Za-z0-9]{8}$ ]]
+          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/workspace_runner_diagnostics.py'\'' '\''$remote_dir/setup_workspace_runner.py'\'' && rmdir '\''$remote_dir'\''" || true' EXIT
+          sshpass -e scp "${ssh_options[@]}" scripts/workspace_runner_diagnostics.py scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "flock -w 120 /var/lib/mizan-deploy/deploy.lock python3 '$remote_dir/workspace_runner_diagnostics.py'"
