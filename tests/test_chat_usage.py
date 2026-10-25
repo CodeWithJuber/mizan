@@ -81,6 +81,20 @@ class TestExtractLlmMeta:
         assert meta["input_tokens"] == 7
         assert meta["output_tokens"] == 3
 
+    def test_mizan_gate_and_advisory_metadata_preserved(self):
+        marker = {
+            "gate": {"outcome": "PASS", "code": "RESPONSE_GATES_PASSED"},
+            "nlp_advisory": "signals",
+            "semantic_or_religious_certification": False,
+        }
+        response = LLMResponse(
+            content=[], model="Qwen/Qwen3-4B-Instruct-2507", usage={"mizan": marker}
+        )
+
+        assert extract_llm_meta(response)["mizan"] == marker
+        call = {"response": response, "latency_ms": 10}
+        assert build_usage_block(call)["mizan"] == marker
+
     def test_missing_values_absent_never_invented(self):
         meta = extract_llm_meta(LLMResponse(content=[]))
         assert "model" not in meta

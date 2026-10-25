@@ -875,7 +875,7 @@ PROVIDER_MODELS = {
         {
             "id": os.getenv("MIZAN_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
             "name": "Mizan Hybrid (Qwen3-4B + own NLP + gates; research)",
-            "context": 8192,
+            "context": 16384,
             "vision": False,
         },
     ],

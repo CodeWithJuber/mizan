@@ -51,6 +51,9 @@ def extract_llm_meta(llm_response: Any) -> dict:
             meta["input_tokens"] = inp
         if out is not None:
             meta["output_tokens"] = out
+        # Preserve Mizan's bounded gate/advisory metadata for audit and UI display.
+        if isinstance(usage.get("mizan"), dict):
+            meta["mizan"] = usage["mizan"]
         # Authoritative provider-reported cost, if the provider sends one.
         if usage.get("cost") is not None:
             meta["provider_cost"] = usage.get("cost")
