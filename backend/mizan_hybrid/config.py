@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_BASE_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
@@ -34,7 +34,7 @@ class HybridConfig:
     base_model: str = DEFAULT_BASE_MODEL
     base_revision: str = DEFAULT_BASE_REVISION
     base_url: str = ""
-    base_api_key: str = ""
+    base_api_key: str = field(default="", repr=False)
     source_registry_path: str = ""
     nlp_advisory: bool = True
     target_language: str = "any"
@@ -49,8 +49,12 @@ class HybridConfig:
             base_provider=os.getenv("MIZAN_BASE_PROVIDER", "openai-compatible").strip(),
             base_model=os.getenv("MIZAN_BASE_MODEL", DEFAULT_BASE_MODEL).strip()
             or DEFAULT_BASE_MODEL,
-            base_revision=os.getenv("MIZAN_BASE_REVISION", DEFAULT_BASE_REVISION).strip()
-            or DEFAULT_BASE_REVISION,
+            base_revision=os.getenv(
+                "MIZAN_BASE_REVISION",
+                DEFAULT_BASE_REVISION
+                if os.getenv("MIZAN_BASE_MODEL", DEFAULT_BASE_MODEL).strip() == DEFAULT_BASE_MODEL
+                else "",
+            ).strip(),
             base_url=os.getenv("MIZAN_BASE_URL", "").strip().rstrip("/"),
             base_api_key=os.getenv("MIZAN_BASE_API_KEY", "").strip(),
             source_registry_path=os.getenv("MIZAN_SOURCE_REGISTRY", "").strip(),
@@ -65,9 +69,21 @@ class HybridConfig:
     def configured(self) -> bool:
         if not self.enabled or not self.base_model or not self.base_provider:
             return False
+        if self.base_provider == "mizan-hybrid":
+            return False
+        if self.base_provider == "mizan-minimind":
+            from providers_minimind import MODEL_ID, configured
+
+            return self.base_model == MODEL_ID and bool(configured())
         if self.base_provider == "openai-compatible":
             return bool(self.base_url and self.base_api_key)
         return True
+
+    @property
+    def context_window(self) -> int:
+        if self.base_provider == "mizan-minimind":
+            return 2048
+        return _integer("MIZAN_BASE_CONTEXT_WINDOW", 32768, 256, 1048576)
 
     @property
     def registry_file(self) -> Path | None:
@@ -81,6 +97,7 @@ class HybridConfig:
             "base_provider": self.base_provider,
             "base_model": self.base_model,
             "base_revision": self.base_revision,
+            "context_window": self.context_window,
             "base_url": self.base_url,
             "source_registry_configured": bool(self.source_registry_path),
             "nlp_advisory": self.nlp_advisory,

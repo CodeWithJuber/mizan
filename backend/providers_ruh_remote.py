@@ -9,6 +9,7 @@ Env vars:
 """
 
 import logging
+import re
 from typing import cast
 
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
@@ -20,8 +21,11 @@ class RuhRemoteProvider(BaseLLMProvider):
     """Remote Ruh Model provider via RunPod Serverless."""
 
     provider_name = "ruh-remote"
+    submission_path = "runsync"
 
     def __init__(self, endpoint_id: str, api_key: str) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", endpoint_id):
+            raise ValueError("Invalid RunPod endpoint ID")
         self.endpoint_id = endpoint_id
         self.api_key = api_key
         self.base_url = f"https://api.runpod.ai/v2/{endpoint_id}"
@@ -30,18 +34,25 @@ class RuhRemoteProvider(BaseLLMProvider):
         """Poll RunPod /status/{job_id} until COMPLETED, FAILED, or timeout."""
         import json
         import time
+        import urllib.error
         import urllib.request
 
         url = f"{self.base_url}/status/{job_id}"
-        deadline = time.time() + timeout_s
+        deadline = time.monotonic() + timeout_s
         delay = 2.0
 
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             # URL is hardcoded to https://api.runpod.ai - S310 false positive
             req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310
             try:
                 with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
                     result = json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                if exc.code in {400, 401, 403, 404}:
+                    raise ValueError(f"RunPod status unavailable (HTTP {exc.code})") from exc
+                logger.warning("RunPod status poll HTTP %s", exc.code)
+                time.sleep(delay)
+                continue
             except Exception as exc:
                 logger.warning("RunPod status poll failed: %s", exc)
                 time.sleep(delay)
@@ -50,8 +61,8 @@ class RuhRemoteProvider(BaseLLMProvider):
             status = result.get("status")
             if status == "COMPLETED":
                 return cast(dict, result)
-            if status == "FAILED":
-                raise ValueError(f"RunPod job failed: {result}")
+            if status in {"FAILED", "CANCELLED", "TIMED_OUT"}:
+                raise ValueError(f"RunPod job ended with status {status}")
 
             # IN_QUEUE or IN_PROGRESS — wait and retry with backoff
             time.sleep(delay)
@@ -69,24 +80,25 @@ class RuhRemoteProvider(BaseLLMProvider):
         temperature: float | None = None,
     ) -> LLMResponse:
         """Generate a response via the RunPod endpoint."""
+        payload = {"input": self._build_input(max_tokens, system, messages, tools, temperature)}
+        result = self._run_job(payload)
+        return self._parse_output(result)
+
+    def _build_input(self, max_tokens, system, messages, tools, temperature) -> dict:
+        runpod_messages = [{"role": "system", "content": system}] if system else []
+        runpod_messages.extend(messages)
+        return {
+            "messages": runpod_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature if temperature is not None else 1.0,
+        }
+
+    def _run_job(self, payload: dict) -> dict:
+        """Run the queue protocol independently of the worker's model protocol."""
         import json
         import urllib.request
 
-        # Build messages with system prompt
-        runpod_messages = []
-        if system:
-            runpod_messages.append({"role": "system", "content": system})
-        runpod_messages.extend(messages)
-
-        payload = {
-            "input": {
-                "messages": runpod_messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature if temperature is not None else 1.0,
-            }
-        }
-
-        url = f"{self.base_url}/runsync"
+        url = f"{self.base_url}/{self.submission_path}"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
@@ -103,6 +115,9 @@ class RuhRemoteProvider(BaseLLMProvider):
             logger.error("RunPod request failed: %s", exc)
             raise
 
+        if not isinstance(result, dict):
+            raise ValueError("RunPod returned a malformed job envelope")
+
         # Handle async: /runsync may return IN_QUEUE/IN_PROGRESS instead of
         # waiting. Poll /status/{id} until COMPLETED or FAILED.
         status = result.get("status")
@@ -112,6 +127,16 @@ class RuhRemoteProvider(BaseLLMProvider):
                 raise ValueError(f"RunPod returned {status} without job id: {result}")
             result = self._poll_until_done(job_id, headers)
 
+        status = result.get("status")
+        if status in {"FAILED", "CANCELLED", "TIMED_OUT"}:
+            raise ValueError(f"RunPod job ended with status {status}")
+        if status != "COMPLETED":
+            raise ValueError("RunPod did not return a completed job")
+        if not isinstance(result.get("output"), dict) or result["output"].get("error"):
+            raise ValueError("RunPod worker returned an error or malformed output")
+        return cast(dict, result)
+
+    def _parse_output(self, result: dict) -> LLMResponse:
         # Parse response: {"output": {"choices": [...], "usage": {...}}}
         # or {"output": {...}} directly
         output = result.get("output", {})

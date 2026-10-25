@@ -12,6 +12,8 @@ class RuhModelProvider(BaseLLMProvider):
     """Local Ruh Model provider implementing the MIZAN LLM interface."""
 
     provider_name = "ruh"
+    supports_tools = False
+    max_output_tokens = 1024
 
     def __init__(self, model_path: str, device: str = "cpu") -> None:
         self.model_path = model_path
@@ -78,10 +80,12 @@ class RuhModelProvider(BaseLLMProvider):
         generation_pattern = 0 if getattr(self._tokenizer, "version", 1) == 2 else 1
         generated_tokens = [(int(root_id), generation_pattern) for root_id in generated_root_ids]
         output_text = self._tokenizer.decode(generated_tokens)
+        eos_root = getattr(getattr(self._model, "config", None), "EOS_ROOT", 2)
+        ended = bool(generated_root_ids) and generated_root_ids[-1] == eos_root
 
         return LLMResponse(
             content=[ContentBlock(type="text", text=output_text)],
-            stop_reason="end_turn",
+            stop_reason="end_turn" if ended else "max_tokens",
             model="ruh-local",
             usage={"input_tokens": len(tokens), "output_tokens": len(generated_root_ids)},
         )

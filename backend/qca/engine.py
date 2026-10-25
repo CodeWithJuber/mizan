@@ -23,6 +23,7 @@ import time
 from collections import Counter, defaultdict
 from typing import cast
 
+from nlp.arabic import arabic_tokens, lookup_key
 from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
 logger = logging.getLogger("mizan.qca")
@@ -53,48 +54,25 @@ def _nlp_native_wsd_enabled() -> bool:
     return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
 
 
-#: Arabic-script token pattern — the SAME tokenizer as IP-1
-#: (backend/agents/base.py::_arabic_lemmas). One shared approach, not two.
-_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
-
-
 def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
-    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
-    seen: list[str] = []
-    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
-        if tok not in seen:
-            seen.append(tok)
-            if len(seen) >= limit:
-                break
-    return seen
+    """Observed Arabic surface tokens; no root-to-lemma substitution."""
+    return arabic_tokens(text, limit)
 
 
 def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> list[dict]:
-    """Native WSD candidates for each ISM root (Phase 2, IP-3).
+    """Native WSD candidates for observed Arabic tokens only.
 
-    Returns e.g. [{"lemma": "كتب", "sense_id": "qcsmp2:كَتَب:write",
-    "confidence": 0.91, "english_term": "write"}] -- entries only for lemmas
-    whose top sense clears NLP_MIN_SENSE_CONFIDENCE with the required margin.
-    [] when the flag is off or the model is not ready. Additive signal only.
-
-    JEV `choice` (confidence 0.80, 2026-09-29): when `roots` is empty AND the
-    text carries Arabic script, resolve the Arabic tokens directly through
-    mizan.nlp instead of returning []. The roots path only matches English
-    concept words against CONCEPT_MAP, so Arabic-only queries (the exact
-    input native WSD is built for) were a no-op at IP-3. Fallback-only:
-    texts that yield ISM roots behave exactly as before.
+    English concept mappings do not create Arabic occurrences. The same
+    surface-token path is used for Arabic-only and mixed-script input.
+    Returns [] when disabled, unavailable, unknown, or below the sense gate.
+    ``roots`` remains in the call signature for existing callers.
     """
     if not _nlp_native_wsd_enabled():
         return []
-    items: list[tuple[str, str]]
-    if roots:
-        items = [(r.get("root") or "", r.get("english_term", "")) for r in roots[:limit]]
-    else:
-        # Arabic-lemma fallback: no CONCEPT_MAP gloss exists for raw Arabic
-        # tokens, so english_term is the honest null "".
-        items = [(lemma, "") for lemma in _arabic_lemmas(text, limit)]
-        if items:
-            logger.info("IP-3: no ISM roots; resolving %d Arabic lemma(s) natively", len(items))
+    # English concept roots are not Arabic occurrences. Always use the actual
+    # Arabic tokens, including in mixed-script input; otherwise a root channel
+    # manufactures a context-free sense and hides Arabic tokens in the sentence.
+    items = [(lemma, "") for lemma in _arabic_lemmas(text, limit)]
     if not items:
         return []
     try:
@@ -355,7 +333,11 @@ class ISMLayer:
     }
 
     def __init__(self, root_db: dict | None = None):
-        self.root_db = root_db or ARABIC_ROOTS
+        self.root_db = ARABIC_ROOTS if root_db is None else root_db
+        self._surface_roots: dict[str, set[str]] = {}
+        for root, entry in self.root_db.items():
+            for form in (root, *entry.get("derivatives", {})):
+                self._surface_roots.setdefault(lookup_key(form), set()).add(root)
 
     def get_word_info(self, arabic_word: str) -> dict | None:
         """Get full ISM info for an Arabic word."""
@@ -364,8 +346,8 @@ class ISMLayer:
 
     def generalize_meaning(self, root: str, pattern: str) -> dict | None:
         """
-        ZERO-SHOT: predict meaning of unknown word from Root + Pattern alone.
-        Impossible in standard NLP. Core QCA advantage.
+        Compose a heuristic gloss from a dictionary root and pattern.
+        This does not establish an unseen word's meaning or zero-shot accuracy.
         """
         root_entry = self.root_db.get(root)
         pattern_entry = self.PATTERNS.get(pattern)
@@ -401,26 +383,36 @@ class ISMLayer:
         return 0.75
 
     def find_roots_in_text(self, text: str) -> list[dict]:
-        """Find Arabic roots/concepts relevant to an English text."""
-        words = text.lower().split()
+        """Find dictionary-supported candidates in Arabic and mapped English.
+
+        These are lexical candidates, not semantic/religious certification.
+        Unknown forms abstain. Ambiguous dictionary forms keep every candidate.
+        """
+        matches = []
+        for word in re.findall(r"[A-Za-z]+", text.lower()):
+            if word in CONCEPT_MAP:
+                matches.append((CONCEPT_MAP[word], word, "", "english_concept_map"))
+        for form in arabic_tokens(text, limit=256):
+            for root in sorted(self._surface_roots.get(lookup_key(form), ())):
+                matches.append((root, "", form, "arabic_dictionary"))
         found_roots = []
         seen_roots = set()
-        for word in words:
-            clean = re.sub(r"[^a-z]", "", word)
-            if clean in CONCEPT_MAP:
-                root = CONCEPT_MAP[clean]
-                if root not in seen_roots:
-                    seen_roots.add(root)
-                    root_data = self.root_db.get(root, {})
-                    found_roots.append(
-                        {
-                            "english_term": clean,
-                            "root": root,
-                            "meaning": root_data.get("meaning", ""),
-                            "domain": root_data.get("domain", ""),
-                            "derivatives": list(root_data.get("derivatives", {}).items())[:3],
-                        }
-                    )
+        for root, english_term, surface, match_type in matches:
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+            root_data = self.root_db.get(root, {})
+            found_roots.append(
+                {
+                    "english_term": english_term,
+                    "surface": surface,
+                    "match_type": match_type,
+                    "root": root,
+                    "meaning": root_data.get("meaning", ""),
+                    "domain": root_data.get("domain", ""),
+                    "derivatives": list(root_data.get("derivatives", {}).items())[:3],
+                }
+            )
         return found_roots
 
 

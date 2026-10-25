@@ -314,7 +314,9 @@ class AuditLog:
         with self._lock:
             previous = "0" * 64
             if self.path.exists():
-                lines = [line for line in self.path.read_text(encoding="utf-8").splitlines() if line]
+                lines = [
+                    line for line in self.path.read_text(encoding="utf-8").splitlines() if line
+                ]
                 if lines:
                     previous = json.loads(lines[-1])["event_sha256"]
             event = {"case_id": case_id, "previous_sha256": previous, **asdict(decision)}

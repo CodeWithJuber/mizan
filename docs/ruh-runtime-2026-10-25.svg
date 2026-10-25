@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1100" viewBox="0 0 900 1100">
+<defs><marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#52657c"/></marker></defs>
+<rect width="900" height="1100" fill="#f4f7fa"/>
+<text x="450" y="48" text-anchor="middle" font-family="sans-serif" font-size="27" font-weight="bold" fill="#16344c">Mizan own Ruh model: implemented path</text>
+<text x="450" y="78" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#52657c">Separate from the HF MiniMind checkpoint · reviewed 25 October 2026</text>
+<rect x="120" y="110" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="141" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">User message + conversation</text>
+<text x="450" y="168" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Preserve roles, surface words, negation and punctuation</text>
+<path d="M450,193 L450,214" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="218" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="249" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">Bayan tokenizer</text>
+<text x="450" y="276" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">v1: root/pattern IDs; v2: lossless UTF-8 surface tokens</text>
+<path d="M450,301 L450,322" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="326" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="357" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">ISM embedding</text>
+<text x="450" y="384" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Root/byte embedding and pattern embedding</text>
+<path d="M450,409 L450,430" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="434" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="465" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">First block: causal Sam / Basar</text>
+<text x="450" y="492" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Two causal attention streams + learned fusion</text>
+<path d="M450,517 L450,538" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="542" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="573" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">Remaining Ruh blocks</text>
+<text x="450" y="600" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Qalb scaled attention + FFN / optional Shura experts</text>
+<path d="M450,625 L450,646" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="650" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="681" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">Output projection</text>
+<text x="450" y="708" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Weight-tied scores over the configured vocabulary</text>
+<path d="M450,733 L450,754" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="758" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="789" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">Autoregressive generation</text>
+<text x="450" y="816" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Greedy or sampling; finished batch rows remain at EOS</text>
+<path d="M450,841 L450,862" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="120" y="866" width="660" height="82" rx="12" fill="white" stroke="#32a39b" stroke-width="2"/>
+<text x="450" y="897" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#16344c">Provider response</text>
+<text x="450" y="924" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#52657c">Decode text; report EOS versus length limit honestly</text>
+<rect x="100" y="1000" width="700" height="66" rx="10" fill="#fff0d6"/>
+<text x="450" y="1026" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#62451a">Trainable neural scores and cross-entropy remain in this architecture.</text>
+<text x="450" y="1050" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#62451a">QCA/WSD are auxiliary systems; this diagram is not a proof of meaning or truth.</text>
+</svg>
