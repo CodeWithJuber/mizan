@@ -120,10 +120,173 @@ def test_override_exposes_only_the_dedicated_socket_and_content_pinned_images():
     assert runner["read_only"] and runner["cap_drop"] == ["ALL"]
     assert runner["security_opt"] == ["no-new-privileges:true"]
     assert runner["environment"]["MIZAN_WORKSPACE_RUNTIME_IMAGE"] == IMAGE
+    assert runner["pids_limit"] == runner["deploy"]["resources"]["limits"]["pids"] == 128
     with pytest.raises(setup.SetupError, match="content IDs"):
         setup.workspace_override(
             1002, 1002, "t" * 64, runtime_image="runtime:latest", runner_image=RUNNER_IMAGE
         )
+
+
+def test_research_override_is_optional_and_changes_only_the_backend_environment():
+    original = setup.workspace_override(
+        1002, 1002, "t" * 64, runtime_image=IMAGE, runner_image=RUNNER_IMAGE
+    )
+    configured = setup.workspace_override(
+        1002,
+        1002,
+        "t" * 64,
+        runtime_image=IMAGE,
+        runner_image=RUNNER_IMAGE,
+        research_dir=setup.RESEARCH_DIR,
+    )
+    expected = copy.deepcopy(original)
+    expected["services"]["backend"]["environment"]["MIZAN_RESEARCH_DIR"] = setup.RESEARCH_DIR
+    assert configured == expected
+    with pytest.raises(setup.SetupError, match="Research directory"):
+        setup.Installer(SHA, research_dir="/app/data/research")
+
+
+def test_live_control_service_must_apply_the_matching_pid_limit(monkeypatch):
+    installer = setup.Installer(SHA, FakeCommands())
+    installer.state = {
+        "uid": 1002,
+        "gid": 1002,
+        "images": {"runner": {"id": RUNNER_IMAGE}, "runtime": {"id": IMAGE}},
+    }
+    container = {
+        "Image": RUNNER_IMAGE,
+        "State": {"Running": True},
+        "Config": {"User": "1002:1002", "Env": ["MIZAN_WORKSPACE_RUNTIME_IMAGE=" + IMAGE]},
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "Privileged": False,
+            "CapDrop": ["ALL"],
+            "SecurityOpt": ["no-new-privileges"],
+            "Memory": 192 * 1024**2,
+            "NanoCpus": 500000000,
+            "PidsLimit": 128,
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/run/user/1002/docker.sock",
+                "Destination": "/var/run/docker.sock",
+            }
+        ],
+        "NetworkSettings": {"Networks": {"mizan_mizan-net": {}}},
+    }
+    monkeypatch.setattr(installer, "runner_ids", lambda _: ["runner"])
+    monkeypatch.setattr(installer, "docker_json", lambda *_: [container])
+    assert installer.verify_runner([]) == "runner"
+    container["HostConfig"]["PidsLimit"] = 0
+    with pytest.raises(setup.SetupError, match="resource limits"):
+        installer.verify_runner([])
+
+
+def research_fixture():
+    backend = {
+        "Config": {"Env": ["MIZAN_DATA_DIR=/data/mizan"]},
+        "Mounts": [
+            {"Destination": "/data", "Type": "volume", "RW": True, "Name": "mizan_mizan-data"}
+        ],
+        "HostConfig": {},
+    }
+    probe = {
+        "uid": 999,
+        "parent_directory": True,
+        "parent_resolved": "/data/mizan",
+        "parent_writable": True,
+        "resolved_target": setup.RESEARCH_DIR,
+        "target_exists": False,
+        "target_directory": False,
+    }
+    return backend, probe
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "uid",
+        "missing_parent",
+        "parent_link",
+        "not_writable",
+        "missing_mount",
+        "readonly_mount",
+        "tmpfs_mount",
+        "nested_mount",
+        "target_mount",
+        "hidden_tmpfs",
+        "target_escape",
+        "target_file",
+        "different_data_root",
+    ],
+)
+def test_research_path_requires_existing_backend_writable_persistent_mount(drift):
+    backend, probe = research_fixture()
+    setup.validate_research_location(backend, probe)
+    if drift == "uid":
+        probe["uid"] = 0
+    elif drift == "missing_parent":
+        probe["parent_directory"] = False
+    elif drift == "parent_link":
+        probe["parent_resolved"] = "/tmp/mizan"
+    elif drift == "not_writable":
+        probe["parent_writable"] = False
+    elif drift == "missing_mount":
+        backend["Mounts"] = []
+    elif drift == "readonly_mount":
+        backend["Mounts"][0]["RW"] = False
+    elif drift == "tmpfs_mount":
+        backend["Mounts"][0]["Type"] = "tmpfs"
+    elif drift == "nested_mount":
+        backend["Mounts"].append({"Destination": "/data/mizan", "Type": "volume", "RW": True})
+    elif drift == "target_mount":
+        backend["Mounts"].append({"Destination": setup.RESEARCH_DIR, "Type": "tmpfs", "RW": True})
+    elif drift == "hidden_tmpfs":
+        backend["HostConfig"]["Tmpfs"] = {"/data/mizan/research": "rw"}
+    elif drift == "target_escape":
+        probe["resolved_target"] = "/app/data/research"
+    elif drift == "target_file":
+        probe["target_exists"] = True
+    else:
+        backend["Config"]["Env"] = ["MIZAN_DATA_DIR=/other"]
+    with pytest.raises(setup.SetupError):
+        setup.validate_research_location(backend, probe)
+
+
+def test_research_reverification_accepts_import_release_inside_the_same_volume():
+    backend, probe = research_fixture()
+    backend["Config"]["Env"].append("MIZAN_RESEARCH_DIR=" + setup.RESEARCH_DIR)
+    probe.update(
+        target_exists=True,
+        target_directory=True,
+        resolved_target="/data/mizan/.mizan-research-reviewed-release",
+    )
+    setup.validate_research_location(backend, probe, configured=True)
+    backend["Config"]["Env"].pop()
+    with pytest.raises(setup.SetupError, match="not applied"):
+        setup.validate_research_location(backend, probe, configured=True)
+
+
+def test_research_probe_uses_existing_backend_identity_and_performs_no_directory_action():
+    backend, probe = research_fixture()
+
+    class ProbeCommands(FakeCommands):
+        def run(self, argv, **kwargs):
+            self.calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, json.dumps(probe), "")
+
+    commands = ProbeCommands()
+    installer = setup.Installer(SHA, commands, research_dir=setup.RESEARCH_DIR)
+    installer.research_location(backend)
+    assert commands.calls == [
+        [*setup.DOCKER, "exec", "mizan-backend", "python3", "-c", setup.RESEARCH_PROBE]
+    ]
+    assert "--user" not in commands.calls[0]
+    assert not any(
+        action in setup.RESEARCH_PROBE
+        for action in ("mkdir", "chown", "write_text", "unlink", "import_bundle")
+    )
 
 
 def test_generated_compose_preserves_literal_dollars_in_credentials():
@@ -186,6 +349,7 @@ def test_rendered_compose_drift_is_rejected_before_recreation(drift):
 
 def backend_metadata(running=True, image=IMAGE):
     return {
+        "Id": "b" * 64,
         "Image": image,
         "State": {"Running": running},
         "Config": {
@@ -207,6 +371,8 @@ class FakeCommands:
         self.alias = alias
         self.rendered = rendered
         self.fail_restore = fail_restore
+        self.runner = None
+        self.restored_mounts = []
         self.calls = []
 
     def run(self, argv, **kwargs):
@@ -218,14 +384,28 @@ class FakeCommands:
                 "" if self.missing else json.dumps([self.backend]),
                 "",
             )
+        if self.runner and argv == [*setup.DOCKER, "inspect", self.runner["Id"]]:
+            return subprocess.CompletedProcess(argv, 0, json.dumps([self.runner]), "")
         if argv[: len(setup.DOCKER) + 2] == [*setup.DOCKER, "image", "inspect"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps([{"Id": IMAGE}]), "")
         if "ps" in argv:
+            if "label=com.docker.compose.service=workspace-runner" in argv:
+                return subprocess.CompletedProcess(
+                    argv, 0, self.runner["Id"] if self.runner else "", ""
+                )
             return subprocess.CompletedProcess(argv, 0, "unexpected" if self.alias else "", "")
         if argv[-3:] == ["config", "--format", "json"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(self.rendered), "")
         if self.fail_restore and "up" in argv and argv[-1] == "backend":
             raise setup.SetupError("simulated backend restore failure")
+        if "up" in argv and argv[-1] == "backend":
+            self.missing = False
+            self.backend["State"]["Running"] = True
+            self.backend["Config"]["Env"] = [
+                f"{key}={value}"
+                for key, value in self.rendered["services"]["backend"]["environment"].items()
+            ]
+            self.backend["Mounts"] = copy.deepcopy(self.restored_mounts)
         return subprocess.CompletedProcess(argv, 0, "", "")
 
 
@@ -287,6 +467,33 @@ def test_preexisting_account_is_not_adopted(tmp_path, monkeypatch):
     assert not installer.commands.calls
 
 
+def test_research_option_is_bound_to_retries_but_inherited_for_explicit_rollback(
+    tmp_path, monkeypatch
+):
+    state = {
+        "manager": setup.MANAGER,
+        "sha": SHA,
+        "production_id": "production",
+        "research_dir": setup.RESEARCH_DIR,
+        "phase": "ready",
+    }
+    (tmp_path / "state.json").write_text(json.dumps(state))
+    monkeypatch.setattr(setup, "STATE_ROOT", tmp_path)
+    monkeypatch.setattr(setup, "private_directory", lambda _: None)
+    monkeypatch.setattr(setup, "read_json", lambda path: json.loads(path.read_text()))
+    retry = setup.Installer(SHA, FakeCommands())
+    retry.production_id = "production"
+    with pytest.raises(setup.SetupError, match="Research option differs"):
+        retry.load_state()
+    explicit = setup.Installer(SHA, FakeCommands(), research_dir=setup.RESEARCH_DIR)
+    explicit.production_id = "production"
+    explicit.load_state()
+    assert explicit.state == state
+    retry.load_state(rollback=True)
+    assert retry.research_dir == setup.RESEARCH_DIR
+    assert not retry.commands.calls and not explicit.commands.calls
+
+
 @pytest.fixture
 def rollback_case(tmp_path, monkeypatch):
     root = tmp_path / "project"
@@ -315,17 +522,23 @@ def rollback_case(tmp_path, monkeypatch):
         files=[str(base)],
         hashes={str(base): setup.digest(base)},
         override_before=None,
+        backend_container_id="b" * 64,
     )
     (attempt / "snapshot.json").write_text(json.dumps(snapshot))
     fake = FakeCommands(rendered=config)
+    fake.restored_mounts = snapshot["backend_mounts"]
     installer = setup.Installer(SHA, fake)
     installer.state = {
         "active_attempt": str(attempt),
         "phase": "applying",
         "override_sha256": setup.digest(override),
+        "uid": 1002,
+        "gid": 1002,
+        "images": {"runner": {"id": RUNNER_IMAGE}},
     }
     monkeypatch.setattr(installer, "health", lambda: None)
     monkeypatch.setattr(installer, "proxy", lambda: None)
+    monkeypatch.setattr(installer, "public_health", lambda: None)
     return installer, fake, base, override
 
 
@@ -334,13 +547,32 @@ def test_failed_or_missing_backend_restores_before_new_runner_is_removed(rollbac
     installer, fake, _, override = rollback_case
     fake.backend = backend_metadata(running=False)
     fake.missing = missing
+    fake.runner = {
+        "Id": "d" * 64,
+        "Image": RUNNER_IMAGE,
+        "Config": {
+            "User": "1002:1002",
+            "Labels": {
+                "com.docker.compose.project": "mizan",
+                "com.docker.compose.service": "workspace-runner",
+                "com.docker.compose.project.working_dir": str(setup.PROJECT_ROOT),
+            },
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/run/user/1002/docker.sock",
+                "Destination": "/var/run/docker.sock",
+            }
+        ],
+    }
     installer.rollback()
     restore = next(
         i for i, command in enumerate(fake.calls) if "up" in command and command[-1] == "backend"
     )
     remove = next(i for i, command in enumerate(fake.calls) if "rm" in command)
     assert restore < remove
-    assert fake.calls[remove][-4:] == ["rm", "--stop", "--force", "workspace-runner"]
+    assert fake.calls[remove] == [*setup.DOCKER, "rm", "--force", "d" * 64]
     assert not override.exists() and installer.state["phase"] == "rolled_back"
     assert not any(
         "down" in command or "prune" in command or "--volumes" in command for command in fake.calls
@@ -354,6 +586,168 @@ def test_restore_failure_does_not_remove_runner_or_erase_recovery_state(rollback
         installer.rollback()
     assert override.exists() and installer.state["phase"] == "applying"
     assert not any("rm" in command for command in fake.calls)
+
+
+def test_invalid_runner_override_and_absent_runner_cannot_block_rollback(
+    rollback_case, monkeypatch
+):
+    installer, fake, _, override = rollback_case
+    original_run = fake.run
+
+    def reject_invalid_override(argv, **kwargs):
+        if str(override) in argv:
+            raise setup.SetupError("invalid runner override must not be parsed during rollback")
+        return original_run(argv, **kwargs)
+
+    monkeypatch.setattr(fake, "run", reject_invalid_override)
+    installer.rollback()
+    assert installer.state["phase"] == "rolled_back" and not override.exists()
+    assert not any("rm" in command for command in fake.calls)
+
+
+@pytest.mark.parametrize("runner_present", [False, True])
+def test_pre_switch_failure_preserves_original_backend_without_compose_recreation(
+    rollback_case, monkeypatch, runner_present
+):
+    installer, fake, _, override = rollback_case
+    installer.state["backend_switch_started"] = False
+    fake.backend["Config"]["Env"] = [
+        f"{key}={value}"
+        for key, value in fake.rendered["services"]["backend"]["environment"].items()
+    ]
+    fake.backend["Mounts"] = fake.restored_mounts
+    if runner_present:
+        fake.runner = {
+            "Id": "d" * 64,
+            "Image": RUNNER_IMAGE,
+            "Config": {
+                "User": "1002:1002",
+                "Labels": {
+                    "com.docker.compose.project": "mizan",
+                    "com.docker.compose.service": "workspace-runner",
+                    "com.docker.compose.project.working_dir": str(setup.PROJECT_ROOT),
+                },
+            },
+            "Mounts": [
+                {
+                    "Type": "bind",
+                    "Source": "/run/user/1002/docker.sock",
+                    "Destination": "/var/run/docker.sock",
+                }
+            ],
+        }
+    original_id = fake.backend["Id"]
+    original_run = fake.run
+
+    def forbid_compose(argv, **kwargs):
+        if "compose" in argv:
+            raise setup.SetupError("Pre-switch recovery must not recreate the healthy backend")
+        return original_run(argv, **kwargs)
+
+    monkeypatch.setattr(fake, "run", forbid_compose)
+    installer.rollback()
+    assert fake.backend["Id"] == original_id
+    assert installer.state["phase"] == "rolled_back" and not override.exists()
+    assert not any("up" in command for command in fake.calls)
+    assert any("rm" in command for command in fake.calls) is runner_present
+
+
+@pytest.mark.parametrize("flag", [None, 0, "false", True])
+def test_unknown_or_started_switch_checkpoints_restore_conservatively(rollback_case, flag):
+    installer, fake, _, _ = rollback_case
+    installer.state["backend_switch_started"] = flag
+    installer.rollback()
+    assert any("up" in command and command[-1] == "backend" for command in fake.calls)
+
+
+def test_pre_switch_identity_drift_preserves_evidence_without_recreating_backend(rollback_case):
+    installer, fake, _, override = rollback_case
+    installer.state["backend_switch_started"] = False
+    fake.backend["Id"] = "f" * 64
+    with pytest.raises(setup.SetupError, match="changed before"):
+        installer.rollback()
+    assert override.exists() and installer.state["phase"] == "applying"
+    assert not any("up" in command or "rm" in command for command in fake.calls)
+
+
+def test_backend_switch_intent_is_saved_before_compose_can_run(rollback_case, monkeypatch):
+    installer, fake, base, _ = rollback_case
+    installer.state["backend_switch_started"] = False
+
+    def fail_after_durable_intent(argv, **_kwargs):
+        assert (
+            json.loads((setup.STATE_ROOT / "state.json").read_text())["backend_switch_started"]
+            is True
+        )
+        assert argv[-1] == "backend" and "up" in argv
+        fake.calls.append(argv)
+        raise setup.SetupError("simulated partial backend switch")
+
+    monkeypatch.setattr(fake, "run", fail_after_durable_intent)
+    with pytest.raises(setup.SetupError, match="partial backend switch"):
+        installer.switch_backend([str(base)])
+    assert installer.state["backend_switch_started"] is True and len(fake.calls) == 1
+
+
+def test_backend_switch_cannot_run_if_checkpoint_write_fails(rollback_case, monkeypatch):
+    installer, fake, base, _ = rollback_case
+
+    def fail_save():
+        raise OSError("state unavailable")
+
+    monkeypatch.setattr(installer, "save", fail_save)
+    with pytest.raises(OSError):
+        installer.switch_backend([str(base)])
+    assert not fake.calls
+
+
+def test_failed_intent_write_keeps_subsequent_rollback_on_pre_switch_path(
+    rollback_case, monkeypatch
+):
+    installer, fake, base, override = rollback_case
+    installer.state["backend_switch_started"] = False
+    fake.backend["Config"]["Env"] = [
+        f"{key}={value}"
+        for key, value in fake.rendered["services"]["backend"]["environment"].items()
+    ]
+    fake.backend["Mounts"] = fake.restored_mounts
+    original_save = installer.save
+    attempts = 0
+
+    def one_shot_failure():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("checkpoint unavailable")
+        original_save()
+
+    monkeypatch.setattr(installer, "save", one_shot_failure)
+    with pytest.raises(OSError):
+        installer.switch_backend([str(base)])
+    assert installer.state["backend_switch_started"] is False and not fake.calls
+    installer.rollback()
+    assert installer.state["phase"] == "rolled_back" and not override.exists()
+    assert not any("up" in command for command in fake.calls)
+
+
+def test_application_health_and_proxy_are_restored_before_cleanup_failure(
+    rollback_case, monkeypatch
+):
+    installer, _, _, override = rollback_case
+    events = []
+    monkeypatch.setattr(installer, "health", lambda: events.append("health"))
+    monkeypatch.setattr(installer, "proxy", lambda: events.append("proxy"))
+    monkeypatch.setattr(installer, "public_health", lambda: events.append("public"))
+
+    def cleanup_failure():
+        events.append("cleanup")
+        raise setup.SetupError("cleanup identity mismatch")
+
+    monkeypatch.setattr(installer, "remove_new_runner", cleanup_failure)
+    with pytest.raises(setup.SetupError, match="cleanup identity"):
+        installer.rollback()
+    assert events == ["health", "proxy", "public", "cleanup"]
+    assert override.exists() and installer.state["phase"] == "applying"
 
 
 @pytest.mark.parametrize("failure", [BrokenPipeError, OSError, ValueError])
@@ -386,6 +780,24 @@ def test_changed_runner_override_is_not_overwritten_by_rollback(rollback_case):
         installer.rollback()
     assert override.read_text() == "external configuration"
     assert not any("up" in command or "rm" in command for command in fake.calls)
+
+
+@pytest.mark.parametrize("original", [None, "/app/data/previous-research"])
+def test_rollback_uses_captured_research_environment_instead_of_new_location(
+    rollback_case, original
+):
+    installer, fake, _, _ = rollback_case
+    installer.research_dir = setup.RESEARCH_DIR
+    path = Path(installer.state["active_attempt"]) / "snapshot.json"
+    snapshot = json.loads(path.read_text())
+    if original is not None:
+        snapshot["backend_env"]["MIZAN_RESEARCH_DIR"] = original
+    path.write_text(json.dumps(snapshot))
+    fake.rendered["services"]["backend"]["environment"] = snapshot["backend_env"].copy()
+    fake.backend["Config"]["Env"] = ["MIZAN_RESEARCH_DIR=" + setup.RESEARCH_DIR]
+    installer.rollback()
+    assert fake.rendered["services"]["backend"]["environment"].get("MIZAN_RESEARCH_DIR") == original
+    assert installer.state["phase"] == "rolled_back"
 
 
 def valid_job():
@@ -435,20 +847,17 @@ def test_command_errors_never_expose_stdin_output_or_inherited_secrets(monkeypat
 
 
 def test_command_timeout_terminates_compose_style_child_processes(tmp_path):
-    pidfile = tmp_path / "child.pid"
+    started = tmp_path / "child-started"
     marker = tmp_path / "child-survived"
-    child = (
-        f"import pathlib,time; time.sleep(1); pathlib.Path({str(marker)!r}).write_text('unsafe')"
-    )
-    parent = f"import pathlib,subprocess,sys,time; p=subprocess.Popen([sys.executable,'-c',{child!r}]); pathlib.Path({str(pidfile)!r}).write_text(str(p.pid)); time.sleep(30)"
+    child = f"import pathlib,time; pathlib.Path({str(started)!r}).write_text('started'); time.sleep(2); pathlib.Path({str(marker)!r}).write_text('unsafe')"
+    parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(30)"
     with pytest.raises(setup.SetupError, match="deadline"):
-        setup.Commands().run([sys.executable, "-c", parent], stage="Deadline test", timeout=0.3)
-    assert pidfile.exists()
-    pid = int(pidfile.read_text())
-    proc = Path(f"/proc/{pid}/stat")
-    for _ in range(20):
-        if not proc.exists() or proc.read_text().split()[2] == "Z":
-            break
+        setup.Commands().run([sys.executable, "-c", parent], stage="Deadline test", timeout=1)
+    assert started.exists(), "The child must actually start for the cleanup check to be meaningful"
+    # Nested executors can expose /proc from a different PID namespace: the same
+    # numeric PID may name an unrelated host service. Observe the child-specific
+    # delayed mutation instead, waiting beyond its complete delay after timeout.
+    deadline = time.monotonic() + 2.2
+    while time.monotonic() < deadline and not marker.exists():
         time.sleep(0.05)
-    assert not proc.exists() or proc.read_text().split()[2] == "Z"
     assert not marker.exists()

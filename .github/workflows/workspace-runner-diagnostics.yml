@@ -1,0 +1,41 @@
+name: Inspect Workspace Runner Recovery
+
+on:
+  push:
+    branches: [ops/workspace-runner-diagnostics-20261025]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mizan-production
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-diagnostics-20261025'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate read-only diagnostics
+        run: python3 -m py_compile scripts/workspace_runner_diagnostics.py
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Inspect recovery state without modifying the server
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
+          test -s deploy/known_hosts
+          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
+          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-diagnostics.XXXXXXXX')
+          [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-diagnostics\.[A-Za-z0-9]{8}$ ]]
+          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/workspace_runner_diagnostics.py'\'' '\''$remote_dir/setup_workspace_runner.py'\'' && rmdir '\''$remote_dir'\''" || true' EXIT
+          sshpass -e scp "${ssh_options[@]}" scripts/workspace_runner_diagnostics.py scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "flock -w 120 /var/lib/mizan-deploy/deploy.lock python3 '$remote_dir/workspace_runner_diagnostics.py'"
