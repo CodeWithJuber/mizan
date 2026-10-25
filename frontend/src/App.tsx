@@ -14,6 +14,7 @@ import {
   Suspense,
 } from "react";
 import type { ErrorInfo, ReactNode } from "react";
+import { ConversationMemorySummary } from "./components/ConversationMemorySummary";
 import type {
   Agent,
   ChatMessage,
@@ -3237,6 +3238,8 @@ function AppInner() {
                 </button>
               </div>
             </div>
+
+            <ConversationMemorySummary />
 
             {/* Add Memory Form */}
             {showAddMemory && (

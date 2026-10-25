@@ -292,6 +292,7 @@ def test_workspace_selection_is_authorized_before_execution_and_bound_for_tools(
     )
     assert allowed.status_code == 200
     assert seen_selection == ["owned-project"]
+    assert agent.calls[-1][1]["workspace_id"] == "owned-project"
     assert checked[-1] == ("owned-project", users["alice"].id)
     assert selection.get() is None
 
@@ -593,3 +594,113 @@ async def test_full_application_bounds_actual_network_transport(
         await asyncio.wait_for(main.app(scope, receive, send), timeout=5.0)
     assert send_started.is_set()
     assert not main._stream_sessions
+
+
+def test_stream_restores_history_and_retrieves_owned_prior_sessions(api):
+    main, client, tokens, users, memory, agent, _ = api
+    alice = users["alice"].id
+    bob = users["bob"].id
+    asyncio.run(memory.authorize_session("earlier", alice, create=True))
+    asyncio.run(memory.save_message("earlier", "user", "Please use Hinglish"))
+    asyncio.run(memory.authorize_session("private-bob", bob, create=True))
+    asyncio.run(memory.save_message("private-bob", "user", "Bob private request"))
+    asyncio.run(memory.authorize_session("restored", alice, create=True))
+    asyncio.run(memory.save_message("restored", "user", "old turn"))
+    main.active_sessions.clear()
+    response = client.post(
+        "/api/chat/stream",
+        json=message("restored", content="new task"),
+        headers=headers(tokens["alice"]),
+    )
+    assert frames(response.text)[-1]["type"] == "chat_complete"
+    context = agent.calls[-1][1]
+    assert context["session_id"] == "restored"
+    assert context["history"] == [{"role": "user", "content": "old turn"}]
+    assert [m["content"] for m in context["conversation_memory"]] == ["Please use Hinglish"]
+
+
+def test_learner_endpoint_reports_scoped_capture_instead_of_500(api, tmp_path, monkeypatch):
+    from learner.ruh_learner import RuhLearner
+
+    _, client, tokens, users, _, _, _ = api
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    learner = RuhLearner.for_owner(users["alice"].id)
+    asyncio.run(learner.initialize())
+    asyncio.run(learner.capture("request", "candidate", "openrouter", "observed"))
+    response = client.get("/api/learner/stats", headers=headers(tokens["alice"]))
+    assert response.status_code == 200
+    assert response.json()["total_interactions"] == 1
+    assert response.json()["exportable_count"] == 0
+    assert response.json()["automatic_weight_training"] is False
+    assert (
+        client.get("/api/learner/stats", headers=headers(tokens["bob"])).json()[
+            "total_interactions"
+        ]
+        == 0
+    )
+    assert client.get("/api/learner/stats").status_code == 401
+
+
+def test_saved_artifact_remains_visible_when_generation_later_fails(api, monkeypatch):
+    from api.artifacts import create_artifact
+
+    _, client, tokens, users, memory, agent, _ = api
+    artifact = create_artifact(
+        user_id=users["alice"].id,
+        session_id="session-a",
+        title="Saved code",
+        kind="code",
+        content="print(42)",
+    )
+
+    async def fail_after_artifact(content, context, **callbacks):
+        agent._last_tool_results = [
+            {"name": "workspace_artifact", "result": {"artifact": artifact}}
+        ]
+        await callbacks["stream_callback"](
+            "", chunk_type="tool_use", tool_name="workspace_artifact"
+        )
+        await callbacks["stream_callback"]("Partial answer")
+        return {"success": False, "error": "private upstream details"}
+
+    monkeypatch.setattr(agent, "execute", fail_after_artifact)
+    response = client.post("/api/chat/stream", json=message(), headers=headers(tokens["alice"]))
+    events = frames(response.text)
+    assert events[-1]["type"] == "error"
+    assert not any(e["type"] == "chat_complete" for e in events)
+    assert [e["artifact"]["id"] for e in events if e["type"] == "artifact"] == [artifact["id"]]
+    assert "private upstream details" not in response.text
+    stored = asyncio.run(memory.get_messages("session-a"))[-1]
+    assert stored["content"] == "Partial answer"
+    assert stored["metadata"]["status"] == "error"
+
+
+def test_ruh_status_distinguishes_configuration_from_loaded_model(api, monkeypatch, tmp_path):
+    main, client, tokens, _, _, agent, _ = api
+    agent.ai_client = SimpleNamespace(provider_name="ruh", _loaded=False)
+    monkeypatch.setattr(main, "_user_agents", {})
+    monkeypatch.setenv("RUH_ENABLED", "true")
+    monkeypatch.setenv("RUH_MODEL_PATH", str(tmp_path / "missing-checkpoint"))
+    first = client.get("/api/ruh/status", headers=headers(tokens["alice"])).json()
+    assert first["enabled"] is True
+    assert first["checkpoint_exists"] is False
+    assert first["loaded"] is False
+    assert first["automatic_weight_training"] is False
+    agent.ai_client._loaded = True
+    second = client.get("/api/ruh/status", headers=headers(tokens["alice"])).json()
+    assert second["loaded"] is True
+    assert second["active_chat_models"] == ["ruh: ruh-remote"]
+
+
+def test_chat_memory_summary_counts_only_authenticated_owners(api):
+    _, client, tokens, users, memory, _, _ = api
+    for name in ("alice", "bob"):
+        asyncio.run(memory.authorize_session(name + "-chat", users[name].id, create=True))
+        for _ in range(2 if name == "alice" else 3):
+            asyncio.run(memory.save_message(name + "-chat", "user", "private content"))
+    response = client.get("/api/chat/memory/summary", headers=headers(tokens["alice"]))
+    assert response.status_code == 200
+    assert response.json()["stored_chat_messages"] == 2
+    assert response.json()["owned_sessions"] == 1
+    assert "private content" not in response.text
+    assert client.get("/api/chat/memory/summary").status_code == 401

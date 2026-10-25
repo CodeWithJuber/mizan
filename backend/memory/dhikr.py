@@ -762,7 +762,7 @@ class DhikrMemorySystem:
         c.execute(
             """
             SELECT id, session_id, role, content, agent_id, created_at, metadata
-            FROM agent_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?
+            FROM agent_messages WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
         """,
             (session_id, limit),
         )
@@ -779,8 +779,71 @@ class DhikrMemorySystem:
                 "created_at": r[5],
                 "metadata": json.loads(r[6]) if r[6] else {},
             }
-            for r in rows
+            for r in reversed(rows)
         ]
+
+    async def recall_conversations(
+        self, owner_id: str, query: str, *, exclude_session: str, limit: int = 5
+    ) -> list[dict]:
+        """Recall bounded, attributed user statements from owned conversations.
+
+        Assistant replies are not facts or training labels. Legacy sessions
+        without an owner are deliberately excluded, including for admins.
+        """
+        if not owner_id:
+            return []
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            rows = conn.execute(
+                """SELECT m.id, m.session_id, m.content, m.created_at
+                FROM agent_messages m JOIN chat_sessions s ON s.session_id = m.session_id
+                WHERE s.owner_id = ? AND m.session_id != ? AND m.role = 'user'
+                  AND m.content NOT LIKE '/%'
+                ORDER BY m.created_at DESC, m.rowid DESC LIMIT 200""",
+                (owner_id, exclude_session),
+            ).fetchall()
+        finally:
+            self._release_conn(conn)
+        terms = set(re.findall(r"\w{3,}", query.casefold()))
+        ranked = sorted(
+            enumerate(rows),
+            key=lambda item: (
+                len(terms & set(re.findall(r"\w{3,}", item[1][2].casefold()))),
+                -item[0],
+            ),
+            reverse=True,
+        )
+        # Include recent continuity as well as query matches. Bound the bytes
+        # and count so an old conversation cannot dominate the current task.
+        selected = list(rows[:2])
+        for _, row in ranked:
+            if row not in selected and terms & set(re.findall(r"\w{3,}", row[2].casefold())):
+                selected.append(row)
+        return [
+            {
+                "message_id": row[0],
+                "session_id": row[1],
+                "content": row[2][:1000],
+                "created_at": row[3],
+                "source": "prior_user_statement",
+            }
+            for row in selected[: max(0, min(limit, 5))]
+        ]
+
+    async def conversation_counts(self, owner_id: str) -> dict:
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            row = conn.execute(
+                """SELECT COUNT(DISTINCT s.session_id), COUNT(m.id)
+                FROM chat_sessions s LEFT JOIN agent_messages m ON m.session_id = s.session_id
+                WHERE s.owner_id = ?""",
+                (owner_id,),
+            ).fetchone()
+            return {"owned_sessions": row[0], "stored_chat_messages": row[1]}
+        finally:
+            self._release_conn(conn)
 
     async def list_sessions(self, limit: int = 20, owner_id: str | None = None) -> list[dict]:
         """List recent chat sessions with metadata"""

@@ -73,6 +73,7 @@ export function CodingWorkspace({
   const [content, setContent] = useState("");
   const [original, setOriginal] = useState("");
   const [sha, setSha] = useState<string | undefined>();
+  const [imageSelected, setImageSelected] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPath, setNewPath] = useState("");
   const [busy, setBusy] = useState("");
@@ -90,7 +91,7 @@ export function CodingWorkspace({
   );
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
-  const dirty = content !== original || (path.length > 0 && sha === undefined);
+  const dirty = !imageSelected && (content !== original || (path.length > 0 && sha === undefined));
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
@@ -130,6 +131,7 @@ export function CodingWorkspace({
     setContent("");
     setOriginal("");
     setSha(undefined);
+    setImageSelected(false);
     setResult(null);
     setDiff("");
     setCheckpoints([]);
@@ -159,6 +161,7 @@ export function CodingWorkspace({
     }
   };
   const save = async () => {
+    if (imageSelected) return;
     const data = await api<{ sha256: string }>(
       `${base}/file`,
       json("PUT", { path, content, expected_sha256: sha ?? "" }),
@@ -176,6 +179,15 @@ export function CodingWorkspace({
       return;
     void action("Opening", async () => {
       const id = selectedId;
+      // Images use the validated artifact endpoint, never the UTF-8 editor.
+      if (/\.(png|jpe?g|webp)$/i.test(nextPath)) {
+        setPath(nextPath);
+        setContent("");
+        setOriginal("");
+        setSha(undefined);
+        setImageSelected(true);
+        return;
+      }
       const data = await api<{ path: string; content: string; sha256: string }>(
         `${base}/file?path=${encodeURIComponent(nextPath)}`,
       );
@@ -184,6 +196,7 @@ export function CodingWorkspace({
       setContent(data.content);
       setOriginal(data.content);
       setSha(data.sha256);
+      setImageSelected(false);
     });
   };
   const publish = () =>
@@ -305,6 +318,7 @@ export function CodingWorkspace({
                 setContent("");
                 setOriginal("");
                 setSha(undefined);
+                setImageSelected(false);
                 setNewPath("");
               }}
             >
@@ -376,7 +390,7 @@ export function CodingWorkspace({
                 disabled={Boolean(busy)}
                 onClick={() =>
                   void action("Saving draft", async () => {
-                    if (path && (dirty || !sha)) await save();
+                    if (path && !imageSelected && (dirty || !sha)) await save();
                     onAskAgent(
                       `Help me work in this selected workspace.${path ? ` Review ${path} and explain what should change.` : " Inspect the files and help me plan the project."}`,
                     );
@@ -386,7 +400,11 @@ export function CodingWorkspace({
                 Ask agent
               </button>
             </div>
-            {path ? (
+            {imageSelected ? (
+              <div className="flex-1 min-h-[180px] flex items-center justify-center text-sm text-gray-500">
+                Image selected. Choose Preview artifact to view it in this conversation.
+              </div>
+            ) : path ? (
               <textarea
                 aria-label={`File editor ${path}`}
                 value={content}

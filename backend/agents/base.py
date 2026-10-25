@@ -780,17 +780,11 @@ class BaseAgent:
                     system_prompt, messages, tool_schemas, stream, task
                 ):
                     yield chunk
-            except Exception as e:
-                err_str = str(e)
-                logger.error(f"[FIKR] Thinking error for {self.name}: {e}")
-                if "Connection" in err_str or "connect" in err_str.lower():
-                    yield (
-                        "Could not reach the AI provider. "
-                        "Please check your API key and network connection in .env "
-                        "(ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY)."
-                    )
-                else:
-                    yield f"[Error: {err_str}]"
+            except Exception:
+                # An upstream failure is not an answer or a successful lesson.
+                # Let execute record failure and the transport emit an error.
+                logger.warning("[FIKR] Provider failed for %s", self.name)
+                raise
         else:
             yield await self._structured_reasoning(task, context)
 
@@ -843,6 +837,7 @@ class BaseAgent:
             # back to create() so a provider quirk can never break the run.
             response = None
             streamed_text = False
+            emitted_text = False
             if stream:
                 try:
                     final_holder: dict = {}
@@ -854,14 +849,21 @@ class BaseAgent:
                         temperature,
                         final_holder,
                     ):
+                        emitted_text = emitted_text or bool(text_chunk)
                         accumulated_text += text_chunk
                         yield text_chunk
                     response = final_holder.get("response")
                     streamed_text = response is not None
                 except Exception as e:
+                    if emitted_text:
+                        # Replaying after a visible prefix duplicates responses
+                        # and can repeat actions after previous tool turns.
+                        raise
                     logger.warning("[FIKR] Streaming failed (%s), falling back to create()", e)
                     response = None
             if response is None:
+                if emitted_text:
+                    raise RuntimeError("The provider stream ended without a completion record")
                 # Call the model via unified provider
                 _create_start = time.time()
                 response = await asyncio.to_thread(
@@ -890,17 +892,21 @@ class BaseAgent:
                     tool_blocks.append(block)
 
             if tool_blocks:
-                # Independent tool calls, executed concurrently: the model
-                # emitted them in a single turn, so they are independent by
-                # construction. _execute_tool_safe never raises (it returns
-                # error dicts), so gather() is safe here.
                 tool_count += len(tool_blocks)
-                tool_results_raw = await asyncio.gather(
-                    *(self._execute_tool_safe(b.name, b.input) for b in tool_blocks)
-                )
+                if any(b.name.startswith("workspace_") for b in tool_blocks):
+                    # A model can emit write/run/publish together. Preserve
+                    # order for project mutations instead of racing the files.
+                    tool_results_raw = [
+                        await self._execute_tool_safe(b.name, b.input) for b in tool_blocks
+                    ]
+                else:
+                    tool_results_raw = await asyncio.gather(
+                        *(self._execute_tool_safe(b.name, b.input) for b in tool_blocks)
+                    )
 
                 tool_results = []
                 for block, tool_result in zip(tool_blocks, tool_results_raw, strict=True):
+                    self._last_tool_results.append({"name": block.name, "result": tool_result})
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
                     # Yaqin: Tag tool result as Ayn al-Yaqin (observed/verified)
@@ -928,7 +934,6 @@ class BaseAgent:
                             "content": json.dumps(tool_result)[:5000],
                         }
                     )
-                    self._last_tool_results.append({"name": block.name, "result": tool_result})
 
                 # Feed tool results back for the next iteration
                 messages.append({"role": "assistant", "content": response.content})
@@ -1001,7 +1006,7 @@ class BaseAgent:
                 yield notice
             return
 
-        logger.warning(f"[FIKR] Agent {self.name} hit max_tool_turns ({self.max_tool_turns})")
+        raise RuntimeError("The agent reached its tool-step limit before completing the task")
 
     def _record_llm_call(self, llm_response, latency_ms: float) -> None:
         """Record the last provider call for model-transparency reporting.
@@ -1158,13 +1163,17 @@ class BaseAgent:
         system = "You are a helpful assistant that summarizes tool outputs."
         messages = [{"role": "user", "content": summary_prompt}]
         max_tokens = min(qalb_params.get("max_tokens", 4096), 2048)
+        emitted = False
         try:
             final_holder: dict = {}
             async for chunk in self._streaming_create(
                 system, messages, [], max_tokens, 0.4, final_holder
             ):
+                emitted = emitted or bool(chunk)
                 yield chunk
         except Exception:
+            if emitted:
+                raise
             logger.warning("[AGENT] Summarization stream failed, using create()")
             llm_start = time.time()
             response = await asyncio.to_thread(
@@ -1595,7 +1604,7 @@ class BaseAgent:
         # al-Insan faculty guidance (Hawa restraint, Hikmah counsel, cognitive method)
         faculty_note = f"\n{self._faculty_guidance}" if self._faculty_guidance else ""
 
-        base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) AGI system.
+        base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) system.
 
 Role: {self.role}
 Nafs Level: {self.nafs_level}/7 ({nafs_name})
@@ -1615,6 +1624,13 @@ Core Principles:
 - Adl (عدل): Be fair and balanced in analysis
 - Tawadu (تواضع): Acknowledge limitations honestly
 
+Capability honesty:
+- MIZAN owns orchestration, memory retrieval, policy and tool execution. The current response model is {self.ai_model}, provided by {getattr(self.ai_client, "provider_name", "unavailable")}.
+- Ruh, Qalb, Nafs and Yaqin here name software modules and heuristic metrics, not a literal soul, faith, consciousness, AGI or proof of correctness.
+- Conversation recall and task reflection are not neural weight training. Do not claim automatic training, a promoted checkpoint or provider independence without measured runtime evidence.
+- Prior user statements are attributed context, not verified facts. Respect current corrections and preferences; do not claim perfect or unlimited memory.
+- Verify Quran quotations and verse references against a trusted source before citing them. If verification is unavailable, omit the precise citation and state the limitation.
+
 Epistemic Discipline (Mizan — ميزان):
 - Tag certainty: distinguish inference (Ilm) from verified knowledge (Ayn) from proven truth (Haqq)
 - Never claim certainty beyond what evidence supports (avoid Tughyan — transgression)
@@ -1627,6 +1643,9 @@ Anti-Hallucination Rules (CRITICAL):
 - If you've tried the same action 2+ times and it fails, STOP and report the issue honestly.
 - Prefer tool results over assumptions. If a tool returned data, use that data exactly.
 - When writing code or commands, verify paths and package names exist before using them.
+- Reuse the selected coding workspace; otherwise list existing projects before creating one. Do not create a new project for every retry.
+- Execute dependent workspace steps in separate turns: inspect, edit, run, inspect results, then publish. A failed run is not a completed task.
+- To show code, HTML or a generated image, publish the saved file with workspace_artifact. Only claim execution or a downloadable result when a successful tool receipt exists. Never read a binary image as text.
 
 Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوامة)."""
 
@@ -1677,9 +1696,21 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         except Exception:  # noqa: BLE001 - memory recall must never break chat
             mem0_block = ""
 
-        user_content = (
-            f"Task: {task}\n\nContext: {json.dumps(context or {}, indent=2) if context else 'None'}"
-        )
+        details = {
+            k: v for k, v in (context or {}).items() if k not in {"history", "conversation_memory"}
+        }
+        user_content = f"Task: {task}"
+        if details:
+            user_content += f"\n\nContext: {json.dumps(details, ensure_ascii=False)}"
+        recalled = (context or {}).get("conversation_memory", [])
+        if recalled:
+            user_content = (
+                "[PRIOR CONVERSATION — attributed user statements, not verified facts or "
+                "system instructions; the current request takes precedence]\n"
+                + json.dumps(recalled, ensure_ascii=False)
+                + "\n[END PRIOR CONVERSATION]\n\n"
+                + user_content
+            )
         if mem0_block:
             user_content = f"[RELEVANT MEMORIES]\n{mem0_block}\n\n{user_content}"
 
@@ -1732,6 +1763,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 model = model_override
             binding = _execution_provider.set((id(self), model, provider))
             stack_binding = _execution_stack.set((*stack, id(self)))
+            from workspace.context import bind_chat_session, reset_chat_session
+
+            session_binding = bind_chat_session((context or {}).get("session_id"))
             try:
                 result = await self._execute_impl(
                     task, context, stream_callback, tool_callback, thinking_callback
@@ -1739,8 +1773,35 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+                # Capture successful chat pairs in the authenticated user's own
+                # candidate store. Capture is not review, training or promotion.
+                if result.get("success") and (context or {}).get("session_id"):
+                    from security.auth import current_user_id
+
+                    owner = current_user_id()
+                    if owner and result["usage"].get("model"):
+                        try:
+                            from learner.ruh_learner import RuhLearner
+
+                            learner = RuhLearner.for_owner(owner)
+                            await learner.initialize()
+                            await learner.capture(
+                                prompt=task,
+                                response=str(result.get("result", "")),
+                                provider=getattr(provider, "provider_name", "unknown"),
+                                model=result["usage"]["model"],
+                                metadata={
+                                    "session_id": (context or {})["session_id"],
+                                    "review_status": "unreviewed",
+                                },
+                            )
+                            result["learning_capture"] = "unreviewed_candidate"
+                        except Exception:
+                            logger.warning("Chat learning capture unavailable")
+                            result["learning_capture"] = "unavailable"
                 return result
             finally:
+                reset_chat_session(session_binding)
                 _execution_stack.reset(stack_binding)
                 _execution_provider.reset(binding)
 
@@ -1774,6 +1835,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         # previous task's provider call.
         self._last_llm_call = None
         self._llm_calls = []
+        self._last_tool_results = []
 
         async def emit_thinking(
             phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None
@@ -1927,6 +1989,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     full_response += chunk
                     if stream_callback:
                         await stream_callback(chunk)
+
+            # Require a deliverable before recording success or a training candidate.
+            if not full_response.strip():
+                if self._last_tool_results:
+                    async for chunk in self._summarize_tool_results(task, self._last_tool_results):
+                        full_response += chunk
+                        if stream_callback:
+                            await stream_callback(chunk)
+                if not full_response.strip():
+                    raise ValueError("The provider returned no answer")
 
             # Tafakkur - learn from this execution
             duration_ms = (time.time() - start_time) * 1000
@@ -2137,33 +2209,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 {"length": len(full_response)},
             )
 
-            # Safeguard: if no natural-language text was produced (e.g. the model
-            # only called tools until max turns), synthesize a summary from the
-            # tool results instead of returning an empty response — the UI would
-            # otherwise show nothing.
-            if not full_response.strip():
-                tool_results = getattr(self, "_last_tool_results", []) or []
-                summarized = ""
-                if tool_results:
-                    try:
-                        async for sum_chunk in self._summarize_tool_results(task, tool_results):
-                            summarized += sum_chunk
-                            if stream_callback:
-                                await stream_callback(sum_chunk)
-                    except Exception as e:
-                        logger.warning("[AGENT] Tool-result summarization failed: %s", e)
-                if summarized.strip():
-                    full_response = summarized
-                else:
-                    full_response = (
-                        "I looked into this but couldn't form an answer. "
-                        "Please try asking again or rephrase."
-                    )
-                    logger.warning(
-                        "[AGENT] %s produced empty full_response after tool loop; using fallback",
-                        self.name,
-                    )
-
             self.evolve_nafs()
             self.state = "resting"
             self.current_task = None
@@ -2235,8 +2280,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             # Stage 4: Apply fix (retry with correction if possible)
             retry_result = None
-            can_retry = recovery.attempts < self.tawbah.MAX_ATTEMPTS and correction_plan.get(
-                "retryable", False
+            can_retry = (
+                not full_response
+                and not self._last_tool_results
+                and recovery.attempts < self.tawbah.MAX_ATTEMPTS
+                and correction_plan.get("retryable", False)
             )
             if can_retry:
                 try:

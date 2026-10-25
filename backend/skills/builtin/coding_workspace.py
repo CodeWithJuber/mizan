@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
-from workspace.context import selected_workspace
+from workspace.context import artifact_session, selected_workspace
 from workspace.execution import run_project
 from workspace.store import WorkspaceStore
 
@@ -188,7 +188,7 @@ class CodingWorkspaceSkill(SkillBase):
                 selected_workspace(workspace_id),
                 user_id=current_user_id() or "",
                 path=path,
-                session_id=session_id,
+                session_id=artifact_session(session_id),
                 title=title,
             ),
         )
@@ -210,7 +210,7 @@ class CodingWorkspaceSkill(SkillBase):
         definitions = [
             (
                 "create",
-                "Create a persistent private project before coding; files survive chat and server restarts.",
+                "Create a persistent private project only when no suitable selected/existing project is available; call workspace_list before creating another project.",
                 {"name": string},
                 ["name"],
             ),
@@ -266,9 +266,9 @@ class CodingWorkspaceSkill(SkillBase):
             ),
             (
                 "artifact",
-                "Publish an existing project code, HTML, markdown or raster image file as an owner-scoped saved preview artifact; returns the persisted artifact.",
+                "Publish an existing project code, HTML, markdown or raster image file as a saved preview artifact in the current chat. Omit session_id during chat; it is bound by the server.",
                 {**project, "path": string, "session_id": string, "title": string},
-                ["workspace_id", "path", "session_id"],
+                ["workspace_id", "path"],
             ),
             (
                 "hardware",

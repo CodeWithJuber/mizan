@@ -483,3 +483,29 @@ class TestRealRuntime:
             }
         )
         assert checked["exit_code"] == 0 and "initial" in checked["stdout"]
+
+
+async def test_chat_image_artifact_uses_bound_session_and_preserves_binary(storage):
+    from PIL import Image
+
+    from workspace.context import bind_chat_session, reset_chat_session
+
+    workspace = storage.create("Graph")["id"]
+    image = io.BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(image, format="PNG")
+    data = image.getvalue()
+    (storage.project(workspace) / "files" / "plot.png").write_bytes(data)
+    token = bind_principal(USER)
+    session = bind_chat_session("current-chat")
+    try:
+        skill = CodingWorkspaceSkill()
+        result = await skill.artifact(workspace, "plot.png")
+        assert result["artifact"]["session_id"] == "current-chat"
+        assert result["artifact"]["kind"] == "image"
+        assert storage.read_bytes(workspace, "plot.png") == data
+        with pytest.raises(HTTPException) as exc:
+            await skill.artifact(workspace, "plot.png", session_id="different-chat")
+        assert exc.value.status_code == 403
+    finally:
+        reset_chat_session(session)
+        reset_principal(token)
