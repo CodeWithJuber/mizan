@@ -38,6 +38,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend.prod
+    image: ${MIZAN_BACKEND_IMAGE:-mizan-backend}
     container_name: mizan-backend
     restart: unless-stopped
     expose:
