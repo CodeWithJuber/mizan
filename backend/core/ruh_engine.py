@@ -29,6 +29,7 @@ class RuhState:
     max_energy: float = 100.0  # Maximum energy capacity
     regen_rate: float = 2.0  # Energy regenerated per minute of rest
     last_activity: float = field(default_factory=time.time)
+    last_regeneration: float = field(default_factory=time.time)
     last_rest_start: float | None = None
     total_tasks_since_rest: int = 0
     fatigue_level: float = 0.0  # 0=fresh, 1=exhausted
@@ -71,10 +72,13 @@ class RuhEngine:
         self, agent_id: str, max_energy: float = 100.0, regen_rate: float = 2.0
     ) -> RuhState:
         """Initialize Ruh state for a new agent."""
+        now = time.time()
         state = RuhState(
             energy=max_energy,
             max_energy=max_energy,
             regen_rate=regen_rate,
+            last_activity=now,
+            last_regeneration=now,
         )
         self._states[agent_id] = state
         return state
@@ -109,6 +113,7 @@ class RuhEngine:
 
         state.energy = max(0.0, state.energy - cost)
         state.last_activity = time.time()
+        state.last_regeneration = state.last_activity
         state.last_rest_start = None
         state.total_tasks_since_rest += 1
 
@@ -134,18 +139,22 @@ class RuhEngine:
         state = self._states[agent_id]
         now = time.time()
 
-        if state.last_rest_start:
-            rest_minutes = (now - state.last_rest_start) / 60.0
-            regen = rest_minutes * state.regen_rate
-            state.energy = min(state.max_energy, state.energy + regen)
-            state.fatigue_level = 1.0 - (state.energy / state.max_energy)
+        # Dashboard reads and can_handle_task probes must not credit the same
+        # elapsed interval repeatedly. A backwards clock cannot create energy.
+        previous = state.last_regeneration
+        if now <= previous:
+            return
+        state.last_regeneration = now
+        if state.last_rest_start is not None:
+            start = max(previous, state.last_rest_start)
+            rate = state.regen_rate
         else:
-            # Passive regen even when not explicitly resting (but slower)
-            idle_minutes = (now - state.last_activity) / 60.0
-            if idle_minutes > 1.0:
-                passive_regen = idle_minutes * (state.regen_rate * 0.3)
-                state.energy = min(state.max_energy, state.energy + passive_regen)
-                state.fatigue_level = 1.0 - (state.energy / state.max_energy)
+            # Slower passive regeneration starts after one idle minute.
+            start = max(previous, state.last_activity + 60.0)
+            rate = state.regen_rate * 0.3
+        regenerated = max(0.0, now - start) / 60.0 * rate
+        state.energy = min(state.max_energy, state.energy + regenerated)
+        state.fatigue_level = 1.0 - (state.energy / state.max_energy)
 
     def classify_task_complexity(self, task: str) -> str:
         """Estimate task complexity from description."""

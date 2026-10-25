@@ -29,7 +29,8 @@ export function hasDisplayableMeta(meta?: MessageUsageMeta): boolean {
     meta.input_tokens != null ||
     meta.output_tokens != null ||
     meta.latency_ms != null ||
-    meta.cost_usd != null,
+    meta.cost_usd != null ||
+    meta.completion_status || meta.owned_status,
   );
 }
 
@@ -52,6 +53,17 @@ export function MessageMeta({ meta }: MessageMetaProps) {
 
   const parts: string[] = [];
   if (m.model) parts.push(m.model);
+  if (m.completion_status === "abstained" || m.owned_status === "abstained") {
+    parts.push("Abstained");
+  } else if (m.completion_status === "incomplete") {
+    parts.push("Incomplete response");
+  } else if (m.completion_status === "human_review_required") {
+    parts.push("Human review required");
+  } else if (m.completion_status === "reviewed_memory") {
+    parts.push("Reviewed memory replay");
+  } else if (m.completion_status === "evidence_observed") {
+    parts.push("Tool results observed");
+  }
   if (m.input_tokens != null || m.output_tokens != null) {
     const inT =
       m.input_tokens != null ? `${fmtTokens(m.input_tokens)} in` : null;

@@ -16,6 +16,7 @@ works identically regardless of the backend.
 
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -29,6 +30,31 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger("mizan.providers")
+
+
+def _sdk_request_options(timeout_type) -> dict[str, Any]:
+    """Bound SDK I/O waits and retries; a healthy stream can run longer.
+
+    Agent-level recovery is separate, so SDK retries are disabled by default
+    instead of silently multiplying the agent's own attempts.
+    """
+    try:
+        seconds = float(os.getenv("MIZAN_LLM_TIMEOUT_SECONDS", "60"))
+        if not math.isfinite(seconds):
+            raise ValueError("non-finite timeout")
+    except ValueError:
+        logger.warning("Invalid MIZAN_LLM_TIMEOUT_SECONDS; using 60 seconds")
+        seconds = 60.0
+    seconds = max(1.0, min(seconds, 180.0))
+    try:
+        retries = int(os.getenv("MIZAN_LLM_MAX_RETRIES", "0"))
+    except ValueError:
+        logger.warning("Invalid MIZAN_LLM_MAX_RETRIES; disabling SDK retries")
+        retries = 0
+    return {
+        "timeout": timeout_type(seconds, connect=min(5.0, seconds)),
+        "max_retries": max(0, min(retries, 2)),
+    }
 
 
 # ───── Normalized Response Types ─────
@@ -98,7 +124,9 @@ class AnthropicProvider(BaseLLMProvider):
     def __init__(self, api_key: str):
         import anthropic
 
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(
+            api_key=api_key, **_sdk_request_options(anthropic.Timeout)
+        )
 
     def create(self, model, max_tokens, system, messages, tools=None, temperature=None):
         kwargs = {
@@ -160,9 +188,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         default_headers: dict | None = None,
         provider_name: str = "openai",
     ):
-        from openai import OpenAI
+        from openai import OpenAI, Timeout
 
-        kwargs: dict[str, Any] = {"api_key": api_key}
+        kwargs: dict[str, Any] = {"api_key": api_key, **_sdk_request_options(Timeout)}
         if base_url:
             kwargs["base_url"] = base_url
         if default_headers:
@@ -362,8 +390,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             for tc in message.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments)
-                except (json.JSONDecodeError, TypeError):
-                    args = {}
+                except (json.JSONDecodeError, TypeError) as exc:
+                    raise ValueError("Provider returned malformed tool arguments") from exc
+                if not isinstance(args, dict):
+                    raise ValueError("Provider tool arguments must be an object")
                 blocks.append(
                     ContentBlock(
                         type="tool_use",
@@ -474,12 +504,19 @@ class _AnthropicStreamWrapper:
         return self.stream.text_stream
 
     def get_final_response(self):
-        message = self.stream.get_final_message()
+        try:
+            message = self.stream.get_final_message()
+        except AssertionError as exc:
+            raise RuntimeError("Provider stream ended without a completion record") from exc
+        if not getattr(message, "stop_reason", None):
+            raise RuntimeError("Provider stream ended without a completion record")
         blocks = []
         for block in message.content:
             if block.type == "text":
                 blocks.append(ContentBlock(type="text", text=block.text))
             elif block.type == "tool_use":
+                if message.stop_reason not in {"tool_use", "end_turn"}:
+                    raise ValueError("Provider returned an incomplete tool call")
                 blocks.append(
                     ContentBlock(type="tool_use", id=block.id, name=block.name, input=block.input)
                 )
@@ -501,7 +538,8 @@ class _OpenAIStreamWrapper:
         self._calls = {}
         self._usage = {}
         self._observed_model = ""
-        self._finish = "end_turn"
+        self._finish: str | None = None
+        self._stream_exhausted = False
 
     def __enter__(self):
         kwargs = dict(
@@ -527,6 +565,8 @@ class _OpenAIStreamWrapper:
     @property
     def text_stream(self):
         for chunk in self._stream:
+            if getattr(chunk, "error", None) or getattr(chunk, "type", None) == "error":
+                raise RuntimeError("Provider stream reported an upstream error")
             if getattr(chunk, "model", None):
                 self._observed_model = chunk.model
             usage = getattr(chunk, "usage", None)
@@ -540,7 +580,7 @@ class _OpenAIStreamWrapper:
                 ):
                     if raw.get(native) is not None:
                         self._usage[normalized] = raw[native]
-            if not chunk.choices:
+            if not getattr(chunk, "choices", None):
                 continue
             choice = chunk.choices[0]
             finish = getattr(choice, "finish_reason", None)
@@ -549,7 +589,7 @@ class _OpenAIStreamWrapper:
                     "stop": "end_turn",
                     "length": "max_tokens",
                     "tool_calls": "tool_use",
-                }.get(finish, finish)
+                }.get(finish, "incomplete")
             delta = choice.delta
             if getattr(delta, "content", None):
                 self._text += delta.content
@@ -561,8 +601,15 @@ class _OpenAIStreamWrapper:
                 if function:
                     call["name"] += getattr(function, "name", None) or ""
                     call["arguments"] += getattr(function, "arguments", None) or ""
+        self._stream_exhausted = True
+        if not self._finish:
+            raise RuntimeError("Provider stream ended without a completion record")
 
     def get_final_response(self):
+        if not self._stream_exhausted or not self._finish:
+            raise RuntimeError("Provider stream has no completed response")
+        if self._calls and self._finish not in {"tool_use", "end_turn"}:
+            raise ValueError("Provider returned an incomplete tool call")
         blocks = [ContentBlock(type="text", text=self._text)] if self._text else []
         for index in sorted(self._calls):
             call = self._calls[index]
@@ -573,7 +620,12 @@ class _OpenAIStreamWrapper:
             blocks.append(
                 ContentBlock(type="tool_use", id=call["id"], name=call["name"], input=params)
             )
-        if self._tools and not self._calls and self._text:
+        if (
+            self._tools
+            and not self._calls
+            and self._text
+            and self._finish in {"tool_use", "end_turn"}
+        ):
             blocks.extend(OpenAICompatibleProvider._parse_xml_tool_calls(self._text))
         if any(b.type == "tool_use" for b in blocks):
             self._finish = "tool_use"
@@ -589,12 +641,13 @@ class OllamaProvider(BaseLLMProvider):
     provider_name = "ollama"
 
     def __init__(self, base_url: str = "http://localhost:11434"):
-        from openai import OpenAI
+        from openai import OpenAI, Timeout
 
         # Ollama exposes an OpenAI-compatible API
         self._client = OpenAI(
             api_key="ollama",
             base_url=f"{base_url.rstrip('/')}/v1",
+            **_sdk_request_options(Timeout),
         )
         self._base_url = base_url
 
@@ -626,6 +679,7 @@ class Qwen3ServerlessProvider(BaseLLMProvider):
     """
 
     provider_name = "qwen3"
+    supports_tools = False
 
     def __init__(self, config=None) -> None:
         from api.qwen3_client import Qwen3Config
@@ -682,7 +736,11 @@ def create_provider(
 
     # Auto-detect provider from model name, verifying keys exist
     if not provider and model:
-        if model.startswith(("claude-", "anthropic/")):
+        if "/" in model:
+            # Namespaced IDs are OpenRouter IDs, including anthropic/claude-*.
+            # A native Anthropic key must not silently change this route.
+            provider = "openrouter"
+        elif model.startswith("claude-"):
             # Claude models: prefer Anthropic if key exists, else route via OpenRouter
             if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-"):
                 provider = "anthropic"
@@ -690,9 +748,6 @@ def create_provider(
                 provider = "openrouter"
         elif model.startswith(("gpt-", "o1", "o3", "chatgpt")):
             provider = "openai"
-        elif "/" in model:
-            # Slash in model name like "google/gemini-2.0-flash" → OpenRouter
-            provider = "openrouter"
         elif model.startswith("ruh"):
             provider = "ruh"
         elif model.startswith(("llama", "mistral", "phi", "gemma", "qwen", "codellama")):
@@ -824,7 +879,8 @@ def normalize_model_for_provider(model: str, provider_name: str) -> str:
         return "mizan-owned"
 
     _anthropic_to_openrouter = {
-        "claude-opus-4-6": "anthropic/claude-opus-4",
+        "claude-opus-4-6": "anthropic/claude-opus-4.6",
+        "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
         "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4",
         "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
     }

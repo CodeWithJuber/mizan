@@ -25,6 +25,7 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
+  const [generateSeedData, setGenerateSeedData] = useState(false);
 
   const disabled = !ruhStatus?.enabled;
 
@@ -32,7 +33,10 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
     setLoading(true);
     setError(null);
     try {
-      const result = await api.post("/training/start", { stage });
+      const result = await api.post("/training/start", {
+        stage,
+        generate_seed_data: generateSeedData,
+      });
       if ((result as Record<string, unknown>).running) {
         onStatusChange();
       } else {
@@ -67,7 +71,7 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Training Controls
+          Manual Training
         </h4>
         {running && (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
@@ -76,6 +80,27 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
           </span>
         )}
       </div>
+
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Uses the prepared dataset on the server. Captured chat responses are
+        separate review candidates. This run does not verify source authorship
+        or automatically activate a new checkpoint.
+      </p>
+      {!running && (
+        <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={generateSeedData}
+            onChange={(event) => setGenerateSeedData(event.target.checked)}
+            disabled={disabled || loading}
+            className="mt-0.5"
+          />
+          <span>
+            Generate seed examples for a test run. These are generated root and
+            concept examples, not learning from real conversations or research.
+          </span>
+        </label>
+      )}
 
       {!running ? (
         <div className="flex items-end gap-3">

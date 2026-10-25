@@ -5,43 +5,8 @@ import {
   SandpackCodeEditor,
   SandpackPreview,
 } from "@codesandbox/sandpack-react";
-import type { ArtifactKind } from "../types";
 import type { ArtifactPreviewProps } from "./ArtifactPreview";
-const LANG_FILE: Record<string, string> = {
-  python: "/main.py",
-  py: "/main.py",
-  javascript: "/index.js",
-  js: "/index.js",
-  jsx: "/App.js",
-  typescript: "/index.ts",
-  ts: "/index.ts",
-  tsx: "/App.tsx",
-  css: "/styles.css",
-  html: "/index.html",
-  json: "/data.json",
-};
-
-const RUNNABLE = new Set([
-  "html",
-  "javascript",
-  "js",
-  "jsx",
-  "typescript",
-  "ts",
-  "tsx",
-]);
-
-function sandpackTemplate(
-  kind: ArtifactKind,
-  language?: string,
-): "react" | "react-ts" | "static" {
-  if (kind === "html") return "static";
-  const lang = (language ?? "").toLowerCase();
-  if (lang === "ts" || lang === "tsx" || lang === "typescript")
-    return "react-ts";
-  if (lang === "jsx" || lang === "js" || lang === "javascript") return "react";
-  return "static";
-}
+import { codeArtifactConfig } from "../utils/codeArtifact.ts";
 
 export default function CodeArtifact({
   language,
@@ -50,19 +15,10 @@ export default function CodeArtifact({
   title,
 }: Omit<ArtifactPreviewProps, "kind">) {
   const lang = (language ?? "").toLowerCase();
-  const file = LANG_FILE[lang] ?? "/snippet.txt";
-  const template = sandpackTemplate("code", language);
-  const files = useMemo(() => {
-    const f: Record<string, string> = {};
-    if (template === "static" && file === "/index.html")
-      f["/index.html"] = content;
-    else if (template === "react") f["/App.js"] = content;
-    else if (template === "react-ts") f["/App.tsx"] = content;
-    else f[file] = content;
-    return f;
-  }, [template, file, content]);
-  const runnable =
-    RUNNABLE.has(lang) || template !== "static" || file === "/index.html";
+  const { template, runnable, files, options } = useMemo(
+    () => codeArtifactConfig(language, content, view),
+    [language, content, view],
+  );
   const isDark =
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark");
@@ -73,7 +29,7 @@ export default function CodeArtifact({
         template={template}
         files={files}
         theme={isDark ? "dark" : "light"}
-        options={{ autorun: true, recompileMode: "delayed" }}
+        options={options}
       >
         <SandpackLayout>
           {view === "preview" && runnable ? (

@@ -1406,8 +1406,8 @@ function AppInner() {
       })();
     }
     loadChatSessions();
-    // Fetch version from backend
-    fetch(`${config.API_URL}/version`)
+    // Health exposes the version without requiring administrative update details.
+    fetch(`${config.API_URL}/health`)
       .then((r) => r.json())
       .then((data) => {
         if (data.version) setAppVersion(data.version);
@@ -2124,6 +2124,7 @@ function AppInner() {
             onSelect={selectWorkspace}
             onDirtyChange={setWorkspaceDirty}
             onArtifact={(artifact) => {
+              if (artifact.session_id !== sessionIdRef.current) return;
               const full = {
                 ...artifact,
                 versions:
@@ -3347,10 +3348,10 @@ function AppInner() {
               {memories.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
                   <Icons.Memory />
-                  <p className="mt-3 font-medium">No memories stored yet</p>
+                  <p className="mt-3 font-medium">No knowledge records stored yet</p>
                   <p className="text-sm mt-1 text-center max-w-sm">
                     Add memories manually, or start chatting — your AI will
-                    remember important details automatically.
+                    save conversation history separately in your chat memory.
                   </p>
                   <button
                     className="btn-gold btn-sm mt-4"

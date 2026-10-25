@@ -21,6 +21,7 @@ class RuhRemoteProvider(BaseLLMProvider):
     """Remote Ruh Model provider via RunPod Serverless."""
 
     provider_name = "ruh-remote"
+    supports_tools = False
     submission_path = "runsync"
 
     def __init__(self, endpoint_id: str, api_key: str) -> None:
@@ -158,7 +159,7 @@ class RuhRemoteProvider(BaseLLMProvider):
         return LLMResponse(
             content=blocks,
             stop_reason={"stop": "end_turn", "length": "max_tokens"}.get(
-                choices[0].get("finish_reason"), "end_turn"
+                choices[0].get("finish_reason"), "incomplete"
             ),
             usage={
                 "input_tokens": usage.get("prompt_tokens", 0),

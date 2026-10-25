@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,7 @@ class TrainingState:
     message: str = "Training not started"
     started_at: float | None = None
     losses: list[float] = field(default_factory=list)
+    data_source: str | None = None
 
 
 class TrainingManager:
@@ -59,6 +61,7 @@ class TrainingManager:
         self._broadcast_fn: Any | None = None
         self._monitor_task: asyncio.Task | None = None
         self._history: list[dict[str, Any]] = self._load_history()
+        self._lifecycle_lock = asyncio.Lock()
 
     def set_broadcast(self, broadcast_fn: Any) -> None:
         """Set the WebSocket broadcast function (manager.broadcast)."""
@@ -81,6 +84,9 @@ class TrainingManager:
             "model_params": self._state.model_params,
             "message": self._state.message,
             "losses": list(self._state.losses),
+            "data_source": self._state.data_source,
+            "original_data_verified": False,
+            "automatic_weight_training": False,
         }
 
     def get_history(self) -> list[dict[str, Any]]:
@@ -94,22 +100,58 @@ class TrainingManager:
         data_dir: str = "ruh_model/data/training",
         checkpoint_dir: str = "ruh_model/checkpoints",
         log_every: int = 10,
+        generate_seed_data: bool = False,
     ) -> dict[str, Any]:
-        """Spawn a training subprocess and begin monitoring.
+        """Start a manual run; generated seed data requires explicit opt-in."""
+        async with self._lifecycle_lock:
+            return await self._start_training(
+                stage, config_path, data_dir, checkpoint_dir, log_every, generate_seed_data
+            )
+
+    async def _start_training(
+        self,
+        stage: str,
+        config_path: str | None,
+        data_dir: str,
+        checkpoint_dir: str,
+        log_every: int,
+        generate_seed_data: bool,
+    ) -> dict[str, Any]:
+        """Validate inputs and spawn the process while holding the lifecycle lock.
 
         Returns a status dict. Raises ValueError if already running.
         """
-        if self._state.running:
+        if self._state.running or (self._process and self._process.returncode is None):
             raise ValueError("Training is already in progress")
+        if type(generate_seed_data) is not bool:
+            raise ValueError("Seed generation requires an explicit boolean choice")
 
         # Validate environment
         ruh_dir = Path("ruh_model")
         if not ruh_dir.exists():
             raise ValueError("ruh_model/ directory not found")
+        if not generate_seed_data:
+            data_path = Path(data_dir)
+            files = sorted(data_path.glob("*.jsonl")) if data_path.is_dir() else [data_path]
+            populated = [
+                path
+                for path in files
+                if path.suffix == ".jsonl" and path.is_file() and path.stat().st_size > 0
+            ]
+            if not populated:
+                raise ValueError(
+                    "No prepared JSONL training data found. Supply a dataset or explicitly "
+                    "select generated seed examples; chat capture is not training data."
+                )
+            if any(path.name in {"seed_roots.jsonl", "seed_concepts.jsonl"} for path in populated):
+                raise ValueError(
+                    "This dataset includes generated seed files. Use a separate prepared "
+                    "dataset or explicitly select generated seed examples."
+                )
 
         # Build command
         cmd = [
-            "python",
+            sys.executable,
             "-m",
             "ruh_model.train",
             "--stage",
@@ -120,9 +162,10 @@ class TrainingManager:
             checkpoint_dir,
             "--log-every",
             str(log_every),
-            "--generate-data",
             "--json-progress",
         ]
+        if generate_seed_data:
+            cmd.append("--generate-data")
         if config_path:
             cmd.extend(["--config", config_path])
 
@@ -134,17 +177,25 @@ class TrainingManager:
             stage=stage,
             message=f"Starting {stage} training...",
             started_at=time.time(),
+            data_source="generated_seed_examples" if generate_seed_data else "supplied_unverified",
         )
 
         await self._broadcast_state()
 
         # Spawn subprocess
-        self._process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(Path.cwd()),
-        )
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(Path.cwd()),
+            )
+        except (OSError, ValueError):
+            self._state.running = False
+            self._state.message = "Training process could not be started"
+            self._save_run_to_history("failed")
+            await self._broadcast_state()
+            raise
 
         # Start monitoring task
         self._monitor_task = asyncio.create_task(self._monitor_output(), name="training_monitor")
@@ -152,12 +203,19 @@ class TrainingManager:
         return self.get_status()
 
     async def stop_training(self) -> dict[str, Any]:
+        async with self._lifecycle_lock:
+            return await self._stop_training()
+
+    async def _stop_training(self) -> dict[str, Any]:
         """Terminate the running training process.
 
         Returns final status dict. Raises ValueError if not running.
         """
         if not self._state.running:
             raise ValueError("No training is in progress")
+
+        # Prevent the monitor from recording a user-requested stop as a failure.
+        self._state.running = False
 
         if self._process and self._process.returncode is None:
             self._process.terminate()
@@ -168,7 +226,6 @@ class TrainingManager:
                 self._process.kill()
                 await self._process.wait()
 
-        self._state.running = False
         self._state.message = "Training stopped by user"
         await self._broadcast_state()
         self._save_run_to_history("stopped")
@@ -258,7 +315,7 @@ class TrainingManager:
                 f"Epoch {self._state.epoch}/{self._state.total_epochs} "
                 f"Step {self._state.step}/{self._state.total_steps} "
                 f"Loss: {self._state.loss:.4f}"
-                if self._state.loss
+                if self._state.loss is not None
                 else ""
             )
 
@@ -270,19 +327,18 @@ class TrainingManager:
             self._state.message = (
                 f"Epoch {self._state.epoch}/{self._state.total_epochs} complete. "
                 f"Avg loss: {avg_loss:.4f}"
-                if avg_loss
+                if avg_loss is not None
                 else ""
             )
 
         elif msg_type == "complete":
-            self._state.running = False
             final_loss = data.get("final_loss")
+            self._state.loss = final_loss
             self._state.message = (
-                f"Training complete. Final loss: {final_loss:.4f}"
-                if final_loss
-                else "Training complete."
+                f"Training reported final loss {final_loss:.4f}; waiting for process exit"
+                if final_loss is not None
+                else "Training reported completion; waiting for process exit"
             )
-            self._save_run_to_history("completed")
 
         await self._broadcast_state()
 
@@ -312,6 +368,9 @@ class TrainingManager:
             "losses": list(self._state.losses),
             "dataset_size": self._state.dataset_size,
             "model_params": self._state.model_params,
+            "data_source": self._state.data_source,
+            "original_data_verified": False,
+            "automatic_weight_training": False,
         }
         self._history.append(run_entry)
         self._persist_history()

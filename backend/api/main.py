@@ -15,6 +15,7 @@ import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -77,6 +78,7 @@ from providers import (
     fetch_ollama_models,
     fetch_openrouter_models,
     get_provider_status,
+    normalize_model_for_provider,
     set_active_state,
 )
 from qca.cognitive_methods import select_method
@@ -191,15 +193,22 @@ async def lifespan(app: FastAPI):
         if saved_provider and saved_model:
             restored = create_provider(provider=saved_provider, model=saved_model)
             if restored:
+                restored_model = normalize_model_for_provider(saved_model, restored.provider_name)
                 for agent in active_agents.values():
-                    agent.ai_client = restored
-                    agent.ai_model = (
-                        "mizan-owned" if restored.provider_name == "mizan-owned" else saved_model
-                    )
-                set_active_state(
-                    restored.provider_name,
-                    "mizan-owned" if restored.provider_name == "mizan-owned" else saved_model,
-                )
+                    override = agent.config.get("provider_override")
+                    if isinstance(override, dict):
+                        selected = create_provider(
+                            provider=override.get("provider"), model=override.get("model")
+                        )
+                        if selected is not None:
+                            agent.ai_client = selected
+                            agent.ai_model = normalize_model_for_provider(
+                                override["model"], selected.provider_name
+                            )
+                            continue
+                    agent.ai_client, agent.ai_model = restored, restored_model
+                    agent.config["model"] = restored_model
+                set_active_state(restored.provider_name, restored_model)
                 logger.info(f"Restored provider: {saved_provider}/{saved_model}")
     except Exception as exc:
         logger.warning(f"Could not restore provider preference: {exc}")
@@ -354,6 +363,7 @@ _ADMIN_PREFIXES = (
     "/api/plan",
     "/api/perception",
     "/api/knowledge",
+    "/api/shura",
 )
 
 
@@ -644,14 +654,20 @@ class ConnectionManager:
         self.connections.pop(ws_id, None)
         self.owners.pop(ws_id, None)
 
-    async def send(self, ws_id: str, data: dict):
+    async def send(self, ws_id: str, data: dict) -> bool:
         ws = self.connections.get(ws_id)
         if ws:
             try:
                 await ws.send_json(json.loads(json.dumps(data, default=str)))
+                return True
             except Exception:
                 logger.error("WebSocket send failed for %s", ws_id, exc_info=True)
                 self.disconnect(ws_id)
+        return False
+
+    async def send_required(self, ws_id: str, data: dict):
+        if not await self.send(ws_id, data):
+            raise asyncio.CancelledError("WebSocket delivery stopped")
 
     async def broadcast(self, data: dict):
         owner = current_user_id()
@@ -833,15 +849,25 @@ async def update_agent(
     if not agent:
         raise HTTPException(404, "Agent not found")
 
-    if req.name is not None:
-        agent.name = req.name
-    if req.system_prompt is not None:
-        agent.config["system_prompt"] = req.system_prompt
+    provider_obj = None
     if req.model is not None:
-        agent.ai_model = req.model
         provider_obj = create_provider(model=req.model)
-        if provider_obj:
+        if provider_obj is None:
+            raise HTTPException(400, "Requested model provider is unavailable")
+    async with agent_settings_lock(agent):
+        if req.name is not None:
+            agent.name = req.name
+        if req.system_prompt is not None:
+            agent.config["system_prompt"] = req.system_prompt
+        if provider_obj is not None and req.model is not None:
             agent.ai_client = provider_obj
+            agent.ai_model = normalize_model_for_provider(req.model, provider_obj.provider_name)
+            agent.config["model"] = agent.ai_model
+            agent.config["provider_override"] = {
+                "provider": provider_obj.provider_name,
+                "model": agent.ai_model,
+            }
+        agent._config_revision = getattr(agent, "_config_revision", 0) + 1
 
     await memory.save_agent_profile(
         {
@@ -881,11 +907,24 @@ async def set_agent_model(
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
 
-    if getattr(provider, "provider_name", "") == "mizan-owned":
-        req.provider = "mizan-owned"
-        req.model = "mizan-owned"
-    agent.ai_client = provider
-    agent.ai_model = req.model
+    req.provider = getattr(provider, "provider_name", req.provider)
+    req.model = normalize_model_for_provider(req.model, req.provider)
+    async with agent_settings_lock(agent):
+        agent.ai_client = provider
+        agent.ai_model = req.model
+        agent.config["model"] = req.model
+        agent.config["provider_override"] = {"provider": req.provider, "model": req.model}
+        agent._config_revision = getattr(agent, "_config_revision", 0) + 1
+    await memory.save_agent_profile(
+        {
+            "id": agent.id,
+            "name": agent.name,
+            "role": agent.role,
+            "nafs_level": agent.nafs_level,
+            "capabilities": list(agent.tools),
+            "config": agent.config,
+        }
+    )
 
     await manager.broadcast(
         {
@@ -994,6 +1033,13 @@ async def get_task_history(agent_id: str | None = None, limit: int = 50):
 _user_agents: dict[tuple[str, str], Any] = {}
 
 
+def agent_settings_lock(agent):
+    """Serialize settings with execution, so a running request retains its config."""
+    if not hasattr(agent, "_execution_lock"):
+        agent._execution_lock = asyncio.Lock()
+    return agent._execution_lock
+
+
 async def chat_agent_for(user: TokenPayload, template):
     if user.has_role("admin"):
         return template
@@ -1013,15 +1059,23 @@ async def chat_agent_for(user: TokenPayload, template):
             name=template.name,
             memory=private_memory,
             knowledge_graph=private_memory.knowledge_graph,
-            config=dict(template.config),
+            config=deepcopy(template.config),
             wali=wali,
             izn=izn,
             skill_registry=skill_registry,
             plugin_manager=None,
         )
         instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
+        instance._template_revision = getattr(template, "_config_revision", 0)
         _user_agents[key] = instance
-    return _user_agents[key]
+    instance = _user_agents[key]
+    if instance._template_revision != getattr(template, "_config_revision", 0):
+        async with agent_settings_lock(instance):
+            instance.name = template.name
+            instance.config = deepcopy(template.config)
+            instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
+            instance._template_revision = getattr(template, "_config_revision", 0)
+    return instance
 
 
 async def authorize_session(session_id: str, user: TokenPayload, *, create: bool = False):
@@ -1053,10 +1107,20 @@ async def chat_context(
         "conversation_memory": await memory.recall_conversations(
             user.user_id, task, exclude_session=session_id
         ),
+        "user_preferences": await memory.get_chat_preferences(user.user_id),
     }
 
 
 _stream_sessions: set[tuple[str, str]] = set()
+
+
+def chat_completion_receipt(result: dict) -> dict:
+    """Carry observed completion state through storage and all chat transports."""
+    return {
+        key: result[key]
+        for key in ("completion_status", "answer_delivered", "task_verified", "learning_capture")
+        if key in result
+    }
 
 
 @app.post("/api/chat/stream", response_class=StreamingResponse)
@@ -1289,6 +1353,7 @@ async def stream_chat(
                     "request_id": request_id,
                     "status": "complete",
                     "usage": result.get("usage", {}),
+                    **chat_completion_receipt(result),
                 },
             )
             session["history"].append({"role": "assistant", "content": final})
@@ -1320,6 +1385,7 @@ async def stream_chat(
                 **understanding_kw,
                 response=final,
                 usage=result.get("usage", {}),
+                **chat_completion_receipt(result),
                 agent=agent.name if agent else None,
                 success=True,
                 cognitive={
@@ -1525,13 +1591,18 @@ async def chat(
                 }
             )
 
-        result = await agent.execute(
-            req.content,
-            await chat_context(user, req.session_id, session, agent, req.content),
-            stream_callback=stream_cb,
-            thinking_callback=thinking_cb,
-            model_override=req.model_override,
-        )
+        try:
+            result = await agent.execute(
+                req.content,
+                await chat_context(user, req.session_id, session, agent, req.content),
+                stream_callback=stream_cb,
+                thinking_callback=thinking_cb,
+                model_override=req.model_override,
+            )
+        except Exception:
+            logger.exception("Legacy chat execution failed for message %s", message_id)
+            thinking_stream.complete(message_id)
+            result = {"success": False, "completion_status": "failed", "task_verified": False}
 
         final_response = result.get("result", response) if result.get("success") else response
         if isinstance(final_response, dict):
@@ -1544,6 +1615,7 @@ async def chat(
             agent_id,
             metadata={
                 "usage": result.get("usage", {}),
+                **chat_completion_receipt(result),
                 "status": "complete" if result.get("success") else "error",
             },
         )
@@ -1604,6 +1676,7 @@ async def chat(
                 "message_id": message_id,
                 "response": str(final_response),
                 "usage": result.get("usage", {}),
+                **chat_completion_receipt(result),
                 "agent": agent.name,
                 "cognitive": cognitive,
                 "thinking_trace": trace_dict,
@@ -1621,6 +1694,33 @@ async def list_sessions(user: TokenPayload = Depends(require_auth)):
     return {"sessions": db_sessions}
 
 
+class ChatPreferenceValue(BaseModel):
+    value: str = Field(min_length=1, max_length=2000)
+
+
+@app.get("/api/chat/preferences")
+async def get_chat_preferences(user: TokenPayload = Depends(require_auth)):
+    return {"preferences": await memory.get_chat_preferences(user.user_id)}
+
+
+@app.put("/api/chat/preferences/{key}")
+async def set_chat_preference(
+    key: str, req: ChatPreferenceValue, user: TokenPayload = Depends(require_auth)
+):
+    try:
+        return await memory.set_chat_preference(user.user_id, key, req.value)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.delete("/api/chat/preferences/{key}")
+async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_auth)):
+    try:
+        return {"deleted": await memory.delete_chat_preference(user.user_id, key)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/chat/{session_id}")
 async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
     await authorize_session(session_id, user)
@@ -1635,6 +1735,7 @@ async def get_conversation_memory_summary(user: TokenPayload = Depends(require_a
         "recall_enabled": True,
         "recall_limit": 5,
         "automatic_weight_training": False,
+        "preferences": await memory.get_chat_preferences(user.user_id),
     }
 
 
@@ -2083,15 +2184,30 @@ async def switch_provider(
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
 
-    if getattr(provider, "provider_name", "") == "mizan-owned":
-        req.provider = "mizan-owned"
-        req.model = "mizan-owned"
+    req.provider = getattr(provider, "provider_name", req.provider)
+    req.model = normalize_model_for_provider(req.model, req.provider)
 
     # Update all active agents
     switched = 0
     for agent in active_agents.values():
-        agent.ai_client = provider
-        agent.ai_model = req.model
+        async with agent_settings_lock(agent):
+            agent.ai_client = provider
+            agent.ai_model = req.model
+            agent._config_revision = getattr(agent, "_config_revision", 0) + 1
+            if hasattr(agent, "config"):
+                had_override = agent.config.pop("provider_override", None) is not None
+                agent.config["model"] = req.model
+                if had_override:
+                    await memory.save_agent_profile(
+                        {
+                            "id": agent.id,
+                            "name": agent.name,
+                            "role": agent.role,
+                            "nafs_level": agent.nafs_level,
+                            "capabilities": list(agent.tools),
+                            "config": agent.config,
+                        }
+                    )
         switched += 1
 
     set_active_state(req.provider, req.model)
@@ -3629,20 +3745,74 @@ async def get_learner_stats(user: TokenPayload = Depends(require_auth)):
 
 @app.post("/api/learner/export")
 async def export_learner_data(
-    user: TokenPayload | None = Depends(get_current_user),
+    user: TokenPayload = Depends(require_auth),
 ):
-    """Export captured learning data as JSONL for Rūḥ Model training."""
+    """Download the caller's reviewed candidates with model authorship intact."""
     try:
         from learner.data_export import DataExporter
+        from learner.ruh_learner import RuhLearner
 
-        exporter = DataExporter()
-        result = await exporter.export()
-        return result
+        learner = RuhLearner.for_owner(user.user_id)
+        await learner.initialize()
+        exporter = DataExporter(learner.db_path)
+
+        async def records():
+            async for record in exporter.records():
+                yield json.dumps(record, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(
+            records(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": 'attachment; filename="mizan-reviewed-candidates.jsonl"'
+            },
+        )
     except ImportError as exc:
         raise HTTPException(503, "Learner module not available") from exc
     except Exception as exc:
         logger.error("Export failed: %s", exc)
-        raise HTTPException(500, f"Export failed: {exc}") from exc
+        raise HTTPException(500, "Reviewed candidates export is unavailable") from exc
+
+
+@app.get("/api/learner/recent")
+async def get_recent_learning_candidates(
+    limit: int = Query(default=20, ge=1, le=50), user: TokenPayload = Depends(require_auth)
+):
+    from learner.ruh_learner import RuhLearner
+
+    learner = RuhLearner.for_owner(user.user_id)
+    await learner.initialize()
+    return {"interactions": await learner.get_recent(limit)}
+
+
+class LearningCandidateReview(BaseModel):
+    expected_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    accepted: bool = Field(strict=True)
+    evidence: str = Field(min_length=1, max_length=4000)
+    quality_score: float = Field(ge=0, le=1)
+
+
+@app.post("/api/learner/review/{interaction_id}")
+async def review_learning_candidate(
+    interaction_id: int,
+    req: LearningCandidateReview,
+    user: TokenPayload = Depends(require_auth),
+):
+    from learner.ruh_learner import RuhLearner
+
+    learner = RuhLearner.for_owner(user.user_id)
+    await learner.initialize()
+    try:
+        return await learner.review_interaction(
+            interaction_id,
+            reviewer_id=user.user_id,
+            expected_hash=req.expected_hash,
+            accepted=req.accepted,
+            evidence=req.evidence,
+            quality_score=req.quality_score,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 # ===== TRAINING ENDPOINTS =====
@@ -3666,6 +3836,7 @@ class TrainingStartRequest(BaseModel):
     data_dir: str = Field(default="ruh_model/data/training")
     checkpoint_dir: str = Field(default="ruh_model/checkpoints")
     log_every: int = Field(default=10, ge=1, le=1000)
+    generate_seed_data: bool = False
 
 
 @app.post("/api/training/start")
@@ -3685,6 +3856,7 @@ async def start_training(
             data_dir=req.data_dir,
             checkpoint_dir=req.checkpoint_dir,
             log_every=req.log_every,
+            generate_seed_data=req.generate_seed_data,
         )
         return result
     except ValueError as exc:
@@ -4020,10 +4192,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
     if not user:
         await websocket.close(code=4401, reason="Authentication required")
         return
-    bind_principal(user)
+    principal_binding = bind_principal(user)
     # The path label is only a client hint; never use it as a routing key.
     client_id = str(uuid.uuid4())
     if not await manager.connect(client_id, websocket):
+        reset_principal(principal_binding)
         return
     manager.owners[client_id] = user.user_id
 
@@ -4057,7 +4230,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
             # Rate limit WebSocket messages
             rl = wali.check_rate_limit(f"ws:{client_id}")
             if not rl["allowed"]:
-                await manager.send(
+                await manager.send_required(
                     client_id,
                     {
                         "type": "error",
@@ -4067,23 +4240,30 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 continue
 
             msg_type = data.get("type", "chat")
+            if msg_type in {"task", "multimodal"} and not user.has_role("admin"):
+                await manager.send_required(
+                    client_id, {"type": "error", "message": "Administrator role required"}
+                )
+                continue
 
             if msg_type == "ping":
-                await manager.send(client_id, {"type": "pong"})
+                await manager.send_required(client_id, {"type": "pong"})
 
             elif msg_type == "chat":
                 session_id = data.get("session_id", client_id)
                 try:
                     await authorize_session(session_id, user, create=True)
                 except HTTPException:
-                    await manager.send(client_id, {"type": "error", "message": "Session not found"})
+                    await manager.send_required(
+                        client_id, {"type": "error", "message": "Session not found"}
+                    )
                     continue
                 content = data.get("content", "")
                 agent_id = data.get("agent_id")
 
                 # Validate input
                 if not content or len(content) > 50000:
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "error",
@@ -4110,7 +4290,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     active_agents=active_agents,
                 )
                 if cmd_result.get("is_command"):
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "command_result",
@@ -4144,7 +4324,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     message_id = str(uuid.uuid4())
 
                     # Send typing indicator before starting
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "typing",
@@ -4163,7 +4343,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         nonlocal response_text
                         chunk_type = kwargs.get("chunk_type", "text")
                         if chunk_type == "tool_use":
-                            await manager.send(
+                            await manager.send_required(
                                 client_id,
                                 {
                                     "type": "tool_use",
@@ -4174,7 +4354,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             )
                             return
                         response_text += chunk
-                        await manager.send(
+                        await manager.send_required(
                             client_id,
                             {
                                 "type": "chat_stream",
@@ -4200,7 +4380,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             confidence,
                             metadata,
                         )
-                        await manager.send(
+                        await manager.send_required(
                             client_id,
                             {
                                 "type": "thinking",
@@ -4213,12 +4393,37 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
-                    result = await agent.execute(
-                        content,
-                        await chat_context(user, session_id, session, agent, content),
-                        stream_callback=ws_stream,
-                        thinking_callback=ws_thinking,
-                    )
+                    try:
+                        result = await agent.execute(
+                            content,
+                            await chat_context(user, session_id, session, agent, content),
+                            stream_callback=ws_stream,
+                            thinking_callback=ws_thinking,
+                        )
+                    except asyncio.CancelledError:
+                        await memory.save_message(
+                            session_id,
+                            "assistant",
+                            response_text,
+                            agent.id,
+                            metadata={
+                                "status": "cancelled",
+                                "completion_status": "incomplete",
+                                "task_verified": False,
+                            },
+                        )
+                        thinking_stream.complete(message_id)
+                        raise
+                    except Exception:
+                        logger.exception(
+                            "WebSocket chat execution failed for message %s", message_id
+                        )
+                        thinking_stream.complete(message_id)
+                        result = {
+                            "success": False,
+                            "completion_status": "failed",
+                            "task_verified": False,
+                        }
 
                     final = result.get("result", response_text)
                     if isinstance(final, dict):
@@ -4231,12 +4436,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         agent.id,
                         metadata={
                             "usage": result.get("usage", {}),
+                            **chat_completion_receipt(result),
                             "status": "complete" if result.get("success") else "error",
                         },
                     )
                     session["history"].append({"role": "assistant", "content": str(final)})
                     if not result.get("success"):
-                        await manager.send(
+                        await manager.send_required(
                             client_id,
                             {
                                 "type": "error",
@@ -4286,12 +4492,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "avg_confidence": completed_trace.avg_confidence,
                         }
 
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "chat_complete",
                             "response": str(final),
                             "usage": result.get("usage", {}),
+                            **chat_completion_receipt(result),
                             "content": str(final),
                             "agent": agent.name,
                             "session_id": session_id,
@@ -4307,7 +4514,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 agent_id = data.get("agent_id")
 
                 if not task or len(task) > 50000:
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "error",
@@ -4320,7 +4527,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 if agent_id and agent_id in active_agents:
                     agent = active_agents[agent_id]
 
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "task_started",
@@ -4330,11 +4537,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     )
 
                     async def task_stream(chunk):
-                        await manager.send(client_id, {"type": "task_stream", "chunk": chunk})
+                        await manager.send_required(
+                            client_id, {"type": "task_stream", "chunk": chunk}
+                        )
 
                     result = await agent.execute(task, stream_callback=task_stream)
 
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "task_done",
@@ -4349,7 +4558,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 try:
                     await authorize_session(session_id, user, create=True)
                 except HTTPException:
-                    await manager.send(client_id, {"type": "error", "message": "Session not found"})
+                    await manager.send_required(
+                        client_id, {"type": "error", "message": "Session not found"}
+                    )
                     continue
                 text = data.get("content", "")
                 image_b64 = data.get("image_base64")
@@ -4370,7 +4581,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             media_type=media_type,
                             qalb_state=qalb_state,
                         )
-                        await manager.send(
+                        await manager.send_required(
                             client_id,
                             {
                                 "type": "perception_result",
@@ -4379,7 +4590,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
                     except Exception as e:
-                        await manager.send(
+                        await manager.send_required(
                             client_id,
                             {
                                 "type": "error",
@@ -4387,7 +4598,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
                 else:
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {"type": "error", "message": "No agents available"},
                     )
@@ -4396,7 +4607,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 cmd = data.get("command", "").strip()
                 if cmd == "/status" or cmd == "status":
                     provider_info = get_provider_status()
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "command_result",
@@ -4409,12 +4620,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     try:
                         await authorize_session(session_id, user, create=True)
                     except HTTPException:
-                        await manager.send(
+                        await manager.send_required(
                             client_id, {"type": "error", "message": "Session not found"}
                         )
                         continue
                     active_sessions[session_id] = {"history": []}
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "command_result",
@@ -4423,7 +4634,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         },
                     )
                 elif cmd == "/help" or cmd == "help":
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "command_result",
@@ -4432,7 +4643,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         },
                     )
                 else:
-                    await manager.send(
+                    await manager.send_required(
                         client_id,
                         {
                             "type": "command_result",
@@ -4450,6 +4661,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
     except Exception as e:
         logger.error(f"WebSocket error for {client_id}: {e}")
         manager.disconnect(client_id)
+    finally:
+        manager.disconnect(client_id)
+        reset_principal(principal_binding)
 
 
 # Imported after shared dependencies to keep deferred auth imports cycle safe.

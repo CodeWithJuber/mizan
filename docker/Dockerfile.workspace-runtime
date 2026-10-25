@@ -5,6 +5,11 @@ FROM ${BASE_REGISTRY}/python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6
 # Debian package signatures remain verified; no application credentials enter this image.
 RUN apt-get update && apt-get install -y --no-install-recommends git libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
+COPY docker/workspace-runtime-requirements.txt /runtime-requirements.txt
+RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
+    if [ -f /run/proxy-ca.pem ]; then export PIP_CERT=/run/proxy-ca.pem; fi; \
+    pip install --no-cache-dir --only-binary=:all: -r /runtime-requirements.txt \
+    && python -c "import matplotlib, numpy, PIL; assert matplotlib.__version__ == '3.11.2'; assert numpy.__version__ == '2.5.4'; assert PIL.__version__ == '12.3.0'"
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \

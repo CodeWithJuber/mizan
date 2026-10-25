@@ -203,6 +203,12 @@ export interface MessageUsageMeta {
   output_tokens?: number;
   latency_ms?: number;
   finish_reason?: string;
+  completion_status?: "abstained" | "unverified_answer" | "evidence_observed" | "incomplete"
+    | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed";
+  task_verified?: boolean;
+  owned_status?: string;
+  owned_reason?: string;
+  owned_prompt?: Record<string, unknown>;
   cost_usd?: number;
   cost_estimated?: boolean;
   /** Byte-for-byte raw usage chunk from the stream (auditability). */

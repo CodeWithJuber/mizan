@@ -30,6 +30,7 @@ from typing import Any, cast
 
 import httpx
 
+from agents.execution_contract import completion_metadata, prepare_tool_call, tool_result_failed
 from agents.perpetual_rotation import PerpetualRotation
 from agents.shura_council import ShuraCouncil
 
@@ -164,6 +165,7 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
 
 _execution_provider: ContextVar[tuple | None] = ContextVar("mizan_execution_provider", default=None)
 _execution_stack: ContextVar[tuple[int, ...]] = ContextVar("mizan_execution_stack", default=())
+_evaluation_only: ContextVar[bool] = ContextVar("mizan_evaluation_only", default=False)
 
 
 class BaseAgent:
@@ -322,6 +324,10 @@ class BaseAgent:
         default_model = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
         self.ai_model = config.get("model", default_model) if config else default_model
         provider_name = os.getenv("LLM_PROVIDER", "") or None
+        override = self.config.get("provider_override")
+        if isinstance(override, dict):
+            provider_name = override.get("provider") or provider_name
+            self.ai_model = override.get("model") or self.ai_model
         self.ai_client = create_provider(provider=provider_name, model=self.ai_model)
         if self.ai_client:
             # Normalize model ID for the active provider (e.g. Anthropic→OpenRouter format)
@@ -329,7 +335,7 @@ class BaseAgent:
                 self.ai_model, self.ai_client.provider_name
             )
             # If no model set in config, use the provider's default
-            if not config or "model" not in config:
+            if (not config or "model" not in config) and not isinstance(override, dict):
                 self.ai_model = get_default_model(self.ai_client.provider_name)
 
     def _register_base_tools(self):
@@ -356,6 +362,8 @@ class BaseAgent:
 
     def get_tool_schemas(self) -> list[dict]:
         """Get tool schemas only when the selected model supports them."""
+        if _evaluation_only.get():
+            return []
         if getattr(getattr(self, "ai_client", None), "supports_tools", True) is False:
             return []
         schemas = [
@@ -623,7 +631,32 @@ class BaseAgent:
             except Exception as e:
                 logger.warning(f"[WAHY] Failed to get plugin tool schemas: {e}")
 
-        return all_schemas
+        return [schema for schema in all_schemas if self._chat_tool_allowed(schema.get("name", ""))]
+
+    def _chat_tool_allowed(self, tool_name: str) -> bool:
+        """Selected-project chats expose only owner-scoped tools with trusted handlers."""
+        from skills.builtin.coding_workspace import allows_user_workspace_tool
+        from workspace.context import bound_workspace_id
+
+        selected = bound_workspace_id()
+        if selected and tool_name == "workspace_create":
+            return False
+        if not selected and (not current_user_id() or request_has_role("admin")):
+            return True
+        if allows_user_workspace_tool(tool_name, self.skill_registry, native_tools=self.tools):
+            return True
+        safe_native = {
+            "recall_memory": BaseAgent._tool_recall_memory,
+            "query_knowledge": BaseAgent._tool_query_knowledge,
+            "disambiguate_sense": BaseAgent._tool_disambiguate_sense,
+            "compact_context": BaseAgent._tool_compact_context,
+        }
+        handler = self.tools.get(tool_name)
+        return (
+            tool_name in safe_native
+            and getattr(handler, "__self__", None) is self
+            and getattr(handler, "__func__", None) is safe_native[tool_name]
+        )
 
     @property
     def success_rate(self) -> float:
@@ -786,7 +819,7 @@ class BaseAgent:
                 logger.warning("[FIKR] Provider failed for %s", self.name)
                 raise
         else:
-            yield await self._structured_reasoning(task, context)
+            raise RuntimeError("No response model is configured")
 
         self.state = "resting"
 
@@ -893,6 +926,7 @@ class BaseAgent:
 
             if tool_blocks:
                 tool_count += len(tool_blocks)
+                self._tool_invocation_started = True
                 if any(b.name.startswith("workspace_") for b in tool_blocks):
                     # A model can emit write/run/publish together. Preserve
                     # order for project mutations instead of racing the files.
@@ -909,14 +943,20 @@ class BaseAgent:
                     self._last_tool_results.append({"name": block.name, "result": tool_result})
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
-                    # Yaqin: Tag tool result as Ayn al-Yaqin (observed/verified)
+                    # The receipt is observed; a failed action is not evidence
+                    # that the requested task succeeded.
                     tool_summary = f"{block.name}: {json.dumps(tool_result)[:200]}"
-                    yaqin_tag = self.yaqin.tag_observation(
-                        tool_summary,
-                        confidence=0.8,
-                        source=block.name,
-                        evidence=[f"Tool output from {block.name}"],
-                    )
+                    if tool_result_failed(tool_result):
+                        yaqin_tag = self.yaqin.tag_inference(
+                            tool_summary, confidence=0.2, source=f"tool_failure:{block.name}"
+                        )
+                    else:
+                        yaqin_tag = self.yaqin.tag_observation(
+                            tool_summary,
+                            confidence=0.8,
+                            source=block.name,
+                            evidence=[f"Tool receipt from {block.name}; task outcome unverified"],
+                        )
 
                     # Lawh: Store tool result in Tier 3 (working memory)
                     self.qca.lawh.store(
@@ -1027,6 +1067,13 @@ class BaseAgent:
             self._llm_calls.append(self._last_llm_call)
         except Exception:
             pass
+
+    def _completion_metadata(self) -> dict:
+        call = getattr(self, "_last_llm_call", None)
+        return cast(
+            dict[str, Any],
+            completion_metadata(call.get("response") if isinstance(call, dict) else None),
+        )
 
     async def _streaming_create(
         self,
@@ -1143,7 +1190,7 @@ class BaseAgent:
                 runner_future.cancel()
 
     async def _summarize_tool_results(
-        self, task: str, tool_results: list[dict]
+        self, task: str, tool_results: list[dict], context: dict | None = None
     ) -> AsyncGenerator[str, None]:
         """Single non-agentic turn: turn raw tool outputs into a user-facing summary.
 
@@ -1160,8 +1207,8 @@ class BaseAgent:
             "Be concise, skip internal jargon, and reply in the user's language.\n\n"
             f"User request: {task[:500]}\n\nTool results:\n{digest[:6000]}"
         )
-        system = "You are a helpful assistant that summarizes tool outputs."
-        messages = [{"role": "user", "content": summary_prompt}]
+        system = await self._build_system_prompt()
+        messages = await asyncio.to_thread(self._build_messages, summary_prompt, context)
         max_tokens = min(qalb_params.get("max_tokens", 4096), 2048)
         emitted = False
         try:
@@ -1171,6 +1218,8 @@ class BaseAgent:
             ):
                 emitted = emitted or bool(chunk)
                 yield chunk
+            if final_holder.get("response") is None:
+                raise RuntimeError("The summary stream ended without a completion record")
         except Exception:
             if emitted:
                 raise
@@ -1198,18 +1247,13 @@ class BaseAgent:
         2. Skill tools (self.skill_registry) — web_browse, analyze_csv, notebook_*, etc.
         3. Plugin tools (self.plugin_manager) — dynamically loaded plugin capabilities.
 
-        Self-healing (Tawbah):
-        - Auto-installs missing Python packages and retries
-        - Adapts parameter passing for skill tools (dict vs kwargs)
-        - Logs errors for learning
+        Argument styles are checked before invocation. Runtime failures are
+        returned as receipts; they never install packages or replay side effects.
         """
-        if (
-            current_user_id()
-            and not request_has_role("admin")
-            and tool_name
-            not in {"recall_memory", "query_knowledge", "disambiguate_sense", "compact_context"}
-        ):
-            return {"error": "Administrator role required for this tool"}
+        if _evaluation_only.get():
+            return {"error": "Tools are disabled for read-only council evaluation"}
+        if not self._chat_tool_allowed(tool_name):
+            return {"error": "Tool is not permitted in this user's selected workspace context"}
 
         # Anti-hallucination: validate tool inputs before execution
         validation_error = self._validate_tool_inputs(tool_name, params)
@@ -1350,75 +1394,20 @@ class BaseAgent:
     async def _invoke_with_healing(
         self, fn: Callable, params: dict, tool_name: str, invoke_style: str = "kwargs"
     ) -> Any:
-        """
-        Invoke a tool function with automatic self-healing (Tawbah).
-
-        Handles:
-        - Parameter style mismatch (dict vs kwargs) — auto-adapts
-        - Missing Python packages — auto-installs via pip and retries
-        - General errors — logs for learning and returns structured error
-
-        invoke_style: "kwargs" = fn(**params), "dict" = fn(params)
-        """
-        # Retries scale with developmental stage: L1-2=1, L3-4=2, L5+=3
-        caps = self.dev_gate.get_capabilities(self.nafs_level)
-        max_retries = min(3, 1 + caps.max_turns // 10)
-        last_error: Exception | None = None
-
-        for attempt in range(max_retries + 1):
-            try:
-                if invoke_style == "kwargs":
-                    result = fn(**params)
-                else:
-                    result = fn(params)
-
-                # Handle both sync and async
-                if hasattr(result, "__await__"):
-                    return await result
-                return result
-
-            except TypeError as e:
-                err_str = str(e)
-                last_error = e
-
-                # Self-heal: wrong invoke style — flip and retry on ANY TypeError
-                # Common symptoms: "unexpected keyword argument", "positional argument",
-                # "quote_from_bytes() expected bytes", "expected str not dict", etc.
-                if attempt < max_retries:
-                    flipped = "dict" if invoke_style == "kwargs" else "kwargs"
-                    logger.info(
-                        f"[TAWBAH] Tool '{tool_name}' TypeError: {err_str}, "
-                        f"switching {invoke_style} → {flipped} (attempt {attempt + 1})"
-                    )
-                    invoke_style = flipped
-                    continue
-
-                # Exhausted retries
-                logger.error(f"[TAWBAH] Tool '{tool_name}' TypeError after retries: {e}")
-                self._record_tool_failure(tool_name, params)
-                return {"error": str(e)}
-
-            except Exception as e:
-                err_str = str(e)
-                last_error = e
-
-                # Self-heal: missing Python module — auto-install and retry
-                if "ModuleNotFoundError" in type(e).__name__ or "No module named" in err_str:
-                    module_name = self._extract_module_name(err_str)
-                    if module_name and attempt < max_retries:
-                        logger.info(f"[TAWBAH] Auto-installing missing module: {module_name}")
-                        install_result = await self._auto_install_package(module_name)
-                        if install_result:
-                            continue
-
-                logger.error(f"[TAWBAH] Tool '{tool_name}' error: {e}")
-                self._record_tool_failure(tool_name, params)
-                return {"error": str(e)}
-
-        self._record_tool_failure(tool_name, params)
-        return {
-            "error": f"Tool '{tool_name}' failed after {max_retries + 1} attempts: {last_error}"
-        }
+        """Adapt the call before execution; never replay a tool body after failure."""
+        try:
+            args, kwargs = prepare_tool_call(fn, params, invoke_style)
+            # Sync handlers run off the API event loop. Contextvars, including
+            # the authenticated owner and selected project, follow to_thread.
+            if inspect.iscoroutinefunction(fn):
+                result = fn(*args, **kwargs)
+            else:
+                result = await asyncio.to_thread(fn, *args, **kwargs)
+            return await result if inspect.isawaitable(result) else result
+        except Exception as exc:
+            self._record_tool_failure(tool_name, params)
+            logger.warning("[TOOL] %s failed without replay: %s", tool_name, exc)
+            return {"error": str(exc)}
 
     def _record_tool_failure(self, tool_name: str, params: dict):
         """Record a tool failure for circuit breaker tracking."""
@@ -1437,63 +1426,9 @@ class BaseAgent:
         return None
 
     async def _auto_install_package(self, package_name: str) -> bool:
-        """Auto-install a missing Python package via pip (Tawbah self-correction)."""
-        # Safety: only allow known-safe packages
-        safe_packages = {
-            "paramiko",
-            "fabric",
-            "httpx",
-            "requests",
-            "beautifulsoup4",
-            "bs4",
-            "lxml",
-            "pyyaml",
-            "yaml",
-            "toml",
-            "markdown",
-            "pillow",
-            "numpy",
-            "pandas",
-            "aiohttp",
-            "aiofiles",
-            "jinja2",
-            "python-dotenv",
-            "rich",
-            "click",
-            "typer",
-            "pydantic",
-            "fastapi",
-            "uvicorn",
-            "websockets",
-            "redis",
-            "celery",
-            "sqlalchemy",
-            "alembic",
-            "boto3",
-            "google-cloud-storage",
-            "azure-storage-blob",
-            "docker",
-            "kubernetes",
-            "ansible",
-        }
-        if package_name.lower() not in safe_packages:
-            logger.warning(f"[TAWBAH] Package '{package_name}' not in safe list, skipping install")
-            return False
-        try:
-            result = subprocess.run(
-                ["pip", "install", package_name],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.returncode == 0:
-                logger.info(f"[TAWBAH] Successfully installed {package_name}")
-                return True
-            logger.error(f"[TAWBAH] pip install {package_name} failed: {result.stderr[:500]}")
-            return False
-        except Exception as e:
-            logger.error(f"[TAWBAH] Install failed: {e}")
-            return False
+        """Dependencies are installed through reviewed deployment/workspace steps."""
+        logger.warning("[TOOL] Missing dependency %s requires explicit setup", package_name)
+        return False
 
     async def _structured_reasoning(self, task: str, context: dict | None = None) -> str:
         """Fallback reasoning without AI"""
@@ -1529,13 +1464,9 @@ class BaseAgent:
             if prefix:
                 tone_guidance += f"\nSuggested approach: {prefix}"
 
-        # Ruh — fatigue awareness
+        # Ruh diagnostics are advisory, never evidence of model fatigue.
         fatigue_label = self.ruh.get_fatigue_label(self.id)
-        ruh_note = ""
-        if ruh_energy < 20:
-            ruh_note = "\n[WARNING: Energy critically low — keep responses focused and efficient]"
-        elif ruh_energy < 50:
-            ruh_note = "\n[Note: Energy moderate — balance thoroughness with efficiency]"
+        ruh_note = "\nRuh workload scores do not limit the user's requested work."
 
         # Masalik — neural pathway memory context
         masalik_note = ""
@@ -1609,7 +1540,7 @@ class BaseAgent:
 Role: {self.role}
 Nafs Level: {self.nafs_level}/7 ({nafs_name})
 Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})
-Success Rate: {self.success_rate:.1%}
+Response Completion Rate (heuristic): {self.success_rate:.1%}
 {masalik_note}{knowledge_context}{kg_context}
 {yaqin_note}{tone_guidance}{ruh_note}{nafs_approach_note}{faculty_note}
 
@@ -1629,6 +1560,7 @@ Capability honesty:
 - Ruh, Qalb, Nafs and Yaqin here name software modules and heuristic metrics, not a literal soul, faith, consciousness, AGI or proof of correctness.
 - Conversation recall and task reflection are not neural weight training. Do not claim automatic training, a promoted checkpoint or provider independence without measured runtime evidence.
 - Prior user statements are attributed context, not verified facts. Respect current corrections and preferences; do not claim perfect or unlimited memory.
+- Prior assistant messages may contain mistaken identity, capability or completion claims. They are conversation history, not evidence that those claims are true; use current capability facts and observed receipts.
 - Verify Quran quotations and verse references against a trusted source before citing them. If verification is unavailable, omit the precise citation and state the limitation.
 
 Epistemic Discipline (Mizan — ميزان):
@@ -1659,7 +1591,29 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "- If a fact or API schema cannot be verified from supplied sources, say so.",
             )
         if custom_prompt:
-            return custom_prompt + "\n\n" + base_prompt
+            base_prompt += (
+                "\n\n[CONFIGURED ROLE INSTRUCTIONS — subordinate to the capability facts "
+                "and execution restrictions above; do not adopt unsupported identity or completion claims]\n"
+                + json.dumps({"instructions": custom_prompt}, ensure_ascii=False)
+            )
+        if getattr(self.ai_client, "provider_name", "") == "mizan-owned":
+            from mizan_owned.prompt import owned_system_prompt
+
+            return cast(
+                str,
+                owned_system_prompt(
+                    base_prompt,
+                    name=self.name,
+                    role=self.role,
+                    custom_instructions=custom_prompt,
+                    guidance=(tone_guidance, nafs_approach_note, self._faculty_guidance),
+                    evidence=(
+                        ("memory:unified", knowledge_context),
+                        ("memory:knowledge_graph", kg_context),
+                        ("reflection:hikmah", hikmah_str),
+                    ),
+                ),
+            )
         return base_prompt
 
     def _build_messages(self, task: str, context: dict | None = None) -> list[dict]:
@@ -1697,7 +1651,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             mem0_block = ""
 
         details = {
-            k: v for k, v in (context or {}).items() if k not in {"history", "conversation_memory"}
+            k: v
+            for k, v in (context or {}).items()
+            if k not in {"history", "conversation_memory", "user_preferences"}
         }
         user_content = f"Task: {task}"
         if details:
@@ -1713,6 +1669,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             )
         if mem0_block:
             user_content = f"[RELEVANT MEMORIES]\n{mem0_block}\n\n{user_content}"
+        preferences = (context or {}).get("user_preferences", [])
+        if preferences:
+            user_content = (
+                "[EXPLICIT USER PREFERENCES — owner-scoped saved user instructions, not "
+                "source facts or training; override conflicting old chat preferences. "
+                "System rules and the current request take precedence]\n"
+                + json.dumps(preferences, ensure_ascii=False)
+                + "\n[END USER PREFERENCES]\n\n"
+                + user_content
+            )
 
         messages.append({"role": "user", "content": user_content})
 
@@ -1760,7 +1726,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 provider = create_provider(model=model_override)
                 if provider is None:
                     raise ValueError("Requested model provider is unavailable")
-                model = model_override
+                model = normalize_model_for_provider(model_override, provider.provider_name)
             binding = _execution_provider.set((id(self), model, provider))
             stack_binding = _execution_stack.set((*stack, id(self)))
             from workspace.context import bind_chat_session, reset_chat_session
@@ -1773,9 +1739,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+                for key in ("completion_status", "task_verified", "answer_delivered"):
+                    if key in result:
+                        result["usage"][key] = result[key]
                 # Capture successful chat pairs in the authenticated user's own
                 # candidate store. Capture is not review, training or promotion.
-                if result.get("success") and (context or {}).get("session_id"):
+                if (
+                    result.get("success")
+                    and result.get("capture_eligible", False)
+                    and (context or {}).get("session_id")
+                ):
                     from security.auth import current_user_id
 
                     owner = current_user_id()
@@ -1800,7 +1773,16 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                             logger.warning("Chat learning capture unavailable")
                             result["learning_capture"] = "unavailable"
                 return result
+            except asyncio.CancelledError:
+                self.state = "resting"
+                raise
+            except Exception:
+                self.state = "error"
+                raise
             finally:
+                self.current_task = None
+                if self.state in {"acting", "thinking"}:
+                    self.state = "resting"
                 reset_chat_session(session_binding)
                 _execution_stack.reset(stack_binding)
                 _execution_provider.reset(binding)
@@ -1836,6 +1818,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         self._last_llm_call = None
         self._llm_calls = []
         self._last_tool_results = []
+        self._tool_invocation_started = False
 
         async def emit_thinking(
             phase: str, content: str, confidence: float = 0.5, metadata: dict | None = None
@@ -1846,34 +1829,19 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 except Exception:
                     pass
 
-        # Ruh energy gate — check if agent can handle this task
+        # Ruh is workload telemetry, not an actual CPU, quota or model limit.
+        # Never deny a user's request because a heuristic counter is depleted.
         complexity = self.ruh.classify_task_complexity(task)
         if not self.ruh.can_handle_task(self.id, complexity):
-            ruh_state = self.ruh.get_state(self.id)
-            logger.warning(
-                "[RUH] Agent %s energy too low (%.1f%%) for %s task, triggering rest",
-                self.name,
-                ruh_state.energy,
-                complexity,
-            )
+            logger.info("[RUH] Low workload score for %s; continuing user request", self.name)
             self.ruh.rest(self.id)
-            # After rest trigger, re-check — if still too low, warn in result
-            if not self.ruh.can_handle_task(self.id, complexity):
-                return {
-                    "success": False,
-                    "error": f"Agent energy depleted ({ruh_state.energy:.0f}%). Task complexity '{complexity}' requires more energy. Agent is resting.",
-                    "duration_ms": 0,
-                    "agent": self.name,
-                    "ruh_energy": ruh_state.energy,
-                    "ruh_fatigue": self.ruh.get_fatigue_label(self.id),
-                }
         self.ruh.consume_energy(self.id, complexity)
         ruh_state = self.ruh.get_state(self.id)
         await emit_thinking(
             "perception",
-            f"Task complexity: {complexity} | Energy: {ruh_state.energy:.0f}%",
+            f"Task complexity: {complexity} | Workload score: {ruh_state.energy:.0f}% (heuristic)",
             0.9,
-            {"complexity": complexity, "energy": ruh_state.energy},
+            {"complexity": complexity, "energy": ruh_state.energy, "heuristic": True},
         )
 
         # NafsTriad — inner voices deliberate → dominant voice sets behavioral approach
@@ -1975,7 +1943,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
             ):
                 # Check if this is a tool_use marker from _agentic_loop
-                if chunk.startswith("\n[Tool:") and stream_callback:
+                if chunk.startswith("\n[Tool:"):
                     # Extract tool name and send tool_use event
                     # NOTE: tool markers are NOT added to full_response — they are
                     # UI events, not user-facing text. Adding them here caused
@@ -1984,21 +1952,43 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     tool_name = (
                         chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
                     )
-                    await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
+                    if stream_callback:
+                        await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
                 else:
                     full_response += chunk
                     if stream_callback:
                         await stream_callback(chunk)
 
-            # Require a deliverable before recording success or a training candidate.
-            if not full_response.strip():
+            # A tool-turn preamble is not a final answer. Require an observed
+            # final text receipt before recording response completion.
+            completion = self._completion_metadata()
+            if not full_response.strip() or completion["completion_status"] == "empty_response":
                 if self._last_tool_results:
-                    async for chunk in self._summarize_tool_results(task, self._last_tool_results):
+                    async for chunk in self._summarize_tool_results(
+                        task, self._last_tool_results, context
+                    ):
                         full_response += chunk
                         if stream_callback:
                             await stream_callback(chunk)
-                if not full_response.strip():
+                    completion = self._completion_metadata()
+                if not full_response.strip() or completion["completion_status"] == "empty_response":
                     raise ValueError("The provider returned no answer")
+            if completion["completion_status"] == "missing_receipt":
+                raise RuntimeError("The provider returned no completion receipt")
+
+            # Abstention/review notices are delivered successfully but must not
+            # become successful task lessons, evolution or training candidates.
+            if not completion["capture_eligible"]:
+                duration_ms = (time.time() - start_time) * 1000
+                self.total_duration_ms += duration_ms
+                return {
+                    "success": True,
+                    "result": full_response,
+                    "duration_ms": duration_ms,
+                    "agent": self.name,
+                    "metrics_kind": "heuristic_response_delivery",
+                    **completion,
+                }
 
             # Tafakkur - learn from this execution
             duration_ms = (time.time() - start_time) * 1000
@@ -2014,9 +2004,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             )
             await emit_thinking(
                 "evaluation",
-                f"Certainty: {yaqin_tag.level} ({yaqin_tag.confidence:.0%})",
+                f"Inference score: {yaqin_tag.confidence:.0%} (heuristic; outcome unverified)",
                 yaqin_tag.confidence,
-                {"level": yaqin_tag.level.value, "source": "agentic_reasoning"},
+                {"level": yaqin_tag.level.value, "source": "agentic_reasoning", "heuristic": True},
             )
 
             # Shukr — reinforce this success pattern
@@ -2025,14 +2015,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             # Hikmah — distil this success into reusable wisdom
             try:
-                self.hikmah_engine.observe_success(task, f"{task_type} completed successfully")
+                self.hikmah_engine.observe_success(
+                    task, f"Response delivered for {task_type}; task outcome not verified"
+                )
             except Exception:
                 pass
-
-            # If this task type has been successful before, promote Yaqin
-            strengths = self.shukr.get_strengths(self.id)
-            if any(s.get("type") == task_type and s.get("count", 0) >= 5 for s in strengths):
-                yaqin_tag = self.yaqin.promote(yaqin_tag, f"Proven pattern: {task_type}")
 
             # Ihsan — generate proactive suggestions
             ihsan_suggestions = self.ihsan.analyze_completion(
@@ -2045,23 +2032,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             # Mizan — final epistemic label
             mizan_label = self.qca.mizan.rate_confidence_string(yaqin_tag.confidence)
 
-            if self.memory:
-                await self.memory.save_task(
-                    self.id,
-                    task,
-                    full_response[:5000]
-                    if isinstance(full_response, str)
-                    else json.dumps(full_response)[:5000],
-                    True,
-                    duration_ms,
-                )
-                # Masalik: Encode task + result into neural pathways
-                # Successful tasks get higher importance → stronger pathways
-                if hasattr(self.memory, "masalik"):
-                    learn_text = (
-                        f"{task} {full_response[:500] if isinstance(full_response, str) else ''}"
-                    )
-                    self.memory.masalik.encode(learn_text, importance=0.7)
+            await self._save_task_telemetry(task, full_response, True, duration_ms)
 
             # Knowledge Graph: Extract entities and relationships from successful tasks
             if self.knowledge_graph:
@@ -2225,6 +2196,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "yaqin": yaqin_tag.to_dict(),
                 "mizan_label": mizan_label,
                 "cognitive_method": cognitive_method.value,
+                "metrics_kind": "heuristic_response_delivery",
+                **completion,
             }
             if lubb_report:
                 result["lubb"] = {
@@ -2283,6 +2256,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             can_retry = (
                 not full_response
                 and not self._last_tool_results
+                and not self._tool_invocation_started
                 and recovery.attempts < self.tawbah.MAX_ATTEMPTS
                 and correction_plan.get("retryable", False)
             )
@@ -2303,24 +2277,31 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                     ):
                         # Tool markers are UI events, not user-facing text — filter
                         # them exactly like the main path does.
-                        if chunk.startswith("\n[Tool:") and stream_callback:
+                        if chunk.startswith("\n[Tool:"):
                             tool_name = (
                                 chunk.split("[Tool: ")[1].split("]")[0]
                                 if "[Tool: " in chunk
                                 else "unknown"
                             )
-                            await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
+                            if stream_callback:
+                                await stream_callback(
+                                    "", chunk_type="tool_use", tool_name=tool_name
+                                )
                         else:
                             corrected_response += chunk
                             if stream_callback:
                                 await stream_callback(chunk)
 
-                    if corrected_response:
-                        # Stage 5: Verify success
-                        self.tawbah.verify(
-                            recovery, True, f"Recovered via: {correction_plan.get('fix', '')}"
-                        )
-                        self.success_count += 1
+                    retry_completion = self._completion_metadata()
+                    if corrected_response.strip() and retry_completion["completion_status"] not in {
+                        "missing_receipt",
+                        "empty_response",
+                        "tool_request",
+                    }:
+                        # Recovery confirms delivery only; it cannot verify the task.
+                        self.tawbah.verify(recovery, True, "Provider delivered a response")
+                        if retry_completion["capture_eligible"]:
+                            self.success_count += 1
                         retry_result = {
                             "success": True,
                             "result": corrected_response,
@@ -2328,15 +2309,18 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                             "agent": self.name,
                             "tawbah_recovered": True,
                             "correction": correction_plan.get("fix", ""),
+                            "metrics_kind": "heuristic_response_delivery",
+                            **retry_completion,
                         }
                 except Exception as retry_error:
                     logger.warning("[TAWBAH] Retry failed: %s", retry_error)
                     self.tawbah.verify(recovery, False, str(retry_error))
 
             if retry_result:
-                await self._tafakkur(
-                    task, retry_result.get("result", ""), True, retry_result["duration_ms"]
-                )
+                if retry_result["capture_eligible"]:
+                    await self._tafakkur(
+                        task, retry_result.get("result", ""), True, retry_result["duration_ms"]
+                    )
                 self.state = "resting"
                 self.current_task = None
                 return retry_result
@@ -2347,11 +2331,7 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             # Shukr — record failure for pattern analysis
             self.shukr.record_failure(self.id, self._classify_task(task), task[:100])
 
-            if self.memory:
-                await self.memory.save_task(self.id, task, error_str, False, duration_ms)
-                # Masalik: Encode failure too — lower importance, but still learn
-                if hasattr(self.memory, "masalik"):
-                    self.memory.masalik.encode(f"{task} error {e}", importance=0.3)
+            await self._save_task_telemetry(task, error_str, False, duration_ms)
 
             await self._tafakkur(task, error_str, False, duration_ms)
 
@@ -2360,6 +2340,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             return {
                 "success": False,
+                "completion_status": "failed",
+                "answer_delivered": False,
+                "task_verified": False,
+                "capture_eligible": False,
                 "error": error_str,
                 "duration_ms": duration_ms,
                 "agent": self.name,
@@ -2368,6 +2352,32 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                 "correction_plan": correction_plan,
                 "yaqin": error_tag.to_dict(),
             }
+
+    async def _save_task_telemetry(
+        self, task: str, result: str, success: bool, duration_ms: float
+    ) -> None:
+        """Secondary task metrics cannot invalidate or replay a delivered answer.
+
+        The API still owns primary conversation persistence and its failures.
+        """
+        if not self.memory:
+            return
+        try:
+            await self.memory.save_task(self.id, task, result[:5000], success, duration_ms)
+        except Exception as exc:
+            logger.warning(
+                "Task telemetry unavailable for agent %s (%s)", self.id, type(exc).__name__
+            )
+        if hasattr(self.memory, "masalik"):
+            try:
+                self.memory.masalik.encode(
+                    f"{task} {'response' if success else 'error'} {result[:500]}",
+                    importance=0.7 if success else 0.3,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Pathway telemetry unavailable for agent %s (%s)", self.id, type(exc).__name__
+                )
 
     async def _tafakkur(self, task: str, result: Any, success: bool, duration_ms: float):
         """
@@ -2383,7 +2393,10 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         # than a few seconds, so a duration gate here silently drops nearly all
         # chat learning.
         if success:
-            pattern_text = f"Task type '{task_type}' completed in {duration_ms:.0f}ms"
+            pattern_text = (
+                f"Response delivered for '{task_type}' in {duration_ms:.0f}ms; "
+                "task outcome not independently verified"
+            )
             self.hikmah.append(
                 {
                     "pattern": pattern_text,
@@ -2442,6 +2455,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         error_type = type(error).__name__
 
         # Check for known error patterns
+        if "No response model is configured" in error_str:
+            return "provider_unavailable"
         if "Connection" in error_str or "connect" in error_str.lower():
             return "network_connectivity"
         if "timeout" in error_str.lower():
@@ -2471,6 +2486,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
     def _plan_error_correction(self, root_cause: str, task: str) -> dict:
         """Create a correction plan for Tawbah stage 3."""
         plans = {
+            "provider_unavailable": {
+                "description": "No response model is configured",
+                "fix": "Configure an available provider before retrying",
+                "retryable": False,
+            },
             "network_connectivity": {
                 "description": "Network issue — retry after brief pause",
                 "fix": "Wait and retry the request",
@@ -2533,18 +2553,20 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         }
 
     async def evaluate(self, question: str, context: dict) -> dict:
-        """Evaluate a question for Shura council"""
+        """Serialize council advice with other work and prohibit action tools."""
+        token = _evaluation_only.set(True)
         try:
-            response = ""
-            async for chunk in self.think(f"Evaluate: {question}", context):
-                response += chunk
+            result = await self.execute(f"Evaluate: {question}", context)
             return {
-                "response": response,
-                "confidence": min(0.5 + self.success_rate * 0.5, 0.95),
-                "reasoning": f"Based on {self.total_tasks} tasks",
+                "response": result.get("result") if result.get("success") else None,
+                "confidence": result.get("yaqin", {}).get("confidence", 0.0),
+                "reasoning": "Unverified advisory response; no action tools were permitted",
+                "task_verified": False,
             }
         except Exception as e:
             return {"response": None, "confidence": 0, "reasoning": str(e)}
+        finally:
+            _evaluation_only.reset(token)
 
     # ===== SECURE TOOL IMPLEMENTATIONS =====
 
@@ -2572,7 +2594,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         try:
             # Use shell=True but with validated command
             # shlex.split doesn't work well for complex shell commands
-            result = subprocess.run(
+            result = await asyncio.to_thread(  # noqa: S604 - admin-only, validated shell tool
+                subprocess.run,
                 command,
                 shell=True,
                 capture_output=True,
@@ -2693,7 +2716,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             return {"error": "Code exceeds 50KB limit"}
 
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["python3", "-c", code],
                 capture_output=True,
                 text=True,
@@ -3349,6 +3373,8 @@ class {class_name}(SkillBase):
             "current_task": self.current_task,
             "total_tasks": self.total_tasks,
             "success_rate": round(self.success_rate, 3),
+            "response_completion_count": self.success_count,
+            "metrics_kind": "heuristic_response_delivery",
             "error_count": self.error_count,
             "avg_duration_ms": round(self.avg_duration_ms, 2),
             "learning_iterations": self.learning_iterations,

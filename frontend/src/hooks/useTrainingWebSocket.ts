@@ -81,6 +81,9 @@ export function useTrainingWebSocket(): {
             model_params: data.model_params ?? 0,
             message: data.message ?? "",
             losses: data.losses ?? [],
+            data_source: data.data_source ?? null,
+            original_data_verified: data.original_data_verified ?? false,
+            automatic_weight_training: data.automatic_weight_training ?? false,
           });
         }
       } catch {

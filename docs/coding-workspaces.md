@@ -21,6 +21,28 @@ the service returns. Generated regular files are exported back to the project;
 symlinks, device files and oversized exports are rejected. A concurrent editor
 change prevents generated files from overwriting the editor's work.
 
+The isolated runtime image includes Matplotlib 3.11.2, NumPy 2.5.4 and Pillow
+12.3.0, with their resolved dependencies pinned in
+`docker/workspace-runtime-requirements.txt`. These packages are installed while
+building the image; a job has no network and does not install packages. Plotting
+uses the noninteractive Agg backend, a writable cache in `/tmp`, and one BLAS
+thread so it fits the job's process limit. Save a chart as a small PNG, JPEG or
+WebP and publish that saved file with `workspace_artifact`. Image artifacts are
+limited to 500000 encoded characters (roughly 375 kB of image bytes), which is
+smaller than the project file limit.
+
+After rebuilding the runtime image, verify a real chart run and artifact export:
+
+```sh
+docker build -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
+PYTHONPATH=backend:. pytest tests/test_coding_workspace.py::TestRealRuntime -q
+```
+
+The chart check runs under the same network, memory, process and user restrictions
+as other jobs, persists its generated file, publishes it through the artifact
+API, and decodes the returned image. A missing Docker runtime skips these checks;
+the CI image-build job must run them before publishing the new runtime tag.
+
 For deployment, provide a dedicated Docker daemon (preferably rootless on an
 isolated worker) that has no production containers, credentials or host mounts.
 Do not use the production Docker socket. Build the two digest-pinned Dockerfiles,
