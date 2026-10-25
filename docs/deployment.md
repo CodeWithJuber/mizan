@@ -1,9 +1,22 @@
 # Production deployments
 
-Both repositories are public. These workflows use standard `ubuntu-24.04`
-GitHub-hosted runners; public-repository Actions compute is free. Deployment
-jobs refuse private repositories. No larger or GPU GitHub runners are used.
+Mizan production image publishing and deployment support both private and
+public repositories. Keep the repository's intended visibility; it does not
+need to be public to deploy. These workflows use standard `ubuntu-24.04`
+GitHub-hosted runners. Private-repository usage follows the account's Actions
+allowance and billing settings; no larger or GPU GitHub runners are used.
 The existing VPS and RunPod services retain their separate costs.
+
+CI publishes commit-tagged images to GHCR with its repository-scoped
+`GITHUB_TOKEN` and `packages: write`. Deployment uses `packages: read` and
+passes its short-lived token over the existing verified SSH connection for
+the server's registry login. No anonymous registry access or public repository
+is required. Existing package access must permit this repository's Actions
+token; package visibility is configured separately from repository visibility.
+See [GitHub's Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+The separate Auto Release workflow retains its public-repository restriction;
+it is not required to publish production images or deploy the application.
 
 After a main/master merge, CI validates the source and publishes production
 backend/frontend images tagged with the exact commit. `Deploy Production`
