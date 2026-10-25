@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   connection-check:
-    if: github.event.repository.private == false && github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - name: Check the production SSH handshake without credentials
@@ -38,7 +38,6 @@ jobs:
 
   deploy:
     if: >-
-      github.event.repository.private == false &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.event == 'push' &&
