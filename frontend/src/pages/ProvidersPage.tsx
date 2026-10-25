@@ -275,11 +275,11 @@ export default function ProvidersPage({ api }: PageProps) {
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       {provider.configured ? (
                         <span className="text-emerald-600 dark:text-emerald-400">
-                          Connected
+                          Configured
                         </span>
                       ) : (
                         <span className="text-red-500 dark:text-red-400">
-                          Not connected
+                          Not configured
                         </span>
                       )}
                     </div>

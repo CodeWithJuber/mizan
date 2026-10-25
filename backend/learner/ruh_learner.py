@@ -1,7 +1,10 @@
 """Captures all LLM interactions for Ruh Model training data."""
 
+import hashlib
 import json
+import os
 import time
+from pathlib import Path
 
 import aiosqlite
 
@@ -43,6 +46,18 @@ class RuhLearner:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
 
+    @classmethod
+    def for_owner(cls, owner_id: str) -> "RuhLearner":
+        if not owner_id:
+            raise ValueError("An authenticated owner is required")
+        directory = (
+            Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
+            / "private"
+            / hashlib.sha256(owner_id.encode()).hexdigest()
+        )
+        directory.mkdir(parents=True, exist_ok=True)
+        return cls(str(directory / "learner.sqlite3"))
+
     async def initialize(self) -> None:
         """Create the interactions table if it doesn't exist."""
         async with aiosqlite.connect(self._db_path) as db:
@@ -79,11 +94,20 @@ class RuhLearner:
                 provider_rows = await cursor.fetchall()
             async with db.execute(_STATS_TOTAL_SQL) as cursor:
                 total_row = await cursor.fetchone()
+            async with db.execute(
+                "SELECT COUNT(*) FROM interactions WHERE quality_score >= 0.8 "
+                "AND provider NOT IN ('mizan-owned', 'mizan-support')"
+            ) as cursor:
+                reviewed_row = await cursor.fetchone()
 
         total = total_row[0] if total_row else 0
         return {
             "total_interactions": total,
             "by_provider": {row[1]: row[0] for row in provider_rows},
+            "exportable_count": reviewed_row[0] if reviewed_row else 0,
+            "last_export": None,
+            "automatic_weight_training": False,
+            "capture_status": "unreviewed_candidates",
         }
 
     async def get_recent(self, limit: int = 50) -> list[dict]:

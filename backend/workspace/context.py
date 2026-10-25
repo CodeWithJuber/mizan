@@ -9,6 +9,25 @@ from security.auth import current_user_id
 from .store import WorkspaceStore
 
 _selected: ContextVar[str | None] = ContextVar("coding_workspace", default=None)
+_chat_session: ContextVar[str | None] = ContextVar("workspace_chat_session", default=None)
+
+
+def bind_chat_session(session_id: str | None):
+    return _chat_session.set(session_id)
+
+
+def reset_chat_session(token):
+    _chat_session.reset(token)
+
+
+def artifact_session(session_id: str) -> str:
+    bound = _chat_session.get()
+    if bound and session_id and bound != session_id:
+        raise HTTPException(403, "Artifacts belong to the current chat session")
+    result = bound or session_id
+    if not result:
+        raise HTTPException(422, "A chat session is required to publish an artifact")
+    return result
 
 
 def authorize_owned_workspace(workspace_id: str, owner_id: str) -> dict:

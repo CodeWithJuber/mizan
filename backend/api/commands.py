@@ -31,8 +31,15 @@ async def cmd_status(agent=None, session_id=None, memory=None, **kwargs):
         "session": session_id or "none",
     }
     if memory:
-        count = len(await memory.recall("", limit=100))
-        status["memories"] = count
+        from security.auth import current_user_id
+
+        status.update(await memory.conversation_counts(current_user_id() or ""))
+        status["conversation_recall"] = "recent and relevant owned user statements"
+    status["response_provider"] = getattr(
+        getattr(agent, "ai_client", None), "provider_name", "unavailable"
+    )
+    status["automatic_weight_training"] = "not implemented; captured pairs require review"
+    status["architecture_metrics"] = "software heuristics, not AGI or verified correctness"
     lines = ["**System Status:**", ""]
     for k, v in status.items():
         lines.append(f"  **{k}:** {v}")
@@ -61,7 +68,16 @@ async def cmd_model(args="", agent=None, **kwargs):
         current = agent.ai_model if agent else "unknown"
         return f"Current model: `{current}`\n\nUsage: `/model <model-name>`\nExamples: `/model claude-sonnet-4-6`, `/model gpt-4o`"
     if agent:
-        agent.ai_model = model_name
+        from mizan_owned.provider import owned_only
+        from providers import create_provider, normalize_model_for_provider
+
+        if owned_only() or getattr(agent.ai_client, "provider_name", "") == "mizan-owned":
+            return "Owned mode is active. OpenRouter support must be requested separately."
+        provider = create_provider(model=model_name)
+        if provider is None:
+            return "Requested provider is unavailable. Configure it in AI Providers first."
+        model_name = normalize_model_for_provider(model_name, provider.provider_name)
+        agent.ai_model, agent.ai_client = model_name, provider
         return f"Switched to model: `{model_name}`"
     return "No agent available to switch model."
 

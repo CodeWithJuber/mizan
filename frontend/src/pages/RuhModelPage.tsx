@@ -152,6 +152,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
     const interval = setInterval(() => {
       fetchStatus();
       fetchTrainingStatus();
+      fetchLearnerStats();
     }, 10_000);
     return () => clearInterval(interval);
   }, [fetchStatus, fetchTrainingStatus, fetchLearnerStats, fetchHistory]);
@@ -279,8 +280,9 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
       <div className="px-4 sm:px-5 pt-3">
         <div className="rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-4 py-2.5">
           <p className="text-xs text-purple-800 dark:text-purple-300">
-            This is the workshop where Mizan&apos;s Arabic brain is built. You
-            don&apos;t need it for daily use.{" "}
+            Chat capture saves unreviewed examples for later evaluation. It does
+            not update model weights. Training runs are started explicitly; automatic
+            training and checkpoint promotion are not active.{" "}
             <span className="font-medium">
               {SUB_TABS.find((t) => t.id === tab)?.desc}
             </span>
@@ -337,9 +339,9 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 {[
                   {
                     label: "Status",
-                    value: ruhStatus?.enabled ? "Active" : "Inactive",
+                    value: ruhStatus?.enabled ? "Configured" : "Disabled",
                   },
-                  { label: "Loaded", value: ruhStatus?.loaded ? "Yes" : "No" },
+                  { label: "Local model loaded", value: ruhStatus ? (ruhStatus.loaded ? "Yes" : "No") : "Unknown" },
                   { label: "Device", value: ruhStatus?.device || "cpu" },
                   {
                     label: "Checkpoint",
@@ -364,6 +366,11 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                   </div>
                 ))}
               </div>
+              <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                Chat response models: {ruhStatus?.active_chat_models?.join(", ") || "Unavailable"}.
+                {" "}Checkpoint present: {ruhStatus ? (ruhStatus.checkpoint_exists ? "Yes" : "No") : "Unknown"}.
+                {" "}Remote endpoint configured: {ruhStatus ? (ruhStatus.remote_configured ? "Yes — liveness not verified" : "No") : "Unknown"}.
+              </p>
 
               {!ruhStatus?.enabled && (
                 <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg">

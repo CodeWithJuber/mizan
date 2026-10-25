@@ -164,6 +164,11 @@ export interface RuhStatus {
   model_path: string;
   device: string;
   loaded: boolean;
+  checkpoint_exists?: boolean;
+  remote_configured?: boolean;
+  active_chat_models?: string[];
+  automatic_weight_training?: boolean;
+  training_running?: boolean;
 }
 
 export interface LearnerStats {

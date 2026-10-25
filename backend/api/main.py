@@ -1036,6 +1036,26 @@ async def authorize_session(session_id: str, user: TokenPayload, *, create: bool
 # === CHAT ===
 
 
+async def chat_context(
+    user: TokenPayload,
+    session_id: str,
+    session: dict,
+    agent,
+    task: str,
+    workspace_id: str | None = None,
+):
+    # Chat routes have already appended the current input for persistence.
+    # Pass prior turns once; BaseAgent appends the current task itself.
+    return {
+        "session_id": session_id,
+        **({"workspace_id": workspace_id} if workspace_id else {}),
+        "history": list(session["history"][:-1][-agent.max_tool_turns :]),
+        "conversation_memory": await memory.recall_conversations(
+            user.user_id, task, exclude_session=session_id
+        ),
+    }
+
+
 _stream_sessions: set[tuple[str, str]] = set()
 
 
@@ -1143,6 +1163,12 @@ async def stream_chat(
             kind = kwargs.get("chunk_type", "text")
             if kind == "tool_use":
                 await deliver("tool_use", tool_name=kwargs.get("tool_name", "unknown"))
+                # A successfully saved artifact survives a later model failure.
+                for receipt in getattr(agent, "_last_tool_results", []) or []:
+                    if receipt.get("name") == "workspace_artifact":
+                        tool_result = receipt.get("result")
+                        if isinstance(tool_result, dict):
+                            await saved_artifact(tool_result.get("artifact", tool_result))
                 return
             if kind == "artifact":
                 await saved_artifact(kwargs.get("artifact"))
@@ -1230,7 +1256,9 @@ async def stream_chat(
                 await channel.emit("typing", agent=agent.name)
                 result = await agent.execute(
                     req.content,
-                    {"history": list(session["history"][-agent.max_tool_turns :])},
+                    await chat_context(
+                        user, req.session_id, session, agent, req.content, req.workspace_id
+                    ),
                     stream_callback=stream_cb,
                     thinking_callback=thinking_cb,
                     model_override=req.model_override,
@@ -1499,7 +1527,7 @@ async def chat(
 
         result = await agent.execute(
             req.content,
-            {"history": session["history"][-agent.max_tool_turns :]},
+            await chat_context(user, req.session_id, session, agent, req.content),
             stream_callback=stream_cb,
             thinking_callback=thinking_cb,
             model_override=req.model_override,
@@ -1514,9 +1542,22 @@ async def chat(
             "assistant",
             str(final_response),
             agent_id,
-            metadata={"usage": result.get("usage", {})},
+            metadata={
+                "usage": result.get("usage", {}),
+                "status": "complete" if result.get("success") else "error",
+            },
         )
         session["history"].append({"role": "assistant", "content": str(final_response)})
+        if not result.get("success"):
+            await manager.broadcast(
+                {
+                    "type": "error",
+                    "session_id": req.session_id,
+                    "message_id": message_id,
+                    "message": "The agent could not complete this request. Partial output was saved.",
+                }
+            )
+            return
 
         # Extract cognitive metadata from QALB-7 pipeline
         cognitive = {
@@ -1585,6 +1626,16 @@ async def get_chat_history(session_id: str, user: TokenPayload = Depends(require
     await authorize_session(session_id, user)
     messages = await memory.get_messages(session_id)
     return {"session_id": session_id, "messages": messages}
+
+
+@app.get("/api/chat/memory/summary")
+async def get_conversation_memory_summary(user: TokenPayload = Depends(require_auth)):
+    return {
+        **await memory.conversation_counts(user.user_id),
+        "recall_enabled": True,
+        "recall_limit": 5,
+        "automatic_weight_training": False,
+    }
 
 
 # === PLANNER (Tafakkur — تفكر) ===
@@ -3147,11 +3198,28 @@ async def get_ruh_model_status():
     """Get Rūḥ Model availability and configuration."""
     ruh_enabled = os.getenv("RUH_ENABLED", "").lower() in ("true", "1", "yes")
     ruh_path = os.getenv("RUH_MODEL_PATH", "")
+    agents = [*active_agents.values(), *_user_agents.values()]
+    local_providers = [
+        a.ai_client for a in agents if getattr(a.ai_client, "provider_name", "") == "ruh"
+    ]
     return {
         "enabled": ruh_enabled,
         "model_path": ruh_path,
         "device": os.getenv("RUH_DEVICE", "cpu"),
-        "loaded": False,  # Would check actual model state in production
+        "loaded": any(getattr(p, "_loaded", False) for p in local_providers),
+        "checkpoint_exists": bool(ruh_path and Path(ruh_path).exists()),
+        "remote_configured": bool(
+            os.getenv("RUNPOD_ENDPOINT_ID")
+            and (os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_API_TOKEN"))
+        ),
+        "active_chat_models": sorted(
+            {
+                f"{getattr(a.ai_client, 'provider_name', 'unavailable')}: {a.ai_model}"
+                for a in active_agents.values()
+            }
+        ),
+        "automatic_weight_training": False,
+        "training_running": training_manager.get_status()["running"],
     }
 
 
@@ -3543,12 +3611,12 @@ async def cancel_queued_task(
 
 
 @app.get("/api/learner/stats")
-async def get_learner_stats():
+async def get_learner_stats(user: TokenPayload = Depends(require_auth)):
     """Get learning data capture statistics."""
     try:
         from learner.ruh_learner import RuhLearner
 
-        learner = RuhLearner()
+        learner = RuhLearner.for_owner(user.user_id)
         await learner.initialize()
         stats = await learner.get_stats()
         return stats
@@ -3556,7 +3624,7 @@ async def get_learner_stats():
         raise HTTPException(503, "Learner module not available") from exc
     except Exception as exc:
         logger.error("Learner stats failed: %s", exc)
-        raise HTTPException(500, f"Learner stats failed: {exc}") from exc
+        raise HTTPException(500, "Learner statistics are unavailable") from exc
 
 
 @app.post("/api/learner/export")
@@ -4060,7 +4128,14 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                 if agent:
                     agent = await chat_agent_for(user, agent)
-                    session = active_sessions.get(session_id, {"history": []})
+                    session = active_sessions.get(session_id)
+                    if session is None:
+                        stored = await memory.get_messages(session_id, limit=50)
+                        session = {
+                            "history": [
+                                {"role": m["role"], "content": m["content"]} for m in stored
+                            ]
+                        }
                     active_sessions[session_id] = session
 
                     await memory.save_message(session_id, "user", content, agent.id)
@@ -4140,7 +4215,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                     result = await agent.execute(
                         content,
-                        {"history": session["history"][-agent.max_tool_turns :]},
+                        await chat_context(user, session_id, session, agent, content),
                         stream_callback=ws_stream,
                         thinking_callback=ws_thinking,
                     )
@@ -4154,9 +4229,23 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         "assistant",
                         str(final),
                         agent.id,
-                        metadata={"usage": result.get("usage", {})},
+                        metadata={
+                            "usage": result.get("usage", {}),
+                            "status": "complete" if result.get("success") else "error",
+                        },
                     )
                     session["history"].append({"role": "assistant", "content": str(final)})
+                    if not result.get("success"):
+                        await manager.send(
+                            client_id,
+                            {
+                                "type": "error",
+                                "session_id": session_id,
+                                "message_id": message_id,
+                                "message": "The agent could not complete this request. Partial output was saved.",
+                            },
+                        )
+                        continue
 
                     # Extract cognitive metadata from QALB-7 pipeline
                     cognitive = {
