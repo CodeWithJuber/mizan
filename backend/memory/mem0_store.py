@@ -40,6 +40,10 @@ _MEM0_CHAR_BUDGET = MEM0_TOKEN_BUDGET * 4
 
 
 def enabled() -> bool:
+    from mizan_owned.provider import owned_only
+
+    if owned_only():
+        return False
     return os.getenv("MEM0_ENABLED", "false").lower() in ("1", "true", "yes")
 
 
@@ -229,6 +233,8 @@ _store: Mem0Store | None = None
 def get_store() -> Mem0Store | None:
     """Return the process-wide mem0 store, or None when disabled/unavailable."""
     global _store
+    if not enabled():
+        return None
     if _store is None:
         candidate = Mem0Store()
         _store = candidate if candidate.init() else None

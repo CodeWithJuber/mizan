@@ -42,10 +42,22 @@ jobs:
         with:
           file: coverage.xml
 
+  own-research:
+    name: Own architecture research invariants
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" jsonschema
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
+      - run: pytest tests/test_mizan_owned*.py research/own_model/tests -q
+
   build:
     name: Build package
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend]
+    needs: [lint, test, typecheck, ruh, frontend, own-research]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -99,7 +111,7 @@ jobs:
   docker:
     name: Docker build
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend]
+    needs: [lint, test, typecheck, ruh, frontend, own-research]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image

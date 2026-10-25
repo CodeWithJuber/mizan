@@ -25,6 +25,7 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     WebSocket,
@@ -63,6 +64,13 @@ from core.plugins import plugin_manager
 from core.qalb import QalbEngine
 from memory.dhikr import DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
+from mizan_owned.schemas import (
+    ContextRequest,
+    OwnedRequest,
+    RetractionRequest,
+    ReviewRequest,
+    resolve_context,
+)
 from providers import (
     check_provider_health,
     create_provider,
@@ -185,8 +193,13 @@ async def lifespan(app: FastAPI):
             if restored:
                 for agent in active_agents.values():
                     agent.ai_client = restored
-                    agent.ai_model = saved_model
-                set_active_state(saved_provider, saved_model)
+                    agent.ai_model = (
+                        "mizan-owned" if restored.provider_name == "mizan-owned" else saved_model
+                    )
+                set_active_state(
+                    restored.provider_name,
+                    "mizan-owned" if restored.provider_name == "mizan-owned" else saved_model,
+                )
                 logger.info(f"Restored provider: {saved_provider}/{saved_model}")
     except Exception as exc:
         logger.warning(f"Could not restore provider preference: {exc}")
@@ -321,6 +334,11 @@ _ADMIN_PREFIXES = (
     "/api/security",
     "/api/plugins",
     "/api/training",
+    "/api/owned/support",
+    "/api/owned/reviews",
+    "/api/owned/retract",
+    "/api/owned/export",
+    "/api/owned/research",
     "/api/automation",
     "/api/channels",
     "/api/gateway",
@@ -841,7 +859,10 @@ async def update_agent(
 
 
 class AgentModelRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid)$")
+    provider: str = Field(
+        ...,
+        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned)$",
+    )
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -860,6 +881,9 @@ async def set_agent_model(
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
 
+    if getattr(provider, "provider_name", "") == "mizan-owned":
+        req.provider = "mizan-owned"
+        req.model = "mizan-owned"
     agent.ai_client = provider
     agent.ai_model = req.model
 
@@ -1982,7 +2006,10 @@ async def provider_health(provider_name: str):
 
 
 class ProviderSwitchRequest(BaseModel):
-    provider: str = Field(..., pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid)$")
+    provider: str = Field(
+        ...,
+        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned)$",
+    )
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -1997,6 +2024,10 @@ async def switch_provider(
     provider = create_provider(provider=req.provider, model=req.model)
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
+
+    if getattr(provider, "provider_name", "") == "mizan-owned":
+        req.provider = "mizan-owned"
+        req.model = "mizan-owned"
 
     # Update all active agents
     switched = 0
@@ -2027,6 +2058,94 @@ async def switch_provider(
         "model": req.model,
         "agents_updated": switched,
     }
+
+
+# === OWN ARCHITECTURE AND EXPLICIT TEACHER SUPPORT ===
+
+
+@app.get("/api/owned/research/search")
+async def owned_research_search(q: str = Query(min_length=1, max_length=300)):
+    from mizan_owned.research import search
+
+    try:
+        return {"results": await asyncio.to_thread(search, q), "training_gold": False}
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/owned/chat")
+async def owned_chat(req: OwnedRequest):
+    from mizan_owned.provider import OwnedProvider
+
+    def run():
+        return OwnedProvider().create(
+            "mizan-owned", 512, req.system, [m.model_dump() for m in req.messages]
+        )
+
+    response = await asyncio.to_thread(run)
+    return {"text": response.content[0].text, "model": response.model, **response.usage}
+
+
+@app.post("/api/owned/context/resolve")
+async def owned_context(req: ContextRequest):
+    try:
+        return await asyncio.to_thread(resolve_context, req)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/owned/support")
+async def owned_support(req: OwnedRequest, user: TokenPayload = Depends(require_auth)):
+    from mizan_owned.provider import store_from_env
+    from mizan_owned.support import draft_support
+
+    try:
+        return await asyncio.to_thread(
+            lambda: draft_support(user.user_id, req.model_dump(), store_from_env())
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/owned/reviews")
+async def owned_reviews(user: TokenPayload = Depends(require_auth)):
+    from mizan_owned.provider import store_from_env
+
+    return await asyncio.to_thread(lambda: store_from_env().list_proposals(user.user_id))
+
+
+@app.post("/api/owned/reviews/{proposal_id}")
+async def owned_review(
+    proposal_id: str, req: ReviewRequest, user: TokenPayload = Depends(require_auth)
+):
+    from mizan_owned.provider import store_from_env
+
+    try:
+        return await asyncio.to_thread(
+            lambda: store_from_env().review(
+                user.user_id, proposal_id, reviewer=user.user_id, **req.model_dump()
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/owned/retract")
+async def owned_retract(req: RetractionRequest, user: TokenPayload = Depends(require_auth)):
+    from mizan_owned.provider import store_from_env
+
+    count = await asyncio.to_thread(
+        lambda: store_from_env().retract(user.user_id, req.evidence, user.user_id)
+    )
+    return {"retracted": count}
+
+
+@app.get("/api/owned/export")
+async def owned_export(user: TokenPayload = Depends(require_auth)):
+    from mizan_owned.provider import store_from_env
+
+    rows = await asyncio.to_thread(lambda: store_from_env().export_reviews(user.user_id))
+    return {"format": "reviewed-memory-v1", "original_training_gold": False, "records": rows}
 
 
 # === PREFERENCES (persisted across restarts) ===

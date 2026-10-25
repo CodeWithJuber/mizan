@@ -24,9 +24,7 @@ def _enable_hybrid(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_factory_delegates_opt_in_hybrid(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = object()
-    monkeypatch.setattr(
-        "mizan_hybrid.provider.create_hybrid_provider_from_env", lambda: expected
-    )
+    monkeypatch.setattr("mizan_hybrid.provider.create_hybrid_provider_from_env", lambda: expected)
 
     assert providers.create_provider("mizan-hybrid") is expected
 

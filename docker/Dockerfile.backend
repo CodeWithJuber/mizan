@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
 COPY nlp/ ./nlp/
 COPY ruh_model/ ./ruh_model/
+COPY mizan_reply/ ./mizan_reply/
+COPY mizan_research/ ./mizan_research/
 
 # Create data and plugins directories
 RUN mkdir -p /data plugins
