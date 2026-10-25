@@ -1,0 +1,22 @@
+{
+  "model": {
+    "dim": 128,
+    "layers": 11,
+    "kernel_size": 3,
+    "max_seq_len": 2048,
+    "root_dim": 12,
+    "root_mode": "bag",
+    "margin": 1.0
+  },
+  "training": {
+    "epochs": 1,
+    "batch_size": 1,
+    "accumulation_steps": 8,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "grad_clip": 1.0,
+    "seed": 17,
+    "amp": "none",
+    "device": "auto"
+  }
+}

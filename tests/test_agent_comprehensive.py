@@ -151,7 +151,12 @@ class TestBaseAgentAttributes:
         for tool in expected_tools:
             assert tool in agent.tools, f"Missing tool: {tool}"
 
-    def test_tool_schemas_valid(self, mock_wali, mock_izn):
+    def test_tool_schemas_valid(self, mock_wali, mock_izn, monkeypatch):
+        # Exercise tool schemas with a capable provider, independent of .env defaults.
+        monkeypatch.setattr(
+            "agents.base.create_provider",
+            lambda **kwargs: MagicMock(provider_name="test", supports_tools=True),
+        )
         agent = make_agent("general", wali=mock_wali, izn=mock_izn)
         schemas = agent.get_tool_schemas()
         assert len(schemas) >= 6

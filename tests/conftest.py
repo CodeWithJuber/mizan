@@ -14,6 +14,17 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 
+@pytest.fixture(autouse=True)
+def isolated_provider_mode(monkeypatch):
+    """Legacy provider contracts run outside owned mode unless explicitly enabled.
+
+    Doctor tests can create/load .env from .env.example; deployment defaults
+    must not silently change unrelated tests later in the same process.
+    """
+    monkeypatch.setenv("MIZAN_OWNED_ONLY", "false")
+    monkeypatch.setenv("LLM_PROVIDER", "")
+
+
 @pytest.fixture
 def temp_db():
     """Provide a temporary database file for tests."""

@@ -112,7 +112,7 @@ Issues = "https://github.com/CodeWithJuber/mizan/issues"
 mizan = "backend.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend", "nlp", "ruh_model"]
+packages = ["backend", "nlp", "ruh_model", "mizan_reply", "mizan_research"]
 exclude = [
     "ruh_model/checkpoints/**",
     "ruh_model/tests/**",

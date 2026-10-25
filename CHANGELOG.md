@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Owned inference provider, authenticated review/retraction ledger, and separate OpenRouter support drafts.
+- Corrected causal byte reply model and finite/existential context reasoning from the preserved research archive.
+- Pinned full research importer, local source search, provenance inventory and research invariant CI checks.
+
+### Changed
+- New Compose setups select owned inference; hosted model overrides and mem0 calls are disabled in owned mode.
+- Own model drafts are excluded from the legacy training exporter; useful general chat and automatic neural learning remain unverified.
+
 ## [v3.3.0] — 2026-10-01
 
 ### Added

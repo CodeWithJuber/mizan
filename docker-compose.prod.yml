@@ -48,8 +48,13 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
-      - LLM_PROVIDER=${LLM_PROVIDER:-}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-claude-opus-4-6}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-mizan-owned}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mizan-owned}
+      - MIZAN_OWNED_ONLY=${MIZAN_OWNED_ONLY:-true}
+      - MIZAN_OWNED_DB=/data/mizan_owned.sqlite3
+      - MIZAN_REPLY_CHECKPOINT=${MIZAN_REPLY_CHECKPOINT:-}
+      - MIZAN_SUPPORT_MODEL=${MIZAN_SUPPORT_MODEL:-}
+      - MIZAN_RESEARCH_DIR=/data/research
       - SECRET_KEY=${SECRET_KEY}
       - MIZAN_ADMIN_USER=${MIZAN_ADMIN_USER:-admin}
       - MIZAN_ADMIN_PASS=${MIZAN_ADMIN_PASS}

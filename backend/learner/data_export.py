@@ -5,11 +5,9 @@ from pathlib import Path
 
 import aiosqlite
 
-_EXPORT_SQL = (
-    "SELECT prompt, response, provider, model, domain FROM interactions WHERE quality_score >= ?"
-)
+_EXPORT_SQL = "SELECT prompt, response, provider, model, domain FROM interactions WHERE quality_score >= ? AND provider NOT IN ('mizan-owned', 'mizan-support')"
 
-_COUNT_SQL = "SELECT COUNT(*) FROM interactions WHERE quality_score >= ?"
+_COUNT_SQL = "SELECT COUNT(*) FROM interactions WHERE quality_score >= ? AND provider NOT IN ('mizan-owned', 'mizan-support')"
 
 
 class DataExporter:

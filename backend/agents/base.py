@@ -1722,6 +1722,9 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             self._execution_lock = asyncio.Lock()
         async with self._execution_lock:
             model, provider = self.ai_model, self.ai_client
+            if provider and getattr(provider, "provider_name", "") == "mizan-owned":
+                model = "mizan-owned"
+                model_override = None
             if model_override and model_override != model:
                 provider = create_provider(model=model_override)
                 if provider is None:

@@ -1,0 +1,972 @@
+[
+  {
+    "source_file": "07_MIZAN_MATHEMATICS.md",
+    "source_sha256": "a2ed0d337663ae317d06f729b4b23844c4315f743373986e6df3de64be408cc9",
+    "source_bytes": 8937,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "MIZAN_Full_Repository_Review_2026-09-29.md",
+    "source_sha256": "39fef883addce5069b00f4d8e635e702ff63938aa651da6fad3cc11728ae2832",
+    "source_bytes": 32484,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Accepted-193-Row-GPU-Pilot-2026-10-14.zip",
+    "source_sha256": "a5fe1f88bac0b24406e10272f335abe6466970f72f5b4b1af73b6a4922064ee9",
+    "source_bytes": 1030010,
+    "leaf_occurrences": 124,
+    "recovered": 5,
+    "already_in_integration": 119
+  },
+  {
+    "source_file": "Mizan-AgentOps-Source.zip",
+    "source_sha256": "75b1c22b9bdcc9941056da7913bffc093a26a47c6667f54440b2d964260f7740",
+    "source_bytes": 182198,
+    "leaf_occurrences": 9,
+    "recovered": 9
+  },
+  {
+    "source_file": "Mizan-AgentOps.pdf",
+    "source_sha256": "5be97493dd673f93eaa4402a61a6a11f650b160b9dc8cfdb74fb54570d62c7a3",
+    "source_bytes": 185296,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Data-Intake-2026-10-14.md",
+    "source_sha256": "895b39c9c066c721094cdfb5d3f75b8c2092a7c4a418df999f5a2c9952586066",
+    "source_bytes": 5224,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Dataset-Formats-and-Prompts.md",
+    "source_sha256": "a7d9f9002589fd44b0ad81f2760669d11d6c5b75e6c203375b33a6e2749fccbc",
+    "source_bytes": 32235,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Double-Verification-2026-10-14.md",
+    "source_sha256": "74a7ad9cf584b1a8e664e665e2c9cc3cba2510726e48ab93b7f5845b32e88ac6",
+    "source_bytes": 8733,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "Mizan-Full-Architecture-Integration-2026-10-24(1).zip",
+    "source_sha256": "d3d9b087073a1bf8c74064ce35911eaab98fbb6b1e92f26feafe2913fa24c0cd",
+    "source_bytes": 77982864,
+    "leaf_occurrences": 2476,
+    "already_in_integration": 2476
+  },
+  {
+    "source_file": "Mizan-Full-Architecture-Integration-2026-10-24(2).zip",
+    "source_sha256": "d3d9b087073a1bf8c74064ce35911eaab98fbb6b1e92f26feafe2913fa24c0cd",
+    "source_bytes": 77982864,
+    "leaf_occurrences": 2476,
+    "already_in_integration": 2476
+  },
+  {
+    "source_file": "Mizan-Full-Architecture-Integration-2026-10-24.zip",
+    "source_sha256": "d3d9b087073a1bf8c74064ce35911eaab98fbb6b1e92f26feafe2913fa24c0cd",
+    "source_bytes": 77982864,
+    "leaf_occurrences": 2476,
+    "already_in_integration": 2476
+  },
+  {
+    "source_file": "Mizan-Full-Reverified-2026-10-23.zip",
+    "source_sha256": "f026129e2e0e014c9a193b3f0768d6e5be8bd46312887da98eef99466b5a4cd3",
+    "source_bytes": 71580894,
+    "leaf_occurrences": 2363,
+    "already_in_integration": 2349,
+    "recovered": 11,
+    "already_recovered": 3
+  },
+  {
+    "source_file": "Mizan-How-Are-You-Walkthrough.zip",
+    "source_sha256": "ee831d354bf42b47f353fcce9d242ce66459f9f9d69d904d406746b029d8e364",
+    "source_bytes": 2557487,
+    "leaf_occurrences": 104,
+    "recovered": 29,
+    "already_in_integration": 75
+  },
+  {
+    "source_file": "Mizan-MiniMind-Compatibility-and-Converter-2026-10-23.zip",
+    "source_sha256": "421f8e9aa2731ff761eeb8fb73eb21071683fd9c6e76dc647620ad014ace9905",
+    "source_bytes": 11185,
+    "leaf_occurrences": 5,
+    "already_in_integration": 5
+  },
+  {
+    "source_file": "Mizan-Multilingual-Architecture-Training-Plan-2026-10-12.md",
+    "source_sha256": "86060fb758bfe6d86cb7cac478a2a355f6f81fdbc681efd8184faefd8883f1a4",
+    "source_bytes": 57705,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "Mizan-QG-Full-Own-Architecture.png",
+    "source_sha256": "d4ec92a5db64cca3fc681e0d6f9b5c0ff7d1f3cd5fdde9768ef988f029c1adf3",
+    "source_bytes": 835669,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "Mizan-QG-Research-Kit-2026-10-12.zip",
+    "source_sha256": "fcc3be451d1e9518a15c783c2558488e4f384b95e5e7066318e58da7fa04fc34",
+    "source_bytes": 131859,
+    "leaf_occurrences": 45,
+    "recovered": 5,
+    "already_in_integration": 40
+  },
+  {
+    "source_file": "Mizan-Qwen-Training-Audit-2026-10-12(2).md",
+    "source_sha256": "e303b1f0a46c8b88bc9445f5763f669add4a912eefcdb8d2c4e0e491181d0b6f",
+    "source_bytes": 33531,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Qwen-Training-Audit-2026-10-12.md",
+    "source_sha256": "4beceb899e4d21be1742881879e5cf0e9df347f883be099ba139dbe70f11eeaa",
+    "source_bytes": 19195,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Mizan-Reply-R1-Code-Formats-Prompts.zip",
+    "source_sha256": "db62172f3d681a36854d6fa7388f2277cad1d9250fdfe8f1e556b77f119410d0",
+    "source_bytes": 687665,
+    "leaf_occurrences": 114,
+    "already_in_integration": 114
+  },
+  {
+    "source_file": "Mizan-Root-Graph-Lab-2026-10-12.zip",
+    "source_sha256": "8e1615da7e6db30c94982e72d9eb50e7a0ec25c037a3a50b0e8e83f5b14b6105",
+    "source_bytes": 82050,
+    "leaf_occurrences": 31,
+    "recovered": 4,
+    "already_in_integration": 27
+  },
+  {
+    "source_file": "Mizan-Verified-Data-and-GPU-Preflight-2026-10-14.zip",
+    "source_sha256": "ae92c05c17f681355a118bf2a08d01fdb252648da19bf627060cdb1e2c6f7fcc",
+    "source_bytes": 1086323,
+    "leaf_occurrences": 144,
+    "already_recovered": 4,
+    "recovered": 21,
+    "already_in_integration": 119
+  },
+  {
+    "source_file": "mizan_v16_review_checks.zip",
+    "source_sha256": "a4fd9688e531a69bc9b12494300deb60449ffa3ed5e96365d91e515001591393",
+    "source_bytes": 6286,
+    "leaf_occurrences": 5,
+    "already_in_integration": 5
+  },
+  {
+    "source_file": "Full Journey(1).md",
+    "source_sha256": "e1f8073b14f96a89f3b18ac9feef53d64301a02fb820bea469ec0908f8006d90",
+    "source_bytes": 5864,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "Full Journey.md",
+    "source_sha256": "e1f8073b14f96a89f3b18ac9feef53d64301a02fb820bea469ec0908f8006d90",
+    "source_bytes": 5864,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "02_QURAN_LANGUAGE_ORIGIN.md",
+    "source_sha256": "8d9d21d60cfe55c28c0543474454c829bb925fcbf0a392084517ba80eded0408",
+    "source_bytes": 9593,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "13_QURAN_STUDY_AND_APPLIED_TRACKS.md",
+    "source_sha256": "abb6fec5a7e07c90e5b4ab28e088ddd9c69c50f821e7cdfbb58fe3332d591dbc",
+    "source_bytes": 5727,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "Quran-Abjad-3D-Interactive.html",
+    "source_sha256": "542820296bf7af4a89d590dc8135a5abcbe731524b23fa8e1a94eeeb2d352825",
+    "source_bytes": 921791,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Quran-Abjad-3D-Overview.png",
+    "source_sha256": "2eac107062bed0c0664736c32769ce840c92c1abe4622c7f85861724108b1b23",
+    "source_bytes": 800234,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Quran-Abjad-3D-Research-Pack.zip",
+    "source_sha256": "e0fdea6db9e31fce49e38e86330ee462dba58b35d3f77c1208f88c017bbbfd59",
+    "source_bytes": 2326901,
+    "leaf_occurrences": 15,
+    "recovered": 13,
+    "already_recovered": 2
+  },
+  {
+    "source_file": "Quran-Order-Direction-Experiment.ipynb",
+    "source_sha256": "25580eed2ad80bb19ad73e0a9cff182f8b983a33f5379779f6786c00d1113c84",
+    "source_bytes": 293081,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Quran-Order-Direction-Findings.md",
+    "source_sha256": "8f4cdd40f89cfc4d872c0fb59d4e0ac90d5f472a9d1fbbf61bbfff6af22bc8da",
+    "source_bytes": 9953,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "Quran-Order-Direction-Research-Pack.zip",
+    "source_sha256": "9a52e8d0b81820da9e544bb6329c566bad343e2e8111fd5a839b7f1f2ea4c43f",
+    "source_bytes": 7074843,
+    "leaf_occurrences": 23,
+    "recovered": 18,
+    "already_recovered": 5
+  },
+  {
+    "source_file": "Quran-Order-Direction-Results.png",
+    "source_sha256": "5ba086ecc07a447423430492f7ee0124ac52b579c4eb7b8cf972d4f8c5ca2ef1",
+    "source_bytes": 389200,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "apna-nlp-v1.0-quranic (1).zip",
+    "source_sha256": "a1abeaa4b3f15865de145c355fb249732338eaa2b9e0ea61244fc803aeae3151",
+    "source_bytes": 17554360,
+    "leaf_occurrences": 6299,
+    "recovered": 6299
+  },
+  {
+    "source_file": "papa-bolo-quran-philosophy-maths.md",
+    "source_sha256": "141e1fadaba9b8f3fb46e849514f677c4d54f9b8487d8046891e3a9e11dfd7ba",
+    "source_bytes": 18915,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quran-agent-research.zip",
+    "source_sha256": "53999d344d249a448c7796e414dfdca98fe8a2c4660cf6c3e081fd61fe0d46fc",
+    "source_bytes": 2821763,
+    "leaf_occurrences": 192,
+    "recovered": 192
+  },
+  {
+    "source_file": "quranic-annotation-bounds.png",
+    "source_sha256": "fa5dfd54769dacf790826343f5cd099d7da04334685a585f4aa185267d372743",
+    "source_bytes": 145928,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-arabic-frequency-findings.md",
+    "source_sha256": "389edf10bea2d55aae7734bf78b1edabf57f51bc51bc896ae3a37ffd910243f5",
+    "source_bytes": 19309,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-arabic-frequency-reproducible.zip",
+    "source_sha256": "633fce7997c768222c897adad5229b12f5ba1e60c9fac72c26707bde66ccad93",
+    "source_bytes": 2166584,
+    "leaf_occurrences": 26,
+    "recovered": 22,
+    "already_recovered": 2,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "quranic-arabic-transfer-findings.md",
+    "source_sha256": "82c199c92b1cc8e2f5bb572cd1c0de4c08fe5ad04a50a287025ccb1726a2d4ce",
+    "source_bytes": 13042,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-arabic-transfer-reproducible.zip",
+    "source_sha256": "27f7b55449df4b5d3429e8fcad43aa9a770aaa073905705e1f1d30692f1cf300",
+    "source_bytes": 3198678,
+    "leaf_occurrences": 44,
+    "recovered": 39,
+    "already_recovered": 3,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "quranic-context-addendum.md",
+    "source_sha256": "1c7b2cc6023f9182b31b92d315b71850ac2fc6ce9c5c8087b34255d5f9a93666",
+    "source_bytes": 8998,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-context-certificate.json",
+    "source_sha256": "4db7bae6387417882cbeeeb618bc43db387f0f06d01a538cb244d09f588b315c",
+    "source_bytes": 2669,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-context-evidence.zip",
+    "source_sha256": "ff5a1d91e4d96a58fa69520047eaca4773f257ec7bddb99bf09e4e240de865a5",
+    "source_bytes": 716794,
+    "leaf_occurrences": 9,
+    "recovered": 3,
+    "already_recovered": 4,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "quranic-context-full-audit.zip",
+    "source_sha256": "9d8c5f1a12e1b1222c5445066923d2548a6df08a31941b710c8a074055d53243",
+    "source_bytes": 1392290,
+    "leaf_occurrences": 36,
+    "recovered": 30,
+    "already_recovered": 4,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "quranic-context-measurements.xlsx",
+    "source_sha256": "0f81a75a2ecacfa8e01f2eabcfefb5dd908cc0d87aeea032a53af019fc422c7a",
+    "source_bytes": 19887,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-context-research.md",
+    "source_sha256": "c3a56e7049e63de90e583d7a07f87a82444524513a3f33cb17b9927d8fe5a529",
+    "source_bytes": 23807,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-context-research.pdf",
+    "source_sha256": "f8c0fcfac80a77843914df91b817bc4b46673fcfc09df1ecc6b2615a8e261170",
+    "source_bytes": 326583,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-language-math-reproducible.zip",
+    "source_sha256": "1c13745e5c66be3df5882c5e975dc20e2c311f399b3d0cd5b794ae13355754be",
+    "source_bytes": 47187,
+    "leaf_occurrences": 22,
+    "recovered": 22
+  },
+  {
+    "source_file": "quranic-language-mathematical-research.md",
+    "source_sha256": "94cc458ab0b871d0231ea653c766ca70ae561f7e881dd24d53ae62c6c79c01c7",
+    "source_bytes": 31290,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-measurements.xlsx",
+    "source_sha256": "d0bd87e27e4e8b7483153bad9dfe93cef2eff6433793e1d088bdc769a001f381",
+    "source_bytes": 131801,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-language-pilot-reproducible.zip",
+    "source_sha256": "1c965d06cb0c0b5d8c3ac2b63855f1956069218357851f1485bdb041bcf3194e",
+    "source_bytes": 1176452,
+    "leaf_occurrences": 40,
+    "recovered": 29,
+    "already_recovered": 11
+  },
+  {
+    "source_file": "quranic-language-refinement.md",
+    "source_sha256": "ada2c2e410f8c6a9ad9fd6d7c3982ca4ddf818f496d42f688fcea2bbe3020122",
+    "source_bytes": 21185,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-language-refinement.pdf",
+    "source_sha256": "50d3b6b7a86118e056120015f2cdce27b0f0ecd3b536710d4782b12c9576856e",
+    "source_bytes": 383997,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "quranic-language-reproducible.zip",
+    "source_sha256": "45dd4e48d08e947c07ba7ed40722c6b21a874e65475dae609ebb7f7704752614",
+    "source_bytes": 2109098,
+    "leaf_occurrences": 53,
+    "recovered": 37,
+    "already_recovered": 14,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "quranic-language-research-refined-package.zip",
+    "source_sha256": "ea2a29d34ad1e590f6c3ed90a28b031b84fe393236a11270072ed2710ef90c5a",
+    "source_bytes": 6075332,
+    "leaf_occurrences": 108,
+    "recovered": 26,
+    "already_recovered": 82
+  },
+  {
+    "source_file": "quranic-language-research-refined.md",
+    "source_sha256": "2b4b1005eeb73521144a00bc3842a806d95d697a4fd898127c37a5aec4ddc5eb",
+    "source_bytes": 28561,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-research-step-1.md",
+    "source_sha256": "2829f029b584096e543e9610b1d7479c08c535496ecdde3ed2b47a974e8662c3",
+    "source_bytes": 16847,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-research-step-2.md",
+    "source_sha256": "975b952e0ae3dfe6194f5a2269f3d7019deaa7f3114b436c98beddce2fce3ade",
+    "source_bytes": 12979,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-research-step-3.md",
+    "source_sha256": "5a5003e57a5fc25c4025a8d3407f691cf3c108de92ad6c8fc34d0258d6a53084",
+    "source_bytes": 11271,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-research-step-4.md",
+    "source_sha256": "83530a103e8e06aa0b8f16a1401beb22755d3cfe72e3134518453670d056d1c5",
+    "source_bytes": 10243,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-language-stage-4.zip",
+    "source_sha256": "8f70a4d25e6289d7fc9eff85326bc7f02d09e1555a711b6b7a3379d2b5b02a1e",
+    "source_bytes": 4801777,
+    "leaf_occurrences": 33,
+    "already_recovered": 33
+  },
+  {
+    "source_file": "quranic-pronounceability-reproducible.zip",
+    "source_sha256": "bdfc84d0dc3909269430098df88bf4e6f24e774f63ade23a722a77391eee88a5",
+    "source_bytes": 5858208,
+    "leaf_occurrences": 20,
+    "recovered": 20
+  },
+  {
+    "source_file": "quranic-pronounceability-research.md",
+    "source_sha256": "3502547406657a48f99e63f28eda66521fa953fc37a8f7a65aa6bcfeac5ff558",
+    "source_bytes": 16257,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-roots-and-grammar.xlsx",
+    "source_sha256": "e68e21c3fb93ca71c274015a100f56bfb757fb9d5ac3c002a3dfea16fc1a5811",
+    "source_bytes": 12595,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "quranic-voice-examples.png",
+    "source_sha256": "c138ea69377f34bbe83ea10d5f5d8f3d9005014f105e95a306e0d20b74097467",
+    "source_bytes": 29980,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage28-quran-and-maths.md",
+    "source_sha256": "34a3c52e47ff2057b4417709ff4958dd1f7252241017406a24f416868bb06c05",
+    "source_bytes": 3492,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "00_RESEARCH_INDEX.md",
+    "source_sha256": "5fc7a300b0a0e052701bd138a431e7bea45385cecce56101e626ad2d9ea87e44",
+    "source_bytes": 4282,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "APNA-NLP-Review-2026-10-08.md",
+    "source_sha256": "16993ae960576c935b2838b0d908b16ee5a251e2017ff9cd3ae79915ae71e552",
+    "source_bytes": 27176,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "03_LANGUAGE_STAGES_01_18.md",
+    "source_sha256": "5e532fa94c1d9de781e3e4186e01af0720d19e357a8b0e919b3928ea34da046a",
+    "source_bytes": 8410,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "04_MEANING_MODEL_STAGES_19_31.md",
+    "source_sha256": "87d854d232f9aadedf9e87ee7b02cb02114e284abb853d8330660d3eb6dd09d8",
+    "source_bytes": 10628,
+    "leaf_occurrences": 1,
+    "already_in_integration": 1
+  },
+  {
+    "source_file": "context-law-stage18-audit.zip",
+    "source_sha256": "2de7711169d533ff61d698ee8807db970c2dbba2c85e57b3377c6a0fd73a6b33",
+    "source_bytes": 837672,
+    "leaf_occurrences": 37,
+    "recovered": 37
+  },
+  {
+    "source_file": "meaning-model-stage19.md",
+    "source_sha256": "01ea1122ee2a45b204a8420d004f49199204546a75a32d459b71f97ce7f35c3a",
+    "source_bytes": 22107,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage19.pdf",
+    "source_sha256": "e0d10090bd7e0b219550329034389ed4727b8df85e162c45bd7dd36673c2107d",
+    "source_bytes": 269848,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage19.xlsx",
+    "source_sha256": "7bdc0656aed1f11340e9e24b32ea41ebedd12dc06aa30f83c846344ce6c031e0",
+    "source_bytes": 159283,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage19.zip",
+    "source_sha256": "386851343ba8fc0c7cc2a0a4357d7668130736050443f7811c394988d97f0af9",
+    "source_bytes": 6917670,
+    "leaf_occurrences": 283,
+    "recovered": 265,
+    "already_recovered": 16,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage20-update.md",
+    "source_sha256": "e8305e532471f02688f92ba089b38ce845409def682665c8244ef07f2132bdf6",
+    "source_bytes": 6092,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage20.zip",
+    "source_sha256": "ab3e492d196b1b616c40bb784d9bfe594476c7a43b29e1fd0776762f3f976810",
+    "source_bytes": 7046499,
+    "leaf_occurrences": 320,
+    "recovered": 28,
+    "already_recovered": 290,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage21-update.md",
+    "source_sha256": "4c398e296196e403733c0da4e0c52c9cee52979bfb0f06ed28e7cccc03a54d67",
+    "source_bytes": 4773,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage21.zip",
+    "source_sha256": "978a91a2e80b39ec77b592b4aebc45e8fa752a0801496f2abdfbb7ba381be083",
+    "source_bytes": 7283307,
+    "leaf_occurrences": 367,
+    "recovered": 36,
+    "already_recovered": 329,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage22-update.md",
+    "source_sha256": "bf7177075e65dc982a8804a19bb7104a0b30167ffff41bbab32378101b7de408",
+    "source_bytes": 4305,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage22.zip",
+    "source_sha256": "70a7546d7525b55a9c7f000f54807095e342c532f422100e8dfe7679c146752b",
+    "source_bytes": 7577412,
+    "leaf_occurrences": 417,
+    "recovered": 40,
+    "already_recovered": 375,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage23-update.md",
+    "source_sha256": "d700ada40e68f648d8987f9b5574ec174037f99908a55cc25d7f9752b7572336",
+    "source_bytes": 3863,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage23.zip",
+    "source_sha256": "0ae5455798193625163a359eef0ab713f3ab8037de046eea0e0c15bcd026d3c1",
+    "source_bytes": 7720118,
+    "leaf_occurrences": 474,
+    "recovered": 45,
+    "already_recovered": 427,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage24-update.md",
+    "source_sha256": "77cf96b10e842d2e72e51ef3073b569d9f9ccff1a4eddb70919e60d7baad6310",
+    "source_bytes": 1885,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage24.zip",
+    "source_sha256": "45833e13850b44a27a6fd1482473ba8ea87c3e915cd8d90dbda0cf00041ced06",
+    "source_bytes": 7873494,
+    "leaf_occurrences": 532,
+    "recovered": 45,
+    "already_recovered": 485,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage25-update.md",
+    "source_sha256": "c637d32f152419696da10ebe3856bcd1320306f3ed882eebe4f9904fbd49a5f2",
+    "source_bytes": 5149,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage25.zip",
+    "source_sha256": "981871adb21acc7b31d7a168049cd5d59536553c817e5dca1dafb55d4427619e",
+    "source_bytes": 8077661,
+    "leaf_occurrences": 596,
+    "recovered": 43,
+    "already_recovered": 551,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage26-update.md",
+    "source_sha256": "d9896e5f2513bbaa86b2b2d1e548c4380eda28c0a8021ca283b1a7452a3765ad",
+    "source_bytes": 2281,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage26.zip",
+    "source_sha256": "5c82111c7596be4f2694d956cc035249b146f7d9e8ed5620f9c2eeb4b47dc8a5",
+    "source_bytes": 8686048,
+    "leaf_occurrences": 702,
+    "recovered": 93,
+    "already_recovered": 607,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage27-update.md",
+    "source_sha256": "1249aa910155dbe83c3f1b3cb05f648c3155e81da216aabefc12d5ffdc365de7",
+    "source_bytes": 1967,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage27.zip",
+    "source_sha256": "6feab1191ddc6070c3020cc68c0bfc6cc8f81e83923a4704b63bfdac2d8e2db3",
+    "source_bytes": 9568539,
+    "leaf_occurrences": 839,
+    "recovered": 122,
+    "already_recovered": 715,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage28-update.md",
+    "source_sha256": "e6ce052da0aa1a6eee8a598a5127a35257e6b653ed864d63be387b6df11d61df",
+    "source_bytes": 2019,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage28.zip",
+    "source_sha256": "a4fff9562f0a0c1cb499e804623728a6805b38cdb01fdc38ffafb21b4f4e69fb",
+    "source_bytes": 10080853,
+    "leaf_occurrences": 900,
+    "recovered": 41,
+    "already_recovered": 857,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage29-update.md",
+    "source_sha256": "97b5263edd050244afdbf78750e9cf415f6e15784251c29562cee3f175238a41",
+    "source_bytes": 1897,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage29.zip",
+    "source_sha256": "d3301efab4edbb245e8745d8a3d67160e6822ab203839dc32c5df9ca2f34a57a",
+    "source_bytes": 10652387,
+    "leaf_occurrences": 955,
+    "recovered": 35,
+    "already_recovered": 918,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "meaning-model-stage30-update.md",
+    "source_sha256": "8546c766f78256b1bcb792342e8e26b4b5cde18b1e8e4b510dfeb32c058e5c6e",
+    "source_bytes": 2288,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage30-verification.json",
+    "source_sha256": "320df4a985a3361c93bb7b606dc297c995e82e5d2a1ae9240b02109155614f6a",
+    "source_bytes": 1554,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-stage30.zip",
+    "source_sha256": "43484ef701f164755dbc61a91581ce8c9394eb825fa2bdb7f41216b770016de9",
+    "source_bytes": 10958978,
+    "leaf_occurrences": 998,
+    "recovered": 37,
+    "already_recovered": 959,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "qg-apna-nlp-code.zip",
+    "source_sha256": "4613af6ca0d12a245446a38a6393629a325ff4386d06d20776de22569b16a27d",
+    "source_bytes": 90414,
+    "leaf_occurrences": 42,
+    "already_in_integration": 42
+  },
+  {
+    "source_file": "stage26-audio-outcomes.png",
+    "source_sha256": "0e541eaaccd1d2e4bdf059546224175d0903c7d565da6f39a7b9cd6f92b4c637",
+    "source_bytes": 58974,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage26-distribution-verification.json",
+    "source_sha256": "6b0540e727896abced3b5246c786b134bc163e233af7b9d492ca37778262f259",
+    "source_bytes": 478,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "stage26-research-report.md",
+    "source_sha256": "bfe3147af4cf51a24100ec30cb9627998dd64722c1fbf4e12cbc13ee19b6e702",
+    "source_bytes": 8090,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage27-audio-outcomes.png",
+    "source_sha256": "342ddca744c933cb1b2c0b55da6b40edf28230544542c38496693c42a6963121",
+    "source_bytes": 83172,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage27-distribution-verification.json",
+    "source_sha256": "3e3ffe3cb89228f766f99d33015159eb59592e2434674c18412986bf1b690037",
+    "source_bytes": 603,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "stage27-research-report.md",
+    "source_sha256": "ec1f4ee9591f2d0d9aa32fa6534b0a2c071d5f7857e4dab7e3c34f0e9cdcedf5",
+    "source_bytes": 10220,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage28-context-outcomes.png",
+    "source_sha256": "8b118b35aa06d676cad06d8b3afc32720f63043392888596656af851b531c36f",
+    "source_bytes": 107587,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage28-distribution-verification.json",
+    "source_sha256": "57c9dec4f96b0cbf453770b44a8d2c36b30c0220beadaac6df583c52da0dc3c1",
+    "source_bytes": 732,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "stage28-quran-and-maths.md",
+    "source_sha256": "34a3c52e47ff2057b4417709ff4958dd1f7252241017406a24f416868bb06c05",
+    "source_bytes": 3492,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage28-research-report.md",
+    "source_sha256": "b077960138b83ffde323dd26c2f9915047c3b6cef2969d6f04244a8a06bb276b",
+    "source_bytes": 11352,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage29-correction-results.png",
+    "source_sha256": "8e8dec3d3937ec956aa150c2ada181e588f1f95b2cca746da5880e7160078bb1",
+    "source_bytes": 88464,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage29-distribution-verification.json",
+    "source_sha256": "704363da039dc85c5c1e6c3a47e2962fd7aa4b823cec8eeb4b3fcc5f96c4bbb2",
+    "source_bytes": 1175,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "stage29-math-evidence-audit.md",
+    "source_sha256": "5c2eb892c375f60272cc08ab9a2303bb2d0ea6ae9914c35b73c45f75fd683582",
+    "source_bytes": 21051,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage29-source-review.md",
+    "source_sha256": "fd8f7e8a79975adcdeba0f0b06421f348176d693707ad82322c7ed88d531c239",
+    "source_bytes": 17200,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage30-outcomes.png",
+    "source_sha256": "3de362f3679cd031abaed2cd06089a4ebde3cfab80c53bc868eb4af1206597a6",
+    "source_bytes": 98290,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "stage30-research-report.md",
+    "source_sha256": "e21717904ee62efd4aa95d6690e46fcbcfd82835233a9957e3652489a96b7f35",
+    "source_bytes": 10485,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "ummah-stage16-full-audit.zip",
+    "source_sha256": "0ccfb82b40713bcc15ee7ad4944dd955bb13d6569cd06c930abed3f2d801a2a0",
+    "source_bytes": 1480887,
+    "leaf_occurrences": 39,
+    "recovered": 27,
+    "already_recovered": 10,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "word-meaning-stage17-audit.zip",
+    "source_sha256": "08fd1096d850d9b3e07a5e22b7c95d5de3d0ebd9bd3edf12b3cd638f12b84136",
+    "source_bytes": 1391192,
+    "leaf_occurrences": 45,
+    "already_recovered": 13,
+    "recovered": 30,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "common-language-measurements.xlsx",
+    "source_sha256": "d0469708ff71af710fc06853b68d7d88163fb4c0451c5ecbc8d7df6236c81717",
+    "source_bytes": 137012,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "common-language-reproducible.zip",
+    "source_sha256": "48293e414f056eba848474fdfdf92643fd82eb0506b93e4f9d5eab5c86027086",
+    "source_bytes": 5407667,
+    "leaf_occurrences": 72,
+    "already_recovered": 28,
+    "recovered": 42,
+    "already_in_integration": 2
+  },
+  {
+    "source_file": "common-language-research.md",
+    "source_sha256": "bd27f21b02e7ea3d3d5cadb03b2557429bad7bdc584b1e9e726d33bc583453f2",
+    "source_bytes": 21181,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "common-language-research.pdf",
+    "source_sha256": "14183b86088e88426fe2d96648605994d0df6d6e72640af40f4dc01ef2a14d43",
+    "source_bytes": 730123,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "language-pilot-results.xlsx",
+    "source_sha256": "d4d75431f1adde01342c15e306fc2d5912197195ef68bc7e62b9f2d8d773db74",
+    "source_bytes": 13021,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "language-symbols-measurements.xlsx",
+    "source_sha256": "8609630a131e9f869b81d58977d40180958216e84fbb140eb651712e8ed430ce",
+    "source_bytes": 247301,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "language-symbols-reproducible.zip",
+    "source_sha256": "d4d12382d4ce5f759cdc5a92dfbbeca112789ea7b329fa8ae0d29b39aad19d04",
+    "source_bytes": 23969064,
+    "leaf_occurrences": 13243,
+    "recovered": 13237,
+    "already_recovered": 6
+  },
+  {
+    "source_file": "language-symbols-research.md",
+    "source_sha256": "9113071152bfd4e7b43d0acbfedc620c9a96320eb45f72cad88389f8edb7675f",
+    "source_bytes": 26127,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "language-symbols-research.pdf",
+    "source_sha256": "89a4535cd451ccc2fb3505fab8fd330b3c6a158d5bb84fcf626451b0e9f3dc00",
+    "source_bytes": 607790,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "meaning-model-research-conclusion.md",
+    "source_sha256": "dcd93e1bdbc6489e30a7dbebbff4ab74588eeb5f5254daafc888daca131118be",
+    "source_bytes": 19577,
+    "leaf_occurrences": 1,
+    "already_recovered": 1
+  },
+  {
+    "source_file": "meaning-model-research-conclusion.pdf",
+    "source_sha256": "2848f4bdfe84471910fc1dbc921e57bf2cde99fdec98a32027ca5ca3b45a71b7",
+    "source_bytes": 202354,
+    "leaf_occurrences": 1,
+    "recovered": 1
+  },
+  {
+    "source_file": "research-chatgpt-chats-original.zip",
+    "source_sha256": "26711fc25ecb066b6977c53ffddf2d5576517a5583af79bb654acd575883e948",
+    "source_bytes": 69834,
+    "leaf_occurrences": 20,
+    "already_in_integration": 20
+  }
+]

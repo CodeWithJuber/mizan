@@ -384,9 +384,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     blocks.append(ContentBlock(type="text", text=cleaned))
                 blocks.extend(xml_tools)
 
-        # Map finish_reason
+        # Unknown/filtered finishes are incomplete, never reviewable teacher answers.
         has_tool_blocks = any(b.type == "tool_use" for b in blocks)
-        stop_reason = "end_turn"
+        stop_reason = "incomplete"
         if choice.finish_reason == "tool_calls" or has_tool_blocks:
             stop_reason = "tool_use"
         elif choice.finish_reason == "length":
@@ -673,6 +673,13 @@ def create_provider(
 
     Returns None if no provider can be configured.
     """
+    # Owned mode is an operator-enforced boundary, including model overrides and
+    # restored preferences. Teacher support constructs its own isolated adapter.
+    from mizan_owned.provider import OwnedProvider, owned_only
+
+    if owned_only() or provider == "mizan-owned" or model == "mizan-owned":
+        return cast(BaseLLMProvider, OwnedProvider())
+
     # Auto-detect provider from model name, verifying keys exist
     if not provider and model:
         if model.startswith(("claude-", "anthropic/")):
@@ -813,6 +820,9 @@ def create_provider(
 def normalize_model_for_provider(model: str, provider_name: str) -> str:
     """Translate model IDs between provider formats when needed."""
     # Anthropic → OpenRouter mapping
+    if provider_name == "mizan-owned":
+        return "mizan-owned"
+
     _anthropic_to_openrouter = {
         "claude-opus-4-6": "anthropic/claude-opus-4",
         "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4",
@@ -825,6 +835,8 @@ def normalize_model_for_provider(model: str, provider_name: str) -> str:
 
 def get_default_model(provider_name: str) -> str:
     """Get the default model for a provider."""
+    if provider_name == "mizan-owned":
+        return "mizan-owned"
     if provider_name == "mizan-minimind":
         from providers_minimind import MODEL_ID
 
@@ -854,6 +866,9 @@ def get_default_model(provider_name: str) -> str:
 
 # Well-known models per provider for quick selection
 PROVIDER_MODELS = {
+    "mizan-owned": [
+        {"id": "mizan-owned", "name": "Mizan Own Architecture", "context": 8192, "vision": False}
+    ],
     "anthropic": [
         {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "context": 200000, "vision": True},
         {
@@ -1037,6 +1052,20 @@ def get_provider_status() -> dict:
         }
     )
 
+    from mizan_owned.provider import health as owned_health
+    from mizan_owned.provider import owned_only
+
+    providers.append(
+        {
+            "name": "mizan-owned",
+            "display": "Mizan Own Architecture",
+            "configured": True,
+            "models": PROVIDER_MODELS["mizan-owned"],
+            "default_model": "mizan-owned",
+            **owned_health(),
+        }
+    )
+
     # Determine active provider — prefer in-memory state from switch_provider,
     # then env var, then auto-detect from configured providers.
     active = _active_state["provider"] or os.getenv("LLM_PROVIDER", "")
@@ -1046,9 +1075,13 @@ def get_provider_status() -> dict:
                 active = p["name"]
                 break
 
+    if owned_only():
+        active = "mizan-owned"
+
     default_model = (
         get_default_model(active)
-        if active in {"mizan-hybrid", "mizan-minimind"} and not _active_state["model"]
+        if active == "mizan-owned"
+        or (active in {"mizan-hybrid", "mizan-minimind"} and not _active_state["model"])
         else _active_state["model"] or os.getenv("DEFAULT_MODEL", "") or get_default_model(active)
     )
 
@@ -1155,6 +1188,11 @@ async def check_provider_health(provider_name: str) -> dict:
     by making a minimal request.
     """
     import httpx
+
+    if provider_name == "mizan-owned":
+        from mizan_owned.provider import health
+
+        return {**health(), "healthy": True}
 
     if provider_name == "anthropic":
         api_key = os.getenv("ANTHROPIC_API_KEY", "")

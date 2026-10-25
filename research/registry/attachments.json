@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Mizan-Full-Architecture-Integration-2026-10-24.zip",
+    "sha256": "d3d9b087073a1bf8c74064ce35911eaab98fbb6b1e92f26feafe2913fa24c0cd",
+    "size_bytes": 77982864,
+    "matches_prior_inspected_source": true,
+    "top_level_zip_file_count": 383
+  },
+  {
+    "name": "Mizan-Full-Reverified-2026-10-23.zip",
+    "sha256": "f026129e2e0e014c9a193b3f0768d6e5be8bd46312887da98eef99466b5a4cd3",
+    "size_bytes": 71580894,
+    "matches_prior_inspected_source": true,
+    "top_level_zip_file_count": 270
+  }
+]

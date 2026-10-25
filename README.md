@@ -22,6 +22,14 @@
 
 > **Project status:** MIZAN is an open-source **beta research and engineering prototype**. It contains executable implementations of an agent loop, provider-normalized tool calling, local memory, APIs, plugins, tests and container packaging — **and its own native Qur'anic Arabic NLP module, `mizan.nlp`, which ships with a real trained artifact and is wired into the agent loop behind `MIZAN_NLP_NATIVE_WSD=1` (default off)**. This repository does **not** claim verified enterprise production use.
 
+## Own architecture integration
+
+New Compose setups use `mizan-owned`: reviewed local memory and the included
+own reply core handle inference, with explicit abstention when unavailable.
+OpenRouter is a separately requested teacher/support service. The full research
+bundle has a pinned importer and source index; its experiments are not silently
+promoted to verified knowledge. See [setup, research coverage and learning limits](docs/OWN_ARCHITECTURE_INTEGRATION.md).
+
 ## mizan.nlp — native Qur'anic Arabic NLP, live
 
 ![mizan.nlp disambiguating Qur'anic Arabic with confidences](.github/assets/mizan-nlp-demo.gif)

@@ -46,6 +46,8 @@ RUN python -c "import torch; from importlib.metadata import version; assert torc
 COPY backend/ ./
 COPY nlp/ ./nlp/
 COPY ruh_model/ ./ruh_model/
+COPY mizan_reply/ ./mizan_reply/
+COPY mizan_research/ ./mizan_research/
 
 RUN mkdir -p /data plugins && chown -R mizan:mizan /app /data
 
