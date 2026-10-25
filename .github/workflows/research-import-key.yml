@@ -1,0 +1,46 @@
+name: Prepare Private Research Import Key
+
+on:
+  push:
+    branches: [ops/research-key-20261025]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mizan-production
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-key-20261025'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate preparation syntax
+        run: python3 -m py_compile scripts/research_transfer_key.py
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Inspect persistent research target and create one-hour public key
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
+          test -s deploy/known_hosts
+          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
+          status=0
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'python3 -' < scripts/research_transfer_key.py > research-import-public-key.jsonl || status=$?
+          cat research-import-public-key.jsonl
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-import-public-key
+          path: research-import-public-key.jsonl
+          retention-days: 1
