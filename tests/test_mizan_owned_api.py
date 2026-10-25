@@ -27,6 +27,16 @@ def api(tmp_path, monkeypatch):
     return client, headers("admin"), headers("user")
 
 
+@pytest.mark.parametrize("name", ["mizan-owned", "mizan-minimind"])
+def test_agent_and_global_provider_requests_accept_both_architectures(api, name):
+    # Initialize the real application through the isolated API fixture before
+    # importing its schemas; a fresh CI process has no deployment /data volume.
+    from api.main import AgentModelRequest, ProviderSwitchRequest
+
+    assert AgentModelRequest(provider=name, model="test-model").provider == name
+    assert ProviderSwitchRequest(provider=name, model="test-model").provider == name
+
+
 def test_real_routes_require_auth_and_admin_for_teacher_review(api, monkeypatch):
     client, admin, user = api
     body = {"messages": [{"role": "user", "content": "hello"}]}

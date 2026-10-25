@@ -88,14 +88,6 @@ def test_minimind_registration_cannot_override_owned_status(store, monkeypatch):
     assert {"mizan-owned", "mizan-minimind"} <= {p["name"] for p in status["providers"]}
 
 
-@pytest.mark.parametrize("name", ["mizan-owned", "mizan-minimind"])
-def test_agent_and_global_provider_requests_accept_both_architectures(name):
-    from api.main import AgentModelRequest, ProviderSwitchRequest
-
-    assert AgentModelRequest(provider=name, model="test-model").provider == name
-    assert ProviderSwitchRequest(provider=name, model="test-model").provider == name
-
-
 def test_owned_reply_uses_text_only_agent_contract(store, monkeypatch):
     from agents.base import BaseAgent
 
