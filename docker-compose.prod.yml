@@ -120,8 +120,8 @@ services:
     image: certbot/certbot:latest
     container_name: mizan-certbot
     volumes:
-      - certbot-webroot:/var/www/certbot:ro
-      - certbot-certs:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
+      - certbot-certs:/etc/letsencrypt
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew --quiet; done'"
     profiles:
       - ssl
@@ -145,7 +145,7 @@ services:
   # ── Vector DB for semantic search (optional) ──
   chroma:
     image: chromadb/chroma:latest
-    container_name: chroma
+    container_name: mizan-chroma
     restart: unless-stopped
     expose:
       - "8000"
