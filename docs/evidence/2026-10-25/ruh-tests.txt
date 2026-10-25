@@ -1,0 +1,28 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.7.0
+rootdir: /workspace/scratch/c4599c3784a8/mizan_repo_repair_20261025/repo
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.4.0, platformdirs-4.13.5, anyio-4.15.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 265 items
+
+ruh_model/tests/test_bayan.py .................                          [  6%]
+ruh_model/tests/test_bayan_public_api.py ......................          [ 14%]
+ruh_model/tests/test_causality.py ..                                     [ 15%]
+ruh_model/tests/test_dialect.py .........................                [ 24%]
+ruh_model/tests/test_eval_harness.py ............................        [ 35%]
+ruh_model/tests/test_eval_smoke.py ...                                   [ 36%]
+ruh_model/tests/test_generation_eos_batch.py .                           [ 36%]
+ruh_model/tests/test_ism.py ................                             [ 43%]
+ruh_model/tests/test_quranic_paths.py .................                  [ 49%]
+ruh_model/tests/test_quranic_pipeline.py ........                        [ 52%]
+ruh_model/tests/test_reader.py ....................                      [ 60%]
+ruh_model/tests/test_review_pipeline.py ...................              [ 67%]
+ruh_model/tests/test_review_repairs.py ................                  [ 73%]
+ruh_model/tests/test_scaffolds.py ..................                     [ 80%]
+ruh_model/tests/test_sense.py .................................          [ 92%]
+ruh_model/tests/test_sequence_training.py ..........                     [ 96%]
+ruh_model/tests/test_training_acceleration.py ......                     [ 98%]
+ruh_model/tests/test_training_controller.py ....                         [100%]
+
+============================= 265 passed in 7.74s ==============================

@@ -1,0 +1,28 @@
+{
+  "date_utc": "2026-10-25",
+  "upstream_commit": "2748c7e72596d17ccd1cfd4bf2f2f9d65ca034f1",
+  "upstream_files": 563,
+  "text_blob_hashes_matched": 558,
+  "binary_blob_hashes_matched": 5,
+  "baseline_combined": {
+    "passed": 1329,
+    "skipped": 8
+  },
+  "final_backend": {
+    "passed": 1090,
+    "skipped": 8
+  },
+  "final_ruh": {
+    "passed": 265
+  },
+  "quality_claim": null,
+  "production_deployed": false,
+  "new_training": false,
+  "frontend_typecheck": "passed",
+  "frontend_build": "passed",
+  "docker_image_build": "not_run",
+  "multigpu_training": "not_run",
+  "credential_persistence": "no_external_vault_configured",
+  "frontend_utility_tests": "passed (7 scripts)",
+  "live_inference": "not_verified: bounded existing-worker probes returned HTTP 404"
+}

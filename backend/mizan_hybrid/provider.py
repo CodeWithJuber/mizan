@@ -37,6 +37,9 @@ class MizanHybridProvider(BaseLLMProvider):
         audit_log: AuditLog | None = None,
     ) -> None:
         self.base = base
+        self.supports_tools = getattr(base, "supports_tools", True)
+        self.max_output_tokens = getattr(base, "max_output_tokens", None)
+        self.context_window = config.context_window
         self.config = config
         self.registry = registry or SourceRegistry()
         self.analyzer = analyzer or (QCAOwnNLPAnalyzer() if config.nlp_advisory else None)
@@ -129,6 +132,8 @@ class MizanHybridProvider(BaseLLMProvider):
         advisory_text = format_advisory(advisory)
         selected_model = model or self.config.base_model
         initial_max_tokens = int(max_tokens or 256)
+        if self.max_output_tokens is not None:
+            initial_max_tokens = min(initial_max_tokens, self.max_output_tokens)
         attempt_max_tokens = initial_max_tokens
         case_id = uuid.uuid4().hex
         response: LLMResponse | None = None
@@ -168,6 +173,8 @@ class MizanHybridProvider(BaseLLMProvider):
             if decision.code == "NOT_COMPLETE":
                 increased = max(attempt_max_tokens + 1, attempt_max_tokens * 2)
                 next_max_tokens = min(increased, self.config.retry_max_tokens)
+                if self.max_output_tokens is not None:
+                    next_max_tokens = min(next_max_tokens, self.max_output_tokens)
                 if next_max_tokens <= attempt_max_tokens:
                     return self._safe_response(response, decision, advisory, attempt, case_id)
                 attempt_max_tokens = next_max_tokens

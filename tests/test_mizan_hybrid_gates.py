@@ -129,9 +129,7 @@ def test_missing_relation_label_abstains(registry):
     ],
 )
 def test_technical_failures_retry(registry, response, language, code):
-    decision = gate_response(
-        registry, response, target_language=language, finish_reason="end_turn"
-    )
+    decision = gate_response(registry, response, target_language=language, finish_reason="end_turn")
     assert (decision.outcome, decision.code) == (Outcome.RETRY, code)
 
 
@@ -192,8 +190,6 @@ def test_audit_log_hash_chain_excludes_response(tmp_path):
     assert events[1]["event_sha256"] == second_hash
     assert "response" not in events[0]
     for event in events:
-        canonical = {
-            key: value for key, value in event.items() if key != "event_sha256"
-        }
+        canonical = {key: value for key, value in event.items() if key != "event_sha256"}
         encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         assert hashlib.sha256(encoded.encode()).hexdigest() == event["event_sha256"]

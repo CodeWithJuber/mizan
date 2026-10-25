@@ -46,7 +46,7 @@ class QCAOwnNLPAnalyzer:
 
 
 def _clean_roots(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    allowed = ("root", "english_term", "meaning", "domain")
+    allowed = ("root", "english_term", "surface", "match_type", "meaning", "domain")
     return [
         {key: str(item[key])[:200] for key in allowed if item.get(key) not in (None, "")}
         for item in items[:5]

@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "error_type": "ValueError",
+  "code": null,
+  "detail": "RunPod status unavailable (HTTP 404)"
+}

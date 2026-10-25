@@ -184,6 +184,7 @@ class RuhModel(nn.Module):
         pattern_ids = pattern_ids[:, -self.config.max_seq_len :]
         generated = root_ids.clone()
         patterns = pattern_ids.clone()
+        finished = torch.zeros(root_ids.shape[0], 1, dtype=torch.bool, device=root_ids.device)
 
         for _ in range(max_new_tokens):
             next_token = self._sample_next_token(
@@ -192,6 +193,10 @@ class RuhModel(nn.Module):
                 temperature,
                 valid_n_roots,
             )
+            # A row that emitted EOS must not start producing content again
+            # while other rows in the batch are still generating.
+            next_token = torch.where(finished, self.config.EOS_ROOT, next_token)
+            finished |= next_token == self.config.EOS_ROOT
             generated = torch.cat([generated, next_token], dim=1)
 
             # Extend patterns with default pattern for generated token
@@ -199,7 +204,7 @@ class RuhModel(nn.Module):
             patterns = torch.cat([patterns, pattern_extension], dim=1)
 
             # Stop if all sequences have generated EOS
-            if (next_token == self.config.EOS_ROOT).all():
+            if finished.all():
                 break
 
         return generated
