@@ -405,7 +405,7 @@ def workspace_override(
                 "networks": ["mizan-net"],
                 "pids_limit": 128,
                 "logging": {"driver": "local", "options": {"max-size": "10m", "max-file": "3"}},
-                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "192M"}}},
+                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "192M", "pids": 128}}},
             },
         }
     }
@@ -1067,6 +1067,7 @@ class Installer:
             "files": files,
             "hashes": {filename: digest(Path(filename)) for filename in files},
             "backend_image": backend["Image"],
+            "backend_container_id": backend["Id"],
             "backend_env": dict(
                 value.split("=", 1) for value in backend["Config"]["Env"] if "=" in value
             ),
@@ -1087,6 +1088,7 @@ class Installer:
         protected_write(directory / "rollback.yml", compose_document(rollback))
         protected_write(directory / "snapshot.json", json.dumps(snapshot))
         self.state["active_attempt"] = str(directory)
+        self.state["backend_switch_started"] = False
         self.state["phase"] = "applying"
         self.save()
         return snapshot
@@ -1127,7 +1129,9 @@ class Installer:
             "Runner must not expose host ports/devices",
         )
         require(
-            host.get("Memory") == 192 * 1024**2 and host.get("NanoCpus") == 500000000,
+            host.get("Memory") == 192 * 1024**2
+            and host.get("NanoCpus") == 500000000
+            and host.get("PidsLimit") == 128,
             "Runner control-service resource limits are missing",
         )
         mounts = [mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"]
@@ -1350,7 +1354,7 @@ class Installer:
         snapshot = read_json(attempt / "snapshot.json")
         # A failed Compose recreation may leave no backend, or one that exited.
         # Validate identity independently of liveness so recovery still works.
-        self.backend(require_running=False, allow_missing=True)
+        current_backend = self.backend(require_running=False, allow_missing=True)
         expected = self.docker_json("image", "inspect", f"ghcr.io/{REPOSITORY}/backend:{self.sha}")[
             0
         ]
@@ -1378,46 +1382,47 @@ class Installer:
             protected_write(OVERRIDE, prior)
             self.state["override_sha256"] = digest(OVERRIDE)
             files = [*snapshot["files"], str(attempt / "rollback.yml")]
-        self.run_command(
-            [*self.compose(files), "config", "--quiet"], stage="Validate exact backend rollback"
-        )
-        rendered = json.loads(
+        # Only a literal persisted False proves the switch never began. Legacy
+        # or malformed checkpoints retain conservative image/config restoration.
+        if self.state.get("backend_switch_started") is False:
+            require(
+                current_backend is not None
+                and current_backend["State"]["Running"]
+                and current_backend.get("Id") == snapshot.get("backend_container_id"),
+                "Backend changed before the planned switch; preserve state for manual review",
+            )
+            self.verify_saved_backend(current_backend, snapshot)
+            report("Backend switch never began; preserving the original live container.")
+        else:
             self.run_command(
-                [*self.compose(files), "config", "--format", "json"],
-                stage="Compare rollback configuration privately",
-            ).stdout
-        )
-        validate_rendered_backend(rendered, snapshot, snapshot["backend_env"])
-        self.run_command(
-            [
-                *self.compose(files),
-                "up",
-                "-d",
-                "--no-deps",
-                "--no-build",
-                "--pull",
-                "never",
-                "backend",
-            ],
-            stage="Restore original backend image and configuration",
-            timeout=180,
-        )
+                [*self.compose(files), "config", "--quiet"], stage="Validate exact backend rollback"
+            )
+            rendered = json.loads(
+                self.run_command(
+                    [*self.compose(files), "config", "--format", "json"],
+                    stage="Compare rollback configuration privately",
+                ).stdout
+            )
+            validate_rendered_backend(rendered, snapshot, snapshot["backend_env"])
+            self.run_command(
+                [
+                    *self.compose(files),
+                    "up",
+                    "-d",
+                    "--no-deps",
+                    "--no-build",
+                    "--pull",
+                    "never",
+                    "backend",
+                ],
+                stage="Restore original backend image and configuration",
+                timeout=180,
+            )
         # Restored application reachability must not depend on runner cleanup,
         # which may be exactly the configuration that failed initial validation.
         self.health()
         restored = self.backend()
-        restored_environment = dict(
-            value.split("=", 1) for value in restored["Config"].get("Env", []) if "=" in value
-        )
-        require(
-            restored_environment == snapshot["backend_env"],
-            "Restored backend environment differs from the saved snapshot",
-        )
-        require(
-            sorted(restored["Mounts"], key=lambda value: value["Destination"])
-            == sorted(snapshot["backend_mounts"], key=lambda value: value["Destination"]),
-            "Restored backend data mounts differ from the saved snapshot",
-        )
+        self.verify_saved_backend(restored, snapshot)
         self.proxy()
         self.public_health()
         if prior is None and OVERRIDE.exists():
@@ -1443,6 +1448,25 @@ class Installer:
         self.state.pop("pending_override_sha256", None)
         self.save()
         report("Rollback verified: original backend restored; volumes and worker data retained.")
+
+    @staticmethod
+    def verify_saved_backend(restored: dict, snapshot: dict) -> None:
+        restored_environment = dict(
+            value.split("=", 1) for value in restored["Config"].get("Env", []) if "=" in value
+        )
+        require(
+            restored_environment == snapshot["backend_env"],
+            "Restored backend environment differs from the saved snapshot",
+        )
+        require(
+            sorted(restored["Mounts"], key=lambda value: value["Destination"])
+            == sorted(snapshot["backend_mounts"], key=lambda value: value["Destination"]),
+            "Restored backend data mounts differ from the saved snapshot",
+        )
+        require(
+            set(restored["NetworkSettings"]["Networks"]) == set(snapshot["backend_networks"]),
+            "Restored backend networks differ from the saved snapshot",
+        )
 
     def apply(self) -> None:
         backend = self.backend()
@@ -1523,20 +1547,7 @@ class Installer:
             time.sleep(1)
         self.smoke(runner)
         self.backend()
-        self.run_command(
-            [
-                *self.compose(files),
-                "up",
-                "-d",
-                "--no-deps",
-                "--no-build",
-                "--pull",
-                "never",
-                "backend",
-            ],
-            stage="Connect backend to the verified private runner",
-            timeout=180,
-        )
+        self.switch_backend(files)
         self.health()
         after = self.backend()
         self.research_location(after, configured=True)
@@ -1555,6 +1566,26 @@ class Installer:
         self.save()
         report(
             f"Workspace runner verified for {self.sha}: rootless, resource-limited, authenticated; Python/JS/shell, files, isolation, timeout and cleanup passed."
+        )
+
+    def switch_backend(self, files: list[str]) -> None:
+        # Save intent before Compose can mutate anything, including partial
+        # failures/timeouts. A failed checkpoint must prevent the command.
+        self.state["backend_switch_started"] = True
+        self.save()
+        self.run_command(
+            [
+                *self.compose(files),
+                "up",
+                "-d",
+                "--no-deps",
+                "--no-build",
+                "--pull",
+                "never",
+                "backend",
+            ],
+            stage="Connect backend to the verified private runner",
+            timeout=180,
         )
 
     def setup(self, registry_token: str) -> None:
