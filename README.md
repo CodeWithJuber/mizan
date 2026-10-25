@@ -1,3 +1,5 @@
+> **25 October 2026 repair:** [Verified findings, setup and limitations](docs/review-2026-10-25.md) · [Runtime diagram](docs/architecture-2026-10-25.md) · [Data contracts](docs/data-contracts-2026-10-25.md). The private MiniMind SFT release is a separate checkpoint family from Ruh; integration tests are not semantic accuracy.
+
 <div align="center">
 
 # MIZAN

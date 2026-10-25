@@ -710,10 +710,23 @@ def create_provider(
             provider = "anthropic"  # fallback
 
     # Create the provider
+    if provider == "mizan-minimind":
+        from providers_minimind import MiniMindRemoteProvider, configured
+
+        if not configured():
+            return None
+        return cast(
+            BaseLLMProvider,
+            MiniMindRemoteProvider(
+                endpoint_id=os.environ["MINIMIND_ENDPOINT_ID"],
+                api_key=os.environ["RUNPOD_API_KEY"],
+            ),
+        )
+
     if provider == "mizan-hybrid":
         from mizan_hybrid.provider import create_hybrid_provider_from_env
 
-        return cast(BaseLLMProvider, create_hybrid_provider_from_env())
+        return cast(BaseLLMProvider | None, create_hybrid_provider_from_env())
 
     if provider == "anthropic":
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -824,11 +837,14 @@ def get_default_model(provider_name: str) -> str:
     """Get the default model for a provider."""
     if provider_name == "mizan-owned":
         return "mizan-owned"
+    if provider_name == "mizan-minimind":
+        from providers_minimind import MODEL_ID
 
+        return str(MODEL_ID)
     if provider_name == "mizan-hybrid":
         from mizan_hybrid.config import HybridConfig
 
-        return cast(str, HybridConfig.from_env().base_model)
+        return str(HybridConfig.from_env().base_model)
 
     env_model = os.getenv("DEFAULT_MODEL", "")
     if env_model:
@@ -885,6 +901,15 @@ PROVIDER_MODELS = {
             "name": "Qwen3-0.6B (Quran/Hadith, RunPod Serverless)",
             "context": 8192,
             "vision": False,
+        },
+    ],
+    "mizan-minimind": [
+        {
+            "id": "Zubairshaikh/mizan-full-sft",
+            "name": "Mizan MiniMind SFT (Text)",
+            "context": 2048,
+            "vision": False,
+            "tools": False,
         },
     ],
     "mizan-hybrid": [
@@ -991,6 +1016,18 @@ def get_provider_status() -> dict:
         }
     )
 
+    from providers_minimind import configured as minimind_configured
+
+    providers.append(
+        {
+            "name": "mizan-minimind",
+            "display": "Mizan MiniMind SFT (RunPod)",
+            "configured": minimind_configured(),
+            "models": PROVIDER_MODELS["mizan-minimind"],
+            "default_model": get_default_model("mizan-minimind"),
+        }
+    )
+
     # Mizan hybrid: pinned research base + bounded own-NLP + deterministic gates.
     from mizan_hybrid.config import HybridConfig
 
@@ -1000,7 +1037,15 @@ def get_provider_status() -> dict:
             "name": "mizan-hybrid",
             "display": "Mizan Hybrid (Research)",
             "configured": hybrid_config.configured,
-            "models": PROVIDER_MODELS["mizan-hybrid"],
+            "models": [
+                {
+                    "id": hybrid_config.base_model,
+                    "name": "Mizan Hybrid (Research)",
+                    "context": hybrid_config.context_window,
+                    "vision": False,
+                    "tools": hybrid_config.base_provider != "mizan-minimind",
+                }
+            ],
             "default_model": hybrid_config.base_model,
             "base_revision": hybrid_config.base_revision,
             "semantic_or_religious_certification": False,
@@ -1035,7 +1080,8 @@ def get_provider_status() -> dict:
 
     default_model = (
         get_default_model(active)
-        if active == "mizan-owned" or (active == "mizan-hybrid" and not _active_state["model"])
+        if active == "mizan-owned"
+        or (active in {"mizan-hybrid", "mizan-minimind"} and not _active_state["model"])
         else _active_state["model"] or os.getenv("DEFAULT_MODEL", "") or get_default_model(active)
     )
 
@@ -1226,6 +1272,18 @@ async def check_provider_health(provider_name: str) -> dict:
             "note": "config check only; use /v1/qwen3/health?probe=true for a live probe",
         }
 
+    elif provider_name == "mizan-minimind":
+        from providers_minimind import configured
+
+        # Do not wake a paid GPU for a settings health check.
+        return {
+            "provider": provider_name,
+            "healthy": configured(),
+            "probe": "configuration_only",
+            "model": get_default_model(provider_name),
+            "note": "No inference job submitted; worker liveness is not verified",
+        }
+
     elif provider_name == "mizan-hybrid":
         from mizan_hybrid.config import HybridConfig
 
@@ -1236,6 +1294,9 @@ async def check_provider_health(provider_name: str) -> dict:
                 "healthy": False,
                 "error": "Mizan hybrid not enabled/configured",
             }
+        if cfg.base_provider != "openai-compatible":
+            result = await check_provider_health(cfg.base_provider)
+            return {**result, "provider": "mizan-hybrid", "base_provider": cfg.base_provider}
         try:
             async with httpx.AsyncClient(timeout=120) as client:
                 resp = await client.get(

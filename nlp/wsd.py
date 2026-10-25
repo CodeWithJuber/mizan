@@ -19,6 +19,7 @@ import re
 import threading
 import unicodedata
 
+from nlp.arabic import arabic_tokens
 from nlp.artifact import ARTIFACT_ENV_VAR, find_artifact
 from nlp.types import SenseCandidate
 
@@ -98,6 +99,33 @@ def _features(record, variant="a"):
 
 _DIACRITICS = re.compile(r"[\u064b-\u0652\u0670\u06d6-\u06ed]")
 
+# Bounded attached conjunction/preposition/article candidates, not arbitrary
+# substring matching. Never remove a radical by position or infer a new root.
+_CLITICS = (
+    "و",
+    "ف",
+    "ب",
+    "ك",
+    "ل",
+    "ال",
+    "وال",
+    "فال",
+    "بال",
+    "كال",
+    "لل",
+    "وب",
+    "فب",
+    "ول",
+    "فل",
+    "وك",
+    "فك",
+)
+
+
+def _surface_matches(form: str, lemma: str) -> bool:
+    form, lemma = _strip_marks(form), _strip_marks(lemma)
+    return bool(lemma) and (form == lemma or any(form == p + lemma for p in _CLITICS))
+
 
 def _strip_marks(s: str) -> str:
     """Remove Arabic diacritics for lemma/token matching (forms keep them)."""
@@ -109,13 +137,14 @@ def _locate_token(text: str, lemma: str) -> tuple[str | None, str | None, str | 
 
     Matching is on diacritic-stripped text so callers may pass either a
     diacritized or undiacritized lemma. Returns (None, None, None) when no
-    token matches — the caller then falls back to form=lemma, no context.
+    token matches — the caller abstains instead of inventing an occurrence.
     """
     tokens = text.split()
     want = _strip_marks(lemma)
     for i, tok in enumerate(tokens):
-        t = _strip_marks(tok)
-        if t == want or (want and want in t):
+        # A substring is not a lemma occurrence (علم must not match معلم).
+        forms = arabic_tokens(tok, limit=8)
+        if any(_surface_matches(form, want) for form in forms):
             prev = tokens[i - 1] if i > 0 else None
             nxt = tokens[i + 1] if i + 1 < len(tokens) else None
             return prev, tok, nxt
@@ -164,9 +193,9 @@ def _load_artifact() -> bool:
             _META = manifest
             _BUNDLE = joblib.load(artifact_dir / manifest.get("model_file", "model.joblib"))
             key_a = _MODEL_KEYS["a"]
-            _STRIPPED_LEMMA_INDEX = {
-                _strip_marks(k): k for k in _BUNDLE["models"][key_a]["per_lemma"]
-            }
+            _STRIPPED_LEMMA_INDEX = {}
+            for key in _BUNDLE["models"][key_a]["per_lemma"]:
+                _STRIPPED_LEMMA_INDEX.setdefault(_strip_marks(key), []).append(key)
         except Exception as exc:  # noqa: BLE001 — fail closed: never half-load
             _BUNDLE = None
             _META = None
@@ -188,12 +217,19 @@ def _lemma_key(lemma: str) -> str | None:
     """Resolve a caller lemma to the artifact's per-lemma key.
 
     Exact match first (artifact keys are diacritized), then a
-    diacritic-stripped match so undiacritized lemmas also resolve.
+    unique diacritic-stripped/clitic match. Ambiguous spellings abstain.
     """
     per_lemma = _BUNDLE["models"][_MODEL_KEYS[PRIMARY_MODEL]]["per_lemma"]
     if lemma in per_lemma:
         return lemma
-    return _STRIPPED_LEMMA_INDEX.get(_strip_marks(lemma))
+    normalized = _strip_marks(lemma)
+    candidates = set(_STRIPPED_LEMMA_INDEX.get(normalized, []))
+    if not candidates:
+        for prefix in _CLITICS:
+            if normalized.startswith(prefix):
+                candidates.update(_STRIPPED_LEMMA_INDEX.get(normalized[len(prefix) :], []))
+    # مثل can be مَثَل or مِثْل; insertion order must not choose its meaning.
+    return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 def is_ready() -> bool:
@@ -237,9 +273,8 @@ def disambiguate(text: str, lemma: str) -> list[SenseCandidate]:
     per = _BUNDLE["models"][_MODEL_KEYS[PRIMARY_MODEL]]["per_lemma"][key]
     prev_form, form, next_form = _locate_token(text, lemma)
     if form is None:
-        # Lemma not found as a token in text: fall back to the bare lemma
-        # as the form with no context (documented degradation).
-        form, prev_form, next_form = lemma, None, None
+        # No observed occurrence: never classify an invented context-free form.
+        return []
     record = {
         "form": form,
         "prev": {"form": prev_form},

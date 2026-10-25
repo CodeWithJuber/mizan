@@ -63,6 +63,7 @@ from core.tawbah import TawbahProtocol
 
 # Living Memory + 24/7 Multi-Agent Collaboration
 from memory.living_memory import LivingMemorySystem
+from nlp.arabic import arabic_tokens
 from providers import create_provider, get_default_model, normalize_model_for_provider
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
@@ -109,23 +110,14 @@ NLP_MIN_SENSE_CONFIDENCE = 0.8
 #: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
 NLP_MIN_SENSE_MARGIN = 0.2
 
-_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
-
 
 def _nlp_native_wsd_enabled() -> bool:
-    """True when the operator opted into Phase-2 native WSD."""
     return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
 
 
 def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
-    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
-    seen: list[str] = []
-    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
-        if tok not in seen:
-            seen.append(tok)
-            if len(seen) >= limit:
-                break
-    return seen
+    """Observed Arabic surface tokens shared with QCA."""
+    return arabic_tokens(text, limit)
 
 
 def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
@@ -363,7 +355,9 @@ class BaseAgent:
             self.tools["disambiguate_sense"] = self._tool_disambiguate_sense
 
     def get_tool_schemas(self) -> list[dict]:
-        """Get Claude tool_use API schemas for this agent's tools"""
+        """Get tool schemas only when the selected model supports them."""
+        if getattr(getattr(self, "ai_client", None), "supports_tools", True) is False:
+            return []
         schemas = [
             {
                 "name": "bash",
@@ -714,6 +708,8 @@ class BaseAgent:
         system_prompt = await self._build_system_prompt(qalb_reading=qalb_reading)
         messages = await asyncio.to_thread(self._build_messages, task, context)
         tool_schemas = self.get_tool_schemas()
+        if getattr(self.ai_client, "supports_tools", True) is False:
+            tool_schemas = []
 
         # DevelopmentalGate — filter available tools to this agent's capability level
         tool_schemas = self.dev_gate.filter_tool_schemas(tool_schemas, self.nafs_level)
@@ -1424,7 +1420,6 @@ class BaseAgent:
 
     def _extract_module_name(self, error_str: str) -> str | None:
         """Extract module name from a ModuleNotFoundError message."""
-        import re
 
         match = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
         if match:
@@ -1635,6 +1630,15 @@ Anti-Hallucination Rules (CRITICAL):
 
 Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوامة)."""
 
+        if getattr(self.ai_client, "supports_tools", True) is False:
+            base_prompt = base_prompt.replace(
+                "You have access to tools. Use them when needed to complete tasks.",
+                "You have no tool access in this model. Do not claim to browse or execute actions.",
+            ).replace("Use tools to verify.", "Ask for evidence when verification is unavailable.")
+            base_prompt = base_prompt.replace(
+                "- If you don't know an API's URL or schema, use http_get or web_search to look it up FIRST.",
+                "- If a fact or API schema cannot be verified from supplied sources, say so.",
+            )
         if custom_prompt:
             return custom_prompt + "\n\n" + base_prompt
         return base_prompt
@@ -2772,7 +2776,6 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
         The skill is saved to skills/builtin/ and immediately registered.
         """
-        import re
 
         # Validate skill name
         if not re.match(r"^[a-z][a-z0-9_]*$", name):
@@ -3202,7 +3205,6 @@ class {class_name}(SkillBase):
         Uses simple heuristics — looks for decisions, assignments,
         named entities, URLs, and code references.
         """
-        import re
 
         facts: list[str] = []
         seen = set()

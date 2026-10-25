@@ -861,7 +861,7 @@ async def update_agent(
 class AgentModelRequest(BaseModel):
     provider: str = Field(
         ...,
-        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned)$",
+        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
     )
     model: str = Field(..., min_length=1, max_length=200)
 
@@ -1991,7 +1991,14 @@ async def list_provider_models(
 
         return {
             "provider": provider_name,
-            "models": PROVIDER_MODELS.get(provider_name, []),
+            "models": next(
+                (
+                    p["models"]
+                    for p in get_provider_status()["providers"]
+                    if p["name"] == provider_name
+                ),
+                PROVIDER_MODELS.get(provider_name, []),
+            ),
         }
 
 
@@ -2008,7 +2015,7 @@ async def provider_health(provider_name: str):
 class ProviderSwitchRequest(BaseModel):
     provider: str = Field(
         ...,
-        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned)$",
+        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
     )
     model: str = Field(..., min_length=1, max_length=200)
 

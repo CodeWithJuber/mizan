@@ -43,6 +43,7 @@ def health() -> dict:
 
 class OwnedProvider(BaseLLMProvider):
     provider_name = MODEL
+    supports_tools = False
 
     def __init__(
         self,

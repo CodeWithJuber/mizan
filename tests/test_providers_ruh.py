@@ -207,7 +207,8 @@ class TestCreateWithMockedModel:
 
         assert isinstance(response, LLMResponse)
         assert response.model == "ruh-local"
-        assert response.stop_reason == "end_turn"
+        # Mock emitted root 104 rather than EOS: this is incomplete output.
+        assert response.stop_reason == "max_tokens"
         assert len(response.content) == 1
         assert response.content[0].type == "text"
         assert response.content[0].text == "Bismillah"

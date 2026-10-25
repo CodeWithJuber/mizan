@@ -51,6 +51,7 @@ def accept(store, row, **kwargs):
         (None, "google/test"),
         ("openrouter", "test"),
         ("mizan-hybrid", "base"),
+        ("mizan-minimind", "Zubairshaikh/mizan-full-sft"),
         ("anthropic", "claude-test"),
     ],
 )
@@ -59,6 +60,7 @@ def test_locked_factory_cannot_escape_owned_mode(store, monkeypatch, provider, m
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     external = Mock(side_effect=AssertionError("Hosted adapter must not be constructed"))
     monkeypatch.setattr("providers.OpenAICompatibleProvider", external)
+    monkeypatch.setattr("providers_minimind.MiniMindRemoteProvider", external)
     client = create_provider(provider, model)
     assert client.provider_name == "mizan-owned"
     result = client.create(model, 128, **REQUEST)
@@ -70,6 +72,39 @@ def test_provider_selection_also_locks_model_overrides(store, monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "mizan-owned")
     monkeypatch.setenv("MIZAN_OWNED_ONLY", "false")
     assert create_provider(model="openrouter/free").provider_name == "mizan-owned"
+
+
+def test_minimind_registration_cannot_override_owned_status(store, monkeypatch):
+    import providers
+
+    monkeypatch.setenv("MIZAN_OWNED_ONLY", "true")
+    monkeypatch.setenv("DEFAULT_MODEL", "stale-hosted-model")
+    monkeypatch.setattr(
+        providers, "_active_state", {"provider": "mizan-minimind", "model": "stale-model"}
+    )
+    status = providers.get_provider_status()
+    assert status["active"] == "mizan-owned"
+    assert status["default_model"] == "mizan-owned"
+    assert {"mizan-owned", "mizan-minimind"} <= {p["name"] for p in status["providers"]}
+
+
+@pytest.mark.parametrize("name", ["mizan-owned", "mizan-minimind"])
+def test_agent_and_global_provider_requests_accept_both_architectures(name):
+    from api.main import AgentModelRequest, ProviderSwitchRequest
+
+    assert AgentModelRequest(provider=name, model="test-model").provider == name
+    assert ProviderSwitchRequest(provider=name, model="test-model").provider == name
+
+
+def test_owned_reply_uses_text_only_agent_contract(store, monkeypatch):
+    from agents.base import BaseAgent
+
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: OwnedProvider(store))
+    agent = BaseAgent(name="owned-contract-test")
+    assert agent.get_tool_schemas() == []
+    system = asyncio.run(agent._build_system_prompt())
+    assert "You have access to tools" not in system
+    assert "You have no tool access" in system
 
 
 def test_reviewed_memory_is_scoped_exact_and_retractable(store, principal):
