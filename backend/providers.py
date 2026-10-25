@@ -703,6 +703,11 @@ def create_provider(
             provider = "anthropic"  # fallback
 
     # Create the provider
+    if provider == "mizan-hybrid":
+        from mizan_hybrid.provider import create_hybrid_provider_from_env
+
+        return create_hybrid_provider_from_env()
+
     if provider == "anthropic":
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
@@ -807,6 +812,11 @@ def normalize_model_for_provider(model: str, provider_name: str) -> str:
 
 def get_default_model(provider_name: str) -> str:
     """Get the default model for a provider."""
+    if provider_name == "mizan-hybrid":
+        from mizan_hybrid.config import HybridConfig
+
+        return HybridConfig.from_env().base_model
+
     env_model = os.getenv("DEFAULT_MODEL", "")
     if env_model:
         return normalize_model_for_provider(env_model, provider_name)
@@ -818,6 +828,7 @@ def get_default_model(provider_name: str) -> str:
         "ollama": "llama3.2",
         "ruh": "ruh-local",
         "qwen3": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
+        "mizan-hybrid": os.getenv("MIZAN_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
     }
     return defaults.get(provider_name, "claude-sonnet-4-20250514")
 
@@ -856,6 +867,14 @@ PROVIDER_MODELS = {
         {
             "id": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
             "name": "Qwen3-0.6B (Quran/Hadith, RunPod Serverless)",
+            "context": 8192,
+            "vision": False,
+        },
+    ],
+    "mizan-hybrid": [
+        {
+            "id": os.getenv("MIZAN_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
+            "name": "Mizan Hybrid (Qwen3-4B + own NLP + gates; research)",
             "context": 8192,
             "vision": False,
         },
@@ -956,6 +975,22 @@ def get_provider_status() -> dict:
         }
     )
 
+    # Mizan hybrid: pinned research base + bounded own-NLP + deterministic gates.
+    from mizan_hybrid.config import HybridConfig
+
+    hybrid_config = HybridConfig.from_env()
+    providers.append(
+        {
+            "name": "mizan-hybrid",
+            "display": "Mizan Hybrid (Research)",
+            "configured": hybrid_config.configured,
+            "models": PROVIDER_MODELS["mizan-hybrid"],
+            "default_model": hybrid_config.base_model,
+            "base_revision": hybrid_config.base_revision,
+            "semantic_or_religious_certification": False,
+        }
+    )
+
     # Determine active provider — prefer in-memory state from switch_provider,
     # then env var, then auto-detect from configured providers.
     active = _active_state["provider"] or os.getenv("LLM_PROVIDER", "")
@@ -966,7 +1001,9 @@ def get_provider_status() -> dict:
                 break
 
     default_model = (
-        _active_state["model"] or os.getenv("DEFAULT_MODEL", "") or get_default_model(active)
+        get_default_model(active)
+        if active == "mizan-hybrid" and not _active_state["model"]
+        else _active_state["model"] or os.getenv("DEFAULT_MODEL", "") or get_default_model(active)
     )
 
     return {
@@ -1150,5 +1187,41 @@ async def check_provider_health(provider_name: str) -> dict:
             "model": cfg.model,
             "note": "config check only; use /v1/qwen3/health?probe=true for a live probe",
         }
+
+    elif provider_name == "mizan-hybrid":
+        from mizan_hybrid.config import HybridConfig
+
+        cfg = HybridConfig.from_env()
+        if not cfg.configured:
+            return {
+                "provider": "mizan-hybrid",
+                "healthy": False,
+                "error": "Mizan hybrid not enabled/configured",
+            }
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.get(
+                    f"{cfg.base_url}/models",
+                    headers={"Authorization": f"Bearer {cfg.base_api_key}"},
+                )
+            model_ids = set()
+            if resp.status_code == 200:
+                model_ids = {item.get("id") for item in resp.json().get("data", [])}
+            healthy = resp.status_code == 200 and cfg.base_model in model_ids
+            return {
+                "provider": "mizan-hybrid",
+                "healthy": healthy,
+                "model": cfg.base_model,
+                "base_revision": cfg.base_revision,
+                "semantic_or_religious_certification": False,
+                **({} if healthy else {"error": "Expected pinned model is not available"}),
+            }
+        except Exception:
+            logger.warning("Mizan hybrid health probe failed", exc_info=True)
+            return {
+                "provider": "mizan-hybrid",
+                "healthy": False,
+                "error": "Mizan hybrid endpoint is unavailable",
+            }
 
     return {"provider": provider_name, "healthy": False, "error": "Unknown provider"}
