@@ -1,0 +1,30 @@
+name: Workspace Runner Preflight
+on:
+  push:
+    branches: [ops/workspace-runner-preflight-20261026]
+permissions:
+  contents: read
+concurrency:
+  group: mizan-workspace-preflight
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-preflight-20261026'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Read isolated-runner prerequisites
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
+          test -s deploy/known_hosts
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" 'bash -s' < scripts/workspace_runner_preflight.sh
