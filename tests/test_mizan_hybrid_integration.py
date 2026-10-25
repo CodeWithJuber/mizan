@@ -41,7 +41,7 @@ def test_status_and_default_model_use_hybrid_config(monkeypatch: pytest.MonkeyPa
 
     assert card["configured"] is True
     assert card["default_model"] == HYBRID_ENV["MIZAN_BASE_MODEL"]
-    assert card["models"][0]["context"] == 16384
+    assert card["models"][0]["context"] == 32768
     assert card["semantic_or_religious_certification"] is False
     assert providers.get_default_model("mizan-hybrid") == HYBRID_ENV["MIZAN_BASE_MODEL"]
     assert "test-secret" not in repr(status)
