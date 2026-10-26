@@ -242,6 +242,10 @@ def sse_api(tmp_path, monkeypatch):
 
     from fastapi.testclient import TestClient
 
+    # api.main opens its databases at import time; keep them in the test folder.
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MIZAN_OWNED_DB", str(tmp_path / "owned.sqlite3"))
     import api.main as main
     from memory.dhikr import DhikrMemorySystem
     from security.auth import MizanAuth
