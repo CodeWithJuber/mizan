@@ -142,3 +142,15 @@ def test_bulk_text_files_for_preview_skips_heavy_and_binary(project):
     other = TokenPayload("bob", "Bob", ["user"], 9999999999, 0, "bob-token")
     app.dependency_overrides[api.require_auth] = lambda: other
     assert TestClient(app).get(f"/api/workspaces/{workspace}/files").status_code == 404
+
+
+def test_scratch_project_is_created_once_and_reused(tmp_path, monkeypatch):
+    from skills.builtin.coding_workspace import SCRATCH_PROJECT, scratch_project
+    from workspace.store import WorkspaceStore
+
+    monkeypatch.setenv("MIZAN_WORKSPACE_ROOT", str(tmp_path / "projects"))
+    store = WorkspaceStore("scratch-owner")
+    first = scratch_project(store)
+    assert scratch_project(store) == first
+    assert [item["name"] for item in store.list()] == [SCRATCH_PROJECT]
+    assert scratch_project(WorkspaceStore("someone-else")) != first

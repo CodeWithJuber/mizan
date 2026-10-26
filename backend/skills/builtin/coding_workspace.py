@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
 from workspace import session_client
-from workspace.context import artifact_session, selected_workspace
+from workspace.context import artifact_session, bound_workspace_id, selected_workspace
 from workspace.execution import run_project
 from workspace.store import WorkspaceStore
 
@@ -45,6 +45,15 @@ def allows_user_workspace_tool(
 
 
 _WEB_METHODS = {"web_browse": "browse", "web_search": "search"}
+SCRATCH_PROJECT = "Scratch"
+
+
+def scratch_project(store: WorkspaceStore) -> str:
+    """The user's private Scratch project, for running code from a plain chat."""
+    for item in store.list():
+        if item.get("name") == SCRATCH_PROJECT:
+            return str(item["id"])
+    return str(store.create(SCRATCH_PROJECT)["id"])
 
 
 def allows_user_web_tool(tool_name: str, registry, *, native_tools: dict | None = None) -> bool:
@@ -213,7 +222,11 @@ class CodingWorkspaceSkill(SkillBase):
         timeout_s: int = 30,
     ) -> dict:
         store = self.store(edit=True)
-        project = selected_workspace(workspace_id)
+        if workspace_id or bound_workspace_id():
+            project = selected_workspace(workspace_id)
+        else:
+            # A plain chat has no project: run in the user's own Scratch project.
+            project = scratch_project(store)
         user_id = current_user_id() or ""
         if await session_client.running(user_id, project):
             # The project's live session keeps installed packages and services.
@@ -400,7 +413,8 @@ class CodingWorkspaceSkill(SkillBase):
             (
                 "run",
                 "Run Python, JavaScript or shell in an isolated project sandbox without host "
-                "secrets. With a running sandbox session (workspace_sandbox start) commands run "
+                "secrets; for Python pass the code as command with language python. Without a "
+                "selected project it runs in the user's private Scratch project. With a running sandbox session (workspace_sandbox start) commands run "
                 "there: installed packages persist and allowlisted package registries are "
                 "reachable (npm, PyPI, GitHub), timeout up to 900 s. Otherwise a fresh offline "
                 "container runs it (timeout up to 120 s). Returns real output and saves "

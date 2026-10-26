@@ -200,6 +200,25 @@ _CAPABILITY_DENIAL = re.compile(
     r"|\b(?:run|execute|chala|download)\w*\b[^.\n]{0,30}\b(?:nahi|nahin)\s+(?:kar\s+)?(?:sakta|sakti|sakte)\b",
     re.IGNORECASE,
 )
+# Claims that something was executed, which need a tool receipt in the run.
+_EXECUTION_CLAIM = re.compile(
+    r"\b(?:i\s+(?:ran|executed|have\s+run|have\s+executed)|"
+    r"(?:code|script|command|program)\s+(?:ran|was\s+(?:run|executed)|executed)\s*(?:successfully)?|"
+    r"(?:ran|executed)\s+(?:it|the\s+code|the\s+script)\s+successfully|"
+    r"execution\s+(?:output|result)\s*:)"
+    r"|\bsuccessfully\s+(?:ran|run|executed)\b|\brun\s+(?:hua|हुआ)"
+    r"|(?:सफलतापूर्वक)\s*(?:run|चल|execute)"
+    r"|\b(?:run|execute|chala)\w*\s+(?:kiya\s+gaya|kar\s+diya|kar\s+liya|ho\s+gaya|kiya\s+hai)\b"
+    r"|(?:chalaya\s+gaya|chala\s+diya)"
+    r"|(?:चलाया\s+गया|चला\s+दिया|निष्पादित\s+किया)",
+    re.IGNORECASE,
+)
+# A request to run code: an answer without any tool receipt cannot satisfy it.
+_EXECUTION_REQUEST = re.compile(
+    r"(?=.*\b(?:python|code|script|program|javascript|node|shell|bash|command|cmd)\b|.*\*\*|.*print\()"
+    r".*(?:\b(?:run|execute|exec|chala\w*|compile)\b|चला)",
+    re.IGNORECASE | re.DOTALL,
+)
 _RETRACT_MARKER = "\n[Retract]\n"
 _CAPABILITY_NUDGE = (
     "[System: You DO have working tools in MIZAN. Do not tell the user you cannot run code, "
@@ -210,8 +229,24 @@ _CAPABILITY_NUDGE = (
 )
 
 
+_EXECUTION_NUDGE = (
+    "[System: No tool ran in this answer, so nothing was executed. Do not say code was run. "
+    "To run it, call workspace_run (create a project with workspace_create first if none is "
+    "selected; use mizan_discover_tools if those tools are not loaded) and report the real "
+    "output. Otherwise answer without claiming execution.]"
+)
+
+
 def _denies_capability(text: str) -> bool:
     return bool(text) and bool(_CAPABILITY_DENIAL.search(text[:4000]))
+
+
+def _claims_unreceipted_execution(text: str) -> bool:
+    return bool(text) and bool(_EXECUTION_CLAIM.search(text[:4000]))
+
+
+def _asks_to_execute(task: str) -> bool:
+    return bool(task) and bool(_EXECUTION_REQUEST.match(task[:2000]))
 
 
 def _capability_card(names: set[str]) -> str:
@@ -1638,13 +1673,22 @@ class BaseAgent:
                 and not truncated
                 and tool_catalog is not None
                 and tool_catalog.schemas()
-                and _denies_capability(new_text)
+                and (
+                    _denies_capability(new_text)
+                    or _claims_unreceipted_execution(new_text)
+                    or _asks_to_execute(original_task)
+                )
             ):
-                # Retract the false "I have no tools" answer and retry once.
+                # Retract a false "I have no tools" or "I ran it" answer and retry once.
                 capability_nudged = True
-                logger.info("[FIKR] capability denial without trying tools; nudging once")
+                denial = _denies_capability(new_text)
+                logger.info(
+                    "[FIKR] %s without a tool; nudging once", "denial" if denial else "claim"
+                )
                 messages.append({"role": "assistant", "content": assistant_turn_content(response)})
-                messages.append({"role": "user", "content": _CAPABILITY_NUDGE})
+                messages.append(
+                    {"role": "user", "content": _CAPABILITY_NUDGE if denial else _EXECUTION_NUDGE}
+                )
                 accumulated_text = ""
                 yield _RETRACT_MARKER
                 continue
