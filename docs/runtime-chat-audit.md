@@ -1,5 +1,9 @@
 # Chat, memory and workspace runtime repair
 
+This is the historical PR #101 baseline. The runner and research import gaps
+below were subsequently addressed; current evidence and remaining limitations
+are in [production validation](production-validation-2026-10-25.md).
+
 The October 25 chat exports and authenticated production UI showed a working
 web deployment with incomplete runtime integration. A passing health probe
 establishes service availability, not memory, inference quality or code execution.

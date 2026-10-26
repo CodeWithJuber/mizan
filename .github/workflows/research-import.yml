@@ -1,0 +1,62 @@
+name: Import Verified Private Research Bundle
+
+on:
+  push:
+    branches: [ops/research-import-20261025]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mizan-production
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-import-20261025'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate reviewed scripts and encrypted envelope
+        run: |
+          python3 -m py_compile scripts/research_transfer_key.py scripts/encrypt_research_url.py scripts/research_server_import.py scripts/research_backend_stage.py
+          python3 - <<'PY'
+          import json, pathlib, re
+          path = pathlib.Path('deploy/research-transfer.encrypted.json')
+          assert 0 < path.stat().st_size <= 32768
+          value = json.loads(path.read_bytes())
+          assert set(value) == {'schema', 'key_id', 'ciphertext_b64'}
+          assert value['schema'] == 'mizan-research-cms-v1'
+          assert re.fullmatch('[0-9a-f]{32}', value['key_id'])
+          PY
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Run pinned import without backend recreation
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
+          test -s deploy/known_hosts
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]] && [[ "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          remote="/run/mizan-research-import-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
+          cleanup() { sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf -- '$remote'" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077; mkdir -- '$remote'"
+          sshpass -e scp "${ssh_options[@]}" scripts/research_transfer_key.py scripts/encrypt_research_url.py scripts/research_server_import.py scripts/research_backend_stage.py deploy/research-transfer.encrypted.json "$SSH_USER@$SSH_HOST:$remote/"
+          status=0
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote/research_server_import.py' < '$remote/research-transfer.encrypted.json'" > research-import-receipt.jsonl || status=$?
+          cat research-import-receipt.jsonl
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-import-receipt
+          path: research-import-receipt.jsonl
+          retention-days: 7
