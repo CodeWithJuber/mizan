@@ -1,5 +1,8 @@
 # Runtime audit and repairs
 
+Post-deployment results, including the active isolated runner and full research
+import, are recorded in [production validation](production-validation-2026-10-25.md).
+
 This audit separates historical transcripts, repository coverage, executable
 paths, and observed production state. A historical greeting is not evidence of
 a regression after a later deployment. Greeting and language preferences belong
@@ -75,6 +78,51 @@ images and performs actual code execution, plotting and file/artifact checks.
 The rootless production runner has separate provisioning, rollback and host smoke
 verification described in `docs/runner-setup.md`; a running container alone is not
 the acceptance criterion.
+
+## Remaining latency attribution
+
+Two successful browser requests after the later application deployment exposed
+a timing gap. The first applied the saved salaam/Hinglish preferences and answered
+`6 × 7 = 42`; its observed completion was `end_turn`, with `answer_delivered=true`
+and `task_verified=false`. A later research request returned actual imported paths
+including `PACKAGE_CONTENTS.json` and `HF_LINKS.md`, attributed to
+`pinned_research_archive`.
+
+| Observed request | UI total | Recorded provider time | Unclassified difference |
+| --- | --- | --- | --- |
+| First greeting/calculation | 59.2 s | One completed call: 12,944.3 ms | About 46.3 s |
+| Research lookup | 75.7 s | Three completed calls: 11,975.7 + 5,903.8 + 3,232.8 ms | About 54.6 s |
+
+These differences are not measured cognitive computation or demonstrated cold
+starts. The trace starts before context preparation and agent-lock acquisition;
+provider usage records completed provider receipts, excluding queue waits and
+failed attempts without a receipt. Admin sessions share their agent template;
+nonadmin sessions share a private instance keyed by owner and template, not by
+chat session. The execution lock covers the entire request, including learning
+capture. Concurrent message growth was observed, making queue contention
+plausible, but the production traces do not prove that it accounts for these gaps.
+
+A controlled local probe held the first request's provider for 250 ms. A second
+request to the same agent took 257.1 ms overall, emitted its first thinking event
+after 253.7 ms, and recorded one provider call of 0.4 ms. This reproduces the
+queue/receipt timing mismatch without network access. It is not a production
+performance measurement.
+
+The research tool searches an already-built local FTS index in a worker thread;
+it does not extract/reindex the archive or load a language model. Its declared
+input accepts `query` only and results are capped at eight. The browser prompt
+also requested `limit=2`, so a parameter-correction turn is possible; the two
+`tool_use` receipts alone do not prove the exact arguments or their duration.
+Memory graph traversal and secondary persistence also lack per-phase timings.
+
+The bounded next repair is observability: expose monotonic `queue_wait_ms`,
+`context_build_ms`, every provider attempt's duration/outcome, tool durations,
+`finalization_ms` and total server time. Emit and render per-request `queued` then
+`running` status; the current frontend ignores ordinary status events except the
+buffered-provider hint. Preserve the execution lock and cancellation behavior.
+If a queue-wait deadline is introduced, it must apply only before lock acquisition,
+report that no model/tool execution started, and never interrupt an active provider
+or automatically resubmit a request. No latency fix was applied during recovery.
 
 Remaining product boundaries include the ten-project quota with no archive UI,
 single-file previews, self-contained HTML assets and the smaller image-artifact

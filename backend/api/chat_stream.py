@@ -57,14 +57,18 @@ class ChatStreamingResponse(StreamingResponse):
             except TimeoutError as exc:
                 raise OSError("Chat transport exceeded the delivery deadline") from exc
 
-        # BaseHTTPMiddleware may wrap this iterator in another response. Its
-        # final network transport is bounded by the outer ASGI guard, which
-        # must retain the reservation until that transport and app finish.
-        if scope.get("mizan.chat_stream_guard"):
+        # With BaseHTTPMiddleware, this send may only rendezvous with an
+        # internal memory-stream consumer. Timing that wait incorrectly kills
+        # healthy clients while middleware is preparing/consuming a response.
+        # The outer ASGI guard alone bounds the actual network write and owns
+        # capacity until that transport and the app finish. Standalone callers
+        # still need the response's own transport deadline.
+        outer_guard = scope.get("mizan.chat_stream_guard")
+        if outer_guard:
             scope["mizan.chat_stream_release"] = self._release_stream
             self._release_stream = None
         try:
-            await super().__call__(scope, receive, bounded_send)
+            await super().__call__(scope, receive, send if outer_guard else bounded_send)
         finally:
             await self.close()
 

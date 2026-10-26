@@ -32,6 +32,52 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 logger = logging.getLogger("mizan.providers")
 
 
+def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -> dict:
+    """Reserve output space only for models with verified budget support.
+
+    OpenRouter's Nemotron 3.5 Super VL listing documents default-on reasoning
+    and a reasoning token budget. Reasoning shares the output limit; excluding
+    it from the response would not save tokens. Do not guess support from a
+    model-name prefix or send OpenRouter extensions to other API providers.
+    Sources checked 2026-10-26:
+    https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+    https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free
+    """
+    if provider_name != "openrouter" or model not in {
+        "nvidia/nemotron-3.5-super-vl",
+        "nvidia/nemotron-3.5-super-vl:free",
+    }:
+        return {}
+    # A small explicit output limit should still leave room for an answer.
+    reasoning = (
+        {"max_tokens": min(1024, max_tokens // 4)} if max_tokens >= 2048 else {"enabled": False}
+    )
+    return {"extra_body": {"reasoning": reasoning}}
+
+
+def _reasoning_usage(usage: dict, reasoning_observed: bool = False) -> dict:
+    """Keep reported counters, never convert private reasoning into answer text."""
+    raw = usage.get("raw", usage)
+    details = raw.get("completion_tokens_details") if isinstance(raw, dict) else None
+    count = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        usage["reasoning_tokens"] = count
+        total = usage.get("output")
+        if isinstance(total, int) and not isinstance(total, bool) and total >= count:
+            usage["visible_output_tokens"] = total - count
+        reasoning_observed = reasoning_observed or count > 0
+    if reasoning_observed:
+        usage["reasoning_observed"] = True
+    return usage
+
+
+def _has_reasoning(message) -> bool:
+    return any(
+        bool(getattr(message, key, None))
+        for key in ("reasoning", "reasoning_content", "reasoning_details")
+    )
+
+
 def _sdk_request_options(timeout_type) -> dict[str, Any]:
     """Bound SDK I/O waits and retries; a healthy stream can run longer.
 
@@ -375,6 +421,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         if temperature is not None:
             kwargs["temperature"] = temperature
 
+        kwargs.update(_answer_reasoning_options(self.provider_name, model, max_tokens))
         response = self._client.chat.completions.create(**kwargs)
         choice = response.choices[0]
         message = choice.message
@@ -387,6 +434,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
         # Tool calls (structured API)
         if message.tool_calls:
+            if choice.finish_reason not in {"tool_calls", "stop"}:
+                raise ValueError("Provider returned an incomplete tool call")
             for tc in message.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments)
@@ -404,7 +453,12 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 )
 
         # Fallback: parse XML-style tool calls from text (MiniMax, etc.)
-        if not message.tool_calls and message.content and tools:
+        if (
+            not message.tool_calls
+            and message.content
+            and tools
+            and choice.finish_reason in {"tool_calls", "stop"}
+        ):
             xml_tools = self._parse_xml_tool_calls(message.content)
             if xml_tools:
                 # Remove XML from text block, replace with cleaned text
@@ -435,6 +489,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             for native, normalized in (("prompt_tokens", "input"), ("completion_tokens", "output")):
                 if native in usage:
                     usage[normalized] = usage[native]
+        _reasoning_usage(usage, _has_reasoning(message))
         return LLMResponse(
             content=blocks,
             stop_reason=stop_reason,
@@ -450,6 +505,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             self._convert_messages_to_openai(system, messages),
             self._convert_tools_to_openai(tools) if tools else None,
             temperature,
+            request_options=_answer_reasoning_options(self.provider_name, model, max_tokens),
         )
 
 
@@ -529,7 +585,17 @@ class _AnthropicStreamWrapper:
 
 
 class _OpenAIStreamWrapper:
-    def __init__(self, client, model, max_tokens, messages, tools=None, temperature=None):
+    def __init__(
+        self,
+        client,
+        model,
+        max_tokens,
+        messages,
+        tools=None,
+        temperature=None,
+        *,
+        request_options=None,
+    ):
         self._client, self._model = client, model
         self._max_tokens, self._messages = max_tokens, messages
         self._tools, self._temperature = tools, temperature
@@ -540,6 +606,8 @@ class _OpenAIStreamWrapper:
         self._observed_model = ""
         self._finish: str | None = None
         self._stream_exhausted = False
+        self._request_options = request_options or {}
+        self._reasoning_observed = False
 
     def __enter__(self):
         kwargs = dict(
@@ -553,6 +621,7 @@ class _OpenAIStreamWrapper:
             kwargs["tools"] = self._tools
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
+        kwargs.update(self._request_options)
         self._stream = self._client.chat.completions.create(**kwargs)
         return self
 
@@ -591,6 +660,7 @@ class _OpenAIStreamWrapper:
                     "tool_calls": "tool_use",
                 }.get(finish, "incomplete")
             delta = choice.delta
+            self._reasoning_observed = self._reasoning_observed or _has_reasoning(delta)
             if getattr(delta, "content", None):
                 self._text += delta.content
                 yield delta.content
@@ -629,7 +699,12 @@ class _OpenAIStreamWrapper:
             blocks.extend(OpenAICompatibleProvider._parse_xml_tool_calls(self._text))
         if any(b.type == "tool_use" for b in blocks):
             self._finish = "tool_use"
-        return LLMResponse(blocks, self._finish, self._observed_model, self._usage)
+        return LLMResponse(
+            blocks,
+            self._finish,
+            self._observed_model,
+            _reasoning_usage(self._usage, self._reasoning_observed),
+        )
 
 
 # ───── Ollama Provider ─────

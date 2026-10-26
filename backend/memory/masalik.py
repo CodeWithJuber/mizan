@@ -575,6 +575,18 @@ class MasalikNetwork:
                 self.concepts[c].fire(strength=1.0)
                 activations[c] = 1.0
 
+        # Preserve global pathway order while avoiding a full graph scan for
+        # every activated concept. Rebuild this view for each recall so encode,
+        # consolidation, pruning and restored graphs cannot leave a stale
+        # index. Entries reference the original pathways: strengthening still
+        # occurs at the same point, in the same order, in both waves.
+        adjacent: dict[str, list[Silah]] = defaultdict(list)
+        if activations:
+            for pathway in self.pathways.values():
+                adjacent[pathway.source].append(pathway)
+                if pathway.target != pathway.source:
+                    adjacent[pathway.target].append(pathway)
+
         # Phase 2: Two waves of spreading activation
         for wave in range(2):
             spread_factor = 0.6 if wave == 0 else 0.3
@@ -583,7 +595,7 @@ class MasalikNetwork:
             for concept, act_level in list(activations.items()):
                 if act_level < 0.05:
                     continue
-                for _key, pathway in self.pathways.items():
+                for pathway in adjacent.get(concept, ()):
                     other = None
                     if pathway.source == concept:
                         other = pathway.target

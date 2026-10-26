@@ -89,14 +89,14 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
         </span>
       </div>
 
-      {/* Ruh energy bar — backend sends 0-100 already, do NOT ×100 */}
+      {/* Internal Ruh workload counter — backend sends 0-100 already. */}
       {agent.ruh_energy != null && (
         <div className="flex items-center gap-2 mb-3">
           <span
             className="text-xs text-gray-500 dark:text-gray-400 min-w-[60px]"
-            title={`Ruh energy: ${agent.ruh_energy.toFixed(0)}%`}
+            title="Internal task/idle counter; not training progress, CPU usage, or capability."
           >
-            Ruh
+            Ruh workload
           </span>
           <div className="flex-1 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
@@ -113,7 +113,7 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
             />
           </div>
           <span className="text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums whitespace-nowrap">
-            {agent.ruh_energy.toFixed(0)}%
+            {agent.ruh_energy.toFixed(0)}/100
           </span>
         </div>
       )}

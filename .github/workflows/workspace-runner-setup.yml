@@ -41,7 +41,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           # Retarget only after the final main CI/image publish and deployment.
-          EXPECTED_BACKEND_SHA: 03aa5b7cfd06fe4c3233089350cfa45ff9352cb9
+          EXPECTED_BACKEND_SHA: 0176a873e266d942918de47f8888071568eeeeb2
         run: |
           set -euo pipefail
           current=$(gh api repos/CodeWithJuber/mizan/commits/main --jq .sha)
@@ -51,4 +51,4 @@ jobs:
           [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-setup\.[A-Za-z0-9]{8}$ ]]
           trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/setup.py'\'' && rmdir '\''$remote_dir'\''" || true' EXIT
           sshpass -e scp "${ssh_options[@]}" scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/setup.py"
-          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan"
+          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan --research-dir /data/mizan/research"

@@ -5,13 +5,15 @@ This is a bounded first import of the already verified consolidated research arc
 | Source identity | Verified value |
 |---|---|
 | Library filename | `Mizan-Full-Architecture-Integration-2026-10-24(4).zip` |
-| Library file ID | `libfile_0309e72135e481919c1918b23135bf7c` |
-| Source file ID | `file_000000001a8481f5b9505807c6ce3dcc` |
 | ZIP bytes | `241577161` |
 | SHA256 | `0fda16988214d7949592d018b9edab5157d6e7a0b437d74f1d155d164e6531f6` |
 | Archive members / indexed UTF-8 text files | `21486` / `7665` |
 
 The older approximately 77 MB archive with a similar filename and SHA prefix `d3d9` is a different version and is not accepted here.
+
+The production first import completed on October 25, 2026. See the
+[validation report](production-validation-2026-10-25.md) for the exact receipt and
+workflow. This procedure does not replace or reimport that active collection.
 
 ## Sequence and authority
 

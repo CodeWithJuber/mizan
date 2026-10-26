@@ -1,37 +1,11 @@
 import { useState } from "react";
 import type { MessageUsageMeta } from "../types";
-
-/** Format a token count compactly: 1234 -> "1.2k". */
-export function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return `${n}`;
-}
-
-/** Format latency: 340 -> "340ms", 1500 -> "1.5s". */
-export function fmtLatency(ms: number): string {
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.round(ms)}ms`;
-}
-
-/** Format cost. Estimates MUST carry the "~" prefix — never render an
- *  estimate as an exact figure. */
-export function fmtCost(usd: number, estimated?: boolean): string {
-  const body = usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
-  return estimated ? `~${body}` : body;
-}
+import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
+export { fmtCost, fmtLatency, fmtTokens } from "../utils/responseMetrics.ts";
 
 /** True when there is anything worth showing. */
 export function hasDisplayableMeta(meta?: MessageUsageMeta): boolean {
-  if (!meta) return false;
-  return Boolean(
-    meta.model ||
-    meta.input_tokens != null ||
-    meta.output_tokens != null ||
-    meta.latency_ms != null ||
-    meta.cost_usd != null ||
-    meta.completion_status || meta.owned_status,
-  );
+  return usageMetrics(meta).parts.length > 0;
 }
 
 interface MessageMetaProps {
@@ -42,8 +16,8 @@ interface MessageMetaProps {
  * Per-assistant-message transparency line (chat workstreams C + E).
  *
  * Collapsed by default: a single subtle line — model · in/out tokens ·
- * latency · cost (each shown only when the provider actually reported it).
- * Clicking expands inline to the full raw metadata JSON for auditing.
+ * application-measured model-call time · reported/estimated cost.
+ * Clicking explains the sources and shows the raw metadata for auditing.
  * Renders nothing when there is no metadata.
  */
 export function MessageMeta({ meta }: MessageMetaProps) {
@@ -51,42 +25,21 @@ export function MessageMeta({ meta }: MessageMetaProps) {
   if (!hasDisplayableMeta(meta)) return null;
   const m = meta as MessageUsageMeta;
 
-  const parts: string[] = [];
-  if (m.model) parts.push(m.model);
-  if (m.completion_status === "abstained" || m.owned_status === "abstained") {
-    parts.push("Abstained");
-  } else if (m.completion_status === "incomplete") {
-    parts.push("Incomplete response");
-  } else if (m.completion_status === "human_review_required") {
-    parts.push("Human review required");
-  } else if (m.completion_status === "reviewed_memory") {
-    parts.push("Reviewed memory replay");
-  } else if (m.completion_status === "evidence_observed") {
-    parts.push("Tool results observed");
-  }
-  if (m.input_tokens != null || m.output_tokens != null) {
-    const inT =
-      m.input_tokens != null ? `${fmtTokens(m.input_tokens)} in` : null;
-    const outT =
-      m.output_tokens != null ? `${fmtTokens(m.output_tokens)} out` : null;
-    parts.push([inT, outT].filter(Boolean).join(" / "));
-  }
-  if (m.latency_ms != null) parts.push(fmtLatency(m.latency_ms));
-  if (m.cost_usd != null) parts.push(fmtCost(m.cost_usd, m.cost_estimated));
+  const { parts, explanations } = usageMetrics(m);
 
   return (
     <div className="mt-1.5">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        className="inline-flex max-w-full items-start gap-1.5 text-left text-[10px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         aria-expanded={open}
         title={open ? "Hide response details" : "Show response details"}
       >
         <svg
           viewBox="0 0 20 20"
           fill="currentColor"
-          className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-90" : ""}`}
+          className={`w-2.5 h-2.5 shrink-0 mt-0.5 transition-transform ${open ? "rotate-90" : ""}`}
           aria-hidden="true"
         >
           <path
@@ -95,8 +48,8 @@ export function MessageMeta({ meta }: MessageMetaProps) {
             clipRule="evenodd"
           />
         </svg>
-        <span>{parts.join(" · ")}</span>
-        {m.cost_estimated && (
+        <span className="min-w-0 break-words">{parts.join(" · ")}</span>
+        {m.cost_usd != null && Number.isFinite(m.cost_usd) && m.cost_usd >= 0 && m.cost_estimated && (
           <span
             className="text-gray-300 dark:text-gray-600"
             title="Estimated from public list prices, not your actual bill"
@@ -106,9 +59,14 @@ export function MessageMeta({ meta }: MessageMetaProps) {
         )}
       </button>
       {open && (
-        <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 p-3 text-[10px] leading-relaxed font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">
-          {JSON.stringify(m, null, 2)}
-        </pre>
+        <div className="mt-1.5 space-y-1.5">
+          {explanations.map((text) => (
+            <p key={text} className="break-words text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{text}</p>
+          ))}
+          <pre className="max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 p-3 text-[10px] leading-relaxed font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">
+            {JSON.stringify(m, null, 2)}
+          </pre>
+        </div>
       )}
     </div>
   );
@@ -138,8 +96,8 @@ export function SessionUsageFooter({
         className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-zinc-900/60 border border-gray-100 dark:border-zinc-800"
         title={
           estimated
-            ? "Session totals estimated from public list prices — not your actual bill"
-            : "Session totals from provider-reported usage"
+            ? "Reported token totals; cost estimated from a price table, not your actual bill"
+            : "Totals of provider-reported usage; missing counts are excluded"
         }
       >
         <span>session</span>

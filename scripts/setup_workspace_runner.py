@@ -42,6 +42,7 @@ SAFE_ENV = {
 }
 MANAGER = "mizan-isolated-workspace-v1"
 CAP_BYTES = 2 * 1024**3
+RESEARCH_DIR = "/data/mizan/research"
 
 
 class SetupError(RuntimeError):
@@ -65,6 +66,74 @@ def report(message: str, *, error: bool = False) -> None:
 def validate_target(sha: str, repository: str) -> None:
     require(bool(re.fullmatch(r"[a-f0-9]{40}", sha)), "Expected a full lowercase commit SHA")
     require(repository == REPOSITORY, "This installer is scoped to codewithjuber/mizan")
+
+
+def validate_research_option(directory: str | None) -> None:
+    require(directory in (None, RESEARCH_DIR), "Research directory must be /data/mizan/research")
+
+
+def validate_research_location(backend: dict, probe: dict, *, configured: bool = False) -> None:
+    environment = dict(
+        value.split("=", 1) for value in backend["Config"].get("Env", []) if "=" in value
+    )
+    require(
+        environment.get("MIZAN_DATA_DIR") == "/data/mizan",
+        "Existing backend data directory differs from the reviewed research parent",
+    )
+    require(
+        probe.get("uid") == 999, "Research parent must be checked as the existing backend UID999"
+    )
+    require(
+        probe.get("parent_directory")
+        and probe.get("parent_resolved") == "/data/mizan"
+        and probe.get("parent_writable"),
+        "Research parent must already exist without symlinks and be writable by the backend",
+    )
+    resolved = Path(probe.get("resolved_target", "/"))
+    require(
+        resolved.is_relative_to("/data/mizan") and resolved != Path("/data/mizan"),
+        "Research target resolves outside the persistent research parent",
+    )
+    require(
+        not probe.get("target_exists") or probe.get("target_directory"),
+        "Existing research target is not a directory",
+    )
+    for target in (Path(RESEARCH_DIR), resolved):
+        candidates = [
+            mount
+            for mount in backend.get("Mounts", [])
+            if target.is_relative_to(mount["Destination"])
+        ]
+        require(bool(candidates), "Research target has no existing persistent mount")
+        mount = max(candidates, key=lambda item: len(Path(item["Destination"]).parts))
+        require(
+            mount.get("Destination") == "/data"
+            and mount.get("RW") is True
+            and mount.get("Type") in {"volume", "bind"},
+            "Research target must use the existing writable persistent /data mount",
+        )
+        for temporary in backend.get("HostConfig", {}).get("Tmpfs", {}) or {}:
+            require(
+                not target.is_relative_to(temporary), "A tmpfs mount shadows the research target"
+            )
+    if configured:
+        require(
+            environment.get("MIZAN_RESEARCH_DIR") == RESEARCH_DIR,
+            "Backend research directory was not applied",
+        )
+
+
+RESEARCH_PROBE = r"""
+import json, os
+from pathlib import Path
+target = Path("/data/mizan/research")
+parent = target.parent
+print(json.dumps({"uid": os.geteuid(), "parent_directory": parent.is_dir(),
+    "parent_resolved": str(parent.resolve()),
+    "parent_writable": os.access(parent, os.W_OK | os.X_OK, effective_ids=True),
+    "target_exists": os.path.lexists(target), "target_directory": target.is_dir(),
+    "resolved_target": str(target.resolve())}))
+"""
 
 
 def protected_write(path: Path, content: str, *, mode: int = 0o600) -> None:
@@ -288,8 +357,15 @@ def validate_daemon(info: dict, production_id: str, home: Path) -> None:
 
 
 def workspace_override(
-    uid: int, gid: int, token: str, *, runtime_image: str, runner_image: str
+    uid: int,
+    gid: int,
+    token: str,
+    *,
+    runtime_image: str,
+    runner_image: str,
+    research_dir: str | None = None,
 ) -> dict:
+    validate_research_option(research_dir)
     require(uid >= 1000 and gid > 0, "Worker must use an unprivileged service account")
     require(bool(re.fullmatch(r"[A-Za-z0-9_-]{64}", token)), "Invalid managed runner token")
     require(
@@ -302,6 +378,7 @@ def workspace_override(
                 "environment": {
                     "MIZAN_WORKSPACE_RUNNER_URL": "http://workspace-runner:8080",
                     "MIZAN_WORKSPACE_RUNNER_TOKEN": token,
+                    **({"MIZAN_RESEARCH_DIR": research_dir} if research_dir else {}),
                 }
             },
             "workspace-runner": {
@@ -328,7 +405,7 @@ def workspace_override(
                 "networks": ["mizan-net"],
                 "pids_limit": 128,
                 "logging": {"driver": "local", "options": {"max-size": "10m", "max-file": "3"}},
-                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "192M"}}},
+                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "192M", "pids": 128}}},
             },
         }
     }
@@ -427,8 +504,12 @@ print("workspace: python javascript shell export isolation timeout symlink check
 
 
 class Installer:
-    def __init__(self, sha: str, commands: Commands | None = None):
+    def __init__(
+        self, sha: str, commands: Commands | None = None, *, research_dir: str | None = None
+    ):
+        validate_research_option(research_dir)
         self.sha = sha
+        self.research_dir = research_dir
         self.commands = commands or Commands()
         self.state: dict = {}
         self.worker: list[str] = []
@@ -532,6 +613,17 @@ class Installer:
             )
         return list(dict.fromkeys(files))
 
+    def research_location(self, backend: dict, *, configured: bool = False) -> None:
+        if self.research_dir is None:
+            return
+        probe = json.loads(
+            self.run_command(
+                [*DOCKER, "exec", "mizan-backend", "python3", "-c", RESEARCH_PROBE],
+                stage="Check persistent research parent as backend user",
+            ).stdout
+        )
+        validate_research_location(backend, probe, configured=configured)
+
     def preflight(self, *, recovering: bool = False) -> dict | None:
         require(os.geteuid() == 0, "Installer requires the existing root deployment connection")
         require(
@@ -569,6 +661,8 @@ class Installer:
         backend = self.backend(require_running=not recovering, allow_missing=recovering)
         if backend is not None:
             self.config_files(backend)
+            if not recovering:
+                self.research_location(backend)
         if not recovering:
             for binary in (
                 "/usr/bin/dockerd-rootless-setuptool.sh",
@@ -580,7 +674,7 @@ class Installer:
                 require(Path(binary).is_file(), "Required packaged rootless/systemd tool missing")
         return backend
 
-    def load_state(self) -> None:
+    def load_state(self, *, rollback: bool = False) -> None:
         path = STATE_ROOT / "state.json"
         if path.exists():
             private_directory(STATE_ROOT)
@@ -593,6 +687,14 @@ class Installer:
                 self.state.get("production_id") == self.production_id,
                 "Production daemon identity changed",
             )
+            if rollback:
+                self.research_dir = self.state.get("research_dir")
+                validate_research_option(self.research_dir)
+            else:
+                require(
+                    self.state.get("research_dir") == self.research_dir,
+                    "Research option differs from this setup's managed checkpoint",
+                )
             return
         try:
             pwd.getpwnam(ACCOUNT)
@@ -639,6 +741,7 @@ class Installer:
             "production_id": self.production_id,
             "phase": "preparing",
             "account_creation_started": False,
+            "research_dir": self.research_dir,
         }
         self.save()
 
@@ -964,6 +1067,7 @@ class Installer:
             "files": files,
             "hashes": {filename: digest(Path(filename)) for filename in files},
             "backend_image": backend["Image"],
+            "backend_container_id": backend["Id"],
             "backend_env": dict(
                 value.split("=", 1) for value in backend["Config"]["Env"] if "=" in value
             ),
@@ -984,6 +1088,7 @@ class Installer:
         protected_write(directory / "rollback.yml", compose_document(rollback))
         protected_write(directory / "snapshot.json", json.dumps(snapshot))
         self.state["active_attempt"] = str(directory)
+        self.state["backend_switch_started"] = False
         self.state["phase"] = "applying"
         self.save()
         return snapshot
@@ -1024,7 +1129,9 @@ class Installer:
             "Runner must not expose host ports/devices",
         )
         require(
-            host.get("Memory") == 192 * 1024**2 and host.get("NanoCpus") == 500000000,
+            host.get("Memory") == 192 * 1024**2
+            and host.get("NanoCpus") == 500000000
+            and host.get("PidsLimit") == 128,
             "Runner control-service resource limits are missing",
         )
         mounts = [mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"]
@@ -1187,6 +1294,56 @@ class Installer:
         ).stdout.strip()
         require(not remaining, "Dedicated daemon still has job containers; no cleanup was forced")
 
+    def remove_new_runner(self) -> None:
+        """Clean up by verified container identity, never by parsing a failed override."""
+        found = self.run_command(
+            [
+                *DOCKER,
+                "ps",
+                "--all",
+                "--quiet",
+                "--filter",
+                "label=com.docker.compose.project=mizan",
+                "--filter",
+                "label=com.docker.compose.service=workspace-runner",
+            ],
+            stage="Find only the new runner control service",
+        ).stdout.split()
+        require(len(found) <= 1, "Multiple runner containers require manual cleanup review")
+        for identifier in found:
+            container = self.docker_json("inspect", identifier)[0]
+            labels = container["Config"].get("Labels", {})
+            require(
+                labels.get("com.docker.compose.project") == "mizan"
+                and labels.get("com.docker.compose.service") == "workspace-runner"
+                and labels.get("com.docker.compose.project.working_dir") == str(PROJECT_ROOT),
+                "Runner cleanup ownership differs from this setup",
+            )
+            require(
+                container["Image"] == self.state["images"]["runner"]["id"]
+                and container["Config"].get("User") == f"{self.state['uid']}:{self.state['gid']}",
+                "Runner cleanup image or account differs from this setup",
+            )
+            mounts = [
+                mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"
+            ]
+            require(
+                len(mounts) == 1
+                and mounts[0].get("Type") == "bind"
+                and mounts[0].get("Source") == f"/run/user/{self.state['uid']}/docker.sock"
+                and mounts[0].get("Destination") == "/var/run/docker.sock",
+                "Runner cleanup socket differs from this setup",
+            )
+            require(
+                bool(re.fullmatch(r"[a-f0-9]{64}", container["Id"])),
+                "Invalid runner cleanup identity",
+            )
+            self.run_command(
+                [*DOCKER, "rm", "--force", container["Id"]],
+                stage="Remove only the verified new runner control service",
+                timeout=60,
+            )
+
     def rollback(self) -> None:
         self.deadline = time.monotonic() + 600
         attempt = Path(self.state.get("active_attempt", ""))
@@ -1197,7 +1354,7 @@ class Installer:
         snapshot = read_json(attempt / "snapshot.json")
         # A failed Compose recreation may leave no backend, or one that exited.
         # Validate identity independently of liveness so recovery still works.
-        self.backend(require_running=False, allow_missing=True)
+        current_backend = self.backend(require_running=False, allow_missing=True)
         expected = self.docker_json("image", "inspect", f"ghcr.io/{REPOSITORY}/backend:{self.sha}")[
             0
         ]
@@ -1225,42 +1382,51 @@ class Installer:
             protected_write(OVERRIDE, prior)
             self.state["override_sha256"] = digest(OVERRIDE)
             files = [*snapshot["files"], str(attempt / "rollback.yml")]
-        self.run_command(
-            [*self.compose(files), "config", "--quiet"], stage="Validate exact backend rollback"
-        )
-        rendered = json.loads(
+        # Only a literal persisted False proves the switch never began. Legacy
+        # or malformed checkpoints retain conservative image/config restoration.
+        if self.state.get("backend_switch_started") is False:
+            require(
+                current_backend is not None
+                and current_backend["State"]["Running"]
+                and current_backend.get("Id") == snapshot.get("backend_container_id"),
+                "Backend changed before the planned switch; preserve state for manual review",
+            )
+            self.verify_saved_backend(current_backend, snapshot)
+            report("Backend switch never began; preserving the original live container.")
+        else:
             self.run_command(
-                [*self.compose(files), "config", "--format", "json"],
-                stage="Compare rollback configuration privately",
-            ).stdout
-        )
-        validate_rendered_backend(rendered, snapshot, snapshot["backend_env"])
-        self.run_command(
-            [
-                *self.compose(files),
-                "up",
-                "-d",
-                "--no-deps",
-                "--no-build",
-                "--pull",
-                "never",
-                "backend",
-            ],
-            stage="Restore original backend image and configuration",
-            timeout=180,
-        )
-        if prior is None and OVERRIDE.exists():
+                [*self.compose(files), "config", "--quiet"], stage="Validate exact backend rollback"
+            )
+            rendered = json.loads(
+                self.run_command(
+                    [*self.compose(files), "config", "--format", "json"],
+                    stage="Compare rollback configuration privately",
+                ).stdout
+            )
+            validate_rendered_backend(rendered, snapshot, snapshot["backend_env"])
             self.run_command(
                 [
-                    *self.compose([*snapshot["files"], str(OVERRIDE)]),
-                    "rm",
-                    "--stop",
-                    "--force",
-                    "workspace-runner",
+                    *self.compose(files),
+                    "up",
+                    "-d",
+                    "--no-deps",
+                    "--no-build",
+                    "--pull",
+                    "never",
+                    "backend",
                 ],
-                stage="Stop only the new control service",
-                timeout=60,
+                stage="Restore original backend image and configuration",
+                timeout=180,
             )
+        # Restored application reachability must not depend on runner cleanup,
+        # which may be exactly the configuration that failed initial validation.
+        self.health()
+        restored = self.backend()
+        self.verify_saved_backend(restored, snapshot)
+        self.proxy()
+        self.public_health()
+        if prior is None and OVERRIDE.exists():
+            self.remove_new_runner()
             OVERRIDE.unlink()
             self.state.pop("override_sha256", None)
         elif prior is not None:
@@ -1278,15 +1444,33 @@ class Installer:
                 stage="Restore prior managed runner",
                 timeout=180,
             )
-        self.health()
-        self.proxy()
         self.state["phase"] = "rolled_back"
         self.state.pop("pending_override_sha256", None)
         self.save()
         report("Rollback verified: original backend restored; volumes and worker data retained.")
 
+    @staticmethod
+    def verify_saved_backend(restored: dict, snapshot: dict) -> None:
+        restored_environment = dict(
+            value.split("=", 1) for value in restored["Config"].get("Env", []) if "=" in value
+        )
+        require(
+            restored_environment == snapshot["backend_env"],
+            "Restored backend environment differs from the saved snapshot",
+        )
+        require(
+            sorted(restored["Mounts"], key=lambda value: value["Destination"])
+            == sorted(snapshot["backend_mounts"], key=lambda value: value["Destination"]),
+            "Restored backend data mounts differ from the saved snapshot",
+        )
+        require(
+            set(restored["NetworkSettings"]["Networks"]) == set(snapshot["backend_networks"]),
+            "Restored backend networks differ from the saved snapshot",
+        )
+
     def apply(self) -> None:
         backend = self.backend()
+        self.research_location(backend)
         snapshot = self.snapshot(backend)
         token = self.token()
         override = workspace_override(
@@ -1295,6 +1479,7 @@ class Installer:
             token,
             runtime_image=self.state["images"]["runtime"]["id"],
             runner_image=self.state["images"]["runner"]["id"],
+            research_dir=self.research_dir,
         )
         content = compose_document(override)
         self.state["pending_override_sha256"] = hashlib.sha256(content.encode()).hexdigest()
@@ -1362,22 +1547,10 @@ class Installer:
             time.sleep(1)
         self.smoke(runner)
         self.backend()
-        self.run_command(
-            [
-                *self.compose(files),
-                "up",
-                "-d",
-                "--no-deps",
-                "--no-build",
-                "--pull",
-                "never",
-                "backend",
-            ],
-            stage="Connect backend to the verified private runner",
-            timeout=180,
-        )
+        self.switch_backend(files)
         self.health()
         after = self.backend()
+        self.research_location(after, configured=True)
         require(after["Mounts"] == snapshot["backend_mounts"], "Backend data mounts changed")
         require(
             self.docker_json("inspect", "mizan-frontend")[0]["Id"] == snapshot["frontend_id"],
@@ -1393,6 +1566,37 @@ class Installer:
         self.save()
         report(
             f"Workspace runner verified for {self.sha}: rootless, resource-limited, authenticated; Python/JS/shell, files, isolation, timeout and cleanup passed."
+        )
+
+    def switch_backend(self, files: list[str]) -> None:
+        # Save intent before Compose can mutate anything, including partial
+        # failures/timeouts. A failed checkpoint must prevent the command.
+        missing = object()
+        previous = self.state.get("backend_switch_started", missing)
+        self.state["backend_switch_started"] = True
+        try:
+            self.save()
+        except BaseException:
+            # No backend command has started. Keep immediate recovery on its
+            # pre-switch path even if the failed write committed before erroring.
+            if previous is missing:
+                self.state.pop("backend_switch_started", None)
+            else:
+                self.state["backend_switch_started"] = previous
+            raise
+        self.run_command(
+            [
+                *self.compose(files),
+                "up",
+                "-d",
+                "--no-deps",
+                "--no-build",
+                "--pull",
+                "never",
+                "backend",
+            ],
+            stage="Connect backend to the verified private runner",
+            timeout=180,
         )
 
     def setup(self, registry_token: str) -> None:
@@ -1416,7 +1620,9 @@ class Installer:
                 OVERRIDE.exists() and digest(OVERRIDE) == self.state.get("override_sha256"),
                 "Managed override changed",
             )
-            self.verify_runner(self.config_files(self.backend()))
+            current = self.backend()
+            self.research_location(current, configured=True)
+            self.verify_runner(self.config_files(current))
             self.smoke("mizan-backend")
             self.health()
             self.public_health()
@@ -1429,13 +1635,23 @@ class Installer:
         self.pull_images(registry_token)
         try:
             self.apply()
-        except (SetupError, OSError, ValueError, KeyError):
+        except (SetupError, OSError, ValueError, KeyError) as setup_error:
             if self.state.get("phase") == "applying":
                 try:
                     self.rollback()
-                except (SetupError, OSError, ValueError, KeyError):
+                except (SetupError, OSError, ValueError, KeyError) as rollback_error:
+                    reason = (
+                        str(rollback_error)
+                        if isinstance(rollback_error, SetupError)
+                        else type(rollback_error).__name__
+                    )
+                    cause = (
+                        str(setup_error)
+                        if isinstance(setup_error, SetupError)
+                        else type(setup_error).__name__
+                    )
                     raise SetupError(
-                        "Setup failed and automatic rollback could not be verified; use the protected snapshot and runbook"
+                        f"Setup failed: {cause}; automatic rollback could not be verified: {reason}; use the protected snapshot and runbook"
                     ) from None
             raise
 
@@ -1474,6 +1690,11 @@ def main() -> int:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--repository", default=REPOSITORY)
     parser.add_argument("--rollback", action="store_true")
+    parser.add_argument(
+        "--research-dir",
+        choices=[RESEARCH_DIR],
+        help="Also persist research configuration during the same backend recreation",
+    )
     args = parser.parse_args()
 
     def interrupted(_signal, _frame):
@@ -1490,10 +1711,10 @@ def main() -> int:
         for signal_number in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signal_number, interrupted)
         with deployment_lock():
-            installer = Installer(args.sha)
+            installer = Installer(args.sha, research_dir=args.research_dir)
             if args.rollback:
                 installer.preflight(recovering=True)
-                installer.load_state()
+                installer.load_state(rollback=True)
                 installer.rollback()
             else:
                 installer.setup(credential)

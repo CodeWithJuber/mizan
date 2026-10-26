@@ -52,12 +52,12 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
-      - run: pytest tests/test_mizan_owned*.py research/own_model/tests -q
+      - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
 
   build:
     name: Build package
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research]
+    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -108,10 +108,26 @@ jobs:
       - run: for test in src/utils/*.test.ts; do node "$test" || exit; done
       - run: npm run build
 
+  provenance:
+    name: Docker provenance preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up attestation-capable builder
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify actual OCI provenance export
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
+
   docker:
     name: Docker build
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research]
+    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
@@ -121,10 +137,14 @@ jobs:
           docker run --rm --entrypoint python mizan-backend
           -c "import torch, fastapi, openai, anthropic, PIL;
           from ruh_model.tokenizer.bayan import BayanTokenizer;
+          from mizan_owned.learning_cycle import _implementation;
+          from mizan_owned.learning_service import worker_environment;
           from importlib.metadata import version;
           assert torch.version.cuda is None;
           assert version('pip') == '26.2.1';
           assert version('setuptools') == '84.0.0';
+          assert len(_implementation()) == 12;
+          assert worker_environment()['PYTHONPATH'] == '/app';
           assert BayanTokenizer().encode('knowledge')"
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
@@ -133,8 +153,8 @@ jobs:
           python-version: "3.13"
       - name: Build isolated coding images
         run: |
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
+          bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
+          bash scripts/build_workspace_image.sh workspace-runner mizan-workspace-runner:v1 --load
       - name: Verify the isolated runner and actual code execution
         env:
           MIZAN_DATA_DIR: ${{ runner.temp }}/isolated-coding-tests
@@ -149,12 +169,21 @@ jobs:
     name: Publish production images
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
-    needs: [build, docker]
+    needs: [build, docker, provenance]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+      - name: Set up attestation-capable publisher
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify publisher OCI provenance before building production images
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -165,6 +194,7 @@ jobs:
       - name: Publish production backend
         uses: docker/build-push-action@v6
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: docker/Dockerfile.backend.prod
           push: true
@@ -172,23 +202,20 @@ jobs:
       - name: Publish production frontend
         uses: docker/build-push-action@v6
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ./frontend
           file: docker/Dockerfile.frontend.prod
           push: true
           tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
       - name: Publish isolated workspace runtime
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.workspace-runtime
-          build-args: BASE_REGISTRY=mirror.gcr.io/library
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }}
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runtime
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }} --push
       - name: Publish private workspace runner
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.workspace-runner
-          build-args: BASE_REGISTRY=mirror.gcr.io/library
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }}
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runner
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push

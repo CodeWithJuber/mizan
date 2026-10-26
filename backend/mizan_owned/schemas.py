@@ -44,6 +44,14 @@ class RetractionRequest(StrictModel):
     evidence: str = Field(min_length=1, max_length=2000)
 
 
+class LearningRunRequest(StrictModel):
+    bundle_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+class LearningRollbackRequest(StrictModel):
+    expected_generation: int = Field(ge=0, strict=True)
+
+
 class Observation(StrictModel):
     id: str = Field(min_length=1, max_length=128)
     context: dict[str, str]

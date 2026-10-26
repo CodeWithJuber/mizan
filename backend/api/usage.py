@@ -16,6 +16,7 @@ Cost rule (highest priority first):
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from api.prices import estimate_cost
@@ -59,6 +60,20 @@ def extract_llm_meta(llm_response: Any) -> dict:
                 meta[key] = usage[key]
         if isinstance(usage.get("owned_prompt"), dict):
             meta["owned_prompt"] = usage["owned_prompt"]
+        checkpoint = usage.get("owned_checkpoint")
+        if isinstance(checkpoint, dict) and checkpoint.get("source") in {"registry", "environment"}:
+            digest = checkpoint.get("sha256")
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+                meta["owned_checkpoint"] = {"source": checkpoint["source"], "sha256": digest}
+                generation = checkpoint.get("generation")
+                if type(generation) is int and generation >= 0:
+                    meta["owned_checkpoint"]["generation"] = generation
+        for key in ("reasoning_tokens", "visible_output_tokens"):
+            value = usage.get(key)
+            if type(value) is int and value >= 0:
+                meta[key] = value
+        if usage.get("reasoning_observed") is True:
+            meta["reasoning_observed"] = True
         # Authoritative provider-reported cost, if the provider sends one.
         if usage.get("cost") is not None:
             meta["provider_cost"] = usage.get("cost")
@@ -113,11 +128,20 @@ def build_usage_summary(calls: list[dict]) -> dict:
     if not blocks:
         return {}
     summary = dict(blocks[-1])
-    for field in ("input_tokens", "output_tokens", "latency_ms", "cost_usd"):
+    for field in (
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "visible_output_tokens",
+        "latency_ms",
+        "cost_usd",
+    ):
         reported = [block[field] for block in blocks if field in block]
         if reported:
             summary[field] = sum(reported)
     summary["calls"] = blocks
+    if any(block.get("reasoning_observed") for block in blocks):
+        summary["reasoning_observed"] = True
     if any(block.get("cost_estimated") for block in blocks):
         summary["cost_estimated"] = True
     if any("cost_usd" not in block for block in blocks):

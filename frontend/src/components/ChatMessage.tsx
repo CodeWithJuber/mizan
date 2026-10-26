@@ -17,6 +17,7 @@ import { useToast } from "./Toast";
 import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 import { MessageMeta } from "./MessageMeta";
+import { cognitiveMetrics } from "../utils/responseMetrics.ts";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
 import { VerifiedBadge } from "./ruh/VerifiedBadge";
@@ -426,24 +427,6 @@ const QALB_COLORS: Record<string, string> = {
   fatigued: "bg-gray-100 dark:bg-zinc-700/40 text-gray-500 dark:text-gray-400",
 };
 
-// User-friendly labels for qalb emotional states (internal enum values like
-// "neutral" must not leak into the UI).
-const QALB_LABELS: Record<string, string> = {
-  neutral: "Neutral",
-  positive: "Positive",
-  frustrated: "Frustrated",
-  anxious: "Anxious",
-  confused: "Confused",
-  determined: "Determined",
-  fatigued: "Fatigued",
-};
-
-const YAQIN_LABELS: Record<string, string> = {
-  ilm_al_yaqin: "'ilm",
-  ayn_al_yaqin: "'ayn",
-  haqq_al_yaqin: "haqq",
-};
-
 const LUBB_COLORS: Record<string, string> = {
   confident:
     "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
@@ -454,104 +437,48 @@ const LUBB_COLORS: Record<string, string> = {
 
 function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
   const [expanded, setExpanded] = useState(false);
-
-  const hasPills =
-    cognitive.qalb ||
-    cognitive.yaqin ||
-    cognitive.lubb ||
-    cognitive.ruh_energy != null ||
-    cognitive.nafs_level != null ||
-    (cognitive.lawwama && cognitive.lawwama.repair_level > 0);
-
-  if (!hasPills) return null;
+  const { pills, details } = cognitiveMetrics(cognitive);
+  if (!pills.length && !details.length) return null;
+  const allDetails = [
+    ...new Map(
+      [...pills, ...details].map((metric) => [metric.key, metric]),
+    ).values(),
+  ];
+  const pillColors: Record<string, string> = {
+    qalb: QALB_COLORS[cognitive.qalb?.state ?? "neutral"] || QALB_COLORS.neutral,
+    lubb: LUBB_COLORS[cognitive.lubb?.quality ?? "uncertain"] || LUBB_COLORS.uncertain,
+    yaqin: "bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400",
+    ruh: "bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
+    nafs: "bg-mizan-gold/10 text-mizan-gold-text dark:text-mizan-gold border border-mizan-gold/20",
+    repair: "bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400",
+  };
 
   return (
     <div className="mt-1.5 animate-fade-in">
       <button
+        type="button"
         onClick={() => setExpanded((prev) => !prev)}
-        className="flex flex-wrap items-center gap-1.5 cursor-pointer group"
+        className="flex max-w-full flex-wrap items-center gap-1.5 text-left cursor-pointer group"
         aria-expanded={expanded}
-        aria-label="Cognitive metadata"
+        aria-label="Heuristic diagnostics and metric sources"
       >
-        {/* Qalb state pill */}
-        {cognitive.qalb && (
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+          Heuristic diagnostics
+        </span>
+        {pills.map((metric) => (
           <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${QALB_COLORS[cognitive.qalb.state] || QALB_COLORS.neutral}`}
-            title={`Qalb: ${QALB_LABELS[cognitive.qalb.state] || cognitive.qalb.state} (${(cognitive.qalb.confidence * 100).toFixed(0)}%)`}
+            key={metric.key}
+            className={`inline-flex flex-wrap items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${pillColors[metric.key] ?? QALB_COLORS.neutral}`}
+            title={metric.explanation}
           >
-            <span className="opacity-60">Qalb</span>
-            {QALB_LABELS[cognitive.qalb.state] || cognitive.qalb.state}
+            <span className="opacity-70">{metric.label}</span>
+            {metric.value}
           </span>
-        )}
-
-        {/* Yaqin level pill */}
-        {cognitive.yaqin && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400"
-            title={`Yaqin: ${cognitive.yaqin.level} (${(cognitive.yaqin.confidence * 100).toFixed(0)}%)`}
-          >
-            <span className="opacity-60">Yaqin</span>
-            {YAQIN_LABELS[cognitive.yaqin.level] || cognitive.yaqin.level}
-            <span className="w-8 h-1 rounded-full bg-sky-200 dark:bg-sky-800 overflow-hidden inline-block align-middle">
-              <span
-                className="block h-full rounded-full bg-sky-500 dark:bg-sky-400"
-                style={{ width: `${cognitive.yaqin.confidence * 100}%` }}
-              />
-            </span>
-          </span>
-        )}
-
-        {/* Lubb quality pill */}
-        {cognitive.lubb && (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${LUBB_COLORS[cognitive.lubb.quality] || LUBB_COLORS.uncertain}`}
-            title={`Lubb: ${cognitive.lubb.quality} (coherence ${(cognitive.lubb.coherence_score * 100).toFixed(0)}%)`}
-          >
-            <span className="opacity-60">Lubb</span>
-            {cognitive.lubb.quality}
-          </span>
-        )}
-
-        {/* Ruh energy pill — backend sends 0-100 already, do NOT ×100 */}
-        {cognitive.ruh_energy != null && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400"
-            title={`Ruh energy: ${cognitive.ruh_energy.toFixed(0)}%`}
-          >
-            <span className="opacity-60">Ruh</span>
-            {cognitive.ruh_energy.toFixed(0)}%
-          </span>
-        )}
-
-        {/* Nafs level pill */}
-        {cognitive.nafs_level != null && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-mizan-gold/10 text-mizan-gold-text dark:text-mizan-gold border border-mizan-gold/20"
-            title={`Nafs: Level ${cognitive.nafs_level} — ${cognitive.nafs_name || ""}`}
-          >
-            N{cognitive.nafs_level}
-            {cognitive.nafs_name && (
-              <span className="opacity-70">{cognitive.nafs_name}</span>
-            )}
-          </span>
-        )}
-
-        {/* Lawwama repair pill (only when active) */}
-        {cognitive.lawwama && cognitive.lawwama.repair_level > 0 && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400"
-            title={`Lawwama: L${cognitive.lawwama.repair_level} repair, health ${(cognitive.lawwama.health * 100).toFixed(0)}%`}
-          >
-            <span className="opacity-60">Heal</span>L
-            {cognitive.lawwama.repair_level}
-          </span>
-        )}
-
-        {/* Expand chevron */}
+        ))}
         <svg
           viewBox="0 0 20 20"
           fill="currentColor"
-          className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`w-3 h-3 shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
           aria-hidden="true"
         >
           <path
@@ -561,59 +488,29 @@ function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
           />
         </svg>
       </button>
-
-      {/* Expanded details */}
       {expanded && (
-        <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-1.5 animate-fade-in">
-          {cognitive.cognitive_method && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Method:
-              </span>{" "}
-              {cognitive.cognitive_method}
-            </div>
-          )}
-          {cognitive.mizan_label && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Mizan:
-              </span>{" "}
-              {cognitive.mizan_label}
-            </div>
-          )}
-          {cognitive.qalb?.signals && cognitive.qalb.signals.length > 0 && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Signals:
-              </span>{" "}
-              {cognitive.qalb.signals.join(", ")}
-            </div>
-          )}
-          {cognitive.yaqin?.evidence && cognitive.yaqin.evidence.length > 0 && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Evidence:
-              </span>{" "}
-              {cognitive.yaqin.evidence.join(", ")}
-            </div>
-          )}
-          {cognitive.lubb?.bias_flags &&
-            cognitive.lubb.bias_flags.length > 0 && (
-              <div className="text-orange-600 dark:text-orange-400">
-                <span className="font-medium">Bias flags:</span>{" "}
-                {cognitive.lubb.bias_flags.join(", ")}
+        <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
+          <p className="text-gray-600 dark:text-gray-300">
+            Internal estimates and counters. They do not measure answer accuracy,
+            model training progress or server health.
+          </p>
+          <dl className="space-y-2">
+            {allDetails.map((metric) => (
+              <div key={metric.key} className="min-w-0 break-words">
+                <dt className="inline font-medium text-gray-700 dark:text-gray-300">
+                  {metric.label}:
+                </dt>{" "}
+                <dd className="inline text-gray-600 dark:text-gray-400">
+                  {metric.value}
+                  {metric.explanation && (
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                      {metric.explanation}
+                    </p>
+                  )}
+                </dd>
               </div>
-            )}
-          {cognitive.lawwama && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Health:
-              </span>{" "}
-              {(cognitive.lawwama.health * 100).toFixed(0)}% | Hallucination:{" "}
-              {(cognitive.lawwama.hallucination_score * 100).toFixed(0)}% |
-              Errors: {cognitive.lawwama.errors}
-            </div>
-          )}
+            ))}
+          </dl>
         </div>
       )}
     </div>
@@ -952,6 +849,12 @@ export function ChatMessageBubble({
               />
             </div>
 
+            {msg.error && (
+              <p role="alert" className="mt-2 break-words text-sm text-amber-700 dark:text-amber-300">
+                {msg.error.message}
+              </p>
+            )}
+
             {/* Cognitive bar */}
             {msg.cognitive && <CognitiveBar cognitive={msg.cognitive} />}
 
@@ -962,6 +865,11 @@ export function ChatMessageBubble({
             {msg.stopped && (
               <p role="status" className="text-xs text-gray-500 mt-2">
                 Stopped · partial response saved
+              </p>
+            )}
+            {msg.interrupted && (
+              <p role="status" className="text-xs text-gray-500 mt-2">
+                Interrupted · {msg.content.trim() ? "partial response saved" : "no answer received"}
               </p>
             )}
             <MessageMeta meta={msg.meta} />
