@@ -48,9 +48,9 @@ function ReviewCandidate({ candidate, refresh }: { candidate: Candidate; refresh
       </summary>
       <p className="mt-2 text-xs text-gray-500">Model-authored · {candidate.provider} / {candidate.model}</p>
       <h4 className="mt-3 text-xs font-semibold">Your request</h4>
-      <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-xs">{candidate.prompt}</pre>
+      <pre className="max-h-36 overflow-auto whitespace-pre-wrap wrap-break-word text-xs">{candidate.prompt}</pre>
       <h4 className="mt-3 text-xs font-semibold">Captured response</h4>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{candidate.response}</pre>
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word text-xs">{candidate.response}</pre>
       <label className="block mt-3 text-xs">
         Review evidence or reason
         <textarea value={evidence} maxLength={4000} rows={2} disabled={busy}

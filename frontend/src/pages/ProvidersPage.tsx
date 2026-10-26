@@ -23,13 +23,13 @@ const PROVIDER_ICONS: Record<string, string> = {
 
 const PROVIDER_COLORS: Record<string, string> = {
   anthropic:
-    "border-amber-300 dark:border-amber-500/30 bg-gradient-to-br from-amber-50 dark:from-amber-500/10 to-amber-50/50 dark:to-amber-900/5",
+    "border-amber-300 dark:border-amber-500/30 bg-linear-to-br from-amber-50 dark:from-amber-500/10 to-amber-50/50 dark:to-amber-900/5",
   openrouter:
-    "border-purple-300 dark:border-purple-500/30 bg-gradient-to-br from-purple-50 dark:from-purple-500/10 to-purple-50/50 dark:to-purple-900/5",
+    "border-purple-300 dark:border-purple-500/30 bg-linear-to-br from-purple-50 dark:from-purple-500/10 to-purple-50/50 dark:to-purple-900/5",
   openai:
-    "border-emerald-300 dark:border-emerald-500/30 bg-gradient-to-br from-emerald-50 dark:from-emerald-500/10 to-emerald-50/50 dark:to-emerald-900/5",
+    "border-emerald-300 dark:border-emerald-500/30 bg-linear-to-br from-emerald-50 dark:from-emerald-500/10 to-emerald-50/50 dark:to-emerald-900/5",
   ollama:
-    "border-blue-300 dark:border-blue-500/30 bg-gradient-to-br from-blue-50 dark:from-blue-500/10 to-blue-50/50 dark:to-blue-900/5",
+    "border-blue-300 dark:border-blue-500/30 bg-linear-to-br from-blue-50 dark:from-blue-500/10 to-blue-50/50 dark:to-blue-900/5",
 };
 
 const PROVIDER_ACCENT: Record<string, string> = {

@@ -384,7 +384,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                     </button>
                   </div>
                 </div>
-                <div className="detail-panel font-mono text-xs text-gray-600 dark:text-gray-400 break-words">
+                <div className="detail-panel font-mono text-xs text-gray-600 dark:text-gray-400 wrap-break-word">
                   Task: {job.task}
                 </div>
               </div>

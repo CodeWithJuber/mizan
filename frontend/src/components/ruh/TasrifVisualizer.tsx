@@ -133,7 +133,7 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
           {features.map((val, idx) => (
             <div key={idx} className="flex-1 relative rounded overflow-hidden bg-gray-100 dark:bg-zinc-800">
               <div
-                className="absolute bottom-0 w-full bg-gradient-to-t from-purple-500 to-purple-400 transition-all"
+                className="absolute bottom-0 w-full bg-linear-to-t from-purple-500 to-purple-400 transition-all"
                 style={{ height: `${val * 100}%` }}
               />
               <span className="absolute inset-0 flex items-center justify-center text-[8px] font-mono text-gray-500 dark:text-gray-400">

@@ -5,8 +5,8 @@
 ## Quick Reference
 
 - **Backend**: Python 3.11+ (FastAPI, Pydantic v2, aiosqlite, Click CLI) — fully async
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, react-router-dom, recharts
-- **AI Providers**: Anthropic, OpenAI, OpenRouter, Ollama, + in-house **Ruh** model
+- **Frontend**: React 19, TypeScript 7, Vite 8, Tailwind CSS 4 (`@tailwindcss/vite`, theme in `src/index.css`), react-router-dom 7, recharts 3
+- **AI Providers**: Anthropic (SDK 2.x, API `2026-10-21`, default `claude-opus-5-5`), OpenAI, OpenRouter, Ollama, + in-house **Ruh** model
 - **Database**: SQLite via aiosqlite (default `data/mizan.db`)
 - **Infra**: Docker Compose, Nginx; optional Ollama + ChromaDB profiles
 - **ML**: PyTorch (optional `ml` extra) for the Ruh language model
@@ -41,6 +41,8 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 - `backend/agents/base.py` — `BaseAgent`: agentic **ReAct loop**, tool dispatch, Nafs evolution, self-healing
 - `backend/providers.py` — LLM provider abstraction (Anthropic/OpenRouter/OpenAI/Ollama auto-routing)
 - `backend/providers_ruh.py` — `RuhModelProvider` adapter for the local Ruh model
+- `backend/reasoning/context_engine.py` — unlimited conversations: model-sized history + persisted running summary (`session_summaries`)
+- `backend/core/adaptive.py` — evidence-weighing estimators (Beta posteriors, EW stats, ACT-R, BM25) that replace fixed thresholds (`docs/adaptive-mathematics.md`)
 - `backend/settings.py` — Pydantic settings (reads `.env`)
 - `backend/cli.py` — Click CLI entry point
 - `backend/doctor.py` — Environment diagnostics (`mizan doctor`)
@@ -121,6 +123,8 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 
 - Docker reads `.env` for compose variable substitution — inline comments like `KEY=value # comment` get parsed as part of the value.
 - Claude models use Anthropic only if `ANTHROPIC_API_KEY` starts with `sk-ant-`; otherwise they auto-route through OpenRouter.
+- Claude requests never send `temperature`/`top_p`/`top_k` (API `2026-10-21` rejects them); `MIZAN_CHAT_TEMPERATURE` applies to other providers only. Effort comes from `MIZAN_CHAT_EFFORT`.
+- Chat limits (steps, continuations, history budget, waits) are documented in `docs/chat-limits-and-metrics.md`; the step budget is no longer tied to the Nafs level.
 - `DEFAULT_MODEL` controls the agent model (empty → provider default, `claude-opus-5-5` on Anthropic) — set it in `.env`. `LLM_PROVIDER=auto` (default) detects the provider from keys.
 - Backend runs with `--reload`, so local edits in `backend/` take effect automatically.
 - `.env` values are NOT auto-loaded into `os.environ` — pydantic-settings reads them, but `providers.py` calls `load_dotenv()`.

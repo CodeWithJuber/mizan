@@ -1,8 +1,475 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap')
+layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-mizan-gold: #d4af37;
+  --color-mizan-gold-light: #f3e5ab;
+  --color-mizan-gold-dim: #aa8529;
+  --color-mizan-gold-text: #996515;
+  --color-mizan-dark: #0b0c10;
+  --color-mizan-dark-surface: #1f2833;
+  --color-mizan-bg-primary: #020617;
+  --color-mizan-bg-secondary: #0f172a;
+  --color-mizan-bg-surface: #1e293b;
+  --color-mizan-bg-elevated: #334155;
+
+  --font-display: Space Grotesk, sans-serif;
+  --font-body: DM Sans, Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-arabic: Amiri, serif;
+  --font-mono: IBM Plex Mono, ui-monospace, monospace;
+
+  --text-micro: 12px;
+  --text-2xs: 13px;
+  --text-xxs: 14px;
+
+  --z-index-dropdown: 10;
+  --z-index-sticky: 20;
+  --z-index-overlay: 30;
+  --z-index-modal: 40;
+  --z-index-toast: 50;
+
+  --animate-fade-in: fadeIn 0.3s ease-out;
+  --animate-fade-in-up: fadeInUp 0.4s ease-out forwards;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes fadeInUp {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+}
+
+@utility page-wrapper {
+  /* Slide-in animation for toasts */
+
+  /* ===== PAGE LAYOUT ===== */
+  @apply flex-1 flex flex-col overflow-hidden;
+}
+
+@utility page-header {
+  @apply flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-white/50 dark:border-white/5 bg-white/40 dark:bg-mizan-dark-surface/30 backdrop-blur-md z-10 relative shadow-xs;
+}
+
+@utility page-body {
+  @apply flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 relative z-0;
+}
+
+@utility quran-quote {
+  @apply px-5 py-1.5 text-xxs text-gray-400 dark:text-gray-500 italic;
+}
+
+@utility loading-text {
+  @apply p-5 text-xs text-gray-400 dark:text-gray-500 font-mono;
+}
+
+@utility chat-layout {
+  /* ===== CHAT LAYOUT (ChatGPT / Claude style) ===== */
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+@utility chat-header {
+  @apply flex items-center border-b border-gray-200/70 dark:border-zinc-800 bg-white dark:bg-mizan-dark z-10 px-4 py-2;
+}
+
+@utility chat-header-inner {
+  @apply flex items-center justify-between w-full max-w-4xl mx-auto;
+}
+
+@utility chat-scroll-area {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-gutter: stable both-edges;
+}
+
+@utility chat-message-row {
+  @apply flex justify-center px-4 py-2;
+}
+
+@utility chat-message-container {
+  @apply w-full max-w-3xl mx-auto;
+}
+
+@utility chat-input-area {
+  @apply px-4 pb-4 pt-3 bg-white dark:bg-mizan-dark border-t border-gray-100 dark:border-zinc-800/50 z-10;
+}
+
+@utility chat-scroll-to-bottom {
+  @apply absolute bottom-3 left-1/2 -translate-x-1/2 z-20
+    w-9 h-9 rounded-full flex items-center justify-center
+    bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600
+    shadow-lg shadow-black/10 dark:shadow-black/30
+    text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200
+    hover:bg-gray-50 dark:hover:bg-zinc-700
+    transition-all duration-200 cursor-pointer
+    opacity-0 translate-y-2 pointer-events-none;
+
+  &.visible {
+    @apply opacity-100 translate-y-0 pointer-events-auto;
+  }
+}
+
+@utility chat-input-container {
+  @apply relative max-w-3xl mx-auto;
+}
+
+@utility chat-input-box {
+  @apply flex items-end gap-0 rounded-2xl border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 shadow-xs transition-all duration-200
+    focus-within:border-amber-400 dark:focus-within:border-amber-500/40 focus-within:shadow-md focus-within:shadow-amber-500/5 focus-within:bg-white dark:focus-within:bg-zinc-900;
+  padding: 8px 8px 8px 4px;
+}
+
+@utility chat-textarea {
+  @apply flex-1 resize-none bg-transparent border-none outline-hidden text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
+  font-family:
+    'DM Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+@utility chat-input-btn {
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
+    text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
+}
+
+@utility chat-send-btn {
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    bg-amber-500 hover:bg-amber-600 text-white shadow-xs
+    disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
+}
+
+@utility chat-stop-btn {
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
+    bg-red-500 hover:bg-red-600 text-white shadow-xs;
+}
+
+@utility safe-area-bottom {
+  /* Safe-area padding for iPhone home indicator — used by MobileNav */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility card {
+  /* ===== CARDS ===== */
+  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-colors shadow-xs;
+}
+
+@utility card-hover {
+  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-mizan-gold/30 hover:shadow-xl hover:-translate-y-1 cursor-pointer;
+}
+
+@utility card-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5;
+}
+
+@utility form-panel {
+  /* Form panel — amber-tinted card for create/register forms */
+  @apply bg-white dark:bg-zinc-900 border border-mizan-gold/30 dark:border-mizan-gold/20 rounded-xl p-5 mb-4;
+}
+
+@utility form-panel-title {
+  @apply text-sm font-semibold text-mizan-gold mb-3;
+  font-family: 'Cinzel', serif;
+}
+
+@utility detail-panel {
+  /* Detail panel — subtle bg for expanded details, code snippets */
+  @apply bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700/50 rounded-lg p-3;
+}
+
+@utility btn-primary {
+  /* ===== BUTTONS ===== */
+  @apply inline-flex items-center justify-center gap-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
+}
+
+@utility btn-gold {
+  @apply inline-flex items-center justify-center gap-1.5 bg-linear-to-r from-[#D4AF37] to-[#F3E5AB] hover:from-[#F3E5AB] hover:to-yellow-300 text-black font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
+}
+
+@utility btn-secondary {
+  @apply inline-flex items-center justify-center gap-1.5 bg-white/50 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-200 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:bg-white/80 dark:hover:bg-white/10 disabled:opacity-50 cursor-pointer shadow-xs hover:shadow-md;
+}
+
+@utility btn-danger {
+  @apply inline-flex items-center justify-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer hover:-translate-y-0.5;
+}
+
+@utility btn-ghost {
+  @apply inline-flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100/50 dark:hover:bg-white/5 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 cursor-pointer;
+}
+
+@utility btn-sm {
+  /* Compact button variant */
+  @apply text-xs px-3 py-1.5 min-h-[36px];
+}
+
+@utility input {
+  /* ===== INPUTS ===== */
+  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-md border border-gray-300 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 shadow-inner focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-mizan-gold transition-all duration-300;
+}
+
+@utility badge {
+  /* ===== BADGES ===== */
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+@utility badge-success {
+  @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400;
+}
+
+@utility badge-error {
+  @apply bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400;
+}
+
+@utility badge-warning {
+  @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400;
+}
+
+@utility badge-info {
+  @apply bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400;
+}
+
+@utility badge-gold {
+  @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-mizan-gold;
+}
+
+@utility tab-bar {
+  /* ===== TABS ===== */
+  @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1 mx-4 sm:mx-5 mb-3 overflow-x-auto;
+  role: tablist;
+}
+
+@utility tab {
+  @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer text-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-ring whitespace-nowrap min-h-[44px] flex items-center justify-center;
+
+  &.active {
+    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-xs;
+  }
+}
+
+@utility active {
+  &.tab {
+    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-xs;
+  }
+}
+
+@utility page-title {
+  /* ===== SECTION TITLES ===== */
+  @apply text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-linear-to-br from-gray-900 to-gray-600 dark:from-white dark:to-gray-400;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+@utility page-description {
+  @apply text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium;
+}
+
+@utility code {
+  /* ===== CODE ===== */
+  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-sm text-xs font-mono text-amber-700 dark:text-mizan-gold;
+}
+
+@utility modal-backdrop {
+  /* ===== MODAL ===== */
+  @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-40 flex items-center justify-center p-4;
+}
+
+@utility modal-overlay {
+  @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-40 flex items-center justify-center p-4;
+}
+
+@utility modal {
+  @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85dvh] overflow-y-auto;
+}
+
+@utility modal-title {
+  @apply flex items-center gap-3 text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5;
+}
+
+@utility modal-footer {
+  @apply flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-zinc-800;
+}
+
+@utility form-group {
+  /* ===== FORM ELEMENTS ===== */
+  @apply mb-4;
+}
+
+@utility form-label {
+  @apply block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5;
+}
+
+@utility form-input {
+  @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
+}
+
+@utility form-select {
+  @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
+}
+
+@utility memory-item {
+  /* ===== LIST ITEMS ===== */
+  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-md border border-white/50 dark:border-white/5 rounded-2xl p-4 mb-4 transition-all hover:shadow-md hover:border-mizan-gold/20;
+}
+
+@utility memory-type-badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-sm text-2xs font-mono font-medium uppercase tracking-wide;
+
+  &.type-semantic {
+    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30;
+  }
+
+  &.type-episodic {
+    @apply bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30;
+  }
+
+  &.type-procedural {
+    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30;
+  }
+}
+
+@utility type-semantic {
+  &.memory-type-badge {
+    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30;
+  }
+}
+
+@utility type-episodic {
+  &.memory-type-badge {
+    @apply bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30;
+  }
+}
+
+@utility type-procedural {
+  &.memory-type-badge {
+    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30;
+  }
+}
+
+@utility stat {
+  /* ===== STATS ===== */
+  @apply text-center py-1.5 px-2 bg-gray-50 dark:bg-zinc-800/50 rounded-sm border border-gray-100 dark:border-zinc-700/50;
+}
+
+@utility stat-value {
+  @apply block font-mono text-sm text-gray-900 dark:text-gray-100;
+}
+
+@utility stat-label {
+  @apply block text-2xs text-gray-400 dark:text-gray-500 uppercase tracking-wider;
+}
+
+@utility agent-card {
+  /* ===== AGENT CARD ===== */
+  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-mizan-gold/30 hover:shadow-xl hover:-translate-y-1;
+}
+
+@utility empty-state {
+  /* ===== EMPTY STATE ===== */
+  @apply flex flex-col items-center justify-center py-16 text-center;
+}
+
+@utility empty-arabic {
+  @apply text-4xl text-mizan-gold/60 mb-3;
+  font-family: Georgia, serif;
+}
+
+@utility empty-text {
+  @apply text-sm font-medium text-gray-500 dark:text-gray-400;
+}
+
+@utility empty-sub {
+  @apply text-xs text-gray-400 dark:text-gray-500 mt-1.5 max-w-sm;
+}
+
+@utility tool-tag {
+  /* ===== TOOL TAGS ===== */
+  @apply text-2xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-sm text-gray-500 dark:text-gray-400 font-mono;
+}
+
+@utility status-dot {
+  /* ===== STATUS DOTS ===== */
+  @apply w-3 h-3 rounded-full shrink-0 ring-2 ring-white dark:ring-slate-900;
+}
+
+@utility status-dot-active {
+  @apply bg-emerald-500;
+}
+
+@utility status-dot-idle {
+  @apply bg-amber-500;
+}
+
+@utility status-dot-busy {
+  @apply bg-red-500;
+}
+
+@utility status-dot-offline {
+  @apply bg-gray-400 dark:bg-gray-600;
+}
+
+/* ===== FOCUS RING ===== */
+@utility focus-ring {
+  @apply outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2
+         focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900;
+  --tw-ring-color: rgba(212, 175, 55, 0.5);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 @layer base {
   /* CSS Variables for light/dark mode — used by legacy inline styles */
@@ -84,7 +551,6 @@
 }
 
 @layer components {
-  /* Slide-in animation for toasts */
   @keyframes slideIn {
     from {
       transform: translateX(100%);
@@ -95,368 +561,6 @@
       transform: translateX(0);
       opacity: 1;
     }
-  }
-
-  /* ===== PAGE LAYOUT ===== */
-
-  .page-wrapper {
-    @apply flex-1 flex flex-col overflow-hidden;
-  }
-
-  .page-header {
-    @apply flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-white/50 dark:border-white/5 bg-white/40 dark:bg-[#1F2833]/30 backdrop-blur-md z-10 relative shadow-sm;
-  }
-
-  .page-body {
-    @apply flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 relative z-0;
-  }
-
-  .quran-quote {
-    @apply px-5 py-1.5 text-xxs text-gray-400 dark:text-gray-500 italic;
-  }
-
-  .loading-text {
-    @apply p-5 text-xs text-gray-400 dark:text-gray-500 font-mono;
-  }
-
-  /* ===== CHAT LAYOUT (ChatGPT / Claude style) ===== */
-
-  .chat-layout {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    overflow: hidden;
-  }
-
-  .chat-header {
-    @apply flex items-center border-b border-gray-200/70 dark:border-zinc-800 bg-white dark:bg-[#0B0C10] z-10 px-4 py-2;
-  }
-
-  .chat-header-inner {
-    @apply flex items-center justify-between w-full max-w-4xl mx-auto;
-  }
-
-  .chat-scroll-area {
-    overflow-y: auto;
-    min-height: 0;
-    scrollbar-gutter: stable both-edges;
-  }
-
-  .chat-message-row {
-    @apply flex justify-center px-4 py-2;
-  }
-
-  .chat-message-container {
-    @apply w-full max-w-3xl mx-auto;
-  }
-
-  .chat-input-area {
-    @apply px-4 pb-4 pt-3 bg-white dark:bg-[#0B0C10] border-t border-gray-100 dark:border-zinc-800/50 z-10;
-  }
-
-  .chat-scroll-to-bottom {
-    @apply absolute bottom-3 left-1/2 -translate-x-1/2 z-20
-    w-9 h-9 rounded-full flex items-center justify-center
-    bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600
-    shadow-lg shadow-black/10 dark:shadow-black/30
-    text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200
-    hover:bg-gray-50 dark:hover:bg-zinc-700
-    transition-all duration-200 cursor-pointer
-    opacity-0 translate-y-2 pointer-events-none;
-  }
-
-  .chat-scroll-to-bottom.visible {
-    @apply opacity-100 translate-y-0 pointer-events-auto;
-  }
-
-  .chat-input-container {
-    @apply relative max-w-3xl mx-auto;
-  }
-
-  .chat-input-box {
-    @apply flex items-end gap-0 rounded-2xl border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 shadow-sm transition-all duration-200
-    focus-within:border-amber-400 dark:focus-within:border-amber-500/40 focus-within:shadow-md focus-within:shadow-amber-500/5 focus-within:bg-white dark:focus-within:bg-zinc-900;
-    padding: 8px 8px 8px 4px;
-  }
-
-  .chat-textarea {
-    @apply flex-1 resize-none bg-transparent border-none outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
-    font-family:
-      "DM Sans",
-      -apple-system,
-      BlinkMacSystemFont,
-      sans-serif;
-  }
-
-  .chat-input-btn {
-    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
-    text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
-  }
-
-  .chat-send-btn {
-    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
-    bg-amber-500 hover:bg-amber-600 text-white shadow-sm
-    disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
-  }
-
-  .chat-stop-btn {
-    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
-    bg-red-500 hover:bg-red-600 text-white shadow-sm;
-  }
-
-  /* Safe-area padding for iPhone home indicator — used by MobileNav */
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  /* ===== CARDS ===== */
-
-  .card {
-    @apply bg-white/80 dark:bg-[#1F2833]/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-colors shadow-sm;
-  }
-
-  .card-hover {
-    @apply bg-white/80 dark:bg-[#1F2833]/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-[#D4AF37]/30 hover:shadow-xl hover:-translate-y-1 cursor-pointer;
-  }
-
-  .card-grid {
-    @apply grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5;
-  }
-
-  /* Form panel — amber-tinted card for create/register forms */
-  .form-panel {
-    @apply bg-white dark:bg-zinc-900 border border-[#D4AF37]/30 dark:border-[#D4AF37]/20 rounded-xl p-5 mb-4;
-  }
-
-  .form-panel-title {
-    @apply text-sm font-semibold text-[#D4AF37] mb-3;
-    font-family: "Cinzel", serif;
-  }
-
-  /* Detail panel — subtle bg for expanded details, code snippets */
-  .detail-panel {
-    @apply bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700/50 rounded-lg p-3;
-  }
-
-  /* ===== BUTTONS ===== */
-
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
-  }
-
-  .btn-gold {
-    @apply inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] hover:from-[#F3E5AB] hover:to-yellow-300 text-black font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
-  }
-
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 bg-white/50 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-200 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:bg-white/80 dark:hover:bg-white/10 disabled:opacity-50 cursor-pointer shadow-sm hover:shadow-md;
-  }
-
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer hover:-translate-y-0.5;
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100/50 dark:hover:bg-white/5 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 cursor-pointer;
-  }
-
-  /* Compact button variant */
-  .btn-sm {
-    @apply text-xs px-3 py-1.5 min-h-[36px];
-  }
-
-  /* ===== INPUTS ===== */
-
-  .input {
-    @apply bg-white/80 dark:bg-[#1F2833]/60 backdrop-blur-md border border-gray-300 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 shadow-inner focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37] transition-all duration-300;
-  }
-
-  /* ===== BADGES ===== */
-
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .badge-success {
-    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400;
-  }
-
-  .badge-error {
-    @apply bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400;
-  }
-
-  .badge-warning {
-    @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400;
-  }
-
-  .badge-info {
-    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400;
-  }
-
-  .badge-gold {
-    @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-[#D4AF37];
-  }
-
-  /* ===== TABS ===== */
-
-  .tab-bar {
-    @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1 mx-4 sm:mx-5 mb-3 overflow-x-auto;
-    role: tablist;
-  }
-
-  .tab {
-    @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer text-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-ring whitespace-nowrap min-h-[44px] flex items-center justify-center;
-  }
-
-  .tab.active {
-    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-sm;
-  }
-
-  /* ===== SECTION TITLES ===== */
-
-  .page-title {
-    @apply text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-gray-900 to-gray-600 dark:from-white dark:to-gray-400;
-    font-family: "Space Grotesk", sans-serif;
-  }
-
-  .page-description {
-    @apply text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium;
-  }
-
-  /* ===== CODE ===== */
-
-  .code {
-    @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono text-amber-700 dark:text-[#D4AF37];
-  }
-
-  /* ===== MODAL ===== */
-
-  .modal-backdrop {
-    @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-[40] flex items-center justify-center p-4;
-  }
-
-  .modal-overlay {
-    @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-[40] flex items-center justify-center p-4;
-  }
-
-  .modal {
-    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85dvh] overflow-y-auto;
-  }
-
-  .modal-title {
-    @apply flex items-center gap-3 text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5;
-  }
-
-  .modal-footer {
-    @apply flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-zinc-800;
-  }
-
-  /* ===== FORM ELEMENTS ===== */
-
-  .form-group {
-    @apply mb-4;
-  }
-
-  .form-label {
-    @apply block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5;
-  }
-
-  .form-input {
-    @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
-  }
-
-  .form-select {
-    @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
-  }
-
-  /* ===== LIST ITEMS ===== */
-
-  .memory-item {
-    @apply bg-white/80 dark:bg-[#1F2833]/60 backdrop-blur-md border border-white/50 dark:border-white/5 rounded-2xl p-4 mb-4 transition-all hover:shadow-md hover:border-[#D4AF37]/20;
-  }
-
-  .memory-type-badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded text-2xs font-mono font-medium uppercase tracking-wide;
-  }
-
-  .memory-type-badge.type-semantic {
-    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30;
-  }
-
-  .memory-type-badge.type-episodic {
-    @apply bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30;
-  }
-
-  .memory-type-badge.type-procedural {
-    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30;
-  }
-
-  /* ===== STATS ===== */
-
-  .stat {
-    @apply text-center py-1.5 px-2 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50;
-  }
-
-  .stat-value {
-    @apply block font-mono text-sm text-gray-900 dark:text-gray-100;
-  }
-
-  .stat-label {
-    @apply block text-2xs text-gray-400 dark:text-gray-500 uppercase tracking-wider;
-  }
-
-  /* ===== AGENT CARD ===== */
-
-  .agent-card {
-    @apply bg-white/80 dark:bg-[#1F2833]/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-[#D4AF37]/30 hover:shadow-xl hover:-translate-y-1;
-  }
-
-  /* ===== EMPTY STATE ===== */
-
-  .empty-state {
-    @apply flex flex-col items-center justify-center py-16 text-center;
-  }
-
-  .empty-arabic {
-    @apply text-4xl text-[#D4AF37]/60 mb-3;
-    font-family: Georgia, serif;
-  }
-
-  .empty-text {
-    @apply text-sm font-medium text-gray-500 dark:text-gray-400;
-  }
-
-  .empty-sub {
-    @apply text-xs text-gray-400 dark:text-gray-500 mt-1.5 max-w-sm;
-  }
-
-  /* ===== TOOL TAGS ===== */
-
-  .tool-tag {
-    @apply text-2xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono;
-  }
-
-  /* ===== STATUS DOTS ===== */
-
-  .status-dot {
-    @apply w-3 h-3 rounded-full shrink-0 ring-2 ring-white dark:ring-slate-900;
-  }
-
-  .status-dot-active {
-    @apply bg-emerald-500;
-  }
-
-  .status-dot-idle {
-    @apply bg-amber-500;
-  }
-
-  .status-dot-busy {
-    @apply bg-red-500;
-  }
-
-  .status-dot-offline {
-    @apply bg-gray-400 dark:bg-gray-600;
   }
 }
 
@@ -486,14 +590,14 @@
 /* --- Inline code --- */
 .prose .inline-code,
 .prose code:not([class]) {
-  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[13px] font-mono
-         text-amber-700 dark:text-[#D4AF37] border border-gray-200/60 dark:border-zinc-700/60;
+  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-sm text-2xs font-mono
+         text-amber-700 dark:text-mizan-gold border border-gray-200/60 dark:border-zinc-700/60;
 }
 
 /* --- Code blocks (pre) --- */
 .prose pre {
   @apply bg-[#0d1117] dark:bg-[#0d1117] border border-gray-200 dark:border-zinc-800
-         rounded-lg overflow-x-auto text-[13px] leading-relaxed my-3;
+         rounded-lg overflow-x-auto text-2xs leading-relaxed my-3;
   padding: 1rem 1.25rem;
 }
 
@@ -569,7 +673,7 @@
 }
 
 .task-checkbox {
-  @apply mr-2 rounded border-gray-300 dark:border-zinc-600 cursor-default;
+  @apply mr-2 rounded-sm border-gray-300 dark:border-zinc-600 cursor-default;
   accent-color: #d4af37;
   width: 14px;
   height: 14px;
@@ -580,7 +684,7 @@
 
 /* --- Blockquote --- */
 .prose blockquote {
-  @apply border-l-4 border-amber-400/70 dark:border-[#D4AF37]/50 pl-4 my-3
+  @apply border-l-4 border-amber-400/70 dark:border-mizan-gold/50 pl-4 my-3
          text-gray-500 dark:text-gray-400 bg-amber-50/30 dark:bg-amber-900/5
          rounded-r-lg py-2 pr-3 italic;
 }
@@ -599,7 +703,7 @@
 
 /* --- Images --- */
 .prose img {
-  @apply rounded-lg max-w-full h-auto my-3 shadow-sm;
+  @apply rounded-lg max-w-full h-auto my-3 shadow-xs;
 }
 
 /* --- Strong / Em / Del --- */
@@ -668,7 +772,7 @@
 }
 
 .code-block-wrapper pre {
-  @apply bg-[#0d1117] overflow-x-auto text-[13px] leading-relaxed m-0 border-none rounded-none;
+  @apply bg-[#0d1117] overflow-x-auto text-2xs leading-relaxed m-0 border-none rounded-none;
   padding: 1rem 1.25rem;
 }
 
@@ -684,7 +788,7 @@
 
 /* Hide the absolute copy button when header is used */
 .code-block-wrapper .code-copy-btn {
-  @apply px-2 py-0.5 text-xs rounded bg-zinc-700/60 text-gray-300 hover:bg-zinc-600 transition-colors cursor-pointer;
+  @apply px-2 py-0.5 text-xs rounded-sm bg-zinc-700/60 text-gray-300 hover:bg-zinc-600 transition-colors cursor-pointer;
 }
 
 /* ===================================================================
@@ -755,18 +859,11 @@
 
 /* ===== SKELETON LOADING ===== */
 .skeleton {
-  @apply bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200
+  @apply bg-linear-to-r from-gray-200 via-gray-100 to-gray-200
          dark:from-zinc-800 dark:via-zinc-700 dark:to-zinc-800
-         rounded;
+         rounded-sm;
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
-}
-
-/* ===== FOCUS RING ===== */
-.focus-ring {
-  @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-2
-         focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900;
-  --tw-ring-color: rgba(212, 175, 55, 0.5);
 }
 
 /* ===== REDUCED MOTION ===== */

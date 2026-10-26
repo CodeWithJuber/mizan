@@ -181,7 +181,7 @@ export function AgentModal({
               <option value="" disabled={!!formData.model}>{editingAgent ? "No model reported — keep unchanged" : "Choose a model"}</option>
               {modelOptions.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
             </select>
-            <p className="mt-1 text-xs text-gray-500 break-words">
+            <p className="mt-1 text-xs text-gray-500 wrap-break-word">
               {editingAgent?.provider ? `Current provider: ${editingAgent.provider}. ` : ""}
               {source ? `Catalog: ${source.display}. ` : ""}
               A model changes only when you select one and save.

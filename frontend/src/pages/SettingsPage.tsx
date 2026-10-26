@@ -316,7 +316,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
               }}
               className={`whitespace-nowrap text-left px-4 md:px-6 py-2.5 md:py-3 text-sm transition-all duration-300 ${
                 activeSection === s.id
-                  ? "text-mizan-gold font-medium bg-gradient-to-r from-mizan-gold/10 to-transparent border-b-2 md:border-b-0 md:border-r-2 border-mizan-gold"
+                  ? "text-mizan-gold font-medium bg-linear-to-r from-mizan-gold/10 to-transparent border-b-2 md:border-b-0 md:border-r-2 border-mizan-gold"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40"
               }`}
             >

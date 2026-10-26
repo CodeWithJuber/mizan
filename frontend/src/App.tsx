@@ -2452,7 +2452,7 @@ function AppInner() {
 
       case "chat":
         return (
-          <div className="chat-layout bg-white dark:bg-[#0B0C10]">
+          <div className="chat-layout bg-white dark:bg-mizan-dark">
             {/* ===== Chat Header — clean, minimal ===== */}
             <div className="chat-header">
               <div className="chat-header-inner">
@@ -2466,7 +2466,7 @@ function AppInner() {
                     }`}
                     onClick={() => setShowAgentPicker(!showAgentPicker)}
                   >
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-linear-to-br from-amber-400 to-amber-600 flex items-center justify-center">
                       <svg viewBox="0 0 20 20" fill="white" className="w-3 h-3">
                         <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM5.05 3.05a.75.75 0 011.06 0l1.062 1.06a.75.75 0 11-1.06 1.06L5.05 4.11a.75.75 0 010-1.06zm9.9 0a.75.75 0 010 1.06l-1.06 1.062a.75.75 0 01-1.062-1.061l1.061-1.06a.75.75 0 011.06 0zM10 7a3 3 0 100 6 3 3 0 000-6z" />
                       </svg>
@@ -2805,7 +2805,7 @@ function AppInner() {
                   /* ===== Empty state — centered like ChatGPT ===== */
                   <div className="flex flex-col items-center justify-center h-full px-4">
                     <div className="text-center space-y-4 mb-8">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
+                      <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
                         <svg
                           viewBox="0 0 24 24"
                           fill="white"
@@ -2925,7 +2925,7 @@ function AppInner() {
                     <div className="chat-message-row">
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
-                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600">
                             <svg
                               viewBox="0 0 20 20"
                               fill="white"
@@ -2935,7 +2935,7 @@ function AppInner() {
                             </svg>
                           </div>
                           <div>
-                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                            <div className="text-2xs font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
                               {selectedAgent?.name || "MIZAN"}
                             </div>
                             <TypingIndicator />
@@ -2975,7 +2975,7 @@ function AppInner() {
                     <div className="chat-message-row group/msg">
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
-                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600">
                             <svg
                               viewBox="0 0 20 20"
                               fill="white"
@@ -2985,7 +2985,7 @@ function AppInner() {
                             </svg>
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                            <div className="text-2xs font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
                               {selectedAgent?.name || "MIZAN"}
                             </div>
                             <div className="prose">
@@ -3945,7 +3945,7 @@ function AppInner() {
         />
         {mobileNavOpen && (
           <div
-            className="fixed inset-0 z-[60] md:hidden"
+            className="fixed inset-0 z-60 md:hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"

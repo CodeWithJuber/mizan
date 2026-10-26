@@ -231,7 +231,7 @@ export function CodingWorkspace({
           aria-label="Selected workspace"
           value={selectedId}
           disabled={Boolean(busy)}
-          className={`${field} !w-auto max-w-full`}
+          className={`${field} w-auto! max-w-full`}
           onChange={(event) => {
             if (!dirty || window.confirm("Discard unsaved file changes?"))
               onSelect(event.target.value);
@@ -287,7 +287,7 @@ export function CodingWorkspace({
             />
             <button
               disabled={!newName.trim() || Boolean(busy)}
-              className={`${button} !bg-amber-600 !text-white whitespace-nowrap`}
+              className={`${button} bg-amber-600! text-white! whitespace-nowrap`}
             >
               Create workspace
             </button>
@@ -503,7 +503,7 @@ export function CodingWorkspace({
               >
                 <select
                   aria-label="Run language"
-                  className={`${field} !w-auto`}
+                  className={`${field} w-auto!`}
                   value={language}
                   onChange={(event) =>
                     setLanguage(event.target.value as typeof language)
@@ -527,7 +527,7 @@ export function CodingWorkspace({
                   }
                 />
                 <button
-                  className={`${button} !bg-amber-600 !text-white`}
+                  className={`${button} bg-amber-600! text-white!`}
                   disabled={
                     !command.trim() ||
                     !capabilities?.execution_available ||
@@ -548,7 +548,7 @@ export function CodingWorkspace({
                     · {(result.duration_ms / 1000).toFixed(1)}s
                     {result.truncated ? " · output limited" : ""}
                   </p>
-                  <pre className="whitespace-pre-wrap break-words font-mono text-xs rounded-lg bg-zinc-900 text-gray-100 p-3 max-h-52 overflow-auto">
+                  <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs rounded-lg bg-zinc-900 text-gray-100 p-3 max-h-52 overflow-auto">
                     {result.stdout || "No standard output."}
                     {result.stderr ? `\n\n${result.stderr}` : ""}
                   </pre>
@@ -560,7 +560,7 @@ export function CodingWorkspace({
                 </div>
               )}
               {diff && (
-                <pre className="whitespace-pre-wrap break-words text-xs font-mono p-3 bg-gray-50 dark:bg-zinc-900 max-h-56 overflow-auto">
+                <pre className="whitespace-pre-wrap wrap-break-word text-xs font-mono p-3 bg-gray-50 dark:bg-zinc-900 max-h-56 overflow-auto">
                   {diff}
                 </pre>
               )}
