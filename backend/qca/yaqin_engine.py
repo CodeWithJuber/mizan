@@ -21,6 +21,8 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 
+from core.adaptive import wilson_bounds
+
 logger = logging.getLogger("mizan.yaqin")
 
 
@@ -178,8 +180,9 @@ class YaqinEngine:
         self._proven_patterns[pattern_id]["last_proven"] = time.time()
 
         total = self._proven_patterns[pattern_id]["success_count"]
-        # Confidence scales with verification count
-        scaled_confidence = min(1.0, 0.9 + (total / 1000.0))
+        # Confidence is the Wilson lower bound of `total` verified successes:
+        # it rises with evidence (≈ n / (n + z²)) instead of a fixed step.
+        scaled_confidence = wilson_bounds(total, total)[0]
 
         return YaqinTag(
             level=YaqinLevel.HAQQ_AL_YAQIN,

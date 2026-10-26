@@ -31,6 +31,7 @@ QCA Integration:
 
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -56,18 +57,11 @@ CHAT_PREFERENCE_LIMITS = {
 # sense the native model reads, so same-root/different-sense concepts stay
 # distinguishable to the reader. Default OFF = today's behavior bit-for-bit.
 
-#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
-#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
-#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
-#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
-#: the top end, so the gate filters ambiguous low-information cases while the
-#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
-#: carries the residual overconfident-error risk.
-NLP_MIN_SENSE_CONFIDENCE = 0.8
-
-#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
-#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
-NLP_MIN_SENSE_MARGIN = 0.2
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
 
 _ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
 
@@ -121,7 +115,7 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
         margin = confidence - runner_up
-        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+        if passes_sense_gate(confidence, margin):
             bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
     return bits
 
@@ -163,6 +157,46 @@ class Memory:
         half_life_hours = self.importance * 720  # Max 30 days half-life
         decay_factor = 0.5 ** (hours_elapsed / max(half_life_hours, 1))
         return cast(float, self.importance * decay_factor * (1 + 0.1 * self.access_count))
+
+
+def rank_memories(
+    query: str, memories: list["Memory"], now: datetime | None = None
+) -> list["Memory"]:
+    """Order memories by relevance × activation × importance (Mizan weighing).
+
+    Relevance is BM25 over content and tags; activation is ACT-R base-level
+    activation from access count and age, so repeated remembrance (dhikr)
+    keeps a memory retrievable while unused ones fade (nisyan).
+    """
+    from core.adaptive import bm25_scores, normalise
+
+    now = now or datetime.now(UTC)
+    texts = [
+        f"{m.content if isinstance(m.content, str) else json.dumps(m.content)} {' '.join(m.tags or [])}"
+        for m in memories
+    ]
+    relevance = normalise(bm25_scores(query, texts))
+
+    def score(index: int) -> float:
+        memory = memories[index]
+        age = max(1.0, (now - memory.recency).total_seconds())
+        weight = memory_activation_weight(age, memory.access_count)
+        return float((0.25 + 0.75 * relevance[index]) * weight * (0.5 + 0.5 * memory.importance))
+
+    order = sorted(range(len(memories)), key=score, reverse=True)
+    return [memories[index] for index in order]
+
+
+def memory_activation_weight(age_seconds: float, accesses: int, decay: float = 0.5) -> float:
+    """ACT-R retrieval weight with the optimized-learning approximation.
+
+    B ≈ ln(n / (1 − d)) − d·ln(L): n accesses over a lifetime L (seconds).
+    """
+    from core.adaptive import activation_weight
+
+    n = max(1, int(accesses) + 1)
+    activation = math.log(n / (1.0 - decay)) - decay * math.log(max(age_seconds, 1.0))
+    return float(activation_weight(activation))
 
 
 class DhikrMemorySystem:
@@ -488,8 +522,10 @@ class DhikrMemorySystem:
                     params.extend([f"%{escaped}%", f"%{escaped}%"])
                 sql += " AND (" + " OR ".join(word_clauses) + ")"
 
+        # Wider candidate set; the final order weighs relevance and memory
+        # activation below instead of stored importance alone.
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
-        params.append(limit)
+        params.append(max(limit, 1) * 4 if query else limit)
 
         c.execute(sql, params)
         rows = c.fetchall()
@@ -514,6 +550,9 @@ class DhikrMemorySystem:
                     tags=json.loads(row[7]) if row[7] else [],
                 )
             )
+
+        if query and memories:
+            memories = rank_memories(query, memories)[:limit]
 
         # Update access count for recalled memories
         for mem in memories:
@@ -1095,6 +1134,20 @@ class DhikrMemorySystem:
         conn.commit()
         self._release_conn(conn)
         return hikmah_id
+
+    async def count_hikmah(self, agent_id: str = "") -> int:
+        """Total learned patterns (not capped like the in-prompt list)."""
+        conn = self._get_conn()
+        try:
+            if agent_id:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM hikmah WHERE source_agent = ?", (agent_id,)
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT COUNT(*) FROM hikmah").fetchone()
+        finally:
+            self._release_conn(conn)
+        return int(row[0]) if row else 0
 
     async def load_hikmah(self, agent_id: str = "", limit: int = 20) -> list[dict]:
         """Load learned wisdom patterns from the hikmah table."""

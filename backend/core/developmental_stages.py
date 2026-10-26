@@ -19,7 +19,10 @@ features progressively, mirroring embryonic development from the Quran (23:12-14
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
+
+from core.adaptive import BetaEstimator
 
 logger = logging.getLogger("mizan.dev_stages")
 
@@ -197,6 +200,15 @@ class UpgradeReport:
         }
 
 
+def promotion_confidence() -> float:
+    """Posterior probability required to accept a stage's success rate."""
+    try:
+        value = float(os.getenv("MIZAN_NAFS_CONFIDENCE", "0.7"))
+    except ValueError:
+        value = 0.7
+    return min(0.99, max(0.5, value))
+
+
 class DevelopmentalGate:
     """
     Progressive capability gating tied to nafs_level.
@@ -262,24 +274,32 @@ class DevelopmentalGate:
         missing = []
 
         success_rate = getattr(agent, "success_rate", 0.0)
-        total_tasks = getattr(agent, "total_tasks", 0)
+        total_tasks = int(getattr(agent, "total_tasks", 0) or 0)
+        successes = getattr(agent, "success_count", round(success_rate * total_tasks))
         required_sr = threshold.get("success_rate", 0.0)
         required_tasks = threshold.get("min_tasks", 0)
+        # Weigh the evidence (Mizan) instead of comparing a raw ratio: the
+        # Beta posterior of the success rate must make the stage's rate
+        # probable enough. The task count is the stage's minimum evidence.
+        posterior = (
+            BetaEstimator().update(1.0, successes).update(0.0, max(0, total_tasks - successes))
+        )
+        confidence = posterior.probability_at_least(required_sr)
 
-        if success_rate < required_sr:
-            missing.append(f"success_rate {success_rate:.0%} < {required_sr:.0%}")
+        if confidence < promotion_confidence():
+            missing.append(
+                f"P(success rate ≥ {required_sr:.0%}) = {confidence:.0%} "
+                f"< {promotion_confidence():.0%} ({successes}/{total_tasks} tasks)"
+            )
         if total_tasks < required_tasks:
             missing.append(f"tasks {total_tasks} < {required_tasks}")
         if "min_hikmah" in threshold:
-            hikmah = len(getattr(agent, "hikmah", []))
+            hikmah = int(getattr(agent, "hikmah_count", 0) or len(getattr(agent, "hikmah", [])))
             if hikmah < threshold["min_hikmah"]:
                 missing.append(f"hikmah {hikmah} < {threshold['min_hikmah']}")
 
-        # Compute rough tazkiyah score
-        tazkiyah = (
-            min(1.0, success_rate / max(required_sr, 0.01)) * 0.6
-            + min(1.0, total_tasks / max(required_tasks, 1)) * 0.4
-        )
+        # Tazkiyah: posterior confidence, scaled by how much evidence exists.
+        tazkiyah = confidence * min(1.0, total_tasks / max(required_tasks, 1))
 
         report = UpgradeReport(
             current_level=current,

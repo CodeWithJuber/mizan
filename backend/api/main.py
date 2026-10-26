@@ -176,8 +176,18 @@ async def lifespan(app: FastAPI):
                 context_manager=context_manager,
                 planner=planner,
             )
-            agent.total_tasks = profile.get("total_tasks", 0)
+            agent.total_tasks = profile.get("total_tasks", 0) or 0
             agent.learning_iterations = profile.get("learning_iterations", 0)
+            # Restore the evidence Nafs evolution weighs, not just the count.
+            agent.success_count = round(
+                float(profile.get("success_rate") or 0.0) * agent.total_tasks
+            )
+            agent.error_count = profile.get("error_count", 0) or 0
+            agent.nafs_level = max(1, min(7, int(profile.get("nafs_level") or 1)))
+            try:
+                agent.hikmah_count = await memory.count_hikmah(agent.id)
+            except Exception:
+                agent.hikmah_count = 0
             active_agents[agent.id] = agent
             balancer.register(agent.id)
             shura.members[agent.id] = agent
@@ -219,7 +229,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize scheduler executor
     async def execute_scheduled_task(task: str, agent_id: str | None = None):
-        aid = agent_id or (list(active_agents.keys())[0] if active_agents else None)
+        aid = agent_id or (choose_agent_for_task(task) if active_agents else None)
         if aid and aid in active_agents:
             agent = active_agents[aid]
             return await agent.execute(task)
@@ -264,7 +274,7 @@ async def lifespan(app: FastAPI):
         task_text = payload.get("task", "")
         agent_id = payload.get("agent_id")
         if not agent_id and active_agents:
-            agent_id = next(iter(active_agents))
+            agent_id = choose_agent_for_task(task_text)
         if not agent_id or agent_id not in active_agents:
             return {"error": "No agent available"}
         agent = active_agents[agent_id]
@@ -1161,6 +1171,22 @@ async def authorize_session(session_id: str, user: TokenPayload, *, create: bool
 
 
 # === CHAT ===
+
+
+def choose_agent_for_task(task: str) -> str:
+    """Thompson-sample an agent by its learned success in this task's category.
+
+    Each agent's Shukr record is a Beta posterior; sampling balances using
+    proven agents with occasionally trying less-tested ones.
+    """
+    agents = list(active_agents.values())
+    first = agents[0]
+    try:
+        category = first._classify_task(task)
+        samples = {agent.id: agent.shukr.posterior(agent.id, category).sample() for agent in agents}
+        return str(max(samples, key=lambda agent_id: samples[agent_id]))
+    except Exception:
+        return cast(str, first.id)
 
 
 async def chat_history(session_id: str, session: dict, agent, task: str) -> list[dict]:

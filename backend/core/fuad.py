@@ -16,12 +16,31 @@ Three conviction levels (mapped to Yaqin):
 """
 
 import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
+
+from core.adaptive import BetaEstimator
 
 logger = logging.getLogger("mizan.fuad")
+
+
+def _receipt_failed(content: Any) -> bool:
+    """A tool receipt failed when it reports an error or ``success: false``."""
+    data = content
+    if isinstance(content, str):
+        try:
+            data = json.loads(content)
+        except (TypeError, ValueError):
+            return False
+    if isinstance(data, dict):
+        if data.get("truncated") and isinstance(data.get("head"), str):
+            return _receipt_failed(data["head"]) or '"error":' in data["head"][:200]
+        return bool(data.get("error")) or data.get("success") is False
+    return False
 
 
 class ConvictionLevel(Enum):
@@ -157,13 +176,11 @@ class FuadEngine:
 
         assessment.source_count = independent_count
 
-        # Bayesian confidence update
-        confidence = 0.5
-        for _ in range(independent_count):
-            confidence = confidence + (1.0 - confidence) * 0.35  # Each source +35% of gap
-        for _ in range(len(assessment.contradicting)):
-            confidence = confidence * 0.70  # Each contradiction reduces by 30%
-        confidence = max(0.05, min(0.97, confidence))
+        # Beta-Bernoulli posterior: independent supporting sources and
+        # contradictions are the evidence; the uniform prior gives 0.5.
+        posterior = BetaEstimator().update(1.0, independent_count)
+        posterior.update(0.0, len(assessment.contradicting))
+        confidence = max(0.05, min(0.97, posterior.mean))
         assessment.confidence = confidence
 
         # Classify level
@@ -194,23 +211,17 @@ class FuadEngine:
         tool_results: list[dict] | None = None,
     ) -> float:
         """
-        Compute overall confidence from tool evidence using Bayesian update.
+        Confidence from tool evidence: the posterior mean of a Beta-Bernoulli
+        model where each tool receipt is one observation (uniform prior 0.5).
 
-        Each successful tool result acts as an independent evidence source.
-        Replaces the hardcoded `0.5 + 0.1 * tool_count` formula.
-
-        P(confident) = 0.5, then each evidence source closes 35% of the gap.
-        Failed tool results penalize by 30%.
+        A failure is read from the receipt's structure (an ``error`` field or
+        ``success: false``), not by searching its text.
         """
         tool_results = tool_results or []
-        confidence = 0.5
-
-        # Count successful vs failed results
         successes = 0
         failures = 0
         for result in tool_results:
-            content = str(result.get("content", ""))
-            if '"error"' in content or content.startswith('{"error'):
+            if _receipt_failed(result.get("content", "")):
                 failures += 1
             else:
                 successes += 1
@@ -219,15 +230,8 @@ class FuadEngine:
         if not tool_results and tool_count > 0:
             successes = tool_count
 
-        # Bayesian update: each success closes 35% of gap to 1.0
-        for _ in range(successes):
-            confidence = confidence + (1.0 - confidence) * 0.35
-
-        # Each failure reduces by 30%
-        for _ in range(failures):
-            confidence = confidence * 0.70
-
-        return max(0.05, min(0.95, round(confidence, 4)))
+        posterior = BetaEstimator().update(1.0, successes).update(0.0, failures)
+        return float(max(0.05, min(0.95, round(posterior.mean, 4))))
 
     def get_assessment(self, claim: str) -> ConvictionAssessment | None:
         """Retrieve existing assessment without updating."""

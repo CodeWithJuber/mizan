@@ -35,18 +35,11 @@ logger = logging.getLogger("mizan.qca")
 # today's dict shape exactly. Fail-closed: ModelNotReadyError / inference
 # exceptions -> logged fallback, the 7-layer pipeline is never touched.
 
-#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
-#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
-#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
-#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
-#: the top end, so the gate filters ambiguous low-information cases while the
-#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
-#: carries the residual overconfident-error risk.
-NLP_MIN_SENSE_CONFIDENCE = 0.8
-
-#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
-#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
-NLP_MIN_SENSE_MARGIN = 0.2
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
 
 
 def _nlp_native_wsd_enabled() -> bool:
@@ -99,10 +92,7 @@ def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> li
             continue
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
-        if (
-            confidence >= NLP_MIN_SENSE_CONFIDENCE
-            and (confidence - runner_up) >= NLP_MIN_SENSE_MARGIN
-        ):
+        if passes_sense_gate(confidence, confidence - runner_up):
             out.append(
                 {
                     "lemma": lemma,

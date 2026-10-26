@@ -43,6 +43,7 @@ from agents.shura_council import ShuraCouncil
 from agents.tool_catalog import DISCOVER_TOOL, ToolCatalog, schema_snapshot
 
 # al-Insan faculty modules — discernment, restraint, wisdom
+from core.adaptive import AdaptiveStateStore
 from core.basira import BasiraEngine
 from core.creativity import IbdaCreativityEngine
 from core.developmental_stages import DevelopmentalGate
@@ -182,18 +183,11 @@ class OutputBudgetExceeded(RuntimeError):
 # (ModelNotReadyError / inference exceptions -> logged fallback to the
 # LLM/heuristic path, never swallowed silently).
 
-#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
-#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
-#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
-#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
-#: the top end, so the gate filters ambiguous low-information cases while the
-#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
-#: carries the residual overconfident-error risk.
-NLP_MIN_SENSE_CONFIDENCE = 0.8
-
-#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
-#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
-NLP_MIN_SENSE_MARGIN = 0.2
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
 
 
 def _nlp_native_wsd_enabled() -> bool:
@@ -242,7 +236,7 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
         margin = confidence - runner_up
-        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+        if passes_sense_gate(confidence, margin):
             bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
     return bits
 
@@ -337,6 +331,7 @@ class BaseAgent:
         # Performance metrics (Mizan - balance)
         self.total_tasks = 0
         self.success_count = 0
+        self.hikmah_count = 0  # all learned patterns; the prompt keeps only recent ones
         self.error_count = 0
         self.total_duration_ms = 0.0
         self.learning_iterations = 0
@@ -965,6 +960,26 @@ class BaseAgent:
 
         self.state = "resting"
 
+    @property
+    def adaptive(self) -> AdaptiveStateStore:
+        """Persisted adaptive estimators (same SQLite file as this agent's memory)."""
+        store = getattr(self, "_adaptive_store", None)
+        if store is None:
+            path = getattr(self.memory, "db_path", None) if self.memory else None
+            store = AdaptiveStateStore(path if isinstance(path, str) else None)
+            self._adaptive_store = store
+        return store
+
+    def _tool_reliability(self, tool_name: str, success: bool) -> float:
+        """Record one tool receipt; return the tool's posterior success rate."""
+        key = f"tool:{tool_name}"
+        try:
+            posterior = self.adaptive.beta(key, forgetting=0.98).update(success)
+            self.adaptive.put(key, posterior.to_dict())
+            return float(posterior.mean)
+        except Exception:
+            return 0.8 if success else 0.2
+
     def _step_budget(self) -> int:
         """Tool rounds per run (agent config or MIZAN_CHAT_MAX_STEPS), not Nafs-bound."""
         return self._bounded_generation_config("max_steps", _DEFAULT_MAX_STEPS, 1, 1000)
@@ -1242,14 +1257,20 @@ class BaseAgent:
                     # The receipt is observed; a failed action is not evidence
                     # that the requested task succeeded.
                     tool_summary = f"{block.name}: {json.dumps(tool_result)[:200]}"
-                    if tool_result_failed(tool_result):
+                    # Certainty follows the tool's own track record (Beta
+                    # posterior of its receipts), not a fixed 0.8 / 0.2.
+                    failed = tool_result_failed(tool_result)
+                    reliability = self._tool_reliability(block.name, not failed)
+                    if failed:
                         yaqin_tag = self.yaqin.tag_inference(
-                            tool_summary, confidence=0.2, source=f"tool_failure:{block.name}"
+                            tool_summary,
+                            confidence=1.0 - reliability,
+                            source=f"tool_failure:{block.name}",
                         )
                     else:
                         yaqin_tag = self.yaqin.tag_observation(
                             tool_summary,
-                            confidence=0.8,
+                            confidence=reliability,
                             source=block.name,
                             evidence=[f"Tool receipt from {block.name}; task outcome unverified"],
                         )
@@ -2852,6 +2873,7 @@ Match the requested depth and self-correct errors."""
                     "confidence": 0.8,
                 }
             )
+            self.hikmah_count += 1
             if len(self.hikmah) > 20:
                 self.hikmah = self.hikmah[-20:]
 
@@ -3729,7 +3751,7 @@ class {class_name}(SkillBase):
             return json.dumps([])
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
-        if confidence < NLP_MIN_SENSE_CONFIDENCE or (confidence - runner_up) < NLP_MIN_SENSE_MARGIN:
+        if not passes_sense_gate(confidence, confidence - runner_up):
             return json.dumps([])
         return json.dumps([[sense_id, round(confidence, 4)]])
 
@@ -3847,7 +3869,7 @@ class {class_name}(SkillBase):
             "ihsan_eligible": self.ihsan.is_eligible(self.nafs_level),
             "shukr_strengths": len(self.shukr.get_strengths(self.id)),
             "tools": self._get_all_available_tool_names(),
-            "hikmah_count": len(self.hikmah),
+            "hikmah_count": max(self.hikmah_count, len(self.hikmah)),
             "yaqin": self.yaqin.stats(),
             "lawh_memory": self.qca.lawh.stats(),
             "aql_bindings": self.qca.aql.get_all_bindings_summary()[0],
