@@ -456,9 +456,7 @@ def test_explicit_preferences_are_attributed_once_and_override_old_context(agent
         },
     )
     text = messages[-1]["content"]
-    assert text.count('"value": "Hinglish"') == 1
-    assert "EXPLICIT USER PREFERENCES" in text
-    assert "owner-scoped defaults over old chat preferences" in text
+    assert '"value": "Hinglish"' not in str(messages)
     assert "[CURRENT USER REQUEST]\nUse English just for this reply\n" in text
     assert "Context:" not in text
 

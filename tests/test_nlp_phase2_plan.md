@@ -168,3 +168,8 @@ before activation — advisory-only.
     a deterministic in-process `BaseLLMProvider` returning `LLMResponse` and checks
     its explicit fixture response. All native-WSD injection, flag, confidence and
     fallback-log assertions remain unchanged; no hosted model is contacted.
+12. **Current request stays last (2026-10-26):** IP-1 advisory context now appears
+    before the opaque current user request. The positive test checks the earlier
+    context and asserts that the final request is intact; absence/fallback tests
+    search all messages so misplaced or fabricated senses cannot pass unnoticed.
+    Native-WSD flags, confidence gates and evidence are unchanged.

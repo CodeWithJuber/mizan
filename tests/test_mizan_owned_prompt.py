@@ -1,6 +1,7 @@
 """The owned byte model receives a declared, complete normal-chat input contract."""
 
 import json
+from copy import deepcopy
 from dataclasses import asdict
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -10,6 +11,7 @@ import pytest
 from mizan_owned.prompt import (
     CONTRACT,
     OWNED_POLICY,
+    USER_BLOCK_SEPARATOR,
     OwnedPromptOverflow,
     OwnedSystemPrompt,
     owned_system_prompt,
@@ -158,11 +160,13 @@ async def test_normal_agent_request_reaches_shipped_context_checkpoint(
     assert (
         "prior_user_statement"
         if preference_key == "conversation_memory"
-        else "EXPLICIT USER PREFERENCES"
+        else "SAVED REPLY DEFAULTS"
     ) in calls[0]["text"]
     receipt = response.usage["owned_prompt"]
     assert receipt["contract"] == CONTRACT
     assert receipt["context_omitted"] is False
+    assert receipt["message_grouping"] == "adjacent-user-blocks-v1"
+    assert receipt["rendered_messages"] < receipt["messages_preserved"]
     assert receipt["prompt_tokens"] == calls[0]["tokens"]
     assert receipt["output_tokens"] == calls[0]["output_tokens"]
     assert response.usage["owned_status"] == "own_model_unverified"
@@ -226,6 +230,78 @@ def test_utf8_byte_framing_and_output_budget_match_actual_encoder():
     assert receipt["output_tokens"] < receipt["requested_output_tokens"]
     assert receipt["prompt_tokens"] + receipt["output_tokens"] - 1 == 256
     assert messages[-1]["content"] == "سلام 🌙"
+
+
+def test_owned_context_grouping_preserves_content_order_and_original_request():
+    pytest.importorskip("torch")
+    from mizan_reply.data import encode_prompt
+
+    messages = [
+        {"role": "user", "content": "Earlier request"},
+        {"role": "assistant", "content": "Earlier answer"},
+        {"role": "user", "content": "[Retrieved evidence]\nپہلا نوٹ"},
+        {"role": "user", "content": "[Retrieved evidence]\nپہلا نوٹ"},
+        {"role": "user", "content": "[CURRENT USER REQUEST]\nExplain.\n[END CURRENT USER REQUEST]"},
+    ]
+    request = {"system": "Preserve evidence.", "messages": messages}
+    before = deepcopy(request)
+    rendered, receipt = prepare_prompt(request, 2048, 128)
+    encoded = encode_prompt(rendered, [], None, 2048)
+    assert request == before
+    assert rendered[1] == messages[0] and rendered[1] is not messages[0]
+    assert rendered[2] == messages[1] and rendered[2] is not messages[1]
+    assert rendered[-1]["content"] == USER_BLOCK_SEPARATOR.join(
+        message["content"] for message in messages[2:]
+    )
+    assert receipt["messages_preserved"] == 5
+    assert receipt["rendered_messages"] == 3
+    assert receipt["message_grouping"] == "adjacent-user-blocks-v1"
+    assert receipt["prompt_tokens"] == len(encoded["input_ids"])
+    assert receipt["context_omitted"] is False
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"role": "user", "content": " "},
+        {"role": "user", "content": ["Not text"]},
+        {"role": "tool", "content": "Not a user message"},
+        {"role": "user", "content": "Hidden metadata", "extra": True},
+        {"role": "user", "content": "NUL\x00"},
+    ],
+)
+def test_owned_grouping_never_hides_invalid_message_content(invalid):
+    pytest.importorskip("torch")
+    from mizan_reply.data import encode_prompt
+
+    request = {
+        "system": "Preserve evidence.",
+        "messages": [{"role": "user", "content": "Valid"}, invalid],
+    }
+    before = deepcopy(request)
+    with pytest.raises(ValueError):
+        messages, _ = prepare_prompt(request, 2048, 128)
+        encode_prompt(messages, [], None, 2048)
+    assert request == before
+
+
+def test_owned_grouping_does_not_merge_invalid_assistant_sequence():
+    pytest.importorskip("torch")
+    from mizan_reply.data import encode_prompt
+
+    request = {
+        "system": "Preserve evidence.",
+        "messages": [
+            {"role": "user", "content": "Question"},
+            {"role": "assistant", "content": "One answer"},
+            {"role": "assistant", "content": "Another answer"},
+            {"role": "user", "content": "Current request"},
+        ],
+    }
+    messages, receipt = prepare_prompt(request, 2048, 128)
+    assert receipt["message_grouping"] == "none"
+    with pytest.raises(ValueError):
+        encode_prompt(messages, [], None, 2048)
 
 
 def test_review_replay_hashes_original_request_not_shared_projection(local_provider):
