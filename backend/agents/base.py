@@ -186,6 +186,64 @@ def _continuation_repeats(previous: str, new: str, n: int = 8) -> bool:
     return overlap > 0.8
 
 
+# A weak model may claim it has no tools without trying any. One corrective
+# turn per run points it at discovery instead of delivering a false denial.
+_CAPABILITY_DENIAL = re.compile(
+    r"(?:\bi\s+(?:do\s+not|don't|cannot|can't|am\s+(?:not\s+able|unable)\s+to)\s+"
+    r"(?:have\s+)?(?:any\s+)?(?:direct\s+)?(?:access\s+to\s+)?"
+    r"(?:tools?|the\s+internet|internet|browse|execute|run\s+(?:code|python|commands?)|download))"
+    r"|\bno\s+(?:tool|code\s+execution|execution|internet|browsing)s?\s+"
+    r"(?:or\s+\w+\s+)?(?:access|capabilit)"
+    r"|\b(?:only|just)\s+a\s+text(?:[- ](?:only|based))?\s+(?:ai|model|assistant)"
+    r"|\b(?:sirf|bas)\s+ek\s+text\b"
+    r"|\b(?:tools?|execution|internet|salahiyat|access)\b[^.\n]{0,40}\b(?:nahi|nahin)\s+(?:hai|hain|he)\b"
+    r"|\b(?:run|execute|chala|download)\w*\b[^.\n]{0,30}\b(?:nahi|nahin)\s+(?:kar\s+)?(?:sakta|sakti|sakte)\b",
+    re.IGNORECASE,
+)
+_RETRACT_MARKER = "\n[Retract]\n"
+_CAPABILITY_NUDGE = (
+    "[System: You DO have working tools in MIZAN. Do not tell the user you cannot run code, "
+    "browse, download or use tools. Call mizan_discover_tools with a short English query for "
+    'the needed action (for example "run python code", "search the web", "download a '
+    'file") and then call the tool it loads; answer from the real result. If a tool is '
+    "unavailable or fails, report that exact result instead.]"
+)
+
+
+def _denies_capability(text: str) -> bool:
+    return bool(text) and bool(_CAPABILITY_DENIAL.search(text[:4000]))
+
+
+def _capability_card(names: set[str]) -> str:
+    """What this agent can actually do, from its permitted tool names."""
+    lines = []
+    if {"workspace_run", "workspace_create"} & names:
+        lines.append(
+            "- run Python, JavaScript and shell code in an isolated project sandbox "
+            "(workspace_create, workspace_write, workspace_run; a sandbox session via "
+            "workspace_sandbox also installs packages and serves apps)"
+        )
+    if {"workspace_read", "workspace_edit", "workspace_grep"} & names:
+        lines.append("- read, edit and search project files")
+    if {"web_search", "web_browse", "http_get"} & names:
+        lines.append("- search the web and read pages (web_search, web_browse)")
+    if {"recall_memory", "query_knowledge"} & names:
+        lines.append("- recall memory and saved knowledge")
+    if any(name.startswith("mcp__") for name in names):
+        lines.append("- use the user's connected apps (mcp__* connector tools)")
+    if "activate_skill" in names:
+        lines.append("- follow installed Agent Skills (activate_skill)")
+    if not lines:
+        return ""
+    return (
+        "\nThrough tools you can:\n" + "\n".join(lines) + "\nOnly some tool definitions are "
+        "loaded at a time. When a request needs an action whose tool is not loaded, call "
+        "mizan_discover_tools with a short English query first. Never say you cannot run code, "
+        "browse or download before trying; if a tool fails or is unavailable, report the "
+        "actual result."
+    )
+
+
 _CONTINUE_PROMPT = (
     "[System: your previous reply was cut off by the length limit. "
     "Continue exactly where you left off — do not repeat, do not summarize, "
@@ -1315,6 +1373,7 @@ class BaseAgent:
             "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
         )
         tool_cutoffs = 0
+        capability_nudged = False
         provider_retries = 0
         output_boost = 1
         wrapping_up = False
@@ -1571,6 +1630,24 @@ class BaseAgent:
                 continue
 
             truncated = response.stop_reason == "max_tokens"
+
+            if (
+                not capability_nudged
+                and tool_count == 0
+                and not text_before_call
+                and not truncated
+                and tool_catalog is not None
+                and tool_catalog.schemas()
+                and _denies_capability(new_text)
+            ):
+                # Retract the false "I have no tools" answer and retry once.
+                capability_nudged = True
+                logger.info("[FIKR] capability denial without trying tools; nudging once")
+                messages.append({"role": "assistant", "content": assistant_turn_content(response)})
+                messages.append({"role": "user", "content": _CAPABILITY_NUDGE})
+                accumulated_text = ""
+                yield _RETRACT_MARKER
+                continue
 
             # Furqan: Validate final output before delivery
             if accumulated_text:
@@ -2230,11 +2307,20 @@ class BaseAgent:
             "[END AGENT STATE]"
         )
 
+        capability_card = ""
+        if getattr(self.ai_client, "supports_tools", True) is not False:
+            try:
+                capability_card = _capability_card(
+                    {str(item.get("name", "")) for item in self.get_tool_schemas()}
+                )
+            except Exception:  # noqa: BLE001 - the card is advisory
+                capability_card = ""
+
         base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) system.
 
 Role: {self.role}{tone_guidance}{ruh_note}{faculty_note}
 
-You have access to tools. Use them when needed to complete tasks.
+You have access to tools. Use them when needed to complete tasks.{capability_card}
 
 Core Principles:
 - Ihsan (إحسان): Always strive for excellence
@@ -2696,6 +2782,10 @@ Match the requested depth and self-correct errors."""
             async for chunk in self.think(
                 task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
             ):
+                if chunk == _RETRACT_MARKER:
+                    # The loop withdrew a false capability denial before retrying.
+                    full_response = ""
+                    continue
                 # Check if this is a tool_use marker from _agentic_loop
                 if chunk.startswith("\n[Tool:"):
                     # Extract tool name and send tool_use event
@@ -3029,6 +3119,9 @@ Match the requested depth and self-correct errors."""
                         stream=bool(stream_callback),
                         qalb_reading=qalb_reading,
                     ):
+                        if chunk == _RETRACT_MARKER:
+                            corrected_response = ""
+                            continue
                         # Tool markers are UI events, not user-facing text — filter
                         # them exactly like the main path does.
                         if chunk.startswith("\n[Tool:"):
