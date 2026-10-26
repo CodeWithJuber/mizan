@@ -153,6 +153,9 @@ export interface KnowledgeItem {
 // ===== Cognitive Metadata (QALB-7 Pipeline) =====
 
 export interface CognitiveMetadata {
+  /** Internal heuristics and policy counters, never measured answer accuracy. */
+  metrics_kind?: string;
+  metric_provenance?: Record<string, unknown>;
   nafs_level?: NafsLevel;
   nafs_name?: NafsName;
   ruh_energy?: number;
@@ -181,18 +184,19 @@ export interface ChatMessage {
   cognitive?: CognitiveMetadata;
   perception?: PerceptionResult;
   thinkingMessageId?: string;
-  /** Per-message model transparency (usage workstream C/E). Optional —
-   *  present only when the backend observed real provider metadata.
-   *  Never contains invented numbers; absent fields mean "not reported". */
+  /** Provider-reported usage plus application-measured model-call timing.
+   *  Missing usage values mean "not reported"; cost estimates are marked. */
   meta?: MessageUsageMeta;
   /** CHAT UPGRADE: true when the user stopped generation mid-stream — the
       content is a partial answer, not a finished one. */
   stopped?: boolean;
+  /** Terminal failure notice, separate from preserved partial answer text. */
+  error?: { code?: string; message: string };
 }
 
 // ===== Model Transparency / Cost Types (chat upgrade workstreams C + E) =====
 
-/** Observed per-message LLM metadata from the provider's response.
+/** Observed per-message provider usage and application-measured timing.
  *  `model` is the OBSERVED model id from the wire, not the requested one.
  *  `cost_usd` is provider-reported (authoritative) when `cost_estimated`
  *  is false, else an estimate from the built-in price table — the UI must
@@ -201,16 +205,47 @@ export interface MessageUsageMeta {
   model?: string;
   input_tokens?: number;
   output_tokens?: number;
+  /** Provider-reported reasoning usage; it may be part of output_tokens. */
+  reasoning_tokens?: number;
+  /** Derived output minus reasoning tokens; may include tool calls, not just visible text. */
+  visible_output_tokens?: number;
+  reasoning_observed?: boolean;
+  /** Application-measured duration of model calls, not end-to-end task time. */
   latency_ms?: number;
   finish_reason?: string;
   completion_status?: "abstained" | "unverified_answer" | "evidence_observed" | "incomplete"
     | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed";
   task_verified?: boolean;
+  answer_delivered?: boolean;
+  error_code?: string;
   owned_status?: string;
   owned_reason?: string;
   owned_prompt?: Record<string, unknown>;
+  /** Checkpoint selected/loaded for this attempt; does not establish completed generation. */
+  owned_checkpoint?: {
+    source: "registry" | "environment";
+    sha256: string;
+    generation?: number;
+  };
   cost_usd?: number;
   cost_estimated?: boolean;
+  /** Individual reported calls, used to disclose partial aggregate usage. */
+  calls?: MessageUsageMeta[];
+  /** Application wall-clock intervals; agent time excludes API preparation/persistence. */
+  timings?: {
+    queue_wait_ms?: number;
+    execution_ms?: number;
+    provider_ms?: number;
+    tool_ms?: number;
+    other_execution_ms?: number;
+    total_ms?: number;
+    provider_attempt_count?: number;
+    provider_attempts?: Array<{
+      mode: "stream" | "create";
+      outcome: "completed" | "failed" | "cancelled";
+      latency_ms: number;
+    }>;
+  };
   /** Byte-for-byte raw usage chunk from the stream (auditability). */
   raw?: Record<string, unknown>;
 }

@@ -129,6 +129,9 @@ exclude = [
     "**/*.sqlite*",
 ]
 
+[tool.hatch.build.targets.wheel.force-include]
+"research/registry/runtime_sources.json" = "research/registry/runtime_sources.json"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

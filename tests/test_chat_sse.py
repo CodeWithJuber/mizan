@@ -709,6 +709,97 @@ def test_saved_artifact_remains_visible_when_generation_later_fails(api, monkeyp
     assert stored["metadata"]["status"] == "error"
 
 
+@pytest.mark.parametrize("transport", ["sse", "rest", "websocket"])
+@pytest.mark.parametrize("partial", ["", "Visible partial answer"])
+@pytest.mark.parametrize("code", ["output_budget_exhausted", "private_unknown_code"])
+def test_failed_chat_retains_safe_code_final_usage_and_receipt(
+    api, monkeypatch, transport, partial, code
+):
+    main, client, tokens, _, memory, agent, manager = api
+    usage = {
+        "model": "observed-model",
+        "input_tokens": 19000,
+        "output_tokens": 2048,
+        "reasoning_tokens": 2048,
+        "visible_output_tokens": 0,
+        "timings": {"queue_wait_ms": 25, "provider_ms": 100, "total_ms": 150},
+        "calls": [{"finish_reason": "max_tokens", "output_tokens": 2048}],
+    }
+
+    async def fail(content, context, **callbacks):
+        if partial:
+            await callbacks["stream_callback"](partial)
+        return {
+            "success": False,
+            "error_code": code,
+            "error": "private upstream diagnostic",
+            "result": "private exception fallback must not become assistant content",
+            "completion_status": "incomplete" if code == "output_budget_exhausted" else "failed",
+            "answer_delivered": False,
+            "task_verified": False,
+            "usage": usage,
+        }
+
+    monkeypatch.setattr(agent, "execute", fail)
+    body = message(session=f"failure-{transport}")
+    if transport == "sse":
+        response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+        events = frames(response.text)
+        assert not any(event["type"] == "chat_complete" for event in events)
+        final = events[-1]
+    elif transport == "rest":
+        response = client.post("/api/chat", json=body, headers=headers(tokens["alice"]))
+        assert response.status_code == 200
+        events = [call.args[0] for call in manager.broadcast.await_args_list]
+        assert not any(event["type"] == "chat_complete" for event in events)
+        final = events[-1]
+    else:
+        monkeypatch.setattr(main, "manager", main.ConnectionManager())
+        monkeypatch.setattr(
+            main, "get_provider_status", lambda: {"active": "fixture", "default_model": "fixture"}
+        )
+        monkeypatch.setattr(
+            main,
+            "wali",
+            SimpleNamespace(
+                audit=SimpleNamespace(log=lambda *args: None),
+                check_rate_limit=lambda *args: {"allowed": True},
+            ),
+        )
+        with client.websocket_connect("/ws/failure?token=" + tokens["alice"]) as websocket:
+            assert websocket.receive_json()["type"] == "connected"
+            websocket.send_json({"type": "chat", **body})
+            assert websocket.receive_json()["type"] == "typing"
+            if partial:
+                assert websocket.receive_json()["chunk"] == partial
+            final = websocket.receive_json()
+
+    expected_code = code if code == "output_budget_exhausted" else "agent_failed"
+    assert final["type"] == "error"
+    assert final["code"] == expected_code
+    assert final["completion_status"] == (
+        "incomplete" if code == "output_budget_exhausted" else "failed"
+    )
+    assert final["answer_delivered"] is False and final["task_verified"] is False
+    assert final["usage"]["timings"] == usage["timings"]
+    assert final["usage"]["calls"] == usage["calls"]
+    assert final["usage"]["reasoning_tokens"] == 2048
+    if code == "output_budget_exhausted":
+        assert "output limit" in final["message"]
+    assert "private" not in json.dumps(final)
+    stored = asyncio.run(memory.get_messages(body["session_id"]))[-1]
+    assert stored["content"] == partial
+    metadata = stored["metadata"]
+    assert metadata["status"] == "error" and metadata["partial"] is True
+    assert metadata["code"] == expected_code
+    assert metadata["message"] == final["message"]
+    assert metadata["usage"] == final["usage"]
+    assert metadata["completion_status"] == final["completion_status"]
+    assert metadata["answer_delivered"] is False and metadata["task_verified"] is False
+    if transport == "sse":
+        assert metadata["usage_incomplete"] is False
+
+
 def test_ruh_status_distinguishes_configuration_from_loaded_model(api, monkeypatch, tmp_path):
     main, client, tokens, _, _, agent, _ = api
     agent.ai_client = SimpleNamespace(provider_name="ruh", _loaded=False)

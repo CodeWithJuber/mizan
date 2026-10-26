@@ -67,6 +67,8 @@ from memory.dhikr import DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
 from mizan_owned.schemas import (
     ContextRequest,
+    LearningRollbackRequest,
+    LearningRunRequest,
     OwnedRequest,
     RetractionRequest,
     ReviewRequest,
@@ -279,11 +281,16 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(task_worker.start())
     logger.info("[QUEUE] Task queue initialized, worker started")
 
+    from mizan_owned.learning_service import learning_service
+
+    await learning_service.start()
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    await learning_service.stop()
     if task_worker:
         await task_worker.stop()
         logger.info("[QUEUE] Task worker stopped")
@@ -348,6 +355,7 @@ _ADMIN_PREFIXES = (
     "/api/owned/retract",
     "/api/owned/export",
     "/api/owned/research",
+    "/api/owned/learning",
     "/api/automation",
     "/api/channels",
     "/api/gateway",
@@ -1123,6 +1131,33 @@ def chat_completion_receipt(result: dict) -> dict:
     }
 
 
+def chat_failure_payload(result: dict) -> dict:
+    """Expose only fixed public errors, retaining the execution's final receipt."""
+    budget_exhausted = result.get("error_code") == "output_budget_exhausted"
+    code = "output_budget_exhausted" if budget_exhausted else "agent_failed"
+    message = (
+        "The model reached its output limit before producing an answer. "
+        "Try a smaller request or another model."
+        if budget_exhausted
+        else "The agent could not complete this request. Any partial output was saved."
+    )
+    status = result.get("completion_status")
+    receipt = {
+        "completion_status": "incomplete"
+        if budget_exhausted or status == "incomplete"
+        else "failed",
+        "answer_delivered": False,
+        "task_verified": False,
+    }
+    usage = result.get("usage")
+    return {
+        "code": code,
+        "message": message,
+        "usage": {**(usage if isinstance(usage, dict) else {}), **receipt},
+        **receipt,
+    }
+
+
 @app.post("/api/chat/stream", response_class=StreamingResponse)
 async def stream_chat(
     req: StreamChatMessage,
@@ -1254,7 +1289,7 @@ async def stream_chat(
                 "thinking", phase=phase, content=content, confidence=confidence, metadata=metadata
             )
 
-        async def persist_partial(status: str):
+        async def persist_partial(status: str, final_result: dict | None = None):
             nonlocal persisted
             if persisted or session is None:
                 return
@@ -1262,6 +1297,15 @@ async def stream_chat(
                 build_usage_summary(getattr(agent, "_llm_calls", []) or [])
                 if agent and execution_started
                 else {}
+            )
+            receipt = (
+                chat_failure_payload({"usage": usage, **final_result})
+                if final_result is not None
+                else {
+                    "completion_status": "incomplete",
+                    "answer_delivered": False,
+                    "task_verified": False,
+                }
             )
             partial = "".join(response_parts)
             await memory.save_message(
@@ -1275,7 +1319,8 @@ async def stream_chat(
                     "status": status,
                     "partial": True,
                     "usage": usage,
-                    "usage_incomplete": True,
+                    "usage_incomplete": final_result is None,
+                    **receipt,
                 },
             )
             session["history"].append({"role": "assistant", "content": partial})
@@ -1334,12 +1379,8 @@ async def stream_chat(
             if len(final) > MAX_RESPONSE_CHARACTERS:
                 raise StreamDeliveryError("Chat response exceeds the output limit")
             if not result.get("success", True):
-                await persist_partial("error")
-                await channel.emit(
-                    "error",
-                    code="agent_failed",
-                    message="The agent could not complete this request",
-                )
+                await persist_partial("error", result)
+                await channel.emit("error", **chat_failure_payload(result))
                 return
             # Save before the terminal event: a disconnected browser can read
             # the final response and exact observed usage without resubmitting.
@@ -1400,6 +1441,8 @@ async def stream_chat(
                         "cognitive_method",
                         "lubb",
                         "lawwama",
+                        "metrics_kind",
+                        "metric_provenance",
                     )
                     if result.get(k) is not None
                 },
@@ -1608,6 +1651,7 @@ async def chat(
         if isinstance(final_response, dict):
             final_response = final_response.get("response", str(final_response))
 
+        failure = chat_failure_payload(result) if not result.get("success") else {}
         await memory.save_message(
             req.session_id,
             "assistant",
@@ -1617,16 +1661,18 @@ async def chat(
                 "usage": result.get("usage", {}),
                 **chat_completion_receipt(result),
                 "status": "complete" if result.get("success") else "error",
+                **({"partial": True, **failure} if failure else {}),
             },
         )
         session["history"].append({"role": "assistant", "content": str(final_response)})
         if not result.get("success"):
+            thinking_stream.complete(message_id)
             await manager.broadcast(
                 {
                     "type": "error",
                     "session_id": req.session_id,
                     "message_id": message_id,
-                    "message": "The agent could not complete this request. Partial output was saved.",
+                    **failure,
                 }
             )
             return
@@ -1644,6 +1690,8 @@ async def chat(
                 "cognitive_method",
                 "lubb",
                 "lawwama",
+                "metrics_kind",
+                "metric_provenance",
             )
             if result.get(k) is not None
         }
@@ -2235,6 +2283,56 @@ async def switch_provider(
 
 
 # === OWN ARCHITECTURE AND EXPLICIT TEACHER SUPPORT ===
+
+
+@app.get("/api/owned/learning")
+async def owned_learning_status():
+    from mizan_owned.learning_service import learning_service
+
+    return await learning_service.snapshot()
+
+
+@app.post("/api/owned/learning/run", status_code=202)
+async def owned_learning_run(req: LearningRunRequest, user: TokenPayload = Depends(require_auth)):
+    from mizan_owned.learning_cycle import LearningBusy
+    from mizan_owned.learning_service import learning_service
+
+    try:
+        job = await learning_service.start_cycle(req.bundle_id, requested_by=user.user_id)
+    except LearningBusy as exc:
+        raise HTTPException(409, "A learning cycle is already running") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            422, "An approved, unprocessed local learning bundle is required"
+        ) from exc
+    wali.audit.log(
+        "owned_learning_requested", {"user_id": user.user_id, "bundle_id": req.bundle_id}
+    )
+    return {"job": job, "accepted": True, "training_complete": False}
+
+
+@app.post("/api/owned/learning/rollback")
+async def owned_learning_rollback(
+    req: LearningRollbackRequest, user: TokenPayload = Depends(require_auth)
+):
+    from mizan_owned.learning_cycle import LearningBusy, rollback
+    from mizan_owned.learning_service import configured_root
+
+    root = configured_root()
+    if root is None:
+        raise HTTPException(409, "Owned learning is not configured")
+    try:
+        result = await asyncio.to_thread(rollback, root, req.expected_generation)
+    except LearningBusy as exc:
+        raise HTTPException(409, "A learning cycle is running; rollback was not applied") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            409, "Learning state changed or could not be verified; refresh first"
+        ) from exc
+    wali.audit.log(
+        "owned_learning_rollback", {"user_id": user.user_id, "generation": req.expected_generation}
+    )
+    return result
 
 
 @app.get("/api/owned/research/search")
@@ -4425,10 +4523,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "task_verified": False,
                         }
 
-                    final = result.get("result", response_text)
+                    final = (
+                        result.get("result", response_text)
+                        if result.get("success")
+                        else response_text
+                    )
                     if isinstance(final, dict):
                         final = final.get("response", str(final))
 
+                    failure = chat_failure_payload(result) if not result.get("success") else {}
                     await memory.save_message(
                         session_id,
                         "assistant",
@@ -4438,17 +4541,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "usage": result.get("usage", {}),
                             **chat_completion_receipt(result),
                             "status": "complete" if result.get("success") else "error",
+                            **({"partial": True, **failure} if failure else {}),
                         },
                     )
                     session["history"].append({"role": "assistant", "content": str(final)})
                     if not result.get("success"):
+                        thinking_stream.complete(message_id)
                         await manager.send_required(
                             client_id,
                             {
                                 "type": "error",
                                 "session_id": session_id,
                                 "message_id": message_id,
-                                "message": "The agent could not complete this request. Partial output was saved.",
+                                **failure,
                             },
                         )
                         continue
@@ -4466,6 +4571,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             "cognitive_method",
                             "lubb",
                             "lawwama",
+                            "metrics_kind",
+                            "metric_provenance",
                         )
                         if result.get(k) is not None
                     }

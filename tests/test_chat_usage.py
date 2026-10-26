@@ -20,7 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from api.prices import estimate_cost, lookup
-from api.usage import build_usage_block, extract_llm_meta
+from api.usage import build_usage_block, build_usage_summary, extract_llm_meta
 from providers import LLMResponse, _OpenAIStreamWrapper
 
 # ── prices ──
@@ -103,6 +103,62 @@ class TestExtractLlmMeta:
 
     def test_none_response(self):
         assert extract_llm_meta(None) == {}
+
+    def test_checkpoint_receipt_preserves_identity_without_private_path(self):
+        checkpoint = {
+            "source": "registry",
+            "sha256": "a" * 64,
+            "generation": 3,
+            "path": "/private/model/checkpoint.pt",
+        }
+        response = LLMResponse(
+            content=[], model="mizan-owned", usage={"owned_checkpoint": checkpoint}
+        )
+        meta = extract_llm_meta(response)
+        assert meta["owned_checkpoint"] == {
+            "source": "registry",
+            "sha256": "a" * 64,
+            "generation": 3,
+        }
+
+    @pytest.mark.parametrize(
+        "checkpoint",
+        [
+            {"source": "remote", "sha256": "a" * 64},
+            {"source": "registry", "sha256": "not-a-digest"},
+            {"source": "registry", "sha256": 42},
+        ],
+    )
+    def test_invalid_checkpoint_identity_is_not_displayed(self, checkpoint):
+        response = LLMResponse(content=[], usage={"owned_checkpoint": checkpoint})
+        assert "owned_checkpoint" not in extract_llm_meta(response)
+
+    @pytest.mark.parametrize("invalid", [True, -1, 1.5, "3", None])
+    def test_invalid_reasoning_counts_remain_absent(self, invalid):
+        response = LLMResponse(
+            content=[], usage={"reasoning_tokens": invalid, "visible_output_tokens": invalid}
+        )
+        meta = extract_llm_meta(response)
+        assert "reasoning_tokens" not in meta
+        assert "visible_output_tokens" not in meta
+
+
+def test_multi_call_summary_sums_reported_reasoning_without_inventing_missing_usage():
+    calls = [
+        {"response": LLMResponse(content=[], usage=usage)}
+        for usage in [
+            {"input": 10, "output": 8, "reasoning_tokens": 6, "visible_output_tokens": 2},
+            {"input": 12, "output": 4, "reasoning_observed": True},
+        ]
+    ]
+    summary = build_usage_summary(calls)
+    assert summary["input_tokens"] == 22
+    assert summary["output_tokens"] == 12
+    assert summary["reasoning_tokens"] == 6
+    assert summary["visible_output_tokens"] == 2
+    assert summary["reasoning_observed"] is True
+    assert "reasoning_tokens" not in summary["calls"][1]
+    assert "cost_usd" not in summary
 
 
 class TestBuildUsageBlock:
