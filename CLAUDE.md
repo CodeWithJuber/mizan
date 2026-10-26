@@ -65,7 +65,10 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 
 **Cross-cutting subsystems:**
 
-- `backend/security/` — `auth` (JWT), `wali` (rate limiting / guardian), `izn` (permissions), `vault` (API key storage), `validation` (input sanitization)
+- `backend/security/` — `auth` (JWT), `wali` (rate limiting / guardian), `izn` (permissions), `approvals` (per-chat permission modes + Allow/Deny broker), `vault` (API key storage), `validation` (input sanitization)
+- `backend/connectors/` — MCP connectors (official `mcp` SDK): per-user store, encrypted secrets, OAuth, SSRF `net_guard`, registry browse; tools exposed as `mcp__<server>__<tool>` (`docs/connectors.md`)
+- `backend/agent_skills/` — Agent Skills (SKILL.md): loader (project > user > bundled), `activate_skill`/`read_skill_file`, GitHub/zip installer, bundled `library/` (`docs/agent-skills.md`)
+- `backend/agents/events.py` — live activity events (`tool_start`, `tool_result`, `todo`, `approval_*`, `skill`) bound per chat stream; `session_state.py` keeps the per-chat plan
 - `backend/gateway/` — External channels: `bab` (entry), `router`, `channels/`
 - `backend/skills/` — Capability system: `base`, `registry`, `builtin/`
 - `backend/router/` — `intelligent_router`: provider/model selection
@@ -78,7 +81,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 - `plugins/` — Drop-in plugins (`plugin.json` + `main.py`); see `request_logger`, `hello_world`
 
 ### API surface (groups in `backend/api/main.py`)
-`/api/auth/*`, `/api/agents/*`, `/api/tasks`, `/api/chat`, `/api/plan/*`, `/api/memory/*`, `/api/perception/*`, `/api/knowledge/*`, `/api/providers/*`, `/api/security/*`, `/api/channels/*`, `/api/automation/*`, `/api/skills/*`, `/api/gateway/*`, `/api/nafs/*`, `/api/yaqin/*`, `/api/qalb/*`, `/api/federation/*`, `/api/ruh/*`, `/api/queue/*`, `/api/learner/*`, `/api/training/*`, `/api/plugins/*`, `/api/events`, `/api/doctor`, `/api/settings`. Public versioned API under `/api/v1/*` (root-analyze, tokenize, q28-features). WebSocket at `/ws/{client_id}`.
+`/api/auth/*`, `/api/agents/*`, `/api/tasks`, `/api/chat`, `/api/plan/*`, `/api/memory/*`, `/api/perception/*`, `/api/knowledge/*`, `/api/providers/*`, `/api/security/*`, `/api/channels/*`, `/api/automation/*`, `/api/skills/*`, `/api/gateway/*`, `/api/nafs/*`, `/api/yaqin/*`, `/api/qalb/*`, `/api/federation/*`, `/api/ruh/*`, `/api/queue/*`, `/api/learner/*`, `/api/training/*`, `/api/plugins/*`, `/api/events`, `/api/doctor`, `/api/settings`, `/api/chat/approvals`. Separate routers: `/api/connectors/*` (`api/connectors.py`), `/api/agent-skills/*` (`api/agent_skills.py`), `/api/workspaces/*` (`api/coding_workspace.py`). Public versioned API under `/api/v1/*` (root-analyze, tokenize, q28-features). WebSocket at `/ws/{client_id}`.
 
 ### Ruh model (`ruh_model/`)
 Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pairs) instead of BPE tokens. Subpackages: `tokenizer` (Bayan), `embedding` (ISM), `attention` (Qalb), `layers`, `loss` (Mizan), `training`, `benchmarks`, `configs`. Entry scripts `train.py` / `train_full.py`, config in `config.py`. Wired into the backend via `backend/providers_ruh.py` and `/api/ruh/*` + `/api/training/*` endpoints. Requires the `ml` optional dependency group.
@@ -91,6 +94,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - Agents run a real ReAct loop (`BaseAgent.think` → `_agentic_loop`), not single-shot calls; max iterations scale with **Nafs** level. Tools execute through `_execute_tool_safe` with input validation and self-healing (auto-install missing packages).
 - **Nafs** levels (7-stage) evolve via `evolve_nafs()` / `DevelopmentalGate` based on success rate, task count, and hikmah.
 - Real-time streaming via WebSocket and the `cognitive/thinking_stream` module.
+- **Agentic coding** (`docs/agentic-coding.md`): chats send `permission_mode` (`auto_edits` | `ask` | `plan` | `auto`); mutating tools wait for `POST /api/chat/approvals/{id}`. Coding tools: `workspace_read/edit/write/glob/grep/run`, `todo_write`. The frontend IDE (`components/CodingWorkspace.tsx`) previews web projects with Sandpack and Python with Pyodide.
 - **Arabic-inspired naming** (consistency matters): Dhikr=memory, Masalik=memory paths, Wali=guardian, Izn=permission, Nafs=self/ego, Qalb=heart, Fuad=conviction, Lubb=metacognition, Basira=insight/discernment, Hawa=lower-pull/safety gate, Hikmah=wisdom, Ihsan=excellence, Tawbah=self-correction, Sabr=patience, Shura=council, Khalifah=steward agent, Yaqin=certainty, Ruh=spirit/model, Qadr=scheduling, Ummah=network, Bab=gateway.
 - **al-Insān human-model** (`docs/quranic_human_model.md`): the Qur'anic anthropology MIZAN implements. Faculties (`basira`, `hawa`, `hikmah`, …) run inside `BaseAgent.execute()` and inject guidance into the system prompt via `self._faculty_guidance`. Set `DEEP_FACULTY_LOOP=true` to let them actively gate/redirect (default: advisory only).
 
@@ -130,4 +134,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - `.env` values are NOT auto-loaded into `os.environ` — pydantic-settings reads them, but `providers.py` calls `load_dotenv()`.
 - `.claude/` and `.claude.local.md` are gitignored — local Claude Code config won't be committed.
 - The Ruh model and `ml` extra require PyTorch; `/api/ruh/*` and training endpoints are inert unless `RUH_ENABLED=true` and the model path is configured.
+- Approvals are in-process futures: keep the backend at **one uvicorn worker** (the prod image does).
+- Back up `$MIZAN_DATA_DIR/connectors.key` with the data volume; without it saved connector secrets cannot be decrypted.
+- An ordinary chat must still send only `mizan_discover_tools` (`tests/test_dynamic_tool_catalog.py`); never pin new tools into every request.
 - `backend/api/main.py` is a single large module — add routes there alongside existing groups rather than creating parallel routers.

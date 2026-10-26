@@ -74,3 +74,5 @@ Image artifacts accept decoder-verified PNG, JPEG and WebP data only; SVG and
 external image URLs are rejected. HTML previews must use a sandboxed iframe with
 no same-origin privilege. Saved images do not imply that the active language
 model understands image attachments or can generate images.
+
+See also `agentic-coding.md` for the agent coding tools, approvals and the in-browser preview.
