@@ -496,7 +496,7 @@ function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
           </p>
           <dl className="space-y-2">
             {allDetails.map((metric) => (
-              <div key={metric.key} className="min-w-0 break-words">
+              <div key={metric.key} className="min-w-0 wrap-break-word">
                 <dt className="inline font-medium text-gray-700 dark:text-gray-300">
                   {metric.label}:
                 </dt>{" "}
@@ -728,7 +728,7 @@ function CopyMenuItem({
       onClick={onSelect}
       className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
     >
-      <span className="text-[13px] font-medium text-gray-800 dark:text-gray-200">
+      <span className="text-2xs font-medium text-gray-800 dark:text-gray-200">
         {label}
       </span>
       <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
@@ -803,7 +803,7 @@ export function ChatMessageBubble({
       <div className="chat-message-row">
         <div className="chat-message-container flex justify-end">
           <div className="max-w-[80%] lg:max-w-[70%]">
-            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm break-words">
+            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm wrap-break-word">
               {msg.content}
             </div>
             {msg.notStarted && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
@@ -824,7 +824,7 @@ export function ChatMessageBubble({
       <div className="chat-message-container">
         <div className="flex gap-3.5">
           {/* Avatar */}
-          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm">
+          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600 shadow-sm">
             <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
               <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
             </svg>
@@ -834,7 +834,7 @@ export function ChatMessageBubble({
           <div className="min-w-0 flex-1 overflow-hidden">
             {/* Header */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[13px] font-semibold text-gray-900 dark:text-gray-100">
+              <span className="text-2xs font-semibold text-gray-900 dark:text-gray-100">
                 {resolveAgentName(msg.agent, agents, selectedAgent?.name)}
               </span>
               {msg.model && (
@@ -853,7 +853,7 @@ export function ChatMessageBubble({
             </div>
 
             {msg.error && (
-              <p role="alert" className="mt-2 break-words text-sm text-amber-700 dark:text-amber-300">
+              <p role="alert" className="mt-2 wrap-break-word text-sm text-amber-700 dark:text-amber-300">
                 {msg.error.message}
               </p>
             )}

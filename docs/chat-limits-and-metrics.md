@@ -6,10 +6,24 @@ Mizan now rejects an empty, length-limited provider response with the safe
 successful learning, or substitute private provider reasoning for answer text.
 Visible truncated answers may use at most two text-only continuations.
 
-The per-call output budget defaults to 4,096 tokens. Configure it with an agent's
+The per-call output budget defaults to the selected model's own output cap (up
+to 16,000 tokens per call, so one call stays inside its wait limit; longer
+answers continue automatically; the live Anthropic Models API and OpenRouter catalog supply
+the caps, with a static table as fallback). Configure it with an agent's
 `max_output_tokens` setting or `MIZAN_CHAT_MAX_OUTPUT_TOKENS`; the allowed range
-is 256–16,384. Emotion/tone rules no longer determine this budget. These are
-application bounds, not a promise of unlimited answers or provider availability.
+is 256 up to the model cap (at most 128,000). Emotion/tone rules no longer
+determine this budget. These are application bounds, not a promise of unlimited
+answers or provider availability.
+
+Claude requests use API version `2026-10-21` (anthropic SDK 2.x): no sampling
+parameters (`MIZAN_CHAT_TEMPERATURE` applies to other providers only), effort
+from `MIZAN_CHAT_EFFORT` (default `high`) on models that support it, automatic
+prompt caching (`MIZAN_ANTHROPIC_PROMPT_CACHE`, default on) and, on the current
+Opus/Sonnet/Fable models, server-side refusal fallbacks
+(`MIZAN_ANTHROPIC_FALLBACKS`, default on). Thinking blocks are sent back
+unchanged inside one tool loop. A refusal ends the run with the
+`model_refused` code. Agent telemetry and recalled memory travel with the
+request context so the system prompt stays cacheable.
 
 For the two explicitly supported OpenRouter Nemotron 3.5 Super VL IDs, Mizan
 requests at most 1,024 reasoning tokens and at most a quarter of the output
@@ -36,11 +50,14 @@ Wall-clock budgets supplement the provider SDK's socket inactivity timeout:
 | Environment setting | Default seconds | Allowed range | Covers |
 |---|---:|---:|---|
 | `MIZAN_LLM_FIRST_PROGRESS_SECONDS` | 60 | 1–180 | First visible text or tool-argument progress |
+| `MIZAN_LLM_BUFFERED_FIRST_PROGRESS_SECONDS` | 180 | 1–900 | Same, for providers without streaming deltas |
 | `MIZAN_LLM_PROGRESS_SECONDS` | 60 | 1–180 | Subsequent meaningful progress |
-| `MIZAN_LLM_MAX_CALL_SECONDS` | 300 | 1–900 | Entire provider call |
-| `MIZAN_CHAT_RUN_SECONDS` | 900 | 30–3600 | Context preparation, agent queue and execution |
+| `MIZAN_LLM_MAX_CALL_SECONDS` | 600 | 1–1800 | Entire provider call |
+| `MIZAN_CHAT_RUN_SECONDS` | 1800 | 30–7200 | Context preparation, agent queue and execution |
 
-Comments, keepalives and private reasoning do not extend the progress deadline.
+Comments, keepalives and OpenRouter-style hidden reasoning do not extend the progress
+deadline. Claude thinking deltas count as liveness only (never as answer text), so a
+visibly reasoning Claude model is not cut off as stalled.
 A local timeout closes the stream where supported; it cannot establish whether
 the upstream provider stopped or charged for its work.
 
@@ -69,6 +86,34 @@ original request identity and keeps Send locked while the outcome is uncertain.
 An active-session conflict has its own error code and the active run's identity,
 instead of appearing as a generic network error. A session remains occupied
 until both its producer and response transport have finished.
+
+## Unlimited conversations
+
+A conversation is not limited by the model's context window:
+
+- **History budget.** Each request sends the recent turns that fit
+  `MIZAN_CONTEXT_FILL` (default 0.5) of the selected model's context window,
+  capped by `MIZAN_CONTEXT_HISTORY_TOKENS` (default 150,000).
+- **Running summary.** Older turns are folded into a per-session summary
+  (`session_summaries` table) by the session's own model, chunk by chunk. A
+  summary that grows too large is compressed again. Without a usable model
+  an extractive digest is used, so a long chat never stops. `/compact` folds
+  the whole session on demand. Summaries are attributed context, not facts.
+- **Steps.** A run may use `MIZAN_CHAT_MAX_STEPS` (default 100) tool rounds,
+  independent of the Nafs level (which still decides *which* tools exist).
+  At the limit the model writes a progress report instead of the run failing.
+- **Continuations.** A length-limited answer continues up to
+  `MIZAN_CHAT_MAX_CONTINUATIONS` (default 20) times; it stops early if a
+  continuation repeats earlier text.
+- **Cut-off tool calls.** A tool call cut by the output limit never runs; the
+  turn is requested again with more room (twice at most) and the model is
+  told to split large inputs.
+- **One long run.** Claude runs use server-side compaction
+  (`MIZAN_ANTHROPIC_COMPACTION`); other providers replace older tool results
+  with excerpts once a run passes ~60% of the window. Tool results are capped
+  at `MIZAN_CHAT_TOOL_RESULT_CHARS` with valid JSON.
+- **History in the UI.** `GET /api/chat/{session_id}?limit=50&before=<id>`
+  pages older messages; the chat view offers "Load earlier messages".
 
 ## Request language and available tools
 

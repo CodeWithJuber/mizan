@@ -106,7 +106,7 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
 
         <div className="relative">
           {/* Vertical connector line */}
-          <div className="absolute left-5 top-4 bottom-4 w-0.5 bg-gradient-to-b from-purple-500 via-blue-500 to-emerald-500 opacity-30" />
+          <div className="absolute left-5 top-4 bottom-4 w-0.5 bg-linear-to-b from-purple-500 via-blue-500 to-emerald-500 opacity-30" />
 
           <div className="space-y-1.5">
             {/* Input */}
@@ -159,7 +159,7 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
                   </span>
                   <div className="flex-1 h-4 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all"
+                      className="h-full bg-linear-to-r from-purple-500 to-indigo-500 rounded-full transition-all"
                       style={{ width: `${Math.max(pct, 1)}%` }}
                     />
                   </div>
@@ -193,7 +193,7 @@ function FlowNode({
   return (
     <div className="flex items-start gap-3 pl-2">
       <div
-        className={`w-6 h-6 rounded-full bg-gradient-to-br ${color} flex-shrink-0 mt-0.5 shadow-sm`}
+        className={`w-6 h-6 rounded-full bg-linear-to-br ${color} shrink-0 mt-0.5 shadow-sm`}
       />
       <div className="flex-1 bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 border border-gray-100 dark:border-zinc-700/50">
         <div className="flex items-center justify-between">

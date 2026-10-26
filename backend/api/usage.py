@@ -68,7 +68,7 @@ def extract_llm_meta(llm_response: Any) -> dict:
                 generation = checkpoint.get("generation")
                 if type(generation) is int and generation >= 0:
                     meta["owned_checkpoint"]["generation"] = generation
-        for key in ("reasoning_tokens", "visible_output_tokens"):
+        for key in ("reasoning_tokens", "visible_output_tokens", "cache_read", "cache_creation"):
             value = usage.get(key)
             if type(value) is int and value >= 0:
                 meta[key] = value

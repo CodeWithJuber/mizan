@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
                 da["type"],
                 name=da["name"],
                 memory=memory,
-                config={"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                config={"model": os.getenv("DEFAULT_MODEL", "")},
                 wali=wali,
                 izn=izn,
                 skill_registry=skill_registry,
@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI):
                     "role": da["type"],
                     "nafs_level": 1,
                     "capabilities": list(agent.tools.keys()),
-                    "config": {"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                    "config": {"model": os.getenv("DEFAULT_MODEL", "")},
                 }
             )
     else:
@@ -176,8 +176,18 @@ async def lifespan(app: FastAPI):
                 context_manager=context_manager,
                 planner=planner,
             )
-            agent.total_tasks = profile.get("total_tasks", 0)
+            agent.total_tasks = profile.get("total_tasks", 0) or 0
             agent.learning_iterations = profile.get("learning_iterations", 0)
+            # Restore the evidence Nafs evolution weighs, not just the count.
+            agent.success_count = round(
+                float(profile.get("success_rate") or 0.0) * agent.total_tasks
+            )
+            agent.error_count = profile.get("error_count", 0) or 0
+            agent.nafs_level = max(1, min(7, int(profile.get("nafs_level") or 1)))
+            try:
+                agent.hikmah_count = await memory.count_hikmah(agent.id)
+            except Exception:
+                agent.hikmah_count = 0
             active_agents[agent.id] = agent
             balancer.register(agent.id)
             shura.members[agent.id] = agent
@@ -219,7 +229,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize scheduler executor
     async def execute_scheduled_task(task: str, agent_id: str | None = None):
-        aid = agent_id or (list(active_agents.keys())[0] if active_agents else None)
+        aid = agent_id or (choose_agent_for_task(task) if active_agents else None)
         if aid and aid in active_agents:
             agent = active_agents[aid]
             return await agent.execute(task)
@@ -264,7 +274,7 @@ async def lifespan(app: FastAPI):
         task_text = payload.get("task", "")
         agent_id = payload.get("agent_id")
         if not agent_id and active_agents:
-            agent_id = next(iter(active_agents))
+            agent_id = choose_agent_for_task(task_text)
         if not agent_id or agent_id not in active_agents:
             return {"error": "No agent available"}
         agent = active_agents[agent_id]
@@ -287,11 +297,64 @@ async def lifespan(app: FastAPI):
 
     await learning_service.start()
 
+    async def keep_model_limits_fresh() -> None:
+        # Context windows and output caps drive history budgets and output
+        # limits; refresh them from the providers' own catalogs hourly.
+        from providers import refresh_model_limits
+
+        while True:
+            try:
+                await refresh_model_limits()
+            except Exception as exc:
+                logger.debug("Model limit refresh failed: %s", exc)
+            await asyncio.sleep(3600)
+
+    async def maintain_memory() -> None:
+        # Offline consolidation (Tafakkur/Nisyan, dream replay, living-memory
+        # upkeep) on a fixed cadence instead of only on a manual request.
+        try:
+            interval = max(60.0, float(os.getenv("MIZAN_MEMORY_MAINTENANCE_SECONDS", "3600")))
+        except ValueError:
+            interval = 3600.0
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                result = await memory.consolidate()
+                logger.info("[DHIKR] Scheduled consolidation pruned %s", result["records_pruned"])
+            except Exception as exc:
+                logger.warning("Scheduled memory consolidation failed: %s", exc)
+            for agent in list(active_agents.values()):
+                for job in (
+                    getattr(getattr(agent, "dream_engine", None), "run_consolidation", None),
+                    getattr(getattr(agent, "living_memory", None), "run_maintenance", None),
+                ):
+                    if callable(job):
+                        try:
+                            await asyncio.to_thread(job)
+                        except Exception as exc:
+                            logger.debug("Agent memory maintenance failed: %s", exc)
+
+    memory_maintenance_task = (
+        asyncio.create_task(maintain_memory())
+        if os.getenv("MIZAN_MEMORY_MAINTENANCE", "true").lower() not in {"0", "false", "no"}
+        else None
+    )
+
+    model_limits_task = (
+        asyncio.create_task(keep_model_limits_fresh())
+        if os.getenv("MIZAN_MODEL_LIMITS_REFRESH", "true").lower() not in {"0", "false", "no"}
+        else None
+    )
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    if model_limits_task is not None:
+        model_limits_task.cancel()
+    if memory_maintenance_task is not None:
+        memory_maintenance_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -1143,6 +1206,38 @@ async def authorize_session(session_id: str, user: TokenPayload, *, create: bool
 # === CHAT ===
 
 
+def choose_agent_for_task(task: str) -> str:
+    """Thompson-sample an agent by its learned success in this task's category.
+
+    Each agent's Shukr record is a Beta posterior; sampling balances using
+    proven agents with occasionally trying less-tested ones.
+    """
+    agents = list(active_agents.values())
+    first = agents[0]
+    try:
+        category = first._classify_task(task)
+        samples = {agent.id: agent.shukr.posterior(agent.id, category).sample() for agent in agents}
+        return str(max(samples, key=lambda agent_id: samples[agent_id]))
+    except Exception:
+        return cast(str, first.id)
+
+
+async def chat_history(session_id: str, session: dict, agent, task: str) -> list[dict]:
+    """Model-sized history: running summary of old turns + recent turns that fit."""
+    from providers import model_limits
+    from reasoning.context_engine import ContextEngine, agent_summarizer
+
+    try:
+        window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+        history: list[dict] = await ContextEngine(memory).history_for(
+            session_id, window, agent_summarizer(agent), current=task
+        )
+        return history
+    except Exception as exc:  # noqa: BLE001 - history assembly must never stop a chat
+        logger.warning("Context engine unavailable; using recent turns: %s", exc)
+        return list(session["history"][:-1][-50:])
+
+
 async def chat_context(
     user: TokenPayload,
     session_id: str,
@@ -1156,7 +1251,7 @@ async def chat_context(
     return {
         "session_id": session_id,
         **({"workspace_id": workspace_id} if workspace_id else {}),
-        "history": list(session["history"][:-1][-agent.max_tool_turns :]),
+        "history": await chat_history(session_id, session, agent, task),
         "conversation_memory": await memory.recall_conversations(
             user.user_id, task, exclude_session=session_id
         ),
@@ -1206,6 +1301,7 @@ def chat_failure_payload(result: dict) -> dict:
         "output_budget_exhausted": "The model reached its output limit before producing an answer. Try a smaller request or another model.",
         "provider_timeout": "The response model exceeded its wait limit. No automatic retry was made; upstream completion is unconfirmed.",
         "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
+        "model_refused": "The model declined this request. Rephrase it or choose another model.",
     }
     code = result.get("error_code")
     if not isinstance(code, str) or code not in public_errors:
@@ -1515,7 +1611,9 @@ async def stream_chat(
                     **(interruption_receipt() if status == "cancelled" else {}),
                 },
             )
-            session["history"].append({"role": "assistant", "content": partial})
+            if partial.strip():
+                # An empty reply is stored with its receipt but never replayed as a turn.
+                session["history"].append({"role": "assistant", "content": partial})
             persisted = True
 
         try:
@@ -2041,10 +2139,19 @@ async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_
 
 
 @app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_chat_history(
+    session_id: str,
+    limit: int = 50,
+    before: str | None = None,
+    user: TokenPayload = Depends(require_auth),
+):
+    """Newest ``limit`` messages; pass ``before=<message id>`` to page further back."""
     await authorize_session(session_id, user)
-    messages = await memory.get_messages(session_id)
-    return {"session_id": session_id, "messages": messages}
+    limit = max(1, min(limit, 500))
+    page = await memory.get_messages(session_id, limit=limit + 1, before_id=before)
+    has_more = len(page) > limit
+    messages = page[1:] if has_more else page
+    return {"session_id": session_id, "messages": messages, "has_more": has_more}
 
 
 @app.get("/api/chat/memory/summary")

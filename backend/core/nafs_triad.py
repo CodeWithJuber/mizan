@@ -17,6 +17,8 @@ import logging
 import math
 from dataclasses import dataclass
 
+from core.adaptive import softmax, tokenize
+
 logger = logging.getLogger("mizan.nafs_triad")
 
 
@@ -31,11 +33,11 @@ class NafsVoice:
 
     def score(self, task: str, complexity: str) -> float:
         """Score this task from this voice's perspective."""
-        task_lower = task.lower()
+        words = set(tokenize(task))
         if self.bias == "drive":
             # Ammara: prefers action verbs, quick tasks
             action_words = ["do", "run", "make", "create", "build", "send", "write", "execute"]
-            matches = sum(1 for w in action_words if w in task_lower)
+            matches = sum(1 for w in action_words if w in words)
             base = 0.5 + 0.1 * matches
             # Penalise extreme complexity (Ammara is impatient)
             if complexity == "extreme":
@@ -45,7 +47,7 @@ class NafsVoice:
         elif self.bias == "caution":
             # Lawwama: prefers verify/check/review tasks
             check_words = ["check", "verify", "review", "audit", "test", "validate", "ensure"]
-            matches = sum(1 for w in check_words if w in task_lower)
+            matches = sum(1 for w in check_words if w in words)
             base = 0.4 + 0.12 * matches
             # More weight on complex tasks (Lawwama is thorough)
             if complexity in ("complex", "extreme"):
@@ -66,7 +68,7 @@ class NafsVoice:
                 "why",
                 "how",
             ]
-            matches = sum(1 for w in nuance_words if w in task_lower)
+            matches = sum(1 for w in nuance_words if w in words)
             base = 0.45 + 0.08 * matches
             return min(1.0, base)
 
@@ -110,10 +112,15 @@ _APPROACHES = {
 
 
 def _softmax(values: list[float]) -> list[float]:
-    max_v = max(values)
-    exps = [math.exp(v - max_v) for v in values]
-    total = sum(exps)
-    return [e / total for e in exps]
+    """Softmax at a temperature equal to the bids' own spread.
+
+    Bids live on a ~0.1 scale, so a unit temperature made every decision a
+    near-uniform ~0.35. Scaling by the standard deviation keeps the result
+    invariant to the weights' units and lets real differences show.
+    """
+    mean = sum(values) / len(values)
+    spread = math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
+    return [float(p) for p in softmax(values, temperature=max(spread, 0.02))]
 
 
 class NafsTriad:

@@ -57,11 +57,20 @@ class RuhModelProvider(BaseLLMProvider):
 
         from ruh_model.tokenizer.conversation import serialize_messages
 
-        prompt = serialize_messages(messages, system=system)
-        tokens = self._tokenizer.encode(prompt, add_eos=False)
         context_limit = getattr(getattr(self._model, "config", None), "max_seq_len", 2048)
-        if isinstance(context_limit, int):
-            tokens = tokens[-context_limit:]
+        new_tokens = min(max_tokens or 256, self.max_output_tokens)
+        budget = max(64, context_limit - new_tokens) if isinstance(context_limit, int) else None
+        # Drop the oldest turns first so the system prompt and the latest
+        # request survive; only then clip from the left as a last resort.
+        kept = list(messages)
+        prompt = serialize_messages(kept, system=system)
+        tokens = self._tokenizer.encode(prompt, add_eos=False)
+        while budget is not None and len(tokens) > budget and len(kept) > 1:
+            kept = kept[1:]
+            prompt = serialize_messages(kept, system=system)
+            tokens = self._tokenizer.encode(prompt, add_eos=False)
+        if budget is not None:
+            tokens = tokens[-budget:]
         root_ids, pattern_ids = self._tokens_to_tensors(tokens)
 
         import torch
@@ -70,7 +79,7 @@ class RuhModelProvider(BaseLLMProvider):
             generated = self._model.generate(
                 root_ids,
                 pattern_ids,
-                max_new_tokens=min(max_tokens or 256, 1024),
+                max_new_tokens=new_tokens,
                 temperature=1.0 if temperature is None else temperature,
                 valid_n_roots=self._tokenizer._vocab.n_roots,
             )

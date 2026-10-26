@@ -15,6 +15,8 @@ Energy model inspired by the soul's need for spiritual refreshment.
 """
 
 import logging
+import math
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -156,20 +158,48 @@ class RuhEngine:
         state.energy = min(state.max_energy, state.energy + regenerated)
         state.fatigue_level = 1.0 - (state.energy / state.max_energy)
 
+    # Strongest requested action, on a log-effort scale (word-boundary match).
+    _ACTION_EFFORT = {
+        **dict.fromkeys(("hello", "hi", "hey", "thanks", "salam", "status"), -2.0),
+        **dict.fromkeys(("read", "check", "find", "get", "show", "list", "open"), -1.0),
+        **dict.fromkeys(("analyze", "analyse", "review", "compare", "summarize", "explain"), 0.0),
+        **dict.fromkeys(("research", "implement", "refactor", "design", "build", "debug"), 1.0),
+        **dict.fromkeys(("architect", "migrate", "overhaul", "rewrite", "redesign"), 2.0),
+    }
+    _COMPLEXITY_BANDS = ((-2.0, "trivial"), (-0.6, "simple"), (0.6, "moderate"), (1.8, "complex"))
+
+    def task_complexity_score(self, task: str) -> float:
+        """Continuous effort estimate (log scale) from the request's structure.
+
+        score = 1.2·action + 0.6·(ln(1+words) − ln 7) + 0.4·extra_steps + 0.5·code
+        Requests without a known action word default to a light action (-0.5)
+        and are judged by length and structure, so any language works.
+        """
+        from core.adaptive import tokenize
+
+        words = tokenize(task)
+        efforts = [self._ACTION_EFFORT[w] for w in words if w in self._ACTION_EFFORT]
+        action = max(efforts) if efforts else -0.5
+        steps = len(re.findall(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s", task or "")) + len(
+            re.findall(r"\b(?:then|after that|and also)\b", (task or "").lower())
+        )
+        has_code = (
+            1.0 if "```" in (task or "") or re.search(r"\w+\.\w{1,4}\b|/\w+/", task or "") else 0.0
+        )
+        return (
+            1.2 * action
+            + 0.6 * (math.log1p(len(words)) - math.log(7))
+            + 0.4 * min(steps, 10)
+            + 0.5 * has_code
+        )
+
     def classify_task_complexity(self, task: str) -> str:
-        """Estimate task complexity from description."""
-        task_lower = task.lower()
-        if any(w in task_lower for w in ["hello", "hi", "status", "list", "show"]):
-            return "trivial"
-        if any(w in task_lower for w in ["read", "check", "find", "get"]):
-            return "simple"
-        if any(w in task_lower for w in ["analyze", "review", "compare", "summarize"]):
-            return "moderate"
-        if any(w in task_lower for w in ["research", "implement", "refactor", "design"]):
-            return "complex"
-        if any(w in task_lower for w in ["architect", "migrate", "overhaul", "rewrite"]):
-            return "extreme"
-        return "moderate"
+        """Bucket the continuous effort estimate into the energy cost classes."""
+        score = self.task_complexity_score(task)
+        for upper, label in self._COMPLEXITY_BANDS:
+            if score < upper:
+                return label
+        return "extreme"
 
     def get_fatigue_label(self, agent_id: str) -> str:
         """Get human-readable fatigue status."""

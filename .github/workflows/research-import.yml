@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Validate reviewed scripts and encrypted envelope
@@ -54,7 +54,7 @@ jobs:
           sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote/research_server_import.py' < '$remote/research-transfer.encrypted.json'" > research-import-receipt.jsonl || status=$?
           cat research-import-receipt.jsonl
           exit "$status"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: research-import-receipt

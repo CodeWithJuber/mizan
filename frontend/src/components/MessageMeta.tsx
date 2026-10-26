@@ -48,7 +48,7 @@ export function MessageMeta({ meta }: MessageMetaProps) {
             clipRule="evenodd"
           />
         </svg>
-        <span className="min-w-0 break-words">{parts.join(" · ")}</span>
+        <span className="min-w-0 wrap-break-word">{parts.join(" · ")}</span>
         {m.cost_usd != null && Number.isFinite(m.cost_usd) && m.cost_usd >= 0 && m.cost_estimated && (
           <span
             className="text-gray-300 dark:text-gray-600"
@@ -61,7 +61,7 @@ export function MessageMeta({ meta }: MessageMetaProps) {
       {open && (
         <div className="mt-1.5 space-y-1.5">
           {explanations.map((text) => (
-            <p key={text} className="break-words text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{text}</p>
+            <p key={text} className="wrap-break-word text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{text}</p>
           ))}
           <pre className="max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 p-3 text-[10px] leading-relaxed font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">
             {JSON.stringify(m, null, 2)}

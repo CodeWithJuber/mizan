@@ -57,13 +57,14 @@ def _llm_config() -> dict[str, Any] | None:
 
     Returns None when no usable LLM key is configured (mem0 stays disabled).
     """
-    default_model = os.getenv("MEM0_LLM_MODEL") or os.getenv(
-        "DEFAULT_MODEL", "claude-sonnet-4-20250514"
+    default_model = (
+        os.getenv("MEM0_LLM_MODEL") or os.getenv("DEFAULT_MODEL", "") or "claude-haiku-5-5"
     )
     if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-"):
         return {
             "provider": "anthropic",
-            "config": {"model": default_model, "temperature": 0.1, "max_tokens": 2000},
+            # No temperature: Anthropic API version 2026-10-21 rejects sampling parameters.
+            "config": {"model": default_model, "max_tokens": 2000},
         }
     if os.getenv("OPENROUTER_API_KEY"):
         # OpenRouter is OpenAI-compatible; reuse the same key the chat layer uses.

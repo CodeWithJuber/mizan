@@ -24,6 +24,8 @@ import time
 from dataclasses import dataclass, field
 from typing import cast
 
+from core.adaptive import bm25_scores, normalise
+
 logger = logging.getLogger("mizan.memory_pyramid")
 
 
@@ -55,12 +57,16 @@ class MemoryHit:
         }
 
 
-def _recency_score(created_at_ts: float, now: float | None = None) -> float:
-    """Convert timestamp to 0-1 recency score (1 = just now, 0 = very old)."""
+def _recency_score(last_access_ts: float, now: float | None = None, accesses: int = 0) -> float:
+    """0-1 retrievability from ACT-R activation (age and number of accesses).
+
+    Replaces a single fixed half-life: memories recalled often stay strong
+    for longer, rarely used ones fade.
+    """
+    from memory.dhikr import memory_activation_weight
+
     now = now or time.time()
-    age_hours = (now - created_at_ts) / 3600
-    # Half-life of 24 hours → score ~0.5 at 1 day old
-    return cast(float, max(0.0, min(1.0, 0.5 ** (age_hours / 24))))
+    return cast(float, memory_activation_weight(max(1.0, now - last_access_ts), accesses))
 
 
 class MemoryPyramid:
@@ -132,13 +138,18 @@ class MemoryPyramid:
                 memories = await self.dhikr.recall(text, limit=top_k)
                 for mem in memories:
                     content_str = str(mem.content)
-                    recency = _recency_score(mem.recency.timestamp(), now)
+                    recency = _recency_score(mem.recency.timestamp(), now, mem.access_count)
+                    # Certainty: posterior mean with importance as a 2-observation
+                    # prior and each successful recall as evidence.
+                    certainty = (2 * float(mem.importance) + mem.access_count) / (
+                        2 + mem.access_count
+                    )
                     hits.append(
                         MemoryHit(
                             content=content_str,
                             source_layer="dhikr",
                             relevance=float(mem.importance),
-                            certainty=min(0.9, 0.3 + mem.access_count * 0.05),
+                            certainty=min(0.95, certainty),
                             recency_score=recency,
                             tags=mem.tags or [],
                             metadata={"type": mem.memory_type},
@@ -150,7 +161,9 @@ class MemoryPyramid:
         # ── Layer 3: VectorStore (semantic embedding search) ──
         if self.vector_store and getattr(self.vector_store, "_available", False):
             try:
-                vector_results = self.vector_store.search(text, top_k=top_k)
+                vector_results = self.vector_store.search(text, limit=top_k)
+                if inspect.isawaitable(vector_results):
+                    vector_results = await vector_results
                 for result in vector_results:
                     hits.append(
                         MemoryHit(
@@ -210,6 +223,11 @@ class MemoryPyramid:
 
         # ── Merge, deduplicate, rank ──
         deduplicated = self._deduplicate(hits)
+        # Blend each layer's own signal with BM25 relevance to this query, so
+        # layers are compared on the same footing.
+        lexical = normalise(bm25_scores(text, [h.content for h in deduplicated]))
+        for hit, score in zip(deduplicated, lexical, strict=True):
+            hit.relevance = 0.5 * hit.relevance + 0.5 * score
         deduplicated.sort(key=lambda h: -h.rank_score)
         return deduplicated[:top_k]
 

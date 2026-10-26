@@ -29,8 +29,10 @@ QCA Integration:
     Tier 4: Wahm (Conjecture)  → Low-certainty observations
 """
 
+import hashlib
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -56,18 +58,11 @@ CHAT_PREFERENCE_LIMITS = {
 # sense the native model reads, so same-root/different-sense concepts stay
 # distinguishable to the reader. Default OFF = today's behavior bit-for-bit.
 
-#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
-#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
-#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
-#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
-#: the top end, so the gate filters ambiguous low-information cases while the
-#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
-#: carries the residual overconfident-error risk.
-NLP_MIN_SENSE_CONFIDENCE = 0.8
-
-#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
-#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
-NLP_MIN_SENSE_MARGIN = 0.2
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
 
 _ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
 
@@ -121,7 +116,7 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
         margin = confidence - runner_up
-        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+        if passes_sense_gate(confidence, margin):
             bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
     return bits
 
@@ -163,6 +158,46 @@ class Memory:
         half_life_hours = self.importance * 720  # Max 30 days half-life
         decay_factor = 0.5 ** (hours_elapsed / max(half_life_hours, 1))
         return cast(float, self.importance * decay_factor * (1 + 0.1 * self.access_count))
+
+
+def rank_memories(
+    query: str, memories: list["Memory"], now: datetime | None = None
+) -> list["Memory"]:
+    """Order memories by relevance × activation × importance (Mizan weighing).
+
+    Relevance is BM25 over content and tags; activation is ACT-R base-level
+    activation from access count and age, so repeated remembrance (dhikr)
+    keeps a memory retrievable while unused ones fade (nisyan).
+    """
+    from core.adaptive import bm25_scores, normalise
+
+    now = now or datetime.now(UTC)
+    texts = [
+        f"{m.content if isinstance(m.content, str) else json.dumps(m.content)} {' '.join(m.tags or [])}"
+        for m in memories
+    ]
+    relevance = normalise(bm25_scores(query, texts))
+
+    def score(index: int) -> float:
+        memory = memories[index]
+        age = max(1.0, (now - memory.recency).total_seconds())
+        weight = memory_activation_weight(age, memory.access_count)
+        return float((0.25 + 0.75 * relevance[index]) * weight * (0.5 + 0.5 * memory.importance))
+
+    order = sorted(range(len(memories)), key=score, reverse=True)
+    return [memories[index] for index in order]
+
+
+def memory_activation_weight(age_seconds: float, accesses: int, decay: float = 0.5) -> float:
+    """ACT-R retrieval weight with the optimized-learning approximation.
+
+    B ≈ ln(n / (1 − d)) − d·ln(L): n accesses over a lifetime L (seconds).
+    """
+    from core.adaptive import activation_weight
+
+    n = max(1, int(accesses) + 1)
+    activation = math.log(n / (1.0 - decay)) - decay * math.log(max(age_seconds, 1.0))
+    return float(activation_weight(activation))
 
 
 class DhikrMemorySystem:
@@ -222,6 +257,21 @@ class DhikrMemorySystem:
         except Exception:
             self.lawh_mahfuz = None
 
+        # ── VectorStore: semantic recall when a Chroma server is configured ──
+        self.vector_store = None
+        vector_url = os.getenv("MIZAN_VECTOR_URL", "").strip()
+        if vector_url and self.db_path != ":memory:":
+            try:
+                from memory.vector_store import VectorStore
+
+                # One collection per memory database: private per-user
+                # memories never share a vector index.
+                scope = hashlib.sha256(os.path.abspath(self.db_path).encode()).hexdigest()[:16]
+                store = VectorStore(chroma_url=vector_url, collection_name=f"mizan_{scope}")
+                self.vector_store = store if store.is_available else None
+            except Exception:
+                self.vector_store = None
+
         # ── MemoryPyramid: Unified 5-layer query ──
         try:
             from memory.memory_pyramid import MemoryPyramid
@@ -230,7 +280,7 @@ class DhikrMemorySystem:
                 dhikr=self,
                 masalik=self.masalik,
                 lawh_mahfuz=self.lawh_mahfuz,
-                vector_store=None,
+                vector_store=self.vector_store,
                 knowledge_graph=self.knowledge_graph,
             )
         except Exception:
@@ -361,6 +411,16 @@ class DhikrMemorySystem:
                 PRIMARY KEY (owner_id, key)
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                session_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                covered_last_id TEXT NOT NULL,
+                covered_count INTEGER NOT NULL,
+                method TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         # Performance indexes
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
@@ -410,6 +470,10 @@ class DhikrMemorySystem:
 
         # Persist record to database
         await self._persist(memory)
+        if self.vector_store is not None:
+            await self.vector_store.store(
+                text, memory_id=mem_id, metadata={"memory_type": memory_type, "agent_id": agent_id}
+            )
 
         # Update appropriate cache
         cache = self._get_cache(memory_type)
@@ -478,8 +542,10 @@ class DhikrMemorySystem:
                     params.extend([f"%{escaped}%", f"%{escaped}%"])
                 sql += " AND (" + " OR ".join(word_clauses) + ")"
 
+        # Wider candidate set; the final order weighs relevance and memory
+        # activation below instead of stored importance alone.
         sql += " ORDER BY importance DESC, recency DESC LIMIT ?"
-        params.append(limit)
+        params.append(max(limit, 1) * 4 if query else limit)
 
         c.execute(sql, params)
         rows = c.fetchall()
@@ -504,6 +570,9 @@ class DhikrMemorySystem:
                     tags=json.loads(row[7]) if row[7] else [],
                 )
             )
+
+        if query and memories:
+            memories = rank_memories(query, memories)[:limit]
 
         # Update access count for recalled memories
         for mem in memories:
@@ -613,24 +682,37 @@ class DhikrMemorySystem:
         # ── Masalik: Nisyan (prune weak pathways) ──
         nisyan_result = self.masalik.apply_nisyan()
 
-        # ── SQLite: Prune old low-importance records ──
-        cutoff = datetime.now(UTC) - timedelta(days=30)
+        # ── SQLite: forget records whose retrieval strength has faded ──
+        # Strength = ACT-R activation weight (age and number of recalls)
+        # × importance; a week-old memory below MIZAN_MEMORY_FORGET_BELOW
+        # (default 0.05) is pruned. Recalled memories keep their strength.
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=7)
+        try:
+            forget_below = float(os.getenv("MIZAN_MEMORY_FORGET_BELOW", "0.05"))
+        except ValueError:
+            forget_below = 0.05
         conn = self._get_conn()
         c = conn.cursor()
-
-        sql = """
-            DELETE FROM memories
-            WHERE importance < 0.3
-            AND recency < ?
-            AND access_count < 3
-        """
+        sql = "SELECT id, importance, recency, access_count FROM memories WHERE recency < ?"
         params: list = [cutoff.isoformat()]
         if agent_id:
             sql += " AND agent_id = ?"
             params.append(agent_id)
-
-        c.execute(sql, params)
-        deleted = c.rowcount
+        faded = []
+        for mem_id, importance, recency, accesses in c.execute(sql, params).fetchall():
+            try:
+                last = datetime.fromisoformat(recency)
+            except (TypeError, ValueError):
+                continue
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=UTC)
+            age = max(1.0, (now - last).total_seconds())
+            strength = memory_activation_weight(age, accesses or 0) * float(importance or 0.0)
+            if strength < forget_below:
+                faded.append((mem_id,))
+        c.executemany("DELETE FROM memories WHERE id = ?", faded)
+        deleted = len(faded)
         conn.commit()
         self._release_conn(conn)
 
@@ -771,17 +853,82 @@ class DhikrMemorySystem:
         self._release_conn(conn)
         return msg_id
 
-    async def get_messages(self, session_id: str, limit: int = 50) -> list[dict]:
-        """Get messages for a session"""
+    async def get_session_summary(self, session_id: str) -> dict | None:
+        """The persisted running summary of a long session, if any."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT summary, covered_last_id, covered_count, method, updated_at "
+                "FROM session_summaries WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        finally:
+            self._release_conn(conn)
+        if row is None:
+            return None
+        return {
+            "summary": row[0],
+            "covered_last_id": row[1],
+            "covered_count": row[2],
+            "method": row[3],
+            "updated_at": row[4],
+        }
+
+    async def save_session_summary(
+        self,
+        session_id: str,
+        *,
+        summary: str,
+        covered_last_id: str,
+        covered_count: int,
+        method: str,
+    ) -> None:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO session_summaries VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, "
+                "covered_last_id = excluded.covered_last_id, "
+                "covered_count = excluded.covered_count, method = excluded.method, "
+                "updated_at = excluded.updated_at",
+                (
+                    session_id,
+                    summary,
+                    covered_last_id,
+                    int(covered_count),
+                    method,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            self._release_conn(conn)
+
+    async def get_messages(
+        self, session_id: str, limit: int | None = 50, before_id: str | None = None
+    ) -> list[dict]:
+        """Get messages for a session, oldest first.
+
+        ``limit=None`` returns the whole session. ``before_id`` pages backwards:
+        only messages older than that message are returned.
+        """
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute(
-            """
+        query = """
             SELECT id, session_id, role, content, agent_id, created_at, metadata
-            FROM agent_messages WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
-        """,
-            (session_id, limit),
-        )
+            FROM agent_messages WHERE session_id = ?
+        """
+        params: list = [session_id]
+        if before_id:
+            query += """
+            AND rowid < (SELECT rowid FROM agent_messages WHERE id = ? AND session_id = ?)
+            """
+            params += [before_id, session_id]
+        query += " ORDER BY created_at DESC, rowid DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        c.execute(query, params)
         rows = c.fetchall()
         self._release_conn(conn)
 
@@ -1020,6 +1167,20 @@ class DhikrMemorySystem:
         conn.commit()
         self._release_conn(conn)
         return hikmah_id
+
+    async def count_hikmah(self, agent_id: str = "") -> int:
+        """Total learned patterns (not capped like the in-prompt list)."""
+        conn = self._get_conn()
+        try:
+            if agent_id:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM hikmah WHERE source_agent = ?", (agent_id,)
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT COUNT(*) FROM hikmah").fetchone()
+        finally:
+            self._release_conn(conn)
+        return int(row[0]) if row else 0
 
     async def load_hikmah(self, agent_id: str = "", limit: int = 20) -> list[dict]:
         """Load learned wisdom patterns from the hikmah table."""

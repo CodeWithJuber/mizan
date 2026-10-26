@@ -40,18 +40,11 @@ logger = logging.getLogger("mizan.masalik")
 # returned), so same-root/different-sense merges stay observable while the
 # network logic is unchanged. Default OFF = today's behavior bit-for-bit.
 
-#: Gate for native senses entering the loop. JEV `choice` (confidence 0.50,
-#: revised 2026-09-29 on Track 3 measured evidence): top-1 confidence >= 0.80
-#: AND margin over runner-up >= 0.20. Track 3 found 17.9% of results WRONG at
-#: >= 0.80 confidence (incl. a 0.9994 error) -- confidence is miscalibrated at
-#: the top end, so the gate filters ambiguous low-information cases while the
-#: propose/admit framing (confidence displayed, LLM admits; memory advisory)
-#: carries the residual overconfident-error risk.
-NLP_MIN_SENSE_CONFIDENCE = 0.8
-
-#: Minimum margin (top-1 minus runner-up confidence) for a native sense to
-#: enter the loop. Single-candidate lemmas pass vacuously (runner-up = 0.0).
-NLP_MIN_SENSE_MARGIN = 0.2
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
 
 _ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
 
@@ -105,7 +98,7 @@ def _log_native_sense_advisory(query: str) -> None:
         sense_id, confidence = candidates[0]
         _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
         margin = confidence - runner_up
-        if confidence >= NLP_MIN_SENSE_CONFIDENCE and margin >= NLP_MIN_SENSE_MARGIN:
+        if passes_sense_gate(confidence, margin):
             bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
     if bits:
         logger.info("mizan.nlp recall advisory for query %r: %s", query[:80], "; ".join(bits))

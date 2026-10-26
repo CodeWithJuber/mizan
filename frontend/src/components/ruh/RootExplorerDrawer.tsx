@@ -149,7 +149,7 @@ export function RootExplorerDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-[100]"
+      className="fixed inset-0 z-100"
       role="dialog"
       aria-modal="true"
       aria-label={`Explore word ${word}`}

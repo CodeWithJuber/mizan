@@ -17,24 +17,36 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 logger = logging.getLogger("mizan.prices")
 
 # (input $/1M, output $/1M)
 PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
-    # Anthropic — official list pricing (checked 2026-09-24/2026-09-01 mirrors)
+    # Anthropic — current models (Anthropic model table, checked 2026-10-26)
+    "claude-fable-5-1": (10.00, 50.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-opus-5": (5.00, 25.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+    # Anthropic — previous models (checked 2026-09-24/2026-09-01 mirrors)
     "claude-opus-4-6": (5.00, 25.00),
     "claude-sonnet-4-20250514": (3.00, 15.00),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-haiku-4-5-20251001": (1.00, 5.00),
     "claude-haiku-4-5": (1.00, 5.00),
-    # OpenAI — official list pricing (checked 2026-09-15/2026-09-24 mirrors)
+    # OpenAI — current models (OpenRouter catalog list prices, checked 2026-10-26)
+    "gpt-6.1-sol": (2.00, 10.00),
+    "gpt-6-luna": (0.10, 0.50),
+    # OpenAI — previous models (checked 2026-09-15/2026-09-24 mirrors)
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-mini": (0.15, 0.60),
     "o3-mini": (1.10, 4.40),
     "o4-mini": (1.10, 4.40),
     # Local providers — no API cost
     "llama3.2": (0.0, 0.0),
+    "qwen3.8": (0.0, 0.0),
     "ruh-local": (0.0, 0.0),
 }
 
@@ -49,6 +61,8 @@ def _normalize(model: str) -> str:
     m = (model or "").strip().lower()
     if "/" in m:
         m = m.split("/")[-1]
+    # OpenRouter writes Claude versions with a dot (claude-opus-5.5).
+    m = re.sub(r"^(claude-[a-z]+-\d+)\.(\d+)", r"\1-\2", m)
     if m in PRICES_PER_MILLION:
         return m
     # Prefix-family fallback: claude-sonnet-4-*-dated -> claude-sonnet-4

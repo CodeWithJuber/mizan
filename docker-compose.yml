@@ -16,14 +16,20 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-mizan-owned}
-      - LLM_PROVIDER=${LLM_PROVIDER:-mizan-owned}
-      - MIZAN_OWNED_ONLY=${MIZAN_OWNED_ONLY:-true}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - MIZAN_OWNED_ONLY=${MIZAN_OWNED_ONLY:-false}
       - MIZAN_OWNED_DB=/data/mizan_owned.sqlite3
       - MIZAN_REPLY_CHECKPOINT=${MIZAN_REPLY_CHECKPOINT:-}
-      - MIZAN_OWNED_LEARNING_DIR=${MIZAN_OWNED_LEARNING_DIR:-}
-      - MIZAN_OWNED_LEARNING_AUTORUN=${MIZAN_OWNED_LEARNING_AUTORUN:-false}
-      - MIZAN_CHAT_MAX_OUTPUT_TOKENS=${MIZAN_CHAT_MAX_OUTPUT_TOKENS:-4096}
+      - MIZAN_OWNED_LEARNING_DIR=${MIZAN_OWNED_LEARNING_DIR:-/data/owned_learning}
+      - MIZAN_OWNED_LEARNING_AUTORUN=${MIZAN_OWNED_LEARNING_AUTORUN:-true}
+      - MIZAN_CHAT_MAX_OUTPUT_TOKENS=${MIZAN_CHAT_MAX_OUTPUT_TOKENS:-}
+      - MIZAN_CHAT_EFFORT=${MIZAN_CHAT_EFFORT:-high}
+      - MIZAN_VECTOR_URL=${MIZAN_VECTOR_URL:-}  # http://chroma:8000 with the vector profile
+      - MIZAN_MEMORY_MAINTENANCE=${MIZAN_MEMORY_MAINTENANCE:-true}
+      - MIZAN_CHAT_MAX_STEPS=${MIZAN_CHAT_MAX_STEPS:-100}
+      - MIZAN_CHAT_MAX_CONTINUATIONS=${MIZAN_CHAT_MAX_CONTINUATIONS:-20}
+      - MIZAN_CONTEXT_HISTORY_TOKENS=${MIZAN_CONTEXT_HISTORY_TOKENS:-150000}
       - MIZAN_SUPPORT_MODEL=${MIZAN_SUPPORT_MODEL:-}
       - MIZAN_RESEARCH_DIR=/data/research
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY environment variable is required}
@@ -32,7 +38,7 @@ services:
       - LINODE_API_TOKEN=${LINODE_API_TOKEN:-}
       - RUH_ENABLED=${RUH_ENABLED:-false}
       - RUH_MODEL_PATH=${RUH_MODEL_PATH:-}
-      - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-}
+      - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-1}
       - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
       - RUNPOD_API_TOKEN=${RUNPOD_API_TOKEN:-}
       - RUNPOD_ENDPOINT_ID=${RUNPOD_ENDPOINT_ID:-}
@@ -91,7 +97,7 @@ services:
 
   # Optional: Local LLM via Ollama
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.11
     container_name: mizan-ollama
     restart: unless-stopped
     stop_grace_period: 15s
@@ -109,14 +115,14 @@ services:
 
   # Optional: Vector database for semantic search
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: mizan-chroma
     restart: unless-stopped
     stop_grace_period: 15s
     ports:
       - "8100:8000"
     volumes:
-      - chroma-data:/chroma/.chroma
+      - chroma-data:/data  # Chroma 1.x persists under /data
     networks:
       - mizan-net
     profiles:

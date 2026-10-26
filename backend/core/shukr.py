@@ -12,9 +12,12 @@ Tracks and reinforces what works:
 """
 
 import logging
+import random
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+
+from core.adaptive import BetaEstimator, thompson_choice
 
 logger = logging.getLogger("mizan.shukr")
 
@@ -130,23 +133,35 @@ class ShukrSystem:
         ]
         return sum(boosts) / max(len(boosts), 1) if boosts else 0.0
 
+    def posterior(self, agent_id: str, category: str) -> BetaEstimator:
+        """Beta posterior of an agent's success rate in a task category."""
+        records = [r for r in self._strengths.get(agent_id, {}).values() if r.category == category]
+        successes = sum(r.success_count for r in records)
+        failures = sum(max(0, r.total_count - r.success_count) for r in records)
+        return BetaEstimator().update(1.0, successes).update(0.0, failures)
+
     def get_best_agent_for(self, agent_ids: list[str], category: str) -> str | None:
-        """Find the agent with highest success rate in a category."""
-        best_agent = None
-        best_rate = -1.0
+        """Agent with the highest posterior mean success rate in a category.
 
-        for aid in agent_ids:
-            records = self._strengths.get(aid, {})
-            category_records = [
-                r for r in records.values() if r.category == category and r.total_count >= 3
-            ]
-            if category_records:
-                avg_rate = sum(r.success_rate for r in category_records) / len(category_records)
-                if avg_rate > best_rate:
-                    best_rate = avg_rate
-                    best_agent = aid
+        None when no candidate has evidence in the category yet.
+        """
+        scored = [
+            (self.posterior(aid, category), aid)
+            for aid in agent_ids
+            if self.posterior(aid, category).evidence > 0
+        ]
+        if not scored:
+            return None
+        return max(scored, key=lambda item: item[0].mean)[1]
 
-        return best_agent
+    def sample_best_agent(
+        self, agent_ids: list[str], category: str, rng: random.Random | None = None
+    ) -> str | None:
+        """Thompson sampling: exploit proven agents, still try untested ones."""
+        if not agent_ids:
+            return None
+        posteriors = {aid: self.posterior(aid, category) for aid in agent_ids}
+        return str(thompson_choice(agent_ids, posteriors, rng))
 
     def get_gratitude_milestones(self, agent_id: str | None = None) -> list[dict]:
         """Get gratitude milestones (celebration moments)."""

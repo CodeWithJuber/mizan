@@ -3,6 +3,8 @@
 import asyncio
 import heapq
 import json
+import math
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -37,6 +39,14 @@ _INSERT_SQL = (
 )
 
 _UPDATE_SQL = "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? WHERE task_id = ?"
+
+
+def effective_priority(task: "QueuedTask", now: float) -> float:
+    try:
+        tau = max(1.0, float(os.getenv("MIZAN_QUEUE_AGING_SECONDS", "300")))
+    except ValueError:
+        tau = 300.0
+    return task.priority - math.log1p(max(0.0, now - task.created_at) / tau)
 
 
 @dataclass(order=True)
@@ -124,14 +134,22 @@ class MizanTaskQueue:
         return task.task_id
 
     async def dequeue(self) -> QueuedTask | None:
-        """Pop highest priority task. Returns None if empty."""
+        """Pop the task with the best *effective* priority. None if empty.
+
+        effective = priority − ln(1 + wait / τ): waiting raises a task's
+        urgency smoothly (τ = MIZAN_QUEUE_AGING_SECONDS, default 300), so a
+        stream of urgent work cannot starve lower levels forever.
+        """
         async with self._lock:
-            while self._heap:
-                task = heapq.heappop(self._heap)
-                if task.status == "pending":
-                    task.status = "running"
-                    await self._update_status(task.task_id, "running")
-                    return task
+            self._heap = [task for task in self._heap if task.status == "pending"]
+            if self._heap:
+                now = time.time()
+                task = min(self._heap, key=lambda t: (effective_priority(t, now), t.created_at))
+                self._heap.remove(task)
+                heapq.heapify(self._heap)
+                task.status = "running"
+                await self._update_status(task.task_id, "running")
+                return task
             self._event.clear()
         return None
 

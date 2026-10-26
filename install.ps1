@@ -19,7 +19,7 @@ $MizanDir = $(if ($env:MIZAN_DIR) { $env:MIZAN_DIR } else { Join-Path $HOME "miz
 $MizanBranch = $(if ($env:MIZAN_BRANCH) { $env:MIZAN_BRANCH } else { "main" })
 $MizanRepo = "https://github.com/CodeWithJuber/mizan.git"
 $MizanMinPython = "3.11"
-$MizanMinNode = 18
+$MizanMinNode = 24
 
 # ───── Colors ─────
 function Write-Gold { param($Text) Write-Host $Text -ForegroundColor Yellow }
@@ -88,7 +88,7 @@ function Install-PythonIfNeeded {
     Write-Info "Installing Python via winget..."
 
     if (Test-Command "winget") {
-        winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements --silent
+        winget install Python.Python.3.13 --accept-package-agreements --accept-source-agreements --silent
         # Refresh PATH
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $script:PythonCmd = "python"

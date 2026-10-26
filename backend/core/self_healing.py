@@ -27,6 +27,8 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 
+from core.adaptive import EWStats
+
 logger = logging.getLogger("mizan.self_healing")
 
 # Health metric parameters
@@ -255,20 +257,23 @@ class LawwamaHealingSystem:
 
     def should_checkpoint(self, turn: int, max_turns: int) -> bool:
         """
-        Health-based checkpoint interval — replaces hardcoded `turn % 3 == 0`.
+        Health-driven checkpoint cadence, adaptive to this agent's baseline.
 
-        Healthy agent (H >= 0.85): check every 4 turns
-        Moderate (0.55 <= H < 0.85): check every 2 turns
-        Unhealthy (H < 0.55): check every turn
+        interval = clamp(round(4·H²), 1, 4): healthy agents reflect every few
+        turns, declining health shortens the gap continuously. A sudden drop
+        against the agent's own running baseline (EW z-score < −1) triggers
+        a checkpoint immediately.
         """
         if turn <= 0:
             return False
-        if self.health >= L1_THRESHOLD:
-            interval = 4
-        elif self.health >= L3_THRESHOLD:
-            interval = 2
-        else:
-            interval = 1
+        stats = getattr(self, "_health_stats", None)
+        if stats is None:
+            stats = self._health_stats = EWStats(smoothing=0.2)
+        sudden_drop = stats.z(self.health) < -1.0
+        stats.update(self.health)
+        if sudden_drop:
+            return True
+        interval = max(1, min(4, round(4 * self.health**2)))
         return turn % interval == 0
 
     def _l1_proofreading(self, response: str) -> tuple[str, str]:

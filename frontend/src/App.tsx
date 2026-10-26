@@ -386,7 +386,7 @@ function AppInner() {
     { name: "/reset", description: "Reset agent state" },
     {
       name: "/model",
-      description: "Switch AI model (e.g. /model claude-sonnet-4-6)",
+      description: "Switch AI model (e.g. /model claude-opus-5-5)",
     },
     { name: "/agents", description: "List available agents" },
     {
@@ -427,6 +427,9 @@ function AppInner() {
   const continuationRef = useRef(0);
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Older server messages exist beyond the loaded page (paged on demand).
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  const [olderHistoryLoading, setOlderHistoryLoading] = useState(false);
   const [historyLoads] = useState(() => createHistoryLoadTracker(setHistoryLoading));
   const [runProgress, setRunProgress] = useState<{ startedAt: number; phase?: string } | null>(null);
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
@@ -922,7 +925,10 @@ function AppInner() {
           // CHAT UPGRADE: max_tokens cutoff — never render a truncation as a
           // finished answer. Auto-continue into the same bubble (bounded);
           // when the budget is spent, show a warning + manual Continue.
-          const finishReason = (data.finish_reason as string) || "";
+          // The server reports the observed stop reason inside `usage`.
+          const usageInfo = (data.usage ?? {}) as { finish_reason?: string };
+          const finishReason =
+            (data.finish_reason as string) || usageInfo.finish_reason || "";
           const hitLengthLimit =
             finishReason === "length" || finishReason === "max_tokens";
           if (hitLengthLimit) {
@@ -1463,6 +1469,7 @@ function AppInner() {
         // Merge: server wins on content; local-only messages (cache render,
         // optimistic echoes) are appended in order — no duplicates.
         setMessages((prev) => mergeHistoryMessages(history, prev));
+        setHasOlderHistory(result.hasMore === true);
         opts?.onLoaded?.(history.length);
         return true;
       } finally {
@@ -1472,6 +1479,31 @@ function AppInner() {
     [addToast, historyLoads],
   );
   recoveryHistoryRef.current = (sid) => loadChatHistory(sid, { quiet: true });
+
+  /** Prepend the page of server messages older than the oldest loaded one. */
+  const loadOlderHistory = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    const oldest = messages.find((m) => typeof m.id === "string");
+    if (!sid || !oldest || olderHistoryLoading) return;
+    setOlderHistoryLoading(true);
+    try {
+      const res = await authFetch(
+        `${config.API_URL}/chat/${sid}?limit=50&before=${encodeURIComponent(String(oldest.id))}`,
+      );
+      if (!res.ok || sid !== sessionIdRef.current) return;
+      const data = await res.json();
+      const older = (Array.isArray(data?.messages) ? data.messages : []).map(mapServerMessage);
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id));
+        return [...older.filter((m: ChatMessage) => !known.has(m.id)), ...prev];
+      });
+      setHasOlderHistory(data?.has_more === true);
+    } catch {
+      addToast({ type: "error", title: "Could not load earlier messages" });
+    } finally {
+      setOlderHistoryLoading(false);
+    }
+  }, [messages, olderHistoryLoading, addToast]);
 
   /**
    * CHAT UPGRADE: resync after a WS reconnect — stream events may have been
@@ -2420,7 +2452,7 @@ function AppInner() {
 
       case "chat":
         return (
-          <div className="chat-layout bg-white dark:bg-[#0B0C10]">
+          <div className="chat-layout bg-white dark:bg-mizan-dark">
             {/* ===== Chat Header — clean, minimal ===== */}
             <div className="chat-header">
               <div className="chat-header-inner">
@@ -2434,7 +2466,7 @@ function AppInner() {
                     }`}
                     onClick={() => setShowAgentPicker(!showAgentPicker)}
                   >
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-linear-to-br from-amber-400 to-amber-600 flex items-center justify-center">
                       <svg viewBox="0 0 20 20" fill="white" className="w-3 h-3">
                         <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM5.05 3.05a.75.75 0 011.06 0l1.062 1.06a.75.75 0 11-1.06 1.06L5.05 4.11a.75.75 0 010-1.06zm9.9 0a.75.75 0 010 1.06l-1.06 1.062a.75.75 0 01-1.062-1.061l1.061-1.06a.75.75 0 011.06 0zM10 7a3 3 0 100 6 3 3 0 000-6z" />
                       </svg>
@@ -2773,7 +2805,7 @@ function AppInner() {
                   /* ===== Empty state — centered like ChatGPT ===== */
                   <div className="flex flex-col items-center justify-center h-full px-4">
                     <div className="text-center space-y-4 mb-8">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
+                      <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-amber-400 to-amber-600 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
                         <svg
                           viewBox="0 0 24 24"
                           fill="white"
@@ -2841,6 +2873,17 @@ function AppInner() {
               ) : (
                 /* ===== Messages list ===== */
                 <div className="py-4 space-y-0">
+                  {hasOlderHistory && (
+                    <div className="flex justify-center pb-3">
+                      <button
+                        className="px-3 py-1.5 rounded-lg text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer disabled:opacity-50"
+                        onClick={() => void loadOlderHistory()}
+                        disabled={olderHistoryLoading}
+                      >
+                        {olderHistoryLoading ? "Loading…" : "Load earlier messages"}
+                      </button>
+                    </div>
+                  )}
                   {messages.map((msg) => (
                     <div key={msg.id}>
                       {/* Collapsed thinking trace above assistant message */}
@@ -2882,7 +2925,7 @@ function AppInner() {
                     <div className="chat-message-row">
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
-                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600">
                             <svg
                               viewBox="0 0 20 20"
                               fill="white"
@@ -2892,7 +2935,7 @@ function AppInner() {
                             </svg>
                           </div>
                           <div>
-                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                            <div className="text-2xs font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
                               {selectedAgent?.name || "MIZAN"}
                             </div>
                             <TypingIndicator />
@@ -2932,7 +2975,7 @@ function AppInner() {
                     <div className="chat-message-row group/msg">
                       <div className="chat-message-container">
                         <div className="flex gap-3.5">
-                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600">
+                          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600">
                             <svg
                               viewBox="0 0 20 20"
                               fill="white"
@@ -2942,7 +2985,7 @@ function AppInner() {
                             </svg>
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+                            <div className="text-2xs font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
                               {selectedAgent?.name || "MIZAN"}
                             </div>
                             <div className="prose">
@@ -3902,7 +3945,7 @@ function AppInner() {
         />
         {mobileNavOpen && (
           <div
-            className="fixed inset-0 z-[60] md:hidden"
+            className="fixed inset-0 z-60 md:hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"

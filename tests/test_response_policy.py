@@ -305,7 +305,10 @@ async def test_full_fikr_keeps_english_request_last_after_hinglish_retrieval(age
     ):
         assert evidence in prior_context
     assert "Hinglish (Roman Hindi/Urdu)" not in prior_context
-    assert "Purana note: database ki jankari." in request["system"]
+    # Recalled knowledge travels with the request context, keeping the system
+    # prompt byte-stable for provider prompt caching.
+    assert "Purana note: database ki jankari." in prior_context
+    assert "Purana note: database ki jankari." not in request["system"]
     assert preferences[0]["value"] == "Hinglish (Roman Hindi/Urdu)"
 
 

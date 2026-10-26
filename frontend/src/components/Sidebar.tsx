@@ -56,7 +56,7 @@ export function Sidebar({
   );
 
   const rootClassName = isMobileDrawer
-    ? "flex fixed inset-y-0 left-0 w-72 max-w-[85vw] z-[70] shrink-0 bg-white/60 dark:bg-mizan-dark/40 backdrop-blur-md border-r border-white/50 dark:border-white/5 flex-col overflow-y-auto shadow-[4px_0_24px_rgba(0,0,0,0.02)] pt-2 transition-[width] duration-200"
+    ? "flex fixed inset-y-0 left-0 w-72 max-w-[85vw] z-70 shrink-0 bg-white/60 dark:bg-mizan-dark/40 backdrop-blur-md border-r border-white/50 dark:border-white/5 flex-col overflow-y-auto shadow-[4px_0_24px_rgba(0,0,0,0.02)] pt-2 transition-[width] duration-200"
     : `${isCollapsed ? "w-16" : "w-64"} shrink-0 bg-white/60 dark:bg-mizan-dark/40 backdrop-blur-md border-r border-white/50 dark:border-white/5 flex flex-col overflow-y-auto z-sticky shadow-[4px_0_24px_rgba(0,0,0,0.02)] pt-2 relative transition-[width] duration-200 hidden md:flex`;
 
   return (
@@ -123,7 +123,7 @@ export function Sidebar({
 
       {/* Active agent footer */}
       {selectedAgent && !isCollapsed && (
-        <div className="px-4 py-4 border-t border-white/50 dark:border-white/10 mt-auto bg-gradient-to-t from-white/40 dark:from-mizan-dark-surface/40 to-transparent transition-all">
+        <div className="px-4 py-4 border-t border-white/50 dark:border-white/10 mt-auto bg-linear-to-t from-white/40 dark:from-mizan-dark-surface/40 to-transparent transition-all">
           <div className="text-xs uppercase tracking-widest text-mizan-gold/80 font-semibold mb-2 flex items-center gap-2">
             <Icons.Agent /> Active Agent
           </div>
@@ -139,7 +139,7 @@ export function Sidebar({
               }
             }}
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-mizan-gold to-orange-400 border-2 border-white dark:border-mizan-dark-surface shadow-sm flex items-center justify-center text-white text-xs font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-full bg-linear-to-br from-mizan-gold to-orange-400 border-2 border-white dark:border-mizan-dark-surface shadow-sm flex items-center justify-center text-white text-xs font-bold group-hover:scale-105 transition-transform">
               {selectedAgent.name[0]?.toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">

@@ -15,7 +15,7 @@
 services:
   # ── Nginx Reverse Proxy ──
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30-alpine
     container_name: mizan-nginx
     restart: unless-stopped
     ports:
@@ -51,19 +51,25 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-mizan-owned}
-      - LLM_PROVIDER=${LLM_PROVIDER:-mizan-owned}
-      - MIZAN_OWNED_ONLY=${MIZAN_OWNED_ONLY:-true}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - MIZAN_OWNED_ONLY=${MIZAN_OWNED_ONLY:-false}
       - MIZAN_OWNED_DB=/data/mizan_owned.sqlite3
       - MIZAN_REPLY_CHECKPOINT=${MIZAN_REPLY_CHECKPOINT:-}
-      - MIZAN_OWNED_LEARNING_DIR=${MIZAN_OWNED_LEARNING_DIR:-}
-      - MIZAN_OWNED_LEARNING_AUTORUN=${MIZAN_OWNED_LEARNING_AUTORUN:-false}
-      - MIZAN_CHAT_MAX_OUTPUT_TOKENS=${MIZAN_CHAT_MAX_OUTPUT_TOKENS:-4096}
+      - MIZAN_OWNED_LEARNING_DIR=${MIZAN_OWNED_LEARNING_DIR:-/data/mizan/owned_learning}
+      - MIZAN_OWNED_LEARNING_AUTORUN=${MIZAN_OWNED_LEARNING_AUTORUN:-true}
+      - MIZAN_CHAT_MAX_OUTPUT_TOKENS=${MIZAN_CHAT_MAX_OUTPUT_TOKENS:-}
+      - MIZAN_CHAT_EFFORT=${MIZAN_CHAT_EFFORT:-high}
+      - MIZAN_VECTOR_URL=${MIZAN_VECTOR_URL:-}  # http://chroma:8000 with the vector profile
+      - MIZAN_MEMORY_MAINTENANCE=${MIZAN_MEMORY_MAINTENANCE:-true}
+      - MIZAN_CHAT_MAX_STEPS=${MIZAN_CHAT_MAX_STEPS:-100}
+      - MIZAN_CHAT_MAX_CONTINUATIONS=${MIZAN_CHAT_MAX_CONTINUATIONS:-20}
+      - MIZAN_CONTEXT_HISTORY_TOKENS=${MIZAN_CONTEXT_HISTORY_TOKENS:-150000}
       - MIZAN_GRACEFUL_SHUTDOWN_SECONDS=90
       - MIZAN_LLM_FIRST_PROGRESS_SECONDS=${MIZAN_LLM_FIRST_PROGRESS_SECONDS:-60}
       - MIZAN_LLM_PROGRESS_SECONDS=${MIZAN_LLM_PROGRESS_SECONDS:-60}
-      - MIZAN_LLM_MAX_CALL_SECONDS=${MIZAN_LLM_MAX_CALL_SECONDS:-300}
-      - MIZAN_CHAT_RUN_SECONDS=${MIZAN_CHAT_RUN_SECONDS:-900}
+      - MIZAN_LLM_MAX_CALL_SECONDS=${MIZAN_LLM_MAX_CALL_SECONDS:-600}
+      - MIZAN_CHAT_RUN_SECONDS=${MIZAN_CHAT_RUN_SECONDS:-1800}
       - MIZAN_CHAT_TOOL_SCHEMA_LIMIT=${MIZAN_CHAT_TOOL_SCHEMA_LIMIT:-8}
       - MIZAN_CHAT_TOOL_SCHEMA_BYTES=${MIZAN_CHAT_TOOL_SCHEMA_BYTES:-12288}
       - MIZAN_CHAT_TEMPERATURE=${MIZAN_CHAT_TEMPERATURE:-0.5}
@@ -77,7 +83,7 @@ services:
       - DB_PATH=/data/mizan.db
       - MIZAN_DATA_DIR=/data/mizan
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost}}
-      - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-}
+      - MIZAN_NLP_NATIVE_WSD=${MIZAN_NLP_NATIVE_WSD:-1}
       - RUH_ENABLED=${RUH_ENABLED:-}
       - RUH_MODEL_PATH=${RUH_MODEL_PATH:-}
       - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
@@ -139,7 +145,7 @@ services:
 
   # ── SSL Certificate Manager (optional) ──
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v5.8.0
     container_name: mizan-certbot
     volumes:
       - certbot-webroot:/var/www/certbot
@@ -150,7 +156,7 @@ services:
 
   # ── Local LLM via Ollama (optional) ──
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.11
     container_name: mizan-ollama
     restart: unless-stopped
     volumes:
@@ -166,13 +172,13 @@ services:
 
   # ── Vector DB for semantic search (optional) ──
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: mizan-chroma
     restart: unless-stopped
     expose:
       - "8000"
     volumes:
-      - chroma-data:/chroma/.chroma
+      - chroma-data:/data  # Chroma 1.x persists under /data
     networks:
       - mizan-net
     profiles:

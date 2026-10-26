@@ -610,7 +610,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                 </div>
               ) : (
                 <pre
-                  className={`px-3 py-2 font-mono text-xs whitespace-pre-wrap break-words leading-relaxed m-0
+                  className={`px-3 py-2 font-mono text-xs whitespace-pre-wrap wrap-break-word leading-relaxed m-0
                   ${
                     cell.cell_type === "markdown"
                       ? "text-gray-600 dark:text-gray-400"
@@ -630,18 +630,18 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                     className="border-t border-gray-200 dark:border-zinc-700 px-3 py-2 bg-gray-50 dark:bg-zinc-800/50"
                   >
                     {out.output_type === "error" ? (
-                      <pre className="font-mono text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap break-words m-0">
+                      <pre className="font-mono text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap wrap-break-word m-0">
                         {out.text || out.stderr}
                       </pre>
                     ) : (
                       <>
                         {out.stdout && (
-                          <pre className="font-mono text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words m-0">
+                          <pre className="font-mono text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap wrap-break-word m-0">
                             {out.stdout}
                           </pre>
                         )}
                         {out.stderr && (
-                          <pre className="font-mono text-xs text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-words m-0">
+                          <pre className="font-mono text-xs text-amber-600 dark:text-amber-400 whitespace-pre-wrap wrap-break-word m-0">
                             {out.stderr}
                           </pre>
                         )}

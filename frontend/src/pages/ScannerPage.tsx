@@ -378,7 +378,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                           >
                             {count}
                           </div>
-                          <div className="text-micro uppercase tracking-wider text-gray-400 dark:text-gray-500 break-words">
+                          <div className="text-micro uppercase tracking-wider text-gray-400 dark:text-gray-500 wrap-break-word">
                             {sev}
                           </div>
                         </div>
