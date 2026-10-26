@@ -137,8 +137,8 @@ jobs:
           python-version: "3.13"
       - name: Build isolated coding images
         run: |
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runtime -t mizan-workspace-runtime:v1 .
-          docker build --build-arg BASE_REGISTRY=mirror.gcr.io/library -f docker/Dockerfile.workspace-runner -t mizan-workspace-runner:v1 .
+          bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
+          bash scripts/build_workspace_image.sh workspace-runner mizan-workspace-runner:v1 --load
       - name: Verify the isolated runner and actual code execution
         env:
           MIZAN_DATA_DIR: ${{ runner.temp }}/isolated-coding-tests
@@ -181,18 +181,10 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
       - name: Publish isolated workspace runtime
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.workspace-runtime
-          build-args: BASE_REGISTRY=mirror.gcr.io/library
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runtime
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }} --push
       - name: Publish private workspace runner
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.workspace-runner
-          build-args: BASE_REGISTRY=mirror.gcr.io/library
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runner
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push
