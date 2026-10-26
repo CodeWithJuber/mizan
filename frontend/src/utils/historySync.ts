@@ -47,6 +47,26 @@ export function hydrateCachedMessages<T>(
     ? cached : current;
 }
 
+/** Loading belongs to one view/request. Resetting the view clears it even
+ * when an old request's finally block correctly refuses to touch the new view. */
+export function createHistoryLoadTracker(setLoading: (loading: boolean) => void) {
+  let generation = 0;
+  return {
+    begin(sameContext: () => boolean) {
+      const request = sameContext() ? ++generation : -1;
+      if (request !== -1) setLoading(true);
+      const isCurrent = () => request === generation && sameContext();
+      return {
+        isCurrent,
+        finish() {
+          if (isCurrent()) { generation++; setLoading(false); }
+        },
+      };
+    },
+    reset() { generation++; setLoading(false); },
+  };
+}
+
 /** Small djb2 hash for the local dedupe key — not cryptographic, just stable. */
 function contentHash(content: string): string {
   let h = 5381;
@@ -99,9 +119,11 @@ export async function fetchChatHistoryWithRetry(
   fetchHistory: () => Promise<Response>,
   attempts = 3,
   baseDelayMs = 600,
+  isCurrent: () => boolean = () => true,
 ): Promise<HistoryFetchResult> {
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (!isCurrent()) return { ok: false, messages: [], missing: false };
     try {
       const res = await fetchHistory();
       if (res.status === 404) {
@@ -114,6 +136,7 @@ export async function fetchChatHistoryWithRetry(
       const messages = Array.isArray(data?.messages) ? data.messages : [];
       return { ok: true, messages, missing: false };
     } catch (err) {
+      if (!isCurrent()) return { ok: false, messages: [], missing: false };
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < attempts) {
         await sleep(baseDelayMs * 2 ** (attempt - 1));

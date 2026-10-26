@@ -86,6 +86,7 @@ import { StreamBuffer } from "./utils/streaming";
 import {
   fetchChatHistoryWithRetry,
   hydrateCachedMessages,
+  createHistoryLoadTracker,
   mergeHistoryMessages,
 } from "./utils/historySync";
 import { cacheMessages, readCachedMessages, cacheChatDraft, cacheChatDraftNow, readCachedChatDrafts, clearCachedChatDraft } from "./utils/sessionCache";
@@ -426,6 +427,7 @@ function AppInner() {
   const continuationRef = useRef(0);
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoads] = useState(() => createHistoryLoadTracker(setHistoryLoading));
   const [runProgress, setRunProgress] = useState<{ startedAt: number; phase?: string } | null>(null);
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
   const draftStorageFailures = useRef(new Set<string>());
@@ -503,6 +505,7 @@ function AppInner() {
       if (token === lastAuthTokenRef.current) return;
       lastAuthTokenRef.current = token;
       agentAuthEpochRef.current++;
+      historyLoads.reset();
       setShowCreateAgent(false);
       setEditingAgent(null);
       setNewAgent(agentFormData());
@@ -1415,22 +1418,24 @@ function AppInner() {
   const loadChatHistory = useCallback(
     async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean; onLoaded?: (count: number) => void }): Promise<boolean> => {
       const requestToken = localStorage.getItem("mizan_token");
-      setHistoryLoading(true);
+      const authEpoch = agentAuthEpochRef.current;
+      const sameContext = () => !!requestToken && requestToken === localStorage.getItem("mizan_token") &&
+        authEpoch === agentAuthEpochRef.current && sid === sessionIdRef.current;
+      if (!sameContext()) return false;
+      const load = historyLoads.begin(sameContext);
       setHistoryLoadError(false);
       try {
         const result = await fetchChatHistoryWithRetry(
-          () => authFetch(`${config.API_URL}/chat/${sid}`),
+          () => authFetch(`${config.API_URL}/chat/${sid}`, { headers: { Authorization: `Bearer ${requestToken}` } }),
           3,
+          600,
+          sameContext,
         );
-        if (
-          requestToken !== localStorage.getItem("mizan_token") ||
-          sid !== sessionIdRef.current
-        )
-          return false;
+        if (!sameContext()) return false;
         if (result.missing) {
           // Session expired or deleted server-side — the caller decides how
           // to start fresh. Never toast here: a missing session is normal.
-          opts?.onMissing?.();
+          if (load.isCurrent()) opts?.onMissing?.();
           return true;
         }
         if (!result.ok) {
@@ -1461,14 +1466,10 @@ function AppInner() {
         opts?.onLoaded?.(history.length);
         return true;
       } finally {
-        if (
-          requestToken === localStorage.getItem("mizan_token") &&
-          sid === sessionIdRef.current
-        )
-          setHistoryLoading(false);
+        load.finish();
       }
     },
-    [addToast],
+    [addToast, historyLoads],
   );
   recoveryHistoryRef.current = (sid) => loadChatHistory(sid, { quiet: true });
 
@@ -1504,6 +1505,7 @@ function AppInner() {
   const switchSession = useCallback(
     async (sid: string) => {
       const requestToken = localStorage.getItem("mizan_token");
+      historyLoads.reset();
       persistActiveDraft(true);
       activeDraftRef.current = null;
       recovery.reset();
@@ -1546,7 +1548,7 @@ function AppInner() {
         if (count && !streamingRef.current) recovery.begin(undefined, undefined, sid);
       } });
     },
-    [loadChatHistory, persistActiveDraft, recovery.begin, recovery.reset],
+    [loadChatHistory, persistActiveDraft, recovery.begin, recovery.reset, historyLoads],
   );
 
   useEffect(() => {
@@ -1683,6 +1685,7 @@ function AppInner() {
   }, []);
 
   const startNewSession = useCallback(() => {
+    historyLoads.reset();
     persistActiveDraft(true);
     activeDraftRef.current = null;
     recovery.reset();
@@ -1708,7 +1711,7 @@ function AppInner() {
     setTruncatedContinue(null);
     continuationRef.current = 0;
     addTerminalLine("New chat session started", "gold");
-  }, [persistActiveDraft, recovery.reset]);
+  }, [persistActiveDraft, recovery.reset, historyLoads]);
 
   // "New chat" discards the visible session (recoverable via History), so it
   // confirms first. The /new chat command keeps its no-confirm behavior.
