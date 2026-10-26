@@ -30,7 +30,7 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import calc, express, fahm, hadith, quran
+from . import calc, express, fahm, hadith, project, quran
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -373,6 +373,169 @@ class Tadbir:
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
         return Outcome("\n\n".join(parts), verified, {"run": _run_facts(run), "attempts": tries})
+
+    async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
+        from workspace.context import bound_workspace_id
+
+        blueprint = project.BLUEPRINTS[u.entities["kind"]]
+        needed = ["workspace_write"] + ([] if bound_workspace_id() else ["workspace_create"])
+        if not self.lisan.available or not all(self._allowed(name) for name in needed):
+            raise Defer
+        workspace_id = bound_workspace_id()
+        if workspace_id:
+            # An existing project is edited, not overwritten: the agent loop does that.
+            if not self._allowed("workspace_glob"):
+                raise Defer
+            listing = await self._tool("workspace_glob", {"pattern": "**/*"})
+            if listing.get("error") or listing.get("total", 0):
+                raise Defer
+        name = str(u.entities["name"])
+        plan = [(spec.path, spec.purpose) for spec in blueprint.files]
+        await self._begin(
+            [
+                "Choose the project's files (MIZAN)",
+                *(f"Write {spec.path} (Lisan)" for spec in blueprint.files),
+                "Save the files to the project",
+                "Check the project; repair what fails (MIZAN)",
+                "Save a checkpoint and reply",
+            ]
+        )
+        files: dict[str, str] = {}
+        try:
+            for spec in blueprint.files:
+                await self._step()
+                files[spec.path] = await self.lisan.write_file(
+                    task, blueprint.label, plan, spec.path, dict(files), u.language
+                )
+        except LisanUnavailable as exc:
+            return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
+        linked = False
+        if blueprint.kind == "web":
+            files["index.html"], linked = project.link_assets(files["index.html"])
+        await self._step()
+        new_project = not workspace_id
+        if new_project:
+            created = await self._tool("workspace_create", {"name": name})
+            if tool_result_failed(created) or not created.get("id"):
+                reason = str(created.get("error") or "the project could not be created")
+                return Outcome(phrase("project_failed", u.language, reason=reason), False, {})
+            workspace_id = str(created["id"])
+        for path, content in files.items():
+            if error := await self._save(workspace_id, path, content):
+                return Outcome(phrase("project_failed", u.language, reason=error), False, {})
+        await self._step()
+        checks, problem = await self._check_project(blueprint, workspace_id, files)
+        rounds = 0
+        while problem and rounds < MAX_REPAIRS:
+            try:
+                reply = await self.lisan.fix_files(task, blueprint.label, files, problem)
+            except LisanUnavailable:
+                break
+            fixed = project.extract_files(reply, set(files))
+            if not fixed:
+                break
+            rounds += 1
+            for path, content in fixed.items():
+                if blueprint.kind == "web" and path == "index.html":
+                    content, _added = project.link_assets(content)
+                files[path] = content
+                if error := await self._save(workspace_id, path, content):
+                    return Outcome(phrase("project_failed", u.language, reason=error), False, {})
+            checks, problem = await self._check_project(blueprint, workspace_id, files)
+        await self._step()
+        if self._allowed("workspace_checkpoint"):
+            await self._tool(
+                "workspace_checkpoint",
+                {"workspace_id": workspace_id, "message": f"MIZAN built {name}"},
+            )
+        verified = all(ok is True for _key, ok, _detail in checks)
+        lines = [
+            phrase("project_new" if new_project else "project_current", u.language, name=name),
+            "",
+            f"**{phrase('project_files', u.language)}**",
+            *(f"- `{path}` ({content.count(chr(10))} lines)" for path, content in files.items()),
+            "",
+            f"**{phrase('project_checks', u.language)}**",
+        ]
+        for key, ok, detail in checks:
+            mark = "✓" if ok else "✗" if ok is False else "–"
+            note = f" ({phrase('check_not_run', u.language, reason=detail)})" if ok is None else ""
+            lines.append(f"- {mark} {phrase(key, u.language)}{note}")
+        if linked:
+            lines.append(f"- ✓ {phrase('check_linked', u.language)}")
+        if rounds:
+            lines += ["", f"_{phrase('project_repaired', u.language, count=rounds)}_"]
+        if problem and not verified:
+            lines += ["", fence(problem[-1500:], "text")]
+        lines += ["", phrase(f"project_open_{blueprint.kind}", u.language)]
+        return Outcome(
+            "\n".join(lines),
+            verified,
+            {"workspace_id": workspace_id, "files": sorted(files), "repairs": rounds},
+        )
+
+    async def _save(self, workspace_id: str, path: str, content: str) -> str | None:
+        saved = await self._tool(
+            "workspace_write", {"workspace_id": workspace_id, "path": path, "content": content}
+        )
+        if tool_result_failed(saved):
+            return str(saved.get("error") or f"{path} could not be saved")
+        return None
+
+    async def _check_project(
+        self, blueprint: project.Blueprint, workspace_id: str, files: dict[str, str]
+    ) -> tuple[list[tuple[str, bool | None, str]], str]:
+        """MIZAN's checks as (phrase key, passed or None if not run, detail); first problem."""
+        checks: list[tuple[str, bool | None, str]] = []
+        problems: list[str] = []
+        commands: list[tuple[str, str]] = []
+        if blueprint.kind == "web":
+            html, css, js = files["index.html"], files["style.css"], files["app.js"]
+            scan = project.scan_html(html)
+            checks.append(
+                ("check_links", "style.css" in scan.styles and "app.js" in scan.scripts, "")
+            )
+            missing = project.missing_ids(html, js)
+            checks.append(("check_ids", not missing, ", ".join(missing)))
+            if missing:
+                problems.append(
+                    "app.js looks up element ids that index.html does not have: "
+                    + ", ".join(missing)
+                    + ". Ids in index.html: "
+                    + (", ".join(sorted(scan.ids)) or "none")
+                )
+            balanced = project.css_balanced(css)
+            checks.append(("check_css", balanced, ""))
+            if not balanced:
+                problems.append("style.css has unbalanced braces")
+            commands.append(("check_js", "node --check app.js"))
+        else:
+            commands += [
+                ("check_tests", "python -m unittest -q"),
+                ("check_main", "timeout 20 python main.py < /dev/null"),
+            ]
+        for key, command in commands:
+            if not self._allowed("workspace_run"):
+                checks.append((key, None, "the sandbox is not available in this chat"))
+                continue
+            run = await self._tool(
+                "workspace_run",
+                {
+                    "workspace_id": workspace_id,
+                    "command": command,
+                    "language": "shell",
+                    "timeout_s": 60,
+                },
+            )
+            if run.get("error"):
+                checks.append((key, None, str(run["error"])[:200]))
+                continue
+            passed = run.get("exit_code") == 0
+            checks.append((key, passed, ""))
+            if not passed:
+                output = (str(run.get("stdout", "")) + str(run.get("stderr", ""))).strip()
+                problems.append(f"`{command}` failed (exit code {run.get('exit_code')}):\n{output}")
+        return checks, "\n\n".join(problems)
 
     async def _quran(self, task: str, u: fahm.Understanding) -> Outcome:
         reference: quran.Reference = u.entities["reference"]

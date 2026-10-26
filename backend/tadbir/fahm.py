@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, hadith, quran
+from . import calc, hadith, project, quran
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -21,7 +21,8 @@ _HINGLISH = {
     "kitne", "hota", "hoti", "dikhao", "sunao", "likho", "chalao", "padho", "samjhao",
     "matlab", "accha", "theek", "haan", "lekin", "bhi", "toh", "abhi", "phir", "kuch",
     "sab", "koi", "paas", "wala", "wali", "liye", "tarjuma", "karna", "karni", "hoga",
-    "ka", "ki", "ke", "ko", "se", "ye",
+    "ka", "ki", "ke", "ko", "se", "ye", "ek", "banao", "bnao", "banaiye", "jisme", "jismein",
+    "sakein", "sake", "jodo", "dena", "dijiye",
 }  # fmt: skip
 _URDU_LETTERS = set("ٹڈڑںےھہگپچژکی")
 _RUN = r"(?:\brun\b|\bexecute\b|\bexec\b|\bchala\w*|\bchalao\b|चला|چلا|\bchalake\b)"
@@ -177,6 +178,10 @@ def understand(text: str) -> Understanding:
         return Understanding(
             "build_and_run", language, 0.8, {"request": message, "code_language": code_language}
         )
+
+    build = project.detect(message)
+    if build is not None:
+        return Understanding("build_project", language, 0.8, build)
 
     if _RECALL.search(message):
         return Understanding("recall", language, 0.8, {"query": message})

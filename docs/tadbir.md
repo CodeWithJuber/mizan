@@ -37,6 +37,7 @@ and before the model-driven loop.
 | **Calculation** | `calc.py` | Exact big integers and fractions, bounded, no `eval`. |
 | **Quran** | `quran.py` | 114-surah index checked against the Hafs count of 6236 ayahs. Parses references in Latin, Arabic, Urdu and Devanagari, including named ayahs such as Ayat al-Kursi. Fetches the Uthmani text and an established translation from api.alquran.cloud, quotes them verbatim, and strips the source's Basmala prefix from ayah 1, except in Al-Fatihah. The model never writes or rewrites ayahs. |
 | **Hadith** | `hadith.py` | Index of ten collections: Bukhari, Muslim, Abu Dawud, Tirmidhi, Nasa'i, Ibn Majah, the Muwatta, and the Forty of an-Nawawi, Qudsi and Dehlawi. Parses references in all five languages and checks each number against the collection. Sahih Muslim uses 'Abd al-Baqi's numbering (`2564`, `2564b`) through a bundled table, `muslim_numbers.json`. Fetches the Arabic text and a translation (English or Urdu) from the open hadith-api dataset, quoted verbatim. Grades are shown scholar by scholar, as the source gives them, and a weak grade triggers a warning. MIZAN never grades a hadith itself. |
+| **Projects** | `project.py` | MIZAN picks the files from its own blueprints: a static web app (`index.html`, `style.css`, `app.js`) or a Python program with `unittest` tests (`main.py`, `test_main.py`). Lisan writes each file. MIZAN saves them through the workspace tools and checks them itself. Web apps: the page loads both assets (MIZAN adds a missing link itself), every element id the script looks up exists, the CSS is well formed, and `node --check` passes in the sandbox. Python programs: the tests pass and `main.py` runs and exits. Failures go back to Lisan with MIZAN's exact finding, at most twice. |
 
 ## Recipes
 
@@ -48,6 +49,7 @@ and before the model-driven loop.
 | build_and_run | "Ek python program likho jo … aur run karo" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. |
 | quran | "Ayatul Kursi", "Surah Ikhlas", "سورة البقرة 255" | none |
 | hadith | "Bukhari 1", "Sahih Muslim 2564b", "Tirmidhi 2516 dikhao", "بخاری شریف حدیث نمبر 1" | none |
+| build_project | "Ek calculator app banao", "Create a quiz game", "Python CLI todo app banao" | Lisan writes each file and repairs what MIZAN's checks find. A new project is created, or the selected project is used when it is empty. An existing project is edited by the agent loop. Frameworks and backends (React, Django, databases, logins) also go to the agent loop. |
 | web_search | "latest … search karo" | Lisan answers only from the numbered results. MIZAN adds the source list itself. |
 | web_read | URL + "padho / summarize" | as for web_search, with one page |
 | recall | "yaad hai maine kya bataya tha?" | Lisan may word the recalled memories, checked by Furqan |

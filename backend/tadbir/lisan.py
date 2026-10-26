@@ -16,7 +16,7 @@ import re
 import time
 from typing import Any
 
-from providers import provider_retry_delay
+from providers import effective_limits, provider_retry_delay
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -65,6 +65,8 @@ class Lisan:
             raise LisanUnavailable("No language model is configured")
         provider = self.agent.ai_client
         model = self.agent.ai_model
+        # Never ask for more output than the serving model allows.
+        max_tokens = max(1, min(max_tokens, effective_limits(provider, model or "")[1]))
         started = time.perf_counter()
         response = None
         for attempt in range(2):
@@ -118,6 +120,44 @@ class Lisan:
             f"Request:\n{request}\n\nProgram:\n```\n{code}\n```\n\nError output:\n{error[-3000:]}",
         )
         return extract_code(reply)
+
+    async def write_file(
+        self,
+        request: str,
+        blueprint: str,
+        plan: list[tuple[str, str]],
+        path: str,
+        written: dict,
+        language: str = "en",
+    ) -> str:
+        listing = "\n".join(f"- {name}: {purpose}" for name, purpose in plan)
+        done = "\n\n".join(
+            f"`{name}`:\n```\n{content[:8000]}\n```" for name, content in written.items()
+        )
+        reply = await self.ask(
+            f"MIZAN is building a {blueprint} with exactly these files:\n{listing}\n\n"
+            f"Write the complete file `{path}`. Use only these files and the platform itself: no "
+            "frameworks, external libraries, CDNs or network requests. Keep names and ids "
+            "consistent with the files already written. Text the user sees is in "
+            f"{LANGUAGE_NAMES.get(language, 'English')}; code and identifiers are in English. "
+            "Reply with exactly one fenced code block containing the whole file and nothing else.",
+            f"User request:\n{request}" + (f"\n\nFiles already written:\n{done}" if done else ""),
+            max_tokens=6000,
+        )
+        return extract_code(reply).rstrip("\n") + "\n"
+
+    async def fix_files(self, request: str, blueprint: str, files: dict, problem: str) -> str:
+        listing = "\n\n".join(
+            f"```{name}\n{content[:8000]}\n```" for name, content in files.items()
+        )
+        return await self.ask(
+            f"MIZAN checked this {blueprint} and found a problem. Return the corrected complete "
+            "content of each file you change, each as its own fenced code block whose info "
+            "string is the file path (for example ```app.js). Do not return unchanged files.",
+            f"User request:\n{request}\n\nProblem found by MIZAN:\n{problem[-3000:]}\n\n"
+            f"Files:\n{listing}",
+            max_tokens=8000,
+        )
 
     async def express(self, request: str, facts: dict, language: str) -> str:
         return await self.ask(

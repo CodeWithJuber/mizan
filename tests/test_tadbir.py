@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import calc, fahm, hadith, quran
+from tadbir import calc, fahm, hadith, project, quran
 from tadbir.express import furqan
 
 
@@ -50,7 +50,16 @@ def agent(monkeypatch, tmp_path):
     monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
     created = create_agent("general", izn=IznPermission())
     created.ai_client = ScriptedProvider()
-    names = ["workspace_run", "web_search", "web_browse", "recall_memory", "workspace_write"]
+    names = [
+        "workspace_run",
+        "web_search",
+        "web_browse",
+        "recall_memory",
+        "workspace_write",
+        "workspace_create",
+        "workspace_glob",
+        "workspace_checkpoint",
+    ]
     monkeypatch.setattr(
         created,
         "get_tool_schemas",
@@ -558,3 +567,135 @@ def test_lisan_may_not_supply_a_hadith_number_the_user_did_not_write():
     assert fahm.validate_parsed(parsed, "the hadith about intentions", "en") is None
     understood = fahm.validate_parsed(parsed, "intentions wali hadith, bukhari mein number 1", "en")
     assert understood is not None and understood.entities["reference"].label == "Sahih al-Bukhari 1"
+
+
+# ── Projects: MIZAN plans, saves and checks; Lisan writes the files ──────
+
+
+@pytest.mark.parametrize(
+    "text,kind,name",
+    [
+        ("Ek simple calculator app banao", "web", "Calculator app"),
+        ("Create a quiz game about planets", "web", "Quiz game"),
+        ("Python CLI todo app banao", "python", "CLI todo app"),
+        ("ایک کیلکولیٹر ایپ بنا دو", "web", "Calculator app"),
+        ("एक कैलकुलेटर ऐप बनाओ", "web", "Calculator app"),
+    ],
+)
+def test_project_requests_are_understood(text, kind, name):
+    understood = fahm.understand(text)
+    assert understood.intent == "build_project"
+    assert understood.entities == {"kind": kind, "name": name}
+
+
+@pytest.mark.parametrize(
+    "text", ["website kaise banate hain?", "React app banao", "Make it shorter", "Explain this app"]
+)
+def test_questions_and_other_stacks_are_not_project_builds(text):
+    assert fahm.understand(text).intent != "build_project"
+
+
+def test_mizan_checks_projects_itself():
+    html, linked = project.link_assets("<html><head></head><body><p id='out'></p></body></html>")
+    scan = project.scan_html(html)
+    assert linked and "style.css" in scan.styles and "app.js" in scan.scripts
+    js = "document.getElementById('out'); document.querySelector('#total'); el.id = 'made';"
+    js += " document.getElementById('made')"
+    assert project.missing_ids(html, js) == ["total"]
+    assert project.css_balanced("a { color: red; } /* } */ b { content: '}'; }")
+    assert not project.css_balanced("a { color: red; ")
+    reply = "```app.js\nok();\n```\n```javascript evil.sh\nrm -rf /\n```"
+    assert project.extract_files(reply, {"app.js", "index.html"}) == {"app.js": "ok();\n"}
+
+
+async def test_web_project_is_planned_saved_checked_and_repaired_by_mizan(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider(
+        [
+            "```html\n<html><head><title>Calc</title></head><body>"
+            "<input id='a'><button id='go'>=</button></body></html>\n```",
+            "```css\nbody { font: 16px sans-serif; }\n```",
+            "```js\ndocument.getElementById('go').onclick = () => "
+            "document.getElementById('result').textContent = 1;\n```",
+            "```index.html\n<html><head><title>Calc</title></head><body><input id='a'>"
+            "<button id='go'>=</button><output id='result'></output></body></html>\n```",
+        ]
+    )
+    fake = tools(
+        agent,
+        monkeypatch,
+        workspace_create={"id": "w1", "name": "Calculator app"},
+        workspace_write={"path": "x", "sha256": "0", "bytes": 1},
+        workspace_run={"stdout": "", "stderr": "", "exit_code": 0},
+        workspace_checkpoint={"id": "c1"},
+    )
+    result = await agent.execute("Ek simple calculator app banao")
+    names = [name for name, _params in fake.calls]
+    assert names[0] == "workspace_create" and names[-1] == "workspace_checkpoint"
+    saved = [params for name, params in fake.calls if name == "workspace_write"]
+    assert [p["path"] for p in saved] == ["index.html", "style.css", "app.js", "index.html"]
+    assert all(p["workspace_id"] == "w1" for p in saved)
+    # MIZAN linked the assets itself, then Lisan added the missing element.
+    assert '<script src="app.js"></script>' in saved[0]["content"]
+    assert "id='result'" in saved[-1]["content"] and "app.js" in saved[-1]["content"]
+    assert ("workspace_run", {"workspace_id": "w1", "command": "node --check app.js",
+            "language": "shell", "timeout_s": 60}) in fake.calls  # fmt: skip
+    assert result["completion_status"] == "verified_by_mizan"
+    assert "✓" in result["result"] and "✗" not in result["result"]
+    assert result["orchestration"]["language_model_calls"] == 4
+    assert "Hinglish" in agent.ai_client.requests[0]["system"]
+    assert not any(request.get("tools") for request in agent.ai_client.requests)
+
+
+async def test_python_project_failing_tests_are_repaired_then_verified(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider(
+        [
+            "```python\ndef add(a, b):\n    return a - b\n\nif __name__ == '__main__':\n"
+            "    print(add(2, 3))\n```",
+            "```python\nimport unittest\nfrom main import add\n\nclass T(unittest.TestCase):\n"
+            "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n```",
+            "```main.py\ndef add(a, b):\n    return a + b\n\nif __name__ == '__main__':\n"
+            "    print(add(2, 3))\n```",
+        ]
+    )
+    failed = {"stdout": "", "stderr": "AssertionError: -1 != 5", "exit_code": 1}
+    passed = {"stdout": "", "stderr": "OK", "exit_code": 0}
+    fake = tools(
+        agent,
+        monkeypatch,
+        workspace_create={"id": "w2"},
+        workspace_write={"path": "x"},
+        workspace_run=[failed, passed, passed, passed],
+        workspace_checkpoint={},
+    )
+    result = await agent.execute("Python CLI calculator project banao")
+    commands = [params["command"] for name, params in fake.calls if name == "workspace_run"]
+    assert commands[0] == "python -m unittest -q" and len(commands) == 4
+    repair_request = agent.ai_client.requests[2]["messages"][0]["content"]
+    assert "AssertionError: -1 != 5" in repair_request and "return a - b" in repair_request
+    assert result["completion_status"] == "verified_by_mizan"
+    assert "(1 baar)" in result["result"]  # answered in the user's Hinglish
+
+
+async def test_a_project_that_still_fails_is_not_marked_verified(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider(
+        ["```html\n<p></p>\n```", "```css\na {\n```", "```js\nlet x = ;\n```", "no files"]
+    )
+    tools(
+        agent,
+        monkeypatch,
+        workspace_create={"id": "w3"},
+        workspace_write={"path": "x"},
+        workspace_run={"stdout": "", "stderr": "SyntaxError", "exit_code": 1},
+        workspace_checkpoint={},
+    )
+    result = await agent.execute("Build a todo app")
+    assert result["task_verified"] is False and "✗" in result["result"]
+    assert "SyntaxError" in result["result"]
+
+
+async def test_an_existing_project_is_left_to_the_agent_loop(agent, monkeypatch):
+    monkeypatch.setattr("workspace.context.bound_workspace_id", lambda: "w9")
+    tools(agent, monkeypatch, workspace_glob={"files": [{"path": "index.html"}], "total": 1})
+    agent.ai_client = ScriptedProvider(["I will edit your project."])
+    result = await agent.execute("Build a todo app")
+    assert "orchestrator" not in result["usage"]
