@@ -21,6 +21,13 @@ def _terms(text: str) -> set[str]:
     return {word for word in re.findall(r"[^\W_]+", text.casefold()) if len(word) > 2}
 
 
+def _group(name: str) -> str:
+    """Name group for the directory: connector tools group by their server."""
+    if name.startswith("mcp__"):
+        return "mcp__" + name[5:].split("__", 1)[0]
+    return name.split("_", 1)[0]
+
+
 def _bytes(value: object) -> int:
     return len(
         json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode(
@@ -73,7 +80,7 @@ class ToolCatalog:
             for name, schema in self._schemas.items()
         }
         self._frequency = Counter(term for terms in self._terms.values() for term in terms)
-        groups = sorted({name.split("_", 1)[0] for name in self._schemas})
+        groups = sorted({_group(name) for name in self._schemas})
         self._discovery = {
             "name": DISCOVER_TOOL,
             "description": (

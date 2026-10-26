@@ -346,11 +346,16 @@ async def lifespan(app: FastAPI):
         else None
     )
 
+    from connectors.manager import manager as connector_manager
+
+    connector_manager.start()
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    await connector_manager.shutdown()
     if model_limits_task is not None:
         model_limits_task.cancel()
     if memory_maintenance_task is not None:
@@ -406,6 +411,9 @@ _PUBLIC_API = {
     "/api/v1/root-analyze",
     "/api/v1/tokenize",
     "/api/v1/q28-features",
+    # Authorization servers redirect the browser here; the single-use OAuth
+    # state (not a session) identifies the waiting connector.
+    "/api/connectors/oauth/callback",
 }
 _ADMIN_PREFIXES = (
     "/api/status",
@@ -5226,6 +5234,7 @@ from api import (  # noqa: E402
     agent_skills,
     artifacts,
     coding_workspace,
+    connectors,
     modes,
     qwen3,
     ruh_dialect,
@@ -5238,7 +5247,7 @@ from api import (  # noqa: E402
     sandbox,
 )
 
-for feature in (artifacts, modes, sandbox, coding_workspace, agent_skills):
+for feature in (artifacts, modes, sandbox, coding_workspace, agent_skills, connectors):
     app.include_router(feature.router)
 
 for feature in (

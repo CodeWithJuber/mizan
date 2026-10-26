@@ -13,6 +13,7 @@ python-multipart>=0.0.32,<0.1
 anthropic>=2.3.0,<3
 openai>=3.38.0,<4
 httpx>=0.28.1,<0.29
+mcp>=2.3.0,<3  # Model Context Protocol connectors (official SDK)
 
 # Database & Async
 aiosqlite>=0.22.1,<0.23

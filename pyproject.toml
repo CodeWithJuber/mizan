@@ -51,6 +51,7 @@ dependencies = [
     "rich>=15.0.0,<16",
     "Pillow>=13.0.0,<14",
     "pyyaml>=6.0.3,<7",
+    "mcp>=2.3.0,<3",
 ]
 
 [project.optional-dependencies]

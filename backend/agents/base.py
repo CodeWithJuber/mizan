@@ -765,6 +765,26 @@ class BaseAgent:
                         sources.append((source_schemas, source_handlers))
                 except Exception:
                     logger.warning("Optional tool metadata unavailable during capability selection")
+        # The user's own MCP connectors (mcp__<server>__<tool>) are a source of
+        # their own; the prefix is reserved so no other source can claim it.
+        sources = [
+            (
+                [s for s in source_schemas if not str(s.get("name", "")).startswith("mcp__")],
+                {n: h for n, h in handlers.items() if not n.startswith("mcp__")},
+            )
+            for source_schemas, handlers in sources
+        ]
+        connector_schemas = self._connector_schemas()
+        if connector_schemas:
+            sources.append(
+                (
+                    connector_schemas,
+                    {
+                        schema["name"]: self._connector_handler(schema["name"])
+                        for schema in connector_schemas
+                    },
+                )
+            )
         policy = self.izn.get_policy(self.id, self.role) if self.izn else None
         visible: dict[str, dict] = {}
         claimed: set[str] = set()
@@ -808,9 +828,38 @@ class BaseAgent:
         if approvals is not None and approvals.mode == "plan":
             # Plan mode offers observation only; changes are proposed, not made.
             visible = {
-                name: schema for name, schema in visible.items() if tool_category(name) == "read"
+                name: schema
+                for name, schema in visible.items()
+                if tool_category(name, self._read_only_hint(name)) == "read"
             }
         return list(visible.values())
+
+    @staticmethod
+    def _connector_schemas() -> list[dict]:
+        try:
+            from connectors.tools import user_tool_schemas
+
+            return cast(list[dict], user_tool_schemas(current_user_id() or ""))
+        except Exception:  # noqa: BLE001 - a broken connector file must not block chat
+            logger.warning("Connector tools unavailable", exc_info=True)
+            return []
+
+    @staticmethod
+    def _connector_handler(name: str):
+        async def call_connector(**arguments):
+            from connectors.tools import call
+
+            return await call(current_user_id() or "", name, arguments)
+
+        return call_connector
+
+    @staticmethod
+    def _read_only_hint(tool_name: str) -> bool:
+        if not tool_name.startswith("mcp__"):
+            return False
+        from connectors.tools import read_only_hint
+
+        return bool(read_only_hint(current_user_id() or "", tool_name))
 
     def _chat_tool_allowed(self, tool_name: str) -> bool:
         """Selected-project chats expose only owner-scoped tools with trusted handlers."""
@@ -826,6 +875,11 @@ class BaseAgent:
             return True
         if allows_user_web_tool(tool_name, self.skill_registry, native_tools=self.tools):
             return True
+        if tool_name.startswith("mcp__"):
+            # Only the signed-in user's own connector tools, never another source.
+            from connectors.tools import is_user_tool
+
+            return bool(is_user_tool(current_user_id() or "", tool_name))
         safe_native = {
             "todo_write": BaseAgent._tool_todo_write,
             "activate_skill": BaseAgent._tool_activate_skill,
@@ -1885,12 +1939,13 @@ class BaseAgent:
         # Izn in an interactive chat: plan mode refuses changes; other modes
         # ask the user (through the live chat) before acting.
         if approvals is not None:
-            if approvals.blocks(tool_name):
+            read_only = self._read_only_hint(tool_name)
+            if approvals.blocks(tool_name, read_only):
                 return {
                     "error": "Plan mode is read-only: describe this step in the plan instead",
                     "plan_mode": True,
                 }
-            if izn_asks or approvals.needs_approval(tool_name):
+            if izn_asks or approvals.needs_approval(tool_name, read_only):
                 decision = await request_approval(
                     approvals,
                     tool_name,
@@ -1899,6 +1954,12 @@ class BaseAgent:
                 )
                 if decision == "deny":
                     return {"error": "The user declined this action", "declined": True}
+
+        # 0. The user's own MCP connectors (reserved prefix)
+        if tool_name.startswith("mcp__"):
+            from connectors.tools import call
+
+            return await call(current_user_id() or "", tool_name, params)
 
         # 1. Agent's own built-in tools
         if tool_name in self.tools:
