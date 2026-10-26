@@ -4,7 +4,7 @@ Chat Reliability Tests — production bug-hunt fixes (2026-09-30)
 
 Covers the backend fixes for the user's 9 chat issues:
   - Issue 5: tool calls within a turn execute CONCURRENTLY (not sequentially)
-  - Issue 9: true token streaming via provider.stream() (+ create() fallback)
+  - Issue 9: true token streaming without replaying an ambiguous failure
   - Issue 9: max_tokens truncation → bounded auto-continue, then honest notice
   - Bonus:   empty model output → summarize tool results (no Hindi filler)
   - Providers: Anthropic/OpenAI stream wrappers accumulate tool_use blocks
@@ -17,10 +17,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from agents.specialized import create_agent
 from providers import (
+    BaseLLMProvider,
     ContentBlock,
     LLMResponse,
     _AnthropicStreamWrapper,
@@ -32,7 +35,7 @@ from providers import (
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class FakeProvider:
+class FakeProvider(BaseLLMProvider):
     """Deterministic create()-only provider returning scripted responses."""
 
     provider_name = "fake"
@@ -223,7 +226,7 @@ class TestTrueStreaming:
         )
         assert provider.stream_tools == schemas
 
-    async def test_streaming_failure_falls_back_to_create(self):
+    async def test_streaming_failure_does_not_replay_create(self):
         agent = make_test_agent()
 
         class BrokenStreamProvider(FakeProvider):
@@ -233,12 +236,11 @@ class TestTrueStreaming:
         provider = BrokenStreamProvider([text_resp("fallback ok")])
         agent.ai_client = provider
 
-        chunks = await collect(
-            agent._agentic_loop("sys", [{"role": "user", "content": "hi"}], [], True, "hi")
-        )
-        # The create() fallback text must still be delivered (no silent drop).
-        assert "".join(chunks) == "fallback ok"
-        assert provider.create_calls == 1
+        with pytest.raises(RuntimeError, match="streaming not supported"):
+            await collect(
+                agent._agentic_loop("sys", [{"role": "user", "content": "hi"}], [], True, "hi")
+            )
+        assert provider.create_calls == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -299,7 +301,7 @@ class TestEmptyOutputSummary:
         )
         assert "".join(out) == "Summary: all good"
 
-    async def test_summarize_falls_back_to_create(self):
+    async def test_summarize_failure_is_not_replayed_after_tool_execution(self):
         agent = make_test_agent()
 
         class BrokenStreamProvider(FakeProvider):
@@ -309,10 +311,13 @@ class TestEmptyOutputSummary:
         provider = BrokenStreamProvider([text_resp("created summary")])
         agent.ai_client = provider
 
-        out = await collect(
-            agent._summarize_tool_results("do things", [{"name": "tool_a", "result": {"ok": 1}}])
-        )
-        assert "".join(out) == "created summary"
+        with pytest.raises(RuntimeError, match="no stream"):
+            await collect(
+                agent._summarize_tool_results(
+                    "do things", [{"name": "tool_a", "result": {"ok": 1}}]
+                )
+            )
+        assert provider.create_calls == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -380,10 +385,17 @@ class TestStreamWrappers:
             model="claude-x",
             usage=SimpleNamespace(input_tokens=5, output_tokens=7),
         )
-        fake_stream = SimpleNamespace(
-            text_stream=iter(["hi"]),
-            get_final_message=lambda: fake_msg,
-        )
+
+        class FakeAnthropicStream:
+            def __iter__(self):
+                yield SimpleNamespace(
+                    type="content_block_delta", delta=SimpleNamespace(type="text_delta", text="hi")
+                )
+
+            def get_final_message(self):
+                return fake_msg
+
+        fake_stream = FakeAnthropicStream()
         mgr = SimpleNamespace()
         mgr.__enter__ = lambda: fake_stream
         mgr.__exit__ = lambda *a: False

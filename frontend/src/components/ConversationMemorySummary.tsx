@@ -14,7 +14,7 @@ interface Preference {
 }
 
 const preferenceFields = [
-  { key: "language", label: "Reply language", limit: 120 },
+  { key: "language", label: "Fallback reply language", limit: 120 },
   { key: "greeting", label: "Preferred greeting", limit: 120 },
   { key: "avoid_greetings", label: "Greetings to avoid", limit: 300 },
   { key: "custom_instructions", label: "Other reply preferences", limit: 2000 },
@@ -65,6 +65,10 @@ function PreferenceField({ field, saved }: {
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
+      {field.key === "language" && <p className="mt-1 text-xs text-gray-500">
+        Used for ambiguous or language-neutral prompts. An explicit language request takes priority;
+        otherwise replies follow the current message's language. Greeting preferences are separate.
+      </p>}
       {status && <p role="status" className="mt-1 text-xs">{status}</p>}
     </div>
   );

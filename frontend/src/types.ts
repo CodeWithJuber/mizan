@@ -187,6 +187,8 @@ export interface ChatMessage {
   /** Stable server transport identities, retained for history reconciliation. */
   requestId?: string;
   messageId?: string;
+  /** The server explicitly rejected this new request before it started. */
+  notStarted?: boolean;
   /** Provider-reported usage plus application-measured model-call timing.
    *  Missing usage values mean "not reported"; cost estimates are marked. */
   meta?: MessageUsageMeta;

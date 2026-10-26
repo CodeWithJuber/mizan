@@ -113,26 +113,24 @@ async def test_request_local_provider_and_delegation_cycle(monkeypatch):
     assert not agent._execution_lock.locked() and not other._execution_lock.locked()
 
 
-async def test_summarization_fallback_records_billed_call(monkeypatch):
+async def test_summarization_buffered_adapter_records_billed_call(monkeypatch):
     from agents.base import BaseAgent
-    from providers import ContentBlock, LLMResponse
+    from providers import BaseLLMProvider, ContentBlock, LLMResponse
 
-    provider = SimpleNamespace(
-        provider_name="test-provider",
-        create=lambda **kw: LLMResponse(
-            [ContentBlock("text", "summary")],
-            model="observed",
-            usage={"input": 7, "output": 3, "cost": 0.01},
-        ),
-    )
+    class BufferedProvider(BaseLLMProvider):
+        provider_name = "test-provider"
+
+        def create(self, **kwargs):
+            return LLMResponse(
+                [ContentBlock("text", "summary")],
+                model="observed",
+                usage={"input": 7, "output": 3, "cost": 0.01},
+            )
+
+    provider = BufferedProvider()
     monkeypatch.setattr("agents.base.create_provider", lambda **kw: provider)
     agent = BaseAgent(name="Summary accounting test", config={"model": "requested"})
 
-    async def broken(*args):
-        raise RuntimeError("stream unavailable")
-        yield
-
-    agent._streaming_create = broken
     assert [part async for part in agent._summarize_tool_results("task", [])] == ["summary"]
     assert len(agent._llm_calls) == 1
     assert agent._llm_calls[0]["response"].model == "observed"

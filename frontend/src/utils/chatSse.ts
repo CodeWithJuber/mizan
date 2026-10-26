@@ -72,7 +72,17 @@ export async function consumeChatStream(
         throw new Error("Chat response belongs to another request");
       options.onEvent({
         ...failure, type: "error",
+        http_status: response.status,
         session_id: options.sessionId, request_id: options.requestId,
+      });
+      return;
+    }
+    if (response.status === 409) {
+      options.onEvent({
+        type: "error", code: detail === "A chat stream is already active; read session history"
+          ? "chat_stream_active" : "chat_request_conflict",
+        message: detail || "The request conflicts with an earlier run. Check its status before sending again.",
+        http_status: 409, session_id: options.sessionId, request_id: options.requestId,
       });
       return;
     }

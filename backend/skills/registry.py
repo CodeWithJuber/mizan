@@ -231,12 +231,25 @@ class SkillRegistry:
         """Get all tools from all loaded skills"""
         tools = {}
         for skill in self._loaded.values():
-            tools.update(skill.get_tools())
+            if skill.manifest.enabled:
+                tools.update(skill.get_tools())
         return tools
 
     def get_all_tool_schemas(self) -> list[dict]:
-        """Get all Claude tool_use schemas from loaded skills"""
-        schemas = []
+        """Get schemas for the same enabled, last-registered owners as dispatch."""
+        schemas: dict[str, dict] = {}
         for skill in self._loaded.values():
-            schemas.extend(skill.get_tool_schemas())
-        return schemas
+            if skill.manifest.enabled:
+                owned_names = set(skill.get_tools())
+                for name in owned_names:
+                    # An overriding handler without a schema must not inherit
+                    # the previous owner's description or argument contract.
+                    schemas.pop(name, None)
+                for schema in skill.get_tool_schemas():
+                    if (
+                        isinstance(schema, dict)
+                        and isinstance(schema.get("name"), str)
+                        and schema["name"] in owned_names
+                    ):
+                        schemas[schema["name"]] = schema
+        return list(schemas.values())

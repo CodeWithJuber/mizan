@@ -74,6 +74,19 @@ if [ -n "$MISSING" ]; then
     exit 1
 fi
 
+# Bound stream draining before Docker's stop deadline. The deployment script
+# derives stop_grace_period as this value +15s; rollout also honors the prior value.
+graceful_shutdown_seconds=${MIZAN_GRACEFUL_SHUTDOWN_SECONDS-${UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN-90}}
+if ! [[ "$graceful_shutdown_seconds" =~ ^[1-9][0-9]{1,2}$ ]] ||
+   (( graceful_shutdown_seconds < 10 || graceful_shutdown_seconds > 180 )); then
+    echo "ERROR: Graceful shutdown must be decimal seconds from 10 to 180." >&2
+    exit 1
+fi
+export MIZAN_GRACEFUL_SHUTDOWN_SECONDS="$graceful_shutdown_seconds"
+# Uvicorn's Click entry point uses auto_envvar_prefix=UVICORN. Keep exec below
+# so SIGTERM reaches the server directly; this deadline cancels unfinished work.
+export UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN="$graceful_shutdown_seconds"
+
 echo "Environment validated. Starting MIZAN backend..."
 
 # ── Graceful shutdown: exec replaces shell so PID 1 receives SIGTERM ──

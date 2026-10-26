@@ -41,6 +41,9 @@ services:
     image: ${MIZAN_BACKEND_IMAGE:-mizan-backend}
     container_name: mizan-backend
     restart: unless-stopped
+    # Default 90s application drain +15s exit margin. deploy_production.sh
+    # derives this setting for bounded runtime overrides and for rollback.
+    stop_grace_period: 105s
     expose:
       - "8000"
     environment:
@@ -56,6 +59,14 @@ services:
       - MIZAN_OWNED_LEARNING_DIR=${MIZAN_OWNED_LEARNING_DIR:-}
       - MIZAN_OWNED_LEARNING_AUTORUN=${MIZAN_OWNED_LEARNING_AUTORUN:-false}
       - MIZAN_CHAT_MAX_OUTPUT_TOKENS=${MIZAN_CHAT_MAX_OUTPUT_TOKENS:-4096}
+      - MIZAN_GRACEFUL_SHUTDOWN_SECONDS=90
+      - MIZAN_LLM_FIRST_PROGRESS_SECONDS=${MIZAN_LLM_FIRST_PROGRESS_SECONDS:-60}
+      - MIZAN_LLM_PROGRESS_SECONDS=${MIZAN_LLM_PROGRESS_SECONDS:-60}
+      - MIZAN_LLM_MAX_CALL_SECONDS=${MIZAN_LLM_MAX_CALL_SECONDS:-300}
+      - MIZAN_CHAT_RUN_SECONDS=${MIZAN_CHAT_RUN_SECONDS:-900}
+      - MIZAN_CHAT_TOOL_SCHEMA_LIMIT=${MIZAN_CHAT_TOOL_SCHEMA_LIMIT:-8}
+      - MIZAN_CHAT_TOOL_SCHEMA_BYTES=${MIZAN_CHAT_TOOL_SCHEMA_BYTES:-12288}
+      - MIZAN_CHAT_TEMPERATURE=${MIZAN_CHAT_TEMPERATURE:-0.5}
       - MIZAN_SUPPORT_MODEL=${MIZAN_SUPPORT_MODEL:-}
       - MIZAN_RESEARCH_DIR=/data/research
       - SECRET_KEY=${SECRET_KEY}

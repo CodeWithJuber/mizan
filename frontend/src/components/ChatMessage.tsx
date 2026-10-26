@@ -806,6 +806,9 @@ export function ChatMessageBubble({
             <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm break-words">
               {msg.content}
             </div>
+            {msg.notStarted && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              Not started — no model execution was started for this message.
+            </p>}
             <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right font-mono px-1">
               {msg.ts}
             </div>
@@ -864,7 +867,7 @@ export function ChatMessageBubble({
             {/* Model transparency: observed model + usage + cost (workstreams C/E) */}
             {msg.stopped && (
               <p role="status" className="text-xs text-gray-500 mt-2">
-                Stopped · partial response saved
+                Stop requested · {msg.content.length ? "received text preserved" : "no answer received"}
               </p>
             )}
             {msg.interrupted && (

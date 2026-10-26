@@ -12,7 +12,9 @@ import asyncio
 import hashlib
 import json
 import sqlite3
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,6 +31,48 @@ MAX_RESPONSE_CHARACTERS = 1_000_000
 
 class StreamDeliveryError(Exception):
     """A disconnected or excessively slow reader must not hold an agent open."""
+
+
+@dataclass
+class ChatRunLease:
+    """A live local producer/transport pair, never an elapsed-time guess."""
+
+    session_id: str
+    request_id: str
+    message_id: str
+    status: str = "accepted"
+    phase: str = "accepted"
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    started: float = field(default_factory=time.monotonic)
+    provider_attempt_count: int | None = 0
+    producer: asyncio.Task | None = None
+    transport_finished: bool = False
+    history_saved: bool | None = None
+
+    def update(self, *, status: str | None = None, phase: str | None = None) -> None:
+        if status is not None:
+            self.status = status
+        if phase is not None:
+            self.phase = phase
+        self.updated_at = datetime.now(UTC).isoformat()
+
+    def public(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "request_id": self.request_id,
+            "message_id": self.message_id,
+            "status": self.status,
+            "phase": self.phase,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "elapsed_ms": round((time.monotonic() - self.started) * 1000, 1),
+            "provider_attempt_count": self.provider_attempt_count,
+        }
+
+    @property
+    def finished(self) -> bool:
+        return self.transport_finished and (self.producer is None or self.producer.done())
 
 
 class ChatStreamingResponse(StreamingResponse):
@@ -168,6 +212,74 @@ class ChatStreamLedger:
                 (status, datetime.now(UTC).isoformat(), owner_id, request_id),
             )
             conn.commit()
+        finally:
+            self._release_connection(conn)
+
+    def run_state(self, owner_id: str, session_id: str, request_id: str | None = None) -> dict:
+        """Read a receipt without recreating, resuming or retrying its work."""
+        conn = self._get_connection()
+        try:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_stream_requests'"
+            ).fetchone()
+            if not exists:
+                return {"state": "idle", "request": None, "history_saved": None}
+            query = (
+                "SELECT request_id, message_id, status, created_at, updated_at "
+                "FROM chat_stream_requests WHERE owner_id = ? AND session_id = ?"
+            )
+            params = [owner_id, session_id]
+            if request_id:
+                query += " AND request_id = ?"
+                params.append(request_id)
+            row = conn.execute(query + " ORDER BY rowid DESC LIMIT 1", params).fetchone()
+            if not row:
+                return {"state": "idle", "request": None, "history_saved": None}
+            history_saved = False
+            attempt_count = None
+            for (raw,) in conn.execute(
+                "SELECT metadata FROM agent_messages WHERE session_id = ? AND role = 'assistant' "
+                "AND CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.request_id') END = ? "
+                "ORDER BY rowid DESC LIMIT 1",
+                (session_id, row[0]),
+            ):
+                try:
+                    metadata = json.loads(raw or "{}")
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(metadata, dict):
+                    continue
+                if metadata.get("request_id") == row[0]:
+                    history_saved = True
+                    usage = metadata.get("usage")
+                    timings = usage.get("timings") if isinstance(usage, dict) else None
+                    value = (
+                        timings.get("provider_attempt_count") if isinstance(timings, dict) else None
+                    )
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        attempt_count = value
+                    break
+            terminal = row[2] in {"complete", "error", "cancelled", "rejected"}
+            elapsed = max(
+                0.0,
+                (datetime.fromisoformat(row[4]) - datetime.fromisoformat(row[3])).total_seconds()
+                * 1000,
+            )
+            return {
+                "state": "terminal" if terminal else "unknown",
+                "request": {
+                    "session_id": session_id,
+                    "request_id": row[0],
+                    "message_id": row[1],
+                    "status": row[2],
+                    "phase": "delivery" if terminal else "unknown",
+                    "created_at": row[3],
+                    "updated_at": row[4],
+                    "elapsed_ms": round(elapsed, 1),
+                    "provider_attempt_count": attempt_count,
+                },
+                "history_saved": history_saved if terminal or history_saved else None,
+            }
         finally:
             self._release_connection(conn)
 

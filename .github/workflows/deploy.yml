@@ -43,7 +43,8 @@ jobs:
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Workflow ceiling with room for lock/drain/checks; Docker/registry RPCs can still fail.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
