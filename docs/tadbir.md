@@ -56,6 +56,13 @@ and before the model-driven loop.
 | web_read | URL + "padho / summarize" | as for web_search, with one page |
 | recall | "yaad hai maine kya bataya tha?" | Lisan may word the recalled memories, checked by Furqan |
 
+**Compound requests.** A message made of two to four independent requests
+("Bukhari 1 aur Surah Ikhlas dikhao", "2+2 kitna hai aur aaj ki date kya hai")
+is split at its conjunctions. The split is used only when every part maps to a
+recipe. The parts then run under one plan, and the answer is verified only if
+every part is. A message whose conjunction joins one request ("app banao …
+aur result dikhaye") stays whole.
+
 Results carry `completion_status`:
 
 - `verified_by_mizan`: exit code checked, cross-check passed, citations supported, or authentic text quoted

@@ -83,6 +83,7 @@ class Tadbir:
         self.lisan = Lisan(agent)
         self.plan: Plan | None = None
         self._stream = None
+        self._nested = False
 
     # ── entry point ──────────────────────────────────────────────────────
 
@@ -90,16 +91,26 @@ class Tadbir:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
+        parts = fahm.understand_parts(task)
         understanding = fahm.understand(task)
         self._stream = stream_callback
         started = time.time()
-        if understanding.intent == "converse" and self.lisan.available and fahm.actionable(task):
+        if parts is not None:
+            understanding = fahm.Understanding(
+                "compound",
+                fahm.detect_language(task),
+                min(u.confidence for _part, u in parts),
+                {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
+            )
+        elif understanding.intent == "converse" and self.lisan.available and fahm.actionable(task):
             # Lisan only translates the wording into MIZAN's intent schema;
             # MIZAN validates every field before acting on it.
             understanding = await self._lisan_understanding(task, understanding)
         handler = getattr(self, f"_{understanding.intent}", None)
         try:
-            if understanding.intent == "converse" or handler is None:
+            if parts is not None:
+                outcome = await self._compound(parts)
+            elif understanding.intent == "converse" or handler is None:
                 if mode != "strict":
                     return None
                 outcome = await self._converse(task, understanding)
@@ -142,12 +153,39 @@ class Tadbir:
     # ── shared actions ───────────────────────────────────────────────────
 
     async def _begin(self, steps: list[str]) -> None:
+        if self._nested:
+            return  # a part of a compound request: the compound plan is shown
         self.plan = Plan(steps)
         await self.plan.advance()
 
     async def _step(self) -> None:
-        if self.plan is not None:
+        if self.plan is not None and not self._nested:
             await self.plan.advance()
+
+    async def _compound(self, parts: list[tuple[str, fahm.Understanding]]) -> Outcome:
+        """Several independent requests: one plan, each part by its own recipe."""
+        self.plan = Plan([f"{part[:70]} ({u.intent})" for part, u in parts])
+        await self.plan.advance()
+        texts: list[str] = []
+        facts: list[dict] = []
+        verified = True
+        self._nested = True
+        try:
+            for index, (part, u) in enumerate(parts):
+                if index:
+                    await self.plan.advance()
+                try:
+                    outcome = await getattr(self, f"_{u.intent}")(part, u)
+                except Defer:
+                    if not texts:
+                        raise  # nothing done yet: the agent loop takes the whole request
+                    outcome = Outcome(phrase("part_not_done", u.language, part=part), False, {})
+                texts.append(outcome.text)
+                facts.append(outcome.facts)
+                verified = verified and outcome.verified
+        finally:
+            self._nested = False
+        return Outcome("\n\n---\n\n".join(texts), verified, {"parts": facts})
 
     async def _tool(self, name: str, params: dict) -> dict:
         """Run one tool through the agent's full safety gate, visibly."""

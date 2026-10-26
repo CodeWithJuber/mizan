@@ -779,3 +779,64 @@ async def test_dates_are_stated_by_mizan_without_a_model(agent, monkeypatch):
     assert "02:35" in clock["result"] and "Asia/Kolkata" in clock["result"]
     assert "Tuesday, 27 October 2026" in clock["result"]
     assert agent.ai_client.requests == []
+
+
+# ── Compound requests: one plan, each part by its own recipe ─────────────
+
+
+@pytest.mark.parametrize(
+    "text,intents",
+    [
+        ("Bukhari 1 aur Surah Ikhlas dikhao", ["hadith", "quran"]),
+        ("2+2 kitna hai aur aaj ki date kya hai", ["compute", "waqt"]),
+        ("What is 2+2 and 3*3?", ["compute", "compute"]),
+    ],
+)
+def test_independent_requests_are_split(text, intents):
+    parts = fahm.understand_parts(text)
+    assert parts is not None and [u.intent for _part, u in parts] == intents
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Ek calculator app banao jisme do number jod sakein aur result dikhaye",
+        "Surah Fatiha aur uska tarjuma",
+        "web search karo latest AI news aur summarize karo",
+        "Bukhari 1 and explain",
+    ],
+)
+def test_one_request_with_a_conjunction_stays_whole(text):
+    assert fahm.understand_parts(text) is None
+
+
+async def test_compound_request_runs_every_part_under_one_plan(agent, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(
+        waqt, "now", lambda: (datetime(2026, 10, 26, 9, 0, tzinfo=ZoneInfo("UTC")), None)
+    )
+    plans = []
+
+    async def sink(kind, payload):
+        if kind == "todo":
+            plans.append([item["status"] for item in payload["todos"]])
+
+    with bind_event_sink(sink):
+        result = await agent.execute("2+2 kitna hai aur aaj ki date kya hai")
+    assert result["orchestration"]["intent"] == "compound"
+    assert "**4**" in result["result"] and "15 Jumada al-Ula 1448 AH" in result["result"]
+    assert result["completion_status"] == "verified_by_mizan"
+    assert plans[0] == ["in_progress", "pending"] and plans[-1] == ["completed", "completed"]
+    assert agent.ai_client.requests == []
+
+
+def test_lisan_may_map_project_wording_but_not_other_stacks():
+    parsed = {"intent": "build_project", "kind": "web"}
+    understood = fahm.validate_parsed(
+        parsed, "mujhe ek todo list chahiye jo browser mein chale", "en"
+    )
+    assert understood is not None and understood.entities["kind"] == "web"
+    assert fahm.validate_parsed(parsed, "mujhe React mein dashboard chahiye", "en") is None
+    assert fahm.validate_parsed({"intent": "build_project", "kind": "rust"}, "a tool", "en") is None

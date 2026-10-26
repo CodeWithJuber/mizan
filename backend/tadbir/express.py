@@ -344,6 +344,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान का हिजरी कैलेंडर 1343–1500 हिजरी (1924–2077 ई.) तक है।",
         "ar": "يغطي تقويم ميزان الهجري الأعوام 1343–1500 هـ (1924–2077 م).",
     },
+    "part_not_done": {
+        "en": "MIZAN could not do this part itself: {part}. Ask it on its own.",
+        "hi-latn": "Yeh hissa MIZAN khud nahi kar saka: {part}. Ise alag se poochiye.",
+        "ur": "یہ حصہ میزان خود نہیں کر سکا: {part}۔ اسے الگ سے پوچھیں۔",
+        "hi": "यह हिस्सा मीज़ान ख़ुद नहीं कर सका: {part}। इसे अलग से पूछें।",
+        "ar": "لم يستطع ميزان تنفيذ هذا الجزء بنفسه: {part}. اسأل عنه منفردًا.",
+    },
     "sources": {"en": "Sources", "hi-latn": "Sources", "ur": "ماخذ", "hi": "स्रोत", "ar": "المصادر"},
     "no_results": {
         "en": "The web search returned no results for this.",

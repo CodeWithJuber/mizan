@@ -192,6 +192,8 @@ class Lisan:
             '{"intent":"quran","surah":<1-114>,"ayah_start":<n or null>,"ayah_end":<n or null>} | '
             '{"intent":"hadith","collection":"bukhari|muslim|abudawud|tirmidhi|nasai|ibnmajah|'
             'malik|nawawi|qudsi|dehlawi","number":<the hadith number the user wrote>} | '
+            '{"intent":"build_project","kind":"web|python"} (a small app, website, game or tool '
+            "to create) | "
             '{"intent":"web_search","query":"<search query>"} | '
             '{"intent":"web_read","url":"<a URL copied from the message>"} | '
             '{"intent":"converse"}. Use converse when the user wants an explanation, opinion '

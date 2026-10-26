@@ -100,9 +100,14 @@ _STOP = {
 }  # fmt: skip
 
 
+def out_of_scope(message: str) -> bool:
+    """A question about building, or a stack beyond MIZAN's blueprints."""
+    return bool(_QUESTION.search(message) or _BEYOND.search(message))
+
+
 def detect(message: str) -> dict | None:
     """The project a message asks MIZAN to build, or None."""
-    if not _REQUEST.search(message) or _QUESTION.search(message) or _BEYOND.search(message):
+    if not _REQUEST.search(message) or out_of_scope(message):
         return None
     kind = "python" if _PYTHON.search(message) else "web"
     return {"kind": kind, "name": project_name(message)}
