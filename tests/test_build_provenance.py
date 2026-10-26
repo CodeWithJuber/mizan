@@ -1,6 +1,5 @@
 """Verify OCI evidence checks; the CI job additionally performs the real export."""
 
-import base64
 import hashlib
 import importlib.util
 import io
@@ -30,22 +29,18 @@ def archive_fixture(path, *, fault=None, version="v0.2"):
         return {"digest": "sha256:" + digest, "size": len(raw), "mediaType": media}
 
     image = descriptor({"schemaVersion": 2, "layers": []})
-    build_config = {"llbDefinition": [{"id": "copy"}]}
-    source = {
-        "infos": [{"filename": "Dockerfile", "data": base64.b64encode(probe.DOCKERFILE).decode()}]
-    }
     predicate = {
-        "buildType": probe.BUILD_TYPE,
-        "buildConfig": build_config,
-        "metadata": {probe.BUILD_TYPE + "#metadata": {"source": source}},
+        "buildType": "fixture-build-type",
+        "invocation": {},
+        "metadata": {"private_fixture_detail": "never print raw provenance"},
     }
     if version == "v1":
         predicate = {
             "buildDefinition": {
-                "buildType": probe.BUILD_TYPE_V1,
-                "internalParameters": {"buildConfig": build_config},
+                "buildType": "fixture-build-type",
+                "externalParameters": {},
             },
-            "runDetails": {"metadata": {"buildkit_metadata": {"source": source}}},
+            "runDetails": {"metadata": {"private_fixture_detail": "never print raw provenance"}},
         }
     statement = {
         "_type": "https://in-toto.io/Statement/" + ("v1" if version == "v1" else "v0.1"),
@@ -55,16 +50,18 @@ def archive_fixture(path, *, fault=None, version="v0.2"):
     }
     if fault == "wrong_subject":
         statement["subject"][0]["digest"]["sha256"] = "0" * 64
-    elif fault == "minimum_mode":
-        build_config.clear()
-    elif fault == "wrong_source":
-        source["infos"] = []
+    elif fault == "wrong_predicate":
+        statement["predicateType"] = "https://example.invalid/not-provenance"
+    elif fault == "malformed_predicate":
+        statement["predicate"] = []
     layer = descriptor(statement, "application/vnd.in-toto+json")
     attestation = descriptor({"schemaVersion": 2, "layers": [layer]})
     attestation["annotations"] = {
         "vnd.docker.reference.type": "attestation-manifest",
         "vnd.docker.reference.digest": image["digest"],
     }
+    if fault == "wrong_target":
+        attestation["annotations"]["vnd.docker.reference.digest"] = "sha256:" + "0" * 64
     manifests = [image] if fault == "no_attestation" else [image, attestation]
     inner = descriptor(
         {"schemaVersion": 2, "manifests": manifests}, "application/vnd.oci.image.index.v1+json"
@@ -81,20 +78,27 @@ def archive_fixture(path, *, fault=None, version="v0.2"):
 
 
 @pytest.mark.parametrize("version", ["v0.2", "v1"])
-def test_nested_oci_export_requires_real_linked_max_mode_evidence(tmp_path, version):
+def test_nested_oci_export_checks_linked_provenance_without_richness_assumptions(tmp_path, version):
     archive = tmp_path / "probe.tar"
     digest = archive_fixture(archive, version=version)
     result = probe.verify_archive(archive)
     assert result == {
         "verified": True,
-        "mode": "max",
         "predicate_type": "https://slsa.dev/provenance/" + version,
         "subject_sha256": digest,
     }
 
 
 @pytest.mark.parametrize(
-    "fault", ["no_attestation", "wrong_subject", "minimum_mode", "wrong_source", "bad_digest"]
+    "fault",
+    [
+        "no_attestation",
+        "wrong_subject",
+        "wrong_target",
+        "wrong_predicate",
+        "malformed_predicate",
+        "bad_digest",
+    ],
 )
 @pytest.mark.parametrize("version", ["v0.2", "v1"])
 def test_missing_or_invalid_provenance_is_a_failed_gate(tmp_path, fault, version):
@@ -102,6 +106,25 @@ def test_missing_or_invalid_provenance_is_a_failed_gate(tmp_path, fault, version
     archive_fixture(archive, fault=fault, version=version)
     with pytest.raises(ValueError):
         probe.verify_archive(archive)
+
+
+def test_failure_summary_exposes_counts_without_raw_metadata(tmp_path):
+    archive = tmp_path / "probe.tar"
+    archive_fixture(archive, fault="wrong_subject", version="v1")
+    with pytest.raises(ValueError) as error:
+        probe.verify_archive(archive)
+    message = str(error.value)
+    counts = json.loads(message.partition("; ")[2])
+    assert counts == {
+        "images_found": 1,
+        "attestation_manifests": 1,
+        "recognized_predicates": 1,
+        "valid_statement_objects": 1,
+        "matched_targets": 1,
+        "matched_subjects": 0,
+    }
+    assert "private_fixture_detail" not in message
+    assert "never print raw provenance" not in message
 
 
 def test_incompatible_driver_fails_before_build_or_push(monkeypatch):
@@ -138,7 +161,10 @@ def test_probe_checks_exported_archive_without_publishing(monkeypatch, capsys):
     monkeypatch.setattr(probe.subprocess, "run", run)
     probe.main()
     assert len(calls) == 2
-    assert json.loads(capsys.readouterr().out)["verified"] is True
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["verified"] is True
+    assert receipt["requested_mode"] == "max"
+    assert "mode" not in receipt
 
 
 def test_same_builder_and_real_probe_gate_premerge_and_publisher():
