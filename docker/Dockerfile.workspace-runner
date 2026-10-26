@@ -5,7 +5,7 @@ FROM ${BASE_REGISTRY}/python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
     if [ -f /run/proxy-ca.pem ]; then export PIP_CERT=/run/proxy-ca.pem; fi; \
-    pip install --no-cache-dir 'fastapi==0.142.2' 'uvicorn==0.54.0'
+    pip install --no-cache-dir 'fastapi==0.162.0' 'uvicorn==0.54.0'
 WORKDIR /app
 COPY backend/workspace /app/workspace
 RUN chmod -R a+rX /app/workspace

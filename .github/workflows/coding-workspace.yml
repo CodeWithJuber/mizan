@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install API test dependencies
-        run: python -m pip install -e '.[dev,nlp]' 'Pillow==12.3.0'
+        run: python -m pip install -e '.[dev,nlp]' 'Pillow==13.0.0'
       - name: Build the pinned private runner and isolated runtime
         run: |
           bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
