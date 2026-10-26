@@ -1,8 +1,8 @@
 """Fahm (فهم): MIZAN's own understanding of a request.
 
 Deterministic and inspectable: language from script and lexicon, intent from
-recognizers that also extract what the plan needs (code, expression, Quran
-reference, URL, search query). Nothing here calls a language model; requests
+recognizers that also extract what the plan needs (code, expression, Quran or
+hadith reference, URL, search query). Nothing here calls a language model; requests
 it cannot place confidently go back to the general agent loop.
 """
 
@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, quran
+from . import calc, hadith, quran
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -110,6 +110,11 @@ _COMPUTE_VERB = re.compile(
     re.IGNORECASE,
 )
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
+_EXPLAIN = re.compile(
+    r"\b(?:tafsee?r|tafsir|explain|explanation|meaning|matlab|samjhao|sharh|sharah|tashreeh)\b"
+    r"|تفسیر|تفسير|شرح|تشریح|व्याख्या|तशरीह",
+    re.IGNORECASE,
+)
 
 
 def understand(text: str) -> Understanding:
@@ -120,16 +125,14 @@ def understand(text: str) -> Understanding:
     if _CAPABILITY.search(message) and len(words) <= 25:
         return Understanding("capabilities", language, 0.9)
 
+    explain = bool(_EXPLAIN.search(message))
     reference = quran.parse_reference(message)
     if reference is not None:
-        explain = bool(
-            re.search(
-                r"\b(?:tafsee?r|tafsir|explain|meaning|matlab|samjhao)\b|تفسیر|تفسير|व्याख्या",
-                message,
-                re.I,
-            )
-        )
         return Understanding("quran", language, 0.95, {"reference": reference, "explain": explain})
+
+    narration = hadith.parse_reference(message)
+    if narration is not None:
+        return Understanding("hadith", language, 0.95, {"reference": narration, "explain": explain})
 
     fenced = _fenced_code(message)
     asks_run = bool(re.search(_RUN, message, re.IGNORECASE))
@@ -196,9 +199,13 @@ def understand(text: str) -> Understanding:
 _ACTION_CUES = re.compile(
     r"\d|https?://|\b(?:python|code|program|script|run|execute|calculate|compute|sum|total|"
     r"search|find|latest|news|quran|qur'an|surah|ayah|ayat|verse|fibonacci|prime|factorial|"
-    r"kitna|kitne|nikalo|dhundo|khojo|chalao)\b|سورة|سورہ|آیت|آية|सूरह|आयत",
+    r"kitna|kitne|nikalo|dhundo|khojo|chalao|hadith|hadees|hadis|bukhari|tirmidhi|nawawi)\b"
+    r"|سورة|سورہ|آیت|آية|حديث|حدیث|सूरह|आयत|हदीस",
     re.IGNORECASE,
 )
+
+
+_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹०१२३४५६७८९", "0123456789" * 3)
 
 
 def actionable(text: str) -> bool:
@@ -238,6 +245,18 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         if reference is None:
             return None
         entities.update(reference=reference, explain=False)
+    elif intent == "hadith":
+        try:
+            number = int(str(parsed.get("number", "")))
+        except ValueError:
+            return None
+        # The number must be the user's own, never one the model supplied from
+        # memory for a topic ("the hadith about intention").
+        digits = re.findall(r"\d+", message.translate(_DIGITS))
+        narration = hadith.validated(str(parsed.get("collection", "")), number)
+        if narration is None or str(number) not in digits:
+            return None
+        entities.update(reference=narration, explain=bool(_EXPLAIN.search(message)))
     elif intent == "web_search":
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:

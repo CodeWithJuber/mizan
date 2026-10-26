@@ -6,8 +6,8 @@ MIZAN decides every step and runs every tool itself, through the same
 ``_execute_tool_safe`` gate as the agent loop (permissions, Fitrah, Izn,
 approvals). The language model (Lisan) is called only for language: writing
 or repairing a program, or wording an answer from verified facts; MIZAN
-checks that wording (Furqan) and falls back to its own templates. Quran text
-never passes through a language model.
+checks that wording (Furqan) and falls back to its own templates. Quran and
+hadith text never pass through a language model.
 
 Modes (``MIZAN_ORCHESTRATION``): ``mizan`` (default) handles every request
 it understands and hands the rest to the general agent loop; ``strict`` also
@@ -22,6 +22,7 @@ import math
 import os
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,7 +30,7 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import calc, express, fahm, quran
+from . import calc, express, fahm, hadith, quran
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -170,6 +171,37 @@ class Tadbir:
         self.agent._last_tool_results.append({"name": name, "result": result})
         return result if isinstance(result, dict) else {"result": result}
 
+    async def _from_source(
+        self,
+        name: str,
+        reference: str,
+        fetch: Callable[[], Awaitable[dict]],
+        summary: Callable[[dict], str],
+    ) -> tuple[dict, str | None]:
+        """Fetch from one of MIZAN's authentic text sources, shown like a tool call."""
+        call_id = uuid.uuid4().hex
+        await emit(
+            "tool_start", {"call_id": call_id, "name": name, "input": {"reference": reference}}
+        )
+        started = time.perf_counter()
+        data: dict = {}
+        error: str | None = None
+        try:
+            data = await fetch()
+        except (quran.QuranUnavailable, hadith.HadithUnavailable, hadith.HadithNotFound) as exc:
+            error = str(exc)
+        await emit(
+            "tool_result",
+            {
+                "call_id": call_id,
+                "name": name,
+                "ok": error is None,
+                "summary": error or summary(data),
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+            },
+        )
+        return data, error
+
     def _allowed(self, name: str) -> bool:
         try:
             return bool(self.agent._chat_tool_allowed(name)) and name in self._tool_names()
@@ -213,6 +245,7 @@ class Tadbir:
             lines.append("code")
         lines.append("calc")
         lines.append("quran")
+        lines.append("hadith")
         if {"web_search", "web_browse"} & names:
             lines.append("web")
         if {"workspace_write", "workspace_edit"} & names:
@@ -351,36 +384,14 @@ class Tadbir:
             ]
         )
         await self._step()
-        call_id = uuid.uuid4().hex
-        await emit(
-            "tool_start",
-            {"call_id": call_id, "name": "quran_text", "input": {"reference": reference.label}},
+        data, error = await self._from_source(
+            "quran_text",
+            reference.label,
+            lambda: quran.fetch(reference, u.language),
+            lambda found: f"{len(found['ayahs'])} ayah(s)",
         )
-        started = time.perf_counter()
-        try:
-            data = await quran.fetch(reference, u.language)
-        except quran.QuranUnavailable as exc:
-            await emit(
-                "tool_result",
-                {
-                    "call_id": call_id,
-                    "name": "quran_text",
-                    "ok": False,
-                    "summary": str(exc),
-                    "duration_ms": round((time.perf_counter() - started) * 1000),
-                },
-            )
-            return Outcome(phrase("quran_unavailable", u.language, reason=str(exc)), False, {})
-        await emit(
-            "tool_result",
-            {
-                "call_id": call_id,
-                "name": "quran_text",
-                "ok": True,
-                "summary": f"{len(data['ayahs'])} ayah(s)",
-                "duration_ms": round((time.perf_counter() - started) * 1000),
-            },
-        )
+        if error is not None:
+            return Outcome(phrase("quran_unavailable", u.language, reason=error), False, {})
         await self._step()
         lines = [f"**{data['reference']}** · {data['surah_arabic']}", ""]
         for ayah in data["ayahs"]:
@@ -414,6 +425,82 @@ class Tadbir:
             )
         if u.entities.get("explain"):
             lines.append(f"\n_{phrase('quran_no_tafsir', u.language)}_")
+        return Outcome("\n".join(lines), True, {"reference": data["reference"]})
+
+    async def _hadith(self, task: str, u: fahm.Understanding) -> Outcome:
+        reference: hadith.HadithRef = u.entities["reference"]
+        await self._begin(
+            [
+                f"Find {reference.label} in MIZAN's collection index",
+                "Fetch the Arabic text, translation and grades",
+                "Reply with the exact text and its grading",
+            ]
+        )
+        await self._step()
+        data, error = await self._from_source(
+            "hadith_text",
+            reference.label,
+            lambda: hadith.fetch(reference, u.language),
+            lambda found: str(found["reference"]),
+        )
+        if error is not None:
+            return Outcome(phrase("hadith_unavailable", u.language, reason=error), False, {})
+        await self._step()
+        heading = f"**{data['reference']}** · {data['collection_arabic']}"
+        place = [data["section"]] if data["section"] else []
+        if data.get("book") and data.get("in_book"):
+            place.append(f"Book {data['book']}, hadith {data['in_book']}")
+        lines = [heading]
+        if place:
+            lines.append(f"_{' · '.join(place)}_")
+        lines += ["", f"> {data['arabic']}"]
+        if data["translation"]:
+            lines += ["", data["translation"]]
+        if data["clipped"]:
+            lines += ["", f"_{phrase('hadith_clipped', u.language)}_"]
+        lines.append("")
+        grades = data["grades"]
+        if grades:
+            lines.append(f"**{phrase('hadith_grades', u.language)}**")
+            lines += [f"- {g['name']}: {g['grade']}" for g in grades]
+            if any(hadith.is_weak(g["grade"]) for g in grades):
+                lines += ["", f"**{phrase('hadith_weak', u.language)}**"]
+        elif data["sahih_collection"]:
+            lines.append(f"_{phrase('hadith_sahih', u.language, collection=data['collection'])}_")
+        else:
+            lines.append(f"_{phrase('hadith_ungraded', u.language)}_")
+        narrations = data["narrations"]
+        if narrations:
+            shown = data["reference"].rsplit(" ", 1)[-1]
+            others = [n for n in narrations if n != shown]
+            lines += [
+                "",
+                "_"
+                + phrase(
+                    "hadith_narrations",
+                    u.language,
+                    number=reference.number,
+                    count=len(narrations),
+                    first=narrations[0],
+                    last=narrations[-1],
+                    shown=shown,
+                    example=f"{data['collection']} {others[0] if others else shown}",
+                )
+                + "_",
+            ]
+        source = f"_{phrase('hadith_source', u.language, source=data['source'])}_"
+        if data["link"]:
+            source += f" · [{data['link'].removeprefix('https://')}]({data['link']})"
+        lines += ["", source]
+        if u.entities.get("explain"):
+            item = hadith.BY_KEY[reference.collection]
+            commentary = item.commentary_ar if u.language in {"ur", "ar"} else item.commentary
+            note = (
+                phrase("hadith_no_sharh", u.language, commentary=commentary)
+                if commentary
+                else phrase("hadith_no_sharh_any", u.language)
+            )
+            lines.append(f"\n_{note}_")
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
 
     async def _web_search(self, task: str, u: fahm.Understanding) -> Outcome:

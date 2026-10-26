@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import calc, fahm, quran
+from tadbir import calc, fahm, hadith, quran
 from tadbir.express import furqan
 
 
@@ -415,3 +415,146 @@ async def test_rejected_mapping_falls_back_to_the_agent_loop(agent):
     result = await agent.execute("Explain what Python code is used for")
     assert "orchestrator" not in result["usage"]
     assert result["result"] == "Python is a language."
+
+
+# ── Hadith: authentic collections, quoted verbatim ───────────────────────
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Bukhari 1", "Sahih al-Bukhari 1"),
+        ("Sahih Bukhari hadith no. 6018", "Sahih al-Bukhari 6018"),
+        ("Muslim 2564", "Sahih Muslim 2564"),
+        ("Sahih Muslim 2564b", "Sahih Muslim 2564b"),
+        ("رواه مسلم 2564", "Sahih Muslim 2564"),
+        ("Jami at-Tirmidhi hadith 2516", "Jami` at-Tirmidhi 2516"),
+        ("Abu Daud 4031", "Sunan Abi Dawud 4031"),
+        ("sunan an-nasa'i 5758", "Sunan an-Nasa'i 5758"),
+        ("ibne majah 224", "Sunan Ibn Majah 224"),
+        ("Muwatta Imam Malik 1", "Muwatta Malik 1"),
+        ("40 hadith nawawi 13", "Forty Hadith of an-Nawawi 13"),
+        ("nawawi hadith 40", "Forty Hadith of an-Nawawi 40"),
+        ("Bukhari ki pehli hadees", "Sahih al-Bukhari 1"),
+        ("hadith 1 of bukhari", "Sahih al-Bukhari 1"),
+        ("صحيح البخاري ١", "Sahih al-Bukhari 1"),
+        ("بخاری شریف کی حدیث نمبر 1", "Sahih al-Bukhari 1"),
+        ("बुखारी की हदीस नंबर 1", "Sahih al-Bukhari 1"),
+    ],
+)
+def test_hadith_reference_parsing(text, expected):
+    found = hadith.parse_reference(text)
+    assert found is not None and found.label == expected
+    assert fahm.understand(text).intent == "hadith"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "muslim 5 waqt namaz kyun padhte hain",
+        "I am a Muslim",
+        "Imam Bukhari 194 hijri mein paida hue",
+        "Bukhari 99999",
+        "Muslim 3",  # Sahih Muslim's 'Abd al-Baqi numbering starts at 8
+    ],
+)
+def test_ordinary_words_and_invalid_numbers_are_not_hadith_references(text):
+    assert hadith.parse_reference(text) is None
+
+
+def test_sahih_muslim_uses_abd_al_baqi_numbering():
+    reference = hadith.validated("muslim", 2564, 2)
+    assert reference is not None and reference.label == "Sahih Muslim 2564b"
+    assert hadith.link(reference) == "https://sunnah.com/muslim:2564b"
+    assert hadith.validated("muslim", 2564, 26) is None
+    assert hadith.link(hadith.HadithRef("bukhari", 1)) == "https://sunnah.com/bukhari:1"
+
+
+async def test_hadith_text_and_grades_come_verbatim_from_the_source(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        text = "حَدَّثَنِي أَبُو الطَّاهِرِ" if "/ara-" in str(request.url) else "Allah does not look"
+        return httpx.Response(
+            200,
+            json={
+                "metadata": {"section": {"45": "The Book of Virtue"}},
+                "hadiths": [
+                    {
+                        "hadithnumber": 6542,
+                        "text": text,
+                        "grades": [],
+                        "reference": {"book": 45, "hadith": 41},
+                    }
+                ],
+            },
+        )
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        hadith.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
+    )
+    data = await hadith.fetch(hadith.HadithRef("muslim", 2564, 2), "en")
+    assert sorted(seen) == [
+        f"{hadith.API}/editions/ara-muslim/6542.min.json",
+        f"{hadith.API}/editions/eng-muslim/6542.min.json",
+    ]
+    assert data["arabic"] == "حَدَّثَنِي أَبُو الطَّاهِرِ" and data["translation"] == "Allah does not look"
+    assert data["reference"] == "Sahih Muslim 2564b" and "2564a" in data["narrations"]
+    assert data["sahih_collection"] and data["section"] == "The Book of Virtue"
+
+
+async def test_hadith_never_passes_through_the_model(agent, monkeypatch):
+    async def fetch(reference, language):
+        return {
+            "reference": reference.label,
+            "collection": "Jami` at-Tirmidhi",
+            "collection_arabic": "جامع الترمذي",
+            "sahih_collection": False,
+            "section": "Chapters on Ar-Riqaq",
+            "book": 37,
+            "in_book": 102,
+            "arabic": "احْفَظِ اللَّهَ يَحْفَظْكَ",
+            "translation": "Be mindful of Allah and He will protect you.",
+            "translation_language": "English",
+            "clipped": False,
+            "grades": [{"name": "Al-Albani", "grade": "Sahih"}],
+            "narrations": [],
+            "link": "https://sunnah.com/tirmidhi:2516",
+            "source": hadith.SOURCE,
+        }
+
+    monkeypatch.setattr(hadith, "fetch", fetch)
+    result = await agent.execute("Tirmidhi 2516 dikhao")
+    assert "> احْفَظِ اللَّهَ يَحْفَظْكَ" in result["result"]
+    assert (
+        "- Al-Albani: Sahih" in result["result"] and "sunnah.com/tirmidhi:2516" in result["result"]
+    )
+    assert result["completion_status"] == "verified_by_mizan"
+    assert agent.ai_client.requests == []
+
+    async def weak(reference, language):
+        found = await fetch(reference, language)
+        return {**found, "grades": [{"name": "Al-Albani", "grade": "Da'if"}]}
+
+    monkeypatch.setattr(hadith, "fetch", weak)
+    graded = await agent.execute("Tirmidhi 2516")
+    assert "weak or lower" in graded["result"]
+    explained = await agent.execute("Explain Tirmidhi 2516")
+    assert "Tuhfat al-Ahwadhi" in explained["result"] and agent.ai_client.requests == []
+
+    async def unavailable(reference, language):
+        raise hadith.HadithUnavailable("offline")
+
+    monkeypatch.setattr(hadith, "fetch", unavailable)
+    failed = await agent.execute("Bukhari 1")
+    assert "does not write hadith from memory" in failed["result"]
+    assert failed["task_verified"] is False and agent.ai_client.requests == []
+
+
+def test_lisan_may_not_supply_a_hadith_number_the_user_did_not_write():
+    parsed = {"intent": "hadith", "collection": "bukhari", "number": 1}
+    assert fahm.validate_parsed(parsed, "the hadith about intentions", "en") is None
+    understood = fahm.validate_parsed(parsed, "intentions wali hadith, bukhari mein number 1", "en")
+    assert understood is not None and understood.entities["reference"].label == "Sahih al-Bukhari 1"

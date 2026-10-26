@@ -36,6 +36,7 @@ and before the model-driven loop.
 | **Express** | `express.py` | MIZAN's own templates in five languages. Lisan's wording is used only when Furqan accepts it. |
 | **Calculation** | `calc.py` | Exact big integers and fractions, bounded, no `eval`. |
 | **Quran** | `quran.py` | 114-surah index checked against the Hafs count of 6236 ayahs. Parses references in Latin, Arabic, Urdu and Devanagari, including named ayahs such as Ayat al-Kursi. Fetches the Uthmani text and an established translation from api.alquran.cloud, quotes them verbatim, and strips the source's Basmala prefix from ayah 1, except in Al-Fatihah. The model never writes or rewrites ayahs. |
+| **Hadith** | `hadith.py` | Index of ten collections: Bukhari, Muslim, Abu Dawud, Tirmidhi, Nasa'i, Ibn Majah, the Muwatta, and the Forty of an-Nawawi, Qudsi and Dehlawi. Parses references in all five languages and checks each number against the collection. Sahih Muslim uses 'Abd al-Baqi's numbering (`2564`, `2564b`) through a bundled table, `muslim_numbers.json`. Fetches the Arabic text and a translation (English or Urdu) from the open hadith-api dataset, quoted verbatim. Grades are shown scholar by scholar, as the source gives them, and a weak grade triggers a warning. MIZAN never grades a hadith itself. |
 
 ## Recipes
 
@@ -46,6 +47,7 @@ and before the model-driven loop.
 | run_code | "Python me 2\*\*100 run karo", or a fenced code block plus "run" | none. MIZAN writes `print(...)` itself, runs it, and cross-checks the output against its own calculation. |
 | build_and_run | "Ek python program likho jo … aur run karo" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. |
 | quran | "Ayatul Kursi", "Surah Ikhlas", "سورة البقرة 255" | none |
+| hadith | "Bukhari 1", "Sahih Muslim 2564b", "Tirmidhi 2516 dikhao", "بخاری شریف حدیث نمبر 1" | none |
 | web_search | "latest … search karo" | Lisan answers only from the numbered results. MIZAN adds the source list itself. |
 | web_read | URL + "padho / summarize" | as for web_search, with one page |
 | recall | "yaad hai maine kya bataya tha?" | Lisan may word the recalled memories, checked by Furqan |
@@ -78,5 +80,9 @@ immediately.
 - **Furqan.** It checks that wording stays inside the facts: numbers,
   citations, links and action claims. It does not prove the entailment of
   every sentence.
-- **Tafsir.** MIZAN quotes text and established translations. For tafsir it
-  refers the user to recognised works and does not generate one.
+- **Tafsir and sharh.** MIZAN quotes text and established translations. For
+  tafsir or a hadith's explanation, it names a recognised work for that
+  collection (for example Fath al-Bari for Bukhari) and does not generate one.
+- **Hadith numbers.** Lisan may map unusual wording to a hadith reference only
+  when the user wrote the number. A topic ("the hadith about intention") is
+  never turned into a reference from the model's memory.
