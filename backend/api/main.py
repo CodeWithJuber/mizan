@@ -1158,6 +1158,43 @@ def chat_failure_payload(result: dict) -> dict:
     }
 
 
+def chat_provider_attempts(agent) -> dict:
+    """Copy only measured attempt timings, never exception text or guessed usage."""
+    timings = getattr(agent, "_execution_timings", None)
+    raw = timings.get("provider_attempts") if isinstance(timings, dict) else None
+    if not isinstance(raw, list):
+        return {}
+    attempts = []
+    provider_ms = 0.0
+    for attempt in raw[:64]:
+        if not isinstance(attempt, dict):
+            continue
+        mode, outcome, elapsed = (
+            attempt.get("mode"),
+            attempt.get("outcome"),
+            attempt.get("latency_ms"),
+        )
+        if (
+            not isinstance(mode, str)
+            or mode not in {"stream", "create"}
+            or not isinstance(outcome, str)
+            or outcome not in {"completed", "failed", "cancelled"}
+            or not isinstance(elapsed, (int, float))
+            or isinstance(elapsed, bool)
+            or not 0 <= elapsed <= 86_400_000
+        ):
+            continue
+        attempts.append({"mode": mode, "outcome": outcome, "latency_ms": elapsed})
+        provider_ms += elapsed
+    if not attempts:
+        return {}
+    return {
+        "provider_attempts": attempts,
+        "provider_attempt_count": len(attempts),
+        "provider_ms": round(provider_ms, 1),
+    }
+
+
 @app.post("/api/chat/stream", response_class=StreamingResponse)
 async def stream_chat(
     req: StreamChatMessage,
@@ -1170,6 +1207,7 @@ async def stream_chat(
     not automatically retry with a fresh request UUID after an uncertain
     network outcome; read owned chat history instead.
     """
+    request_started = asyncio.get_running_loop().time()
     await authorize_session(req.session_id, user, create=True)
     workspace_context: Any = None
     if req.workspace_id:
@@ -1214,8 +1252,10 @@ async def stream_chat(
     channel = ChatEventChannel(
         session_id=req.session_id, message_id=message_id, request_id=request_id
     )
+    cancellation_reason = "task_cancelled"
 
     async def process_stream():
+        nonlocal cancellation_reason
         from api.usage import build_usage_summary
 
         binding = bind_principal(user)
@@ -1227,17 +1267,26 @@ async def stream_chat(
         response_characters = 0
         execution_started = False
         persisted = False
+        persistence_failed = False
+        result: dict | None = None
+        execution_stage = "context_preparation"
         terminal_status = "error"
         trace = thinking_stream.create_trace(message_id)
         artifact_ids: set[str] = set()
 
         async def deliver(kind: str, **data):
+            nonlocal cancellation_reason, execution_stage
+            previous_stage = execution_stage
+            execution_stage = "delivery"
             try:
                 await channel.emit(kind, **data)
             except StreamDeliveryError as exc:
                 # Delivery failures must stop the execution rather than trigger
                 # an agent recovery call or subsequent tools.
+                cancellation_reason = "delivery_failed"
                 raise asyncio.CancelledError("Chat delivery stopped") from exc
+            else:
+                execution_stage = previous_stage
 
         async def saved_artifact(reference: Any):
             # Agent/tool output is not an authorization source. Resolve only
@@ -1257,7 +1306,7 @@ async def stream_chat(
             )
 
         async def stream_cb(chunk: str, **kwargs):
-            nonlocal response_characters, execution_started
+            nonlocal response_characters, execution_started, cancellation_reason, execution_stage
             execution_started = True
             kind = kwargs.get("chunk_type", "text")
             if kind == "tool_use":
@@ -1274,6 +1323,8 @@ async def stream_chat(
                 return
             response_characters += len(chunk)
             if response_characters > MAX_RESPONSE_CHARACTERS:
+                cancellation_reason = "response_limit_exceeded"
+                execution_stage = "delivery"
                 raise asyncio.CancelledError("Chat response exceeds the output limit")
             response_parts.append(chunk)
             for start in range(0, len(chunk), TEXT_CHUNK_CHARACTERS):
@@ -1289,6 +1340,25 @@ async def stream_chat(
                 "thinking", phase=phase, content=content, confidence=confidence, metadata=metadata
             )
 
+        async def save_assistant(content: str, metadata: dict):
+            nonlocal persistence_failed
+            try:
+                await memory.save_message(
+                    req.session_id, "assistant", content, agent_id, metadata=metadata
+                )
+            except Exception:
+                persistence_failed = True
+                raise
+
+        def interruption_receipt() -> dict:
+            return {
+                "cancellation_reason": cancellation_reason,
+                "execution_stage": execution_stage,
+                "request_elapsed_ms": round(
+                    (asyncio.get_running_loop().time() - request_started) * 1000, 1
+                ),
+            }
+
         async def persist_partial(status: str, final_result: dict | None = None):
             nonlocal persisted
             if persisted or session is None:
@@ -1298,6 +1368,8 @@ async def stream_chat(
                 if agent and execution_started
                 else {}
             )
+            if execution_started and (attempts := chat_provider_attempts(agent)):
+                usage["timings"] = attempts
             receipt = (
                 chat_failure_payload({"usage": usage, **final_result})
                 if final_result is not None
@@ -1308,12 +1380,9 @@ async def stream_chat(
                 }
             )
             partial = "".join(response_parts)
-            await memory.save_message(
-                req.session_id,
-                "assistant",
+            await save_assistant(
                 partial,
-                agent_id,
-                metadata={
+                {
                     "message_id": message_id,
                     "request_id": request_id,
                     "status": status,
@@ -1321,6 +1390,7 @@ async def stream_chat(
                     "usage": usage,
                     "usage_incomplete": final_result is None,
                     **receipt,
+                    **(interruption_receipt() if status == "cancelled" else {}),
                 },
             )
             session["history"].append({"role": "assistant", "content": partial})
@@ -1363,15 +1433,18 @@ async def stream_chat(
                 result = {"success": True, "result": cmd_result["response"], "usage": {}}
             else:
                 await channel.emit("typing", agent=agent.name)
+                context = await chat_context(
+                    user, req.session_id, session, agent, req.content, req.workspace_id
+                )
+                execution_stage = "agent_execution"
                 result = await agent.execute(
                     req.content,
-                    await chat_context(
-                        user, req.session_id, session, agent, req.content, req.workspace_id
-                    ),
+                    context,
                     stream_callback=stream_cb,
                     thinking_callback=thinking_cb,
                     model_override=req.model_override,
                 )
+            execution_stage = "delivery"
             final = result.get("result", "".join(response_parts))
             if isinstance(final, dict):
                 final = final.get("response", str(final))
@@ -1384,12 +1457,9 @@ async def stream_chat(
                 return
             # Save before the terminal event: a disconnected browser can read
             # the final response and exact observed usage without resubmitting.
-            await memory.save_message(
-                req.session_id,
-                "assistant",
+            await save_assistant(
                 final,
-                agent_id,
-                metadata={
+                {
                     "message_id": message_id,
                     "request_id": request_id,
                     "status": "complete",
@@ -1451,24 +1521,52 @@ async def stream_chat(
         except asyncio.CancelledError:
             if terminal_status != "complete":
                 terminal_status = "cancelled"
-                await persist_partial("cancelled")
+                try:
+                    await persist_partial("cancelled")
+                except Exception:
+                    logger.warning("Cancelled chat persistence unavailable for %s", message_id)
+                logger.info(
+                    "Chat interrupted message=%s diagnostics=%s", message_id, interruption_receipt()
+                )
             if not channel.closed:
                 try:
                     await channel.emit(
-                        "error", code="delivery_stopped", message="Chat delivery was interrupted"
+                        "error",
+                        code="delivery_stopped",
+                        message="Chat delivery was interrupted",
+                        **interruption_receipt(),
+                        completion_status="incomplete",
+                        answer_delivered=False,
+                        task_verified=False,
                     )
                 except StreamDeliveryError:
                     logger.warning("Cancelled chat reader unavailable for message %s", message_id)
             raise
         except Exception:
             logger.exception("Chat stream failed for message %s", message_id)
-            if terminal_status != "complete":
-                await persist_partial("error")
+            if terminal_status != "complete" and not persistence_failed:
+                try:
+                    await persist_partial("error")
+                except Exception:
+                    logger.warning("Chat persistence unavailable for %s", message_id)
             if not channel.closed:
                 try:
-                    await channel.emit(
-                        "error", code="stream_failed", message="The chat stream could not complete"
-                    )
+                    if persistence_failed:
+                        await channel.emit(
+                            "error",
+                            **{
+                                **chat_failure_payload(result or {}),
+                                "code": "history_save_failed",
+                                "message": "Chat delivery failed and the reply could not be saved.",
+                                "history_saved": False,
+                            },
+                        )
+                    else:
+                        await channel.emit(
+                            "error",
+                            code="stream_failed",
+                            message="The chat stream could not complete",
+                        )
                 except StreamDeliveryError:
                     logger.warning("Chat reader unavailable for message %s", message_id)
         finally:
@@ -1481,6 +1579,7 @@ async def stream_chat(
                 reset_principal(binding)
 
     async def event_frames():
+        nonlocal cancellation_reason
         producer = asyncio.create_task(process_stream(), name=f"chat-stream-{message_id}")
         try:
             while not producer.done() or not channel.queue.empty():
@@ -1494,6 +1593,8 @@ async def stream_chat(
         finally:
             channel.close()
             if not producer.done():
+                if cancellation_reason == "task_cancelled":
+                    cancellation_reason = "transport_closed"
                 producer.cancel()
             # Shield cleanup from Starlette's disconnect cancellation scope.
             try:

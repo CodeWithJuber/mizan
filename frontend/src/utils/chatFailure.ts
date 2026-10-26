@@ -24,7 +24,7 @@ export function messageUsage(event: Record<string, unknown>): MessageUsageMeta |
 export function chatFailureFields(
   event: Record<string, unknown>,
   buffered = "",
-): Pick<ChatMessage, "content" | "error" | "meta" | "model"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "requestId" | "messageId"> {
   const saved = typeof event.response === "string" ? event.response
     : typeof event.content === "string" ? event.content : "";
   const content = !saved || buffered.startsWith(saved) ? buffered : saved;
@@ -35,20 +35,29 @@ export function chatFailureFields(
       ? "The model reached its output limit before producing an answer. Try a smaller request or another model."
       : "The response could not be completed. Any partial text is preserved.";
   const meta = messageUsage(event);
-  return { content, error: { code, message }, meta, model: meta?.model };
+  return {
+    content, error: { code, message }, meta, model: meta?.model,
+    requestId: typeof event.request_id === "string" ? event.request_id : undefined,
+    messageId: typeof event.message_id === "string" ? event.message_id : undefined,
+  };
 }
 
 /** History uses the same error/receipt mapping as live responses. */
 export function restoredMessageFields(
   content: string,
   metadata: Record<string, unknown> = {},
-): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId"> {
   const failure = metadata.status === "error"
     ? chatFailureFields({ ...metadata, content }) : undefined;
   const meta = failure?.meta ?? messageUsage(metadata);
   return {
     content, meta, model: meta?.model, error: failure?.error,
-    stopped: metadata.status === "cancelled" || (metadata.partial === true && !failure),
+    requestId: typeof metadata.request_id === "string" ? metadata.request_id : undefined,
+    messageId: typeof metadata.message_id === "string" ? metadata.message_id : undefined,
+    // "cancelled" also includes broken transports/producer shutdown. Only the
+    // local Stop action has evidence for the user-stopped label.
+    stopped: false,
+    interrupted: !failure && (metadata.status === "cancelled" || metadata.partial === true),
   };
 }
 

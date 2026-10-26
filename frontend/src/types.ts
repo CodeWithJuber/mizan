@@ -184,12 +184,17 @@ export interface ChatMessage {
   cognitive?: CognitiveMetadata;
   perception?: PerceptionResult;
   thinkingMessageId?: string;
+  /** Stable server transport identities, retained for history reconciliation. */
+  requestId?: string;
+  messageId?: string;
   /** Provider-reported usage plus application-measured model-call timing.
    *  Missing usage values mean "not reported"; cost estimates are marked. */
   meta?: MessageUsageMeta;
   /** CHAT UPGRADE: true when the user stopped generation mid-stream — the
       content is a partial answer, not a finished one. */
   stopped?: boolean;
+  /** Server cancellation/partial history without evidence of a user Stop action. */
+  interrupted?: boolean;
   /** Terminal failure notice, separate from preserved partial answer text. */
   error?: { code?: string; message: string };
 }

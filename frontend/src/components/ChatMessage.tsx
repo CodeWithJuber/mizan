@@ -867,6 +867,11 @@ export function ChatMessageBubble({
                 Stopped · partial response saved
               </p>
             )}
+            {msg.interrupted && (
+              <p role="status" className="text-xs text-gray-500 mt-2">
+                Interrupted · {msg.content.trim() ? "partial response saved" : "no answer received"}
+              </p>
+            )}
             <MessageMeta meta={msg.meta} />
 
             {/* In-message CTA button (e.g. navigate to Settings) */}

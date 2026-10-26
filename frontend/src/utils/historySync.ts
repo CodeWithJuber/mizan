@@ -13,10 +13,10 @@
  *   - Server messages carry a numeric DB `id` → key `srv:<id>`.
  *   - Everything else (optimistic echoes, cache entries) → key
  *     `local:<role>:<ts>:<hash(content)>`, a djb2 hash of the content.
- *   - Second pass: a local message is also dropped when a server message
- *     has the SAME role AND byte-identical content (covers the optimistic
- *     user echo: locally it has a Date.now() id, from the server it has a
- *     DB id, so the primary keys never match but role+content do).
+ *   - Request/message identities reconcile live responses with stored rows.
+ *   - Legacy nonempty messages may use role+content when transport identities
+ *     do not conflict. Failure/interruption rows always require identity;
+ *     identical empty or partial answer bytes are not evidence of a match.
  * Merge order: all server messages first (server order), then surviving
  * local-only messages in their local order (these are always the newest).
  */
@@ -29,6 +29,21 @@ export interface HistoryMessage {
   agent?: string;
   created_at?: string;
   ts?: string;
+  requestId?: string;
+  messageId?: string;
+  error?: { code?: string; message: string };
+  interrupted?: boolean;
+  stopped?: boolean;
+}
+
+/** Cache hydration may seed an empty view, never replace newer local activity. */
+export function hydrateCachedMessages<T>(
+  current: T[],
+  cached: T[] | null,
+  sameAuthenticatedSession: boolean,
+): T[] {
+  return sameAuthenticatedSession && current.length === 0 && cached?.length
+    ? cached : current;
 }
 
 /** Small djb2 hash for the local dedupe key — not cryptographic, just stable. */
@@ -41,10 +56,23 @@ function contentHash(content: string): string {
 }
 
 export function historyDedupeKey(m: HistoryMessage): string {
+  if (m.messageId) return `message:${m.role}:${m.messageId}`;
+  if (m.requestId) return `request:${m.role}:${m.requestId}`;
   if (typeof m.id === "number" && Number.isFinite(m.id)) {
     return `srv:${m.id}`;
   }
   return `local:${m.role}:${m.ts ?? m.created_at ?? ""}:${contentHash(m.content ?? "")}`;
+}
+
+function sameMessageIdentity(a: HistoryMessage, b: HistoryMessage): boolean {
+  if (a.role !== b.role) return false;
+  if (a.messageId && b.messageId) return a.messageId === b.messageId;
+  if (a.requestId && b.requestId) return a.requestId === b.requestId;
+  return typeof a.id === "number" && Number.isFinite(a.id) && a.id === b.id;
+}
+
+function needsIdentity(m: HistoryMessage): boolean {
+  return Boolean(m.error || m.interrupted || m.stopped || !m.content.trim());
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -96,20 +124,34 @@ export async function fetchChatHistoryWithRetry(
 
 /**
  * Merge server history with locally held messages.
- * Server wins on content; local-only messages are appended in order.
+ * Server wins on content; local-only messages are appended in order. A local
+ * transport notice may add delivery details to the same cancelled server row.
  */
 export function mergeHistoryMessages<T extends HistoryMessage>(
   server: T[],
   local: T[],
 ): T[] {
-  const serverKeys = new Set(server.map(historyDedupeKey));
-  // role+content fingerprints of server messages, for the optimistic-echo pass
-  const serverFingerprints = new Set(
-    server.map((m) => `${m.role}\u0000${m.content ?? ""}`),
-  );
-  const extras = local.filter((m) => {
-    if (serverKeys.has(historyDedupeKey(m))) return false;
-    return !serverFingerprints.has(`${m.role}\u0000${m.content ?? ""}`);
-  });
-  return [...server, ...extras];
+  const merged = [...server];
+  const extras: T[] = [];
+  for (const message of local) {
+    const matched = merged.findIndex((row) => sameMessageIdentity(row, message));
+    if (matched >= 0) {
+      const saved = merged[matched];
+      if (message.error && needsIdentity(saved)) {
+        merged[matched] = {
+          ...saved,
+          error: saved.error ?? message.error,
+          content: message.content.startsWith(saved.content) ? message.content : saved.content,
+        };
+      }
+      continue;
+    }
+    const legacyDuplicate = !needsIdentity(message) && server.some((row) =>
+      !needsIdentity(row) && row.role === message.role && row.content === message.content &&
+      !(row.requestId && message.requestId && row.requestId !== message.requestId) &&
+      !(row.messageId && message.messageId && row.messageId !== message.messageId),
+    );
+    if (!legacyDuplicate) extras.push(message);
+  }
+  return [...merged, ...extras];
 }

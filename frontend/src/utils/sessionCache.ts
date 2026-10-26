@@ -22,9 +22,12 @@ export interface CachedChatMessage {
   content: string;
   agent?: string;
   model?: string;
+  requestId?: string;
+  messageId?: string;
   meta?: ChatMessage["meta"];
   error?: ChatMessage["error"];
   stopped?: boolean;
+  interrupted?: boolean;
   ts: string;
   /** Epoch ms when this entry was written — used for TTL pruning. */
   cachedAt: number;
@@ -190,9 +193,12 @@ export interface CacheableMessage {
   content: string;
   agent?: string;
   model?: string;
+  requestId?: string;
+  messageId?: string;
   meta?: ChatMessage["meta"];
   error?: ChatMessage["error"];
   stopped?: boolean;
+  interrupted?: boolean;
   ts: string;
 }
 
@@ -214,9 +220,12 @@ export async function cacheMessages(
     content: m.content,
     agent: m.agent,
     model: m.model,
+    requestId: m.requestId,
+    messageId: m.messageId,
     meta: m.meta,
     error: m.error,
     stopped: m.stopped,
+    interrupted: m.interrupted,
     ts: m.ts,
     cachedAt: now,
   }));
