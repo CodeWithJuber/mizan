@@ -404,6 +404,7 @@ class MasalikNetwork:
         self.pathways: dict[str, Silah] = {}
         self._activation_history: list[set[str]] = []
         self._last_decay: float = time.time()
+        self._stats_cache: dict[str, object] | None = None
 
         # Use environment DB_PATH directory if available, else fallback
         if persist_path:
@@ -420,6 +421,10 @@ class MasalikNetwork:
         if not restored:
             self._init_fitrah()
 
+    def _invalidate_stats_cache(self) -> None:
+        """Drop cached statistics before any graph mutation begins."""
+        self._stats_cache = None
+
     def _init_fitrah(self):
         """
         Fitrah (فطرة) — innate disposition.
@@ -428,6 +433,7 @@ class MasalikNetwork:
         "So direct your face toward the religion, inclining to truth.
          [Adhere to] the fitrah of Allah upon which He has created people." — 30:30
         """
+        self._invalidate_stats_cache()
         fitrah_concepts = [
             "truth",
             "justice",
@@ -477,6 +483,7 @@ class MasalikNetwork:
     def _get_or_create(self, concept_id: str) -> Mafhum:
         """Get existing concept or create new one. Never duplicates."""
         if concept_id not in self.concepts:
+            self._invalidate_stats_cache()
             self.concepts[concept_id] = Mafhum(id=concept_id)
         return self.concepts[concept_id]
 
@@ -502,6 +509,8 @@ class MasalikNetwork:
         concepts = extract_concepts(text)
         if not concepts:
             return {"encoded": 0, "pathways_strengthened": 0, "new_pathways": 0}
+
+        self._invalidate_stats_cache()
 
         # Scale strengthening by importance (0.05 to 0.20)
         strength = 0.05 + importance * 0.15
@@ -567,6 +576,9 @@ class MasalikNetwork:
         query_concepts = extract_concepts(query)
         if not query_concepts:
             return []
+
+        if any(c in self.concepts for c in query_concepts):
+            self._invalidate_stats_cache()
 
         # Phase 1: Directly activate query concepts
         activations: dict[str, float] = {}
@@ -668,6 +680,7 @@ class MasalikNetwork:
             if elapsed_hours < 0.1:
                 return {"pruned_pathways": 0, "pruned_concepts": 0}
 
+        self._invalidate_stats_cache()
         self._last_decay = now
 
         # Decay all non-hikmah pathways
@@ -725,6 +738,8 @@ class MasalikNetwork:
         """
         if len(self._activation_history) < 3:
             return {"new_connections": 0, "strengthened": 0}
+
+        self._invalidate_stats_cache()
 
         # Count co-activation frequency for each concept pair
         pair_counts: dict[str, int] = defaultdict(int)
@@ -793,12 +808,17 @@ class MasalikNetwork:
         ]
 
     def stats(self) -> dict:
-        """Network statistics."""
+        """Return network statistics without rescanning an unchanged graph."""
+        if self._stats_cache is not None:
+            return dict(self._stats_cache)
+
+        # Keep the original calculations (including Python's float sum semantics)
+        # so cached and uncached results remain bit-for-bit compatible.
         hikmah_pathways = sum(1 for p in self.pathways.values() if p.is_hikmah)
         hikmah_concepts = sum(1 for c in self.concepts.values() if c.is_hikmah)
         fitrah_count = sum(1 for c in self.concepts.values() if c.is_fitrah)
         avg_weight = sum(p.weight for p in self.pathways.values()) / max(len(self.pathways), 1)
-        return {
+        self._stats_cache = {
             "total_concepts": len(self.concepts),
             "total_pathways": len(self.pathways),
             "fitrah_concepts": fitrah_count,
@@ -807,6 +827,8 @@ class MasalikNetwork:
             "avg_pathway_weight": round(avg_weight, 3),
             "persisted": self._persist_path,
         }
+        # Preserve the old fresh-dict behavior and isolate the cache from callers.
+        return dict(self._stats_cache)
 
     # ─── PERSISTENCE: Save/Load to Disk ──────────────────────────────────
 
@@ -872,6 +894,8 @@ class MasalikNetwork:
         try:
             with open(self._persist_path) as f:
                 state = json.load(f)
+
+            self._invalidate_stats_cache()
 
             # Restore concepts
             for cid, cdata in state.get("concepts", {}).items():
