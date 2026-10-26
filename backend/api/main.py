@@ -40,6 +40,9 @@ from starlette.requests import HTTPConnection
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# Administrator-saved settings reach the environment before any module reads it.
+import runtime_settings
+import runtime_settings_bootstrap  # noqa: F401
 from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
@@ -2696,20 +2699,24 @@ async def switch_provider(
     provider = create_provider(provider=req.provider, model=req.model)
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
+    return await _switch_all_agents(provider, req.model, req.provider)
 
-    req.provider = getattr(provider, "provider_name", req.provider)
-    req.model = normalize_model_for_provider(req.model, req.provider)
+
+async def _switch_all_agents(provider: Any, model: str, requested: str = "") -> dict:
+    """Give every agent this provider/model and remember it across restarts."""
+    provider_name = str(getattr(provider, "provider_name", requested) or requested)
+    model = normalize_model_for_provider(model, provider_name)
 
     # Update all active agents
     switched = 0
     for agent in active_agents.values():
         async with agent_settings_lock(agent):
             agent.ai_client = provider
-            agent.ai_model = req.model
+            agent.ai_model = model
             agent._config_revision = getattr(agent, "_config_revision", 0) + 1
             if hasattr(agent, "config"):
                 had_override = agent.config.pop("provider_override", None) is not None
-                agent.config["model"] = req.model
+                agent.config["model"] = model
                 if had_override:
                     await memory.save_agent_profile(
                         {
@@ -2723,28 +2730,91 @@ async def switch_provider(
                     )
         switched += 1
 
-    set_active_state(req.provider, req.model)
+    set_active_state(provider_name, model)
 
     # Persist to DB so choice survives restart
-    await memory.set_preference("active_provider", req.provider)
-    await memory.set_preference("active_model", req.model)
+    await memory.set_preference("active_provider", provider_name)
+    await memory.set_preference("active_model", model)
 
     await manager.broadcast(
         {
             "type": "provider_switched",
-            "provider": req.provider,
-            "model": req.model,
+            "provider": provider_name,
+            "model": model,
             "agents_updated": switched,
         }
     )
 
-    wali.audit.log("provider_switched", {"provider": req.provider, "model": req.model})
-    await event_bus.emit("provider.switched", {"provider": req.provider, "model": req.model})
+    wali.audit.log("provider_switched", {"provider": provider_name, "model": model})
+    await event_bus.emit("provider.switched", {"provider": provider_name, "model": model})
     return {
-        "provider": req.provider,
-        "model": req.model,
+        "provider": provider_name,
+        "model": model,
         "agents_updated": switched,
     }
+
+
+# === ADMIN RUNTIME SETTINGS ===
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    # A value of null resets that setting to the server's own environment value.
+    values: dict[str, Any] = Field(default_factory=dict, max_length=80)
+
+
+async def _apply_provider_settings(model_changed: bool) -> str:
+    """Rebuild the active model after a provider, model or API key change."""
+    if model_changed:
+        name = os.getenv("LLM_PROVIDER", "auto").strip().lower()
+        model = os.getenv("DEFAULT_MODEL", "").strip()
+    else:
+        status = get_provider_status()
+        name, model = str(status.get("active") or ""), str(status.get("default_model") or "")
+    provider = create_provider(provider=None if name in {"", "auto"} else name, model=model or None)
+    if provider is None:
+        raise HTTPException(
+            400, "No model provider can start with these settings; check the API key"
+        )
+    model = model or get_default_model(provider.provider_name)
+    result = await _switch_all_agents(provider, model)
+    return f"Agents now use {result['provider']} / {result['model']}."
+
+
+@app.get("/api/settings/runtime")
+async def runtime_settings_view(user: TokenPayload = Depends(require_auth)):
+    """Every operator setting with its current value (secrets are never returned)."""
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+    return runtime_settings.public_view()
+
+
+@app.put("/api/settings/runtime")
+async def runtime_settings_update(
+    req: RuntimeSettingsUpdate, user: TokenPayload = Depends(require_auth)
+):
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+    try:
+        change = runtime_settings.update(req.values, user.username or user.user_id)
+    except KeyError as exc:
+        raise HTTPException(422, f"Unknown setting: {exc.args[0]}") from None
+    except ValueError as exc:
+        try:
+            errors = json.loads(str(exc))
+        except ValueError:
+            errors = {"_": str(exc)}
+        raise HTTPException(422, {"message": "Some values are invalid", "errors": errors}) from None
+    notes: list[str] = []
+    if change.provider_changed:
+        try:
+            notes.append(await _apply_provider_settings(change.model_changed))
+        except HTTPException as exc:
+            notes.append(f"Saved, but the model could not start yet: {exc.detail}")
+    if change.restart_required:
+        notes.append("Restart the backend to apply: " + ", ".join(change.restart_required))
+    wali.audit.log("runtime_settings_updated", {"keys": change.applied, "by": user.user_id})
+    view = runtime_settings.public_view()
+    return {**view, "applied": change.applied, "notes": notes}
 
 
 # === OWN ARCHITECTURE AND EXPLICIT TEACHER SUPPORT ===
@@ -3295,69 +3365,41 @@ async def update_settings(
     req: SettingsUpdate, user: TokenPayload | None = Depends(get_current_user)
 ):
     """Update a setting (API key, config value, etc.)"""
+    actor = user.user_id if user else "admin"
+    token_map = {
+        "telegram": "TELEGRAM_BOT_TOKEN",
+        "discord": "DISCORD_BOT_TOKEN",
+        "whatsapp": "WHATSAPP_TOKEN",
+        "slack": "SLACK_APP_TOKEN",
+    }
     if req.section == "provider" and req.provider and req.api_key:
         env_key = f"{req.provider.upper()}_API_KEY"
-        # Store in vault if available
+        if env_key not in runtime_settings.BY_KEY:
+            raise HTTPException(400, f"Unknown provider: {req.provider}")
+        # Saved encrypted in the data volume, so it survives redeploys.
         try:
-            from security.vault import SecretVault
-
-            vault = SecretVault()
-            vault.store(env_key, req.api_key)
-        except Exception:
-            pass
-        # Also set in environment for immediate use
-        os.environ[env_key] = req.api_key
-
-        # Write to .env file for persistence
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        lines = []
-        found = False
-        if env_path.exists():
-            lines = env_path.read_text().splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith(f"{env_key}="):
-                    lines[i] = f"{env_key}={req.api_key}"
-                    found = True
-                    break
-        if not found:
-            lines.append(f"{env_key}={req.api_key}")
-        env_path.write_text("\n".join(lines) + "\n")
-
+            change = runtime_settings.update({env_key: req.api_key}, actor)
+        except ValueError:
+            raise HTTPException(422, "Invalid API key value") from None
+        if change.provider_changed:
+            try:
+                await _apply_provider_settings(False)
+            except HTTPException:
+                pass
         wali.audit.log(
             "settings_updated",
-            {
-                "section": "provider",
-                "provider": req.provider,
-                "field": "api_key",
-            },
+            {"section": "provider", "provider": req.provider, "field": "api_key"},
         )
         return {"status": "saved", "message": f"API key for {req.provider} saved"}
 
     elif req.section == "channel" and req.provider and req.api_key:
-        token_map = {
-            "telegram": "TELEGRAM_BOT_TOKEN",
-            "discord": "DISCORD_BOT_TOKEN",
-            "whatsapp": "WHATSAPP_TOKEN",
-            "slack": "SLACK_APP_TOKEN",
-        }
-        env_key = token_map.get(req.provider, f"{req.provider.upper()}_TOKEN")
-        os.environ[env_key] = req.api_key
-
-        # Persist to .env
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        lines = []
-        found = False
-        if env_path.exists():
-            lines = env_path.read_text().splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith(f"{env_key}="):
-                    lines[i] = f"{env_key}={req.api_key}"
-                    found = True
-                    break
-        if not found:
-            lines.append(f"{env_key}={req.api_key}")
-        env_path.write_text("\n".join(lines) + "\n")
-
+        env_key = token_map.get(req.provider, "")
+        if not env_key:
+            raise HTTPException(400, f"Unknown channel: {req.provider}")
+        try:
+            runtime_settings.update({env_key: req.api_key}, actor)
+        except ValueError:
+            raise HTTPException(422, "Invalid token value") from None
         return {"status": "saved", "message": f"Token for {req.provider} saved"}
 
     raise HTTPException(400, "Invalid settings update request")

@@ -5,11 +5,13 @@
  * MIZAN's Settings page validates before saving and never loses data.
  */
 
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import type { ApiClient } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
+
+const RuntimeSettingsPanel = lazy(() => import("../components/RuntimeSettingsPanel"));
 
 interface ProviderConfig {
   name: string;
@@ -249,6 +251,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   };
 
   const sections = [
+    { id: "system", label: "System settings" },
     { id: "providers", label: "AI Providers" },
     { id: "channels", label: "Channels" },
     { id: "security", label: "Security" },
@@ -327,6 +330,11 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
         {/* Section Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative z-10">
+          {activeSection === "system" && (
+            <Suspense fallback={<p className="text-sm text-gray-500">Loading settings…</p>}>
+              <RuntimeSettingsPanel />
+            </Suspense>
+          )}
           {/* AI Providers */}
           {activeSection === "providers" && (
             <div className="space-y-4">

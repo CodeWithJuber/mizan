@@ -44,6 +44,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 - `backend/reasoning/context_engine.py` — unlimited conversations: model-sized history + persisted running summary (`session_summaries`)
 - `backend/core/adaptive.py` — evidence-weighing estimators (Beta posteriors, EW stats, ACT-R, BM25) that replace fixed thresholds (`docs/adaptive-mathematics.md`)
 - `backend/settings.py` — Pydantic settings (reads `.env`)
+- `backend/runtime_settings.py` — admin-managed settings registry (Settings → System settings, `/api/settings/runtime`); saved values in `$MIZAN_DATA_DIR/runtime_settings.json` override `.env` (`docs/admin-settings.md`)
 - `backend/cli.py` — Click CLI entry point
 - `backend/doctor.py` — Environment diagnostics (`mizan doctor`)
 - `frontend/src/App.tsx` — React router + theme provider; pages under `frontend/src/pages/`
@@ -132,6 +133,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - Chat limits (steps, continuations, history budget, waits) are documented in `docs/chat-limits-and-metrics.md`; the step budget is no longer tied to the Nafs level.
 - `DEFAULT_MODEL` controls the agent model (empty → provider default, `claude-opus-5-5` on Anthropic) — set it in `.env`. `LLM_PROVIDER=auto` (default) detects the provider from keys.
 - Backend runs with `--reload`, so local edits in `backend/` take effect automatically.
+- Admin-saved runtime settings (`runtime_settings.json`) override `.env` at startup; when a value seems ignored, check Settings → System settings for a "Set here" badge.
 - `.env` values are NOT auto-loaded into `os.environ` — pydantic-settings reads them, but `providers.py` calls `load_dotenv()`.
 - `.claude/` and `.claude.local.md` are gitignored — local Claude Code config won't be committed.
 - The Ruh model and `ml` extra require PyTorch; `/api/ruh/*` and training endpoints are inert unless `RUH_ENABLED=true` and the model path is configured.
