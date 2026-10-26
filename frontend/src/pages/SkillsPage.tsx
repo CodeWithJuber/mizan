@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { PageProps, Skill } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
+import AgentSkillsPanel from "../components/AgentSkillsPanel";
 
 /** Readable names for agent-type slugs shown under "Best For". */
 const AGENT_TYPE_LABELS: Record<string, string> = {
@@ -272,6 +273,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           { id: "installed", label: "Added" },
           { id: "available", label: "Available" },
           { id: "all", label: "All Skills" },
+          { id: "agent", label: "Agent Skills (SKILL.md)" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -285,7 +287,9 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      {loading && (
+      {activeTab === "agent" && <AgentSkillsPanel api={api} />}
+
+      {activeTab !== "agent" && loading && (
         <div className="p-5" aria-live="polite">
           <div className="card-grid">
             <SkeletonCard count={4} />
@@ -293,7 +297,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className={`flex-1 overflow-y-auto p-5 ${activeTab === "agent" ? "hidden" : ""}`}>
         <div className="card-grid">
           {filteredSkills.map((skill) => {
             const cat = CATEGORY_STYLES[skill.category] || {

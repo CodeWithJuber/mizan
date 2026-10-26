@@ -199,6 +199,8 @@ export interface ChatMessage {
   interrupted?: boolean;
   /** Terminal failure notice, separate from preserved partial answer text. */
   error?: { code?: string; message: string };
+  /** Tool steps, plan and approvals observed while this reply ran. */
+  activity?: import("./utils/agentActivity").AgentActivity;
 }
 
 // ===== Model Transparency / Cost Types (chat upgrade workstreams C + E) =====
