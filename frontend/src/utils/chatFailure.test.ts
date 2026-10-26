@@ -7,6 +7,8 @@ function check(name: string, ok: boolean) {
 }
 const event = {
   type: "error",
+  request_id: "request-1",
+  message_id: "message-1",
   code: "output_budget_exhausted",
   message: "The model reached its output limit before producing an answer. Try a smaller request or another model.",
   completion_status: "incomplete",
@@ -31,6 +33,7 @@ check("failed provider counts remain inspectable", live.meta?.output_tokens === 
 check("failure timings survive normalization", live.meta?.timings?.provider_ms === 1200 && live.meta.timings.total_ms === 2300);
 check("failure checkpoint and call receipts survive", live.meta?.owned_checkpoint?.generation === 2 && live.meta.calls?.[0].output_tokens === 200);
 check("failed response still identifies the selected model", live.model === "mizan-owned");
+check("live failure retains stable transport identities", live.requestId === "request-1" && live.messageId === "message-1");
 
 const partial = "  Partial answer\n```python\nprint('unfinished')\n";
 const partialFailure = chatFailureFields(event, partial);
@@ -45,10 +48,14 @@ check("legacy output-limit failure gets the known safe message", chatFailureFiel
 const restored = restoredMessageFields("", { ...event, status: "error", partial: true });
 check("empty stored failure renders the same notice as live", restored.content === "" && restored.error?.message === live.error?.message);
 check("stored failure restores usage and completion receipt", JSON.stringify(restored.meta) === JSON.stringify(live.meta));
+check("stored failure retains identities for resync", restored.requestId === live.requestId && restored.messageId === live.messageId);
 check("failure history is not mislabeled user-stopped", restored.stopped === false);
 const restoredPartial = restoredMessageFields(partial, { ...event, status: "error", partial: true });
 check("stored partial failure preserves both text and notice", restoredPartial.content === partial && restoredPartial.error?.message === event.message && restoredPartial.stopped === false);
-check("cancelled history keeps its stopped label without error notice", restoredMessageFields(partial, { status: "cancelled", partial: true }).stopped === true && restoredMessageFields(partial, { status: "cancelled" }).error === undefined);
+const cancelled = restoredMessageFields(partial, { status: "cancelled", partial: true });
+check("server cancellation is interrupted without falsely claiming user Stop", cancelled.interrupted === true && cancelled.stopped === false && cancelled.error === undefined);
+const emptyCancelled = restoredMessageFields("", { status: "cancelled", completion_status: "incomplete", answer_delivered: false });
+check("empty cancelled history retains interruption and incomplete receipt", emptyCancelled.interrupted === true && emptyCancelled.content === "" && emptyCancelled.meta?.completion_status === "incomplete" && emptyCancelled.stopped === false);
 check("normal history is not turned into a failure", restoredMessageFields("Answer", { usage: event.usage }).error === undefined && restoredMessageFields("Answer").meta === undefined);
 
 const corrected = messageUsage({ ...event, usage: { ...event.usage, completion_status: "evidence_observed", task_verified: true } });

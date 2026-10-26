@@ -53,6 +53,10 @@ class OwnedLearningService:
     def busy(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    @property
+    def automation_active(self) -> bool:
+        return self._watcher is not None and not self._watcher.done()
+
     async def snapshot(self) -> dict:
         from mizan_owned.learning_cycle import LearningError, status
 
@@ -69,7 +73,7 @@ class OwnedLearningService:
             service_job=self.last_job,
             automation_configured=os.getenv("MIZAN_OWNED_LEARNING_AUTORUN", "").lower()
             in {"1", "true", "yes"},
-            automation_active=self._watcher is not None and not self._watcher.done(),
+            automation_active=self.automation_active,
             ready_for_general_chat=False,
             chat_capture_is_training_data=False,
         )

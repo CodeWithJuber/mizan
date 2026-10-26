@@ -37,7 +37,7 @@ import { config } from "./config";
 import { useApi } from "./hooks/useApi";
 import { ChatAttachments } from "./components/ChatAttachments";
 import { authFetch } from "./utils/authFetch";
-import { consumeChatStream } from "./utils/chatSse";
+import { runChatRequest } from "./utils/chatRequest.ts";
 import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import ComparePanel from "./components/ComparePanel";
@@ -81,6 +81,7 @@ import { SkeletonCard } from "./components/Skeleton";
 import { StreamBuffer } from "./utils/streaming";
 import {
   fetchChatHistoryWithRetry,
+  hydrateCachedMessages,
   mergeHistoryMessages,
 } from "./utils/historySync";
 import { cacheMessages, readCachedMessages } from "./utils/sessionCache";
@@ -420,7 +421,7 @@ function AppInner() {
     () => {},
   );
   const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sessionIdRef = useRef<string>("");
+  const sessionIdRef = useRef<string>(sessionId);
   const resyncRef = useRef<(() => void) | null>(null);
   // Bounded auto-continuations when a stream ends with finish_reason=length
   const continuationRef = useRef(0);
@@ -653,7 +654,7 @@ function AppInner() {
   /** Send a "continue" request for a length-truncated answer (no user bubble). */
   const requestContinuation = useCallback(async () => {
     const sid = sessionIdRef.current;
-    if (!sid) return;
+    if (!sid || streamingRef.current) return;
     const controller = new AbortController();
     sendControllerRef.current = controller;
     appendToLastRef.current = true;
@@ -666,38 +667,39 @@ function AppInner() {
     setStreaming(true);
     setTypingIndicator(true);
     try {
-      const response = await authFetch(`${config.API_URL}/chat/stream`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-        body: JSON.stringify({
-          session_id: sid,
-          content: CONTINUE_PROMPT,
-          agent_id: selectedAgent?.id,
-          request_id: requestId,
-          ...(workspaceId ? { workspace_id: workspaceId } : {}),
+      await runChatRequest({
+        request: () => authFetch(`${config.API_URL}/chat/stream`, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            session_id: sid,
+            content: CONTINUE_PROMPT,
+            agent_id: selectedAgent?.id,
+            request_id: requestId,
+            ...(workspaceId ? { workspace_id: workspaceId } : {}),
+          }),
         }),
-      });
-      await consumeChatStream(response, {
         sessionId: sid,
         requestId,
         signal: controller.signal,
+        isCurrent: () => activeRequestIdRef.current === requestId && sessionIdRef.current === sid,
         onEvent: (event) => chatEventHandlerRef.current(event),
       });
-    } catch (error) {
-      appendToLastRef.current = false;
-      if (!controller.signal.aborted)
-        addToast({
-          type: "error",
-          title: "Continuation interrupted",
-          description: (error as Error).message,
-        });
-      finalizeStop(streamBufferRef.current?.getText() ?? "");
+    } finally {
+      if (activeRequestIdRef.current === requestId && sessionIdRef.current === sid) {
+        activeRequestIdRef.current = "";
+        appendToLastRef.current = false;
+        sendControllerRef.current = null;
+        streamingRef.current = false;
+        setStreaming(false);
+        setTypingIndicator(false);
+      }
     }
-  }, [selectedAgent, addToast, finalizeStop, workspaceId]);
+  }, [selectedAgent, workspaceId]);
 
   /** Abort the authenticated fetch; the server cancels the owned generation. */
   const stopGeneration = useCallback(() => {
@@ -793,6 +795,8 @@ function AppInner() {
             ts: new Date().toLocaleTimeString(),
             cognitive: data.cognitive as CognitiveMetadata | undefined,
             thinkingMessageId: messageId,
+            requestId: typeof data.request_id === "string" ? data.request_id : undefined,
+            messageId: typeof data.message_id === "string" ? data.message_id : undefined,
             meta: usageMeta,
           };
           if (appendToLastRef.current) {
@@ -1253,6 +1257,8 @@ function AppInner() {
         completion_status?: MessageUsageMeta["completion_status"];
         answer_delivered?: boolean;
         task_verified?: boolean;
+        request_id?: string;
+        message_id?: string;
       };
     },
     idx: number,
@@ -1356,11 +1362,15 @@ function AppInner() {
 
   const switchSession = useCallback(
     async (sid: string) => {
+      const requestToken = localStorage.getItem("mizan_token");
+      sessionIdRef.current = sid;
       sendControllerRef.current?.abort();
       activeRequestIdRef.current = "";
       streamBufferRef.current?.discard();
       streamBufferRef.current = null;
+      streamingRef.current = false;
       setStreaming(false);
+      setStreamingText("");
       setTypingIndicator(false);
       setArtifacts([]);
       setShowArtifacts(false);
@@ -1371,12 +1381,14 @@ function AppInner() {
       // CHAT UPGRADE: render cache instantly, then merge server history.
       try {
         const cached = await readCachedMessages(sid);
-        if (cached && cached.length > 0) {
-          setMessages(cached as ChatMessage[]);
-        }
+        setMessages((current) => hydrateCachedMessages(
+          current, cached as ChatMessage[] | null,
+          sid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token"),
+        ));
       } catch {
         /* cache is best-effort */
       }
+      if (sid !== sessionIdRef.current || requestToken !== localStorage.getItem("mizan_token")) return;
       await loadChatHistory(sid);
     },
     [loadChatHistory],
@@ -1393,15 +1405,18 @@ function AppInner() {
     // and merge — the UI never shows empty when data exists locally.
     const storedSid = readStoredChatSessionId();
     if (storedSid) {
+      const requestToken = localStorage.getItem("mizan_token");
       void (async () => {
         try {
           const cached = await readCachedMessages(storedSid);
-          if (cached && cached.length > 0) {
-            setMessages(cached as ChatMessage[]);
-          }
+          setMessages((current) => hydrateCachedMessages(
+            current, cached as ChatMessage[] | null,
+            storedSid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token"),
+          ));
         } catch {
           /* cache is best-effort — the server fetch still runs */
         }
+        if (storedSid !== sessionIdRef.current || requestToken !== localStorage.getItem("mizan_token")) return;
         await loadChatHistory(storedSid, {
           onMissing: () => {
             try {
@@ -1506,11 +1521,13 @@ function AppInner() {
     activeRequestIdRef.current = "";
     streamBufferRef.current?.discard();
     streamBufferRef.current = null;
+    streamingRef.current = false;
     setStreaming(false);
     setTypingIndicator(false);
     setArtifacts([]);
     setShowArtifacts(false);
     const newId = `session_${crypto.randomUUID()}`;
+    sessionIdRef.current = newId;
     setSessionId(newId);
     setMessages([]);
     setStreamingText("");
@@ -1670,7 +1687,7 @@ function AppInner() {
 
   const sendMessage = async (contentOverride?: string) => {
     const text = contentOverride ?? input;
-    if ((!text.trim() && attachedFiles.length === 0) || streaming) return;
+    if ((!text.trim() && attachedFiles.length === 0) || streamingRef.current) return;
     // Auth gate: chat requires login (token from Security page)
     const authToken = localStorage.getItem("mizan_token");
     if (!authToken) {
@@ -1735,9 +1752,11 @@ function AppInner() {
       return;
     }
 
+    const requestId = crypto.randomUUID();
     const userMsg: ChatMessage = {
       id: Date.now(),
       role: "user",
+      requestId: hasMedia ? undefined : requestId,
       content:
         content +
         (files.length > 0 ? ` [${files.map((f) => f.name).join(", ")}]` : ""),
@@ -1795,49 +1814,39 @@ function AppInner() {
       return;
     }
 
-    const requestId = crypto.randomUUID();
     activeRequestIdRef.current = requestId;
     try {
-      const response = await authFetch(`${config.API_URL}/chat/stream`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          content,
-          agent_id: selectedAgent?.id,
-          request_id: requestId,
-          ...(workspaceId ? { workspace_id: workspaceId } : {}),
-          ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
+      await runChatRequest({
+        request: () => authFetch(`${config.API_URL}/chat/stream`, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            content,
+            agent_id: selectedAgent?.id,
+            request_id: requestId,
+            ...(workspaceId ? { workspace_id: workspaceId } : {}),
+            ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
+          }),
         }),
-      });
-      await consumeChatStream(response, {
         sessionId,
         requestId,
         signal: controller.signal,
+        isCurrent: () => activeRequestIdRef.current === requestId && sessionIdRef.current === sessionId,
+        onStart: () => {
+          if (chatModelOverride)
+            setChatModelOverride((current) => current === chatModelOverride ? "" : current);
+        },
         onEvent: (event) => {
-          if (activeRequestIdRef.current !== requestId) return;
           activeMessageIdRef.current =
             (event.message_id as string) || activeMessageIdRef.current;
           handleWsMessage(event);
         },
       });
-      if (chatModelOverride) setChatModelOverride("");
-    } catch (error) {
-      if (activeRequestIdRef.current !== requestId) return;
-      finalizeStop(streamBufferRef.current?.getText() ?? "");
-      if (!controller.signal.aborted) {
-        const detail = (error as Error).message;
-        addTerminalLine(detail, "error");
-        addToast({
-          type: "error",
-          title: "Chat interrupted",
-          description: detail,
-        });
-      }
     } finally {
       if (activeRequestIdRef.current === requestId) {
         activeRequestIdRef.current = "";

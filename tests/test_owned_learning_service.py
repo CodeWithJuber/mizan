@@ -37,6 +37,27 @@ async def test_unconfigured_status_does_not_claim_training_or_model_readiness(mo
 
 
 @pytest.mark.asyncio
+async def test_chat_status_tracks_actual_watcher_lifecycle(tmp_path, monkeypatch):
+    from api.commands import cmd_status
+
+    monkeypatch.setenv("MIZAN_OWNED_LEARNING_DIR", str(tmp_path))
+    monkeypatch.setenv("MIZAN_OWNED_LEARNING_AUTORUN", "true")
+    service = OwnedLearningService()
+    monkeypatch.setattr("mizan_owned.learning_service.learning_service", service)
+    assert "**automatic_weight_training:** disabled" in await cmd_status()
+    await service.start()
+    try:
+        report = await cmd_status()
+        assert "watching for approved original-data bundles" in report
+        assert "**owned_learning_worker_busy:** False" in report
+        assert "does not update model weights" in report
+        assert service.last_job is None
+    finally:
+        await service.stop()
+    assert "**automatic_weight_training:** disabled" in await cmd_status()
+
+
+@pytest.mark.asyncio
 async def test_ready_bundle_is_queued_once_and_cancelled_on_shutdown(tmp_path, monkeypatch):
     from mizan_owned.learning_cycle import LearningBusy
 

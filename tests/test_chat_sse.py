@@ -249,6 +249,48 @@ def test_private_provider_error_is_terminal_and_not_exposed(api):
     assert stored[-1]["metadata"]["usage_incomplete"] is True
 
 
+@pytest.mark.parametrize("agent_succeeded", [False, True])
+def test_assistant_persistence_failure_still_emits_terminal_error_once(
+    api, monkeypatch, agent_succeeded
+):
+    main, client, tokens, _, memory, agent, _ = api
+    original_save = memory.save_message
+    assistant_attempts = []
+
+    async def save(session_id, role, *args, **kwargs):
+        if role == "assistant":
+            assistant_attempts.append(role)
+            raise RuntimeError("private storage failure")
+        return await original_save(session_id, role, *args, **kwargs)
+
+    monkeypatch.setattr(memory, "save_message", save)
+    if not agent_succeeded:
+
+        async def fail(*args, **kwargs):
+            return {
+                "success": False,
+                "error_code": "output_budget_exhausted",
+                "usage": {"model": "observed-fixture", "timings": {"total_ms": 12}},
+            }
+
+        monkeypatch.setattr(agent, "execute", fail)
+    response = client.post("/api/chat/stream", json=message(), headers=headers(tokens["alice"]))
+    events = frames(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["code"] == "history_save_failed"
+    assert events[-1]["history_saved"] is False
+    assert events[-1]["answer_delivered"] is False
+    assert events[-1]["task_verified"] is False
+    assert events[-1]["usage"]["model"] == (
+        "observed-ruh" if agent_succeeded else "observed-fixture"
+    )
+    assert not any(event["type"] == "chat_complete" for event in events)
+    assert "private storage failure" not in response.text
+    assert assistant_attempts == ["assistant"]
+    assert [row["role"] for row in asyncio.run(memory.get_messages("session-a"))] == ["user"]
+    assert not main._stream_sessions
+
+
 def test_artifact_events_only_reference_saved_owned_session_artifacts(api):
     from api.artifacts import create_artifact
 
@@ -345,17 +387,36 @@ def test_command_without_agents_finishes_without_model_invocation(api, monkeypat
 
 
 @pytest.mark.parametrize("spec_version", ["2.0", "2.4"])
-async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(api, spec_version):
+@pytest.mark.parametrize("cancel_during", ["context", "execution"])
+async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(
+    api, monkeypatch, spec_version, cancel_during
+):
     from providers import LLMResponse
 
     main, _, tokens, users, memory, agent, _ = api
     agent.block = True
+    if cancel_during == "context":
+
+        async def blocked_context(*args, **kwargs):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(main, "chat_context", blocked_context)
     agent._llm_calls = [
         {
             "response": LLMResponse([], model="observed-partial", usage={"input": 5, "output": 1}),
             "latency_ms": 10,
         }
     ]
+    agent._execution_timings = {
+        "provider_attempts": [
+            {"mode": "stream", "outcome": "cancelled", "latency_ms": 12.5, "error": "private"},
+            {"mode": "unknown", "outcome": "failed", "latency_ms": 4},
+            {"mode": "create", "outcome": "failed", "latency_ms": float("nan")},
+            {"mode": [], "outcome": "failed", "latency_ms": 4},
+            {"mode": "create", "outcome": {}, "latency_ms": 4},
+            {"mode": "create", "outcome": "failed", "latency_ms": 10**1000},
+        ]
+    }
     body = message()
     disconnected = asyncio.Event()
     body_sent = False
@@ -372,7 +433,8 @@ async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(api, spec
     async def send(event):
         if event["type"] == "http.response.body":
             chunks.append(event.get("body", b""))
-            if b"event: chat_stream" in event.get("body", b""):
+            trigger = b"event: typing" if cancel_during == "context" else b"event: chat_stream"
+            if trigger in event.get("body", b""):
                 if spec_version == "2.4":
                     raise OSError("peer closed the connection")
                 disconnected.set()
@@ -401,22 +463,37 @@ async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(api, spec
             await asyncio.wait_for(main.app(scope, receive, send), timeout=3)
     else:
         await asyncio.wait_for(main.app(scope, receive, send), timeout=3)
-    await asyncio.wait_for(agent.cancelled.wait(), timeout=1)
+    if cancel_during == "execution":
+        await asyncio.wait_for(agent.cancelled.wait(), timeout=1)
     # Give the detached producer's shielded finalization one scheduling turn.
     await asyncio.sleep(0)
     assert not main._stream_sessions
     assert not any(e["type"] == "chat_complete" for e in frames(b"".join(chunks).decode()))
     stored = await memory.get_messages(body["session_id"])
-    assert stored[-1]["content"] == "مرحبا\n"
-    assert stored[-1]["metadata"]["status"] == "cancelled"
-    assert stored[-1]["metadata"]["usage"]["input_tokens"] == 5
-    assert stored[-1]["metadata"]["usage"]["model"] == "observed-partial"
-    assert stored[-1]["metadata"]["usage_incomplete"] is True
+    assert stored[-1]["content"] == ("مرحبا\n" if cancel_during == "execution" else "")
+    metadata = stored[-1]["metadata"]
+    assert metadata["status"] == "cancelled"
+    assert metadata["cancellation_reason"] == "transport_closed"
+    assert metadata["request_elapsed_ms"] >= 0
+    if cancel_during == "execution":
+        assert metadata["execution_stage"] in {"agent_execution", "delivery"}
+        assert metadata["usage"]["input_tokens"] == 5
+        assert metadata["usage"]["model"] == "observed-partial"
+        assert metadata["usage"]["timings"] == {
+            "provider_attempt_count": 1,
+            "provider_ms": 12.5,
+            "provider_attempts": [{"mode": "stream", "outcome": "cancelled", "latency_ms": 12.5}],
+        }
+    else:
+        assert metadata["execution_stage"] == "context_preparation"
+        assert metadata["usage"] == {}  # Never attribute another queued request's counters.
+    assert "private" not in json.dumps(metadata)
+    assert metadata["usage_incomplete"] is True
     receipt = ChatStreamLedger(memory._get_conn, memory._release_conn).claim(
         users["alice"].id, body["request_id"], body["session_id"], "another", body
     )
     assert receipt["status"] == "cancelled"
-    assert len(agent.calls) == 1
+    assert len(agent.calls) == int(cancel_during == "execution")
 
 
 async def test_heartbeat_and_active_request_conflicts_do_not_start_more_calls(api, monkeypatch):
@@ -569,6 +646,79 @@ async def test_completed_producer_keeps_capacity_while_transport_drains(api):
     assert concurrent.value.status_code == 409
     await response.close()
     assert not main._stream_sessions
+
+
+@pytest.mark.parametrize("spec_version", ["2.0", "2.4"])
+@pytest.mark.parametrize("middleware_delay", ["await", "blocking"])
+async def test_middleware_rendezvous_delay_is_not_a_network_delivery_failure(
+    api, monkeypatch, spec_version, middleware_delay
+):
+    """Exercise the real FastAPI security BaseHTTPMiddleware and outer guard."""
+    import api.chat_stream as streams
+
+    main, _, tokens, _, memory, _, _ = api
+    monkeypatch.setattr(streams, "SEND_TIMEOUT_SECONDS", 0.02)
+    middleware = next(
+        entry for entry in main.app.user_middleware if entry.cls.__name__ == "BaseHTTPMiddleware"
+    )
+    original_dispatch = middleware.kwargs["dispatch"]
+
+    async def delayed_dispatch(request, call_next):
+        response = await original_dispatch(request, call_next)
+        # The actual network send is ready. Only the middleware consumer of
+        # Starlette's internal zero-capacity memory stream is delayed.
+        if middleware_delay == "await":
+            await asyncio.sleep(0.08)
+        else:
+            time.sleep(0.08)
+        return response
+
+    monkeypatch.setitem(middleware.kwargs, "dispatch", delayed_dispatch)
+    monkeypatch.setattr(main.app, "middleware_stack", None)
+    payload = message()
+    body_sent = False
+    received = []
+
+    async def receive():
+        nonlocal body_sent
+        if not body_sent:
+            body_sent = True
+            return {
+                "type": "http.request",
+                "body": json.dumps(payload).encode(),
+                "more_body": False,
+            }
+        await asyncio.Event().wait()
+
+    async def send(event):
+        received.append(event)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": spec_version},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/api/chat/stream",
+        "raw_path": b"/api/chat/stream",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"authorization", ("Bearer " + tokens["alice"]).encode()),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 443),
+    }
+    await asyncio.wait_for(main.app(scope, receive, send), timeout=2)
+    events = frames(b"".join(event.get("body", b"") for event in received).decode())
+    assert events[-1]["type"] == "chat_complete"
+    assert events[-1]["response"] == "مرحبا\nworld"
+    assert not any(event["type"] == "error" for event in events)
+    assert not main._stream_sessions
+    assert (await memory.get_messages(payload["session_id"]))[-1]["metadata"][
+        "status"
+    ] == "complete"
 
 
 @pytest.mark.parametrize("spec_version", ["2.0", "2.4"])

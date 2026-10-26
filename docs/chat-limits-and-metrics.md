@@ -24,6 +24,26 @@ establish the exact reasoning usage of that historical call. References checked
 2026-10-26: [reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
 and [model listing](https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free).
 
+## Interrupted streams
+
+A stream that closes before a completion or error event is incomplete. The chat
+keeps the received text and a visible error notice instead of treating the close
+as a user Stop. It never automatically repeats an uncertain POST. Check history
+before retrying: the server may have completed work after the connection failed.
+An explicit Stop remains a separate local action; a cancelled history receipt
+alone does not prove that the user pressed Stop.
+
+The delivery deadline applies to the actual ASGI network write. With the outer
+transport guard active, the response does not apply another network deadline to
+Starlette's internal middleware handoff. A production QA request on 2026-10-26
+hit that inner deadline after approximately 75 seconds despite a healthy backend
+and a 300-second proxy timeout. Slow network writes remain bounded.
+
+Cancellation receipts record a fixed reason, execution stage and elapsed request
+time. Provider attempt timings are included only when observed for that request;
+missing token counters stay missing. If saving a reply fails, the server emits a
+terminal `history_save_failed` error without claiming that the reply was saved.
+
 ## What the displayed numbers mean
 
 | Display | Source | What it establishes |
