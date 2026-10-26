@@ -124,3 +124,21 @@ async def test_web_browse_refuses_internal_addresses():
     ):
         result = await skill.browse(url)
         assert "error" in result and "content" not in result
+
+
+def test_bulk_text_files_for_preview_skips_heavy_and_binary(project):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from api import coding_workspace as api
+
+    store, workspace = project
+    store.write(workspace, "node_modules/react/index.js", "module.exports = {}")
+    app = FastAPI()
+    app.include_router(api.router)
+    app.dependency_overrides[api.require_auth] = lambda: USER
+    data = TestClient(app).get(f"/api/workspaces/{workspace}/files").json()
+    assert set(data["files"]) == {"src/app.py", "src/util/helpers.py", "README.md"}
+    other = TokenPayload("bob", "Bob", ["user"], 9999999999, 0, "bob-token")
+    app.dependency_overrides[api.require_auth] = lambda: other
+    assert TestClient(app).get(f"/api/workspaces/{workspace}/files").status_code == 404

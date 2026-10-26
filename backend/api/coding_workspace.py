@@ -164,6 +164,37 @@ def read_file(
     return cast(dict, WorkspaceStore(user.user_id).read(workspace_id, path))
 
 
+_PREVIEW_SKIP = ("node_modules/", "dist/", "build/", ".next/", ".git/", "__pycache__/", ".venv/")
+MAX_PREVIEW_BYTES = 3 * 1024 * 1024
+
+
+@router.get("/{workspace_id}/files")
+def text_files(workspace_id: str, user: TokenPayload = Depends(require_auth)) -> dict:
+    """The project's text files in one response (for browser previews), bounded."""
+    store = WorkspaceStore(user.user_id)
+    files: dict[str, str] = {}
+    total, skipped = 0, 0
+    for entry in store.tree(workspace_id)["files"]:
+        path = entry["path"]
+        if entry["kind"] != "file" or any(
+            path.startswith(d) or f"/{d}" in path for d in _PREVIEW_SKIP
+        ):
+            continue
+        if total + entry["size"] > MAX_PREVIEW_BYTES:
+            skipped += 1
+            continue
+        try:
+            data = store.read_bytes(workspace_id, path)
+        except HTTPException:
+            skipped += 1
+            continue
+        if b"\x00" in data[:4096]:
+            continue
+        files[path] = data.decode("utf-8", "replace")
+        total += len(data)
+    return {"files": files, "skipped": skipped, "bytes": total}
+
+
 @router.put("/{workspace_id}/file")
 def write_file(
     workspace_id: str, body: FileWrite, user: TokenPayload = Depends(require_editor)
