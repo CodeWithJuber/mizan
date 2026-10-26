@@ -30,7 +30,7 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import calc, express, fahm, hadith, project, quran
+from . import calc, express, fahm, hadith, project, quran, waqt
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -246,6 +246,7 @@ class Tadbir:
         lines.append("calc")
         lines.append("quran")
         lines.append("hadith")
+        lines.append("waqt")
         if {"web_search", "web_browse"} & names:
             lines.append("web")
         if {"workspace_write", "workspace_edit"} & names:
@@ -665,6 +666,80 @@ class Tadbir:
             )
             lines.append(f"\n_{note}_")
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
+
+    async def _waqt(self, task: str, u: fahm.Understanding) -> Outcome:
+        request: waqt.WaqtRequest = u.entities["request"]
+        language = u.language
+        await self._begin(["Read the clock and the Hijri calendar (MIZAN)", "Reply"])
+        current, zone = waqt.now()
+        today = current.date()
+        lines: list[str] = []
+        try:
+            if request.kind == "today":
+                hijri = waqt.to_hijri(today)
+                lines.append(
+                    phrase(
+                        "waqt_today",
+                        language,
+                        gregorian=waqt.gregorian_text(today),
+                        hijri=waqt.hijri_text(hijri),
+                        hijri_ar=waqt.hijri_arabic(hijri),
+                    )
+                )
+                if request.with_time:
+                    time_text = f"{current:%H:%M}"
+                    lines.append(phrase("waqt_time", language, time=time_text, zone=zone or "UTC"))
+            elif request.kind == "to_hijri" and request.gregorian is not None:
+                hijri = waqt.to_hijri(request.gregorian)
+                lines.append(
+                    f"**{waqt.gregorian_text(request.gregorian)}** = **{waqt.hijri_text(hijri)}** "
+                    f"({waqt.hijri_arabic(hijri)})"
+                )
+            elif request.kind == "to_gregorian" and request.hijri is not None:
+                year, month, day = request.hijri
+                when = waqt.to_gregorian(year, month, day)
+                hijri = waqt.to_hijri(when)
+                lines.append(
+                    f"**{waqt.hijri_text(hijri)}** ({waqt.hijri_arabic(hijri)}) = "
+                    f"**{waqt.gregorian_text(when)}**"
+                )
+            else:
+                keys = ["eid_fitr", "eid_adha"] if request.event == "eid" else [request.event]
+                asked_year = request.hijri[0] if request.hijri else 0
+                for key in keys:
+                    name, month, day = waqt.EVENTS[key]
+                    if asked_year:
+                        year, when = asked_year, waqt.to_gregorian(asked_year, month, day)
+                    else:
+                        year, when = waqt.next_occurrence(month, day, today)
+                    days = (when - today).days
+                    relative = (
+                        phrase("waqt_today_word", language)
+                        if days == 0
+                        else phrase("waqt_in_days", language, days=days)
+                        if days > 0
+                        else phrase("waqt_days_ago", language, days=-days)
+                    )
+                    lines.append(
+                        phrase(
+                            "waqt_event",
+                            language,
+                            event=name,
+                            hijri=f"{day} {waqt.MONTHS[month - 1]} {year} AH",
+                            gregorian=waqt.gregorian_text(when),
+                            relative=relative,
+                        )
+                    )
+        except waqt.OutOfRange:
+            return Outcome(phrase("waqt_range", language), False, {})
+        await self._step()
+        notes = [phrase("waqt_hijri_note", language)]
+        if request.kind == "event" and request.event in {"eid", "eid_fitr", "ramadan"}:
+            notes.append(phrase("waqt_sighting", language))
+        if zone is None and request.kind in {"today", "event"}:
+            notes.append(phrase("waqt_utc_note", language))
+        text = "\n\n".join(lines) + "\n\n" + "\n\n".join(f"_{note}_" for note in notes)
+        return Outcome(text, True, {"zone": zone or "UTC", "kind": request.kind})
 
     async def _web_search(self, task: str, u: fahm.Understanding) -> Outcome:
         if not self._allowed("web_search"):

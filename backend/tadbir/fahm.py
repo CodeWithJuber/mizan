@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, hadith, project, quran
+from . import calc, hadith, project, quran, waqt
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -134,6 +134,10 @@ def understand(text: str) -> Understanding:
     narration = hadith.parse_reference(message)
     if narration is not None:
         return Understanding("hadith", language, 0.95, {"reference": narration, "explain": explain})
+
+    when = waqt.parse(message)
+    if when is not None and len(words) <= 25:
+        return Understanding("waqt", language, 0.9, {"request": when})
 
     fenced = _fenced_code(message)
     asks_run = bool(re.search(_RUN, message, re.IGNORECASE))

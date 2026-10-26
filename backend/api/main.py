@@ -658,6 +658,8 @@ class ChatMessage(BaseModel):
     content: str = Field(..., min_length=1, max_length=50000)
     agent_id: str | None = None
     model_override: str | None = Field(None, max_length=200)
+    # The browser's IANA timezone, for dates MIZAN states itself (Tadbir Waqt).
+    timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_+\-/]+$")
 
 
 class StreamChatMessage(ChatMessage):
@@ -1727,6 +1729,7 @@ async def stream_chat(
 
                 from agents.events import bind_event_sink
                 from security.approvals import ApprovalContext, bind_approvals
+                from tadbir.waqt import bind_timezone
 
                 async def activity_sink(kind: str, payload: dict):
                     # Structured tool/todo/approval frames for this run only.
@@ -1744,7 +1747,11 @@ async def stream_chat(
                             user, req.session_id, session, agent, req.content, req.workspace_id
                         )
                         await phase_cb("queued")
-                        with bind_event_sink(activity_sink), bind_approvals(approval_context):
+                        with (
+                            bind_event_sink(activity_sink),
+                            bind_approvals(approval_context),
+                            bind_timezone(req.timezone),
+                        ):
                             result = await agent.execute(
                                 task_content,
                                 context,
@@ -2064,14 +2071,17 @@ async def chat(
                 }
             )
 
+        from tadbir.waqt import bind_timezone
+
         try:
-            result = await agent.execute(
-                req.content,
-                await chat_context(user, req.session_id, session, agent, req.content),
-                stream_callback=stream_cb,
-                thinking_callback=thinking_cb,
-                model_override=req.model_override,
-            )
+            with bind_timezone(req.timezone):
+                result = await agent.execute(
+                    req.content,
+                    await chat_context(user, req.session_id, session, agent, req.content),
+                    stream_callback=stream_cb,
+                    thinking_callback=thinking_cb,
+                    model_override=req.model_override,
+                )
         except Exception:
             logger.exception("Legacy chat execution failed for message %s", message_id)
             thinking_stream.complete(message_id)
@@ -4998,13 +5008,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
+                    from tadbir.waqt import bind_timezone
+
+                    zone = data.get("timezone")
                     try:
-                        result = await agent.execute(
-                            content,
-                            await chat_context(user, session_id, session, agent, content),
-                            stream_callback=ws_stream,
-                            thinking_callback=ws_thinking,
-                        )
+                        with bind_timezone(
+                            zone if isinstance(zone, str) and len(zone) <= 64 else None
+                        ):
+                            result = await agent.execute(
+                                content,
+                                await chat_context(user, session_id, session, agent, content),
+                                stream_callback=ws_stream,
+                                thinking_callback=ws_thinking,
+                            )
                     except asyncio.CancelledError:
                         await memory.save_message(
                             session_id,

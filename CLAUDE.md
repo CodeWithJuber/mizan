@@ -93,7 +93,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - **All backend I/O is async** (`async`/`await`).
 - Pydantic models for every API request/response schema.
 - JWT auth on endpoints; **Wali** rate-limiting; **Izn** permission gating before tool execution.
-- **MIZAN directs, the LLM speaks**: requests Fahm recognises (compute, run code, write+run, build a web/Python project, Quran, hadith, web search/read, recall, capabilities) are planned, executed and verified by Tadbir; Quran and hadith text and computed results never come from the model. Tests default to `MIZAN_ORCHESTRATION=llm` (conftest) except `tests/test_tadbir.py`.
+- **MIZAN directs, the LLM speaks**: requests Fahm recognises (compute, run code, write+run, build a web/Python project, Quran, hadith, Gregorian/Hijri dates, web search/read, recall, capabilities) are planned, executed and verified by Tadbir; Quran and hadith text and computed results never come from the model. Tests default to `MIZAN_ORCHESTRATION=llm` (conftest) except `tests/test_tadbir.py`.
 - Agents run a real ReAct loop (`BaseAgent.think` → `_agentic_loop`), not single-shot calls; max iterations scale with **Nafs** level. Tools execute through `_execute_tool_safe` with input validation and self-healing (auto-install missing packages).
 - **Nafs** levels (7-stage) evolve via `evolve_nafs()` / `DevelopmentalGate` based on success rate, task count, and hikmah.
 - Real-time streaming via WebSocket and the `cognitive/thinking_stream` module.

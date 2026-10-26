@@ -30,6 +30,8 @@ cryptography>=50.0.2,<51
 
 # Automation
 croniter>=6.2.4,<7
+hijridate>=2.6.0,<3  # Umm al-Qura Hijri calendar (Tadbir dates)
+tzdata>=2026.5  # IANA timezones for zoneinfo in slim images
 
 # CLI
 click>=8.5.0,<9

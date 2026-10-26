@@ -271,6 +271,79 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान प्रोजेक्ट पूरा नहीं कर सका: {reason}",
         "ar": "تعذّر على ميزان إكمال المشروع: {reason}",
     },
+    "waqt_today": {
+        "en": "Today is **{gregorian}** · **{hijri}** ({hijri_ar}).",
+        "hi-latn": "Aaj **{gregorian}** hai · **{hijri}** ({hijri_ar}).",
+        "ur": "آج **{gregorian}** ہے · **{hijri}** ({hijri_ar})۔",
+        "hi": "आज **{gregorian}** है · **{hijri}** ({hijri_ar})।",
+        "ar": "اليوم **{gregorian}** · **{hijri_ar}** ({hijri}).",
+    },
+    "waqt_time": {
+        "en": "Time now: **{time}** ({zone}).",
+        "hi-latn": "Abhi ka waqt: **{time}** ({zone}).",
+        "ur": "ابھی کا وقت: **{time}** ({zone})۔",
+        "hi": "अभी का समय: **{time}** ({zone})।",
+        "ar": "الوقت الآن: **{time}** ({zone}).",
+    },
+    "waqt_event": {
+        "en": "**{event}**, {hijri}: expected on **{gregorian}** ({relative}).",
+        "hi-latn": "**{event}**, {hijri}: mutawaqqe taareekh **{gregorian}** ({relative}).",
+        "ur": "**{event}**، {hijri}: متوقع تاریخ **{gregorian}** ({relative})۔",
+        "hi": "**{event}**, {hijri}: अपेक्षित तारीख़ **{gregorian}** ({relative})।",
+        "ar": "**{event}**، {hijri}: المتوقع **{gregorian}** ({relative}).",
+    },
+    "waqt_in_days": {
+        "en": "in {days} days",
+        "hi-latn": "{days} din baad",
+        "ur": "{days} دن بعد",
+        "hi": "{days} दिन बाद",
+        "ar": "بعد {days} يومًا",
+    },
+    "waqt_days_ago": {
+        "en": "{days} days ago",
+        "hi-latn": "{days} din pehle",
+        "ur": "{days} دن پہلے",
+        "hi": "{days} दिन पहले",
+        "ar": "قبل {days} يومًا",
+    },
+    "waqt_today_word": {"en": "today", "hi-latn": "aaj", "ur": "آج", "hi": "आज", "ar": "اليوم"},
+    "waqt_hijri_note": {
+        "en": "Hijri dates follow the Umm al-Qura calendar; where the month begins with the local "
+        "sighting of the crescent, it can differ by a day.",
+        "hi-latn": "Hijri taareekh Umm al-Qura calendar ke mutabiq hai; jahan mahina maqami chand "
+        "dekhne se shuru hota hai wahan ek din ka farq ho sakta hai.",
+        "ur": "ہجری تاریخ ام القریٰ کیلنڈر کے مطابق ہے؛ جہاں مہینہ مقامی رؤیتِ ہلال سے شروع ہوتا ہے وہاں ایک دن کا فرق ہو سکتا ہے۔",
+        "hi": "हिजरी तारीख़ उम्म अल-क़ुरा कैलेंडर के अनुसार है; जहाँ महीना स्थानीय चाँद देखने से शुरू होता है वहाँ एक दिन का फ़र्क़ हो सकता है।",
+        "ar": "التاريخ الهجري وفق تقويم أم القرى، وقد يختلف بيوم حيث يبدأ الشهر برؤية الهلال محليًا.",
+    },
+    "waqt_sighting": {
+        "en": 'For Ramadan and the Eids, follow the sighting of the crescent: "Start fasting on '
+        "seeing the crescent (of Ramadan), and give up fasting on seeing the crescent (of "
+        'Shawwal)" (Sahih al-Bukhari 1909; also Sahih Muslim 1081).',
+        "hi-latn": "Ramadan aur Eid ke liye chand dekhne par amal karein: «صُومُوا لِرُؤْيَتِهِ "
+        "وَأَفْطِرُوا لِرُؤْيَتِهِ» (mafhoom: chand dekh kar roza rakho aur chand dekh kar roza "
+        "khatam karo) — Sahih al-Bukhari 1909, Sahih Muslim 1081.",
+        "ur": "رمضان اور عیدین کے لیے رؤیتِ ہلال پر عمل کریں: «صُومُوا لِرُؤْيَتِهِ وَأَفْطِرُوا لِرُؤْيَتِهِ» "
+        "(مفہوم: چاند دیکھ کر روزہ رکھو اور چاند دیکھ کر روزہ ختم کرو) — صحیح بخاری 1909، صحیح مسلم 1081۔",
+        "hi": "रमज़ान और ईद के लिए चाँद देखने पर अमल करें: «صُومُوا لِرُؤْيَتِهِ وَأَفْطِرُوا لِرُؤْيَتِهِ» "
+        "(मफ़हूम: चाँद देखकर रोज़ा रखो और चाँद देखकर रोज़ा ख़त्म करो) — सहीह बुख़ारी 1909, सहीह मुस्लिम 1081।",
+        "ar": "وفي رمضان والعيدين المعتبر رؤية الهلال: «صُومُوا لِرُؤْيَتِهِ وَأَفْطِرُوا لِرُؤْيَتِهِ» "
+        "(صحيح البخاري 1909، صحيح مسلم 1081).",
+    },
+    "waqt_utc_note": {
+        "en": "Your timezone was not shared with MIZAN, so this uses UTC.",
+        "hi-latn": "Aapka timezone MIZAN ko nahi mila, is liye UTC istemal hua.",
+        "ur": "آپ کا ٹائم زون میزان کو نہیں ملا، اس لیے UTC استعمال ہوا۔",
+        "hi": "आपका टाइमज़ोन मीज़ान को नहीं मिला, इसलिए UTC इस्तेमाल हुआ।",
+        "ar": "لم تصل منطقتك الزمنية إلى ميزان، لذا استُخدم التوقيت العالمي UTC.",
+    },
+    "waqt_range": {
+        "en": "MIZAN's Hijri calendar covers 1343–1500 AH (1924–2077 CE).",
+        "hi-latn": "MIZAN ka Hijri calendar 1343–1500 AH (1924–2077 CE) tak hai.",
+        "ur": "میزان کا ہجری کیلنڈر 1343–1500 ہجری (1924–2077 عیسوی) تک ہے۔",
+        "hi": "मीज़ान का हिजरी कैलेंडर 1343–1500 हिजरी (1924–2077 ई.) तक है।",
+        "ar": "يغطي تقويم ميزان الهجري الأعوام 1343–1500 هـ (1924–2077 م).",
+    },
     "sources": {"en": "Sources", "hi-latn": "Sources", "ur": "ماخذ", "hi": "स्रोत", "ar": "المصادر"},
     "no_results": {
         "en": "The web search returned no results for this.",
@@ -353,6 +426,13 @@ CAPABILITY_LINES = {
         "ur": "بخاری، مسلم، سنن، موطا اور اربعین سے احادیث، عربی متن، ترجمے اور علماء کے درجات کے ساتھ",
         "hi": "बुख़ारी, मुस्लिम, सुनन, मुवत्ता और अरबईन से हदीसें, अरबी पाठ, अनुवाद और उलमा के दर्जों के साथ",
         "ar": "إيراد الأحاديث من البخاري ومسلم والسنن والموطأ والأربعينات بنصها العربي مع أحكام العلماء",
+    },
+    "waqt": {
+        "en": "today's Gregorian and Hijri date, and conversions between them",
+        "hi-latn": "aaj ki angrezi aur Hijri taareekh, aur dono ke darmiyan tabdeeli",
+        "ur": "آج کی عیسوی اور ہجری تاریخ، اور دونوں کے درمیان تبدیلی",
+        "hi": "आज की अंग्रेज़ी और हिजरी तारीख़, और दोनों के बीच बदलाव",
+        "ar": "تاريخ اليوم الميلادي والهجري والتحويل بينهما",
     },
     "web": {
         "en": "search the web and read pages, with sources",

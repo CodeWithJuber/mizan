@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import calc, fahm, hadith, project, quran
+from tadbir import calc, fahm, hadith, project, quran, waqt
 from tadbir.express import furqan
 
 
@@ -699,3 +699,83 @@ async def test_an_existing_project_is_left_to_the_agent_loop(agent, monkeypatch)
     agent.ai_client = ScriptedProvider(["I will edit your project."])
     result = await agent.execute("Build a todo app")
     assert "orchestrator" not in result["usage"]
+
+
+# ── Waqt: dates and the Hijri calendar ───────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text,kind",
+    [
+        ("aaj ki date kya hai", "today"),
+        ("aaj ki hijri date batao", "today"),
+        ("What is the date today?", "today"),
+        ("abhi kitne baje hain", "today"),
+        ("آج کی تاریخ کیا ہے", "today"),
+        ("ما التاريخ اليوم؟", "today"),
+        ("आज की तारीख क्या है", "today"),
+        ("15 March 2026 hijri mein kya hogi", "to_hijri"),
+        ("1 Ramadan 1448 kab hai", "to_gregorian"),
+        ("Ramadan kab hai", "event"),
+        ("Bakrid 1448 kab hai", "event"),
+        ("Eid kab hai", "event"),
+    ],
+)
+def test_date_questions_are_understood(text, kind):
+    understood = fahm.understand(text)
+    assert understood.intent == "waqt" and understood.entities["request"].kind == kind
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Ramadan me roza kyun rakhte hain", "mera safar 2 din ka hai", "latest news search karo"],
+)
+def test_ordinary_sentences_are_not_date_questions(text):
+    assert fahm.understand(text).intent != "waqt"
+
+
+def test_umm_al_qura_conversions_and_range():
+    from datetime import date
+
+    hijri = waqt.to_hijri(date(2026, 10, 26))
+    assert waqt.hijri_text(hijri) == "15 Jumada al-Ula 1448 AH"
+    assert waqt.hijri_arabic(hijri) == "15 جمادى الأولى 1448 هـ"
+    assert waqt.to_gregorian(1448, 9, 1) == date(2027, 2, 8)
+    assert waqt.next_occurrence(9, 1, date(2026, 10, 26)) == (1448, date(2027, 2, 8))
+    with pytest.raises(waqt.OutOfRange):
+        waqt.to_hijri(date(2090, 1, 1))
+
+
+def test_a_time_word_with_a_date_question_adds_the_time():
+    assert waqt.parse("aaj ki hijri date aur time batao").with_time
+    assert not waqt.parse("aaj ki date kya hai").with_time
+
+
+def test_only_a_real_timezone_is_used():
+    with waqt.bind_timezone("Asia/Karachi"):
+        assert waqt.now()[1] == "Asia/Karachi"
+        with waqt.bind_timezone("../../etc/passwd"):
+            assert waqt.now()[1] is None
+    assert waqt.now()[1] is None
+
+
+async def test_dates_are_stated_by_mizan_without_a_model(agent, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    moment = datetime(2026, 10, 26, 21, 5, tzinfo=ZoneInfo("UTC"))
+    monkeypatch.setattr(waqt, "now", lambda: (moment, None))
+    today = await agent.execute("aaj ki date kya hai")
+    assert "Monday, 26 October 2026" in today["result"]
+    assert "15 Jumada al-Ula 1448 AH" in today["result"] and "UTC" in today["result"]
+    assert today["completion_status"] == "verified_by_mizan"
+    eid = await agent.execute("Eid kab hai")
+    assert "Eid al-Fitr" in eid["result"] and "Eid al-Adha" in eid["result"]
+    assert "Sahih al-Bukhari 1909" in eid["result"]  # sighting of the crescent decides
+    monkeypatch.setattr(
+        waqt, "now", lambda: (moment.astimezone(ZoneInfo("Asia/Kolkata")), "Asia/Kolkata")
+    )
+    clock = await agent.execute("What time is it?")
+    assert "02:35" in clock["result"] and "Asia/Kolkata" in clock["result"]
+    assert "Tuesday, 27 October 2026" in clock["result"]
+    assert agent.ai_client.requests == []

@@ -89,6 +89,7 @@ import { SkeletonCard } from "./components/Skeleton";
 // Session hardening + token streaming helpers live in small modules so
 // App.tsx diffs stay mergeable across the parallel workstreams.
 import { StreamBuffer } from "./utils/streaming";
+import { timeZoneField } from "./utils/timezone.ts";
 import {
   fetchChatHistoryWithRetry,
   hydrateCachedMessages,
@@ -804,6 +805,7 @@ function AppInner() {
             agent_id: selectedAgent?.id,
             request_id: requestId,
             permission_mode: permissionMode,
+            ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
           }),
         }),
@@ -2098,6 +2100,7 @@ function AppInner() {
             agent_id: selectedAgent?.id,
             request_id: requestId,
             permission_mode: permissionMode,
+            ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
             ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
           }),
