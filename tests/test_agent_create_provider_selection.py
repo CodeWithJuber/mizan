@@ -13,12 +13,15 @@ from security.auth import MizanAuth
 
 @pytest.fixture
 def api(tmp_path, monkeypatch, mock_wali, mock_izn):
-    import api.main as main
-
     monkeypatch.chdir(tmp_path)
+    # The API creates its default memory/auth services at import time. Bind
+    # those to this fixture before importing, including on a clean CI runner.
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
     monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("MIZAN_OWNED_DB", str(tmp_path / "owned.sqlite3"))
     monkeypatch.delenv("DEBUG", raising=False)
+    import api.main as main
+
     memory = DhikrMemorySystem(str(tmp_path / "memory.db"))
     auth = MizanAuth("agent-create-test-key-" * 4, data_dir=str(tmp_path / "users"))
     user = auth.create_user("creator", "fixture-password", roles=["admin"])
