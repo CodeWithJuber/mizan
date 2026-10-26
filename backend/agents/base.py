@@ -87,8 +87,12 @@ _MAX_AUTO_CONTINUATIONS = 2
 _CONTINUE_PROMPT = (
     "[System: your previous reply was cut off by the length limit. "
     "Continue exactly where you left off — do not repeat, do not summarize, "
-    "just continue.]"
+    "just continue the answer. No further tools or actions are permitted.]"
 )
+
+
+class OutputBudgetExceeded(RuntimeError):
+    """A terminal provider receipt consumed the budget without a visible answer."""
 
 
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-1..IP-4) ─────────────────────
@@ -754,14 +758,11 @@ class BaseAgent:
             nafs_level=self.nafs_level,
             complexity=self.ruh.classify_task_complexity(task),
         )
-        self._qalb_params = {
-            "max_tokens": qalb_proc_output.max_tokens,
-            "temperature": qalb_proc_output.temperature,
-        }
+        # Tone heuristics must not decide a paid provider's token allowance.
+        self._qalb_params = {"temperature": qalb_proc_output.temperature}
         logger.debug(
-            "[QALB] State=%s max_tokens=%d temp=%.2f",
+            "[QALB] State=%s temp=%.2f (output budget configured separately)",
             qalb_proc_output.state.value,
-            qalb_proc_output.max_tokens,
             qalb_proc_output.temperature,
         )
 
@@ -823,6 +824,32 @@ class BaseAgent:
 
         self.state = "resting"
 
+    def _output_token_budget(self) -> int:
+        """An explicit per-call limit, independent of emotional classification."""
+        configured = getattr(self, "config", {}).get(
+            "max_output_tokens", os.getenv("MIZAN_CHAT_MAX_OUTPUT_TOKENS", "4096")
+        )
+        try:
+            if isinstance(configured, bool):
+                raise ValueError("boolean token limit")
+            value = int(configured)
+        except (TypeError, ValueError, OverflowError):
+            logger.warning("Invalid chat output token budget; using 4096")
+            value = 4096
+        return max(256, min(value, 16384))
+
+    @staticmethod
+    def _require_answer_progress(response) -> None:
+        if getattr(response, "stop_reason", None) == "max_tokens" and not any(
+            block.type == "text" and block.text.strip() for block in response.content
+        ):
+            # Reasoning may consume the entire shared output budget. Repeating
+            # an empty turn is spending again, not continuing a visible answer.
+            raise OutputBudgetExceeded(
+                "The provider reached its output limit before producing answer text. "
+                "No complete answer was delivered; try a smaller request or another model."
+            )
+
     async def _agentic_loop(
         self,
         system_prompt: str,
@@ -860,10 +887,13 @@ class BaseAgent:
         continuations = 0
 
         for turn in range(self.max_tool_turns):
-            # Qalb-modulated LLM params (cardiac oscillation: QABD=analytical, BAST=creative)
+            # Tone can vary; the configured economic/output limit does not.
             qalb_params = getattr(self, "_qalb_params", {})
-            max_tokens = qalb_params.get("max_tokens", 4096)
+            max_tokens = self._output_token_budget()
             temperature = qalb_params.get("temperature", 0.5)
+            # Continuing a visible answer is text-only. Completed actions must
+            # not be repeated because a model reissues a tool call mid-answer.
+            request_tools = [] if continuations else tool_schemas
 
             # True token streaming when the caller asked for it (stream=True);
             # the blocking create() path otherwise. Streaming failures fall
@@ -877,7 +907,7 @@ class BaseAgent:
                     async for text_chunk in self._streaming_create(
                         system_prompt,
                         messages,
-                        tool_schemas,
+                        request_tools,
                         max_tokens,
                         temperature,
                         final_holder,
@@ -898,17 +928,9 @@ class BaseAgent:
                 if emitted_text:
                     raise RuntimeError("The provider stream ended without a completion record")
                 # Call the model via unified provider
-                _create_start = time.time()
-                response = await asyncio.to_thread(
-                    self.ai_client.create,
-                    model=self.ai_model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    system=system_prompt,
-                    messages=messages,
-                    tools=tool_schemas,
+                response = await self._blocking_create(
+                    system_prompt, messages, request_tools, max_tokens, temperature
                 )
-                self._record_llm_call(response, (time.time() - _create_start) * 1000)
 
             # Collect text output and tool calls from this turn. In streaming
             # mode the text was already yielded live above.
@@ -925,18 +947,24 @@ class BaseAgent:
                     tool_blocks.append(block)
 
             if tool_blocks:
+                if continuations:
+                    raise RuntimeError("A text-only continuation requested an action; no tool ran")
                 tool_count += len(tool_blocks)
                 self._tool_invocation_started = True
-                if any(b.name.startswith("workspace_") for b in tool_blocks):
-                    # A model can emit write/run/publish together. Preserve
-                    # order for project mutations instead of racing the files.
-                    tool_results_raw = [
-                        await self._execute_tool_safe(b.name, b.input) for b in tool_blocks
-                    ]
-                else:
-                    tool_results_raw = await asyncio.gather(
-                        *(self._execute_tool_safe(b.name, b.input) for b in tool_blocks)
-                    )
+                tool_started = time.perf_counter()
+                try:
+                    if any(b.name.startswith("workspace_") for b in tool_blocks):
+                        # A model can emit write/run/publish together. Preserve
+                        # order for project mutations instead of racing the files.
+                        tool_results_raw = [
+                            await self._execute_tool_safe(b.name, b.input) for b in tool_blocks
+                        ]
+                    else:
+                        tool_results_raw = await asyncio.gather(
+                            *(self._execute_tool_safe(b.name, b.input) for b in tool_blocks)
+                        )
+                finally:
+                    self._add_execution_time("tool_ms", tool_started)
 
                 tool_results = []
                 for block, tool_result in zip(tool_blocks, tool_results_raw, strict=True):
@@ -998,6 +1026,7 @@ class BaseAgent:
             # No tool calls — the turn is final, unless the model was cut off
             # by max_tokens, in which case ask it to continue (bounded, so a
             # pathological model can't loop forever).
+            self._require_answer_progress(response)
             if response.stop_reason == "max_tokens" and continuations < _MAX_AUTO_CONTINUATIONS:
                 continuations += 1
                 logger.info(
@@ -1068,6 +1097,45 @@ class BaseAgent:
         except Exception:
             pass
 
+    def _add_execution_time(self, key: str, started: float) -> float:
+        elapsed = max(0.0, (time.perf_counter() - started) * 1000)
+        timings = getattr(self, "_execution_timings", None)
+        if isinstance(timings, dict):
+            timings[key] = timings.get(key, 0.0) + elapsed
+        return elapsed
+
+    def _record_provider_attempt(self, started: float, mode: str, outcome: str) -> None:
+        elapsed = self._add_execution_time("provider_ms", started)
+        timings = getattr(self, "_execution_timings", None)
+        if isinstance(timings, dict):
+            timings["provider_attempts"].append(
+                {"mode": mode, "outcome": outcome, "latency_ms": round(elapsed, 1)}
+            )
+
+    async def _blocking_create(
+        self, system: str, messages: list, tools: list, max_tokens: int, temperature: float
+    ):
+        started = time.perf_counter()
+        outcome = "failed"
+        try:
+            response = await asyncio.to_thread(
+                self.ai_client.create,
+                model=self.ai_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system,
+                messages=messages,
+                tools=tools or None,
+            )
+            outcome = "completed"
+            self._record_llm_call(response, (time.perf_counter() - started) * 1000)
+            return response
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        finally:
+            self._record_provider_attempt(started, "create", outcome)
+
     def _completion_metadata(self) -> dict:
         call = getattr(self, "_last_llm_call", None)
         return cast(
@@ -1102,7 +1170,7 @@ class BaseAgent:
         queue: asyncio.Queue = asyncio.Queue(maxsize=64)
         stopped = Event()
         active_stream: dict[str, Any] = {}
-        llm_start = time.time()
+        llm_start = time.perf_counter()
 
         def publish(kind: str, payload: Any) -> bool:
             if stopped.is_set() or loop.is_closed():
@@ -1166,6 +1234,7 @@ class BaseAgent:
         runner_context = copy_context()
         runner_future = loop.run_in_executor(None, runner_context.run, _runner)
         completed = False
+        outcome = "failed"
         try:
             while True:
                 kind, payload = await queue.get()
@@ -1175,9 +1244,13 @@ class BaseAgent:
                     raise payload
                 else:
                     completed = True
+                    outcome = "completed"
                     final_holder["response"] = payload
-                    self._record_llm_call(payload, (time.time() - llm_start) * 1000)
+                    self._record_llm_call(payload, (time.perf_counter() - llm_start) * 1000)
                     return
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
         finally:
             stopped.set()
             if not completed and active_stream:
@@ -1188,6 +1261,7 @@ class BaseAgent:
                     logger.debug("Provider stream close is still pending")
             if not runner_future.done():
                 runner_future.cancel()
+            self._record_provider_attempt(llm_start, "stream", outcome)
 
     async def _summarize_tool_results(
         self, task: str, tool_results: list[dict], context: dict | None = None
@@ -1198,7 +1272,6 @@ class BaseAgent:
         instead of returning a filler message, we ask the model to summarize
         what the tools found.
         """
-        qalb_params = getattr(self, "_qalb_params", {})
         digest = "\n".join(
             f"- {tr['name']}: {json.dumps(tr['result'])[:1500]}" for tr in tool_results
         )
@@ -1209,7 +1282,7 @@ class BaseAgent:
         )
         system = await self._build_system_prompt()
         messages = await asyncio.to_thread(self._build_messages, summary_prompt, context)
-        max_tokens = min(qalb_params.get("max_tokens", 4096), 2048)
+        max_tokens = min(self._output_token_budget(), 2048)
         emitted = False
         try:
             final_holder: dict = {}
@@ -1218,26 +1291,20 @@ class BaseAgent:
             ):
                 emitted = emitted or bool(chunk)
                 yield chunk
-            if final_holder.get("response") is None:
+            response = final_holder.get("response")
+            if response is None:
                 raise RuntimeError("The summary stream ended without a completion record")
         except Exception:
             if emitted:
                 raise
             logger.warning("[AGENT] Summarization stream failed, using create()")
-            llm_start = time.time()
-            response = await asyncio.to_thread(
-                self.ai_client.create,
-                model=self.ai_model,
-                max_tokens=max_tokens,
-                temperature=0.4,
-                system=system,
-                messages=messages,
-                tools=None,
-            )
-            self._record_llm_call(response, (time.time() - llm_start) * 1000)
+            response = await self._blocking_create(system, messages, [], max_tokens, 0.4)
             for block in response.content:
                 if block.type == "text":
                     yield block.text
+        # A completed but empty length receipt must not trigger create fallback
+        # or turn the preceding tool preamble into a successful final answer.
+        self._require_answer_progress(response)
 
     async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
         """Execute a tool with Wali security checks and self-healing.
@@ -1717,7 +1784,14 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             raise ValueError("Cyclic agent delegation is not permitted")
         if not hasattr(self, "_execution_lock"):
             self._execution_lock = asyncio.Lock()
+        queued_at = time.perf_counter()
         async with self._execution_lock:
+            execution_started = time.perf_counter()
+            self._execution_timings: dict[str, Any] = {
+                "provider_ms": 0.0,
+                "tool_ms": 0.0,
+                "provider_attempts": [],
+            }
             model, provider = self.ai_model, self.ai_client
             if provider and getattr(provider, "provider_name", "") == "mizan-owned":
                 model = "mizan-owned"
@@ -1772,6 +1846,34 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
                         except Exception:
                             logger.warning("Chat learning capture unavailable")
                             result["learning_capture"] = "unavailable"
+                finished = time.perf_counter()
+                execution_ms = (finished - execution_started) * 1000
+                measured = self._execution_timings
+                result["usage"]["timings"] = {
+                    "queue_wait_ms": round((execution_started - queued_at) * 1000, 1),
+                    "execution_ms": round(execution_ms, 1),
+                    "provider_ms": round(measured["provider_ms"], 1),
+                    "tool_ms": round(measured["tool_ms"], 1),
+                    "other_execution_ms": round(
+                        max(0.0, execution_ms - measured["provider_ms"] - measured["tool_ms"]),
+                        1,
+                    ),
+                    "total_ms": round((finished - queued_at) * 1000, 1),
+                    "provider_attempt_count": len(measured["provider_attempts"]),
+                    "provider_attempts": measured["provider_attempts"],
+                }
+                result.setdefault("metrics_kind", "heuristic_response_delivery")
+                result["metric_provenance"] = {
+                    "accuracy": "not_measured",
+                    "qalb": "keyword_tone_heuristic",
+                    "yaqin": "inference_heuristic_not_task_verification",
+                    "ruh": "workload_counter_not_compute_capacity",
+                    "lubb": "text_rules_not_accuracy_evaluation",
+                    "lawwama": {
+                        "kind": "rule_flags_not_observed_error_rate",
+                        "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
+                    },
+                }
                 return result
             except asyncio.CancelledError:
                 self.state = "resting"
@@ -2254,7 +2356,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
             # Stage 4: Apply fix (retry with correction if possible)
             retry_result = None
             can_retry = (
-                not full_response
+                not isinstance(e, OutputBudgetExceeded)
+                and not full_response
                 and not self._last_tool_results
                 and not self._tool_invocation_started
                 and recovery.attempts < self.tawbah.MAX_ATTEMPTS
@@ -2340,7 +2443,14 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
 
             return {
                 "success": False,
-                "completion_status": "failed",
+                "completion_status": "incomplete"
+                if isinstance(e, OutputBudgetExceeded)
+                else "failed",
+                **(
+                    {"error_code": "output_budget_exhausted"}
+                    if isinstance(e, OutputBudgetExceeded)
+                    else {}
+                ),
                 "answer_delivered": False,
                 "task_verified": False,
                 "capture_eligible": False,
@@ -2455,6 +2565,8 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
         error_type = type(error).__name__
 
         # Check for known error patterns
+        if isinstance(error, OutputBudgetExceeded):
+            return "output_budget_exhausted"
         if "No response model is configured" in error_str:
             return "provider_unavailable"
         if "Connection" in error_str or "connect" in error_str.lower():
@@ -2486,6 +2598,11 @@ Think step by step (Tafakkur - تفكر). Self-correct errors (Lawwama - لوا�
     def _plan_error_correction(self, root_cause: str, task: str) -> dict:
         """Create a correction plan for Tawbah stage 3."""
         plans = {
+            "output_budget_exhausted": {
+                "description": "Output limit reached before visible answer text",
+                "fix": "Use a smaller request or select another response model",
+                "retryable": False,
+            },
             "provider_unavailable": {
                 "description": "No response model is configured",
                 "fix": "Configure an available provider before retrying",

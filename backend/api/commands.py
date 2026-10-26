@@ -38,7 +38,16 @@ async def cmd_status(agent=None, session_id=None, memory=None, **kwargs):
     status["response_provider"] = getattr(
         getattr(agent, "ai_client", None), "provider_name", "unavailable"
     )
-    status["automatic_weight_training"] = "not implemented; captured pairs require review"
+    from mizan_owned.learning_service import configured_root, learning_service
+
+    status["owned_learning_configured"] = configured_root() is not None
+    status["automatic_weight_training"] = (
+        "watching for approved original-data bundles"
+        if learning_service.automation_active
+        else "disabled"
+    )
+    status["owned_learning_worker_busy"] = learning_service.busy
+    status["chat_capture"] = "unreviewed candidates; does not update model weights"
     status["architecture_metrics"] = "software heuristics, not AGI or verified correctness"
     lines = ["**System Status:**", ""]
     for k, v in status.items():

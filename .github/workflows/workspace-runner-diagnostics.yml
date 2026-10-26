@@ -1,8 +1,8 @@
 name: Inspect Workspace Runner Recovery
 
 on:
-  push:
-    branches: [ops/workspace-runner-diagnostics-20261025]
+  # Completed operation: branch synchronization must not rerun it.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   inspect:
-    if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-diagnostics-20261025'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-diagnostics-20261025'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

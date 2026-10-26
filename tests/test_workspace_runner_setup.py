@@ -701,6 +701,35 @@ def test_backend_switch_cannot_run_if_checkpoint_write_fails(rollback_case, monk
     assert not fake.calls
 
 
+def test_failed_intent_write_keeps_subsequent_rollback_on_pre_switch_path(
+    rollback_case, monkeypatch
+):
+    installer, fake, base, override = rollback_case
+    installer.state["backend_switch_started"] = False
+    fake.backend["Config"]["Env"] = [
+        f"{key}={value}"
+        for key, value in fake.rendered["services"]["backend"]["environment"].items()
+    ]
+    fake.backend["Mounts"] = fake.restored_mounts
+    original_save = installer.save
+    attempts = 0
+
+    def one_shot_failure():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("checkpoint unavailable")
+        original_save()
+
+    monkeypatch.setattr(installer, "save", one_shot_failure)
+    with pytest.raises(OSError):
+        installer.switch_backend([str(base)])
+    assert installer.state["backend_switch_started"] is False and not fake.calls
+    installer.rollback()
+    assert installer.state["phase"] == "rolled_back" and not override.exists()
+    assert not any("up" in command for command in fake.calls)
+
+
 def test_application_health_and_proxy_are_restored_before_cleanup_failure(
     rollback_case, monkeypatch
 ):

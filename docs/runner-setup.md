@@ -5,14 +5,16 @@ existing `mizan` Compose project in `/opt/mizan`. Its workflow is restricted to 
 reviewed push to `ops/enable-workspace-runner-20261026` in `CodeWithJuber/mizan`.
 It is not a pull-request workflow, general server installer, or Docker upgrade.
 
-The checked-in baseline is commit `03aa5b7cfd06fe4c3233089350cfa45ff9352cb9`.
+The verified production baseline is commit `0176a873e266d942918de47f8888071568eeeeb2`.
 Before enabling the operations branch, retarget `EXPECTED_BACKEND_SHA` to the
 final application's deployed, CI-tested commit. Both workspace images must have
 been published for that exact commit. The workflow checks main still has that SHA; the
 host checks that its backend image ID equals the locally installed image for that
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
-Features added to a later runtime image, including plotting libraries, require
-the corresponding later tested image; the baseline image does not provide them.
+The baseline runtime includes the pinned plotting dependencies. A different
+runtime still requires its corresponding tested image. Production activation and
+live Python, PNG and interactive HTML verification are recorded in
+[the production validation report](production-validation-2026-10-25.md).
 
 ## Changes and boundaries
 
@@ -72,6 +74,25 @@ the exact running backend image and environment during recreation. Normal future
 deployments discard that temporary image/environment override and retain the
 permanent runner connection configuration.
 
+The operations workflow also explicitly passes
+`--research-dir /data/mizan/research`. This optional argument accepts only that
+reviewed path and adds `MIZAN_RESEARCH_DIR` to the same permanent backend override,
+using the already planned backend recreation. Before applying it, a read-only
+probe runs as the existing backend user and requires UID 999, an existing
+non-symlink `/data/mizan` parent, and write/traverse permission. Both the literal
+and resolved research paths must remain on the existing writable persistent
+`/data` mount; nested mounts and tmpfs shadows block setup. A later managed import
+may use a release-directory symlink that stays within `/data/mizan`.
+
+This option does not create a research directory, import an archive, change
+ownership, or migrate any existing files. The separate verified importer needs
+the target to remain absent. Other environment values and mounts are preserved.
+Rollback restores the exact original research environment, including an absent
+variable, and retains all research data. Explicit `--rollback` reads the option
+from protected setup state; a setup retry must use the same option as its saved
+checkpoint. Omitting the option on a new installation leaves research
+configuration unchanged.
+
 The current installer intentionally refuses to repurpose an existing setup for
 another SHA. A later runtime upgrade must review the new tested runner/runtime
 pair and modify the managed override with equivalent rollback and smoke checks.
@@ -116,10 +137,20 @@ Docker, systemd, registry pulls and HTTP execution require this host-side run.
 Before the backend switch, provisioning failures leave its service unchanged.
 The owned account, prerequisites and rootless daemon may remain for inspection.
 During a failed application switch, the script restores the saved backend image,
-environment and original Compose file list, stops only its new control service,
-checks backend health and refreshes nginx. It keeps every volume, worker image,
+environment and original Compose file list, checks backend and public health,
+and refreshes nginx before cleaning up its own control service. Cleanup selects
+the verified container identity and does not parse a failed Compose override.
+It keeps every volume, worker image,
 user directory and protected snapshot. This is a configuration/image rollback,
 not a database restore.
+
+The protected checkpoint records the original backend container identity and
+whether the switch started. A failure before that switch preserves the same
+healthy backend without recreation; unknown/legacy state restores conservatively.
+Both Compose PID-limit fields are set to 128 for the control service, the rendered
+configuration is validated before activation, and the live PID limit is checked.
+The recovery workflow budgets 25 minutes for its ten-minute lock wait,
+ten-minute recovery budget and SSH/setup overhead.
 
 An interrupted `applying` checkpoint is rolled back before a retry starts.
 A successful same-SHA retry rechecks the existing installation and does not

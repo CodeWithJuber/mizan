@@ -1571,8 +1571,19 @@ class Installer:
     def switch_backend(self, files: list[str]) -> None:
         # Save intent before Compose can mutate anything, including partial
         # failures/timeouts. A failed checkpoint must prevent the command.
+        missing = object()
+        previous = self.state.get("backend_switch_started", missing)
         self.state["backend_switch_started"] = True
-        self.save()
+        try:
+            self.save()
+        except BaseException:
+            # No backend command has started. Keep immediate recovery on its
+            # pre-switch path even if the failed write committed before erroring.
+            if previous is missing:
+                self.state.pop("backend_switch_started", None)
+            else:
+                self.state["backend_switch_started"] = previous
+            raise
         self.run_command(
             [
                 *self.compose(files),
