@@ -74,6 +74,9 @@ def test_opus_request_has_effort_fallbacks_cache_and_no_sampling(monkeypatch):
     assert body["fallbacks"] == "default"
     assert body["cache_control"] == {"type": "ephemeral"}
     assert "server-side-fallback-2026-07-01" in request.headers["anthropic-beta"]
+    assert "compact-2026-01-12" in request.headers["anthropic-beta"]
+    assert body["context_management"]["edits"][0]["type"] == "compact_20260112"
+    assert body["context_management"]["edits"][0]["trigger"]["value"] == 150_000
     # Thinking blocks are kept for the next call of the same tool loop.
     assert assistant_turn_content(response)[0] == {
         "type": "thinking",

@@ -268,6 +268,7 @@ class TestMaxTokensContinue:
 
     async def test_bounded_continue_then_honest_notice(self):
         agent = make_test_agent()
+        agent.config["max_continuations"] = 2
         provider = FakeProvider([text_resp(f"p{i} ", stop="max_tokens") for i in range(5)])
         agent.ai_client = provider
 
@@ -275,8 +276,38 @@ class TestMaxTokensContinue:
             agent._agentic_loop("sys", [{"role": "user", "content": "hi"}], [], False, "hi")
         )
         full = "".join(chunks)
-        # 1 initial + 2 bounded continuations, then an honest notice.
+        # 1 initial + 2 configured continuations, then an honest notice.
         assert provider.create_calls == 3
+        assert "length limit" in full
+
+    async def test_long_answers_continue_well_past_two_cutoffs(self):
+        agent = make_test_agent()
+        parts = [text_resp(f"section {i} body text. ", stop="max_tokens") for i in range(6)]
+        provider = FakeProvider([*parts, text_resp("the end")])
+        agent.ai_client = provider
+
+        full = "".join(
+            await collect(
+                agent._agentic_loop("sys", [{"role": "user", "content": "hi"}], [], False, "hi")
+            )
+        )
+        assert provider.create_calls == 7
+        assert "section 5" in full and full.endswith("the end")
+        assert "length limit" not in full
+
+    async def test_repeating_continuation_stops_with_notice(self):
+        agent = make_test_agent()
+        looping = " ".join(f"word{i}" for i in range(40))
+        provider = FakeProvider([text_resp(looping, stop="max_tokens")] * 3)
+        agent.ai_client = provider
+
+        full = "".join(
+            await collect(
+                agent._agentic_loop("sys", [{"role": "user", "content": "hi"}], [], False, "hi")
+            )
+        )
+        # The second turn only repeats the first: stop instead of looping.
+        assert provider.create_calls == 2
         assert "length limit" in full
 
 

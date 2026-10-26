@@ -22,13 +22,22 @@ class ProviderLimits:
     total: float
 
 
+def buffered_first_progress() -> float:
+    """First-progress wait for providers without native deltas.
+
+    They report nothing until the whole answer exists (a cold GPU worker or a
+    long local generation), so they get a longer, separately bounded wait.
+    """
+    return bounded_seconds("MIZAN_LLM_BUFFERED_FIRST_PROGRESS_SECONDS", 180, minimum=1, maximum=900)
+
+
 def provider_limits() -> ProviderLimits:
     # Sixty seconds matches the default SDK I/O budget, but comments and
     # hidden reasoning cannot indefinitely postpone the first usable output.
     return ProviderLimits(
         bounded_seconds("MIZAN_LLM_FIRST_PROGRESS_SECONDS", 60, minimum=1, maximum=180),
         bounded_seconds("MIZAN_LLM_PROGRESS_SECONDS", 60, minimum=1, maximum=180),
-        bounded_seconds("MIZAN_LLM_MAX_CALL_SECONDS", 300, minimum=1, maximum=900),
+        bounded_seconds("MIZAN_LLM_MAX_CALL_SECONDS", 600, minimum=1, maximum=1800),
     )
 
 
@@ -39,4 +48,4 @@ class ProviderDeadlineExceeded(TimeoutError):
 
 
 def chat_run_seconds() -> float:
-    return bounded_seconds("MIZAN_CHAT_RUN_SECONDS", 900, minimum=30, maximum=3600)
+    return bounded_seconds("MIZAN_CHAT_RUN_SECONDS", 1800, minimum=30, maximum=7200)

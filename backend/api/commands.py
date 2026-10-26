@@ -102,21 +102,23 @@ async def cmd_agents(active_agents=None, **kwargs):
 
 
 @command("/compact", "Summarize older messages to save context")
-async def cmd_compact(session_id=None, sessions=None, **kwargs):
-    if not session_id or not sessions or session_id not in sessions:
+async def cmd_compact(session_id=None, memory=None, agent=None, **kwargs):
+    """Fold the whole session into its persisted running summary."""
+    if not session_id or memory is None or not hasattr(memory, "get_session_summary"):
         return "No active session to compact."
-    history = sessions[session_id].get("history", [])
-    if len(history) < 6:
-        return "Session too short to compact (need at least 6 messages)."
-    # Keep last 4 messages, summarize the rest
-    older = history[:-4]
-    summary = (
-        f"[Previous conversation: {len(older)} messages about: "
-        + ", ".join(set(m.get("content", "")[:30] + "..." for m in older[:5] if m.get("content")))
-        + "]"
+    from providers import model_limits
+    from reasoning.context_engine import ContextEngine, agent_summarizer, estimate_tokens
+
+    window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+    summary = await ContextEngine(memory).compact_now(
+        session_id, agent_summarizer(agent) if agent is not None else None, window
     )
-    sessions[session_id]["history"] = [{"role": "system", "content": summary}] + history[-4:]
-    return f"Compacted {len(older)} older messages into summary. Context preserved."
+    if not summary:
+        return "Nothing to compact yet."
+    return (
+        f"Compacted this conversation into a running summary (~{estimate_tokens(summary)} "
+        "tokens). Earlier turns stay saved and are now sent as that summary."
+    )
 
 
 @command("/web_search", "Search the web (usage: /web_search your query)")

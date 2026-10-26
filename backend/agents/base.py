@@ -27,13 +27,18 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
 from contextvars import ContextVar, copy_context
+from dataclasses import replace
 from typing import Any, cast
 
 import httpx
 
 from agents.execution_contract import completion_metadata, prepare_tool_call, tool_result_failed
 from agents.perpetual_rotation import PerpetualRotation
-from agents.provider_limits import ProviderDeadlineExceeded, provider_limits
+from agents.provider_limits import (
+    ProviderDeadlineExceeded,
+    buffered_first_progress,
+    provider_limits,
+)
 from agents.shura_council import ShuraCouncil
 from agents.tool_catalog import DISCOVER_TOOL, ToolCatalog, schema_snapshot
 
@@ -70,6 +75,8 @@ from memory.living_memory import LivingMemorySystem
 from nlp.arabic import arabic_tokens
 from providers import (
     DEFAULT_CLAUDE_MODEL,
+    BaseLLMProvider,
+    IncompleteToolCall,
     ProviderRefusal,
     assistant_turn_content,
     configured_provider_name,
@@ -81,6 +88,7 @@ from providers import (
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
+from reasoning.context_engine import ContextBudget, fit_recent, message_text, message_tokens
 from response_policy import (
     CURRENT_REQUEST_END,
     CURRENT_REQUEST_START,
@@ -102,10 +110,60 @@ logger = logging.getLogger("mizan.agent")
 # When a turn is cut off by the provider's max_tokens limit, the agent asks the
 # model to continue instead of silently delivering a clipped answer. Bounded so
 # a pathological model cannot loop forever.
-_MAX_AUTO_CONTINUATIONS = 2
+_MAX_AUTO_CONTINUATIONS = 20  # default for MIZAN_CHAT_MAX_CONTINUATIONS
 # Output budget bounds: the 64k streaming default and the 128k model maximum.
-_DEFAULT_OUTPUT_TOKENS = 64_000
+_DEFAULT_OUTPUT_TOKENS = 16_000  # one call stays well inside the per-call wait;
+# longer answers continue in the loop (see MIZAN_CHAT_MAX_CONTINUATIONS)
 _MAX_OUTPUT_TOKENS = 128_000
+# Model calls with tools per run; independent of the Nafs level, which only
+# decides which tools are offered. MIZAN_CHAT_MAX_STEPS overrides it.
+_DEFAULT_MAX_STEPS = 100
+# A tool call cut off by the output limit is re-requested at most this often.
+_MAX_TOOL_CUTOFF_RETRIES = 2
+_TOOL_CUTOFF_PROMPT = (
+    "[System: your previous tool call was cut off by the output length limit before its "
+    "arguments were complete, so it was NOT executed. Issue it again. If its input is large "
+    "(for example a long file), split the work into several smaller tool calls.]"
+)
+_WRAP_UP_PROMPT = (
+    "[System: this run has reached its step budget. Do not call tools. Report to the user "
+    "what was completed, what remains, and the exact next step, based only on the tool "
+    "receipts above.]"
+)
+# Characters of one tool result fed back to the model (MIZAN_TOOL_RESULT_CHARS).
+_DEFAULT_TOOL_RESULT_CHARS = 20_000
+
+
+def bounded_tool_result(result: Any, max_chars: int) -> str:
+    """Serialise a tool result for the model, keeping valid JSON when clipped."""
+    text = json.dumps(result, ensure_ascii=False, default=str)
+    if len(text) <= max_chars:
+        return text
+    head = max(256, int(max_chars * 0.7))
+    tail = max(128, max_chars - head - 200)
+    return json.dumps(
+        {
+            "truncated": True,
+            "original_characters": len(text),
+            "head": text[:head],
+            "tail": text[-tail:],
+        },
+        ensure_ascii=False,
+    )
+
+
+def _continuation_repeats(previous: str, new: str, n: int = 8) -> bool:
+    """True when a continuation mostly repeats earlier text (word n-gram overlap)."""
+    new_words = new.split()
+    if len(new_words) < n * 2:
+        return False
+    old_words = previous.split()
+    seen = {tuple(old_words[i : i + n]) for i in range(max(0, len(old_words) - n + 1))}
+    grams = [tuple(new_words[i : i + n]) for i in range(len(new_words) - n + 1)]
+    overlap = sum(1 for gram in grams if gram in seen) / len(grams)
+    return overlap > 0.8
+
+
 _CONTINUE_PROMPT = (
     "[System: your previous reply was cut off by the length limit. "
     "Continue exactly where you left off — do not repeat, do not summarize, "
@@ -907,6 +965,54 @@ class BaseAgent:
 
         self.state = "resting"
 
+    def _step_budget(self) -> int:
+        """Tool rounds per run (agent config or MIZAN_CHAT_MAX_STEPS), not Nafs-bound."""
+        return self._bounded_generation_config("max_steps", _DEFAULT_MAX_STEPS, 1, 1000)
+
+    def _compact_run_messages(self, messages: list[dict]) -> None:
+        """Keep one long run inside the model window (non-Anthropic providers).
+
+        Anthropic runs use server-side compaction instead, which keeps their
+        thinking blocks valid. Here older tool results are replaced by short
+        excerpts once the run outgrows ~60% of the context window.
+        """
+        if getattr(self.ai_client, "provider_name", "") == "anthropic":
+            return
+        window, _ = model_limits(self.ai_model or "")
+        budget = int(window * 0.6)
+        total = sum(message_tokens(m) for m in messages)
+        if total <= budget:
+            return
+        tool_turns = [
+            index
+            for index, message in enumerate(messages)
+            if message.get("role") == "user"
+            and isinstance(message.get("content"), list)
+            and any(
+                isinstance(block, dict) and block.get("type") == "tool_result"
+                for block in message["content"]
+            )
+        ]
+        for index in tool_turns[:-2]:
+            blocks = []
+            for block in messages[index]["content"]:
+                content = str(block.get("content", "")) if isinstance(block, dict) else ""
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and len(content) > 600
+                ):
+                    block = {
+                        **block,
+                        "content": json.dumps({"compacted": True, "excerpt": content[:500]}),
+                    }
+                blocks.append(block)
+            messages[index] = {**messages[index], "content": blocks}
+            total = sum(message_tokens(m) for m in messages)
+            if total <= budget:
+                break
+        logger.info("[SIYAQ] Compacted in-run tool results to ~%d tokens", total)
+
     def _bounded_generation_config(self, key: str, default: int, minimum: int, maximum: int) -> int:
         value = self.config.get(key, os.getenv(f"MIZAN_CHAT_{key.upper()}", str(default)))
         try:
@@ -929,8 +1035,8 @@ class BaseAgent:
     def _output_token_budget(self) -> int:
         """Per-call output limit: the operator's setting, bounded by the model's cap.
 
-        Without a setting the model's own output cap is used (up to 64k, the
-        streaming default); length-limited answers then continue in the loop.
+        Without a setting the model's own output cap is used (up to 16k per
+        call); length-limited answers then continue in the loop.
         """
         _context, cap = model_limits(getattr(self, "ai_model", "") or "")
         model_cap = max(256, min(int(cap), _MAX_OUTPUT_TOKENS))
@@ -995,46 +1101,94 @@ class BaseAgent:
         self._last_tool_results = []
         # Results from the latest tool turn, for the end-of-run Furqan check.
         last_tool_results: list = []
-        # Bounded auto-continuation when a turn is cut off by max_tokens
+        # Guarded auto-continuation when a turn is cut off by max_tokens
         continuations = 0
+        # Agent config or MIZAN_CHAT_MAX_CONTINUATIONS / MIZAN_CHAT_TOOL_RESULT_CHARS.
+        max_continuations = self._bounded_generation_config(
+            "max_continuations", _MAX_AUTO_CONTINUATIONS, 0, 200
+        )
+        step_budget = self._step_budget()
+        tool_result_chars = self._bounded_generation_config(
+            "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
+        )
+        tool_cutoffs = 0
+        output_boost = 1
+        wrapping_up = False
+        turn = 0  # tool rounds completed
+        model_calls = 0
 
-        for turn in range(self.max_tool_turns):
+        while True:
+            model_calls += 1
+            if model_calls > step_budget + max_continuations + _MAX_TOOL_CUTOFF_RETRIES + 2:
+                raise RuntimeError("The agent exceeded its model-call budget")
+            if turn >= step_budget and not wrapping_up and not continuations:
+                # Out of steps: one tool-less turn reports progress instead of
+                # failing the whole run.
+                wrapping_up = True
+                messages.append({"role": "user", "content": _WRAP_UP_PROMPT})
             # Tone can vary; the configured economic/output limit does not.
             qalb_params = getattr(self, "_qalb_params", {})
-            max_tokens = self._output_token_budget()
+            _context, model_cap = model_limits(self.ai_model or "")
+            max_tokens = min(self._output_token_budget() * output_boost, max(256, int(model_cap)))
             temperature = qalb_params.get("temperature", 0.5)
             # Continuing a visible answer is text-only. Completed actions must
             # not be repeated because a model reissues a tool call mid-answer.
             available_tools = tool_catalog.schemas() if tool_catalog is not None else tool_schemas
-            request_tools = [] if continuations else available_tools
+            request_tools = [] if continuations or wrapping_up else available_tools
             offered_names = {schema["name"] for schema in request_tools}
+            self._compact_run_messages(messages)
 
             # A failed stream may already have been accepted and billed. Never
             # turn an ambiguous failure into another POST. Providers without
             # native deltas already supply a buffered stream adapter.
             response = None
             streamed_text = False
-            if stream:
-                final_holder: dict = {}
-                async for text_chunk in self._streaming_create(
-                    system_prompt,
-                    messages,
-                    request_tools,
-                    max_tokens,
-                    temperature,
-                    final_holder,
-                ):
-                    accumulated_text += text_chunk
-                    yield text_chunk
-                response = final_holder.get("response")
-                streamed_text = response is not None
-                if response is None:
-                    raise RuntimeError("The provider stream ended without a completion record")
-            else:
-                # Call the model via unified provider
-                response = await self._blocking_create(
-                    system_prompt, messages, request_tools, max_tokens, temperature
+            text_before_call = accumulated_text
+            try:
+                if stream:
+                    final_holder: dict = {}
+                    async for text_chunk in self._streaming_create(
+                        system_prompt,
+                        messages,
+                        request_tools,
+                        max_tokens,
+                        temperature,
+                        final_holder,
+                    ):
+                        accumulated_text += text_chunk
+                        yield text_chunk
+                    response = final_holder.get("response")
+                    streamed_text = response is not None
+                    if response is None:
+                        raise RuntimeError("The provider stream ended without a completion record")
+                else:
+                    # Call the model via unified provider
+                    response = await self._blocking_create(
+                        system_prompt, messages, request_tools, max_tokens, temperature
+                    )
+            except IncompleteToolCall as cutoff:
+                # The call completed (not an uncertain failure): its tool input
+                # was cut by the output limit. Nothing ran; ask for it again
+                # with more room, keeping any visible text as history.
+                if tool_cutoffs >= _MAX_TOOL_CUTOFF_RETRIES:
+                    raise
+                tool_cutoffs += 1
+                output_boost *= 2
+                partial_text = "".join(
+                    block.text for block in cutoff.partial.content if block.type == "text"
                 )
+                if not stream and partial_text:
+                    accumulated_text += partial_text
+                    yield partial_text
+                if partial_text.strip():
+                    messages.append(
+                        {"role": "assistant", "content": [{"type": "text", "text": partial_text}]}
+                    )
+                messages.append({"role": "user", "content": _TOOL_CUTOFF_PROMPT})
+                logger.info(
+                    "[FIKR] Tool call cut off by max_tokens — re-requesting (%d)", tool_cutoffs
+                )
+                continue
 
             # Collect text output and tool calls from this turn. In streaming
             # mode the text was already yielded live above.
@@ -1051,7 +1205,7 @@ class BaseAgent:
                     tool_blocks.append(block)
 
             if tool_blocks:
-                if continuations:
+                if continuations or wrapping_up:
                     raise RuntimeError("A text-only continuation requested an action; no tool ran")
                 tool_count += len(tool_blocks)
                 self._tool_invocation_started = True
@@ -1113,7 +1267,7 @@ class BaseAgent:
                         {
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": json.dumps(tool_result)[:5000],
+                            "content": bounded_tool_result(tool_result, tool_result_chars),
                         }
                     )
 
@@ -1122,10 +1276,11 @@ class BaseAgent:
                 messages.append({"role": "user", "content": tool_results})
                 last_tool_results = tool_results
 
+                turn += 1
                 # Lawwama self-correction checkpoint — health-based interval
-                if self.self_healer.should_checkpoint(turn, self.max_tool_turns):
+                if self.self_healer.should_checkpoint(turn, step_budget):
                     lawwama_prompt = (
-                        f"[Lawwama checkpoint — turn {turn}/{self.max_tool_turns}] "
+                        f"[Lawwama checkpoint — turn {turn}/{step_budget}] "
                         "Pause and self-assess: Are you making progress toward the goal? "
                         "Is there a more efficient approach? Correct course if needed."
                     )
@@ -1141,12 +1296,18 @@ class BaseAgent:
             # by max_tokens, in which case ask it to continue (bounded, so a
             # pathological model can't loop forever).
             self._require_answer_progress(response)
-            if response.stop_reason == "max_tokens" and continuations < _MAX_AUTO_CONTINUATIONS:
+            new_text = accumulated_text[len(text_before_call) :]
+            if (
+                response.stop_reason == "max_tokens"
+                and continuations < max_continuations
+                and new_text.strip()
+                and not _continuation_repeats(text_before_call, new_text)
+            ):
                 continuations += 1
                 logger.info(
                     "[FIKR] max_tokens hit — auto-continuing (%d/%d)",
                     continuations,
-                    _MAX_AUTO_CONTINUATIONS,
+                    max_continuations,
                 )
                 messages.append({"role": "assistant", "content": assistant_turn_content(response)})
                 messages.append({"role": "user", "content": _CONTINUE_PROMPT})
@@ -1187,9 +1348,13 @@ class BaseAgent:
                 notice = "\n\n_[Response reached the length limit — ask me to continue for more.]_"
                 accumulated_text += notice
                 yield notice
+            if wrapping_up:
+                notice = (
+                    "\n\n_[Step budget reached — the work above is partial. Ask me to continue.]_"
+                )
+                accumulated_text += notice
+                yield notice
             return
-
-        raise RuntimeError("The agent reached its tool-step limit before completing the task")
 
     def _record_llm_call(self, llm_response, latency_ms: float) -> None:
         """Record the last provider call for model-transparency reporting.
@@ -1296,6 +1461,14 @@ class BaseAgent:
         llm_start = time.perf_counter()
         self._provider_attempt_started = True
         limits = provider_limits()
+        # Providers without native deltas use the base buffered adapter.
+        if getattr(type(self.ai_client), "stream", None) is BaseLLMProvider.stream:
+            limits = replace(
+                limits,
+                first_progress=min(
+                    limits.total, max(limits.first_progress, buffered_first_progress())
+                ),
+            )
         progress_lock = Lock()
         progress = {"seen": False, "at": llm_start}
 
@@ -1855,22 +2028,19 @@ Match the requested depth and self-correct errors."""
         messages = []
 
         if context and context.get("history"):
-            history = context["history"]
-
-            # Context Manager: compact history if it's too large
-            if self.context_manager and len(history) > 15:
-                try:
-                    if self.context_manager.needs_compaction(history):
-                        history = self.context_manager.compact(history)
-                        logger.info(
-                            "[CONTEXT] Compacted history from %d to %d messages",
-                            len(context["history"]),
-                            len(history),
-                        )
-                except Exception:
-                    pass
-
-            for hist in history[-10:]:
+            # Chat routes send a model-sized history (running summary + recent
+            # turns). Other callers are bounded here by the same token budget.
+            window, _ = model_limits(getattr(self, "ai_model", "") or "")
+            budget = ContextBudget.for_window(window)
+            history = fit_recent(
+                [
+                    h
+                    for h in context["history"]
+                    if h.get("role") in {"user", "assistant"} and message_text(h).strip()
+                ],
+                budget.history_tokens + budget.summary_tokens,
+            )
+            for hist in history:
                 messages.append({"role": hist["role"], "content": hist["content"]})
 
         # mem0 long-term memory recall (no-op unless MEM0_ENABLED + configured;

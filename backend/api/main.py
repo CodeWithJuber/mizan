@@ -1163,6 +1163,22 @@ async def authorize_session(session_id: str, user: TokenPayload, *, create: bool
 # === CHAT ===
 
 
+async def chat_history(session_id: str, session: dict, agent, task: str) -> list[dict]:
+    """Model-sized history: running summary of old turns + recent turns that fit."""
+    from providers import model_limits
+    from reasoning.context_engine import ContextEngine, agent_summarizer
+
+    try:
+        window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+        history: list[dict] = await ContextEngine(memory).history_for(
+            session_id, window, agent_summarizer(agent), current=task
+        )
+        return history
+    except Exception as exc:  # noqa: BLE001 - history assembly must never stop a chat
+        logger.warning("Context engine unavailable; using recent turns: %s", exc)
+        return list(session["history"][:-1][-50:])
+
+
 async def chat_context(
     user: TokenPayload,
     session_id: str,
@@ -1176,7 +1192,7 @@ async def chat_context(
     return {
         "session_id": session_id,
         **({"workspace_id": workspace_id} if workspace_id else {}),
-        "history": list(session["history"][:-1][-agent.max_tool_turns :]),
+        "history": await chat_history(session_id, session, agent, task),
         "conversation_memory": await memory.recall_conversations(
             user.user_id, task, exclude_session=session_id
         ),
@@ -1536,7 +1552,9 @@ async def stream_chat(
                     **(interruption_receipt() if status == "cancelled" else {}),
                 },
             )
-            session["history"].append({"role": "assistant", "content": partial})
+            if partial.strip():
+                # An empty reply is stored with its receipt but never replayed as a turn.
+                session["history"].append({"role": "assistant", "content": partial})
             persisted = True
 
         try:
@@ -2062,10 +2080,19 @@ async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_
 
 
 @app.get("/api/chat/{session_id}")
-async def get_chat_history(session_id: str, user: TokenPayload = Depends(require_auth)):
+async def get_chat_history(
+    session_id: str,
+    limit: int = 50,
+    before: str | None = None,
+    user: TokenPayload = Depends(require_auth),
+):
+    """Newest ``limit`` messages; pass ``before=<message id>`` to page further back."""
     await authorize_session(session_id, user)
-    messages = await memory.get_messages(session_id)
-    return {"session_id": session_id, "messages": messages}
+    limit = max(1, min(limit, 500))
+    page = await memory.get_messages(session_id, limit=limit + 1, before_id=before)
+    has_more = len(page) > limit
+    messages = page[1:] if has_more else page
+    return {"session_id": session_id, "messages": messages, "has_more": has_more}
 
 
 @app.get("/api/chat/memory/summary")

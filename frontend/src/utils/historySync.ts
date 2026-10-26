@@ -104,6 +104,8 @@ export interface HistoryFetchResult {
   messages: HistoryMessage[];
   /** Set when the session is unknown server-side (HTTP 404). */
   missing: boolean;
+  /** The server holds older messages than the returned page. */
+  hasMore?: boolean;
   /** The last error, when ok === false. */
   error?: Error;
 }
@@ -134,7 +136,7 @@ export async function fetchChatHistoryWithRetry(
       }
       const data = await res.json();
       const messages = Array.isArray(data?.messages) ? data.messages : [];
-      return { ok: true, messages, missing: false };
+      return { ok: true, messages, missing: false, hasMore: data?.has_more === true };
     } catch (err) {
       if (!isCurrent()) return { ok: false, messages: [], missing: false };
       lastError = err instanceof Error ? err : new Error(String(err));

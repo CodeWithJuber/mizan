@@ -146,6 +146,17 @@ class LLMResponse:
     raw_content: list[dict] | None = None
 
 
+class IncompleteToolCall(ValueError):
+    """A completed provider turn whose tool call was cut off by the output limit.
+
+    ``partial`` holds the turn's visible text only; the cut-off call never runs.
+    """
+
+    def __init__(self, partial: "LLMResponse | None" = None):
+        self.partial = partial or LLMResponse(content=[], stop_reason="max_tokens")
+        super().__init__("Provider returned an incomplete tool call")
+
+
 class ProviderRefusal(RuntimeError):
     """The provider declined the request (Anthropic ``stop_reason: refusal``)."""
 
@@ -219,6 +230,7 @@ _CLAUDE_MODEL = re.compile(
 )
 _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
+_COMPACTION_BETA = "compact-2026-01-12"
 # Server-side ``fallbacks: "default"`` is documented for these models.
 _DEFAULT_FALLBACK_MODELS = {
     "claude-fable-5-1",
@@ -340,10 +352,23 @@ def _anthropic_usage(usage: Any) -> dict:
     return result
 
 
+def _text_only(content: Any, stop_reason: str = "max_tokens") -> "LLMResponse":
+    texts = [
+        ContentBlock(type="text", text=str(getattr(block, "text", "")))
+        for block in content or []
+        if getattr(block, "type", None) == "text" and getattr(block, "text", "")
+    ]
+    return LLMResponse(content=texts, stop_reason=stop_reason or "max_tokens")
+
+
 def _anthropic_response(message: Any) -> "LLMResponse":
     if getattr(message, "stop_reason", None) == "refusal":
         details = getattr(message, "stop_details", None)
         raise ProviderRefusal(getattr(details, "category", None))
+    if message.stop_reason not in {"tool_use", "end_turn", "pause_turn"} and any(
+        block.type == "tool_use" for block in message.content
+    ):
+        raise IncompleteToolCall(_text_only(message.content, message.stop_reason))
     blocks = []
     for block in message.content:
         if block.type == "text":
@@ -395,6 +420,27 @@ class AnthropicProvider(BaseLLMProvider):
         if model in _DEFAULT_FALLBACK_MODELS and _env_flag("MIZAN_ANTHROPIC_FALLBACKS", True):
             betas.append(_FALLBACK_BETA)
             kwargs["fallbacks"] = "default"
+        version = claude_version(model)
+        if (
+            version is not None
+            and (version[0] in {"fable", "mythos"} or version[1] >= 4.6)
+            and _env_flag("MIZAN_ANTHROPIC_COMPACTION", True)
+        ):
+            # Server-side compaction keeps one long tool run inside the window
+            # and, unlike client-side edits, keeps thinking blocks valid.
+            window, _ = model_limits(model)
+            betas.append(_COMPACTION_BETA)
+            kwargs["context_management"] = {
+                "edits": [
+                    {
+                        "type": "compact_20260112",
+                        "trigger": {
+                            "type": "input_tokens",
+                            "value": max(50_000, min(150_000, window // 2)),
+                        },
+                    }
+                ]
+            }
         if betas:
             kwargs["betas"] = betas
         return kwargs
@@ -644,7 +690,14 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         # Tool calls (structured API)
         if message.tool_calls:
             if choice.finish_reason not in {"tool_calls", "stop"}:
-                raise ValueError("Provider returned an incomplete tool call")
+                raise IncompleteToolCall(
+                    LLMResponse(
+                        content=[ContentBlock(type="text", text=message.content)]
+                        if message.content
+                        else [],
+                        stop_reason="max_tokens",
+                    )
+                )
             for tc in message.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments)
@@ -817,7 +870,7 @@ class _AnthropicStreamWrapper:
         if message.stop_reason not in {"tool_use", "end_turn", "refusal"} and any(
             block.type == "tool_use" for block in message.content
         ):
-            raise ValueError("Provider returned an incomplete tool call")
+            raise IncompleteToolCall(_text_only(message.content, message.stop_reason))
         return _anthropic_response(message)
 
 
@@ -930,7 +983,12 @@ class _OpenAIStreamWrapper:
         if not self._stream_exhausted or not self._finish:
             raise RuntimeError("Provider stream has no completed response")
         if self._calls and self._finish not in {"tool_use", "end_turn"}:
-            raise ValueError("Provider returned an incomplete tool call")
+            raise IncompleteToolCall(
+                LLMResponse(
+                    content=[ContentBlock(type="text", text=self._text)] if self._text else [],
+                    stop_reason="max_tokens",
+                )
+            )
         blocks = [ContentBlock(type="text", text=self._text)] if self._text else []
         for index in sorted(self._calls):
             call = self._calls[index]

@@ -361,6 +361,16 @@ class DhikrMemorySystem:
                 PRIMARY KEY (owner_id, key)
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                session_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                covered_last_id TEXT NOT NULL,
+                covered_count INTEGER NOT NULL,
+                method TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         # Performance indexes
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
@@ -771,17 +781,82 @@ class DhikrMemorySystem:
         self._release_conn(conn)
         return msg_id
 
-    async def get_messages(self, session_id: str, limit: int = 50) -> list[dict]:
-        """Get messages for a session"""
+    async def get_session_summary(self, session_id: str) -> dict | None:
+        """The persisted running summary of a long session, if any."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT summary, covered_last_id, covered_count, method, updated_at "
+                "FROM session_summaries WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        finally:
+            self._release_conn(conn)
+        if row is None:
+            return None
+        return {
+            "summary": row[0],
+            "covered_last_id": row[1],
+            "covered_count": row[2],
+            "method": row[3],
+            "updated_at": row[4],
+        }
+
+    async def save_session_summary(
+        self,
+        session_id: str,
+        *,
+        summary: str,
+        covered_last_id: str,
+        covered_count: int,
+        method: str,
+    ) -> None:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO session_summaries VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, "
+                "covered_last_id = excluded.covered_last_id, "
+                "covered_count = excluded.covered_count, method = excluded.method, "
+                "updated_at = excluded.updated_at",
+                (
+                    session_id,
+                    summary,
+                    covered_last_id,
+                    int(covered_count),
+                    method,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            self._release_conn(conn)
+
+    async def get_messages(
+        self, session_id: str, limit: int | None = 50, before_id: str | None = None
+    ) -> list[dict]:
+        """Get messages for a session, oldest first.
+
+        ``limit=None`` returns the whole session. ``before_id`` pages backwards:
+        only messages older than that message are returned.
+        """
         conn = self._get_conn()
         c = conn.cursor()
-        c.execute(
-            """
+        query = """
             SELECT id, session_id, role, content, agent_id, created_at, metadata
-            FROM agent_messages WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
-        """,
-            (session_id, limit),
-        )
+            FROM agent_messages WHERE session_id = ?
+        """
+        params: list = [session_id]
+        if before_id:
+            query += """
+            AND rowid < (SELECT rowid FROM agent_messages WHERE id = ? AND session_id = ?)
+            """
+            params += [before_id, session_id]
+        query += " ORDER BY created_at DESC, rowid DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        c.execute(query, params)
         rows = c.fetchall()
         self._release_conn(conn)
 

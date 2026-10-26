@@ -280,6 +280,7 @@ async def test_visible_continuation_is_bounded_text_only_and_unreviewable_when_c
     agent, streaming
 ):
     agent.ai_client = ScriptedProvider([receipt(f"part {i} ", "max_tokens") for i in range(5)])
+    agent.config["max_continuations"] = 2  # operator bound; the default allows 20
     result = await agent.execute(
         "Write a long answer", stream_callback=AsyncMock() if streaming else None
     )

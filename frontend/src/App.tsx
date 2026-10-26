@@ -427,6 +427,9 @@ function AppInner() {
   const continuationRef = useRef(0);
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Older server messages exist beyond the loaded page (paged on demand).
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  const [olderHistoryLoading, setOlderHistoryLoading] = useState(false);
   const [historyLoads] = useState(() => createHistoryLoadTracker(setHistoryLoading));
   const [runProgress, setRunProgress] = useState<{ startedAt: number; phase?: string } | null>(null);
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
@@ -922,7 +925,10 @@ function AppInner() {
           // CHAT UPGRADE: max_tokens cutoff — never render a truncation as a
           // finished answer. Auto-continue into the same bubble (bounded);
           // when the budget is spent, show a warning + manual Continue.
-          const finishReason = (data.finish_reason as string) || "";
+          // The server reports the observed stop reason inside `usage`.
+          const usageInfo = (data.usage ?? {}) as { finish_reason?: string };
+          const finishReason =
+            (data.finish_reason as string) || usageInfo.finish_reason || "";
           const hitLengthLimit =
             finishReason === "length" || finishReason === "max_tokens";
           if (hitLengthLimit) {
@@ -1463,6 +1469,7 @@ function AppInner() {
         // Merge: server wins on content; local-only messages (cache render,
         // optimistic echoes) are appended in order — no duplicates.
         setMessages((prev) => mergeHistoryMessages(history, prev));
+        setHasOlderHistory(result.hasMore === true);
         opts?.onLoaded?.(history.length);
         return true;
       } finally {
@@ -1472,6 +1479,31 @@ function AppInner() {
     [addToast, historyLoads],
   );
   recoveryHistoryRef.current = (sid) => loadChatHistory(sid, { quiet: true });
+
+  /** Prepend the page of server messages older than the oldest loaded one. */
+  const loadOlderHistory = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    const oldest = messages.find((m) => typeof m.id === "string");
+    if (!sid || !oldest || olderHistoryLoading) return;
+    setOlderHistoryLoading(true);
+    try {
+      const res = await authFetch(
+        `${config.API_URL}/chat/${sid}?limit=50&before=${encodeURIComponent(String(oldest.id))}`,
+      );
+      if (!res.ok || sid !== sessionIdRef.current) return;
+      const data = await res.json();
+      const older = (Array.isArray(data?.messages) ? data.messages : []).map(mapServerMessage);
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id));
+        return [...older.filter((m: ChatMessage) => !known.has(m.id)), ...prev];
+      });
+      setHasOlderHistory(data?.has_more === true);
+    } catch {
+      addToast({ type: "error", title: "Could not load earlier messages" });
+    } finally {
+      setOlderHistoryLoading(false);
+    }
+  }, [messages, olderHistoryLoading, addToast]);
 
   /**
    * CHAT UPGRADE: resync after a WS reconnect — stream events may have been
@@ -2841,6 +2873,17 @@ function AppInner() {
               ) : (
                 /* ===== Messages list ===== */
                 <div className="py-4 space-y-0">
+                  {hasOlderHistory && (
+                    <div className="flex justify-center pb-3">
+                      <button
+                        className="px-3 py-1.5 rounded-lg text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer disabled:opacity-50"
+                        onClick={() => void loadOlderHistory()}
+                        disabled={olderHistoryLoading}
+                      >
+                        {olderHistoryLoading ? "Loading…" : "Load earlier messages"}
+                      </button>
+                    </div>
+                  )}
                   {messages.map((msg) => (
                     <div key={msg.id}>
                       {/* Collapsed thinking trace above assistant message */}
