@@ -2606,7 +2606,12 @@ Match the requested depth and self-correct errors."""
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
-                for key in ("completion_status", "task_verified", "answer_delivered"):
+                for key in (
+                    "completion_status",
+                    "task_verified",
+                    "answer_delivered",
+                    "orchestrator",
+                ):
                     if key in result:
                         result["usage"][key] = result[key]
                 # Capture successful chat pairs in the authenticated user's own
@@ -2820,6 +2825,21 @@ Match the requested depth and self-correct errors."""
                 )
         except Exception as hik_err:
             logger.debug("[HIKMAH] advise skipped: %s", hik_err)
+
+        # Tadbir: MIZAN's own architecture handles what it understands (plan,
+        # tools, verification); the language model is only its language faculty.
+        if not _evaluation_only.get():
+            from tadbir import Tadbir
+
+            try:
+                handled = await Tadbir(self).handle(task, stream_callback)
+            except Exception:
+                logger.exception("[TADBIR] orchestration failed; using the agent loop")
+                handled = None
+            if handled is not None:
+                self.total_duration_ms += handled["duration_ms"]
+                self.success_count += 1
+                return cast(dict, handled)
 
         try:
             full_response = ""

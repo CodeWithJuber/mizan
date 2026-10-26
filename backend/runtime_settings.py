@@ -61,6 +61,12 @@ _PROVIDERS = (
 _BOOL = ("true", "false")
 
 SETTINGS: tuple[Setting, ...] = (
+    # ── Orchestration ──
+    Setting("MIZAN_ORCHESTRATION", "Model", "Who directs the work", "choice",
+            "mizan: MIZAN's own architecture (Tadbir) plans, runs tools and verifies what it "
+            "understands, the rest goes to the agent loop; strict: MIZAN handles everything and "
+            "the language model only writes words; llm: the model drives the agent loop.",
+            "mizan", ("mizan", "strict", "llm")),
     # ── Model ──
     Setting("LLM_PROVIDER", "Model", "Provider", "choice",
             "auto picks Anthropic, then OpenRouter, then OpenAI from the configured keys.",

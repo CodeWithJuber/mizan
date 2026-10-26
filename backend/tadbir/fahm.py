@@ -1,0 +1,254 @@
+"""Fahm (فهم): MIZAN's own understanding of a request.
+
+Deterministic and inspectable: language from script and lexicon, intent from
+recognizers that also extract what the plan needs (code, expression, Quran
+reference, URL, search query). Nothing here calls a language model; requests
+it cannot place confidently go back to the general agent loop.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Any
+
+from . import calc, quran
+
+_HINGLISH = {
+    "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
+    "bhai", "batao", "bata", "kaise", "kaisa", "mujhe", "tum", "tumhe", "tumhare", "aap",
+    "apna", "aur", "yeh", "woh", "kar", "karke", "sakte", "sakta", "chahiye", "kitna",
+    "kitne", "hota", "hoti", "dikhao", "sunao", "likho", "chalao", "padho", "samjhao",
+    "matlab", "accha", "theek", "haan", "lekin", "bhi", "toh", "abhi", "phir", "kuch",
+    "sab", "koi", "paas", "wala", "wali", "liye", "tarjuma", "karna", "karni", "hoga",
+    "ka", "ki", "ke", "ko", "se", "ye",
+}  # fmt: skip
+_URDU_LETTERS = set("ٹڈڑںےھہگپچژکی")
+_RUN = r"(?:\brun\b|\bexecute\b|\bexec\b|\bchala\w*|\bchalao\b|चला|چلا|\bchalake\b)"
+_CODE_WORDS = r"\b(?:python|code|script|program|javascript|node|bash|shell|function)\b"
+
+
+@dataclass
+class Understanding:
+    intent: str
+    language: str
+    confidence: float
+    entities: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "intent": self.intent,
+            "language": self.language,
+            "confidence": round(self.confidence, 2),
+            "entities": {k: v for k, v in self.entities.items() if k != "code"},
+        }
+
+
+def detect_language(text: str) -> str:
+    arabic = re.findall(r"[؀-ۿ]", text)
+    devanagari = re.findall(r"[ऀ-ॿ]", text)
+    latin = re.findall(r"[A-Za-z]", text)
+    if arabic and len(arabic) >= max(len(latin), len(devanagari)):
+        return "ur" if any(ch in _URDU_LETTERS for ch in arabic) else "ar"
+    if devanagari and len(devanagari) >= len(latin):
+        return "hi"
+    words = set(re.findall(r"[a-z]+", text.lower()))
+    strong = words & (_HINGLISH - {"ka", "ki", "ke", "ko", "se", "ye", "toh", "bhi", "koi"})
+    if len(strong) >= 2 or (len(strong) == 1 and (len(words & _HINGLISH) >= 2 or len(words) <= 6)):
+        return "hi-latn"
+    return "en"
+
+
+def _fenced_code(text: str) -> tuple[str, str] | None:
+    match = re.search(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", text, re.DOTALL)
+    if not match or not match[2].strip():
+        return None
+    label = match[1].lower()
+    language = {
+        "py": "python", "python": "python", "python3": "python", "js": "javascript",
+        "javascript": "javascript", "node": "javascript", "sh": "shell", "bash": "shell",
+        "shell": "shell", "zsh": "shell",
+    }.get(label)  # fmt: skip
+    if language is None:
+        language = "python" if re.search(r"\bprint\(|\bdef |\bimport ", match[2]) else ""
+    return (match[2].strip("\n"), language) if language else None
+
+
+_CAPABILITY = re.compile(
+    r"\b(?:do you have|have you got|you have|any)\s+(?:any\s+)?(?:tools?|abilities|capabilit\w*)"
+    r"|\bwhat can you do\b|\bwhat are your (?:tools|capabilities|abilities)\b"
+    r"|\b(?:tools?|kya kya)\b[^?.!\n]{0,30}\b(?:hai|hain|he|kar sakte|kar sakta)\b"
+    r"|\b(?:tumhare|aapke|tere)\s+paas\b[^?.!\n]{0,30}\btools?\b"
+    r"|\bkya\s+kya\s+kar\s+sakte\b|\bkya\s+kar\s+sakte\s+ho\b"
+    r"|کیا کر سکتے|کون سے ٹولز|क्या कर सकते",
+    re.IGNORECASE,
+)
+_SEARCH = re.compile(
+    r"\b(?:search|google|look\s+up|find\s+online|browse\s+for|khojo|dhundo|dhoondo|"
+    r"search\s+karo|internet\s+(?:par|pe|se))\b|\blatest\b|\bnews\b|\btoday'?s\b|\baaj\s+ki\b",
+    re.IGNORECASE,
+)
+_READ = re.compile(
+    r"\b(?:read|summari[sz]e|summary|padho|padh\s*kar|kya\s+likha|explain\s+this\s+page|"
+    r"open|kholo|dekho)\b",
+    re.IGNORECASE,
+)
+_RECALL = re.compile(
+    r"\bwhat did i (?:tell|say|share)\b|\bdo you remember\b|\bremember when\b|"
+    r"\byaad\s+hai\b|\bmaine\s+(?:kya|jo)\s+(?:bataya|kaha)\b|یاد ہے|याद है",
+    re.IGNORECASE,
+)
+_BUILD = re.compile(
+    r"\b(?:write|create|make|build|likho|banao|bana\s*do)\b[^.\n]{0,60}"
+    r"\b(?:program|script|code|function)\b"
+    r"|\b(?:program|script|code|function)\b[^.\n]{0,80}\b(?:likho|banao|bana\s*do|likh\s*do)\b",
+    re.IGNORECASE,
+)
+_COMPUTE_VERB = re.compile(
+    r"\b(?:calculate|compute|solve|evaluate|kitna|kitne|kya\s+hai|what\s+is|how\s+much|"
+    r"hisab|nikalo|batao|equals?)\b|=\s*\??\s*$|\?\s*$",
+    re.IGNORECASE,
+)
+_URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
+
+
+def understand(text: str) -> Understanding:
+    message = text.strip()
+    language = detect_language(message)
+    words = re.findall(r"\w+", message)
+
+    if _CAPABILITY.search(message) and len(words) <= 25:
+        return Understanding("capabilities", language, 0.9)
+
+    reference = quran.parse_reference(message)
+    if reference is not None:
+        explain = bool(
+            re.search(
+                r"\b(?:tafsee?r|tafsir|explain|meaning|matlab|samjhao)\b|تفسیر|تفسير|व्याख्या",
+                message,
+                re.I,
+            )
+        )
+        return Understanding("quran", language, 0.95, {"reference": reference, "explain": explain})
+
+    fenced = _fenced_code(message)
+    asks_run = bool(re.search(_RUN, message, re.IGNORECASE))
+    if fenced and (asks_run or len(message) - len(fenced[0]) < 40):
+        code, code_language = fenced
+        return Understanding(
+            "run_code", language, 0.9, {"code": code, "code_language": code_language}
+        )
+
+    expression = calc.find_expression(message)
+    if expression:
+        wants_python = asks_run and re.search(_CODE_WORDS, message, re.IGNORECASE)
+        compact = re.sub(r"\s+", "", message)
+        dominant = len(re.sub(r"\s+", "", expression)) >= 0.4 * max(1, len(compact))
+        if wants_python:
+            normalized = calc.normalize(expression)
+            return Understanding(
+                "run_code",
+                language,
+                0.9,
+                {
+                    "code": f"print({normalized})",
+                    "code_language": "python",
+                    "expression": expression,
+                    "generated_by": "mizan",
+                },
+            )
+        asked = re.search(re.escape(expression) + r"\s*(?:=\s*)?\?", message)
+        if dominant or asked or _COMPUTE_VERB.search(message):
+            return Understanding(
+                "compute", language, 0.9 if dominant else 0.8, {"expression": expression}
+            )
+
+    url = _URL.search(message)
+    if url and (_READ.search(message) or len(message) - len(url[0]) < 25):
+        return Understanding("web_read", language, 0.85, {"url": url[0].rstrip(").,;")})
+
+    if _BUILD.search(message) and asks_run:
+        code_language = (
+            "javascript" if re.search(r"\b(?:javascript|node|js)\b", message, re.I) else "python"
+        )
+        return Understanding(
+            "build_and_run", language, 0.8, {"request": message, "code_language": code_language}
+        )
+
+    if _RECALL.search(message):
+        return Understanding("recall", language, 0.8, {"query": message})
+
+    if _SEARCH.search(message) and not url:
+        query = _SEARCH.sub(" ", message)
+        query = re.sub(
+            r"\b(?:karo|kro|please|for|about|ke\s+baare\s+mein|par|pe|me|mein)\b",
+            " ",
+            query,
+            flags=re.I,
+        )
+        query = re.sub(r"\s+", " ", query).strip(" ?.!,:")
+        if len(query) >= 3:
+            return Understanding("web_search", language, 0.75, {"query": message.strip()[:300]})
+
+    return Understanding("converse", language, 0.0)
+
+
+_ACTION_CUES = re.compile(
+    r"\d|https?://|\b(?:python|code|program|script|run|execute|calculate|compute|sum|total|"
+    r"search|find|latest|news|quran|qur'an|surah|ayah|ayat|verse|fibonacci|prime|factorial|"
+    r"kitna|kitne|nikalo|dhundo|khojo|chalao)\b|سورة|سورہ|آیت|آية|सूरह|आयत",
+    re.IGNORECASE,
+)
+
+
+def actionable(text: str) -> bool:
+    """Worth asking Lisan to map the wording to an action (cheap pre-check)."""
+    return bool(_ACTION_CUES.search(text)) and len(text) <= 2000
+
+
+def validate_parsed(parsed: dict, message: str, language: str) -> Understanding | None:
+    """MIZAN's checks on Lisan's proposed mapping; anything doubtful is rejected."""
+    intent = parsed.get("intent")
+    entities: dict[str, Any] = {"understood_by": "lisan"}
+    if intent == "compute":
+        expression = str(parsed.get("expression", ""))[:300]
+        try:
+            calc.evaluate(expression)
+        except calc.CalcError:
+            return None
+        entities["expression"] = expression
+    elif intent == "build_and_run":
+        request = str(parsed.get("request", "")).strip()[:1500]
+        code_language = parsed.get("language", "python")
+        if len(request) < 8 or code_language not in {"python", "javascript"}:
+            return None
+        entities.update(
+            request=f"{message}\n\n(Program to write: {request})", code_language=code_language
+        )
+    elif intent == "quran":
+        try:
+            surah = int(str(parsed.get("surah", "")))
+            start = parsed.get("ayah_start")
+            end = parsed.get("ayah_end") or start
+            reference = quran._validated(
+                surah, int(start) if start else None, int(end) if end else None
+            )
+        except (TypeError, ValueError):
+            return None
+        if reference is None:
+            return None
+        entities.update(reference=reference, explain=False)
+    elif intent == "web_search":
+        query = str(parsed.get("query", "")).strip()[:300]
+        if len(query) < 3:
+            return None
+        entities["query"] = query
+    elif intent == "web_read":
+        url = str(parsed.get("url", "")).strip()
+        # Only a link the user actually wrote, never one the model invented.
+        if not _URL.fullmatch(url) or url not in message:
+            return None
+        entities["url"] = url
+    else:
+        return None
+    return Understanding(str(intent), language, 0.6, entities)

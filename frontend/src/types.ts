@@ -223,7 +223,10 @@ export interface MessageUsageMeta {
   latency_ms?: number;
   finish_reason?: string;
   completion_status?: "abstained" | "unverified_answer" | "evidence_observed" | "incomplete"
-    | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed";
+    | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed"
+    | "verified_by_mizan";
+  /** "mizan" when MIZAN's own orchestration (Tadbir) produced the answer. */
+  orchestrator?: "mizan";
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

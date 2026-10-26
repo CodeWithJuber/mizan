@@ -59,6 +59,7 @@ check("estimated cost is visibly marked", estimated.parts.includes("~$0.0012"));
 check("reported cost is not called an estimate", usageMetrics({ cost_usd: 0.0012, cost_estimated: false }).explanations.includes("Cost is reported in the provider response."));
 check("partial aggregated token counts are disclosed", usageMetrics({ input_tokens: 10, calls: [{ input_tokens: 10 }, {}] }).explanations.join().includes("totals are partial"));
 check("unverified completion is labeled", usageMetrics({ completion_status: "unverified_answer" }).parts.includes("Answer not verified"));
+check("MIZAN-verified answers are labeled", usageMetrics({ completion_status: "verified_by_mizan", orchestrator: "mizan" }).parts.join("|") === "Done by MIZAN|Verified by MIZAN");
 const reasoning = usageMetrics({ output_tokens: 1200, reasoning_tokens: 1000, visible_output_tokens: 200 });
 check("reported reasoning tokens remain distinct", reasoning.parts.includes("1.0k reasoning"));
 check("derived non-reasoning count is not claimed to be visible text", reasoning.explanations.join().includes("can include tool calls, not just visible text"));

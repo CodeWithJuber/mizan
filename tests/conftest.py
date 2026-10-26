@@ -26,6 +26,9 @@ def isolated_provider_mode(monkeypatch):
     # No live catalog fetches from the app lifespan during tests.
     monkeypatch.setenv("MIZAN_MODEL_LIMITS_REFRESH", "false")
     monkeypatch.setenv("MIZAN_MEMORY_MAINTENANCE", "false")
+    # Legacy suites test the model-driven agent loop; tests/test_tadbir.py
+    # covers MIZAN's own orchestration (the production default).
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
 
 
 @pytest.fixture
