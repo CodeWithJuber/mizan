@@ -57,7 +57,7 @@ jobs:
   build:
     name: Build package
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research]
+    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -108,10 +108,26 @@ jobs:
       - run: for test in src/utils/*.test.ts; do node "$test" || exit; done
       - run: npm run build
 
+  provenance:
+    name: Docker provenance preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up attestation-capable builder
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify actual OCI provenance export
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
+
   docker:
     name: Docker build
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research]
+    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
@@ -153,12 +169,21 @@ jobs:
     name: Publish production images
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
-    needs: [build, docker]
+    needs: [build, docker, provenance]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+      - name: Set up attestation-capable publisher
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify publisher OCI provenance before building production images
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -169,6 +194,7 @@ jobs:
       - name: Publish production backend
         uses: docker/build-push-action@v6
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: docker/Dockerfile.backend.prod
           push: true
@@ -176,15 +202,20 @@ jobs:
       - name: Publish production frontend
         uses: docker/build-push-action@v6
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ./frontend
           file: docker/Dockerfile.frontend.prod
           push: true
           tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
       - name: Publish isolated workspace runtime
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: >-
           bash scripts/build_workspace_image.sh workspace-runtime
           ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }} --push
       - name: Publish private workspace runner
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: >-
           bash scripts/build_workspace_image.sh workspace-runner
           ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push
