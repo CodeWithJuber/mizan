@@ -29,7 +29,8 @@ live Python, PNG and interactive HTML verification are recorded in
 - Delegates `cpu cpuset io memory pids` only to that UID's systemd user service.
   Its user slice has a combined 2 GiB RAM / zero swap / two CPU / 1024-task budget.
   Per-job limits remain 384 MiB, one CPU and 64 processes. The private control
-  service separately has 192 MiB, half a CPU and 128 processes.
+  service separately has 384 MiB, half a CPU and 512 processes (sandbox sessions keep
+  `docker exec` relays open for previews, terminals and MCP servers).
 - Uses a distinct rootless daemon/socket for jobs. Only the private runner
   container receives that socket. Neither backend nor jobs receive a Docker
   socket for the production daemon. Runner has no host ports, a read-only root,

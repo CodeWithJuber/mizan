@@ -5,10 +5,12 @@ on:
     paths:
       - 'backend/workspace/**'
       - 'backend/api/coding_workspace.py'
+      - 'backend/api/workspace_sessions.py'
       - 'backend/api/artifacts.py'
       - 'backend/skills/builtin/coding_workspace.py'
       - 'docker/Dockerfile.workspace-*'
       - 'tests/test_coding_workspace.py'
+      - 'tests/test_workspace_sessions.py'
       - 'scripts/build_workspace_image.sh'
       - 'tests/test_workspace_image_build.py'
       - '.github/workflows/coding-workspace.yml'
@@ -17,10 +19,12 @@ on:
     paths:
       - 'backend/workspace/**'
       - 'backend/api/coding_workspace.py'
+      - 'backend/api/workspace_sessions.py'
       - 'backend/api/artifacts.py'
       - 'backend/skills/builtin/coding_workspace.py'
       - 'docker/Dockerfile.workspace-*'
       - 'tests/test_coding_workspace.py'
+      - 'tests/test_workspace_sessions.py'
       - 'scripts/build_workspace_image.sh'
       - 'tests/test_workspace_image_build.py'
       - '.github/workflows/coding-workspace.yml'
@@ -53,6 +57,8 @@ jobs:
         env:
           MIZAN_DATA_DIR: ${{ runner.temp }}/coding-test-data
           DB_PATH: ${{ runner.temp }}/coding-test-data/memory.db
+          # Hosted runners have internet: also prove allowlisted registries work.
+          MIZAN_TEST_EGRESS_INTERNET: '1'
         run: |
           mkdir -p "$MIZAN_DATA_DIR"
-          pytest tests/test_coding_workspace.py tests/test_artifacts.py -v --tb=short
+          pytest tests/test_coding_workspace.py tests/test_artifacts.py tests/test_workspace_sessions.py -v --tb=short

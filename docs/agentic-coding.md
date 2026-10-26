@@ -87,12 +87,77 @@ The preview loads the whole project in one request:
 `GET /api/workspaces/{id}/files`. It returns text files only, up to 3 MB, and
 skips `node_modules`, build output and binaries.
 
-## Not yet included
+## Server sandbox sessions
 
-These will come with server sandbox sessions, which extend the existing rootless
-runner:
+A session is a private Linux container for one project. It runs on the existing
+workspace runner, on the runner's own rootless Docker daemon, never on the
+backend host. It has:
 
-- a dev server preview (`npm run dev`) through a signed proxy URL
-- an interactive terminal
-- network access through an allowlisting proxy
-- stdio MCP servers for non-admin users
+- the project files on a disk volume at `/workspace`
+- Python 3.13, Node 24, npm, git and bash
+- an unprivileged user, no capabilities, a read-only root filesystem and
+  resource limits
+- **no route to the internet except the egress proxy**, which allows HTTPS only
+  to package and code hosts:
+  - npm, PyPI, GitHub, `esm.sh`, jsDelivr and unpkg
+  - it refuses every non-public address
+
+Start one from the **Sandbox** tab of the Coding workspace, or let the agent call
+`workspace_sandbox action=start`. Then:
+
+- **Command** tab and `workspace_run`: commands run in the session. Installed
+  packages persist, and the timeout goes up to 900 s.
+- **Open shell**: an interactive terminal (xterm.js) over
+  `/ws/workspaces/{id}/terminal`. The browser sends its token as a WebSocket
+  subprotocol, so it never appears in URLs or logs.
+- **Dev server**: starts a long-running process on a port. Two modes:
+  - **base**: the server is told its public path, `$MIZAN_PREVIEW_PREFIX/$PORT/`
+    (Vite: `--base`). Use it for frameworks that support a base path.
+  - **root**: MIZAN strips that prefix. Use it for simple servers such as
+    `python3 -m http.server $PORT --bind 127.0.0.1`.
+- **Preview → Server** shows the running server in the side panel.
+
+**Preview URLs.** The address is
+`/api/workspaces/preview/<capability>/<port>/`. The capability binds the session
+and its start nonce with an HMAC derived from the runner token, so the URL works
+without a login and stops working when the session stops. Every preview
+response is served with `Content-Security-Policy: sandbox …` and no
+`allow-same-origin`. The previewed page therefore always has an opaque origin,
+even when opened in its own tab. It cannot read MIZAN's storage or cookies.
+Cookies and `Clear-Site-Data` from the dev server are dropped. Hot reload
+WebSockets are not proxied: use the reload button.
+
+**File sync.** Sync is a three-way merge against the last synced state:
+
+- Editor saves go to the session.
+- Files created in the session (by commands, the shell or `npm run build`)
+  come back to the project.
+- When both sides changed a file, the editor's version wins.
+
+Dependency and build folders are never synced:
+
+- `node_modules`, `.venv` and `__pycache__`
+- `dist`, `build` and `.cache`
+- similar framework folders
+
+Commands sync automatically. After using the shell, press **Sync**.
+
+**Lifetime.** A session stops after 30 idle minutes, which removes its volume
+and installed packages. Project files are already saved in the project.
+
+Runner settings (environment of the `workspace-runner` service):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `MIZAN_SESSION_MAX` | 2 | concurrent project sessions |
+| `MIZAN_SESSION_MEMORY` / `_CPUS` / `_PIDS` | 768m / 1 / 256 | per-session limits |
+| `MIZAN_SESSION_IDLE_SECONDS` | 1800 | idle stop |
+| `MIZAN_SANDBOX_EGRESS` | `allowlist` | `off` keeps sessions fully offline |
+| `MIZAN_SANDBOX_EGRESS_ALLOW` | built-in list | comma list; `.example.com` allows subdomains |
+| `MIZAN_MCP_SESSION_MAX` / `_MEMORY` | 4 / 384m | containers for users' stdio MCP servers |
+
+**Rollout.** Enabling sessions in production needs the runtime and runner
+images published for the deployed commit, then the reviewed runner setup run
+again (`docs/runner-setup.md`). The runner container now gets 384 MiB and 512
+processes. The worker slice's 2 GiB budget is shared by jobs and sessions. Raise
+it before raising `MIZAN_SESSION_MAX`.

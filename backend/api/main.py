@@ -415,6 +415,9 @@ _PUBLIC_API = {
     # state (not a session) identifies the waiting connector.
     "/api/connectors/oauth/callback",
 }
+# Dev-server previews: the capability in the path is the credential, and every
+# response carries a CSP sandbox (opaque origin), so no session is involved.
+_PUBLIC_API_PREFIXES = ("/api/workspaces/preview/",)
 _ADMIN_PREFIXES = (
     "/api/status",
     "/api/integrations",
@@ -452,7 +455,7 @@ async def enforce_api_access(request: HTTPConnection):
     if request.scope["type"] == "websocket":
         yield
         return
-    if request.url.path in _PUBLIC_API:
+    if request.url.path in _PUBLIC_API or request.url.path.startswith(_PUBLIC_API_PREFIXES):
         yield
         return
     principal = await require_auth(
@@ -539,6 +542,12 @@ task_worker: TaskWorker | None = None
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses"""
     response = await call_next(request)
+
+    if request.url.path.startswith(_PUBLIC_API_PREFIXES):
+        # Previews are framed by Mizan itself and keep their own sandbox policy.
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     # Prevent clickjacking attacks
     response.headers["X-Frame-Options"] = "DENY"
@@ -5245,10 +5254,21 @@ from api import (  # noqa: E402
     ruh_screening,
     ruh_tajwid,
     sandbox,
+    workspace_sessions,
 )
 
-for feature in (artifacts, modes, sandbox, coding_workspace, agent_skills, connectors):
+# Session routes first: the public preview path must win over /{workspace_id}/...
+for feature in (
+    artifacts,
+    modes,
+    sandbox,
+    workspace_sessions,
+    coding_workspace,
+    agent_skills,
+    connectors,
+):
     app.include_router(feature.router)
+app.include_router(workspace_sessions.ws_router)
 
 for feature in (
     ruh_reader,

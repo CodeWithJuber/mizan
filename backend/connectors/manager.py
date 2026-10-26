@@ -305,9 +305,25 @@ class ConnectorManager:
             )
         if server["transport"] == "stdio":
             if server.get("runtime") != "host":
-                raise ConnectorError(
-                    "Local MCP servers for this account run in the sandbox runner, which is "
-                    "not enabled on this server; ask the administrator, or use a remote URL"
+                from workspace import session_client
+
+                if not session_client.available():
+                    raise ConnectorError(
+                        "Local MCP servers for this account run in the sandbox runner, which "
+                        "is not enabled on this server; ask the administrator, or use a "
+                        "remote URL"
+                    )
+                from .runner_transport import runner_stdio_client
+
+                return Client(
+                    runner_stdio_client(
+                        connection.user_id,
+                        server["id"],
+                        [server["command"], *list(server.get("args") or [])],
+                        env,
+                    ),
+                    read_timeout_seconds=CALL_TIMEOUT_SECONDS,
+                    client_info=info,
                 )
             from mcp import StdioServerParameters
 

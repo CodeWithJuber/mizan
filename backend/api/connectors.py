@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import html
 import os
 import re
@@ -145,8 +146,15 @@ async def update_connector(
 
 @router.delete("/{server_id}")
 async def delete_connector(server_id: str, user: TokenPayload = Depends(require_editor)):
-    _owned(user, server_id)
+    server = _owned(user, server_id)
     await manager.disconnect(user.user_id, server_id)
+    if server.get("transport") == "stdio" and server.get("runtime") != "host":
+        from workspace import session_client
+
+        if session_client.available():
+            key = session_client.session_key(user.user_id, server_id, kind="mcp")
+            with contextlib.suppress(HTTPException):
+                await session_client.call("DELETE", f"/sessions/{key}")
     store.delete_server(user.user_id, server_id)
     return {"deleted": server_id}
 

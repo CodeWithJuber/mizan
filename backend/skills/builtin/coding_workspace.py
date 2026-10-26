@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
+from workspace import session_client
 from workspace.context import artifact_session, selected_workspace
 from workspace.execution import run_project
 from workspace.store import WorkspaceStore
@@ -92,6 +93,7 @@ class CodingWorkspaceSkill(SkillBase):
                 "glob",
                 "grep",
                 "run",
+                "sandbox",
                 "git",
                 "checkpoint",
                 "diff",
@@ -210,16 +212,58 @@ class CodingWorkspaceSkill(SkillBase):
         language: str = "shell",
         timeout_s: int = 30,
     ) -> dict:
+        store = self.store(edit=True)
+        project = selected_workspace(workspace_id)
+        user_id = current_user_id() or ""
+        if await session_client.running(user_id, project):
+            # The project's live session keeps installed packages and services.
+            return cast(
+                dict,
+                await session_client.execute(
+                    user_id, project, command, language, max(1, min(int(timeout_s), 900))
+                ),
+            )
         return cast(
             dict,
-            await run_project(
-                self.store(edit=True),
-                selected_workspace(workspace_id),
-                command,
-                language,
-                timeout_s,
-            ),
+            await run_project(store, project, command, language, min(int(timeout_s), 120)),
         )
+
+    async def sandbox(
+        self,
+        workspace_id: str | None = None,
+        action: str = "status",
+        port: int = 5173,
+        command: str = "",
+        mode: str = "base",
+    ) -> dict:
+        """Manage the project's server sandbox session and its dev servers."""
+        self.store(edit=action not in {"status", "logs"})
+        project = selected_workspace(workspace_id)
+        user_id = current_user_id() or ""
+        if action == "status":
+            return cast(dict, await session_client.status(user_id, project))
+        if action == "start":
+            return cast(dict, await session_client.start(user_id, project))
+        if action == "stop":
+            return cast(dict, await session_client.stop(user_id, project))
+        if not 1024 <= int(port) <= 65535:
+            raise HTTPException(422, "port must be between 1024 and 65535")
+        if action == "serve":
+            if not command.strip():
+                raise HTTPException(422, "command is required to serve")
+            result: dict = await session_client.start_service(
+                user_id, project, int(port), command, "root" if mode == "root" else "base"
+            )
+            result["note"] = (
+                "The preview opens in the Coding workspace Preview panel (Server tab). "
+                "Check workspace_sandbox action=logs if it does not load."
+            )
+            return result
+        if action == "stop_service":
+            return cast(dict, await session_client.stop_service(user_id, project, int(port)))
+        if action == "logs":
+            return cast(dict, await session_client.service_logs(user_id, project, int(port)))
+        raise HTTPException(422, "Unknown sandbox action")
 
     async def checkpoint(
         self, workspace_id: str | None = None, message: str = "Agent checkpoint"
@@ -355,14 +399,40 @@ class CodingWorkspaceSkill(SkillBase):
             ),
             (
                 "run",
-                "Run Python, JavaScript or shell in an isolated project sandbox without network or host secrets. Returns real output and saves generated files. Never claim success when unavailable.",
+                "Run Python, JavaScript or shell in an isolated project sandbox without host "
+                "secrets. With a running sandbox session (workspace_sandbox start) commands run "
+                "there: installed packages persist and allowlisted package registries are "
+                "reachable (npm, PyPI, GitHub), timeout up to 900 s. Otherwise a fresh offline "
+                "container runs it (timeout up to 120 s). Returns real output and saves "
+                "generated files. Never claim success when unavailable.",
                 {
                     **project,
                     "command": string,
                     "language": {"type": "string", "enum": ["shell", "python", "javascript"]},
-                    "timeout_s": {"type": "integer", "minimum": 1, "maximum": 120},
+                    "timeout_s": {"type": "integer", "minimum": 1, "maximum": 900},
                 },
                 ["workspace_id", "command"],
+            ),
+            (
+                "sandbox",
+                "Server sandbox session for this project: start/stop/status; serve runs a "
+                "dev server on a port and returns its preview URL (mode base: the server is "
+                "told its base path via $MIZAN_PREVIEW_PREFIX/<port>/, e.g. "
+                "`npx vite --host 127.0.0.1 --port $PORT --base $MIZAN_PREVIEW_PREFIX/$PORT/`; "
+                "mode root strips that prefix for simple servers such as "
+                "`python3 -m http.server $PORT --bind 127.0.0.1`); logs shows its output; "
+                "stop_service ends it. Servers must listen on 127.0.0.1:$PORT.",
+                {
+                    **project,
+                    "action": {
+                        "type": "string",
+                        "enum": ["status", "start", "stop", "serve", "stop_service", "logs"],
+                    },
+                    "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                    "command": string,
+                    "mode": {"type": "string", "enum": ["base", "root"]},
+                },
+                ["action"],
             ),
             (
                 "checkpoint",

@@ -63,9 +63,17 @@ on the backend host:
 | `all` | every user. Only for single-user installs: it lets users run commands on the host. |
 | `off` | nobody |
 
-Other users can save stdio servers now. They will run in the sandbox runner
-once server sandbox sessions ship. Until then, Connect explains that the
-sandbox is not enabled.
+Everyone else's stdio servers run inside their own sandbox session on the
+workspace runner, not on the host.
+
+- Each server gets its own hardened container: unprivileged, with limits, and
+  network only through the egress allowlist, so `npx` and `pip` installs work.
+- The runner relays stdin and stdout over a WebSocket, one JSON-RPC message per
+  frame.
+- Removing the connector stops its container.
+
+Without a configured runner, Connect explains that the sandbox is not
+available.
 
 ## Connection lifetime
 

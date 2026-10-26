@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Eye, EyeOff, RefreshCw, Save, Share2, X } from "lucide-react";
+import { Bot, ExternalLink, Eye, EyeOff, RefreshCw, RotateCw, Save, Share2, X } from "lucide-react";
 import { config } from "../config";
 import { authFetch } from "../utils/authFetch";
 import type { Artifact } from "../types";
@@ -7,9 +7,12 @@ import FileTree from "./workspace/FileTree";
 import { DiffView } from "./AgentActivity";
 import { projectPreview, type ProjectPreview } from "../utils/workspacePreview";
 import type { WorkspaceEntry } from "../utils/workspaceTree";
+import { previewSrc } from "../utils/sandboxCommands";
+import type { SandboxStatus } from "./workspace/SandboxPanel";
 
 const CodeEditor = lazy(() => import("./workspace/CodeEditor"));
 const PreviewPane = lazy(() => import("./workspace/PreviewPane"));
+const SandboxPanel = lazy(() => import("./workspace/SandboxPanel"));
 
 interface Workspace {
   id: string;
@@ -88,7 +91,7 @@ export function CodingWorkspace({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [panel, setPanel] = useState<"run" | "changes">("run");
+  const [panel, setPanel] = useState<"run" | "sandbox" | "changes">("run");
   const [language, setLanguage] = useState<"shell" | "python" | "javascript">("shell");
   const [command, setCommand] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
@@ -100,6 +103,11 @@ export function CodingWorkspace({
   });
   const [preview, setPreview] = useState<ProjectPreview | null>(null);
   const [revision, setRevision] = useState(0);
+  const [sandbox, setSandbox] = useState<SandboxStatus | null>(null);
+  const [serverPreview, setServerPreview] = useState("");
+  const [previewMode, setPreviewMode] = useState<"browser" | "server">("browser");
+  const [frameKey, setFrameKey] = useState(0);
+  const [packageJson, setPackageJson] = useState<string | undefined>();
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
 
@@ -150,6 +158,10 @@ export function CodingWorkspace({
     setChanges(null);
     setCheckpoints([]);
     setPreview(null);
+    setSandbox(null);
+    setServerPreview("");
+    setPreviewMode("browser");
+    setPackageJson(undefined);
     if (!selectedId) return;
     void loadTree(selectedId).catch((e) => setError(e.message));
     void api<{ checkpoints: Checkpoint[] }>(`${base}/checkpoints`)
@@ -173,6 +185,7 @@ export function CodingWorkspace({
         if (cancelled || selectedRef.current !== selectedId) return;
         const files = { ...data.files };
         for (const [p, b] of Object.entries(buffers)) if (!b.image) files[p] = b.content;
+        setPackageJson(files["package.json"]);
         setPreview(projectPreview(files, path));
       })
       .catch((e) => !cancelled && setPreview({ kind: "none", reason: (e as Error).message }));
@@ -207,8 +220,20 @@ export function CodingWorkspace({
       setNotice(dirtyPaths.length === 1 ? "File saved." : `${dirtyPaths.length} files saved.`);
       await loadTree(selectedId);
       setRevision((r) => r + 1);
+      // A running dev server should see the edit; failures surface on the next sync.
+      if (sandbox?.running) void api(`${base}/session/sync`, json("POST", {})).catch(() => {});
     }
   };
+  const openServerPreview = useCallback((url: string) => {
+    setServerPreview(url);
+    setPreviewMode("server");
+    setFrameKey((k) => k + 1);
+    setShowPreview(true);
+  }, []);
+  const filesChanged = useCallback(() => {
+    void loadTree(selectedId).catch(() => {});
+    setRevision((r) => r + 1);
+  }, [loadTree, selectedId]);
 
   const openFile = (next: string) => {
     if (buffers[next]) {
@@ -370,7 +395,7 @@ export function CodingWorkspace({
           </form>
         </div>
       ) : (
-        <div className={`flex-1 min-h-0 grid grid-cols-1 overflow-auto lg:overflow-hidden ${showPreview ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,0.9fr)]" : "lg:grid-cols-[220px_minmax(0,1fr)]"}`}>
+        <div className={`flex-1 min-h-0 grid grid-cols-1 auto-rows-max lg:grid-rows-[minmax(0,1fr)] overflow-auto lg:overflow-hidden ${showPreview ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,0.9fr)]" : "lg:grid-cols-[220px_minmax(0,1fr)]"}`}>
           <aside className="border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-zinc-800 lg:overflow-auto max-h-56 lg:max-h-none overflow-auto">
             <FileTree entries={entries} selected={path} disabled={Boolean(busy)} onOpen={openFile} onCreate={create} onRename={rename} onDelete={remove} />
           </aside>
@@ -415,17 +440,31 @@ export function CodingWorkspace({
                 <div className="h-full flex items-center justify-center text-sm text-gray-400 p-6">Select a file to edit, or ask the agent to build something.</div>
               )}
             </div>
-            <div className="border-t border-gray-200 dark:border-zinc-800 lg:max-h-[40%] overflow-auto">
+            <div className={`border-t border-gray-200 dark:border-zinc-800 overflow-auto ${panel === "sandbox" ? "lg:max-h-[60%]" : "lg:max-h-[40%]"}`}>
               <div className="flex items-center gap-1 px-3 pt-2">
-                {(["run", "changes"] as const).map((value) => (
+                {(["run", "sandbox", "changes"] as const).map((value) => (
                   <button key={value} className={`px-3 py-1 text-xs rounded-md ${panel === value ? "bg-gray-100 dark:bg-zinc-800 font-semibold" : "text-gray-500"}`} onClick={() => setPanel(value)}>
-                    {value === "run" ? "Terminal" : "Changes"}
+                    {value === "run" ? "Command" : value === "sandbox" ? `Sandbox${sandbox?.running ? " ●" : ""}` : "Changes"}
                   </button>
                 ))}
               </div>
-              {panel === "run" ? (
+              {panel === "sandbox" ? (
+                <Suspense fallback={<p className="p-3 text-xs text-gray-500">Loading sandbox…</p>}>
+                  <SandboxPanel
+                    workspaceId={selectedId}
+                    packageJson={packageJson}
+                    disabled={Boolean(busy)}
+                    onStatus={setSandbox}
+                    onFilesChanged={filesChanged}
+                    onOpenPreview={openServerPreview}
+                  />
+                </Suspense>
+              ) : panel === "run" ? (
                 <div className="p-3 space-y-2">
-                  {!capabilities?.execution_available && (
+                  {sandbox?.running && (
+                    <p className="text-xs text-emerald-600">Commands run in this project's sandbox; installed packages stay until it stops.</p>
+                  )}
+                  {!capabilities?.execution_available && !sandbox?.running && (
                     <p className="text-xs text-gray-500">
                       {capabilities?.execution_detail || "Server execution is unavailable."} Python and web apps still run in the Preview panel.
                     </p>
@@ -437,7 +476,9 @@ export function CodingWorkspace({
                       void action("Running", async () => {
                         await saveAll();
                         setResult(null);
-                        const data = await api<RunResult>(`${base}/run`, json("POST", { command, language, timeout_s: 60 }));
+                        const data = sandbox?.running
+                          ? await api<RunResult>(`${base}/session/exec`, json("POST", { command, language, timeout_s: 300 }))
+                          : await api<RunResult>(`${base}/run`, json("POST", { command, language, timeout_s: 60 }));
                         setResult(data);
                         await loadTree(selectedId);
                         setRevision((r) => r + 1);
@@ -456,8 +497,8 @@ export function CodingWorkspace({
                       className={`${field} flex-1 min-w-[120px] font-mono`}
                       placeholder={language === "shell" ? "python -m pytest -q" : language === "javascript" ? "console.log('Hello')" : "print('Hello')"}
                     />
-                    <button className={`${button} bg-amber-600! text-white!`} disabled={!command.trim() || !capabilities?.execution_available || Boolean(busy)}>
-                      {busy === "Running" ? "Running…" : "Run on server"}
+                    <button className={`${button} bg-amber-600! text-white!`} disabled={!command.trim() || !(capabilities?.execution_available || sandbox?.running) || Boolean(busy)}>
+                      {busy === "Running" ? "Running…" : sandbox?.running ? "Run in sandbox" : "Run on server"}
                     </button>
                   </form>
                   {result && (
@@ -533,16 +574,46 @@ export function CodingWorkspace({
             <div className="min-w-0 min-h-[320px] border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-zinc-800 flex flex-col">
               <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-zinc-800">
                 <span className="text-xs font-semibold mr-auto">
-                  Preview{preview?.kind === "web" ? ` · ${preview.template}` : preview?.kind === "python" ? " · Python" : ""}
+                  Preview{previewMode === "server" ? " · sandbox server" : preview?.kind === "web" ? ` · ${preview.template}` : preview?.kind === "python" ? " · Python" : ""}
                 </span>
-                <button className="text-xs text-gray-500 hover:underline" onClick={() => void action("Updating preview", async () => { await saveAll(); setRevision((r) => r + 1); })}>
-                  Update
-                </button>
+                {serverPreview && (
+                  <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden text-xs" role="group" aria-label="Preview source">
+                    {(["browser", "server"] as const).map((mode) => (
+                      <button key={mode} className={`px-2 py-0.5 ${previewMode === mode ? "bg-gray-100 dark:bg-zinc-800 font-semibold" : "text-gray-500"}`} aria-pressed={previewMode === mode} onClick={() => setPreviewMode(mode)}>
+                        {mode === "browser" ? "Browser" : "Server"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {previewMode === "server" && serverPreview ? (
+                  <>
+                    <button className="p-1 text-gray-500 hover:text-gray-800" title="Reload" aria-label="Reload server preview" onClick={() => setFrameKey((k) => k + 1)}>
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+                    <a className="p-1 text-gray-500 hover:text-gray-800" href={previewSrc(serverPreview)} target="_blank" rel="noopener noreferrer" title="Open in a new tab" aria-label="Open server preview in a new tab">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </>
+                ) : (
+                  <button className="text-xs text-gray-500 hover:underline" onClick={() => void action("Updating preview", async () => { await saveAll(); setRevision((r) => r + 1); })}>
+                    Update
+                  </button>
+                )}
               </div>
               <div className="flex-1 min-h-0">
-                <Suspense fallback={<div className="p-4 text-sm text-gray-500">Loading preview…</div>}>
-                  <PreviewPane preview={preview} revision={revision} />
-                </Suspense>
+                {previewMode === "server" && serverPreview ? (
+                  <iframe
+                    key={frameKey}
+                    src={previewSrc(serverPreview)}
+                    title="Sandbox server preview"
+                    sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+                    className="w-full h-full min-h-[320px] bg-white border-0"
+                  />
+                ) : (
+                  <Suspense fallback={<div className="p-4 text-sm text-gray-500">Loading preview…</div>}>
+                    <PreviewPane preview={preview} revision={revision} />
+                  </Suspense>
+                )}
               </div>
             </div>
           )}
