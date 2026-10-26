@@ -38,6 +38,7 @@ import { useApi } from "./hooks/useApi";
 import { ChatAttachments } from "./components/ChatAttachments";
 import { authFetch } from "./utils/authFetch";
 import { consumeChatStream } from "./utils/chatSse";
+import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import ComparePanel from "./components/ComparePanel";
 import {
@@ -782,7 +783,7 @@ function AppInner() {
             (data.response as string) || (data.content as string) || buffered;
           // Model transparency (workstreams C/E): the backend's observed
           // usage block; absent fields mean "not reported" — never fill in.
-          const usageMeta = data.usage as MessageUsageMeta | undefined;
+          const usageMeta = messageUsage(data);
           const newAssistantMsg: ChatMessage = {
             id: Date.now(),
             role: "assistant" as const,
@@ -924,24 +925,32 @@ function AppInner() {
           break;
         }
         case "error": {
-          const partial = streamBufferRef.current?.getText() ?? "";
-          if (partial) finalizeStop(partial);
-          streamBufferRef.current?.discard();
+          const partial = streamBufferRef.current?.finalize() ?? "";
+          clearStopFallback();
+          streamingRef.current = false;
+          appendToLastRef.current = false;
           streamBufferRef.current = null;
           sendControllerRef.current = null;
+          activeMessageIdRef.current = "";
+          activeRequestIdRef.current = "";
           setStreaming(false);
           setStreamingText("");
           setTypingIndicator(false);
           setToolStatus("");
-          const errText = data.message as string;
-          addTerminalLine(`Error: ${errText}`, "error");
+          setActiveThinkingId(null);
+          setTruncatedContinue(null);
+          const failure = chatFailureFields(data, partial);
+          addTerminalLine(`Error: ${failure.error?.message}`, "error");
           const errMsg: ChatMessage = {
             id: Date.now(),
             role: "assistant",
-            content: `\u26a0\ufe0f ${errText}`,
+            ...failure,
+            agent: typeof data.agent === "string" ? data.agent : selectedAgent?.name,
+            thinkingMessageId: typeof data.message_id === "string" ? data.message_id : undefined,
             ts: new Date().toLocaleTimeString(),
           };
           setMessages((prev) => [...prev, errMsg]);
+          loadChatSessions();
           break;
         }
         case "task_stream":
@@ -1059,6 +1068,7 @@ function AppInner() {
       clearStopFallback,
       finalizeStop,
       requestContinuation,
+      selectedAgent,
     ],
   );
 
@@ -1238,23 +1248,23 @@ function AppInner() {
         usage?: MessageUsageMeta;
         status?: string;
         partial?: boolean;
+        code?: string;
+        message?: string;
+        completion_status?: MessageUsageMeta["completion_status"];
+        answer_delivered?: boolean;
+        task_verified?: boolean;
       };
     },
     idx: number,
   ): ChatMessage => {
     // Model transparency (workstreams C/E): persisted usage block rides in
     // agent_messages.metadata.usage; render only when present.
-    const usageMeta = m.metadata?.usage;
     return {
       id: m.id ?? idx,
       role: m.role as "user" | "assistant" | "system",
-      content: m.content,
+      ...restoredMessageFields(m.content, m.metadata),
       agent: m.agent_id,
-      model: usageMeta?.model,
       ts: m.created_at ? new Date(m.created_at).toLocaleTimeString() : "",
-      meta: usageMeta,
-      stopped:
-        m.metadata?.status === "cancelled" || m.metadata?.partial === true,
     };
   };
 

@@ -14,11 +14,17 @@
  * schema change can bump the version and ignore stale entries.
  */
 
+import type { ChatMessage } from "../types.ts";
+
 export interface CachedChatMessage {
   id: number;
   role: "user" | "assistant" | "system";
   content: string;
   agent?: string;
+  model?: string;
+  meta?: ChatMessage["meta"];
+  error?: ChatMessage["error"];
+  stopped?: boolean;
   ts: string;
   /** Epoch ms when this entry was written — used for TTL pruning. */
   cachedAt: number;
@@ -183,6 +189,10 @@ export interface CacheableMessage {
   role: "user" | "assistant" | "system";
   content: string;
   agent?: string;
+  model?: string;
+  meta?: ChatMessage["meta"];
+  error?: ChatMessage["error"];
+  stopped?: boolean;
   ts: string;
 }
 
@@ -203,6 +213,10 @@ export async function cacheMessages(
     role: m.role,
     content: m.content,
     agent: m.agent,
+    model: m.model,
+    meta: m.meta,
+    error: m.error,
+    stopped: m.stopped,
     ts: m.ts,
     cachedAt: now,
   }));

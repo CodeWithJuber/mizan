@@ -1,4 +1,5 @@
 /** Authenticated chat uses fetch streams; a POST is never retried automatically. */
+import { failureEnvelope } from "./chatFailure.ts";
 export type ChatStreamEvent = Record<string, unknown> & { type: string };
 const MAX_FRAME_CHARS = 8 * 1024 * 1024;
 
@@ -52,22 +53,33 @@ export async function consumeChatStream(
     onEvent: (event: ChatStreamEvent) => void;
   },
 ): Promise<void> {
-  if (!response.ok) {
+  const isStream = response.headers.get("content-type")?.includes("text/event-stream");
+  if (!response.ok || !isStream) {
     let detail = "";
+    let failure: Record<string, unknown> | undefined;
     try {
       const body = await response.json();
+      failure = failureEnvelope(body);
       if (typeof body.detail === "string") detail = body.detail.slice(0, 300);
       else if (typeof body.detail?.message === "string")
         detail = `${body.detail.message.slice(0, 300)} Check chat history before retrying.`;
     } catch {
       /* HTTP status remains useful */
     }
+    if (failure) {
+      if ((failure.session_id != null && failure.session_id !== options.sessionId) ||
+          (failure.request_id != null && failure.request_id !== options.requestId))
+        throw new Error("Chat response belongs to another request");
+      options.onEvent({
+        ...failure, type: "error",
+        session_id: options.sessionId, request_id: options.requestId,
+      });
+      return;
+    }
+    if (response.ok) throw new Error("The server did not return a chat stream");
     throw new Error(detail || `Chat request failed (${response.status})`);
   }
-  if (
-    !response.headers.get("content-type")?.includes("text/event-stream") ||
-    !response.body
-  ) {
+  if (!response.body) {
     throw new Error("The server did not return a chat stream");
   }
   const reader = response.body.getReader();

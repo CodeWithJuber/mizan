@@ -48,6 +48,7 @@ COPY nlp/ ./nlp/
 COPY ruh_model/ ./ruh_model/
 COPY mizan_reply/ ./mizan_reply/
 COPY mizan_research/ ./mizan_research/
+COPY research/registry/runtime_sources.json ./research/registry/runtime_sources.json
 
 RUN mkdir -p /data plugins && chown -R mizan:mizan /app /data
 

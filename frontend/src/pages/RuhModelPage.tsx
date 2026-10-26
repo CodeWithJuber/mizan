@@ -27,16 +27,18 @@ import { TokenizerPipeline } from "../components/ruh/TokenizerPipeline";
 import { TasrifVisualizer } from "../components/ruh/TasrifVisualizer";
 import { TrainingHistory } from "../components/ruh/TrainingHistory";
 import { LearningReviewPanel } from "../components/ruh/LearningReviewPanel";
+import { OwnedLearningPanel } from "../components/ruh/OwnedLearningPanel";
 
 // ===== Sub-tab definitions =====
 
-type SubTab = "dashboard" | "nlp" | "model" | "data";
+type SubTab = "dashboard" | "nlp" | "model" | "data" | "owned";
 
 const SUB_TABS: { id: SubTab; label: string; desc: string }[] = [
   { id: "dashboard", label: "Dashboard", desc: "Training & metrics" },
   { id: "nlp", label: "NLP Explorer", desc: "Tokenizer & tasrif" },
   { id: "model", label: "Model", desc: "Architecture & checkpoints" },
   { id: "data", label: "Data & History", desc: "Datasets & past runs" },
+  { id: "owned", label: "Own learning", desc: "Approved data, evaluation & checkpoints" },
 ];
 
 // ===== Generate playground types =====
@@ -282,8 +284,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
         <div className="rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-4 py-2.5">
           <p className="text-xs text-purple-800 dark:text-purple-300">
             Chat capture saves unreviewed examples for later evaluation. It does
-            not update model weights. Training runs are started explicitly; automatic
-            training and checkpoint promotion are not active.{" "}
+            not update model weights. Own learning shows whether approved-data
+            cycles and checkpoint activation are configured.{" "}
             <span className="font-medium">
               {SUB_TABS.find((t) => t.id === tab)?.desc}
             </span>
@@ -313,6 +315,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {tab === "owned" && <OwnedLearningPanel api={api} />}
         {/* =========== DASHBOARD TAB =========== */}
         {tab === "dashboard" && (
           <>

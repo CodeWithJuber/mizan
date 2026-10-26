@@ -52,7 +52,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
-      - run: pytest tests/test_mizan_owned*.py research/own_model/tests -q
+      - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
 
   build:
     name: Build package
@@ -121,10 +121,14 @@ jobs:
           docker run --rm --entrypoint python mizan-backend
           -c "import torch, fastapi, openai, anthropic, PIL;
           from ruh_model.tokenizer.bayan import BayanTokenizer;
+          from mizan_owned.learning_cycle import _implementation;
+          from mizan_owned.learning_service import worker_environment;
           from importlib.metadata import version;
           assert torch.version.cuda is None;
           assert version('pip') == '26.2.1';
           assert version('setuptools') == '84.0.0';
+          assert len(_implementation()) == 12;
+          assert worker_environment()['PYTHONPATH'] == '/app';
           assert BayanTokenizer().encode('knowledge')"
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
