@@ -50,6 +50,7 @@ dependencies = [
     "click>=8.5.0,<9",
     "rich>=15.0.0,<16",
     "Pillow>=13.0.0,<14",
+    "pyyaml>=6.0.3,<7",
 ]
 
 [project.optional-dependencies]

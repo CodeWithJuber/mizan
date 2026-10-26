@@ -1656,14 +1656,35 @@ async def stream_chat(
                 phase="context_preparation",
                 elapsed_ms=lease.public()["elapsed_ms"],
             )
-            cmd_result = await handle_command(
-                req.content,
-                agent=agent,
-                session_id=req.session_id,
-                sessions=active_sessions,
-                memory=memory,
-                active_agents=active_agents,
-            )
+            # "/skill-name request" activates one of the user's Agent Skills
+            # for this chat instead of being treated as a built-in command.
+            task_content = req.content
+            skill_command = None
+            if agent is not None and req.content.startswith("/"):
+                from agent_skills.tools import resolve_slash_skill
+
+                skill_command = resolve_slash_skill(req.content, user.user_id, req.workspace_id)
+            if skill_command:
+                from agent_skills.tools import activate
+                from workspace.context import bind_chat_session, reset_chat_session
+
+                skill_name, rest = skill_command
+                session_token = bind_chat_session(req.session_id)
+                try:
+                    activate(skill_name)
+                finally:
+                    reset_chat_session(session_token)
+                task_content = rest or f"Use the {skill_name} skill for this chat."
+                cmd_result = {"is_command": False}
+            else:
+                cmd_result = await handle_command(
+                    req.content,
+                    agent=agent,
+                    session_id=req.session_id,
+                    sessions=active_sessions,
+                    memory=memory,
+                    active_agents=active_agents,
+                )
             if cmd_result.get("is_command"):
                 result = {"success": True, "result": cmd_result["response"], "usage": {}}
             else:
@@ -1705,7 +1726,7 @@ async def stream_chat(
                         await phase_cb("queued")
                         with bind_event_sink(activity_sink), bind_approvals(approval_context):
                             result = await agent.execute(
-                                req.content,
+                                task_content,
                                 context,
                                 stream_callback=stream_cb,
                                 thinking_callback=thinking_cb,
@@ -5202,6 +5223,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
 # Imported after shared dependencies to keep deferred auth imports cycle safe.
 from api import (  # noqa: E402
+    agent_skills,
     artifacts,
     coding_workspace,
     modes,
@@ -5216,7 +5238,7 @@ from api import (  # noqa: E402
     sandbox,
 )
 
-for feature in (artifacts, modes, sandbox, coding_workspace):
+for feature in (artifacts, modes, sandbox, coding_workspace, agent_skills):
     app.include_router(feature.router)
 
 for feature in (

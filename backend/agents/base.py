@@ -460,6 +460,8 @@ class BaseAgent:
             "delegate_task": self._tool_delegate_task,
             "query_knowledge": self._tool_query_knowledge,
             "todo_write": self._tool_todo_write,
+            "activate_skill": self._tool_activate_skill,
+            "read_skill_file": self._tool_read_skill_file,
         }
         # Phase 2 (mizan.nlp, IP-2): native sense tool -- registered only when
         # the flag is on, so flag-off behavior stays bit-for-bit identical.
@@ -753,7 +755,7 @@ class BaseAgent:
         # Source precedence and within-registry winners must match dispatch:
         # own tools, then skills, then plugins. Never pair one owner's schema
         # with a different owner's handler after a name collision.
-        sources = [(schemas + self.TOOL_SCHEMAS, self.tools)]
+        sources = [(schemas + self._agent_skill_schemas() + self.TOOL_SCHEMAS, self.tools)]
         for registry in (self.skill_registry, self.plugin_manager):
             if registry:
                 try:
@@ -826,6 +828,8 @@ class BaseAgent:
             return True
         safe_native = {
             "todo_write": BaseAgent._tool_todo_write,
+            "activate_skill": BaseAgent._tool_activate_skill,
+            "read_skill_file": BaseAgent._tool_read_skill_file,
             "recall_memory": BaseAgent._tool_recall_memory,
             "query_knowledge": BaseAgent._tool_query_knowledge,
             "disambiguate_sense": BaseAgent._tool_disambiguate_sense,
@@ -931,6 +935,8 @@ class BaseAgent:
         tool_catalog = ToolCatalog(
             tool_schemas,
             task,
+            # activate_skill carries the skill catalog in its description, so
+            # the ranking offers it when a request matches a skill.
             context_names={s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
             if bound_workspace_id()
             else set(),
@@ -1084,6 +1090,8 @@ class BaseAgent:
                     isinstance(block, dict)
                     and block.get("type") == "tool_result"
                     and len(content) > 600
+                    # Skill instructions are durable guidance, never excerpted.
+                    and "<skill_content" not in content
                 ):
                     block = {
                         **block,
@@ -2295,6 +2303,9 @@ Match the requested depth and self-correct errors."""
         todos = self._session_todo_block((context or {}).get("session_id"))
         if todos:
             context_blocks.append(todos)
+        skills = self._active_skills_block((context or {}).get("session_id"))
+        if skills:
+            context_blocks.append(skills)
         approvals = current_approvals()
         if approvals is not None and approvals.mode == "plan":
             context_blocks.append(_PLAN_MODE_NOTE)
@@ -2313,6 +2324,18 @@ Match the requested depth and self-correct errors."""
         )
 
         return messages
+
+    @staticmethod
+    def _active_skills_block(session_id: str | None) -> str:
+        """Skills activated earlier in this chat keep guiding later turns."""
+        try:
+            from agent_skills.tools import active_block
+            from workspace.context import bound_workspace_id
+
+            return str(active_block(current_user_id() or "", bound_workspace_id(), session_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("Active skills unavailable", exc_info=True)
+            return ""
 
     @staticmethod
     def _session_todo_block(session_id: str | None) -> str:
@@ -3722,6 +3745,32 @@ class {class_name}(SkillBase):
     _DEFAULT_CONTEXT_WINDOW = 200_000  # tokens (Claude-class model)
     _COMPACT_THRESHOLD = 0.80  # 80% of context window triggers compaction
     _PRESERVE_RECENT = 10  # keep last N messages intact
+
+    @staticmethod
+    def _agent_skill_schemas() -> list[dict]:
+        """activate_skill/read_skill_file for this user's skills (none when there are none)."""
+        try:
+            from agent_skills.tools import tool_schemas
+            from workspace.context import bound_workspace_id
+
+            return cast(list[dict], tool_schemas(current_user_id() or "", bound_workspace_id()))
+        except Exception:  # noqa: BLE001 - a broken skill folder must not block chat
+            logger.warning("Agent skills unavailable", exc_info=True)
+            return []
+
+    async def _tool_activate_skill(self, name: str = "") -> dict:
+        """Load a skill's SKILL.md instructions (kept for the rest of this chat)."""
+        from agent_skills.tools import activate
+
+        result = cast(dict, activate(name))
+        if "skill" in result:
+            await emit_event("skill", {"name": result["skill"], "scope": result["scope"]})
+        return result
+
+    async def _tool_read_skill_file(self, name: str = "", path: str = "") -> dict:
+        from agent_skills.tools import read_file
+
+        return cast(dict, read_file(name, path))
 
     async def _tool_todo_write(self, todos: list | None = None) -> dict:
         """Replace this chat's todo list; the UI shows it live and later turns see it."""
