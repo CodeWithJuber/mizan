@@ -330,6 +330,7 @@ class ConnectorManager:
         if not any(name.lower() == "authorization" for name in headers):
             from mcp.client.auth import OAuthClientProvider
             from mcp.shared.auth import OAuthClientMetadata
+            from pydantic import AnyUrl
 
             callback = connection.server.get("callback_url") or _default_callback()
             if callback:
@@ -337,7 +338,7 @@ class ConnectorManager:
                     server_url=url,
                     client_metadata=OAuthClientMetadata(
                         client_name="MIZAN",
-                        redirect_uris=[callback],
+                        redirect_uris=[AnyUrl(str(callback))],
                         grant_types=["authorization_code", "refresh_token"],
                         response_types=["code"],
                         token_endpoint_auth_method="none",  # noqa: S106 - public PKCE client
