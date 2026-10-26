@@ -9,6 +9,7 @@
 import {
   historyDedupeKey,
   hydrateCachedMessages,
+  createHistoryLoadTracker,
   mergeHistoryMessages,
   fetchChatHistoryWithRetry,
   type HistoryMessage,
@@ -123,6 +124,81 @@ const stoppedDraft: HistoryMessage = { ...localNotice, content: "  exact partial
 const restoredStop = mergeHistoryMessages([{ ...savedCancellation, content: "  exact" }], [stoppedDraft]);
 check("explicit local Stop retains exact bytes and identity through server resync", restoredStop.length === 1 && restoredStop[0].content === stoppedDraft.content && restoredStop[0].stopped === true && restoredStop[0].interrupted === false);
 check("known-not-started user rows never dedupe against legacy repeated text", mergeHistoryMessages([{ role: "user", content: "same" }], [{ role: "user", content: "same", notStarted: true, requestId: "rejected" }]).length === 2);
+
+// Loading lifecycle: real missing-history/reset/finally order and ownership.
+{
+  let loading = false;
+  let session = "empty-stored-session";
+  let token = "account-A";
+  let epoch = 0;
+  const loads = createHistoryLoadTracker((value) => { loading = value; });
+  const scope = () => {
+    const sid = session, owner = token, revision = epoch;
+    return () => session === sid && token === owner && epoch === revision;
+  };
+  const missingLoad = loads.begin(scope());
+  check("history GET starts loading in its owned view", loading);
+  try {
+    const result = await fetchChatHistoryWithRetry(async () => resp(404, {}), 3, 1, missingLoad.isCurrent);
+    if (result.missing && missingLoad.isCurrent()) {
+      // The real onMissing callback starts a fresh session before finally.
+      loads.reset();
+      session = "fresh-session";
+    }
+  } finally { missingLoad.finish(); }
+  check("404 then fresh-session reset cannot leave Loading chat history stuck", !loading && session === "fresh-session");
+
+  const switching = loads.begin(scope());
+  loads.reset();
+  session = "cached-session";
+  // A cached pending draft can return early and hand off to GET recovery.
+  check("session switch clears inherited loading before cache hydration returns early", !loading && !switching.isCurrent());
+  const nextSession = loads.begin(scope());
+  switching.finish();
+  check("old-session finally cannot clear the new session's loading", loading);
+  nextSession.finish();
+  check("current-session completion clears its own loading", !loading);
+
+  const older = loads.begin(scope());
+  const newer = loads.begin(scope());
+  const sameSessionRead = await fetchChatHistoryWithRetry(async () => resp(200, { messages: [] }), 3, 1, scope());
+  check("a newer same-context GET does not turn a valid recovery read into failure", sameSessionRead.ok && !older.isCurrent());
+  older.finish();
+  check("overlapping same-session older GET cannot hide newer loading", loading && !older.isCurrent() && newer.isCurrent());
+  newer.finish();
+  check("latest same-session GET clears loading", !loading);
+
+  const staleMissing = loads.begin(scope());
+  const latestRead = loads.begin(scope());
+  let missingReset = false;
+  const missingResult = await fetchChatHistoryWithRetry(async () => resp(404, {}), 3, 1, scope());
+  if (missingResult.missing && staleMissing.isCurrent()) { missingReset = true; loads.reset(); }
+  staleMissing.finish();
+  check("superseded same-session 404 cannot reset the current history view", !missingReset && loading && latestRead.isCurrent());
+  latestRead.finish();
+
+  const oldAccount = loads.begin(scope());
+  loads.reset(); token = "account-B"; epoch++;
+  check("account change clears loading immediately", !loading && !oldAccount.isCurrent());
+  loads.reset(); token = "account-A"; epoch++;
+  const returningAccount = loads.begin(scope());
+  oldAccount.finish();
+  check("A to B to A cannot revive an old history owner", loading && !oldAccount.isCurrent());
+  const rejected = loads.begin(() => false);
+  rejected.finish();
+  check("late obsolete history start cannot disturb the current request", loading && returningAccount.isCurrent());
+  returningAccount.finish();
+
+  let requests = 0;
+  const retryLoad = loads.begin(scope());
+  const interrupted = await fetchChatHistoryWithRetry(async () => {
+    requests++;
+    loads.reset(); token = "account-B"; epoch++;
+    throw new Error("Connection interrupted while account changed");
+  }, 3, 1, retryLoad.isCurrent);
+  retryLoad.finish();
+  check("obsolete GET retries stop at account change without a new-account request", requests === 1 && !interrupted.ok && !loading);
+}
 
 // --- retry: success first try ---
 {
