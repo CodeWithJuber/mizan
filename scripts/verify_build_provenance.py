@@ -160,6 +160,10 @@ def main() -> None:
                 "build",
                 "--progress=plain",
                 "--provenance=mode=max",
+                # BuildKit emits statement subjects only for named images.
+                # This tag stays in the local OCI export; nothing is pushed.
+                "--tag",
+                "mizan-provenance-probe:ci",
                 "--output",
                 f"type=oci,dest={output}",
                 str(context),

@@ -150,6 +150,7 @@ def test_probe_checks_exported_archive_without_publishing(monkeypatch, capsys):
             return SimpleNamespace(stdout="Name: fixture\nDriver: docker-container\nNodes:\n")
         assert "--provenance=mode=max" in args
         assert "--push" not in args and "--load" not in args
+        assert args[args.index("--tag") + 1] == "mizan-provenance-probe:ci"
         output = args[args.index("--output") + 1]
         assert output.startswith("type=oci,dest=")
         context = Path(args[-1])
