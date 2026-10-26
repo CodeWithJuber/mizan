@@ -71,6 +71,11 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     return max(minimum, min(value, maximum))
 
 
+# Windows at or below this size get conservative (halved) budgets.
+SMALL_WINDOW = 8192
+SMALL_WINDOW_SCALE = 2.0
+
+
 def estimate_tokens(text: str) -> int:
     """Conservative token estimate: UTF-8 bytes / 4 (non-Latin scripts count more)."""
     if not text:
@@ -119,15 +124,24 @@ class ContextBudget:
     chunk_tokens: int
 
     @classmethod
-    def for_window(cls, context_window: int) -> ContextBudget:
-        window = max(1024, int(context_window or 0))
+    def for_window(cls, context_window: int, reserved_tokens: int = 0) -> ContextBudget:
+        """Budgets in estimate units for a window, after ``reserved_tokens``.
+
+        ``reserved_tokens`` is room the request needs besides history (system
+        prompt, output). Small windows (≤ 8K) belong to small models whose
+        tokenizers count more tokens per byte, so their budgets are halved.
+        """
+        window = max(512, int(context_window or 0))
         fill = _env_float("MIZAN_CONTEXT_FILL", 0.5, 0.1, 0.8)
         cap = _env_int("MIZAN_CONTEXT_HISTORY_TOKENS", 150_000, 512, 2_000_000)
-        history = max(256, min(int(window * fill), cap))
+        scale = SMALL_WINDOW_SCALE if window <= SMALL_WINDOW else 1.0
+        room = window - max(0, int(reserved_tokens)) - max(32, window // 32)
+        history = max(64, int(min(window * fill, cap, room) / scale))
+        small = window <= SMALL_WINDOW
         return cls(
             history_tokens=history,
-            summary_tokens=max(256, history // 8),
-            chunk_tokens=max(512, min(int(window * 0.5), 100_000)),
+            summary_tokens=max(32 if small else 256, history // (4 if small else 8)),
+            chunk_tokens=max(128 if small else 512, min(int(window * 0.5 / scale), 100_000)),
         )
 
 
@@ -242,9 +256,10 @@ class ContextEngine:
         context_window: int,
         summarizer: Summarizer | None = None,
         current: str | None = None,
+        reserved_tokens: int = 0,
     ) -> list[dict]:
         """Return the prompt history for ``session_id`` (excluding ``current``)."""
-        budget = ContextBudget.for_window(context_window)
+        budget = ContextBudget.for_window(context_window, reserved_tokens)
         stored = await self.store.get_messages(session_id, limit=None)
         if current is not None and stored and stored[-1].get("role") == "user":
             if stored[-1].get("content") == current:
@@ -339,6 +354,9 @@ def agent_summarizer(agent: Any) -> Summarizer | None:
     model = getattr(agent, "ai_model", "")
     if client is None or not hasattr(client, "create") or not model:
         return None
+    from providers import effective_limits
+
+    _window, output_cap = effective_limits(client, model)
 
     async def summarize(system: str, prompt: str, max_tokens: int) -> str:
         from agents.provider_limits import provider_limits
@@ -347,7 +365,7 @@ def agent_summarizer(agent: Any) -> Summarizer | None:
             response = await asyncio.to_thread(
                 client.create,
                 model=model,
-                max_tokens=max(512, min(max_tokens * 2, 16_000)),
+                max_tokens=max(64, min(max_tokens * 2, 16_000, output_cap)),
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
                 tools=None,

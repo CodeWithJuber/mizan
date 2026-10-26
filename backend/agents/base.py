@@ -82,14 +82,24 @@ from providers import (
     assistant_turn_content,
     configured_provider_name,
     create_provider,
+    effective_limits,
     get_default_model,
-    model_limits,
     normalize_model_for_provider,
+    provider_retry_delay,
 )
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
-from reasoning.context_engine import ContextBudget, fit_recent, message_text, message_tokens
+from reasoning.context_engine import (
+    SMALL_WINDOW,
+    SMALL_WINDOW_SCALE,
+    SUMMARY_HEADER,
+    ContextBudget,
+    estimate_tokens,
+    fit_recent,
+    message_text,
+    message_tokens,
+)
 from response_policy import (
     CURRENT_REQUEST_END,
     CURRENT_REQUEST_START,
@@ -121,6 +131,9 @@ _MAX_OUTPUT_TOKENS = 128_000
 _DEFAULT_MAX_STEPS = 100
 # A tool call cut off by the output limit is re-requested at most this often.
 _MAX_TOOL_CUTOFF_RETRIES = 2
+# Re-sends after an explicit provider error response (429/5xx), never after a
+# timeout or dropped connection.
+_MAX_PROVIDER_RETRIES = 2
 _TOOL_CUTOFF_PROMPT = (
     "[System: your previous tool call was cut off by the output length limit before its "
     "arguments were complete, so it was NOT executed. Issue it again. If its input is large "
@@ -993,7 +1006,7 @@ class BaseAgent:
         """
         if getattr(self.ai_client, "provider_name", "") == "anthropic":
             return
-        window, _ = model_limits(self.ai_model or "")
+        window, _ = self._model_limits()
         budget = int(window * 0.6)
         total = sum(message_tokens(m) for m in messages)
         if total <= budget:
@@ -1053,8 +1066,8 @@ class BaseAgent:
         Without a setting the model's own output cap is used (up to 16k per
         call); length-limited answers then continue in the loop.
         """
-        _context, cap = model_limits(getattr(self, "ai_model", "") or "")
-        model_cap = max(256, min(int(cap), _MAX_OUTPUT_TOKENS))
+        _context, cap = self._model_limits()
+        model_cap = max(1, min(int(cap), _MAX_OUTPUT_TOKENS))
         default = min(model_cap, _DEFAULT_OUTPUT_TOKENS)
         configured = getattr(self, "config", {}).get(
             "max_output_tokens", os.getenv("MIZAN_CHAT_MAX_OUTPUT_TOKENS", "")
@@ -1068,7 +1081,65 @@ class BaseAgent:
         except (TypeError, ValueError, OverflowError):
             logger.warning("Invalid chat output token budget; using %d", default)
             value = default
-        return max(256, min(value, model_cap))
+        return max(min(256, model_cap), min(value, model_cap))
+
+    def _model_limits(self) -> tuple[int, int]:
+        """(context, max_output) of the provider/model actually serving this agent."""
+        context, max_output = effective_limits(
+            getattr(self, "ai_client", None), getattr(self, "ai_model", "") or ""
+        )
+        return int(context), int(max_output)
+
+    def _history_reserve(self, window: int) -> int:
+        """Room a request needs besides history: output plus system/context blocks."""
+        return self._output_token_budget() + window // 4
+
+    def _fit_request_to_window(
+        self, system: str, messages: list[dict], tools: list[dict], max_tokens: int
+    ) -> int:
+        """Make one request fit the serving window; returns the max_tokens to send.
+
+        The oldest history turns (before the current request) are dropped first,
+        the running summary last; then the output cap shrinks to the room left.
+        In-run tool turns are never dropped, so tool pairs stay valid.
+        """
+        window, _cap = self._model_limits()
+        scale = SMALL_WINDOW_SCALE if window <= SMALL_WINDOW else 1.0
+        margin = max(32, window // 32)
+        fixed = estimate_tokens(system)
+        if tools:
+            fixed += estimate_tokens(json.dumps(tools, ensure_ascii=False))
+        costs = [message_tokens(message) for message in messages]
+        total = int((fixed + sum(costs)) * scale)
+        if total + max_tokens + margin <= window:
+            return max_tokens
+        current = next(
+            (
+                index
+                for index in range(len(messages) - 1, -1, -1)
+                if isinstance(messages[index].get("content"), str)
+                and CURRENT_REQUEST_START in messages[index]["content"]
+            ),
+            None,
+        )
+        dropped = 0
+        while current is not None and current > 0 and total + max_tokens + margin > window:
+            first = messages[0].get("content")
+            # Keep the running summary while other old turns can go.
+            index = (
+                1
+                if (current > 1 and isinstance(first, str) and first.startswith(SUMMARY_HEADER))
+                else 0
+            )
+            if not isinstance(messages[index].get("content"), str):
+                break
+            messages.pop(index)
+            total -= int(costs.pop(index) * scale)
+            current -= 1
+            dropped += 1
+        if dropped:
+            logger.info("[SIYAQ] Dropped %d oldest turns to fit a %d-token window", dropped, window)
+        return max(64, min(max_tokens, window - total - margin))
 
     @staticmethod
     def _require_answer_progress(response) -> None:
@@ -1127,6 +1198,7 @@ class BaseAgent:
             "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
         )
         tool_cutoffs = 0
+        provider_retries = 0
         output_boost = 1
         wrapping_up = False
         turn = 0  # tool rounds completed
@@ -1143,8 +1215,8 @@ class BaseAgent:
                 messages.append({"role": "user", "content": _WRAP_UP_PROMPT})
             # Tone can vary; the configured economic/output limit does not.
             qalb_params = getattr(self, "_qalb_params", {})
-            _context, model_cap = model_limits(self.ai_model or "")
-            max_tokens = min(self._output_token_budget() * output_boost, max(256, int(model_cap)))
+            _context, model_cap = self._model_limits()
+            max_tokens = min(self._output_token_budget() * output_boost, max(1, int(model_cap)))
             temperature = qalb_params.get("temperature", 0.5)
             # Continuing a visible answer is text-only. Completed actions must
             # not be repeated because a model reissues a tool call mid-answer.
@@ -1152,6 +1224,9 @@ class BaseAgent:
             request_tools = [] if continuations or wrapping_up else available_tools
             offered_names = {schema["name"] for schema in request_tools}
             self._compact_run_messages(messages)
+            max_tokens = self._fit_request_to_window(
+                system_prompt, messages, request_tools, max_tokens
+            )
 
             # A failed stream may already have been accepted and billed. Never
             # turn an ambiguous failure into another POST. Providers without
@@ -1203,6 +1278,28 @@ class BaseAgent:
                 logger.info(
                     "[FIKR] Tool call cut off by max_tokens — re-requesting (%d)", tool_cutoffs
                 )
+                continue
+            except Exception as provider_error:
+                # An explicit 429/5xx response proves nothing was generated, so
+                # the same request may be sent again. Anything ambiguous, or a
+                # call that already produced visible text, is never replayed.
+                delay = provider_retry_delay(provider_error, provider_retries)
+                if (
+                    delay is None
+                    or provider_retries >= _MAX_PROVIDER_RETRIES
+                    or accumulated_text != text_before_call
+                ):
+                    raise
+                provider_retries += 1
+                model_calls -= 1
+                logger.warning(
+                    "[FIKR] Provider rejected the request (HTTP %s); retry %d/%d in %.1fs",
+                    getattr(provider_error, "status_code", "?"),
+                    provider_retries,
+                    _MAX_PROVIDER_RETRIES,
+                    delay,
+                )
+                await asyncio.sleep(delay)
                 continue
 
             # Collect text output and tool calls from this turn. In streaming
@@ -2051,8 +2148,8 @@ Match the requested depth and self-correct errors."""
         if context and context.get("history"):
             # Chat routes send a model-sized history (running summary + recent
             # turns). Other callers are bounded here by the same token budget.
-            window, _ = model_limits(getattr(self, "ai_model", "") or "")
-            budget = ContextBudget.for_window(window)
+            window, _ = self._model_limits()
+            budget = ContextBudget.for_window(window, self._history_reserve(window))
             history = fit_recent(
                 [
                     h
@@ -2808,6 +2905,11 @@ Match the requested depth and self-correct errors."""
                     if isinstance(e, OutputBudgetExceeded)
                     else {"error_code": "model_refused", "refusal_category": e.category}
                     if isinstance(e, ProviderRefusal)
+                    else {
+                        "error_code": "provider_unavailable",
+                        "provider_status": getattr(e, "status_code", None),
+                    }
+                    if provider_retry_delay(e, 0) is not None
                     else {}
                 ),
                 "answer_delivered": False,

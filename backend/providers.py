@@ -59,12 +59,59 @@ def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -
 _OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
 
 
-def _adapt_openai_request(provider_name: str, kwargs: dict) -> dict:
-    """OpenAI's own API: current models take ``max_completion_tokens`` and
-    reasoning-class models accept only the default temperature.
+# OpenRouter catalog facts (id → free/tools/context), refreshed with the limits.
+_OPENROUTER_CATALOG: dict[str, dict[str, Any]] = {}
 
-    OpenRouter and Ollama keep the widely supported ``max_tokens`` field.
+
+def openrouter_fallback_models(model: str, needs_tools: bool) -> list[str]:
+    """Models OpenRouter tries, in order, when the primary model errors.
+
+    The gateway handles the failover inside the same request, so MIZAN never
+    re-sends anything. ``MIZAN_OPENROUTER_FALLBACKS`` is ``auto`` (default),
+    ``none`` or a comma-separated list. ``auto`` only adds free models for a
+    free primary, so a failover never changes what a request costs; models
+    from the same vendor and with the largest context are preferred.
     """
+    setting = os.getenv("MIZAN_OPENROUTER_FALLBACKS", "auto").strip()
+    if not model or setting.lower() in {"none", "off", "false", "0"}:
+        return []
+    if setting.lower() not in {"", "auto"}:
+        chosen = [item.strip() for item in setting.split(",")]
+        return [item for item in dict.fromkeys(chosen) if item and item != model][:3]
+    if not model.endswith(":free"):
+        return []
+    vendor = model.split("/", 1)[0]
+    candidates = [
+        (entry_id, info)
+        for entry_id, info in _OPENROUTER_CATALOG.items()
+        if entry_id != model and info.get("free") and (info.get("tools") or not needs_tools)
+    ]
+    candidates.sort(
+        key=lambda item: (
+            item[0].split("/", 1)[0] != vendor,
+            -int(item[1].get("context") or 0),
+            item[0],
+        )
+    )
+    return [entry_id for entry_id, _ in candidates[:2]]
+
+
+def _adapt_openai_request(provider_name: str, kwargs: dict) -> dict:
+    """Provider-specific request fields for the OpenAI-compatible protocol.
+
+    OpenRouter gets its native model fallbacks. OpenAI's own API takes
+    ``max_completion_tokens`` and reasoning-class models accept only the
+    default temperature. OpenRouter and Ollama keep ``max_tokens``.
+    """
+    if provider_name == "openrouter":
+        fallbacks = openrouter_fallback_models(
+            str(kwargs.get("model", "")), bool(kwargs.get("tools"))
+        )
+        if fallbacks:
+            extra = dict(kwargs.get("extra_body") or {})
+            extra["models"] = [kwargs["model"], *fallbacks]
+            kwargs["extra_body"] = extra
+        return kwargs
     if provider_name != "openai":
         return kwargs
     if "max_tokens" in kwargs:
@@ -1453,6 +1500,47 @@ def model_limits(model: str) -> tuple[int, int]:
     return 32_768, 8_192
 
 
+def effective_limits(provider: Any, model: str) -> tuple[int, int]:
+    """``(context, max_output)`` for one request on ``provider``.
+
+    A provider that serves a fixed window declares it (for example a
+    2,048-token worker with a 256-token output cap); that declaration wins
+    over the model table, whose fallback for unknown models is 32K.
+    """
+    context, max_output = model_limits(model)
+    declared_context = getattr(provider, "context_window", None)
+    if type(declared_context) is int and declared_context > 0:
+        context = declared_context
+    declared_output = getattr(provider, "max_output_tokens", None)
+    if type(declared_output) is int and declared_output > 0:
+        max_output = declared_output
+    return context, max(1, min(max_output, context))
+
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 529}
+
+
+def provider_retry_delay(exc: BaseException, attempt: int) -> float | None:
+    """Seconds to wait before re-sending a request the provider rejected.
+
+    Only explicit HTTP error responses qualify (rate limit, overload, upstream
+    error): the provider answered with an error, so nothing was generated or
+    billed. Timeouts and dropped connections never qualify, because an
+    accepted request may still be running upstream.
+    """
+    status = getattr(exc, "status_code", None)
+    if type(status) is not int or status not in _RETRYABLE_STATUS:
+        return None
+    if status == 429:
+        headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+        try:
+            after = float(headers.get("retry-after", "") or 0)
+        except (TypeError, ValueError, AttributeError):
+            after = 0.0
+        return min(max(after, 2.0 * (attempt + 1)), 20.0)
+    return float(min(1.5 * 2.0**attempt, 8.0))
+
+
 def record_model_limits(model: str, context: Any, max_output: Any) -> None:
     try:
         context_value, output_value = int(context or 0), int(max_output or 0)
@@ -1490,11 +1578,18 @@ async def refresh_model_limits() -> int:
             if response.status_code == 200:
                 for entry in response.json().get("data", []):
                     top = entry.get("top_provider") or {}
+                    model_id = str(entry.get("id", ""))
                     record_model_limits(
-                        entry.get("id", ""),
+                        model_id,
                         entry.get("context_length"),
                         top.get("max_completion_tokens"),
                     )
+                    if model_id:
+                        _OPENROUTER_CATALOG[model_id] = {
+                            "free": model_id.endswith(":free"),
+                            "tools": "tools" in (entry.get("supported_parameters") or []),
+                            "context": int(entry.get("context_length") or 0),
+                        }
                     refreshed += 1
     except Exception as exc:
         logger.info("OpenRouter model limits unavailable: %s", exc)

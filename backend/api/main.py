@@ -1224,13 +1224,16 @@ def choose_agent_for_task(task: str) -> str:
 
 async def chat_history(session_id: str, session: dict, agent, task: str) -> list[dict]:
     """Model-sized history: running summary of old turns + recent turns that fit."""
-    from providers import model_limits
+    from providers import effective_limits
     from reasoning.context_engine import ContextEngine, agent_summarizer
 
     try:
-        window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+        window, _ = effective_limits(
+            getattr(agent, "ai_client", None), getattr(agent, "ai_model", "") or ""
+        )
+        reserve = agent._history_reserve(window) if hasattr(agent, "_history_reserve") else 0
         history: list[dict] = await ContextEngine(memory).history_for(
-            session_id, window, agent_summarizer(agent), current=task
+            session_id, window, agent_summarizer(agent), current=task, reserved_tokens=reserve
         )
         return history
     except Exception as exc:  # noqa: BLE001 - history assembly must never stop a chat
@@ -1302,6 +1305,7 @@ def chat_failure_payload(result: dict) -> dict:
         "provider_timeout": "The response model exceeded its wait limit. No automatic retry was made; upstream completion is unconfirmed.",
         "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
         "model_refused": "The model declined this request. Rephrase it or choose another model.",
+        "provider_unavailable": "The model provider returned an error and stayed unavailable after automatic retries and fallback models. Try again in a moment or choose another model.",
     }
     code = result.get("error_code")
     if not isinstance(code, str) or code not in public_errors:
