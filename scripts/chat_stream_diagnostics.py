@@ -12,9 +12,11 @@ import json
 import math
 import os
 import re
+import resource
 import selectors
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -22,16 +24,25 @@ import uuid
 from collections import Counter
 from pathlib import Path
 
-START = "2026-10-26T04:42:00Z"
-END = "2026-10-26T04:45:00Z"
+START = "2026-10-26T06:24:00Z"
+END = "2026-10-26T06:28:00Z"
 QA_TEXT = (
-    "Verification check: 2 + 2 kitna hota hai? Hinglish mein ek line ka jawab do. "
+    "Verification 107: 2 + 2 kitna hota hai? Hinglish mein ek line ka jawab do. "
     "Koi tool mat chalao."
 )
 DOCKER = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock"]
 TIMESTAMP = re.compile(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|\+00:00)?\Z")
 STATES = {"accepted", "running", "complete", "cancelled", "error", "rejected", "failed"}
-COMPLETIONS = {"complete", "incomplete", "failed", "empty_response", "missing_receipt"}
+COMPLETIONS = {
+    "complete",
+    "incomplete",
+    "failed",
+    "empty_response",
+    "missing_receipt",
+    "unverified_answer",
+}
+MAX_GRAPH_BYTES = 64 * 1024 * 1024
+CHILD_ADDRESS_SPACE_BYTES = 256 * 1024 * 1024
 CODES = {"delivery_stopped", "stream_failed", "agent_failed", "output_budget_exhausted"}
 STACK_FILES = (
     "api/main.py",
@@ -57,7 +68,11 @@ STACK_FILES = (
 )
 LOG_CATEGORIES = {
     "cancelled_error": ("CancelledError",),
-    "client_disconnect": ("ClientDisconnect", "client disconnected", "client prematurely closed"),
+    "client_disconnect": (
+        "ClientDisconnect",
+        "client disconnected",
+        "client prematurely closed",
+    ),
     "end_of_stream": ("EndOfStream",),
     "transport_deadline": ("Chat transport exceeded the delivery deadline",),
     "slow_reader": ("Chat reader is too slow",),
@@ -67,7 +82,12 @@ LOG_CATEGORIES = {
     "cancelled_reader_unavailable": ("Cancelled chat reader unavailable",),
     "chat_stream_failed": ("Chat stream failed for message",),
     "provider_stream_fallback": ("[FIKR] Streaming failed",),
-    "provider_timeout": ("APITimeoutError", "ReadTimeout", "ConnectTimeout", "PoolTimeout"),
+    "provider_timeout": (
+        "APITimeoutError",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "PoolTimeout",
+    ),
     "timeout_error": ("TimeoutError", "timed out"),
     "connection_error": (
         "APIConnectionError",
@@ -76,8 +96,13 @@ LOG_CATEGORIES = {
         "RemoteProtocolError",
     ),
     "os_error": ("OSError",),
+    "database_busy": ("database is locked", "database table is locked", "SQLITE_BUSY"),
     "exception_group": ("ExceptionGroup",),
-    "upstream_closed": ("upstream prematurely closed", "upstream timed out", "recv() failed"),
+    "upstream_closed": (
+        "upstream prematurely closed",
+        "upstream timed out",
+        "recv() failed",
+    ),
     "worker_exit": (
         "Finished server process",
         "Shutting down",
@@ -279,7 +304,8 @@ def nginx_directives(raw: str) -> list[dict]:
                 stack.append(label)
             else:
                 location = re.fullmatch(
-                    r"location\s+(?:(?:=|\^~)\s+)?(/api/chat/stream|/api/|/ws/|/)", label
+                    r"location\s+(?:(?:=|\^~)\s+)?(/api/chat/stream|/api/|/ws/|/)",
+                    label,
                 )
                 stack.append("location:" + location[1] if location else "other_block")
         if len(selected) >= 128:
@@ -327,6 +353,7 @@ def metadata_receipt(raw: str | None) -> dict:
             "queue_wait_ms",
             "execution_ms",
             "provider_ms",
+            "other_execution_ms",
             "tool_ms",
             "total_ms",
             "provider_attempt_count",
@@ -408,14 +435,90 @@ def read_qa_db(path: Path) -> dict:
         conn.close()
 
 
+def read_graph_counts(db_path: Path) -> dict:
+    """Count the persisted snapshot without loading application code or outputting keys."""
+    result = {
+        "status": "unavailable",
+        "bytes": None,
+        "concepts": None,
+        "pathways": None,
+    }
+    graph_path = db_path.with_name("masalik_network.json")
+    try:
+        descriptor = os.open(graph_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                result["status"] = "not_regular_file"
+                return result
+            result["bytes"] = before.st_size
+            if before.st_size > MAX_GRAPH_BYTES:
+                result["status"] = "over_size_limit"
+                return result
+            payload = handle.read(MAX_GRAPH_BYTES + 1)
+            after = os.fstat(handle.fileno())
+        if len(payload) > MAX_GRAPH_BYTES:
+            result["status"] = "over_size_limit"
+            return result
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            result["status"] = "changed_during_read"
+            return result
+        value = json.loads(payload)
+        if not isinstance(value, dict) or not all(
+            isinstance(value.get(key), dict) for key in ("concepts", "pathways")
+        ):
+            result["status"] = "invalid_structure"
+            return result
+        result.update(
+            status="counted",
+            concepts=len(value["concepts"]),
+            pathways=len(value["pathways"]),
+        )
+    except FileNotFoundError:
+        result["status"] = "missing"
+    except (ValueError, RecursionError):
+        result["status"] = "invalid_json"
+    except MemoryError:
+        result["status"] = "memory_limit"
+    except OSError:
+        result["status"] = "unreadable"
+    return result
+
+
+def child_report() -> dict:
+    # The backend exec child has its own deadline even if the Docker CLI disconnects.
+    signal.alarm(12)
+    # Only these two environment keys are inspected; neither value is printed.
+    db_path = Path(os.environ.get("DB_PATH", "/data/mizan_memory.db"))
+    mem0_enabled = os.environ.get("MEM0_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        limit = (
+            min(CHILD_ADDRESS_SPACE_BYTES, hard)
+            if hard != resource.RLIM_INFINITY
+            else CHILD_ADDRESS_SPACE_BYTES
+        )
+        if soft != resource.RLIM_INFINITY:
+            limit = min(limit, soft)
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (OSError, ValueError):
+        return {"status": "unavailable", "reason": "child_memory_bound_unavailable"}
+    try:
+        result = read_qa_db(db_path)
+    except (OSError, ValueError, sqlite3.Error, MemoryError):
+        result = {"status": "unavailable", "reason": "read_only_database_probe_failed"}
+    result["mem0_enabled"] = mem0_enabled
+    result["persisted_graph"] = read_graph_counts(db_path)
+    return result
+
+
 def main() -> int:
     if sys.argv[1:] == ["--db-only"]:
-        try:
-            # This is the only environment key read inside the existing backend.
-            result = read_qa_db(Path(os.environ.get("DB_PATH", "/data/mizan_memory.db")))
-        except (OSError, ValueError, sqlite3.Error):
-            result = {"status": "unavailable", "reason": "read_only_database_probe_failed"}
-        print(json.dumps(result, allow_nan=False))
+        print(json.dumps(child_report(), allow_nan=False))
         return 0
     if sys.argv[1:] or os.geteuid() != 0:
         raise SystemExit("Existing root deployment connection and fixed diagnostic scope required")
@@ -467,7 +570,9 @@ def main() -> int:
     if host_nginx:
         code, output, _, truncated = run([host_nginx, "-T"])
         report["host_nginx"].update(
-            config_exit=code, truncated=truncated, selected_directives=nginx_directives(output)
+            config_exit=code,
+            truncated=truncated,
+            selected_directives=nginx_directives(output),
         )
     code, output, _, truncated = run(
         [*DOCKER, "exec", "-i", "mizan-backend", "python3", "-", "--db-only"],
