@@ -61,7 +61,7 @@ jobs:
         run: |
           count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "production-deployment" and .expired == false)] | length')
           echo "exists=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.proof.outputs.exists == 'true'
         with:
           name: production-deployment
@@ -84,7 +84,7 @@ jobs:
           if [ "$current" != "$sha" ]; then exit 0; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.source.outputs.sha != ''
         with:
           fetch-depth: 0
@@ -175,13 +175,13 @@ jobs:
     needs: determine-release
     if: needs.determine-release.outputs.should_release == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ needs.determine-release.outputs.release_sha }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -325,7 +325,7 @@ jobs:
           git push origin "v${{ steps.bump.outputs.new_version }}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ steps.bump.outputs.new_version }}"
           name: "MIZAN v${{ steps.bump.outputs.new_version }}"

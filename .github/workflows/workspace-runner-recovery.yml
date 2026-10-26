@@ -18,7 +18,7 @@ jobs:
     # Ten-minute lock wait, ten-minute recovery budget, and SSH/setup overhead.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Validate reviewed recovery script

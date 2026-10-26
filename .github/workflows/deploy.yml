@@ -46,7 +46,7 @@ jobs:
     # Workflow ceiling with room for lock/drain/checks; Docker/registry RPCs can still fail.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
@@ -89,7 +89,7 @@ jobs:
           printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "bash '$remote_script' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}'"
           printf '%s\n' "$DEPLOY_SHA" > deployed-sha.txt
           echo 'deployed=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.production.outputs.deployed == 'true'
         with:
           name: production-deployment

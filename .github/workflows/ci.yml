@@ -11,13 +11,13 @@ jobs:
     name: Lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # Pin to the same range as pyproject [dev] — unpinned ruff drift has
       # flipped I001 verdicts on already-committed code between releases.
-      - run: pip install "ruff>=0.16.9,<0.17"
+      - run: pip install "ruff>=0.17.2,<0.18"
       - run: ruff check backend/ nlp/ tests/
       - run: ruff format --check backend/ nlp/ tests/
 
@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -38,16 +38,16 @@ jobs:
         run: pytest tests/ -v --tb=short --cov=backend --cov-report=xml
       - name: Upload coverage
         if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
-          file: coverage.xml
+          files: coverage.xml
 
   own-research:
     name: Own architecture research invariants
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
@@ -59,13 +59,13 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install build
+      - run: pip install "build>=1.6.1,<2"
       - run: python -m build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -73,8 +73,8 @@ jobs:
   typecheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,nlp,knowledge]"
@@ -83,11 +83,11 @@ jobs:
   ruh:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pip install -e ".[dev,nlp,knowledge]" datasets
       - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
 
@@ -97,8 +97,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up attestation-capable builder
         id: buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build backend image
         run: docker build -f docker/Dockerfile.backend.prod -t mizan-backend .
       - name: Verify production runtime dependencies
@@ -148,7 +148,7 @@ jobs:
           assert BayanTokenizer().encode('knowledge')"
       - name: Build frontend image
         run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Build isolated coding images
@@ -174,7 +174,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up attestation-capable publisher
         id: buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -184,7 +184,7 @@ jobs:
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: python3 scripts/verify_build_provenance.py
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -192,7 +192,7 @@ jobs:
       - id: repository
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - name: Publish production backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: .
@@ -200,7 +200,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.repository.outputs.name }}/backend:${{ github.sha }}
       - name: Publish production frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: ./frontend
