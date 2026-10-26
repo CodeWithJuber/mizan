@@ -56,8 +56,8 @@ def provider_factory():
     "seconds, retries, expected_seconds, expected_retries",
     [
         (None, None, 60, 0),
-        ("25.5", "1", 25.5, 1),
-        ("99999", "99999", 180, 2),
+        ("25.5", "1", 25.5, 0),
+        ("99999", "99999", 180, 0),
         ("-5", "-2", 1, 0),
         ("nan", "invalid", 60, 0),
         ("inf", "2.5", 60, 0),
@@ -99,7 +99,7 @@ def test_idle_timeout_propagates_without_hidden_sdk_retry(kind, streaming, provi
 
 
 @pytest.mark.parametrize("kind", ["anthropic", "openai"])
-def test_explicit_sdk_retry_budget_limits_http_failure_attempts(
+def test_legacy_sdk_retry_setting_cannot_replay_generation_posts(
     kind, monkeypatch, provider_factory
 ):
     monkeypatch.setenv("MIZAN_LLM_MAX_RETRIES", "1")
@@ -116,7 +116,7 @@ def test_explicit_sdk_retry_budget_limits_http_failure_attempts(
     provider = provider_factory(kind, respond)
     with pytest.raises((anthropic.APIStatusError, openai.APIStatusError)):
         provider.create("test-model", 32, "system", [])
-    assert len(attempts) == 2
+    assert len(attempts) == 1
 
 
 def openai_event(content=None, calls=None, finish=None, usage=None):

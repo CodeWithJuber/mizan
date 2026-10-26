@@ -38,6 +38,9 @@ import { useApi } from "./hooks/useApi";
 import { ChatAttachments } from "./components/ChatAttachments";
 import { authFetch } from "./utils/authFetch";
 import { runChatRequest } from "./utils/chatRequest.ts";
+import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "./utils/chatRecovery.ts";
+import { useChatRecovery } from "./hooks/useChatRecovery.ts";
+import { ChatRunStatus } from "./components/ChatRunStatus.tsx";
 import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import ComparePanel from "./components/ComparePanel";
@@ -84,7 +87,7 @@ import {
   hydrateCachedMessages,
   mergeHistoryMessages,
 } from "./utils/historySync";
-import { cacheMessages, readCachedMessages } from "./utils/sessionCache";
+import { cacheMessages, readCachedMessages, cacheChatDraft, cacheChatDraftNow, readCachedChatDrafts, clearCachedChatDraft } from "./utils/sessionCache";
 import { StreamingMarkdown } from "./components/StreamingMarkdown";
 
 // ===== ERROR BOUNDARY =====
@@ -139,8 +142,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                 Something went wrong
               </h2>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Kuch galat ho gaya hai. Dobara try karo ya page reload karo —
-                tumhara data safe hai.
+                Something went wrong. Try again or reload the page.
               </p>
             </div>
             <div className="flex items-center justify-center gap-3">
@@ -237,7 +239,7 @@ const WS_STATUS_HINTS: Record<string, string> = {
   connecting: "Connecting to server…",
   reconnecting: "Reconnecting to server — please wait",
   disconnected: "Disconnected from server — check your connection",
-  auth_required: "Login required — Security tab me login karo",
+  auth_required: "Login required — open Security to sign in",
 };
 
 // ===== MAIN APP INNER =====
@@ -427,11 +429,67 @@ function AppInner() {
   const continuationRef = useRef(0);
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [runProgress, setRunProgress] = useState<{ startedAt: number; phase?: string } | null>(null);
+  const [draftStorageFailed, setDraftStorageFailed] = useState(false);
+  const draftStorageFailures = useRef(new Set<string>());
+  const recoveryHistoryRef = useRef<(sid: string) => Promise<boolean>>(async () => false);
+  const activeDraftRef = useRef<{
+    sessionId: string; ownerToken: string; message: ChatMessage; live: boolean; lastSaved?: string; pendingSave?: string;
+  } | null>(null);
+  const pendingInputRef = useRef<{ requestId: string; content: string } | null>(null);
+  const recovery = useChatRecovery({
+    sessionId, authRevision,
+    readHistory: (sid) => recoveryHistoryRef.current(sid),
+    onResolved: (sid, requestId) => {
+      const token = localStorage.getItem("mizan_token");
+      if (token && requestId) void clearCachedChatDraft(sid, requestId, token);
+      if (requestId) draftStorageFailures.current.delete(`${sid}:${requestId}`);
+      setDraftStorageFailed([...draftStorageFailures.current].some((key) => key.startsWith(`${sessionIdRef.current}:`)));
+      if (activeDraftRef.current?.sessionId === sid && activeDraftRef.current.message.requestId === requestId)
+        activeDraftRef.current = null;
+    },
+  });
+  const persistActiveDraft = useCallback((immediate = false) => {
+    const draft = activeDraftRef.current;
+    if (!draft || draft.ownerToken !== localStorage.getItem("mizan_token")) return;
+    if (draft.live) draft.message = {
+      ...draft.message,
+      content: streamBufferRef.current?.getText() ?? draft.message.content,
+      messageId: activeMessageIdRef.current || draft.message.messageId,
+    };
+    const signature = `${draft.message.content.length}:${draft.message.messageId ?? ""}:${draft.message.error?.code ?? ""}:${draft.message.stopped ?? false}`;
+    const storageResult = (saved: boolean) => {
+      if (activeDraftRef.current !== draft || draft.ownerToken !== localStorage.getItem("mizan_token")) return;
+      const key = `${draft.sessionId}:${draft.message.requestId}`;
+      if (saved) draftStorageFailures.current.delete(key);
+      else draftStorageFailures.current.add(key);
+      setDraftStorageFailed([...draftStorageFailures.current].some((entry) => entry.startsWith(`${sessionIdRef.current}:`)));
+    };
+    if (immediate) {
+      const saved = cacheChatDraftNow(draft.sessionId, draft.message, draft.ownerToken);
+      if (saved) draft.lastSaved = signature;
+      storageResult(saved);
+    } else if (signature !== draft.lastSaved && signature !== draft.pendingSave) {
+      draft.pendingSave = signature;
+      void cacheChatDraft(draft.sessionId, draft.message, draft.ownerToken).then((saved) => {
+        if (draft.pendingSave === signature) { draft.pendingSave = undefined; storageResult(saved); }
+        if (saved) draft.lastSaved = signature;
+      });
+    }
+  }, []);
+  useEffect(() => {
+    const timer = setInterval(() => { if (activeDraftRef.current?.live) persistActiveDraft(); }, 500);
+    const save = () => persistActiveDraft(true);
+    window.addEventListener("pagehide", save);
+    return () => { save(); clearInterval(timer); window.removeEventListener("pagehide", save); };
+  }, [persistActiveDraft]);
 
   // Text chat uses HTTP SSE and remains available when notification WS is down.
   const hasSendableInput = input.trim().length > 0 || attachedFiles.length > 0;
-  const sendDisabled = !hasSendableInput;
-  const sendTitle = hasSendableInput
+  const sendDisabled = !hasSendableInput || recovery.blocked || input.length > CHAT_INPUT_LIMIT;
+  const sendTitle = recovery.blocked ? "Check the previous run before sending"
+    : input.length > CHAT_INPUT_LIMIT ? `Messages are limited to ${CHAT_INPUT_LIMIT.toLocaleString()} characters`
+    : hasSendableInput
     ? "Send message"
     : "Type a message to send";
 
@@ -449,6 +507,12 @@ function AppInner() {
       lastAuthTokenRef.current = token;
       sendControllerRef.current?.abort();
       activeRequestIdRef.current = "";
+      activeMessageIdRef.current = "";
+      activeDraftRef.current = null;
+      draftStorageFailures.current.clear();
+      setDraftStorageFailed(false);
+      setRunProgress(null);
+      recovery.reset();
       streamBufferRef.current?.discard();
       streamBufferRef.current = null;
       setMessages([]);
@@ -610,8 +674,10 @@ function AppInner() {
    * marked `stopped` — never silently dropped. Idempotent.
    */
   const finalizeStop = useCallback(
-    (text: string) => {
+    (text: string, userRequested = false) => {
       if (!streamingRef.current) return;
+      const requestId = activeRequestIdRef.current || activeDraftRef.current?.message.requestId;
+      const messageId = activeMessageIdRef.current || activeDraftRef.current?.message.messageId;
       streamingRef.current = false;
       clearStopFallback();
       streamBufferRef.current?.discard();
@@ -623,21 +689,31 @@ function AppInner() {
       setActiveThinkingId(null);
       sendControllerRef.current = null;
       activeMessageIdRef.current = "";
-      const final = text.trim();
-      if (final) {
+      activeRequestIdRef.current = "";
+      setRunProgress(null);
+      if (text || requestId) {
         const stoppedMsg: ChatMessage = {
-          id: Date.now(),
+          id: activeDraftRef.current?.message.id ?? Date.now(),
           role: "assistant",
-          content: final,
+          content: text,
           agent: selectedAgent?.name,
           ts: new Date().toLocaleTimeString(),
-          stopped: true,
+          requestId, messageId,
+          stopped: userRequested,
+          interrupted: !userRequested,
+          meta: { completion_status: "incomplete", task_verified: false, answer_delivered: false },
         };
         setMessages((prev) => [...prev, stoppedMsg]);
+        if (activeDraftRef.current) {
+          activeDraftRef.current.message = stoppedMsg;
+          activeDraftRef.current.live = false;
+          persistActiveDraft();
+        }
       }
-      addTerminalLine("Generation stopped", "warn");
+      if (requestId) recovery.begin(requestId, requestId);
+      addTerminalLine(userRequested ? "Stop requested — checking the server run" : "Response interrupted — checking the server run", "warn");
     },
-    [addTerminalLine, clearStopFallback, selectedAgent],
+    [addTerminalLine, clearStopFallback, selectedAgent, persistActiveDraft, recovery.begin],
   );
 
   // Length-limited replies continue only when the user chooses Continue.
@@ -654,7 +730,8 @@ function AppInner() {
   /** Send a "continue" request for a length-truncated answer (no user bubble). */
   const requestContinuation = useCallback(async () => {
     const sid = sessionIdRef.current;
-    if (!sid || streamingRef.current) return;
+    const token = localStorage.getItem("mizan_token");
+    if (!sid || !token || streamingRef.current || recovery.isBlocked()) return;
     const controller = new AbortController();
     sendControllerRef.current = controller;
     appendToLastRef.current = true;
@@ -663,6 +740,14 @@ function AppInner() {
     );
     const requestId = crypto.randomUUID();
     activeRequestIdRef.current = requestId;
+    activeMessageIdRef.current = "";
+    activeDraftRef.current = { sessionId: sid, ownerToken: token, live: true, message: {
+      id: -Date.now(), role: "assistant", content: "", ts: new Date().toLocaleTimeString(), requestId,
+      agent: selectedAgent?.name, interrupted: true,
+    } };
+    persistActiveDraft();
+    recovery.reset();
+    setRunProgress({ startedAt: Date.now() });
     streamingRef.current = true;
     setStreaming(true);
     setTypingIndicator(true);
@@ -687,7 +772,10 @@ function AppInner() {
         requestId,
         signal: controller.signal,
         isCurrent: () => activeRequestIdRef.current === requestId && sessionIdRef.current === sid,
-        onEvent: (event) => chatEventHandlerRef.current(event),
+        onEvent: (event) => {
+          activeMessageIdRef.current = (event.message_id as string) || activeMessageIdRef.current;
+          chatEventHandlerRef.current(event);
+        },
       });
     } finally {
       if (activeRequestIdRef.current === requestId && sessionIdRef.current === sid) {
@@ -699,12 +787,12 @@ function AppInner() {
         setTypingIndicator(false);
       }
     }
-  }, [selectedAgent, workspaceId]);
+  }, [selectedAgent, workspaceId, persistActiveDraft, recovery.isBlocked, recovery.reset]);
 
   /** Abort the authenticated fetch; the server cancels the owned generation. */
   const stopGeneration = useCallback(() => {
     sendControllerRef.current?.abort();
-    finalizeStop(streamBufferRef.current?.getText() ?? "");
+    finalizeStop(streamBufferRef.current?.getText() ?? "", true);
   }, [finalizeStop]);
 
   const handleWsMessage = useCallback(
@@ -721,6 +809,7 @@ function AppInner() {
         case "stream":
         case "chat_stream":
           setTypingIndicator(false);
+          setRunProgress((current) => current ? { ...current, phase: "receiving" } : null);
           // CHAT UPGRADE: buffer chunks — StreamBuffer flushes to state on
           // rAF (~50ms throttle), not per token.
           if (!streamBufferRef.current) {
@@ -754,6 +843,14 @@ function AppInner() {
           setActiveThinkingId(null);
           break;
         case "chat_complete": {
+          const finishedDraft = activeDraftRef.current;
+          if (finishedDraft && finishedDraft.message.requestId === data.request_id) {
+            void clearCachedChatDraft(finishedDraft.sessionId, finishedDraft.message.requestId!, finishedDraft.ownerToken);
+            draftStorageFailures.current.delete(`${finishedDraft.sessionId}:${finishedDraft.message.requestId}`);
+            setDraftStorageFailed([...draftStorageFailures.current].some((key) => key.startsWith(`${sessionIdRef.current}:`)));
+            activeDraftRef.current = null;
+          }
+          setRunProgress(null);
           // CHAT UPGRADE: flush the stream buffer (final text may exceed
           // what was flushed to state) and settle stop-related state.
           clearStopFallback();
@@ -857,6 +954,10 @@ function AppInner() {
           break;
         }
         case "status":
+          if (typeof data.phase === "string")
+            setRunProgress((current) => current ? { ...current, phase: data.phase as string } : null);
+          else if (data.status === "accepted")
+            setRunProgress((current) => current ? { ...current, phase: "accepted" } : null);
           if (data.streaming_mode === "buffered")
             setToolStatus("Waiting for the model's complete response…");
           break;
@@ -929,6 +1030,7 @@ function AppInner() {
           break;
         }
         case "error": {
+          const draft = activeDraftRef.current;
           const partial = streamBufferRef.current?.finalize() ?? "";
           clearStopFallback();
           streamingRef.current = false;
@@ -943,6 +1045,7 @@ function AppInner() {
           setToolStatus("");
           setActiveThinkingId(null);
           setTruncatedContinue(null);
+          setRunProgress(null);
           const failure = chatFailureFields(data, partial);
           addTerminalLine(`Error: ${failure.error?.message}`, "error");
           const errMsg: ChatMessage = {
@@ -954,6 +1057,34 @@ function AppInner() {
             ts: new Date().toLocaleTimeString(),
           };
           setMessages((prev) => [...prev, errMsg]);
+          if (draft) {
+            draft.message = errMsg;
+            draft.live = false;
+            persistActiveDraft();
+          }
+          if (["chat_stream_active", "chat_capacity", "chat_capacity_reached"].includes(String(data.code))) {
+            // This submitted request was explicitly rejected before model work.
+            // The active run, if any, has its own identity and draft lifecycle.
+            if (draft?.message.requestId) {
+              void clearCachedChatDraft(draft.sessionId, draft.message.requestId, draft.ownerToken);
+              activeDraftRef.current = null;
+            }
+            setMessages((prev) => prev.map((message) => message.role === "user" && message.requestId === data.request_id
+              ? { ...message, notStarted: true } : message));
+            const pendingInput = pendingInputRef.current;
+            if (pendingInput && pendingInput.requestId === data.request_id) {
+              const unsent = pendingInput.content;
+              setInput((current) => current || unsent);
+            }
+          }
+          if (chatFailureNeedsRecovery(data)) {
+            const active = parseChatRun(data.active_request, sessionIdRef.current);
+            const submitted = typeof data.request_id === "string" ? data.request_id : draft?.message.requestId;
+            recovery.begin(active?.request_id ?? submitted, submitted);
+          } else if (draft?.message.requestId) {
+            void clearCachedChatDraft(draft.sessionId, draft.message.requestId, draft.ownerToken);
+            activeDraftRef.current = null;
+          }
           loadChatSessions();
           break;
         }
@@ -1073,6 +1204,8 @@ function AppInner() {
       finalizeStop,
       requestContinuation,
       selectedAgent,
+      persistActiveDraft,
+      recovery.begin,
     ],
   );
 
@@ -1275,7 +1408,7 @@ function AppInner() {
   };
 
   const loadChatHistory = useCallback(
-    async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean }) => {
+    async (sid: string, opts?: { onMissing?: () => void; quiet?: boolean; onLoaded?: (count: number) => void }): Promise<boolean> => {
       const requestToken = localStorage.getItem("mizan_token");
       setHistoryLoading(true);
       setHistoryLoadError(false);
@@ -1288,12 +1421,12 @@ function AppInner() {
           requestToken !== localStorage.getItem("mizan_token") ||
           sid !== sessionIdRef.current
         )
-          return;
+          return false;
         if (result.missing) {
           // Session expired or deleted server-side — the caller decides how
           // to start fresh. Never toast here: a missing session is normal.
           opts?.onMissing?.();
-          return;
+          return true;
         }
         if (!result.ok) {
           // Final failure after retries — visible retry UI, never silent.
@@ -1301,12 +1434,12 @@ function AppInner() {
             setHistoryLoadError(true);
             addToast({
               type: "error",
-              title: "Chat history load nahi hui",
+              title: "Could not load chat history",
               description:
-                result.error?.message || "Retry dabao ya connection check karo",
+                result.error?.message || "Check the connection and try again",
             });
           }
-          return;
+          return false;
         }
         const history = (
           result.messages as {
@@ -1320,6 +1453,8 @@ function AppInner() {
         // Merge: server wins on content; local-only messages (cache render,
         // optimistic echoes) are appended in order — no duplicates.
         setMessages((prev) => mergeHistoryMessages(history, prev));
+        opts?.onLoaded?.(history.length);
+        return true;
       } finally {
         if (
           requestToken === localStorage.getItem("mizan_token") &&
@@ -1330,6 +1465,7 @@ function AppInner() {
     },
     [addToast],
   );
+  recoveryHistoryRef.current = (sid) => loadChatHistory(sid, { quiet: true });
 
   /**
    * CHAT UPGRADE: resync after a WS reconnect — stream events may have been
@@ -1363,9 +1499,15 @@ function AppInner() {
   const switchSession = useCallback(
     async (sid: string) => {
       const requestToken = localStorage.getItem("mizan_token");
+      persistActiveDraft(true);
+      activeDraftRef.current = null;
+      recovery.reset();
+      setRunProgress(null);
       sessionIdRef.current = sid;
+      setDraftStorageFailed([...draftStorageFailures.current].some((key) => key.startsWith(`${sid}:`)));
       sendControllerRef.current?.abort();
       activeRequestIdRef.current = "";
+      activeMessageIdRef.current = "";
       streamBufferRef.current?.discard();
       streamBufferRef.current = null;
       streamingRef.current = false;
@@ -1380,18 +1522,26 @@ function AppInner() {
       setHistoryLoadError(false);
       // CHAT UPGRADE: render cache instantly, then merge server history.
       try {
-        const cached = await readCachedMessages(sid);
+        const [cached, drafts] = await Promise.all([readCachedMessages(sid), readCachedChatDrafts(sid)]);
+        const draft = drafts[drafts.length - 1];
+        const restored = drafts.length ? mergeHistoryMessages((cached ?? []) as ChatMessage[], drafts.map((row) => row.message as ChatMessage)) : cached;
         setMessages((current) => hydrateCachedMessages(
-          current, cached as ChatMessage[] | null,
+          current, restored as ChatMessage[] | null,
           sid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token"),
         ));
+        if (draft && sid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token")) {
+          recovery.begin(draft.message.requestId, draft.message.requestId, sid);
+          return;
+        }
       } catch {
         /* cache is best-effort */
       }
       if (sid !== sessionIdRef.current || requestToken !== localStorage.getItem("mizan_token")) return;
-      await loadChatHistory(sid);
+      await loadChatHistory(sid, { onLoaded: (count) => {
+        if (count && !streamingRef.current) recovery.begin(undefined, undefined, sid);
+      } });
     },
-    [loadChatHistory],
+    [loadChatHistory, persistActiveDraft, recovery.begin, recovery.reset],
   );
 
   useEffect(() => {
@@ -1408,16 +1558,25 @@ function AppInner() {
       const requestToken = localStorage.getItem("mizan_token");
       void (async () => {
         try {
-          const cached = await readCachedMessages(storedSid);
+          const [cached, drafts] = await Promise.all([readCachedMessages(storedSid), readCachedChatDrafts(storedSid)]);
+          const draft = drafts[drafts.length - 1];
+          const restored = drafts.length ? mergeHistoryMessages((cached ?? []) as ChatMessage[], drafts.map((row) => row.message as ChatMessage)) : cached;
           setMessages((current) => hydrateCachedMessages(
-            current, cached as ChatMessage[] | null,
+            current, restored as ChatMessage[] | null,
             storedSid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token"),
           ));
+          if (draft && storedSid === sessionIdRef.current && requestToken === localStorage.getItem("mizan_token")) {
+            recovery.begin(draft.message.requestId, draft.message.requestId, storedSid);
+            return;
+          }
         } catch {
           /* cache is best-effort — the server fetch still runs */
         }
         if (storedSid !== sessionIdRef.current || requestToken !== localStorage.getItem("mizan_token")) return;
         await loadChatHistory(storedSid, {
+          onLoaded: (count) => {
+            if (count && !streamingRef.current) recovery.begin(undefined, undefined, storedSid);
+          },
           onMissing: () => {
             try {
               localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
@@ -1451,7 +1610,7 @@ function AppInner() {
     const onUnauthorized = () => {
       if (shown) return;
       shown = true;
-      addToast({ type: "error", title: "Session expired — dobara login karo" });
+      addToast({ type: "error", title: "Session expired — please sign in again" });
       setActiveTab("security");
     };
     window.addEventListener("mizan:unauthorized", onUnauthorized);
@@ -1477,8 +1636,10 @@ function AppInner() {
   // fetch is in flight — the UI never shows empty when data exists locally.
   useEffect(() => {
     if (!sessionId || messages.length === 0) return;
+    const ownerToken = localStorage.getItem("mizan_token");
+    if (!ownerToken) return;
     const timer = setTimeout(() => {
-      void cacheMessages(sessionId, messages);
+      void cacheMessages(sessionId, messages, ownerToken);
     }, 500);
     return () => clearTimeout(timer);
   }, [sessionId, messages]);
@@ -1517,8 +1678,13 @@ function AppInner() {
   }, []);
 
   const startNewSession = useCallback(() => {
+    persistActiveDraft(true);
+    activeDraftRef.current = null;
+    recovery.reset();
+    setRunProgress(null);
     sendControllerRef.current?.abort();
     activeRequestIdRef.current = "";
+    activeMessageIdRef.current = "";
     streamBufferRef.current?.discard();
     streamBufferRef.current = null;
     streamingRef.current = false;
@@ -1528,6 +1694,7 @@ function AppInner() {
     setShowArtifacts(false);
     const newId = `session_${crypto.randomUUID()}`;
     sessionIdRef.current = newId;
+    setDraftStorageFailed(false);
     setSessionId(newId);
     setMessages([]);
     setStreamingText("");
@@ -1536,7 +1703,7 @@ function AppInner() {
     setTruncatedContinue(null);
     continuationRef.current = 0;
     addTerminalLine("New chat session started", "gold");
-  }, []);
+  }, [persistActiveDraft, recovery.reset]);
 
   // "New chat" discards the visible session (recoverable via History), so it
   // confirms first. The /new chat command keeps its no-confirm behavior.
@@ -1544,13 +1711,15 @@ function AppInner() {
     if (
       messages.length > 0 &&
       !window.confirm(
-        "Start a new chat? The current conversation will be cleared from view (you can reopen it from History).",
+        draftStorageFailed
+          ? "Your browser could not save all received text. Copy any text you need before leaving. Start a new chat?"
+          : "Start a new chat? The current conversation will be cleared from view (you can reopen saved history and available local recovery copies).",
       )
     ) {
       return;
     }
     startNewSession();
-  }, [messages.length, startNewSession]);
+  }, [messages.length, startNewSession, draftStorageFailed]);
 
   // ===== Chat export (workstream D) =====
   // Client-side only: renders the current in-memory conversation to
@@ -1562,14 +1731,14 @@ function AppInner() {
       if (messages.length === 0) {
         addToast({
           type: "info",
-          title: "Export karne ke liye koi message nahi hai",
+          title: "There are no messages to export",
         });
         return;
       }
       if (
         messages.length > 300 &&
         !window.confirm(
-          `${messages.length} messages export karna hai — ${format === "markdown" ? ".md" : format === "text" ? ".txt" : ".json"} file download hogi. Continue?`,
+          `Export ${messages.length} messages as ${format === "markdown" ? ".md" : format === "text" ? ".txt" : ".json"}?`,
         )
       ) {
         return;
@@ -1614,7 +1783,7 @@ function AppInner() {
     setInput("");
     setStreaming(true);
     setTypingIndicator(true);
-    setToolStatus("Deep research shuru ho rahi hai…");
+    setToolStatus("Starting deep research…");
     try {
       const res = await authFetch(`${config.API_URL}/modes/deep-research`, {
         method: "POST",
@@ -1628,9 +1797,9 @@ function AppInner() {
       if (res.status === 409) {
         addToast({
           type: "warning",
-          title: "Confirmation chahiye",
+          title: "Confirmation required",
           description:
-            "Deep research mehenga hai — confirm checkbox tick karo, phir bhejo",
+            "Deep research requires cost confirmation. Select the confirmation checkbox before sending.",
         });
         return;
       }
@@ -1675,7 +1844,7 @@ function AppInner() {
     } catch (e) {
       addToast({
         type: "error",
-        title: "Deep research fail ho gayi",
+        title: "Deep research failed",
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -1688,6 +1857,11 @@ function AppInner() {
   const sendMessage = async (contentOverride?: string) => {
     const text = contentOverride ?? input;
     if ((!text.trim() && attachedFiles.length === 0) || streamingRef.current) return;
+    if (recovery.isBlocked()) { void recovery.refresh(); return; }
+    if (text.length > CHAT_INPUT_LIMIT) {
+      addToast({ type: "error", title: `Messages are limited to ${CHAT_INPUT_LIMIT.toLocaleString()} characters` });
+      return;
+    }
     // Auth gate: chat requires login (token from Security page)
     const authToken = localStorage.getItem("mizan_token");
     if (!authToken) {
@@ -1695,7 +1869,7 @@ function AppInner() {
         id: Date.now(),
         role: "assistant",
         content:
-          "🔒 Login required — Security tab me login karo (account ke liye admin se sampark karo), phir dubara bhejo",
+          "Login is required. Open Security to sign in, then send your message again.",
         ts: new Date().toLocaleTimeString(),
       };
       setMessages((prev) => [...prev, loginMsg]);
@@ -1707,9 +1881,9 @@ function AppInner() {
         id: Date.now(),
         role: "assistant" as const,
         content:
-          "⚠️ Koi AI provider set nahi hai — Settings → AI Providers me key add karo",
+          "No AI provider is configured. Add a provider key in Settings → AI Providers.",
         ts: new Date().toLocaleTimeString(),
-        cta: { label: "AI Providers kholo", tab: "settings" },
+        cta: { label: "Open AI Providers", tab: "settings" },
       } as ChatMessage & { cta: { label: string; tab: string } };
       setMessages((prev) => [...prev, providerMsg]);
       return;
@@ -1815,6 +1989,16 @@ function AppInner() {
     }
 
     activeRequestIdRef.current = requestId;
+    pendingInputRef.current = { requestId, content };
+    persistActiveDraft(true);
+    activeMessageIdRef.current = "";
+    activeDraftRef.current = { sessionId, ownerToken: authToken, live: true, message: {
+      id: -Date.now(), role: "assistant", content: "", ts: new Date().toLocaleTimeString(), requestId,
+      agent: selectedAgent?.name, interrupted: true,
+    } };
+    persistActiveDraft();
+    recovery.reset();
+    setRunProgress({ startedAt: Date.now() });
     try {
       await runChatRequest({
         request: () => authFetch(`${config.API_URL}/chat/stream`, {
@@ -2541,10 +2725,10 @@ function AppInner() {
                   </svg>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-red-700 dark:text-red-300">
-                      Chat history load nahi hui
+                      Could not load chat history
                     </div>
                     <div className="text-xs text-red-600/80 dark:text-red-400/80">
-                      Connection check karo, phir dobara try karo
+                      Check the connection, then try again
                     </div>
                   </div>
                   <button
@@ -2563,10 +2747,10 @@ function AppInner() {
                 <div className="mx-4 mt-3 p-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                      Jawab adhoora reh gaya (length limit)
+                      The response reached its length limit
                     </div>
                     <div className="text-xs text-amber-700/80 dark:text-amber-300/80">
-                      Continue dabao — wahin se aage, usi bubble me likhega
+                      Choose Continue to request the remaining answer
                     </div>
                   </div>
                   <button
@@ -2595,7 +2779,7 @@ function AppInner() {
                   <div className="flex flex-col items-center justify-center h-full px-4">
                     <div className="w-10 h-10 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                      Chat history load ho rahi hai…
+                      Loading chat history…
                     </p>
                   </div>
                 ) : (
@@ -2786,9 +2970,12 @@ function AppInner() {
                     </div>
                   )}
 
-                  <div ref={messagesEndRef} />
                 </div>
               )}
+
+              <ChatRunStatus progress={streaming ? runProgress : null} recovery={recovery.state} storageUnavailable={draftStorageFailed}
+                onRefresh={() => void recovery.refresh()} />
+              <div ref={messagesEndRef} />
 
               {/* Scroll to bottom arrow */}
               <button
@@ -3101,6 +3288,9 @@ function AppInner() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-2 px-1">
+                  {input.length > CHAT_INPUT_LIMIT && <span role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+                    {input.length.toLocaleString()} / {CHAT_INPUT_LIMIT.toLocaleString()} characters. Shorten the message before sending.
+                  </span>}
                   <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
                     <span className="hidden sm:inline">
                       Enter to send · Shift+Enter for new line · / for commands

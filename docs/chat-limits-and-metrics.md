@@ -26,6 +26,24 @@ and [model listing](https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free).
 
 ## Interrupted streams
 
+An attempted provider POST is never silently replayed after a stream failure,
+including failures before visible text. SDK retries are disabled, and the
+agent's recovery path cannot make another model call after an attempted call.
+Providers that support only buffered output retain their normal adapter.
+
+Wall-clock budgets supplement the provider SDK's socket inactivity timeout:
+
+| Environment setting | Default seconds | Allowed range | Covers |
+|---|---:|---:|---|
+| `MIZAN_LLM_FIRST_PROGRESS_SECONDS` | 60 | 1–180 | First visible text or tool-argument progress |
+| `MIZAN_LLM_PROGRESS_SECONDS` | 60 | 1–180 | Subsequent meaningful progress |
+| `MIZAN_LLM_MAX_CALL_SECONDS` | 300 | 1–900 | Entire provider call |
+| `MIZAN_CHAT_RUN_SECONDS` | 900 | 30–3600 | Context preparation, agent queue and execution |
+
+Comments, keepalives and private reasoning do not extend the progress deadline.
+A local timeout closes the stream where supported; it cannot establish whether
+the upstream provider stopped or charged for its work.
+
 A stream that closes before a completion or error event is incomplete. The chat
 keeps the received text and a visible error notice instead of treating the close
 as a user Stop. It never automatically repeats an uncertain POST. Check history
@@ -43,6 +61,57 @@ Cancellation receipts record a fixed reason, execution stage and elapsed request
 time. Provider attempt timings are included only when observed for that request;
 missing token counters stay missing. If saving a reply fails, the server emits a
 terminal `history_save_failed` error without claiming that the reply was saved.
+
+The authenticated run-state endpoint reports an active run, a terminal receipt,
+an uncertain outcome or an idle session. Recovery reads status and history; it
+does not resubmit the prompt. The browser retains received partial text with its
+original request identity and keeps Send locked while the outcome is uncertain.
+An active-session conflict has its own error code and the active run's identity,
+instead of appearing as a generic network error. A session remains occupied
+until both its producer and response transport have finished.
+
+## Request language and available tools
+
+Explicit output-language instructions take priority. Otherwise, the assistant
+matches the current message's natural language. A saved reply language supplies
+the fallback for an ambiguous or language-neutral request. Quoted code, tool
+results and prior messages do not establish the current response language.
+Greeting preferences remain independent. Custom role defaults and heuristic
+observations cannot override the current request's language, tone or format.
+
+Each execution builds a tool catalogue from available handlers, enabled skills,
+loaded plugins, the selected workspace, and existing permission/developmental
+gates. It ranks current-request relevance against the tools' names and metadata.
+A bounded discovery tool makes the other permitted tools reachable without
+sending every schema on every message. Discovery does not execute an action or
+consume an approval; an actual call still passes the normal authorization and
+argument checks. This is runtime selection, not learned model training.
+
+The schema window defaults to eight definitions and 12,288 UTF-8 bytes. Set
+`MIZAN_CHAT_TOOL_SCHEMA_LIMIT` (2–32) and `MIZAN_CHAT_TOOL_SCHEMA_BYTES`
+(4,096–65,536), or the agent's `tool_schema_limit` and `tool_schema_bytes`.
+Generation temperature uses the explicit agent `temperature` or
+`MIZAN_CHAT_TEMPERATURE` (default 0.5, bounded 0–1). Qalb oscillation no longer
+changes it. Deterministic self-checks report diagnostics without appending
+canned English caveats or rewriting text after it has streamed.
+
+The current production Compose template maps these chat settings from `.env`.
+Installations retaining an older Compose template need the corresponding
+environment entries before `.env` changes reach the container. Deployments
+preserve existing runtime values; an absent setting uses the application default.
+
+## Deployment draining
+
+The production image waits up to 90 seconds for active application work during
+shutdown, with a 105-second Docker stop budget. For a custom 10–180-second grace,
+set `MIZAN_GRACEFUL_SHUTDOWN_SECONDS` in the environment invoking
+`scripts/deploy_production.sh`; this is not a plain Compose `.env` override.
+The script derives matching application/container limits and gives both forward
+deployment and rollback enough stop time for the larger of the old/new limits.
+Invalid grace settings fail before containers are stopped. This reduces restart
+interruptions but does not make a single-backend rollout zero-downtime. On the
+first rollout, the old process receives the longer Docker stop allowance; its
+application shutdown timer cannot be changed retroactively.
 
 ## What the displayed numbers mean
 

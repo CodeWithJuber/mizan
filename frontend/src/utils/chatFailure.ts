@@ -67,4 +67,6 @@ export function failureEnvelope(body: unknown): Record<string, unknown> | undefi
   const candidate = record(body.detail) ? body.detail : body;
   if (candidate.type === "error" || candidate.code === "output_budget_exhausted" || candidate.code === "agent_failed")
     return candidate;
+  if (["chat_stream_active", "request_already_submitted", "chat_capacity", "chat_capacity_reached"].includes(String(candidate.code)))
+    return candidate;
 }

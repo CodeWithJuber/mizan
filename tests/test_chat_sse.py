@@ -73,6 +73,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", memory.db_path)
     monkeypatch.setattr(main, "active_sessions", {})
     monkeypatch.setattr(main, "_stream_sessions", set())
+    monkeypatch.setattr(main, "_stream_runs", {})
     monkeypatch.setattr(main, "chat_agent_for", AsyncMock(side_effect=lambda user, agent: agent))
     manager = SimpleNamespace(broadcast=AsyncMock(), send=AsyncMock())
     monkeypatch.setattr(main, "manager", manager)
@@ -100,6 +101,159 @@ def frames(text):
     return result
 
 
+async def test_active_run_conflict_preserves_both_request_identities_and_owner_scope(api):
+    main, client, tokens, users, _, agent, _ = api
+    agent.block = True
+    original = message()
+    principal = main.auth.verify_token(tokens["alice"])
+    response = await main.stream_chat(main.StreamChatMessage(**original), principal)
+    await anext(response.body_iterator)
+    await asyncio.wait_for(agent.started.wait(), 1)
+    lease = main._stream_runs[(users["alice"].id, "session-a")]
+    lease.started -= 3600  # Age cannot expire live work or admit another POST.
+    rejected = message()
+    try:
+        with pytest.raises(HTTPException) as error:
+            await main.stream_chat(main.StreamChatMessage(**rejected), principal)
+        detail = error.value.detail
+        assert error.value.status_code == 409 and detail["code"] == "chat_stream_active"
+        assert detail["request_id"] == rejected["request_id"]
+        assert detail["active_request"]["request_id"] == original["request_id"]
+        assert detail["active_request"]["elapsed_ms"] >= 3_600_000
+        state = client.get("/api/chat/session-a/run-state", headers=headers(tokens["alice"])).json()
+        assert (
+            state["state"] == "active" and state["request"]["request_id"] == original["request_id"]
+        )
+        assert (
+            client.get("/api/chat/session-a/run-state", headers=headers(tokens["bob"])).status_code
+            == 404
+        )
+        assert state["request"]["provider_attempt_count"] is None
+        wrong_request = client.get(
+            "/api/chat/session-a/run-state",
+            params={"request_id": rejected["request_id"]},
+            headers=headers(tokens["alice"]),
+        ).json()
+        assert wrong_request["state"] == "active"
+        assert wrong_request["request"]["request_id"] == original["request_id"]
+        assert len(agent.calls) == 1
+    finally:
+        await response.close()
+    assert not main._stream_sessions and not main._stream_runs
+    state = client.get(
+        "/api/chat/session-a/run-state",
+        params={"request_id": original["request_id"]},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert state["state"] == "terminal" and state["history_saved"] is True
+
+
+async def test_disconnected_transport_cannot_release_a_still_cleaning_producer(api):
+    main, _, tokens, _, _, agent, _ = api
+    cleanup_started, cleanup_release = asyncio.Event(), asyncio.Event()
+    original_execute = agent.execute
+    agent.block = True
+
+    async def slow_cleanup(*args, **kwargs):
+        try:
+            return await original_execute(*args, **kwargs)
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            await cleanup_release.wait()
+            raise
+
+    agent.execute = slow_cleanup
+    response = await main.stream_chat(
+        main.StreamChatMessage(**message()), main.auth.verify_token(tokens["alice"])
+    )
+    await anext(response.body_iterator)
+    await asyncio.wait_for(agent.started.wait(), 1)
+    closing = asyncio.create_task(response.close())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), 1)
+        assert main._stream_sessions and main._stream_runs
+        assert not closing.done()
+    finally:
+        cleanup_release.set()
+        await asyncio.wait_for(closing, 1)
+    assert not main._stream_sessions and not main._stream_runs
+
+
+async def test_restart_receipt_is_unknown_and_same_uuid_is_never_replayed(api):
+    main, client, tokens, users, memory, agent, _ = api
+    body = message()
+    await memory.authorize_session("session-a", users["alice"].id, create=True)
+    ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
+    ledger.claim(users["alice"].id, body["request_id"], "session-a", "old-message", body)
+    ledger.update(users["alice"].id, body["request_id"], "running")
+    state = client.get("/api/chat/session-a/run-state", headers=headers(tokens["alice"])).json()
+    assert state["state"] == "unknown" and state["history_saved"] is None
+    assert state["request"]["provider_attempt_count"] is None
+    repeated = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+    assert repeated.status_code == 409
+    assert repeated.json()["detail"]["code"] == "request_already_submitted"
+    assert not agent.calls
+    missing = client.get(
+        "/api/chat/session-a/run-state",
+        params={"request_id": str(uuid.uuid4())},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert missing == {"state": "idle", "request": None, "history_saved": None}
+
+
+@pytest.mark.parametrize("usage", [None, [], {"timings": None}, {"timings": []}])
+async def test_run_state_tolerates_old_partial_usage_and_finds_older_receipt(api, usage):
+    _, client, tokens, users, memory, _, _ = api
+    body = message()
+    await memory.authorize_session("session-a", users["alice"].id, create=True)
+    ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
+    ledger.claim(users["alice"].id, body["request_id"], "session-a", "saved-message", body)
+    await memory.save_message(
+        "session-a",
+        "assistant",
+        "Saved",
+        metadata={"request_id": body["request_id"], "usage": usage},
+    )
+    ledger.update(users["alice"].id, body["request_id"], "complete")
+    for _ in range(51):
+        await memory.save_message("session-a", "assistant", "Later", metadata={})
+    result = client.get(
+        "/api/chat/session-a/run-state",
+        params={"request_id": body["request_id"]},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert result["state"] == "terminal" and result["history_saved"] is True
+    assert result["request"]["provider_attempt_count"] is None
+
+
+def test_run_budget_cancels_local_execution_and_persists_safe_failure(api, monkeypatch):
+    main, client, tokens, _, memory, agent, _ = api
+    monkeypatch.setattr("agents.provider_limits.chat_run_seconds", lambda: 0.04)
+    agent.block = True
+    body = message()
+    response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+    terminal = frames(response.text)[-1]
+    assert terminal["type"] == "error" and terminal["code"] == "chat_run_timeout"
+    assert terminal["answer_delivered"] is False and terminal["task_verified"] is False
+    assert agent.cancelled.is_set() and len(agent.calls) == 1
+    assert not main._stream_sessions and not main._stream_runs
+    state = client.get("/api/chat/session-a/run-state", headers=headers(tokens["alice"])).json()
+    assert state["state"] == "terminal" and state["history_saved"] is True
+
+
+async def test_unstarted_response_releases_lease_without_provider_execution(api):
+    main, client, tokens, _, _, agent, _ = api
+    body = message()
+    response = await main.stream_chat(
+        main.StreamChatMessage(**body), main.auth.verify_token(tokens["alice"])
+    )
+    await response.close()
+    assert not main._stream_sessions and not main._stream_runs and not agent.calls
+    state = client.get("/api/chat/session-a/run-state", headers=headers(tokens["alice"])).json()
+    assert state["state"] == "terminal" and state["request"]["status"] == "rejected"
+    assert state["history_saved"] is False
+
+
 def test_authentication_precedes_stream_and_work(api):
     _, client, tokens, _, _, agent, _ = api
     assert client.post("/api/chat/stream", json=message()).status_code == 401
@@ -113,6 +267,15 @@ def test_authentication_precedes_stream_and_work(api):
         ).status_code
         == 422
     )
+    assert not agent.calls
+
+
+async def test_status_for_post_never_received_does_not_claim_session(api):
+    _, client, tokens, _, memory, agent, _ = api
+    result = client.get("/api/chat/never-received/run-state", headers=headers(tokens["alice"]))
+    assert result.status_code == 200
+    assert result.json() == {"state": "idle", "request": None, "history_saved": None}
+    assert await memory.session_owner("never-received") is None
     assert not agent.calls
 
 
@@ -861,7 +1024,10 @@ def test_saved_artifact_remains_visible_when_generation_later_fails(api, monkeyp
 
 @pytest.mark.parametrize("transport", ["sse", "rest", "websocket"])
 @pytest.mark.parametrize("partial", ["", "Visible partial answer"])
-@pytest.mark.parametrize("code", ["output_budget_exhausted", "private_unknown_code"])
+@pytest.mark.parametrize(
+    "code",
+    ["output_budget_exhausted", "provider_timeout", "chat_run_timeout", "private_unknown_code"],
+)
 def test_failed_chat_retains_safe_code_final_usage_and_receipt(
     api, monkeypatch, transport, partial, code
 ):
@@ -924,12 +1090,11 @@ def test_failed_chat_retains_safe_code_final_usage_and_receipt(
                 assert websocket.receive_json()["chunk"] == partial
             final = websocket.receive_json()
 
-    expected_code = code if code == "output_budget_exhausted" else "agent_failed"
+    known_code = code in {"output_budget_exhausted", "provider_timeout", "chat_run_timeout"}
+    expected_code = code if known_code else "agent_failed"
     assert final["type"] == "error"
     assert final["code"] == expected_code
-    assert final["completion_status"] == (
-        "incomplete" if code == "output_budget_exhausted" else "failed"
-    )
+    assert final["completion_status"] == ("incomplete" if known_code else "failed")
     assert final["answer_delivered"] is False and final["task_verified"] is False
     assert final["usage"]["timings"] == usage["timings"]
     assert final["usage"]["calls"] == usage["calls"]

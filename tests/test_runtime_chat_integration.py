@@ -7,12 +7,12 @@ import pytest
 from agents.specialized import create_agent
 from learner.ruh_learner import RuhLearner
 from memory.dhikr import DhikrMemorySystem
-from providers import ContentBlock, LLMResponse
+from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.auth import TokenPayload, bind_principal, reset_principal
 from workspace.context import artifact_session
 
 
-class ScriptedProvider:
+class ScriptedProvider(BaseLLMProvider):
     provider_name = "test-provider"
     supports_tools = True
 
@@ -30,6 +30,22 @@ class ScriptedProvider:
 
 def answer(text):
     return LLMResponse([ContentBlock(type="text", text=text)], "end_turn", "observed-model")
+
+
+def offer_fixture_tools(agent, monkeypatch, description, *names):
+    """Provider fixtures may request only actions actually offered in that turn."""
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [
+            {
+                "name": name,
+                "description": description,
+                "input_schema": {"type": "object", "properties": {}},
+            }
+            for name in names
+        ],
+    )
 
 
 @pytest.fixture
@@ -70,6 +86,7 @@ async def test_partial_stream_failure_does_not_replay_request(agent, monkeypatch
 
 
 async def test_completed_tool_is_not_repeated_after_provider_failure(agent, monkeypatch):
+    offer_fixture_tools(agent, monkeypatch, "Save a file", "workspace_write")
     provider = ScriptedProvider(
         [
             LLMResponse(
@@ -170,6 +187,7 @@ def test_message_builder_does_not_repeat_history(agent):
 async def test_workspace_write_finishes_before_run_in_same_model_turn(agent, monkeypatch):
     import asyncio
 
+    offer_fixture_tools(agent, monkeypatch, "Write and run", "workspace_write", "workspace_run")
     written = False
     order = []
 
@@ -313,12 +331,12 @@ async def test_tool_marker_without_stream_is_not_an_answer(agent, monkeypatch):
     assert agent.ai_client.calls == 2
 
 
-async def test_whitespace_after_retry_is_not_success(agent):
+async def test_provider_failure_does_not_retry_even_without_visible_text(agent):
     agent.ai_client = ScriptedProvider([RuntimeError("upstream unavailable"), answer("   ")])
     result = await agent.execute("hello")
     assert not result["success"]
     assert agent.success_count == 0
-    assert agent.ai_client.calls == 2
+    assert agent.ai_client.calls == 1
 
 
 async def test_summary_without_final_receipt_fails_without_replaying(agent, monkeypatch):
@@ -378,6 +396,7 @@ async def test_no_configured_provider_is_an_error_not_a_fake_response(agent):
 async def test_failed_tool_receipt_is_not_a_verified_observation(agent, monkeypatch):
     from unittest.mock import Mock
 
+    offer_fixture_tools(agent, monkeypatch, "Run the program", "workspace_run")
     observation = Mock(wraps=agent.yaqin.tag_observation)
     monkeypatch.setattr(agent.yaqin, "tag_observation", observation)
     monkeypatch.setattr(agent, "_execute_tool_safe", AsyncMock(return_value={"exit_code": 1}))
@@ -398,6 +417,7 @@ async def test_failed_tool_receipt_is_not_a_verified_observation(agent, monkeypa
 
 
 async def test_pre_execution_tool_failure_does_not_repeat_other_actions(agent, monkeypatch):
+    offer_fixture_tools(agent, monkeypatch, "Hello", "save", "failing_check")
     calls = []
 
     async def execute_tool(name, params):
@@ -419,7 +439,7 @@ async def test_pre_execution_tool_failure_does_not_repeat_other_actions(agent, m
             )
         ]
     )
-    result = await agent.execute("hello")
+    result = await agent.execute("save and failing_check")
     assert not result["success"]
     assert calls == ["save", "failing_check"]
     assert agent.ai_client.calls == 1
@@ -438,7 +458,8 @@ def test_explicit_preferences_are_attributed_once_and_override_old_context(agent
     text = messages[-1]["content"]
     assert text.count('"value": "Hinglish"') == 1
     assert "EXPLICIT USER PREFERENCES" in text
-    assert "current request take precedence" in text
+    assert "owner-scoped defaults over old chat preferences" in text
+    assert "[CURRENT USER REQUEST]\nUse English just for this reply\n" in text
     assert "Context:" not in text
 
 
@@ -534,7 +555,7 @@ async def test_secondary_task_telemetry_cannot_change_provider_outcome(agent, pr
     assert result["success"] is provider_succeeds
     assert agent.success_count == int(provider_succeeds)
     assert agent.error_count == int(not provider_succeeds)
-    assert agent.ai_client.calls == (1 if provider_succeeds else 2)
+    assert agent.ai_client.calls == 1
     save_task.assert_awaited_once()
     encode.assert_called_once()
     if provider_succeeds:

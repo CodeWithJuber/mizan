@@ -34,6 +34,7 @@ export interface HistoryMessage {
   error?: { code?: string; message: string };
   interrupted?: boolean;
   stopped?: boolean;
+  notStarted?: boolean;
 }
 
 /** Cache hydration may seed an empty view, never replace newer local activity. */
@@ -72,7 +73,7 @@ function sameMessageIdentity(a: HistoryMessage, b: HistoryMessage): boolean {
 }
 
 function needsIdentity(m: HistoryMessage): boolean {
-  return Boolean(m.error || m.interrupted || m.stopped || !m.content.trim());
+  return Boolean(m.error || m.interrupted || m.stopped || m.notStarted || !m.content.trim());
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -137,11 +138,13 @@ export function mergeHistoryMessages<T extends HistoryMessage>(
     const matched = merged.findIndex((row) => sameMessageIdentity(row, message));
     if (matched >= 0) {
       const saved = merged[matched];
-      if (message.error && needsIdentity(saved)) {
+      if ((message.error || message.interrupted || message.stopped) && needsIdentity(saved)) {
         merged[matched] = {
           ...saved,
           error: saved.error ?? message.error,
           content: message.content.startsWith(saved.content) ? message.content : saved.content,
+          stopped: message.stopped || saved.stopped,
+          interrupted: message.stopped ? false : saved.interrupted,
         };
       }
       continue;

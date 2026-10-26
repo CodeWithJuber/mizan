@@ -303,6 +303,11 @@ async def test_continuation_cannot_repeat_completed_action_even_if_model_request
     )
     tool = AsyncMock(return_value={"saved": True})
     monkeypatch.setattr(agent, "_execute_tool_safe", tool)
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": "workspace_write", "description": "Save it once", "input_schema": {}}],
+    )
     result = await agent.execute("Save it once")
     assert not result["success"]
     assert "text-only continuation" in result["error"]
@@ -329,6 +334,7 @@ async def test_reasoning_only_tool_summary_is_not_retried_or_treated_as_answer(a
 @pytest.mark.parametrize("qalb_budget", [2048, 3000, 4096])
 async def test_qalb_tone_does_not_control_output_budget(agent, monkeypatch, qalb_budget):
     agent.ai_client = ScriptedProvider([receipt("Salaam")])
+    agent.config["temperature"] = 0.2
     monkeypatch.setattr(
         agent.qalb_processor,
         "process",
@@ -339,7 +345,7 @@ async def test_qalb_tone_does_not_control_output_budget(agent, monkeypatch, qalb
     result = await agent.execute("hello")
     assert result["success"]
     assert agent.ai_client.requests[0]["max_tokens"] == 4096
-    assert agent.ai_client.requests[0]["temperature"] == 0.3
+    assert agent.ai_client.requests[0]["temperature"] == 0.2
     assert result["metric_provenance"]["accuracy"] == "not_measured"
 
 
@@ -398,10 +404,10 @@ async def test_queue_wait_and_failed_stream_attempt_are_measured_without_unlocki
 
     agent.ai_client = StreamFailure([receipt("fallback answer")])
     result = await agent.execute("hello", stream_callback=AsyncMock())
-    assert result["success"]
+    assert not result["success"]
     attempts = result["usage"]["timings"]["provider_attempts"]
     assert [(attempt["mode"], attempt["outcome"]) for attempt in attempts] == [
         ("stream", "failed"),
-        ("create", "completed"),
     ]
-    assert len(result["usage"]["calls"]) == 1  # Only one observed completion receipt.
+    assert result["usage"].get("calls", []) == []  # Ambiguous failures are not retried.
+    assert not agent.ai_client.requests

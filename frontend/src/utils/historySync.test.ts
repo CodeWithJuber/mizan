@@ -119,6 +119,10 @@ const delivered = mergeHistoryMessages([{ ...savedCancellation, interrupted: fal
 check("same-request saved answer replaces an obsolete local transport notice", delivered.length === 1 && delivered[0].error === undefined && delivered[0].content === "The full answer");
 check("known different requests keep identical successful answers", mergeHistoryMessages([{ id: 10, role: "assistant", content: "4", requestId: "old-request" }], [{ id: 11, role: "assistant", content: "4", requestId: "new-request" }]).length === 2);
 check("repeated user text with a new request identity survives resync", mergeHistoryMessages([{ id: 12, role: "user", content: "Continue", requestId: "old-request" }], [{ id: 13, role: "user", content: "Continue", requestId: "new-request" }]).length === 2);
+const stoppedDraft: HistoryMessage = { ...localNotice, content: "  exact partial\n\n", stopped: true, interrupted: false, error: undefined };
+const restoredStop = mergeHistoryMessages([{ ...savedCancellation, content: "  exact" }], [stoppedDraft]);
+check("explicit local Stop retains exact bytes and identity through server resync", restoredStop.length === 1 && restoredStop[0].content === stoppedDraft.content && restoredStop[0].stopped === true && restoredStop[0].interrupted === false);
+check("known-not-started user rows never dedupe against legacy repeated text", mergeHistoryMessages([{ role: "user", content: "same" }], [{ role: "user", content: "same", notStarted: true, requestId: "rejected" }]).length === 2);
 
 // --- retry: success first try ---
 {

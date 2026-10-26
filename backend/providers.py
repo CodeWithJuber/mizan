@@ -20,6 +20,7 @@ import math
 import os
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -81,8 +82,8 @@ def _has_reasoning(message) -> bool:
 def _sdk_request_options(timeout_type) -> dict[str, Any]:
     """Bound SDK I/O waits and retries; a healthy stream can run longer.
 
-    Agent-level recovery is separate, so SDK retries are disabled by default
-    instead of silently multiplying the agent's own attempts.
+    Retries stay disabled: socket failures do not prove a generation POST was
+    rejected before execution. Agent recovery must not replay it either.
     """
     try:
         seconds = float(os.getenv("MIZAN_LLM_TIMEOUT_SECONDS", "60"))
@@ -92,14 +93,11 @@ def _sdk_request_options(timeout_type) -> dict[str, Any]:
         logger.warning("Invalid MIZAN_LLM_TIMEOUT_SECONDS; using 60 seconds")
         seconds = 60.0
     seconds = max(1.0, min(seconds, 180.0))
-    try:
-        retries = int(os.getenv("MIZAN_LLM_MAX_RETRIES", "0"))
-    except ValueError:
-        logger.warning("Invalid MIZAN_LLM_MAX_RETRIES; disabling SDK retries")
-        retries = 0
     return {
         "timeout": timeout_type(seconds, connect=min(5.0, seconds)),
-        "max_retries": max(0, min(retries, 2)),
+        # A timed-out generation POST may already be accepted/billed. Retrying
+        # inside an SDK is no safer than replaying it at the agent layer.
+        "max_retries": 0,
     }
 
 
@@ -547,6 +545,10 @@ class _AnthropicStreamWrapper:
     def __init__(self, manager):
         self.manager = manager
         self.stream = None
+        self._progress_callback: Callable[[], None] | None = None
+
+    def set_progress_callback(self, callback: Callable[[], None]) -> None:
+        self._progress_callback = callback
 
     def __enter__(self):
         self.stream = self.manager.__enter__()
@@ -557,7 +559,17 @@ class _AnthropicStreamWrapper:
 
     @property
     def text_stream(self):
-        return self.stream.text_stream
+        for event in self.stream:
+            if getattr(event, "type", None) != "content_block_delta":
+                continue
+            delta = event.delta
+            kind = getattr(delta, "type", None)
+            text = getattr(delta, "text", None) if kind == "text_delta" else None
+            arguments = getattr(delta, "partial_json", None) if kind == "input_json_delta" else None
+            if (text or arguments) and self._progress_callback:
+                self._progress_callback()
+            if text:
+                yield text
 
     def get_final_response(self):
         try:
@@ -608,6 +620,10 @@ class _OpenAIStreamWrapper:
         self._stream_exhausted = False
         self._request_options = request_options or {}
         self._reasoning_observed = False
+        self._progress_callback: Callable[[], None] | None = None
+
+    def set_progress_callback(self, callback: Callable[[], None]) -> None:
+        self._progress_callback = callback
 
     def __enter__(self):
         kwargs = dict(
@@ -662,6 +678,8 @@ class _OpenAIStreamWrapper:
             delta = choice.delta
             self._reasoning_observed = self._reasoning_observed or _has_reasoning(delta)
             if getattr(delta, "content", None):
+                if self._progress_callback:
+                    self._progress_callback()
                 self._text += delta.content
                 yield delta.content
             for part in getattr(delta, "tool_calls", None) or []:
@@ -669,6 +687,10 @@ class _OpenAIStreamWrapper:
                 call["id"] += getattr(part, "id", None) or ""
                 function = getattr(part, "function", None)
                 if function:
+                    if (
+                        getattr(function, "arguments", None) or getattr(function, "name", None)
+                    ) and self._progress_callback:
+                        self._progress_callback()
                     call["name"] += getattr(function, "name", None) or ""
                     call["arguments"] += getattr(function, "arguments", None) or ""
         self._stream_exhausted = True

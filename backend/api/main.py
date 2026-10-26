@@ -48,6 +48,7 @@ from api.chat_stream import (
     MAX_RESPONSE_CHARACTERS,
     TEXT_CHUNK_CHARACTERS,
     ChatEventChannel,
+    ChatRunLease,
     ChatStreamingResponse,
     ChatStreamLedger,
     ChatTransportGuard,
@@ -1120,6 +1121,30 @@ async def chat_context(
 
 
 _stream_sessions: set[tuple[str, str]] = set()
+_stream_runs: dict[tuple[str, str], ChatRunLease] = {}
+
+
+@app.get("/api/chat/{session_id}/run-state")
+async def chat_run_state(
+    session_id: str,
+    request_id: uuid.UUID | None = None,
+    user: TokenPayload = Depends(require_auth),
+):
+    if not session_id or len(session_id) > 100:
+        raise HTTPException(400, "Invalid session id")
+    owner = await memory.session_owner(session_id)
+    if owner is None:
+        # A browser can save its UUID before the first POST reaches us. This
+        # read must neither create nor adopt a session simply to recover it.
+        return {"state": "idle", "request": None, "history_saved": None}
+    await authorize_session(session_id, user)
+    lease = _stream_runs.get((user.user_id, session_id))
+    if lease is not None and not lease.finished:
+        # This is session availability: live work takes precedence over a
+        # requested older/missing receipt. Return its explicit server identity.
+        return {"state": "active", "request": lease.public(), "history_saved": lease.history_saved}
+    ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
+    return ledger.run_state(user.user_id, session_id, str(request_id) if request_id else None)
 
 
 def chat_completion_receipt(result: dict) -> dict:
@@ -1133,18 +1158,21 @@ def chat_completion_receipt(result: dict) -> dict:
 
 def chat_failure_payload(result: dict) -> dict:
     """Expose only fixed public errors, retaining the execution's final receipt."""
-    budget_exhausted = result.get("error_code") == "output_budget_exhausted"
-    code = "output_budget_exhausted" if budget_exhausted else "agent_failed"
-    message = (
-        "The model reached its output limit before producing an answer. "
-        "Try a smaller request or another model."
-        if budget_exhausted
-        else "The agent could not complete this request. Any partial output was saved."
+    public_errors = {
+        "output_budget_exhausted": "The model reached its output limit before producing an answer. Try a smaller request or another model.",
+        "provider_timeout": "The response model exceeded its wait limit. No automatic retry was made; upstream completion is unconfirmed.",
+        "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
+    }
+    code = result.get("error_code")
+    if not isinstance(code, str) or code not in public_errors:
+        code = "agent_failed"
+    message = public_errors.get(
+        code, "The agent could not complete this request. Any partial output was saved."
     )
     status = result.get("completion_status")
     receipt = {
         "completion_status": "incomplete"
-        if budget_exhausted or status == "incomplete"
+        if code in public_errors or status == "incomplete"
         else "failed",
         "answer_delivered": False,
         "task_verified": False,
@@ -1178,7 +1206,7 @@ def chat_provider_attempts(agent) -> dict:
             not isinstance(mode, str)
             or mode not in {"stream", "create"}
             or not isinstance(outcome, str)
-            or outcome not in {"completed", "failed", "cancelled"}
+            or outcome not in {"completed", "failed", "cancelled", "timed_out"}
             or not isinstance(elapsed, (int, float))
             or isinstance(elapsed, bool)
             or not 0 <= elapsed <= 86_400_000
@@ -1242,13 +1270,53 @@ async def stream_chat(
             },
         )
     stream_key = (user.user_id, req.session_id)
-    if (
-        stream_key in _stream_sessions
-        or len(_stream_sessions) >= security_config.ws_max_connections
-    ):
+    previous_lease = _stream_runs.get(stream_key)
+    if previous_lease is not None and previous_lease.finished:
+        _stream_runs.pop(stream_key, None)
+        _stream_sessions.discard(stream_key)
+    if stream_key in _stream_sessions:
         ledger.update(user.user_id, request_id, "rejected")
-        raise HTTPException(409, "A chat stream is already active; read session history")
+        raise HTTPException(
+            409,
+            {
+                "code": "chat_stream_active",
+                "message": "A chat stream is still active for this session.",
+                "request_id": request_id,
+                "session_id": req.session_id,
+                "active_request": previous_lease.public() if previous_lease else None,
+            },
+        )
+    if len(_stream_sessions) >= security_config.ws_max_connections:
+        ledger.update(user.user_id, request_id, "rejected")
+        raise HTTPException(
+            429,
+            {
+                "code": "chat_capacity_reached",
+                "message": "Chat capacity is currently full.",
+                "request_id": request_id,
+            },
+        )
     _stream_sessions.add(stream_key)
+    lease = ChatRunLease(req.session_id, request_id, message_id)
+    _stream_runs[stream_key] = lease
+
+    def release_finished_run(_task=None):
+        # A closed socket does not prove producer cancellation finished, and a
+        # completed producer does not prove all terminal frames were delivered.
+        if lease.finished and _stream_runs.get(stream_key) is lease:
+            _stream_runs.pop(stream_key, None)
+            _stream_sessions.discard(stream_key)
+
+    def transport_finished():
+        lease.transport_finished = True
+        if lease.producer is None:
+            # No body iteration means no provider or tool invocation started.
+            try:
+                ledger.update(user.user_id, request_id, "rejected")
+            except Exception:
+                logger.warning("Unstarted chat receipt update unavailable")
+        release_finished_run()
+
     channel = ChatEventChannel(
         session_id=req.session_id, message_id=message_id, request_id=request_id
     )
@@ -1270,6 +1338,7 @@ async def stream_chat(
         persistence_failed = False
         result: dict | None = None
         execution_stage = "context_preparation"
+        lease.update(phase=execution_stage)
         terminal_status = "error"
         trace = thinking_stream.create_trace(message_id)
         artifact_ids: set[str] = set()
@@ -1308,6 +1377,9 @@ async def stream_chat(
         async def stream_cb(chunk: str, **kwargs):
             nonlocal response_characters, execution_started, cancellation_reason, execution_stage
             execution_started = True
+            execution_stage = "agent_execution"
+            lease.provider_attempt_count = None
+            lease.update(phase="agent_execution")
             kind = kwargs.get("chunk_type", "text")
             if kind == "tool_use":
                 await deliver("tool_use", tool_name=kwargs.get("tool_name", "unknown"))
@@ -1331,8 +1403,11 @@ async def stream_chat(
                 await deliver("chat_stream", chunk=chunk[start : start + TEXT_CHUNK_CHARACTERS])
 
         async def thinking_cb(phase: str, content: str, confidence: float, metadata: dict):
-            nonlocal execution_started
+            nonlocal execution_started, execution_stage
             execution_started = True
+            execution_stage = "agent_execution"
+            lease.provider_attempt_count = None
+            lease.update(phase="agent_execution")
             thinking_stream.add_step(
                 trace.request_id, ThinkingPhase(phase), content, confidence, metadata
             )
@@ -1346,7 +1421,9 @@ async def stream_chat(
                 await memory.save_message(
                     req.session_id, "assistant", content, agent_id, metadata=metadata
                 )
+                lease.history_saved = True
             except Exception:
+                lease.history_saved = False
                 persistence_failed = True
                 raise
 
@@ -1370,6 +1447,7 @@ async def stream_chat(
             )
             if execution_started and (attempts := chat_provider_attempts(agent)):
                 usage["timings"] = attempts
+                lease.provider_attempt_count = attempts["provider_attempt_count"]
             receipt = (
                 chat_failure_payload({"usage": usage, **final_result})
                 if final_result is not None
@@ -1401,6 +1479,8 @@ async def stream_chat(
             await channel.emit(
                 "status",
                 status="accepted",
+                phase="context_preparation",
+                elapsed_ms=lease.public()["elapsed_ms"],
                 streaming_mode="buffered" if str(selected_model).startswith("ruh") else "provider",
                 input_modalities=["text"],
             )
@@ -1420,7 +1500,13 @@ async def stream_chat(
             )
             session["history"].append({"role": "user", "content": req.content})
             ledger.update(user.user_id, request_id, "running")
-            await channel.emit("status", status="running")
+            lease.update(status="running", phase="context_preparation")
+            await channel.emit(
+                "status",
+                status="running",
+                phase="context_preparation",
+                elapsed_ms=lease.public()["elapsed_ms"],
+            )
             cmd_result = await handle_command(
                 req.content,
                 agent=agent,
@@ -1433,18 +1519,55 @@ async def stream_chat(
                 result = {"success": True, "result": cmd_result["response"], "usage": {}}
             else:
                 await channel.emit("typing", agent=agent.name)
-                context = await chat_context(
-                    user, req.session_id, session, agent, req.content, req.workspace_id
-                )
-                execution_stage = "agent_execution"
-                result = await agent.execute(
-                    req.content,
-                    context,
-                    stream_callback=stream_cb,
-                    thinking_callback=thinking_cb,
-                    model_override=req.model_override,
-                )
+                from agents.provider_limits import chat_run_seconds
+
+                async def phase_cb(phase: str):
+                    nonlocal execution_stage, execution_started
+                    execution_stage = phase
+                    if phase == "agent_execution":
+                        execution_started = True
+                        lease.provider_attempt_count = None
+                    lease.update(phase=phase)
+                    await channel.emit(
+                        "status",
+                        status="running",
+                        phase=phase,
+                        elapsed_ms=lease.public()["elapsed_ms"],
+                    )
+
+                run_deadline = asyncio.timeout(chat_run_seconds())
+                try:
+                    async with run_deadline:
+                        context = await chat_context(
+                            user, req.session_id, session, agent, req.content, req.workspace_id
+                        )
+                        await phase_cb("queued")
+                        result = await agent.execute(
+                            req.content,
+                            context,
+                            stream_callback=stream_cb,
+                            thinking_callback=thinking_cb,
+                            model_override=req.model_override,
+                            phase_callback=phase_cb,
+                        )
+                except TimeoutError:
+                    if not run_deadline.expired():
+                        raise
+                    usage = (
+                        build_usage_summary(getattr(agent, "_llm_calls", []) or [])
+                        if execution_started
+                        else {}
+                    )
+                    if execution_started and (attempts := chat_provider_attempts(agent)):
+                        usage["timings"] = attempts
+                    result = {"success": False, "error_code": "chat_run_timeout", "usage": usage}
+            observed_count = (
+                result.get("usage", {}).get("timings", {}).get("provider_attempt_count")
+            )
+            if isinstance(observed_count, int) and observed_count >= 0:
+                lease.provider_attempt_count = observed_count
             execution_stage = "delivery"
+            lease.update(phase="delivery")
             final = result.get("result", "".join(response_parts))
             if isinstance(final, dict):
                 final = final.get("response", str(final))
@@ -1570,6 +1693,7 @@ async def stream_chat(
                 except StreamDeliveryError:
                     logger.warning("Chat reader unavailable for message %s", message_id)
         finally:
+            lease.update(status=terminal_status)
             try:
                 ledger.update(user.user_id, request_id, terminal_status)
                 thinking_stream.complete(message_id)
@@ -1581,6 +1705,8 @@ async def stream_chat(
     async def event_frames():
         nonlocal cancellation_reason
         producer = asyncio.create_task(process_stream(), name=f"chat-stream-{message_id}")
+        lease.producer = producer
+        producer.add_done_callback(release_finished_run)
         try:
             while not producer.done() or not channel.queue.empty():
                 try:
@@ -1604,7 +1730,7 @@ async def stream_chat(
 
     return ChatStreamingResponse(
         event_frames(),
-        release_stream=lambda: _stream_sessions.discard(stream_key),
+        release_stream=transport_finished,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-store",
