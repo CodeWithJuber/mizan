@@ -29,6 +29,7 @@ QCA Integration:
     Tier 4: Wahm (Conjecture)  → Low-certainty observations
 """
 
+import hashlib
 import json
 import logging
 import math
@@ -256,6 +257,21 @@ class DhikrMemorySystem:
         except Exception:
             self.lawh_mahfuz = None
 
+        # ── VectorStore: semantic recall when a Chroma server is configured ──
+        self.vector_store = None
+        vector_url = os.getenv("MIZAN_VECTOR_URL", "").strip()
+        if vector_url and self.db_path != ":memory:":
+            try:
+                from memory.vector_store import VectorStore
+
+                # One collection per memory database: private per-user
+                # memories never share a vector index.
+                scope = hashlib.sha256(os.path.abspath(self.db_path).encode()).hexdigest()[:16]
+                store = VectorStore(chroma_url=vector_url, collection_name=f"mizan_{scope}")
+                self.vector_store = store if store.is_available else None
+            except Exception:
+                self.vector_store = None
+
         # ── MemoryPyramid: Unified 5-layer query ──
         try:
             from memory.memory_pyramid import MemoryPyramid
@@ -264,7 +280,7 @@ class DhikrMemorySystem:
                 dhikr=self,
                 masalik=self.masalik,
                 lawh_mahfuz=self.lawh_mahfuz,
-                vector_store=None,
+                vector_store=self.vector_store,
                 knowledge_graph=self.knowledge_graph,
             )
         except Exception:
@@ -454,6 +470,10 @@ class DhikrMemorySystem:
 
         # Persist record to database
         await self._persist(memory)
+        if self.vector_store is not None:
+            await self.vector_store.store(
+                text, memory_id=mem_id, metadata={"memory_type": memory_type, "agent_id": agent_id}
+            )
 
         # Update appropriate cache
         cache = self._get_cache(memory_type)
@@ -662,24 +682,37 @@ class DhikrMemorySystem:
         # ── Masalik: Nisyan (prune weak pathways) ──
         nisyan_result = self.masalik.apply_nisyan()
 
-        # ── SQLite: Prune old low-importance records ──
-        cutoff = datetime.now(UTC) - timedelta(days=30)
+        # ── SQLite: forget records whose retrieval strength has faded ──
+        # Strength = ACT-R activation weight (age and number of recalls)
+        # × importance; a week-old memory below MIZAN_MEMORY_FORGET_BELOW
+        # (default 0.05) is pruned. Recalled memories keep their strength.
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=7)
+        try:
+            forget_below = float(os.getenv("MIZAN_MEMORY_FORGET_BELOW", "0.05"))
+        except ValueError:
+            forget_below = 0.05
         conn = self._get_conn()
         c = conn.cursor()
-
-        sql = """
-            DELETE FROM memories
-            WHERE importance < 0.3
-            AND recency < ?
-            AND access_count < 3
-        """
+        sql = "SELECT id, importance, recency, access_count FROM memories WHERE recency < ?"
         params: list = [cutoff.isoformat()]
         if agent_id:
             sql += " AND agent_id = ?"
             params.append(agent_id)
-
-        c.execute(sql, params)
-        deleted = c.rowcount
+        faded = []
+        for mem_id, importance, recency, accesses in c.execute(sql, params).fetchall():
+            try:
+                last = datetime.fromisoformat(recency)
+            except (TypeError, ValueError):
+                continue
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=UTC)
+            age = max(1.0, (now - last).total_seconds())
+            strength = memory_activation_weight(age, accesses or 0) * float(importance or 0.0)
+            if strength < forget_below:
+                faded.append((mem_id,))
+        c.executemany("DELETE FROM memories WHERE id = ?", faded)
+        deleted = len(faded)
         conn.commit()
         self._release_conn(conn)
 

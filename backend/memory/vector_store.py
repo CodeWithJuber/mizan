@@ -8,6 +8,7 @@ Semantic memory using ChromaDB vector embeddings.
 Enables meaning-based retrieval rather than keyword matching.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any, cast
@@ -67,10 +68,11 @@ class VectorStore:
         mem_id = memory_id or str(uuid.uuid4())
 
         try:
-            self._collection.add(
+            await asyncio.to_thread(
+                self._collection.add,
                 documents=[content],
                 ids=[mem_id],
-                metadatas=[metadata or {}],
+                metadatas=[metadata or {"source": "dhikr"}],
             )
             return mem_id
         except Exception as e:
@@ -84,7 +86,8 @@ class VectorStore:
 
         try:
             where = filters if filters else None
-            results = self._collection.query(
+            results = await asyncio.to_thread(
+                self._collection.query,
                 query_texts=[query],
                 n_results=limit,
                 where=where,
@@ -100,6 +103,10 @@ class VectorStore:
                             "distance": results["distances"][0][i]
                             if results.get("distances")
                             else None,
+                            # Similarity in (0, 1] from the embedding distance.
+                            "score": 1.0 / (1.0 + float(results["distances"][0][i]))
+                            if results.get("distances")
+                            else 0.5,
                             "metadata": results["metadatas"][0][i]
                             if results.get("metadatas")
                             else {},

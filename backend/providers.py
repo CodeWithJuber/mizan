@@ -1098,6 +1098,21 @@ class Qwen3ServerlessProvider(BaseLLMProvider):
 # ───── Provider Factory ─────
 
 
+def ruh_enabled() -> bool:
+    return os.getenv("RUH_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
+def ruh_checkpoint_path() -> str:
+    """RUH_MODEL_PATH, else ``ruh_model/checkpoints/latest`` if it holds a model."""
+    configured = os.getenv("RUH_MODEL_PATH", "").strip()
+    if configured:
+        return configured
+    candidate = Path(__file__).resolve().parent.parent / "ruh_model" / "checkpoints" / "latest"
+    if (candidate / "config.json").is_file() and any(candidate.glob("*.pt")):
+        return str(candidate)
+    return ""
+
+
 def configured_provider_name() -> str | None:
     """The operator's ``LLM_PROVIDER``; empty or ``auto`` means auto-detect."""
     name = os.getenv("LLM_PROVIDER", "").strip().lower()
@@ -1226,10 +1241,14 @@ def create_provider(
             return cast(
                 BaseLLMProvider | None, RuhRemoteProvider(endpoint_id=endpoint_id, api_key=api_key)
             )
-        # Local model
-        model_path = os.getenv("RUH_MODEL_PATH", "")
+        # Local model: needs RUH_ENABLED and a checkpoint (RUH_MODEL_PATH, or
+        # the conventional ruh_model/checkpoints/latest when present).
+        if not ruh_enabled():
+            logger.warning("Rūḥ model is disabled (set RUH_ENABLED=true)")
+            return None
+        model_path = ruh_checkpoint_path()
         if not model_path:
-            logger.warning("RUH_MODEL_PATH not set")
+            logger.warning("No Rūḥ checkpoint found (set RUH_MODEL_PATH)")
             return None
         from providers_ruh import RuhModelProvider
 

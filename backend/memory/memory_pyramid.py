@@ -161,7 +161,9 @@ class MemoryPyramid:
         # ── Layer 3: VectorStore (semantic embedding search) ──
         if self.vector_store and getattr(self.vector_store, "_available", False):
             try:
-                vector_results = self.vector_store.search(text, top_k=top_k)
+                vector_results = self.vector_store.search(text, limit=top_k)
+                if inspect.isawaitable(vector_results):
+                    vector_results = await vector_results
                 for result in vector_results:
                     hits.append(
                         MemoryHit(

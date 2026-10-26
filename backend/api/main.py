@@ -309,6 +309,37 @@ async def lifespan(app: FastAPI):
                 logger.debug("Model limit refresh failed: %s", exc)
             await asyncio.sleep(3600)
 
+    async def maintain_memory() -> None:
+        # Offline consolidation (Tafakkur/Nisyan, dream replay, living-memory
+        # upkeep) on a fixed cadence instead of only on a manual request.
+        try:
+            interval = max(60.0, float(os.getenv("MIZAN_MEMORY_MAINTENANCE_SECONDS", "3600")))
+        except ValueError:
+            interval = 3600.0
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                result = await memory.consolidate()
+                logger.info("[DHIKR] Scheduled consolidation pruned %s", result["records_pruned"])
+            except Exception as exc:
+                logger.warning("Scheduled memory consolidation failed: %s", exc)
+            for agent in list(active_agents.values()):
+                for job in (
+                    getattr(getattr(agent, "dream_engine", None), "run_consolidation", None),
+                    getattr(getattr(agent, "living_memory", None), "run_maintenance", None),
+                ):
+                    if callable(job):
+                        try:
+                            await asyncio.to_thread(job)
+                        except Exception as exc:
+                            logger.debug("Agent memory maintenance failed: %s", exc)
+
+    memory_maintenance_task = (
+        asyncio.create_task(maintain_memory())
+        if os.getenv("MIZAN_MEMORY_MAINTENANCE", "true").lower() not in {"0", "false", "no"}
+        else None
+    )
+
     model_limits_task = (
         asyncio.create_task(keep_model_limits_fresh())
         if os.getenv("MIZAN_MODEL_LIMITS_REFRESH", "true").lower() not in {"0", "false", "no"}
@@ -322,6 +353,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if model_limits_task is not None:
         model_limits_task.cancel()
+    if memory_maintenance_task is not None:
+        memory_maintenance_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
