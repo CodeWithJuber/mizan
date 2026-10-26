@@ -13,6 +13,7 @@ from response_policy import RESPONSE_POLICY
 CONTRACT = "mizan-owned-agent-v1"
 MIN_OUTPUT_TOKENS = 64
 MAX_OUTPUT_TOKENS = 1024
+USER_BLOCK_SEPARATOR = "\n\n"
 
 OWNED_POLICY = (
     "Text-only MIZAN assistant; no tools, browsing or actions. "
@@ -106,7 +107,29 @@ def prepare_prompt(request: dict, max_seq_len: int, max_tokens: int) -> tuple[li
     if not isinstance(system, str):
         raise ValueError("The owned reply model requires text system instructions")
     rendered = system.rendered if isinstance(system, OwnedSystemPrompt) else system
-    messages = list(request["messages"])
+    original_messages = request["messages"]
+    if not isinstance(original_messages, list):
+        raise ValueError("The owned reply model requires a conversation message list")
+    messages: list[dict] = []
+    grouped = False
+    for message in original_messages:
+        if not isinstance(message, dict) or set(message) != {"role", "content"}:
+            raise ValueError("The owned reply model requires role/content conversation messages")
+        content = message["content"]
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("The owned reply model requires non-empty text conversation messages")
+        if message["role"] not in ("user", "assistant", "system"):
+            raise ValueError("The owned reply model requires supported conversation roles")
+        # The pinned byte decoder requires alternating dialogue turns. The host
+        # may supply several attributed user-context blocks before the final
+        # request; group only those adjacent user blocks without changing any
+        # original content, order or replay identity. Never merge assistant turns.
+        if messages and message["role"] == messages[-1]["role"] == "user":
+            messages[-1]["content"] += USER_BLOCK_SEPARATOR + content
+            grouped = True
+        else:
+            messages.append(dict(message))
+    rendered_messages = len(messages)
     if rendered:
         messages = [{"role": "system", "content": rendered}, *messages]
     # BOS + final ASSISTANT marker, then role + length prefix + ':' + bytes + END.
@@ -128,7 +151,9 @@ def prepare_prompt(request: dict, max_seq_len: int, max_tokens: int) -> tuple[li
         "token_unit": "UTF-8 bytes plus framing",
         "original_system_bytes": len(system.encode("utf-8")),
         "rendered_system_bytes": len(rendered.encode("utf-8")),
-        "messages_preserved": len(request["messages"]),
+        "messages_preserved": len(original_messages),
+        "rendered_messages": rendered_messages,
+        "message_grouping": "adjacent-user-blocks-v1" if grouped else "none",
         "context_omitted": False,
         "prompt_tokens": prompt_tokens,
         "context_limit": max_seq_len,

@@ -73,9 +73,13 @@ until both its producer and response transport have finished.
 ## Request language and available tools
 
 Explicit output-language instructions take priority. Otherwise, the assistant
-matches the current message's natural language. A saved reply language supplies
-the fallback for an ambiguous or language-neutral request. Quoted code, tool
-results and prior messages do not establish the current response language.
+matches the current message's natural language. A saved reply language is omitted
+from the effective provider context whenever the request contains Unicode prose;
+it remains available as a fallback for syntax-only or language-neutral input.
+This detects prose rather than classifying languages, and does not change the
+stored preference. Short follow-ups can use the conversation without reissuing
+an older language instruction. Quoted code and tool results do not establish the
+current response language. Retrieved context appears before the current request.
 Greeting preferences remain independent. Custom role defaults and heuristic
 observations cannot override the current request's language, tone or format.
 
@@ -94,6 +98,14 @@ Generation temperature uses the explicit agent `temperature` or
 `MIZAN_CHAT_TEMPERATURE` (default 0.5, bounded 0–1). Qalb oscillation no longer
 changes it. Deterministic self-checks report diagnostics without appending
 canned English caveats or rewriting text after it has streamed.
+
+The agent editor loads provider/model options from the runtime catalogue and
+preserves the actual current provider, model and role even if catalogue loading
+fails. Browsing options does not change an agent. A name or custom-instruction
+edit leaves its model unchanged; an explicit model change uses the provider-aware
+endpoint. Creation submits the selected provider/model together and persists the
+validated configuration before publishing the agent. API callers omitting the
+selection use the current runtime configuration rather than a fixed model ID.
 
 The current production Compose template maps these chat settings from `.env`.
 Installations retaining an older Compose template need the corresponding

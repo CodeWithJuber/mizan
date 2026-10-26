@@ -76,6 +76,7 @@ import { SessionUsageFooter } from "./components/MessageMeta";
 import { Sidebar } from "./components/Sidebar";
 import { MobileNav } from "./components/MobileNav";
 import { AgentModal } from "./components/AgentModal";
+import { agentCreatePayload, agentFormData, agentSettingsScope, saveAgentEdits, type AgentFormData } from "./utils/agentSettings.ts";
 import { SkeletonCard } from "./components/Skeleton";
 
 // ===== CHAT UPGRADE (ticket/chat-upgrade-frontend) =====
@@ -252,6 +253,7 @@ function AppInner() {
 
   const [authRevision, setAuthRevision] = useState(0);
   const lastAuthTokenRef = useRef(localStorage.getItem("mizan_token"));
+  const agentAuthEpochRef = useRef(0);
   const [activeTab, setActiveTabState] = useState(() => {
     return localStorage.getItem("mizan_active_tab") || "chat";
   });
@@ -346,12 +348,7 @@ function AppInner() {
     null,
   );
   const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [newAgent, setNewAgent] = useState({
-    name: "",
-    type: "general",
-    model: "claude-opus-4-6",
-    system_prompt: "",
-  });
+  const [newAgent, setNewAgent] = useState<AgentFormData>(() => agentFormData());
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [appVersion, setAppVersion] = useState("...");
   const [showCommandMenu, setShowCommandMenu] = useState(false);
@@ -505,6 +502,10 @@ function AppInner() {
       const token = localStorage.getItem("mizan_token");
       if (token === lastAuthTokenRef.current) return;
       lastAuthTokenRef.current = token;
+      agentAuthEpochRef.current++;
+      setShowCreateAgent(false);
+      setEditingAgent(null);
+      setNewAgent(agentFormData());
       sendControllerRef.current?.abort();
       activeRequestIdRef.current = "";
       activeMessageIdRef.current = "";
@@ -1221,9 +1222,12 @@ function AppInner() {
   );
 
   const loadAgents = async () => {
+    const isCurrent = agentSettingsScope(() => localStorage.getItem("mizan_token"), () => agentAuthEpochRef.current);
+    if (!isCurrent()) return;
     try {
       const res = await authFetch(`${config.API_URL}/agents`);
       const data = await res.json();
+      if (!isCurrent()) return;
       setAgents(data.agents || []);
       if (!selectedAgent && data.agents?.length > 0) {
         const savedAgentId = localStorage.getItem("mizan_selected_agent");
@@ -1233,6 +1237,7 @@ function AppInner() {
         setSelectedAgent(restored || data.agents[0]);
       }
     } catch (e: unknown) {
+      if (!isCurrent()) return;
       addTerminalLine(
         `Failed to load agents: ${(e as Error).message}`,
         "error",
@@ -2055,27 +2060,22 @@ function AppInner() {
     setTaskInput("");
   };
 
-  const createAgent = async () => {
+  const createAgent = async (data: AgentFormData) => {
+    const isCurrent = agentSettingsScope(() => localStorage.getItem("mizan_token"), () => agentAuthEpochRef.current);
+    if (!isCurrent()) return;
     try {
-      const payload = {
-        ...newAgent,
-        system_prompt: newAgent.system_prompt || undefined,
-      };
-      await api.post("/agents", payload);
+      await api.post("/agents", agentCreatePayload(data));
+      if (!isCurrent()) return;
       setShowCreateAgent(false);
-      setNewAgent({
-        name: "",
-        type: "general",
-        model: "claude-opus-4-6",
-        system_prompt: "",
-      });
+      setNewAgent(agentFormData());
       loadAgents();
       addToast({
         type: "success",
         title: "Agent created",
-        description: `${newAgent.name} is ready`,
+        description: `${data.name} is ready`,
       });
     } catch (e: unknown) {
+      if (!isCurrent()) return;
       addToast({
         type: "error",
         title: "Failed to create agent",
@@ -2084,28 +2084,22 @@ function AppInner() {
     }
   };
 
-  const updateAgent = async () => {
+  const updateAgent = async (data: AgentFormData) => {
     if (!editingAgent) return;
+    const isCurrent = agentSettingsScope(() => localStorage.getItem("mizan_token"), () => agentAuthEpochRef.current);
     try {
-      const payload: Record<string, unknown> = {};
-      if (newAgent.name !== editingAgent.name) payload.name = newAgent.name;
-      if (newAgent.model !== (editingAgent.model || ""))
-        payload.model = newAgent.model;
-      if (newAgent.system_prompt !== (editingAgent.system_prompt || ""))
-        payload.system_prompt = newAgent.system_prompt;
-
-      await api.put(`/agents/${editingAgent.id}`, payload);
+      const saved = await saveAgentEdits(api, editingAgent, data, isCurrent);
+      if (!saved || !isCurrent()) return;
       setShowCreateAgent(false);
       setEditingAgent(null);
-      setNewAgent({
-        name: "",
-        type: "general",
-        model: "claude-opus-4-6",
-        system_prompt: "",
-      });
+      setNewAgent(agentFormData());
       loadAgents();
       addToast({ type: "success", title: "Agent updated" });
     } catch (e: unknown) {
+      if (!isCurrent()) return;
+      // A model change can succeed before a separate name/prompt save fails.
+      // Refresh cards so they show the server's actual settings in that case.
+      loadAgents();
       addToast({
         type: "error",
         title: "Failed to update agent",
@@ -2116,12 +2110,7 @@ function AppInner() {
 
   const openEditAgent = (agent: Agent) => {
     setEditingAgent(agent);
-    setNewAgent({
-      name: agent.name,
-      type: agent.role,
-      model: agent.model || "claude-opus-4-6",
-      system_prompt: agent.system_prompt || "",
-    });
+    setNewAgent(agentFormData(agent));
     setShowCreateAgent(true);
   };
 
@@ -2371,12 +2360,7 @@ function AppInner() {
                 className="btn-gold flex items-center gap-2"
                 onClick={() => {
                   setEditingAgent(null);
-                  setNewAgent({
-                    name: "",
-                    type: "general",
-                    model: "claude-opus-4-6",
-                    system_prompt: "",
-                  });
+                  setNewAgent(agentFormData());
                   setShowCreateAgent(true);
                 }}
               >
@@ -3964,14 +3948,15 @@ function AppInner() {
       {/* Create / Edit Agent Modal */}
       {showCreateAgent && (
         <AgentModal
+          key={editingAgent?.id ?? "new"}
           editingAgent={editingAgent}
           initialData={newAgent}
-          onSave={(data) => {
-            setNewAgent(data);
+          api={api}
+          onSave={async (data) => {
             if (editingAgent) {
-              updateAgent();
+              await updateAgent(data);
             } else {
-              createAgent();
+              await createAgent(data);
             }
           }}
           onClose={() => {

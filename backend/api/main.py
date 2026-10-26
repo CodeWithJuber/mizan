@@ -80,6 +80,7 @@ from providers import (
     create_provider,
     fetch_ollama_models,
     fetch_openrouter_models,
+    get_default_model,
     get_provider_status,
     normalize_model_for_provider,
     set_active_state,
@@ -541,6 +542,8 @@ async def require_auth(
 
 # ===== PYDANTIC MODELS (with validation) =====
 
+AGENT_PROVIDER_PATTERN = r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
+
 
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -548,7 +551,8 @@ class AgentCreate(BaseModel):
         default="super",
         pattern=r"^(super|khalifah|general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
     )
-    model: str = Field(default="claude-opus-4-6", max_length=100)
+    provider: str | None = Field(default=None, pattern=AGENT_PROVIDER_PATTERN)
+    model: str | None = Field(default=None, min_length=1, max_length=200)
     system_prompt: str | None = Field(None, max_length=10000)
     capabilities: list[str] = []
 
@@ -778,36 +782,76 @@ async def list_agents(user: TokenPayload = Depends(require_auth)):
 
 @app.post("/api/agents")
 async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
-    """Create a new agent"""
-    config = {
-        "model": req.model,
+    """Resolve a provider once and persist the validated agent before publishing it."""
+    selected_provider = req.provider
+    selected_model = req.model
+    if selected_provider is None or selected_model is None:
+        runtime = get_provider_status()
+        selected_provider = selected_provider or runtime.get("active")
+        if selected_model is None:
+            if selected_provider == runtime.get("active") and selected_provider:
+                selected_model = runtime.get("default_model") or get_default_model(
+                    selected_provider
+                )
+            else:
+                # get_default_model also reads global DEFAULT_MODEL, which
+                # belongs to the active provider. An explicitly selected other
+                # provider must use its own catalog default or an explicit ID.
+                selected_model = next(
+                    (
+                        item.get("default_model")
+                        for item in runtime.get("providers", [])
+                        if item.get("name") == selected_provider
+                    ),
+                    None,
+                )
+    if not selected_provider or not selected_model or not selected_model.strip():
+        raise HTTPException(400, "Select a configured provider and a model")
+    config: dict[str, Any] = {
+        "model": selected_model,
         "system_prompt": req.system_prompt,
     }
+    if selected_provider:
+        config["provider_override"] = {"provider": selected_provider, "model": selected_model}
 
-    agent = create_agent(
-        req.type,
-        name=req.name,
-        memory=memory,
-        config=config,
-        wali=wali,
-        izn=izn,
-        skill_registry=skill_registry,
-        plugin_manager=plugin_manager,
-    )
-    active_agents[agent.id] = agent
-    balancer.register(agent.id)
-    shura.members[agent.id] = agent
+    # BaseAgent invokes the shared factory, including its owned-only guard.
+    # Building privately avoids a second provider initialization or a partial
+    # agent becoming visible when that factory rejects the selection.
+    try:
+        agent = create_agent(
+            req.type,
+            name=req.name,
+            memory=memory,
+            config=config,
+            wali=wali,
+            izn=izn,
+            skill_registry=skill_registry,
+            plugin_manager=plugin_manager,
+        )
+    except Exception as exc:
+        logger.warning("Agent initialization unavailable (%s)", type(exc).__name__)
+        raise HTTPException(400, "Cannot initialize the requested provider") from exc
+    if agent.ai_client is None:
+        raise HTTPException(400, "Cannot initialize the requested provider")
+    config["model"] = agent.ai_model
+    config["provider_override"] = {
+        "provider": agent.ai_client.provider_name,
+        "model": agent.ai_model,
+    }
 
     await memory.save_agent_profile(
         {
             "id": agent.id,
             "name": agent.name,
             "role": req.type,
-            "nafs_level": 1,
+            "nafs_level": agent.nafs_level,
             "capabilities": list(agent.tools.keys()),
             "config": config,
         }
     )
+    active_agents[agent.id] = agent
+    balancer.register(agent.id)
+    shura.members[agent.id] = agent
 
     await manager.broadcast(
         {
@@ -896,7 +940,7 @@ async def update_agent(
 class AgentModelRequest(BaseModel):
     provider: str = Field(
         ...,
-        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
+        pattern=AGENT_PROVIDER_PATTERN,
     )
     model: str = Field(..., min_length=1, max_length=200)
 

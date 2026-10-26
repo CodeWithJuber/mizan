@@ -38,6 +38,7 @@ import nlp
 import nlp.wsd
 from nlp import ModelNotReadyError, SenseCandidate, disambiguate
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
+from response_policy import CURRENT_REQUEST_END, CURRENT_REQUEST_START
 
 FLAG_ENV = "MIZAN_NLP_NATIVE_WSD"
 SENSES_MARKER = "[NLP Senses:"
@@ -278,9 +279,12 @@ class TestIP1ThinkInjection:
         await _drain_think(agent_nlp, AR_TEXT)
         assert calls, "think() never consulted mizan.nlp with the flag ON"
         assert any(AR_TEXT in text for text, _ in calls)
-        content = captured["messages"][-1]["content"]
+        content = "\n".join(message["content"] for message in captured["messages"][:-1])
         assert SENSES_MARKER in content
         assert CANNED_SENSE_ID in content
+        assert captured["messages"][-1]["content"] == (
+            f"{CURRENT_REQUEST_START}\n{AR_TEXT}\n{CURRENT_REQUEST_END}"
+        )
 
     async def test_ip1_model_not_ready_fallback_logged(self, agent_nlp, monkeypatch, caplog):
         """(c) ModelNotReadyError -> clean fallback to LLM path, no escape, LOGGED."""
@@ -297,7 +301,7 @@ class TestIP1ThinkInjection:
             out = await _drain_think(agent_nlp, AR_TEXT)
         assert out == FIXTURE_RESPONSE  # no exception escaped; provider path taken
         assert _fallback_logged(caplog), "fallback was not logged"
-        assert SENSES_MARKER not in captured["messages"][-1]["content"]
+        assert all(SENSES_MARKER not in message["content"] for message in captured["messages"])
 
     async def test_ip1_unknown_lemma_empty_graceful(self, agent_nlp, monkeypatch):
         """(d) disambiguate -> [] (unknown lemma) handled gracefully."""
@@ -307,7 +311,7 @@ class TestIP1ThinkInjection:
         _patch_nlp(monkeypatch, lambda text, lemma: [])
         out = await _drain_think(agent_nlp, AR_TEXT)
         assert out == FIXTURE_RESPONSE
-        assert SENSES_MARKER not in captured["messages"][-1]["content"]
+        assert all(SENSES_MARKER not in message["content"] for message in captured["messages"])
 
     async def test_ip1_unknown_stays_unknown_no_coercion(self, agent_nlp, monkeypatch):
         """hikmah-stack: 'unknown is a state' -- [] is never coerced into a sense."""
@@ -316,7 +320,7 @@ class TestIP1ThinkInjection:
         captured = _capture_messages(agent_nlp, monkeypatch)
         _patch_nlp(monkeypatch, lambda text, lemma: [])
         await _drain_think(agent_nlp, AR_TEXT)
-        content = captured["messages"][-1]["content"]
+        content = "\n".join(message["content"] for message in captured["messages"])
         assert content.count("qcsmp2:") == 0, "wiring fabricated a sense from an empty result"
 
     async def test_ip1_low_confidence_stays_out_of_loop(self, agent_nlp, monkeypatch):
@@ -332,7 +336,7 @@ class TestIP1ThinkInjection:
         _patch_nlp(monkeypatch, weak)
         out = await _drain_think(agent_nlp, AR_TEXT)
         assert out == FIXTURE_RESPONSE
-        content = captured["messages"][-1]["content"]
+        content = "\n".join(message["content"] for message in captured["messages"])
         assert SENSES_MARKER not in content
         assert "qcsmp2:" not in content
 
@@ -365,7 +369,7 @@ class TestIP1ThinkInjection:
             out = await _drain_think(agent_nlp, AR_TEXT)
         assert out == FIXTURE_RESPONSE  # provider answered after the native WSD fallback
         assert CANNED_SENSE_ID not in out
-        assert CANNED_SENSE_ID not in captured["messages"][-1]["content"]
+        assert all(CANNED_SENSE_ID not in message["content"] for message in captured["messages"])
         assert _fallback_logged(caplog)
 
 
