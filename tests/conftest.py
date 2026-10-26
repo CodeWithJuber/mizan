@@ -23,6 +23,8 @@ def isolated_provider_mode(monkeypatch):
     """
     monkeypatch.setenv("MIZAN_OWNED_ONLY", "false")
     monkeypatch.setenv("LLM_PROVIDER", "")
+    # No live catalog fetches from the app lifespan during tests.
+    monkeypatch.setenv("MIZAN_MODEL_LIMITS_REFRESH", "false")
 
 
 @pytest.fixture

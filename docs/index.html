@@ -494,7 +494,7 @@ make dev</code></pre>
           <tr><td><code>OPENROUTER_API_KEY</code></td><td>OpenRouter API key (300+ models)</td><td></td></tr>
           <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI API key</td><td></td></tr>
           <tr><td><code>LLM_PROVIDER</code></td><td>Force a specific provider</td><td>auto-detect</td></tr>
-          <tr><td><code>DEFAULT_MODEL</code></td><td>Default AI model</td><td>claude-sonnet-4-20250514</td></tr>
+          <tr><td><code>DEFAULT_MODEL</code></td><td>Default AI model</td><td>claude-opus-5-5</td></tr>
           <tr><td><code>OLLAMA_URL</code></td><td>Ollama server URL</td><td>http://localhost:11434</td></tr>
         </tbody>
       </table>
@@ -545,7 +545,7 @@ make dev</code></pre>
       <h3>Terminal Chat</h3>
       <p>Chat directly in your terminal with rich text formatting.</p>
       <pre><code>mizan chat
-mizan chat --model claude-opus-4-6  # Specific model</code></pre>
+mizan chat --model claude-opus-5-5  # Specific model</code></pre>
 
       <h3>API Chat</h3>
       <pre><code>curl -X POST http://localhost:8000/api/chat \
@@ -977,7 +977,7 @@ Response:
 {
   "name": "MyAgent",
   "type": "general",
-  "model": "claude-sonnet-4-20250514"
+  "model": "claude-opus-5-5"
 }</code></pre>
 
       <h3>Delete Agent</h3>

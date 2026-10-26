@@ -6,10 +6,23 @@ Mizan now rejects an empty, length-limited provider response with the safe
 successful learning, or substitute private provider reasoning for answer text.
 Visible truncated answers may use at most two text-only continuations.
 
-The per-call output budget defaults to 4,096 tokens. Configure it with an agent's
+The per-call output budget defaults to the selected model's own output cap (up
+to 64,000 tokens; the live Anthropic Models API and OpenRouter catalog supply
+the caps, with a static table as fallback). Configure it with an agent's
 `max_output_tokens` setting or `MIZAN_CHAT_MAX_OUTPUT_TOKENS`; the allowed range
-is 256–16,384. Emotion/tone rules no longer determine this budget. These are
-application bounds, not a promise of unlimited answers or provider availability.
+is 256 up to the model cap (at most 128,000). Emotion/tone rules no longer
+determine this budget. These are application bounds, not a promise of unlimited
+answers or provider availability.
+
+Claude requests use API version `2026-10-21` (anthropic SDK 2.x): no sampling
+parameters (`MIZAN_CHAT_TEMPERATURE` applies to other providers only), effort
+from `MIZAN_CHAT_EFFORT` (default `high`) on models that support it, automatic
+prompt caching (`MIZAN_ANTHROPIC_PROMPT_CACHE`, default on) and, on the current
+Opus/Sonnet/Fable models, server-side refusal fallbacks
+(`MIZAN_ANTHROPIC_FALLBACKS`, default on). Thinking blocks are sent back
+unchanged inside one tool loop. A refusal ends the run with the
+`model_refused` code. Agent telemetry and recalled memory travel with the
+request context so the system prompt stays cacheable.
 
 For the two explicitly supported OpenRouter Nemotron 3.5 Super VL IDs, Mizan
 requests at most 1,024 reasoning tokens and at most a quarter of the output

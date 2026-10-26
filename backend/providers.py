@@ -56,6 +56,24 @@ def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -
     return {"extra_body": {"reasoning": reasoning}}
 
 
+_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
+
+
+def _adapt_openai_request(provider_name: str, kwargs: dict) -> dict:
+    """OpenAI's own API: current models take ``max_completion_tokens`` and
+    reasoning-class models accept only the default temperature.
+
+    OpenRouter and Ollama keep the widely supported ``max_tokens`` field.
+    """
+    if provider_name != "openai":
+        return kwargs
+    if "max_tokens" in kwargs:
+        kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+    if str(kwargs.get("model", "")).startswith(_OPENAI_REASONING_PREFIXES):
+        kwargs.pop("temperature", None)
+    return kwargs
+
+
 def _reasoning_usage(usage: dict, reasoning_observed: bool = False) -> dict:
     """Keep reported counters, never convert private reasoning into answer text."""
     raw = usage.get("raw", usage)
@@ -123,6 +141,38 @@ class LLMResponse:
     stop_reason: str = "end_turn"  # "end_turn" or "tool_use"
     model: str = ""
     usage: dict = field(default_factory=dict)
+    # Provider-native assistant content to send back unchanged on the next
+    # call of the same run (Anthropic thinking/compaction/fallback blocks).
+    raw_content: list[dict] | None = None
+
+
+class ProviderRefusal(RuntimeError):
+    """The provider declined the request (Anthropic ``stop_reason: refusal``)."""
+
+    def __init__(self, category: str | None = None):
+        self.category = category
+        super().__init__(f"The model declined this request ({category or 'unspecified'})")
+
+
+def content_block_to_dict(block: Any) -> dict:
+    """Serialise a normalized or SDK content block for a provider request."""
+    if isinstance(block, dict):
+        return block
+    if isinstance(block, ContentBlock):
+        if block.type == "tool_use":
+            return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+        return {"type": "text", "text": block.text}
+    to_dict = getattr(block, "to_dict", None)
+    if callable(to_dict):
+        return cast(dict, to_dict())
+    return {"type": "text", "text": str(getattr(block, "text", block))}
+
+
+def assistant_turn_content(response: "LLMResponse") -> list[dict]:
+    """Content to append for an assistant turn, preserving provider-native blocks."""
+    if response.raw_content:
+        return list(response.raw_content)
+    return [content_block_to_dict(block) for block in response.content]
 
 
 # ───── Provider Interface ─────
@@ -158,6 +208,157 @@ class BaseLLMProvider:
 
 
 # ───── Anthropic Provider ─────
+#
+# Requests follow API version 2026-10-21 (anthropic SDK 2.x): no sampling
+# parameters, adaptive thinking left on by default, effort via output_config.
+# Assistant turns are replayed with their thinking blocks unchanged, which the
+# preserved-thinking check requires inside one tool loop.
+
+_CLAUDE_MODEL = re.compile(
+    r"^(?:anthropic/)?claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?"
+)
+_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# Server-side ``fallbacks: "default"`` is documented for these models.
+_DEFAULT_FALLBACK_MODELS = {
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-sonnet-5-5",
+}
+
+
+def claude_version(model: str) -> tuple[str, float] | None:
+    """Return (family, version) for a Claude model ID, ignoring date suffixes."""
+    match = _CLAUDE_MODEL.match(model or "")
+    if not match:
+        return None
+    family, major, minor = match.groups()
+    # A dated snapshot ID (claude-sonnet-4-20250514) carries a date, not a minor.
+    minor_value = int(minor) if minor and len(minor) <= 2 else 0
+    return family, int(major) + minor_value / 10
+
+
+def anthropic_effort(model: str) -> str | None:
+    """Configured effort for models that accept ``output_config.effort``."""
+    version = claude_version(model)
+    if version is None:
+        return None
+    family, number = version
+    supported = (
+        family in {"fable", "mythos"}
+        or (family == "opus" and number >= 4.5)
+        or (family == "sonnet" and number >= 4.6)
+        or (family == "haiku" and number >= 5)
+    )
+    if not supported:
+        return None
+    level = os.getenv("MIZAN_CHAT_EFFORT", "high").strip().lower()
+    if level not in _EFFORT_LEVELS:
+        level = "high"
+    # xhigh arrived with 4.7; Opus 4.5 knows only low/medium/high.
+    if level == "xhigh" and family in {"opus", "sonnet"} and number < 4.7:
+        level = "high"
+    if level == "max" and family == "opus" and number < 4.6:
+        level = "high"
+    return level
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _anthropic_messages(messages: list) -> list[dict]:
+    """Normalize history for the Messages API.
+
+    Empty assistant turns are dropped (the API rejects them), legacy
+    ``role: system`` history entries become user context, and normalized
+    content blocks are serialised.
+    """
+    normalized: list[dict] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if isinstance(content, list):
+            content = [content_block_to_dict(block) for block in content]
+            if role == "assistant":
+                content = [
+                    block
+                    for block in content
+                    if not (block.get("type") == "text" and not str(block.get("text", "")).strip())
+                ]
+            if not content:
+                continue
+        elif not isinstance(content, str) or not content.strip():
+            continue
+        if role == "system":
+            text = content if isinstance(content, str) else json.dumps(content)
+            normalized.append(
+                {"role": "user", "content": f"[Earlier conversation context]\n{text}"}
+            )
+            continue
+        normalized.append({"role": role, "content": content})
+    return normalized
+
+
+def _strip_thinking(messages: list[dict]) -> list[dict]:
+    stripped = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, list):
+            content = [
+                block
+                for block in content
+                if not (
+                    isinstance(block, dict)
+                    and block.get("type") in {"thinking", "redacted_thinking"}
+                )
+            ]
+            if not content:
+                continue
+        stripped.append({**message, "content": content})
+    return stripped
+
+
+def _is_thinking_binding_error(exc: Exception) -> bool:
+    text = str(exc)
+    return "thinking" in text and ("signature" in text or "bound to a different" in text)
+
+
+def _anthropic_usage(usage: Any) -> dict:
+    result = {"input": usage.input_tokens, "output": usage.output_tokens}
+    for source, key in (
+        ("cache_read_input_tokens", "cache_read"),
+        ("cache_creation_input_tokens", "cache_creation"),
+    ):
+        value = getattr(usage, source, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            result[key] = value
+    return result
+
+
+def _anthropic_response(message: Any) -> "LLMResponse":
+    if getattr(message, "stop_reason", None) == "refusal":
+        details = getattr(message, "stop_details", None)
+        raise ProviderRefusal(getattr(details, "category", None))
+    blocks = []
+    for block in message.content:
+        if block.type == "text":
+            blocks.append(ContentBlock(type="text", text=block.text))
+        elif block.type == "tool_use":
+            blocks.append(
+                ContentBlock(type="tool_use", id=block.id, name=block.name, input=block.input)
+            )
+    return LLMResponse(
+        content=blocks,
+        stop_reason=message.stop_reason,
+        model=message.model,
+        usage=_anthropic_usage(message.usage),
+        raw_content=[content_block_to_dict(block) for block in message.content],
+    )
 
 
 class AnthropicProvider(BaseLLMProvider):
@@ -172,48 +373,56 @@ class AnthropicProvider(BaseLLMProvider):
             api_key=api_key, **_sdk_request_options(anthropic.Timeout)
         )
 
-    def create(self, model, max_tokens, system, messages, tools=None, temperature=None):
-        kwargs = {
+    def _request(self, model, max_tokens, system, messages, tools, *, streaming: bool):
+        kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
             "system": system,
-            "messages": messages,
+            "messages": _anthropic_messages(messages),
         }
         if tools:
-            kwargs["tools"] = tools
-        if temperature is not None:
-            kwargs["temperature"] = temperature
+            # Streamed tool input arrives incrementally, so long file writes
+            # show progress instead of one burst at the end of the call.
+            kwargs["tools"] = (
+                [{**tool, "eager_input_streaming": True} for tool in tools] if streaming else tools
+            )
+        effort = anthropic_effort(model)
+        if effort:
+            kwargs["output_config"] = {"effort": effort}
+        if _env_flag("MIZAN_ANTHROPIC_PROMPT_CACHE", True):
+            kwargs["cache_control"] = {"type": "ephemeral"}
+        betas: list[str] = []
+        if model in _DEFAULT_FALLBACK_MODELS and _env_flag("MIZAN_ANTHROPIC_FALLBACKS", True):
+            betas.append(_FALLBACK_BETA)
+            kwargs["fallbacks"] = "default"
+        if betas:
+            kwargs["betas"] = betas
+        return kwargs
 
-        response = self._client.messages.create(**kwargs)
+    def _messages_api(self, kwargs: dict):
+        return self._client.beta.messages if "betas" in kwargs else self._client.messages
 
-        blocks = []
-        for block in response.content:
-            if block.type == "text":
-                blocks.append(ContentBlock(type="text", text=block.text))
-            elif block.type == "tool_use":
-                blocks.append(
-                    ContentBlock(
-                        type="tool_use",
-                        id=block.id,
-                        name=block.name,
-                        input=block.input,
-                    )
-                )
+    def create(self, model, max_tokens, system, messages, tools=None, temperature=None):
+        # ``temperature`` is accepted for interface parity and never sent:
+        # API version 2026-10-21 rejects sampling parameters.
+        import anthropic
 
-        return LLMResponse(
-            content=blocks,
-            stop_reason=response.stop_reason,
-            model=response.model,
-            usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
-        )
+        kwargs = self._request(model, max_tokens, system, messages, tools, streaming=False)
+        try:
+            response = self._messages_api(kwargs).create(**kwargs)
+        except anthropic.BadRequestError as exc:
+            # Rejected before any output: replay without thinking once.
+            if not _is_thinking_binding_error(exc):
+                raise
+            kwargs["messages"] = _strip_thinking(kwargs["messages"])
+            response = self._messages_api(kwargs).create(**kwargs)
+        return _anthropic_response(response)
 
     def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
-        kwargs = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
-        if tools:
-            kwargs["tools"] = tools
-        if temperature is not None:
-            kwargs["temperature"] = temperature
-        return _AnthropicStreamWrapper(self._client.messages.stream(**kwargs))
+        kwargs = self._request(model, max_tokens, system, messages, tools, streaming=True)
+        return _AnthropicStreamWrapper(
+            lambda request: self._messages_api(request).stream(**request), kwargs
+        )
 
 
 # ───── OpenAI-Compatible Provider (OpenAI + OpenRouter) ─────
@@ -420,7 +629,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             kwargs["temperature"] = temperature
 
         kwargs.update(_answer_reasoning_options(self.provider_name, model, max_tokens))
-        response = self._client.chat.completions.create(**kwargs)
+        response = self._client.chat.completions.create(
+            **_adapt_openai_request(self.provider_name, kwargs)
+        )
         choice = response.choices[0]
         message = choice.message
 
@@ -504,6 +715,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             self._convert_tools_to_openai(tools) if tools else None,
             temperature,
             request_options=_answer_reasoning_options(self.provider_name, model, max_tokens),
+            provider_name=self.provider_name,
         )
 
 
@@ -542,8 +754,15 @@ class _BufferedStreamWrapper:
 
 
 class _AnthropicStreamWrapper:
-    def __init__(self, manager):
-        self.manager = manager
+    def __init__(self, open_stream, request: dict | None = None):
+        # ``open_stream(request)`` returns an SDK MessageStreamManager. A bare
+        # manager is still accepted for callers that build their own.
+        if request is None:
+            manager = open_stream
+            open_stream = lambda _request: manager  # noqa: E731
+        self._open_stream = open_stream
+        self._request = request or {}
+        self.manager = None
         self.stream = None
         self._progress_callback: Callable[[], None] | None = None
 
@@ -551,7 +770,21 @@ class _AnthropicStreamWrapper:
         self._progress_callback = callback
 
     def __enter__(self):
-        self.stream = self.manager.__enter__()
+        import anthropic
+
+        self.manager = self._open_stream(self._request)
+        try:
+            self.stream = self.manager.__enter__()
+        except anthropic.BadRequestError as exc:
+            # The request was rejected before any output was produced.
+            if not _is_thinking_binding_error(exc) or "messages" not in self._request:
+                raise
+            self._request = {
+                **self._request,
+                "messages": _strip_thinking(self._request["messages"]),
+            }
+            self.manager = self._open_stream(self._request)
+            self.stream = self.manager.__enter__()
         return self
 
     def __exit__(self, *args):
@@ -566,7 +799,10 @@ class _AnthropicStreamWrapper:
             kind = getattr(delta, "type", None)
             text = getattr(delta, "text", None) if kind == "text_delta" else None
             arguments = getattr(delta, "partial_json", None) if kind == "input_json_delta" else None
-            if (text or arguments) and self._progress_callback:
+            # Thinking/signature deltas show the model is working; they are a
+            # liveness signal only and never become answer text.
+            thinking = kind in {"thinking_delta", "signature_delta"}
+            if (text or arguments or thinking) and self._progress_callback:
                 self._progress_callback()
             if text:
                 yield text
@@ -578,22 +814,11 @@ class _AnthropicStreamWrapper:
             raise RuntimeError("Provider stream ended without a completion record") from exc
         if not getattr(message, "stop_reason", None):
             raise RuntimeError("Provider stream ended without a completion record")
-        blocks = []
-        for block in message.content:
-            if block.type == "text":
-                blocks.append(ContentBlock(type="text", text=block.text))
-            elif block.type == "tool_use":
-                if message.stop_reason not in {"tool_use", "end_turn"}:
-                    raise ValueError("Provider returned an incomplete tool call")
-                blocks.append(
-                    ContentBlock(type="tool_use", id=block.id, name=block.name, input=block.input)
-                )
-        return LLMResponse(
-            blocks,
-            message.stop_reason,
-            message.model,
-            {"input": message.usage.input_tokens, "output": message.usage.output_tokens},
-        )
+        if message.stop_reason not in {"tool_use", "end_turn", "refusal"} and any(
+            block.type == "tool_use" for block in message.content
+        ):
+            raise ValueError("Provider returned an incomplete tool call")
+        return _anthropic_response(message)
 
 
 class _OpenAIStreamWrapper:
@@ -607,14 +832,16 @@ class _OpenAIStreamWrapper:
         temperature=None,
         *,
         request_options=None,
+        provider_name: str = "",
     ):
+        self._provider_name = provider_name
         self._client, self._model = client, model
         self._max_tokens, self._messages = max_tokens, messages
         self._tools, self._temperature = tools, temperature
         self._stream = None
         self._text = ""
-        self._calls = {}
-        self._usage = {}
+        self._calls: dict[int, dict[str, Any]] = {}
+        self._usage: dict[str, Any] = {}
         self._observed_model = ""
         self._finish: str | None = None
         self._stream_exhausted = False
@@ -638,7 +865,9 @@ class _OpenAIStreamWrapper:
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
         kwargs.update(self._request_options)
-        self._stream = self._client.chat.completions.create(**kwargs)
+        self._stream = self._client.chat.completions.create(
+            **_adapt_openai_request(self._provider_name, kwargs)
+        )
         return self
 
     def __exit__(self, *args):
@@ -758,6 +987,7 @@ class OllamaProvider(BaseLLMProvider):
     def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
         provider = OpenAICompatibleProvider.__new__(OpenAICompatibleProvider)
         provider._client = self._client
+        provider.provider_name = "ollama"
         return provider.stream(model, max_tokens, system, messages, tools, temperature)
 
 
@@ -810,6 +1040,12 @@ class Qwen3ServerlessProvider(BaseLLMProvider):
 # ───── Provider Factory ─────
 
 
+def configured_provider_name() -> str | None:
+    """The operator's ``LLM_PROVIDER``; empty or ``auto`` means auto-detect."""
+    name = os.getenv("LLM_PROVIDER", "").strip().lower()
+    return None if name in {"", "auto"} else name
+
+
 def create_provider(
     provider: str | None = None,
     model: str | None = None,
@@ -830,6 +1066,8 @@ def create_provider(
 
     if owned_only() or provider == "mizan-owned" or model == "mizan-owned":
         return cast(BaseLLMProvider, OwnedProvider())
+    if provider == "auto":
+        provider = None
 
     # Auto-detect provider from model name, verifying keys exist
     if not provider and model:
@@ -843,7 +1081,7 @@ def create_provider(
                 provider = "anthropic"
             elif os.getenv("OPENROUTER_API_KEY", ""):
                 provider = "openrouter"
-        elif model.startswith(("gpt-", "o1", "o3", "chatgpt")):
+        elif model.startswith(("gpt-", "o1", "o3", "o4", "chatgpt")):
             provider = "openai"
         elif model.startswith("ruh"):
             provider = "ruh"
@@ -976,13 +1214,18 @@ def normalize_model_for_provider(model: str, provider_name: str) -> str:
         return "mizan-owned"
 
     _anthropic_to_openrouter = {
-        "claude-opus-4-6": "anthropic/claude-opus-4.6",
-        "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
         "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4",
         "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
     }
     if provider_name == "openrouter" and "/" not in model:
-        return _anthropic_to_openrouter.get(model, model)
+        if model in _anthropic_to_openrouter:
+            return _anthropic_to_openrouter[model]
+        # OpenRouter writes Claude versions with a dot: claude-opus-5-5 →
+        # anthropic/claude-opus-5.5 (verified against its catalog 2026-10-26).
+        match = re.fullmatch(r"claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d))?", model)
+        if match:
+            family, major, minor = match.groups()
+            return f"anthropic/claude-{family}-{major}{'.' + minor if minor else ''}"
     return model
 
 
@@ -1003,16 +1246,21 @@ def get_default_model(provider_name: str) -> str:
     if env_model:
         return normalize_model_for_provider(env_model, provider_name)
 
-    defaults = {
-        "anthropic": "claude-sonnet-4-20250514",
-        "openrouter": "anthropic/claude-sonnet-4",
-        "openai": "gpt-4o",
-        "ollama": "llama3.2",
-        "ruh": "ruh-local",
-        "qwen3": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
-        "mizan-hybrid": os.getenv("MIZAN_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
-    }
-    return defaults.get(provider_name, "claude-sonnet-4-20250514")
+    return PROVIDER_DEFAULT_MODELS.get(provider_name, DEFAULT_CLAUDE_MODEL)
+
+
+# Current defaults, checked against the Anthropic model table and the
+# OpenRouter/Ollama catalogs on 2026-10-26. DEFAULT_MODEL overrides them.
+DEFAULT_CLAUDE_MODEL = "claude-opus-5-5"
+PROVIDER_DEFAULT_MODELS = {
+    "anthropic": DEFAULT_CLAUDE_MODEL,
+    "openrouter": "anthropic/claude-opus-5.5",
+    "openai": "gpt-6.1-sol",
+    "ollama": "qwen3.8",
+    "ruh": "ruh-local",
+    "qwen3": os.getenv("QWEN3_MODEL", "qwen3-0.6b-quran"),
+    "mizan-hybrid": os.getenv("MIZAN_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
+}
 
 
 # ───── Provider Discovery & Health ─────
@@ -1023,24 +1271,43 @@ PROVIDER_MODELS = {
         {"id": "mizan-owned", "name": "Mizan Own Architecture", "context": 8192, "vision": False}
     ],
     "anthropic": [
-        {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "context": 200000, "vision": True},
         {
-            "id": "claude-sonnet-4-20250514",
-            "name": "Claude Sonnet 4",
-            "context": 200000,
+            "id": "claude-opus-5-5",
+            "name": "Claude Opus 5.5",
+            "context": 1_000_000,
+            "max_output": 128_000,
             "vision": True,
         },
         {
-            "id": "claude-haiku-4-5-20251001",
-            "name": "Claude Haiku 4.5",
-            "context": 200000,
+            "id": "claude-sonnet-5-5",
+            "name": "Claude Sonnet 5.5",
+            "context": 1_000_000,
+            "max_output": 128_000,
+            "vision": True,
+        },
+        {
+            "id": "claude-haiku-5-5",
+            "name": "Claude Haiku 5.5",
+            "context": 1_000_000,
+            "max_output": 128_000,
             "vision": True,
         },
     ],
     "openai": [
-        {"id": "gpt-4o", "name": "GPT-4o", "context": 128000, "vision": True},
-        {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "context": 128000, "vision": True},
-        {"id": "o3-mini", "name": "o3 Mini", "context": 200000, "vision": False},
+        {
+            "id": "gpt-6.1-sol",
+            "name": "GPT-6.1 Sol",
+            "context": 1_050_000,
+            "max_output": 128_000,
+            "vision": True,
+        },
+        {
+            "id": "gpt-6-luna",
+            "name": "GPT-6 Luna",
+            "context": 1_050_000,
+            "max_output": 128_000,
+            "vision": True,
+        },
     ],
     "openrouter": [],  # Fetched dynamically
     "ollama": [],  # Fetched dynamically
@@ -1075,6 +1342,88 @@ PROVIDER_MODELS = {
     ],
 }
 
+# ───── Model limits (context window, output cap) ─────
+#
+# Live values come from the Anthropic Models API (max_input_tokens/max_tokens)
+# and the OpenRouter catalog (context_length/max_completion_tokens); the
+# static table above and family rules are the offline fallback.
+
+_MODEL_LIMITS: dict[str, tuple[int, int]] = {}
+
+
+def _limits_key(model: str) -> str:
+    return (model or "").strip().lower()
+
+
+def model_limits(model: str) -> tuple[int, int]:
+    """Return ``(context_window_tokens, max_output_tokens)`` for a model."""
+    key = _limits_key(model)
+    if key in _MODEL_LIMITS:
+        return _MODEL_LIMITS[key]
+    for entries in PROVIDER_MODELS.values():
+        for entry in cast(list[dict[str, Any]], entries):
+            if _limits_key(str(entry["id"])) == key:
+                context = int(entry.get("context") or 8192)
+                return context, int(entry.get("max_output") or min(8192, context // 4))
+    version = claude_version(model)
+    if version is not None:
+        family, number = version
+        if family in {"fable", "mythos"} or number >= 4.6:
+            return 1_000_000, 128_000
+        if number >= 4.5:
+            return 200_000, 64_000
+        return 200_000, 32_000
+    return 32_768, 8_192
+
+
+def record_model_limits(model: str, context: Any, max_output: Any) -> None:
+    try:
+        context_value, output_value = int(context or 0), int(max_output or 0)
+    except (TypeError, ValueError):
+        return
+    if context_value > 0:
+        output_value = output_value if output_value > 0 else min(8192, context_value // 4)
+        _MODEL_LIMITS[_limits_key(model)] = (context_value, min(output_value, context_value))
+
+
+async def refresh_model_limits() -> int:
+    """Refresh live model limits; failures keep the previous/static values."""
+    import httpx
+
+    refreshed = 0
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key.startswith("sk-ant-"):
+        try:
+            import anthropic
+
+            client = anthropic.AsyncAnthropic(api_key=anthropic_key, max_retries=0, timeout=15)
+            async for info in client.models.list(limit=100):
+                record_model_limits(
+                    info.id,
+                    getattr(info, "max_input_tokens", None),
+                    getattr(info, "max_tokens", None),
+                )
+                refreshed += 1
+            await client.close()
+        except Exception as exc:
+            logger.info("Anthropic model limits unavailable: %s", exc)
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            response = await http.get("https://openrouter.ai/api/v1/models")
+            if response.status_code == 200:
+                for entry in response.json().get("data", []):
+                    top = entry.get("top_provider") or {}
+                    record_model_limits(
+                        entry.get("id", ""),
+                        entry.get("context_length"),
+                        top.get("max_completion_tokens"),
+                    )
+                    refreshed += 1
+    except Exception as exc:
+        logger.info("OpenRouter model limits unavailable: %s", exc)
+    return refreshed
+
+
 # In-memory active state — updated by switch_provider, read by get_provider_status.
 # Falls back to env vars when empty (before any switch).
 _active_state: dict[str, str] = {"provider": "", "model": ""}
@@ -1101,7 +1450,7 @@ def get_provider_status() -> dict:
             "display": "Anthropic (Claude)",
             "configured": bool(anthropic_key and anthropic_key != "sk-ant-your-key-here"),
             "models": PROVIDER_MODELS["anthropic"],
-            "default_model": "claude-sonnet-4-20250514",
+            "default_model": PROVIDER_DEFAULT_MODELS["anthropic"],
         }
     )
 
@@ -1113,7 +1462,7 @@ def get_provider_status() -> dict:
             "display": "OpenRouter (300+ models)",
             "configured": bool(openrouter_key),
             "models": PROVIDER_MODELS["openrouter"],
-            "default_model": "anthropic/claude-sonnet-4",
+            "default_model": PROVIDER_DEFAULT_MODELS["openrouter"],
         }
     )
 
@@ -1125,7 +1474,7 @@ def get_provider_status() -> dict:
             "display": "OpenAI",
             "configured": bool(openai_key and openai_key != "sk-your-openai-key-here"),
             "models": PROVIDER_MODELS["openai"],
-            "default_model": "gpt-4o",
+            "default_model": PROVIDER_DEFAULT_MODELS["openai"],
         }
     )
 
@@ -1138,7 +1487,7 @@ def get_provider_status() -> dict:
             "configured": True,  # Always "configured" — just may not be running
             "base_url": ollama_url,
             "models": PROVIDER_MODELS["ollama"],
-            "default_model": "llama3.2",
+            "default_model": PROVIDER_DEFAULT_MODELS["ollama"],
         }
     )
 
@@ -1221,7 +1570,7 @@ def get_provider_status() -> dict:
 
     # Determine active provider — prefer in-memory state from switch_provider,
     # then env var, then auto-detect from configured providers.
-    active = _active_state["provider"] or os.getenv("LLM_PROVIDER", "")
+    active = _active_state["provider"] or configured_provider_name() or ""
     if not active:
         for p in providers:
             if p["configured"] and p["name"] != "ollama":
@@ -1357,7 +1706,7 @@ async def check_provider_health(provider_name: str) -> dict:
                     "https://api.anthropic.com/v1/models",
                     headers={
                         "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
+                        "anthropic-version": "2026-10-21",
                     },
                 )
                 return {"provider": "anthropic", "healthy": resp.status_code == 200}

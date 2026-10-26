@@ -70,12 +70,12 @@ async def cmd_reset(agent=None, **kwargs):
     return "Agent state reset to resting."
 
 
-@command("/model", "Switch AI model (usage: /model claude-sonnet-4-6)")
+@command("/model", "Switch AI model (usage: /model claude-opus-5-5)")
 async def cmd_model(args="", agent=None, **kwargs):
     model_name = args.strip()
     if not model_name:
         current = agent.ai_model if agent else "unknown"
-        return f"Current model: `{current}`\n\nUsage: `/model <model-name>`\nExamples: `/model claude-sonnet-4-6`, `/model gpt-4o`"
+        return f"Current model: `{current}`\n\nUsage: `/model <model-name>`\nExamples: `/model claude-opus-5-5`, `/model claude-sonnet-5-5`, `/model gpt-6.1-sol`"
     if agent:
         from mizan_owned.provider import owned_only
         from providers import create_provider, normalize_model_for_provider

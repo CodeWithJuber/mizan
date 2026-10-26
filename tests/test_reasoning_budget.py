@@ -68,7 +68,9 @@ def test_real_sdk_caps_only_verified_model_and_keeps_reasoning_out_of_answer(
     def respond(request):
         body = json.loads(request.content)
         seen.append(body)
-        assert body["max_tokens"] == 4096
+        # OpenAI's own API takes max_completion_tokens; OpenRouter keeps max_tokens.
+        token_field = "max_completion_tokens" if provider_name == "openai" else "max_tokens"
+        assert body[token_field] == 4096
         assert body.get("reasoning") == expected
         usage = {
             "prompt_tokens": 19000,
@@ -155,7 +157,8 @@ async def test_agent_sdk_request_reserves_answer_budget_and_delivers_answer(agen
     def respond(request):
         body = json.loads(request.content)
         requests.append(body)
-        assert body["max_tokens"] == 4096
+        # Unlisted model: fallback output cap (8192) is the default budget.
+        assert body["max_tokens"] == 8192
         assert body["reasoning"] == {"max_tokens": 1024}
         shared = {"id": "fixture", "created": 1, "model": MODEL}
         usage = {
@@ -344,13 +347,15 @@ async def test_qalb_tone_does_not_control_output_budget(agent, monkeypatch, qalb
     )
     result = await agent.execute("hello")
     assert result["success"]
-    assert agent.ai_client.requests[0]["max_tokens"] == 4096
+    assert agent.ai_client.requests[0]["max_tokens"] == 8192
     assert agent.ai_client.requests[0]["temperature"] == 0.2
     assert result["metric_provenance"]["accuracy"] == "not_measured"
 
 
 @pytest.mark.parametrize(
-    "configured, expected", [(128, 256), (8192, 8192), (999999, 16384), ("bad", 4096), (True, 4096)]
+    "configured, expected",
+    # Bounded by the model's output cap (8192 for this unlisted model).
+    [(128, 256), (4096, 4096), (999999, 8192), ("bad", 8192), (True, 8192)],
 )
 def test_operator_budget_is_explicit_and_bounded(agent, configured, expected):
     agent.config["max_output_tokens"] = configured

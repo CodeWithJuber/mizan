@@ -121,7 +121,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 
 - Docker reads `.env` for compose variable substitution — inline comments like `KEY=value # comment` get parsed as part of the value.
 - Claude models use Anthropic only if `ANTHROPIC_API_KEY` starts with `sk-ant-`; otherwise they auto-route through OpenRouter.
-- `DEFAULT_MODEL` controls the agent model (fallback: `claude-sonnet-4-20250514`) — set it in `.env`.
+- `DEFAULT_MODEL` controls the agent model (empty → provider default, `claude-opus-5-5` on Anthropic) — set it in `.env`. `LLM_PROVIDER=auto` (default) detects the provider from keys.
 - Backend runs with `--reload`, so local edits in `backend/` take effect automatically.
 - `.env` values are NOT auto-loaded into `os.environ` — pydantic-settings reads them, but `providers.py` calls `load_dotenv()`.
 - `.claude/` and `.claude.local.md` are gitignored — local Claude Code config won't be committed.

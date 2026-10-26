@@ -119,7 +119,7 @@ export default function ComparePanel() {
             key={i}
             value={m}
             onChange={(e) => setModel(i, e.target.value)}
-            placeholder={`Model ${LABELS[i]} id (e.g. anthropic/claude-sonnet-4-20250514)`}
+            placeholder={`Model ${LABELS[i]} id (e.g. anthropic/claude-opus-5.5)`}
             className="rounded-lg border border-border bg-background p-2 text-sm text-primary"
           />
         ))}

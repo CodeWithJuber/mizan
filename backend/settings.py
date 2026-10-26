@@ -30,8 +30,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_referer: str = "https://github.com/CodeWithJuber/mizan"
-    llm_provider: str = ""  # auto-detect if empty; anthropic | openrouter | openai | ollama
-    default_model: str = "claude-sonnet-4-20250514"
+    llm_provider: str = (
+        ""  # auto-detect if empty or "auto"; anthropic | openrouter | openai | ollama
+    )
+    default_model: str = ""  # empty → the provider's current default (claude-opus-5-5 on Anthropic)
 
     # ── System ───────────────────────────────────────────────
     secret_key: str = "change-this-to-a-secure-random-string"

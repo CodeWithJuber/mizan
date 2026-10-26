@@ -386,7 +386,7 @@ function AppInner() {
     { name: "/reset", description: "Reset agent state" },
     {
       name: "/model",
-      description: "Switch AI model (e.g. /model claude-sonnet-4-6)",
+      description: "Switch AI model (e.g. /model claude-opus-5-5)",
     },
     { name: "/agents", description: "List available agents" },
     {

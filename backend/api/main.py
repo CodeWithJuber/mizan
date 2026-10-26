@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
                 da["type"],
                 name=da["name"],
                 memory=memory,
-                config={"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                config={"model": os.getenv("DEFAULT_MODEL", "")},
                 wali=wali,
                 izn=izn,
                 skill_registry=skill_registry,
@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI):
                     "role": da["type"],
                     "nafs_level": 1,
                     "capabilities": list(agent.tools.keys()),
-                    "config": {"model": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")},
+                    "config": {"model": os.getenv("DEFAULT_MODEL", "")},
                 }
             )
     else:
@@ -287,11 +287,31 @@ async def lifespan(app: FastAPI):
 
     await learning_service.start()
 
+    async def keep_model_limits_fresh() -> None:
+        # Context windows and output caps drive history budgets and output
+        # limits; refresh them from the providers' own catalogs hourly.
+        from providers import refresh_model_limits
+
+        while True:
+            try:
+                await refresh_model_limits()
+            except Exception as exc:
+                logger.debug("Model limit refresh failed: %s", exc)
+            await asyncio.sleep(3600)
+
+    model_limits_task = (
+        asyncio.create_task(keep_model_limits_fresh())
+        if os.getenv("MIZAN_MODEL_LIMITS_REFRESH", "true").lower() not in {"0", "false", "no"}
+        else None
+    )
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    if model_limits_task is not None:
+        model_limits_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -1206,6 +1226,7 @@ def chat_failure_payload(result: dict) -> dict:
         "output_budget_exhausted": "The model reached its output limit before producing an answer. Try a smaller request or another model.",
         "provider_timeout": "The response model exceeded its wait limit. No automatic retry was made; upstream completion is unconfirmed.",
         "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
+        "model_refused": "The model declined this request. Rephrase it or choose another model.",
     }
     code = result.get("error_code")
     if not isinstance(code, str) or code not in public_errors:

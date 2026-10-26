@@ -512,7 +512,7 @@ def check_provider_connectivity() -> CheckResult:
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
+                    "anthropic-version": "2026-10-21",
                 },
                 timeout=5,
             )

@@ -10,7 +10,7 @@ pydantic-settings>=2.15.0,<3
 python-multipart>=0.0.32,<0.1
 
 # AI Providers
-anthropic>=1.11.0,<2
+anthropic>=2.3.0,<3
 openai>=3.22.1,<4
 httpx>=0.28.1,<0.29
 

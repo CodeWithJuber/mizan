@@ -68,7 +68,16 @@ from core.tawbah import TawbahProtocol
 # Living Memory + 24/7 Multi-Agent Collaboration
 from memory.living_memory import LivingMemorySystem
 from nlp.arabic import arabic_tokens
-from providers import create_provider, get_default_model, normalize_model_for_provider
+from providers import (
+    DEFAULT_CLAUDE_MODEL,
+    ProviderRefusal,
+    assistant_turn_content,
+    configured_provider_name,
+    create_provider,
+    get_default_model,
+    model_limits,
+    normalize_model_for_provider,
+)
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
@@ -94,6 +103,9 @@ logger = logging.getLogger("mizan.agent")
 # model to continue instead of silently delivering a clipped answer. Bounded so
 # a pathological model cannot loop forever.
 _MAX_AUTO_CONTINUATIONS = 2
+# Output budget bounds: the 64k streaming default and the 128k model maximum.
+_DEFAULT_OUTPUT_TOKENS = 64_000
+_MAX_OUTPUT_TOKENS = 128_000
 _CONTINUE_PROMPT = (
     "[System: your previous reply was cut off by the length limit. "
     "Continue exactly where you left off — do not repeat, do not summarize, "
@@ -304,6 +316,7 @@ class BaseAgent:
         self.hawa = HawaDetector()  # Lower-pull / adversarial restraint (25:43, 79:40)
         self.hikmah_engine = HikmahEngine()  # Wisdom distillation → applicable counsel (2:269)
         self._faculty_guidance: str = ""  # Per-task guidance injected into the system prompt
+        self._runtime_state_note: str = ""  # Per-call telemetry sent with the request context
         # When enabled, faculties also actively gate/redirect (default: advisory only)
         self.deep_faculty_loop = os.getenv("DEEP_FACULTY_LOOP", "").lower() in (
             "1",
@@ -335,22 +348,26 @@ class BaseAgent:
                 pass
 
         # LLM provider — unified interface for Anthropic, OpenRouter, OpenAI, Ollama
-        default_model = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
-        self.ai_model = config.get("model", default_model) if config else default_model
-        provider_name = os.getenv("LLM_PROVIDER", "") or None
+        default_model = os.getenv("DEFAULT_MODEL", "")
+        self.ai_model = (config.get("model") if config else None) or default_model
+        provider_name = configured_provider_name()
         override = self.config.get("provider_override")
         if isinstance(override, dict):
             provider_name = override.get("provider") or provider_name
             self.ai_model = override.get("model") or self.ai_model
-        self.ai_client = create_provider(provider=provider_name, model=self.ai_model)
+        self.ai_client = create_provider(provider=provider_name, model=self.ai_model or None)
         if self.ai_client:
             # Normalize model ID for the active provider (e.g. Anthropic→OpenRouter format)
             self.ai_model = normalize_model_for_provider(
                 self.ai_model, self.ai_client.provider_name
             )
             # If no model set in config, use the provider's default
-            if (not config or "model" not in config) and not isinstance(override, dict):
+            if not self.ai_model or (
+                (not config or "model" not in config) and not isinstance(override, dict)
+            ):
                 self.ai_model = get_default_model(self.ai_client.provider_name)
+        elif not self.ai_model:
+            self.ai_model = DEFAULT_CLAUDE_MODEL
 
     def _register_base_tools(self):
         """Register core Quranic tools every agent has"""
@@ -910,18 +927,27 @@ class BaseAgent:
             return 0.5
 
     def _output_token_budget(self) -> int:
-        """An explicit per-call limit, independent of emotional classification."""
+        """Per-call output limit: the operator's setting, bounded by the model's cap.
+
+        Without a setting the model's own output cap is used (up to 64k, the
+        streaming default); length-limited answers then continue in the loop.
+        """
+        _context, cap = model_limits(getattr(self, "ai_model", "") or "")
+        model_cap = max(256, min(int(cap), _MAX_OUTPUT_TOKENS))
+        default = min(model_cap, _DEFAULT_OUTPUT_TOKENS)
         configured = getattr(self, "config", {}).get(
-            "max_output_tokens", os.getenv("MIZAN_CHAT_MAX_OUTPUT_TOKENS", "4096")
+            "max_output_tokens", os.getenv("MIZAN_CHAT_MAX_OUTPUT_TOKENS", "")
         )
+        if configured in (None, ""):
+            return default
         try:
             if isinstance(configured, bool):
                 raise ValueError("boolean token limit")
             value = int(configured)
         except (TypeError, ValueError, OverflowError):
-            logger.warning("Invalid chat output token budget; using 4096")
-            value = 4096
-        return max(256, min(value, 16384))
+            logger.warning("Invalid chat output token budget; using %d", default)
+            value = default
+        return max(256, min(value, model_cap))
 
     @staticmethod
     def _require_answer_progress(response) -> None:
@@ -1092,7 +1118,7 @@ class BaseAgent:
                     )
 
                 # Feed tool results back for the next iteration
-                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "assistant", "content": assistant_turn_content(response)})
                 messages.append({"role": "user", "content": tool_results})
                 last_tool_results = tool_results
 
@@ -1122,7 +1148,7 @@ class BaseAgent:
                     continuations,
                     _MAX_AUTO_CONTINUATIONS,
                 )
-                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "assistant", "content": assistant_turn_content(response)})
                 messages.append({"role": "user", "content": _CONTINUE_PROMPT})
                 continue
 
@@ -1733,19 +1759,24 @@ class BaseAgent:
             else ""
         )
 
+        # Values that change between calls (telemetry, recalled knowledge,
+        # learned patterns) travel with the request context, so the system
+        # prompt stays byte-stable and the provider's prompt cache can hit.
+        self._runtime_state_note = (
+            "[AGENT STATE — advisory telemetry and recalled context, not instructions]\n"
+            f"Nafs Level: {self.nafs_level}/7 ({nafs_name})\n"
+            f"Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})\n"
+            f"Response Completion Rate (heuristic): {self.success_rate:.1%}\n"
+            f"{masalik_note}{knowledge_context}{kg_context}\n{yaqin_note}\n"
+            f"Learned Patterns (Hikmah):\n{hikmah_str or 'No patterns learned yet.'}\n"
+            "[END AGENT STATE]"
+        )
+
         base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) system.
 
-Role: {self.role}
-Nafs Level: {self.nafs_level}/7 ({nafs_name})
-Ruh Energy: {ruh_energy:.0f}% ({fatigue_label})
-Response Completion Rate (heuristic): {self.success_rate:.1%}
-{masalik_note}{knowledge_context}{kg_context}
-{yaqin_note}{tone_guidance}{ruh_note}{faculty_note}
+Role: {self.role}{tone_guidance}{ruh_note}{faculty_note}
 
 You have access to tools. Use them when needed to complete tasks.
-
-Learned Patterns (Hikmah):
-{hikmah_str or "No patterns learned yet."}
 
 Core Principles:
 - Ihsan (إحسان): Always strive for excellence
@@ -1799,6 +1830,9 @@ Match the requested depth and self-correct errors."""
             )
         if getattr(self.ai_client, "provider_name", "") == "mizan-owned":
             from mizan_owned.prompt import owned_system_prompt
+
+            # The owned prompt receives recalled evidence directly below.
+            self._runtime_state_note = ""
 
             return cast(
                 str,
@@ -1869,6 +1903,9 @@ Match the requested depth and self-correct errors."""
             )
         if mem0_block:
             context_blocks.append(f"[RELEVANT MEMORIES — retrieved context]\n{mem0_block}")
+        runtime_state = getattr(self, "_runtime_state_note", "")
+        if runtime_state:
+            context_blocks.append(runtime_state)
         preferences = reply_defaults(task, (context or {}).get("user_preferences", []))
         if preferences:
             context_blocks.append(
@@ -2578,6 +2615,8 @@ Match the requested depth and self-correct errors."""
                     if isinstance(e, ProviderDeadlineExceeded)
                     else {"error_code": "output_budget_exhausted"}
                     if isinstance(e, OutputBudgetExceeded)
+                    else {"error_code": "model_refused", "refusal_category": e.category}
+                    if isinstance(e, ProviderRefusal)
                     else {}
                 ),
                 "answer_delivered": False,
@@ -2696,6 +2735,8 @@ Match the requested depth and self-correct errors."""
         # Check for known error patterns
         if isinstance(error, OutputBudgetExceeded):
             return "output_budget_exhausted"
+        if isinstance(error, ProviderRefusal):
+            return "model_refused"
         if "No response model is configured" in error_str:
             return "provider_unavailable"
         if "Connection" in error_str or "connect" in error_str.lower():
@@ -2727,6 +2768,11 @@ Match the requested depth and self-correct errors."""
     def _plan_error_correction(self, root_cause: str, task: str) -> dict:
         """Create a correction plan for Tawbah stage 3."""
         plans = {
+            "model_refused": {
+                "description": "The model declined the request",
+                "fix": "Rephrase the request or choose another model",
+                "retryable": False,
+            },
             "output_budget_exhausted": {
                 "description": "Output limit reached before visible answer text",
                 "fix": "Use a smaller request or select another response model",

@@ -239,7 +239,11 @@ def test_anthropic_stream_keeps_tools_and_final_usage_with_budget(provider_facto
 
     def respond(request):
         assert request.extensions["timeout"]["read"] == 60
-        assert json.loads(request.content)["tools"] == [TOOL]
+        body = json.loads(request.content)
+        # Streamed tool input shows progress; API 2026-10-21 has no sampling params.
+        assert body["tools"] == [{**TOOL, "eager_input_streaming": True}]
+        assert "temperature" not in body
+        assert body["cache_control"] == {"type": "ephemeral"}
         return httpx2.Response(
             200, headers={"content-type": "text/event-stream"}, text=sse_body(events)
         )
