@@ -20,6 +20,11 @@ def reset_chat_session(token):
     _chat_session.reset(token)
 
 
+def current_chat_session() -> str | None:
+    """The chat session bound by the authenticated route for this run, if any."""
+    return _chat_session.get()
+
+
 def artifact_session(session_id: str) -> str:
     bound = _chat_session.get()
     if bound and session_id and bound != session_id:

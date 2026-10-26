@@ -645,6 +645,9 @@ class StreamChatMessage(ChatMessage):
     # through ambiguous network failures and never creates a second model call.
     request_id: uuid.UUID
     workspace_id: str | None = Field(None, min_length=1, max_length=100)
+    # Izn for interactive chats: auto | auto_edits | ask | plan. Omitted keeps
+    # the legacy behaviour (no prompts) for older clients.
+    permission_mode: str | None = Field(None, pattern=r"^(auto|auto_edits|ask|plan)$")
 
 
 class IntegrationCreate(BaseModel):
@@ -1681,6 +1684,18 @@ async def stream_chat(
                         elapsed_ms=lease.public()["elapsed_ms"],
                     )
 
+                from agents.events import bind_event_sink
+                from security.approvals import ApprovalContext, bind_approvals
+
+                async def activity_sink(kind: str, payload: dict):
+                    # Structured tool/todo/approval frames for this run only.
+                    await deliver(kind, **payload)
+
+                approval_context = (
+                    ApprovalContext(user.user_id, req.session_id, req.permission_mode)
+                    if req.permission_mode
+                    else None
+                )
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:
@@ -1688,14 +1703,15 @@ async def stream_chat(
                             user, req.session_id, session, agent, req.content, req.workspace_id
                         )
                         await phase_cb("queued")
-                        result = await agent.execute(
-                            req.content,
-                            context,
-                            stream_callback=stream_cb,
-                            thinking_callback=thinking_cb,
-                            model_override=req.model_override,
-                            phase_callback=phase_cb,
-                        )
+                        with bind_event_sink(activity_sink), bind_approvals(approval_context):
+                            result = await agent.execute(
+                                req.content,
+                                context,
+                                stream_callback=stream_cb,
+                                thinking_callback=thinking_cb,
+                                model_override=req.model_override,
+                                phase_callback=phase_cb,
+                            )
                 except TimeoutError:
                     if not run_deadline.expired():
                         raise
@@ -2140,6 +2156,35 @@ async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_
         return {"deleted": await memory.delete_chat_preference(user.user_id, key)}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+class ApprovalDecision(BaseModel):
+    decision: str = Field(..., pattern=r"^(allow|deny|always)$")
+
+
+@app.post("/api/chat/approvals/{approval_id}")
+async def resolve_chat_approval(
+    approval_id: str,
+    body: ApprovalDecision,
+    user: TokenPayload = Depends(require_auth),
+):
+    """Answer a pending tool approval of one of the caller's own live chats."""
+    import re
+
+    from security.approvals import broker
+
+    if not re.fullmatch(r"[0-9a-f]{32}", approval_id) or not broker.resolve(
+        user.user_id, approval_id, body.decision
+    ):
+        raise HTTPException(404, "No pending approval with that id")
+    return {"approval_id": approval_id, "decision": body.decision}
+
+
+@app.get("/api/chat/approvals")
+async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
+    from security.approvals import broker
+
+    return {"pending": broker.pending_for(user.user_id)}
 
 
 @app.get("/api/chat/{session_id}")

@@ -32,6 +32,8 @@ from typing import Any, cast
 
 import httpx
 
+from agents.events import emit as emit_event
+from agents.events import summarize as summarize_event
 from agents.execution_contract import completion_metadata, prepare_tool_call, tool_result_failed
 from agents.perpetual_rotation import PerpetualRotation
 from agents.provider_limits import (
@@ -106,6 +108,7 @@ from response_policy import (
     RESPONSE_POLICY,
     reply_defaults,
 )
+from security.approvals import current_approvals, request_approval, tool_category
 from security.auth import current_user_id, request_has_role
 from security.izn import PermissionLevel
 from security.validation import (
@@ -134,6 +137,11 @@ _MAX_TOOL_CUTOFF_RETRIES = 2
 # Re-sends after an explicit provider error response (429/5xx), never after a
 # timeout or dropped connection.
 _MAX_PROVIDER_RETRIES = 2
+_PLAN_MODE_NOTE = (
+    "[PLAN MODE — investigate with read-only tools, then reply with a concrete, numbered "
+    "plan (files, changes, commands, risks). Do not modify files or run commands; the user "
+    "will approve the plan first.]"
+)
 _TOOL_CUTOFF_PROMPT = (
     "[System: your previous tool call was cut off by the output length limit before its "
     "arguments were complete, so it was NOT executed. Issue it again. If its input is large "
@@ -451,6 +459,7 @@ class BaseAgent:
             "recall_memory": self._tool_recall_memory,
             "delegate_task": self._tool_delegate_task,
             "query_knowledge": self._tool_query_knowledge,
+            "todo_write": self._tool_todo_write,
         }
         # Phase 2 (mizan.nlp, IP-2): native sense tool -- registered only when
         # the flag is on, so flag-off behavior stays bit-for-bit identical.
@@ -602,6 +611,36 @@ class BaseAgent:
                         },
                     },
                     "required": ["name"],
+                },
+            },
+            {
+                "name": "todo_write",
+                "description": (
+                    "Write your plan for this chat as a todo list and keep it current: send "
+                    "the whole list each time, mark exactly one item in_progress while working "
+                    "on it and completed as soon as it is done. Use it for tasks with 3+ steps; "
+                    "the user sees the list live."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "todos": {
+                            "type": "array",
+                            "maxItems": 50,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "content": {"type": "string", "maxLength": 500},
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["pending", "in_progress", "completed"],
+                                    },
+                                },
+                                "required": ["content", "status"],
+                            },
+                        }
+                    },
+                    "required": ["todos"],
                 },
             },
             {
@@ -763,11 +802,17 @@ class BaseAgent:
                     )
                 ):
                     visible[name] = snapshot
+        approvals = current_approvals()
+        if approvals is not None and approvals.mode == "plan":
+            # Plan mode offers observation only; changes are proposed, not made.
+            visible = {
+                name: schema for name, schema in visible.items() if tool_category(name) == "read"
+            }
         return list(visible.values())
 
     def _chat_tool_allowed(self, tool_name: str) -> bool:
         """Selected-project chats expose only owner-scoped tools with trusted handlers."""
-        from skills.builtin.coding_workspace import allows_user_workspace_tool
+        from skills.builtin.coding_workspace import allows_user_web_tool, allows_user_workspace_tool
         from workspace.context import bound_workspace_id
 
         selected = bound_workspace_id()
@@ -777,7 +822,10 @@ class BaseAgent:
             return True
         if allows_user_workspace_tool(tool_name, self.skill_registry, native_tools=self.tools):
             return True
+        if allows_user_web_tool(tool_name, self.skill_registry, native_tools=self.tools):
+            return True
         safe_native = {
+            "todo_write": BaseAgent._tool_todo_write,
             "recall_memory": BaseAgent._tool_recall_memory,
             "query_knowledge": BaseAgent._tool_query_knowledge,
             "disambiguate_sense": BaseAgent._tool_disambiguate_sense,
@@ -886,8 +934,15 @@ class BaseAgent:
             context_names={s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
             if bound_workspace_id()
             else set(),
-            max_tools=self._bounded_generation_config("tool_schema_limit", 8, 2, 32),
-            max_bytes=self._bounded_generation_config("tool_schema_bytes", 12_288, 4096, 65_536),
+            # A coding project needs its read/edit/search/run tools together.
+            max_tools=max(
+                self._bounded_generation_config("tool_schema_limit", 8, 2, 32),
+                16 if bound_workspace_id() else 0,
+            ),
+            max_bytes=max(
+                self._bounded_generation_config("tool_schema_bytes", 12_288, 4096, 65_536),
+                32_768 if bound_workspace_id() else 0,
+            ),
         )
         tool_schemas = tool_catalog.schemas()
 
@@ -1323,7 +1378,7 @@ class BaseAgent:
                 self._tool_invocation_started = True
                 tool_started = time.perf_counter()
 
-                async def dispatch(block, offered=frozenset(offered_names)):
+                async def run_block(block, offered):
                     if tool_catalog is not None:
                         if block.name not in offered:
                             return {
@@ -1333,13 +1388,35 @@ class BaseAgent:
                             return tool_catalog.discover(block.input)
                     return await self._execute_tool_safe(block.name, block.input)
 
+                async def dispatch(block, offered=frozenset(offered_names)):
+                    call_id = getattr(block, "id", "") or uuid.uuid4().hex
+                    await emit_event(
+                        "tool_start", {"call_id": call_id, "name": block.name, "input": block.input}
+                    )
+                    started = time.perf_counter()
+                    result = await run_block(block, offered)
+                    receipt = {
+                        "call_id": call_id,
+                        "name": block.name,
+                        "ok": not tool_result_failed(result),
+                        "summary": summarize_event(result),
+                        "duration_ms": round((time.perf_counter() - started) * 1000),
+                    }
+                    if isinstance(result, dict) and isinstance(result.get("diff"), str):
+                        receipt["diff"] = result["diff"]
+                        receipt["path"] = result.get("path")
+                    await emit_event("tool_result", receipt)
+                    return result
+
+                approvals = current_approvals()
                 try:
-                    if any(
+                    if (approvals is not None and approvals.mode != "auto") or any(
                         b.name.startswith("workspace_") or b.name == DISCOVER_TOOL
                         for b in tool_blocks
                     ):
                         # A model can emit write/run/publish together. Preserve
-                        # order for project mutations instead of racing the files.
+                        # order for project mutations instead of racing the files;
+                        # approval prompts are likewise asked one at a time.
                         tool_results_raw = [await dispatch(b) for b in tool_blocks]
                     else:
                         tool_results_raw = await asyncio.gather(*(dispatch(b) for b in tool_blocks))
@@ -1788,11 +1865,32 @@ class BaseAgent:
 
         # Check Izn permissions
         perm = self._check_tool_permission(tool_name, params)
-        if not perm["allowed"]:
+        approvals = current_approvals()
+        izn_asks = bool(
+            not perm["allowed"] and perm.get("requires_approval") and approvals is not None
+        )
+        if not perm["allowed"] and not izn_asks:
             logger.warning(
                 f"[WALI] Tool blocked: {tool_name} for agent {self.name}: {perm['reason']}"
             )
             return {"error": f"Permission denied: {perm['reason']}"}
+        # Izn in an interactive chat: plan mode refuses changes; other modes
+        # ask the user (through the live chat) before acting.
+        if approvals is not None:
+            if approvals.blocks(tool_name):
+                return {
+                    "error": "Plan mode is read-only: describe this step in the plan instead",
+                    "plan_mode": True,
+                }
+            if izn_asks or approvals.needs_approval(tool_name):
+                decision = await request_approval(
+                    approvals,
+                    tool_name,
+                    params,
+                    reason=perm.get("reason", "") if izn_asks else "",
+                )
+                if decision == "deny":
+                    return {"error": "The user declined this action", "declined": True}
 
         # 1. Agent's own built-in tools
         if tool_name in self.tools:
@@ -2194,6 +2292,12 @@ Match the requested depth and self-correct errors."""
         runtime_state = getattr(self, "_runtime_state_note", "")
         if runtime_state:
             context_blocks.append(runtime_state)
+        todos = self._session_todo_block((context or {}).get("session_id"))
+        if todos:
+            context_blocks.append(todos)
+        approvals = current_approvals()
+        if approvals is not None and approvals.mode == "plan":
+            context_blocks.append(_PLAN_MODE_NOTE)
         preferences = reply_defaults(task, (context or {}).get("user_preferences", []))
         if preferences:
             context_blocks.append(
@@ -2209,6 +2313,17 @@ Match the requested depth and self-correct errors."""
         )
 
         return messages
+
+    @staticmethod
+    def _session_todo_block(session_id: str | None) -> str:
+        """The chat's saved todo list, so a multi-turn plan survives between turns."""
+        from agents import session_state
+
+        user_id = current_user_id() or ""
+        if not user_id or not session_id:
+            return ""
+        todos = session_state.load(user_id, session_id).get("todos") or []
+        return session_state.todo_block(todos) if isinstance(todos, list) else ""
 
     def _run_cognitive_method(self, method: CognitiveMethod, task: str, context: dict | None):
         """
@@ -3607,6 +3722,23 @@ class {class_name}(SkillBase):
     _DEFAULT_CONTEXT_WINDOW = 200_000  # tokens (Claude-class model)
     _COMPACT_THRESHOLD = 0.80  # 80% of context window triggers compaction
     _PRESERVE_RECENT = 10  # keep last N messages intact
+
+    async def _tool_todo_write(self, todos: list | None = None) -> dict:
+        """Replace this chat's todo list; the UI shows it live and later turns see it."""
+        from agents import session_state
+        from agents.events import emit
+        from workspace.context import current_chat_session
+
+        try:
+            items = session_state.normalize_todos(todos or [])
+        except ValueError as exc:
+            return {"error": str(exc)}
+        user_id, session_id = current_user_id() or "", current_chat_session() or ""
+        if user_id and session_id:
+            session_state.update(user_id, session_id, "todos", items)
+        await emit("todo", {"todos": items})
+        done = sum(item["status"] == "completed" for item in items)
+        return {"todos": len(items), "completed": done, "saved": bool(user_id and session_id)}
 
     async def _tool_compact_context(self, conversation_history: list[dict] | None = None) -> str:
         """

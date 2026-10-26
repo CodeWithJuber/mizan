@@ -20,13 +20,65 @@ from typing import cast
 
 from fastapi import HTTPException
 
-MAX_FILE_BYTES = 1024 * 1024
-MAX_PROJECT_BYTES = 10 * 1024 * 1024
-MAX_FILES = 500
+
+def _limit(name: str, default: int, maximum: int) -> int:
+    """Operator-tunable quota; the isolated runner must accept the same sizes."""
+    try:
+        value = int(os.getenv(name, "") or default)
+    except ValueError:
+        value = default
+    return max(1, min(value, maximum))
+
+
+MAX_FILE_BYTES = _limit("MIZAN_WORKSPACE_MAX_FILE_BYTES", 1024 * 1024, 8 * 1024 * 1024)
+MAX_PROJECT_BYTES = _limit("MIZAN_WORKSPACE_MAX_PROJECT_BYTES", 10 * 1024 * 1024, 100 * 1024 * 1024)
+MAX_FILES = _limit("MIZAN_WORKSPACE_MAX_FILES", 500, 5000)
 MAX_WORKSPACES = 10
 MAX_CHECKPOINTS = 5
+# Agent search bounds (glob/grep) and line reads.
+MAX_GLOB_RESULTS = 500
+MAX_GREP_MATCHES = 300
+MAX_GREP_PATTERN = 500
+MAX_LINE_CHARS = 2000
+DEFAULT_READ_LINES = 2000
+_NESTED_QUANTIFIER = re.compile(r"\([^)]*[+*][^)]*\)\s*[+*{]")
 _LOCK = threading.RLock()
 _ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def glob_regex(pattern: str) -> re.Pattern[str]:
+    """``**`` spans directories, ``*`` and ``?`` stay inside one path segment."""
+    if not isinstance(pattern, str) or not pattern or len(pattern) > 300:
+        raise HTTPException(422, "A glob pattern of 1..300 characters is required")
+    pattern = pattern.lstrip("/")
+    out, index = [], 0
+    while index < len(pattern):
+        char = pattern[index]
+        if pattern.startswith("**/", index):
+            out.append("(?:.*/)?")
+            index += 3
+        elif pattern.startswith("**", index):
+            out.append(".*")
+            index += 2
+        elif char == "*":
+            out.append("[^/]*")
+            index += 1
+        elif char == "?":
+            out.append("[^/]")
+            index += 1
+        elif char == "[":
+            end = pattern.find("]", index + 1)
+            if end == -1:
+                out.append(re.escape(char))
+                index += 1
+            else:
+                body = pattern[index + 1 : end].replace("\\", "\\\\")
+                out.append("[" + ("^" + body[1:] if body.startswith("!") else body) + "]")
+                index = end + 1
+        else:
+            out.append(re.escape(char))
+            index += 1
+    return re.compile("".join(out) + r"\Z")
 
 
 def now() -> str:
@@ -149,10 +201,13 @@ class WorkspaceStore:
             with os.fdopen(descriptor, "rb") as handle:
                 info = os.fstat(handle.fileno())
                 if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
-                    raise HTTPException(413, "Only regular project files up to 1 MiB are supported")
+                    raise HTTPException(
+                        413,
+                        f"Only regular project files up to {MAX_FILE_BYTES} bytes are supported",
+                    )
                 data = handle.read(MAX_FILE_BYTES + 1)
                 if len(data) > MAX_FILE_BYTES:
-                    raise HTTPException(413, "Project file exceeds 1 MiB")
+                    raise HTTPException(413, f"Project file exceeds {MAX_FILE_BYTES} bytes")
                 return data
 
     def read(self, workspace_id: str, path: str) -> dict:
@@ -162,6 +217,139 @@ class WorkspaceStore:
         except UnicodeDecodeError:
             raise HTTPException(415, "Binary file; publish it as an image artifact") from None
         return {"path": path, "content": content, "sha256": hashlib.sha256(data).hexdigest()}
+
+    def read_lines(
+        self, workspace_id: str, path: str, offset: int = 1, limit: int = DEFAULT_READ_LINES
+    ) -> dict:
+        """Numbered lines ``offset..offset+limit-1`` (1-based), long lines clipped."""
+        document = self.read(workspace_id, path)
+        lines = document["content"].splitlines()
+        start = max(1, int(offset or 1))
+        count = max(1, min(int(limit or DEFAULT_READ_LINES), DEFAULT_READ_LINES))
+        selected = lines[start - 1 : start - 1 + count]
+        numbered = "\n".join(
+            f"{start + index:6d}\t{line[:MAX_LINE_CHARS]}" for index, line in enumerate(selected)
+        )
+        return {
+            "path": path,
+            "sha256": document["sha256"],
+            "total_lines": len(lines),
+            "start_line": start,
+            "end_line": start + len(selected) - 1,
+            "content": numbered,
+            "truncated": start - 1 + count < len(lines),
+        }
+
+    def edit(
+        self,
+        workspace_id: str,
+        path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+        expected_sha256: str | None = None,
+    ) -> dict:
+        """Replace exact text; ambiguity is refused rather than guessed."""
+        if not isinstance(old_string, str) or not old_string:
+            raise HTTPException(422, "old_string must be non-empty exact text from the file")
+        if not isinstance(new_string, str) or new_string == old_string:
+            raise HTTPException(422, "new_string must differ from old_string")
+        with _LOCK:
+            document = self.read(workspace_id, path)
+            if expected_sha256 and document["sha256"] != expected_sha256:
+                raise HTTPException(409, "File changed since it was read")
+            before = document["content"]
+            matches = before.count(old_string)
+            if matches == 0:
+                raise HTTPException(
+                    404, "old_string was not found; read the file and copy the exact text"
+                )
+            if matches > 1 and not replace_all:
+                raise HTTPException(
+                    409,
+                    f"old_string matches {matches} places; add surrounding context "
+                    "or set replace_all",
+                )
+            after = (
+                before.replace(old_string, new_string)
+                if replace_all
+                else before.replace(old_string, new_string, 1)
+            )
+            written = self.write(workspace_id, path, after, document["sha256"])
+        patch = "".join(
+            difflib.unified_diff(
+                before.splitlines(keepends=True),
+                after.splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+            )
+        )
+        return {
+            **written,
+            "replacements": matches if replace_all else 1,
+            "diff": patch[:32_000],
+            "diff_truncated": len(patch) > 32_000,
+        }
+
+    def glob(self, workspace_id: str, pattern: str) -> dict:
+        matcher = glob_regex(pattern)
+        files = [
+            entry
+            for entry in self.tree(workspace_id)["files"]
+            if entry["kind"] == "file" and matcher.match(entry["path"])
+        ]
+        return {
+            "pattern": pattern,
+            "files": [{"path": f["path"], "size": f["size"]} for f in files[:MAX_GLOB_RESULTS]],
+            "total": len(files),
+            "truncated": len(files) > MAX_GLOB_RESULTS,
+        }
+
+    def grep(
+        self,
+        workspace_id: str,
+        pattern: str,
+        path_glob: str | None = None,
+        ignore_case: bool = False,
+        max_matches: int = 100,
+    ) -> dict:
+        """Regex search over text files, bounded in pattern, lines and matches."""
+        if not isinstance(pattern, str) or not pattern or len(pattern) > MAX_GREP_PATTERN:
+            raise HTTPException(422, f"A regex of 1..{MAX_GREP_PATTERN} characters is required")
+        if _NESTED_QUANTIFIER.search(pattern):
+            raise HTTPException(422, "Nested quantifiers like (a+)+ are not accepted")
+        try:
+            regex = re.compile(pattern, re.IGNORECASE if ignore_case else 0)
+        except re.error as exc:
+            raise HTTPException(422, f"Invalid regular expression: {exc}") from None
+        matcher = glob_regex(path_glob) if path_glob else None
+        limit = max(1, min(int(max_matches or 100), MAX_GREP_MATCHES))
+        matches: builtins.list[dict] = []
+        files_with_matches = 0
+        for entry in self.tree(workspace_id)["files"]:
+            if entry["kind"] != "file" or (matcher and not matcher.match(entry["path"])):
+                continue
+            try:
+                data = self.read_bytes(workspace_id, entry["path"])
+            except HTTPException:
+                continue
+            if b"\x00" in data[:8192]:
+                continue  # binary
+            found = False
+            for number, line in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
+                if regex.search(line[:MAX_LINE_CHARS]):
+                    found = True
+                    if len(matches) < limit:
+                        matches.append({"path": entry["path"], "line": number, "text": line[:300]})
+            files_with_matches += found
+            if len(matches) >= limit:
+                break
+        return {
+            "pattern": pattern,
+            "matches": matches,
+            "files_with_matches": files_with_matches,
+            "truncated": len(matches) >= limit,
+        }
 
     def tree(self, workspace_id: str) -> dict:
         result: builtins.list[dict] = []

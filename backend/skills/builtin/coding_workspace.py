@@ -43,6 +43,33 @@ def allows_user_workspace_tool(
     )
 
 
+_WEB_METHODS = {"web_browse": "browse", "web_search": "search"}
+
+
+def allows_user_web_tool(tool_name: str, registry, *, native_tools: dict | None = None) -> bool:
+    """Allow the shipped, address-checked web tools for every signed-in user.
+
+    Only WebBrowseSkill's own bound methods qualify; a plugin or native tool
+    using the same name never inherits this exception.
+    """
+    method_name = _WEB_METHODS.get(tool_name)
+    if registry is None or method_name is None or tool_name in (native_tools or {}):
+        return False
+    from skills.builtin.web_browse import WebBrowseSkill
+
+    skill = registry.get_skill("web_browse")
+    if type(skill) is not WebBrowseSkill:
+        return False
+    trusted = skill.get_tools().get(tool_name)
+    actual = registry.get_all_tools().get(tool_name)
+    return (
+        trusted is not None
+        and actual is trusted
+        and getattr(actual, "__self__", None) is skill
+        and getattr(actual, "__func__", None) is getattr(WebBrowseSkill, method_name)
+    )
+
+
 class CodingWorkspaceSkill(SkillBase):
     manifest = SkillManifest(
         name="coding_workspace",
@@ -61,6 +88,9 @@ class CodingWorkspaceSkill(SkillBase):
                 "tree",
                 "read",
                 "write",
+                "edit",
+                "glob",
+                "grep",
                 "run",
                 "git",
                 "checkpoint",
@@ -101,8 +131,63 @@ class CodingWorkspaceSkill(SkillBase):
     async def tree(self, workspace_id: str | None = None) -> dict:
         return cast(dict, self.store().tree(selected_workspace(workspace_id)))
 
-    async def read(self, workspace_id: str | None = None, path: str = "") -> dict:
-        return cast(dict, self.store().read(selected_workspace(workspace_id), path))
+    async def read(
+        self,
+        workspace_id: str | None = None,
+        path: str = "",
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        store = self.store()
+        if offset is None and limit is None:
+            return cast(dict, store.read(selected_workspace(workspace_id), path))
+        return cast(
+            dict,
+            store.read_lines(selected_workspace(workspace_id), path, offset or 1, limit or 2000),
+        )
+
+    async def edit(
+        self,
+        workspace_id: str | None = None,
+        path: str = "",
+        old_string: str = "",
+        new_string: str = "",
+        replace_all: bool = False,
+        expected_sha256: str | None = None,
+    ) -> dict:
+        return cast(
+            dict,
+            self.store(edit=True).edit(
+                selected_workspace(workspace_id),
+                path,
+                old_string,
+                new_string,
+                bool(replace_all),
+                expected_sha256,
+            ),
+        )
+
+    async def glob(self, workspace_id: str | None = None, pattern: str = "**/*") -> dict:
+        return cast(dict, self.store().glob(selected_workspace(workspace_id), pattern))
+
+    async def grep(
+        self,
+        workspace_id: str | None = None,
+        pattern: str = "",
+        path_glob: str | None = None,
+        ignore_case: bool = False,
+        max_matches: int = 100,
+    ) -> dict:
+        return cast(
+            dict,
+            self.store().grep(
+                selected_workspace(workspace_id),
+                pattern,
+                path_glob,
+                bool(ignore_case),
+                max_matches,
+            ),
+        )
 
     async def write(
         self,
@@ -218,9 +303,49 @@ class CodingWorkspaceSkill(SkillBase):
             ("tree", "Inspect project files before modifying them.", project, ["workspace_id"]),
             (
                 "read",
-                "Read a project file and its hash for safe subsequent edits.",
-                {**project, "path": string},
+                "Read a project file and its hash for safe subsequent edits. With offset/limit "
+                "it returns numbered lines (1-based) of large files.",
+                {
+                    **project,
+                    "path": string,
+                    "offset": {"type": "integer", "minimum": 1},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 2000},
+                },
                 ["workspace_id", "path"],
+            ),
+            (
+                "edit",
+                "Change a file by replacing exact text: old_string must match the file exactly "
+                "(copy it from workspace_read) and be unique unless replace_all is true. Prefer "
+                "this over rewriting whole files. Returns a unified diff.",
+                {
+                    **project,
+                    "path": string,
+                    "old_string": string,
+                    "new_string": string,
+                    "replace_all": {"type": "boolean"},
+                    "expected_sha256": string,
+                },
+                ["workspace_id", "path", "old_string", "new_string"],
+            ),
+            (
+                "glob",
+                "Find project files by glob pattern, e.g. **/*.py or src/**/*.tsx.",
+                {**project, "pattern": string},
+                ["workspace_id", "pattern"],
+            ),
+            (
+                "grep",
+                "Search project text files with a regular expression; returns path, line "
+                "number and text. Narrow with path_glob.",
+                {
+                    **project,
+                    "pattern": string,
+                    "path_glob": string,
+                    "ignore_case": {"type": "boolean"},
+                    "max_matches": {"type": "integer", "minimum": 1, "maximum": 300},
+                },
+                ["workspace_id", "pattern"],
             ),
             (
                 "write",
