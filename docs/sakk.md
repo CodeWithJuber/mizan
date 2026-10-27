@@ -10,6 +10,7 @@ Code: `backend/security/sakk.py`, the `/api/sakk*` and `/api/public/*` routes in
 |---|---|
 | `tool` | every tool call through `_execute_tool_safe`, whatever happened: done, held, declined, error or raised |
 | `held_decision` | you allowed or denied a held action: the SHA-256 of its exact parameters and where you decided (`web`, `telegram`) |
+| `setting` | an administrator changed system settings (in the `system` chain): which keys, by whom, and an HMAC of the new values, never the values. Channel tokens and allowlists change only this way; no agent tool can reach it |
 | `approval` | you answered a live approval prompt |
 | `erase` | you deleted a chat (Mahw), with how much was removed and how many traces were found |
 | `scorecard` | an administrator published an AGI-test result (owner `system`) |

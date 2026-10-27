@@ -159,3 +159,28 @@ async def test_api_is_admin_only_and_switches_the_model(api):
             main.RuntimeSettingsUpdate(values={"MIZAN_ADMIN_PASS": "x"}), ADMIN
         )
     assert unknown.value.status_code == 422
+
+
+def test_every_change_leaves_a_receipt_without_its_value(store):
+    from security import sakk
+
+    sakk._STORES.clear()
+    rs.update({"TELEGRAM_BOT_TOKEN": "123:secret-token"}, "admin")
+    found = [r for r in sakk.store().receipts("system") if r["kind"] == "setting"]
+    assert found and found[0]["keys"] == ["TELEGRAM_BOT_TOKEN"] and found[0]["by"] == "admin"
+    assert "secret-token" not in json.dumps(found[0])
+
+
+def test_only_signed_in_administrator_routes_change_settings():
+    """Channel tokens and allowlists are sealed from agents: no module but the
+    API's admin routes (and start-up) calls runtime_settings.update."""
+    import re
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parents[1] / "backend"
+    callers = sorted(
+        str(path.relative_to(backend))
+        for path in backend.rglob("*.py")
+        if re.search(r"runtime_settings\.update\(", path.read_text(encoding="utf-8"))
+    )
+    assert callers == ["api/main.py"]

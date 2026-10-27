@@ -17,6 +17,7 @@ server's ``.env``; resetting it restores the server's own value.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -444,7 +445,28 @@ def update(changes: dict[str, Any], actor: str) -> Change:
                         result.model_changed = True
         _write(saved)
     result.restart_required = restart_pending()
+    if result.applied:
+        _receipt(result.applied, actor)
     return result
+
+
+def _receipt(keys: list[str], actor: str) -> None:
+    """A Sakk receipt for every change: which settings, by whom, and an HMAC
+    of their new values (never the values). Channel tokens and allowlists are
+    changed only here, from an administrator's signed-in request; no agent
+    tool reaches this function."""
+    try:
+        from security import sakk
+
+        values = {key: os.environ.get(key) for key in keys}
+        sakk.record(
+            "system",
+            "setting",
+            {"keys": keys, "by": actor, "values": sakk.store().mac("system", values)},
+            f"settings · {', '.join(keys)}"[:120],
+        )
+    except Exception:  # noqa: BLE001 - the change is saved; the receipt is best effort
+        logging.getLogger("mizan.settings").warning("Settings change receipt not written")
 
 
 def restart_pending() -> list[str]:

@@ -20,6 +20,10 @@ groups are:
 - **Reset** returns a setting to the server's own `.env` or default.
 - Secrets are never sent back to the browser. The page only shows whether one
   is set.
+- Every change is a signed Sakk receipt in the `system` chain: which settings,
+  by whom, and an HMAC of the new values (never the values themselves).
+  Settings, channel tokens and allowlists change only from an administrator's
+  signed-in request; no agent tool can change them ([Sakk](sakk.md)).
 
 ## When a change takes effect
 
