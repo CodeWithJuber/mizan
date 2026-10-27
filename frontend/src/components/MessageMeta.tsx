@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MessageUsageMeta } from "../types";
+import { amanahHeadline, isAmanah, kindLabels } from "../utils/amanah.ts";
 import { isIsnad } from "../utils/isnad.ts";
 import IsnadView from "./IsnadView";
 import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
@@ -24,43 +25,64 @@ interface MessageMetaProps {
  */
 export function MessageMeta({ meta }: MessageMetaProps) {
   const [open, setOpen] = useState(false);
-  if (!hasDisplayableMeta(meta)) return null;
+  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah)) return null;
   const m = meta as MessageUsageMeta;
 
   const { parts, explanations } = usageMetrics(m);
 
   return (
     <div className="mt-1.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex max-w-full items-start gap-1.5 text-left text-[10px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        aria-expanded={open}
-        title={open ? "Hide response details" : "Show response details"}
-      >
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className={`w-2.5 h-2.5 shrink-0 mt-0.5 transition-transform ${open ? "rotate-90" : ""}`}
-          aria-hidden="true"
+      {parts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex max-w-full items-start gap-1.5 text-left text-[10px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          aria-expanded={open}
+          title={open ? "Hide response details" : "Show response details"}
         >
-          <path
-            fillRule="evenodd"
-            d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <span className="min-w-0 wrap-break-word">{parts.join(" · ")}</span>
-        {m.cost_usd != null && Number.isFinite(m.cost_usd) && m.cost_usd >= 0 && m.cost_estimated && (
-          <span
-            className="text-gray-300 dark:text-gray-600"
-            title="Estimated from public list prices, not your actual bill"
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={`w-2.5 h-2.5 shrink-0 mt-0.5 transition-transform ${open ? "rotate-90" : ""}`}
+            aria-hidden="true"
           >
-            est.
-          </span>
-        )}
-      </button>
+            <path
+              fillRule="evenodd"
+              d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span className="min-w-0 wrap-break-word">{parts.join(" · ")}</span>
+          {m.cost_usd != null && Number.isFinite(m.cost_usd) && m.cost_usd >= 0 && m.cost_estimated && (
+            <span
+              className="text-gray-300 dark:text-gray-600"
+              title="Estimated from public list prices, not your actual bill"
+            >
+              est.
+            </span>
+          )}
+        </button>
+      )}
       {isIsnad(m.isnad) && <IsnadView isnad={m.isnad} />}
+      {isAmanah(m.amanah) && (
+        <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <summary className="cursor-pointer select-none inline-flex items-center gap-1">
+            <span aria-hidden="true">🛡</span>
+            <span>{amanahHeadline(m.amanah)}</span>
+          </summary>
+          <p className="mt-1 leading-relaxed">
+            The text {kindLabels(m.amanah).join("; ")}. MIZAN removed it before the model read anything, and it chose
+            no action{m.amanah.hidden ? "; some of it was hidden from view" : ""}.
+          </p>
+          {m.amanah.examples.length > 0 && (
+            <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+              {m.amanah.examples.map((example) => (
+                <li key={example} className="wrap-break-word">“{example}”</li>
+              ))}
+            </ul>
+          )}
+        </details>
+      )}
       {open && (
         <div className="mt-1.5 space-y-1.5">
           {explanations.map((text) => (

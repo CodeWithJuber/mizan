@@ -35,6 +35,7 @@ from agents.execution_contract import tool_result_failed
 
 from . import (
     amal,
+    amanah,
     calc,
     express,
     fahm,
@@ -453,6 +454,12 @@ class Tadbir:
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+        if amanah.untrusted(name):
+            # Outside text: an instruction aimed at the AI is removed before
+            # anything (Lisan, the user, memory) reads the result.
+            result, found = amanah.guard_value(result, name)
+            if found:
+                trace.event("verify", "amanah", tool=name, findings=found)
         self.coordinator._last_tool_results.append({"name": name, "result": result})
         return result if isinstance(result, dict) else {"result": result}
 
@@ -523,7 +530,8 @@ class Tadbir:
     ) -> list[tuple[str, fahm.Understanding]]:
         """Lisan's steps that pass MIZAN's validation, with the words each covers."""
         try:
-            steps = await self.lisan.plan_steps(task)
+            # Pasted text may carry an instruction; it never chooses MIZAN's actions.
+            steps = await self.lisan.plan_steps(amanah.clean_message(task))
         except LisanUnavailable:
             return []
         planned = []
@@ -1077,7 +1085,7 @@ class Tadbir:
         for _attempt in range(2):
             try:
                 arguments = amal.restrict(
-                    await self.lisan.fill_arguments(task, need, tool, error),
+                    await self.lisan.fill_arguments(amanah.clean_message(task), need, tool, error),
                     tool.get("input_schema"),
                 )
             except LisanUnavailable as exc:
@@ -1634,8 +1642,12 @@ class Tadbir:
                         for index, s in enumerate(sources, start=1)
                     )
                 )
+        ignored = [item for item in amanah.tainted() if amanah.untrusted(item.get("source", ""))]
+        notice = (
+            f"\n\n_{phrase('amanah_ignored', u.language, count=len(ignored))}_" if ignored else ""
+        )
         return Outcome(
-            f"{answer}\n\n{source_block}",
+            f"{answer}\n\n{source_block}{notice}",
             verified,
             {"sources": len(sources)},
             provenance="evidence",

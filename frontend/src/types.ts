@@ -3,6 +3,7 @@
  * Core type definitions for the Quranic AGI System
  */
 
+import type { AmanahSummary } from "./utils/amanah.ts";
 import type { IsnadSummary } from "./utils/isnad.ts";
 
 // ===== API Types =====
@@ -231,6 +232,8 @@ export interface MessageUsageMeta {
   orchestrator?: "mizan";
   /** What supports each claim of the answer (Isnad). */
   isnad?: IsnadSummary;
+  /** Instructions aimed at the AI that MIZAN found in outside text and ignored (Amanah). */
+  amanah?: AmanahSummary;
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

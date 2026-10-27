@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, hadith, project, qiyas, quran, silsila, waqt
+from . import amanah, calc, hadith, project, qiyas, quran, silsila, waqt
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -134,6 +134,18 @@ _COMPUTE_VERB = re.compile(
     re.IGNORECASE,
 )
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+
+def _own_words(message: str) -> str:
+    """The message without pasted material (a region that is only a link stays)."""
+    own = _IMAGE.sub(" ", message)
+    for region in amanah.pasted(message):
+        if not _URL.fullmatch(region.strip().rstrip(".,;)")):
+            own = own.replace(region, " ")
+    return own
+
+
 _EXPLAIN = re.compile(
     r"\b(?:tafsee?r|tafsir|explain|explanation|meaning|matlab|samjhao|sharh|sharah|tashreeh)\b"
     r"|تفسیر|تفسير|شرح|تشریح|व्याख्या|तशरीह",
@@ -203,7 +215,9 @@ def understand(text: str) -> Understanding:
                 "compute", language, 0.9 if dominant else 0.8, {"expression": expression}
             )
 
-    url = _URL.search(message)
+    # Only a link in the user's own words is read; a link inside pasted text or
+    # a Markdown image is material (and may be a way to send data out).
+    url = _URL.search(_own_words(message))
     if url and (_READ.search(message) or len(message) - len(url[0]) < 25):
         return Understanding("web_read", language, 0.85, {"url": url[0].rstrip(").,;")})
 
@@ -377,8 +391,9 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         entities["query"] = query
     elif intent == "web_read":
         url = str(parsed.get("url", "")).strip()
-        # Only a link the user actually wrote, never one the model invented.
-        if not _URL.fullmatch(url) or url not in message:
+        # Only a link the user actually wrote, never one the model invented or
+        # one inside pasted material.
+        if not _URL.fullmatch(url) or url not in _own_words(message):
             return None
         entities["url"] = url
     else:

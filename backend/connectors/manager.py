@@ -13,6 +13,8 @@ during a chat a connector that needs authorization fails fast instead.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import time
@@ -160,7 +162,22 @@ def map_result(result: Any) -> dict:
     return receipt
 
 
+def fingerprint(description: str, schema: dict) -> str:
+    """What a tool told the model about itself; a change after approval is held."""
+    payload = json.dumps([description or "", schema], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
 def tool_snapshot(server: dict, tools: list[Any]) -> list[dict]:
+    """The server's tools as the model will see them, with Amanah's checks.
+
+    A tool is pinned to the description and schema the user first accepted. A
+    later change (a "rug pull") or a description that instructs the AI (tool
+    poisoning) holds the tool back from the model until the user trusts it.
+    """
+    from tadbir import amanah
+
+    pins = server.get("pins") or {}
     snapshot, used = [], set()
     for tool in tools[:MAX_TOOLS_PER_SERVER]:
         exposed = naming.tool_name(server["slug"], tool.name)
@@ -168,17 +185,54 @@ def tool_snapshot(server: dict, tools: list[Any]) -> list[dict]:
             continue
         used.add(exposed)
         annotations = getattr(tool, "annotations", None)
-        snapshot.append(
-            {
-                "name": tool.name,
-                "exposed": exposed,
-                "description": naming.description(server["name"], tool.description),
-                "input_schema": naming.input_schema(getattr(tool, "input_schema", None)),
-                "read_only": bool(getattr(annotations, "read_only_hint", False)),
-                "destructive": bool(getattr(annotations, "destructive_hint", False)),
-            }
+        schema = naming.input_schema(getattr(tool, "input_schema", None))
+        stamp = fingerprint(tool.description or "", schema)
+        entry = {
+            "name": tool.name,
+            "exposed": exposed,
+            "description": naming.description(server["name"], tool.description),
+            "input_schema": schema,
+            "read_only": bool(getattr(annotations, "read_only_hint", False)),
+            "destructive": bool(getattr(annotations, "destructive_hint", False)),
+            "fingerprint": stamp,
+        }
+        findings = amanah.scan(
+            f"{tool.description or ''}\n{json.dumps(schema, ensure_ascii=False)}", exposed
         )
+        if tool.name in pins and pins[tool.name] != stamp:
+            entry["held"] = "changed"
+        elif tool.name not in pins and findings:
+            entry["held"] = "flagged"
+        if findings:
+            entry["amanah"] = [finding["excerpt"] for finding in findings[:3]]
+        snapshot.append(entry)
     return snapshot
+
+
+def pins_after(server: dict, snapshot: list[dict]) -> dict:
+    """First-seen tools that passed the checks are pinned; held ones keep the old pin."""
+    pins = dict(server.get("pins") or {})
+    for tool in snapshot:
+        if not tool.get("held") and tool["name"] not in pins:
+            pins[tool["name"]] = tool["fingerprint"]
+    return pins
+
+
+def trust_tool(user_id: str, server_id: str, name: str) -> dict | None:
+    """The user accepts a held tool as it is now."""
+    server = store.get_server(user_id, server_id)
+    if server is None:
+        return None
+    tools = [dict(tool) for tool in server.get("tools") or []]
+    found = False
+    for tool in tools:
+        if tool.get("name") == name and tool.get("fingerprint"):
+            tool.pop("held", None)
+            found = True
+            pins = {**(server.get("pins") or {}), name: tool["fingerprint"]}
+    if not found:
+        return None
+    return store.update_server(user_id, server_id, tools=tools, pins=pins)
 
 
 class Connection:
@@ -213,6 +267,7 @@ class Connection:
                     self.user_id,
                     self.server["id"],
                     tools=snapshot,
+                    pins=pins_after(self.server, snapshot),
                     status="connected",
                     last_error="",
                 )
@@ -499,8 +554,10 @@ def resolve_tool(user_id: str, exposed: str) -> tuple[dict, dict] | None:
         if not server.get("enabled", True):
             continue
         for tool in server.get("tools") or []:
-            if tool.get("exposed") == exposed and tool.get("name") not in (
-                server.get("disabled_tools") or []
+            if (
+                tool.get("exposed") == exposed
+                and not tool.get("held")
+                and tool.get("name") not in (server.get("disabled_tools") or [])
             ):
                 return server, tool
     return None

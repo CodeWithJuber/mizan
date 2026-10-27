@@ -17,6 +17,9 @@ interface ConnectorTool {
   read_only: boolean;
   destructive: boolean;
   enabled: boolean;
+  /** Amanah holds a tool whose description changed since you accepted it, or that instructs the AI. */
+  held?: "changed" | "flagged";
+  amanah?: string[];
 }
 
 interface Connector {
@@ -199,6 +202,19 @@ export default function ConnectorsPage({ api }: PageProps) {
     void update(connector, { disabled_tools: [...disabled] });
   };
 
+  const trustTool = async (connector: Connector, tool: ConnectorTool) => {
+    try {
+      const updated = (await api.post(
+        `/connectors/${connector.id}/tools/${encodeURIComponent(tool.name)}/trust`,
+        {},
+      )) as unknown as Connector;
+      setConnectors((list) => list.map((item) => item.id === connector.id ? updated : item));
+      addToast({ type: "success", title: `${tool.name} is available to the agent again` });
+    } catch (error) {
+      addToast({ type: "error", title: "Could not trust the tool", description: (error as Error).message });
+    }
+  };
+
   const addFromRemote = (server: RegistryServer, remote: RegistryServer["remotes"][number]) => {
     setDraft({
       name: (server.title || server.name).split("/").pop() || server.name,
@@ -321,8 +337,24 @@ export default function ConnectorsPage({ api }: PageProps) {
                               {tool.name}
                               {tool.read_only && <span className="ml-1 badge-info">read-only</span>}
                               {tool.destructive && <span className="ml-1 badge-error">destructive</span>}
+                              {tool.held && <span className="ml-1 badge-warning">held</span>}
                             </p>
                             <p className="text-xs text-gray-500 line-clamp-2">{tool.description.replace(/^\[[^\]]+\]\s*/, "")}</p>
+                            {tool.held && (
+                              <div className="mt-1 rounded-md bg-amber-50 dark:bg-amber-950/30 p-1.5 text-xs text-amber-800 dark:text-amber-300">
+                                <p>
+                                  {tool.held === "changed"
+                                    ? "Amanah: this tool's description changed since you accepted it, so the agent cannot use it until you check it."
+                                    : "Amanah: this tool's description contains instructions aimed at the AI, so the agent cannot use it until you check it."}
+                                </p>
+                                {tool.amanah?.map((excerpt) => (
+                                  <p key={excerpt} className="mt-0.5 font-mono break-all">“{excerpt}”</p>
+                                ))}
+                                <button type="button" className="btn-secondary btn-sm mt-1" onClick={() => void trustTool(connector, tool)}>
+                                  Trust as it is now
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </li>
                       ))}

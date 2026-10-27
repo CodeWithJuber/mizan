@@ -155,6 +155,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान उन उत्तरों को जाँचता है जिनकी पुष्टि नहीं हुई थी; ये सुधार बंद करने के लिए चैट वरीयता muhasaba को off करें।",
         "ar": "يراجع ميزان الأجوبة التي لم يتحقّق منها؛ لإيقاف هذه التصحيحات اضبط تفضيل المحادثة muhasaba على off.",
     },
+    "amanah_ignored": {
+        "en": "Amanah: {count} instruction(s) aimed at the AI were found in what MIZAN read and were ignored; they did not change this answer or any action.",
+        "hi-latn": "Amanah: jo MIZAN ne padha usme AI ke liye {count} hidayat chhupi thi; MIZAN ne unhe nazar-andaz kiya, is jawab ya kisi action par unka asar nahi hua.",
+        "ur": "امانت: میزان نے جو پڑھا اس میں AI کے لیے {count} ہدایت تھی؛ میزان نے اسے نظرانداز کیا، اس جواب یا کسی عمل پر اس کا اثر نہیں ہوا۔",
+        "hi": "अमानत: मीज़ान ने जो पढ़ा उसमें AI के लिए {count} निर्देश थे; मीज़ान ने उन्हें अनदेखा किया, इस जवाब या किसी काम पर उनका असर नहीं हुआ।",
+        "ar": "أمانة: وُجد فيما قرأه ميزان {count} من التعليمات الموجّهة إلى الذكاء الاصطناعي، فتجاهلها؛ ولم تؤثر في هذا الجواب ولا في أي إجراء.",
+    },
     "hifz_reused": {
         "en": "MIZAN re-ran a program it verified before, with no language-model call; the output matches what was verified (run {runs}).",
         "hi-latn": "MIZAN ne pehle tasdeeq kiya hua program dobara chalaya, bina language model ke; output wahi hai jo tasdeeq hua tha (run {runs}).",

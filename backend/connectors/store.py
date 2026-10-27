@@ -82,6 +82,7 @@ def public(server: dict) -> dict:
         "oauth_connected": bool(oauth.get("tokens")),
         "tools": [
             {k: tool.get(k) for k in ("name", "exposed", "description", "read_only", "destructive")}
+            | {k: tool[k] for k in ("held", "amanah") if tool.get(k)}
             | {"enabled": tool.get("name") not in (server.get("disabled_tools") or [])}
             for tool in server.get("tools") or []
         ],

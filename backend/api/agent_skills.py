@@ -54,7 +54,12 @@ async def list_skills(
     every = loader.all_skills(user.user_id, workspace)
     return {
         "skills": [
-            {**skill.summary(), "enabled": name not in disabled} for name, skill in active.items()
+            {
+                **skill.summary(),
+                "enabled": name not in disabled,
+                "held": loader.held(user.user_id, skill),
+            }
+            for name, skill in active.items()
         ],
         "shadowed": [
             skill.summary()
@@ -143,6 +148,16 @@ async def toggle_skill(name: str, body: SkillToggle, user: TokenPayload = Depend
         raise HTTPException(404, "Skill not found")
     disabled = loader.set_enabled(user.user_id, name, body.enabled)
     return {"name": name, "enabled": name not in disabled}
+
+
+@router.post("/{name}/trust")
+async def trust_skill(name: str, user: TokenPayload = Depends(require_editor)):
+    """Accept a skill Amanah held, as its content is now (a later change is held again)."""
+    skill = loader.available_skills(user.user_id, include_disabled=True).get(name)
+    if skill is None:
+        raise HTTPException(404, "Skill not found")
+    loader.trust(user.user_id, skill)
+    return {"name": name, "held": False}
 
 
 @router.delete("/{name}")

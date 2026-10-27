@@ -185,6 +185,20 @@ async def connect_connector(
     return {"status": "connecting", "connector": server}
 
 
+@router.post("/{server_id}/tools/{tool_name}/trust")
+async def trust_connector_tool(
+    server_id: str, tool_name: str, user: TokenPayload = Depends(require_editor)
+):
+    """Accept a tool Amanah held (its description changed, or it instructs the AI)."""
+    from connectors.manager import trust_tool
+
+    _owned(user, server_id)
+    server = trust_tool(user.user_id, server_id, tool_name)
+    if server is None:
+        raise HTTPException(404, "No such tool")
+    return store.public(server)
+
+
 @router.post("/{server_id}/disconnect")
 async def disconnect_connector(server_id: str, user: TokenPayload = Depends(require_editor)):
     _owned(user, server_id)
