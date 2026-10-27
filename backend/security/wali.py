@@ -155,7 +155,7 @@ class RateLimiter:
         if bucket is None:
             return float(self.burst)
         elapsed = time.time() - bucket["last_refill"]
-        return min(self.burst, bucket["tokens"] + elapsed * (self.per_minute / 60.0))
+        return float(min(self.burst, bucket["tokens"] + elapsed * (self.per_minute / 60.0)))
 
     def wait_seconds(self, key: str) -> int:
         """Seconds until this key has a token again (0 when it has one)."""
