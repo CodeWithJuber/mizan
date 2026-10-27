@@ -79,7 +79,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 
 **Cross-cutting subsystems:**
 
-- `backend/security/` — `auth` (JWT), `wali` (rate limiting / guardian), `izn` (permissions), `approvals` (per-chat permission modes + Allow/Deny broker), `vault` (API key storage), `validation` (input sanitization)
+- `backend/security/` — `auth` (JWT), `wali` (rate limiting / guardian), `izn` (permissions), `approvals` (per-chat permission modes + Allow/Deny broker; unattended runs — watchers, schedules, triggers, queue — bind a deferred context via `approvals.unattended`, so actions needing a person are held in `held_actions.db` and decided once via `/api/chat/held/{id}`), `vault` (API key storage), `validation` (input sanitization)
 - `backend/connectors/` — MCP connectors (official `mcp` SDK): per-user store, encrypted secrets, OAuth, SSRF `net_guard`, registry browse; tools exposed as `mcp__<server>__<tool>` (`docs/connectors.md`)
 - `backend/agent_skills/` — Agent Skills (SKILL.md): loader (project > user > bundled), `activate_skill`/`read_skill_file`, GitHub/zip installer, bundled `library/` (`docs/agent-skills.md`)
 - `backend/agents/events.py` — live activity events (`tool_start`, `tool_result`, `todo`, `approval_*`, `skill`) bound per chat stream; `session_state.py` keeps the per-chat plan

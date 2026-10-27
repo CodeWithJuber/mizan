@@ -162,15 +162,20 @@ def _unlink(text: str, url: str) -> str:
     return text.replace(url, "")
 
 
+MAX_HOPS = 5  # redirects followed per link, each one checked and pinned
+
+
 async def dead_links(urls: list[str], timeout: float = 4.0) -> list[str]:
     """The links that do not exist: the page is gone (404/410) or the host does not.
 
-    Only public addresses are opened. When MIZAN cannot reach the network at
-    all, nothing is judged dead.
+    Only public addresses are opened, and every redirect hop is checked and
+    pinned to the address that was checked (no DNS rebinding); a hop to a
+    private address is not followed and the link is not judged. When MIZAN
+    cannot reach the network at all, nothing is judged dead.
     """
     import httpx
 
-    from connectors.net_guard import BlockedDestination, check_url
+    from connectors.net_guard import BlockedDestination, check_url, pinned_destination
 
     async def online() -> bool:
         try:
@@ -179,22 +184,39 @@ async def dead_links(urls: list[str], timeout: float = 4.0) -> list[str]:
         except BlockedDestination:
             return False
 
+    async def status(client: httpx.AsyncClient, url: str) -> tuple[int, str | None]:
+        """The page's status code, and where it redirects (if it does)."""
+        destination, host, tls_name = await pinned_destination(url)
+        headers = {"User-Agent": "MIZAN-Sidq/1.0", "Host": host}
+        extensions = {"sni_hostname": tls_name}
+        response = await client.head(destination, headers=headers, extensions=extensions)
+        if response.status_code in (403, 405, 501):
+            async with client.stream(
+                "GET", destination, headers=headers, extensions=extensions
+            ) as streamed:  # the status only; the body is never read
+                response = streamed
+        location = response.headers.get("location") if response.is_redirect else None
+        return response.status_code, location
+
     async def missing(client: httpx.AsyncClient, url: str, reachable: bool) -> bool:
         try:
             await check_url(url)
         except BlockedDestination as exc:
             return reachable and "Cannot resolve" in str(exc)  # a host that does not exist
-        try:
-            response = await client.head(url)
-            if response.status_code in (403, 405, 501):
-                response = await client.get(url)
-            return response.status_code in (404, 410)
-        except httpx.HTTPError:
-            return False  # unreachable now is not proof it never existed
+        current = url
+        for _hop in range(MAX_HOPS + 1):
+            try:
+                code, location = await status(client, current)
+            except (ValueError, OSError, httpx.HTTPError):
+                return False  # unreachable or not public: not proof it never existed
+            if location is None:
+                return code in (404, 410)
+            current = str(httpx.URL(current).join(location))
+        return False  # too many redirects: not judged
 
     reachable = await online()
     async with httpx.AsyncClient(
-        timeout=timeout, follow_redirects=True, headers={"User-Agent": "MIZAN-Sidq/1.0"}
+        timeout=timeout, follow_redirects=False, trust_env=False
     ) as client:
         results = await asyncio.gather(
             *(missing(client, url, reachable) for url in urls[:MAX_LINKS])

@@ -17,6 +17,7 @@ import { useToast } from "./Toast";
 import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 import { MessageMeta } from "./MessageMeta";
+import { HeldActions } from "./HeldActions";
 import { cognitiveMetrics } from "../utils/responseMetrics.ts";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
@@ -875,6 +876,7 @@ export function ChatMessageBubble({
                 Interrupted · {msg.content.trim() ? "partial response saved" : "no answer received"}
               </p>
             )}
+            {msg.held && <HeldActions items={msg.held} />}
             <MessageMeta meta={msg.meta} />
 
             {/* In-message CTA button (e.g. navigate to Settings) */}

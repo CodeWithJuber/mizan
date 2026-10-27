@@ -304,9 +304,18 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                   <span
                     className={`badge text-2xs ${isConnected ? "badge-success" : "badge-warning"}`}
                   >
-                    {isConnected ? "Connected" : "Not connected"}
+                    {isConnected
+                      ? "Connected"
+                      : channel.status === "configured"
+                        ? "Configured, not running"
+                        : "Not available"}
                   </span>
                 </div>
+                {channel.detail && !isConnected && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    {channel.detail}
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="stat">
@@ -327,7 +336,12 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                   <button
                     className={`flex-1 ${isConnected ? "btn-secondary" : "btn-gold"} btn-sm min-h-[44px] disabled:opacity-50`}
                     onClick={() => toggleChannel(type)}
-                    disabled={toggling[type]}
+                    disabled={
+                      toggling[type] ||
+                      (type !== "webchat" &&
+                        !isConnected &&
+                        channel.startable === false)
+                    }
                   >
                     {toggling[type]
                       ? isConnected

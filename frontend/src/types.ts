@@ -205,6 +205,14 @@ export interface ChatMessage {
   error?: { code?: string; message: string };
   /** Tool steps, plan and approvals observed while this reply ran. */
   activity?: import("./utils/agentActivity").AgentActivity;
+  /** Actions an unattended run (a watcher) held for the owner's approval. */
+  held?: HeldActionRef[];
+}
+
+export interface HeldActionRef {
+  id: string;
+  tool: string;
+  reason?: string;
 }
 
 // ===== Model Transparency / Cost Types (chat upgrade workstreams C + E) =====
@@ -341,7 +349,11 @@ export interface Channel {
   id: string;
   type: string;
   name: string;
-  status: "connected" | "disconnected";
+  /** "configured": a token is saved but MIZAN does not run the channel. */
+  status: "connected" | "disconnected" | "configured" | "unavailable";
+  running?: boolean;
+  startable?: boolean;
+  detail?: string;
   connected_users: number;
   messages_processed: number;
 }

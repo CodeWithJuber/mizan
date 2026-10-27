@@ -38,7 +38,6 @@ ALL_TOOLS = frozenset(
         "list_files",
         "python_exec",
         "create_agent",
-        "create_skill",
         "compact_context",
         "recall_memory",
     }

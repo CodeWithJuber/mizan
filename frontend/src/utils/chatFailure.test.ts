@@ -66,4 +66,10 @@ check("direct canonical JSON error is recognized", failureEnvelope(event) === ev
 check("nested HTTP error is recognized", failureEnvelope({ detail: event }) === event);
 check("ordinary HTTP detail stays an HTTP failure", failureEnvelope({ detail: "Unauthorized" }) === undefined);
 check("non-object JSON does not become a chat failure", failureEnvelope(null) === undefined && failureEnvelope([]) === undefined);
+const withHeld = restoredMessageFields("Ready.", {
+  muraqabah: true,
+  held: [{ id: "a".repeat(32), tool: "bash", reason: "" }, { id: 7, tool: "x" }],
+});
+check("held actions are restored for the approval card", withHeld.held?.length === 1 && withHeld.held[0].tool === "bash");
+check("a message without held actions has none", restoredMessageFields("Hi", {}).held === undefined);
 console.log(`${checks} failure/history checks passed`);

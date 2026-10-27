@@ -9,13 +9,13 @@ and stores it in MIZAN's memory system.
 """
 
 import asyncio
-import ipaddress
 import logging
 import re
-import socket
 from html.parser import HTMLParser
 
 import httpx
+
+from connectors.net_guard import pinned_destination
 
 logger = logging.getLogger("mizan.knowledge")
 
@@ -56,29 +56,8 @@ MAX_FETCH_BYTES = 2 * 1024 * 1024
 MAX_REDIRECTS = 5
 
 
-async def _public_destination(url: str) -> tuple[httpx.URL, str, str]:
-    parsed = httpx.URL(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.host or parsed.userinfo:
-        raise ValueError("Only public HTTP(S) URLs without credentials are allowed")
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    addresses = await asyncio.get_running_loop().getaddrinfo(
-        parsed.host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM
-    )
-    ips = [ipaddress.ip_address(item[4][0]) for item in addresses]
-    if not ips or any(
-        not ip.is_global
-        or ip.is_multicast
-        or (
-            isinstance(ip, ipaddress.IPv6Address)
-            and ip.ipv4_mapped is not None
-            and not ip.ipv4_mapped.is_global
-        )
-        for ip in ips
-    ):
-        raise ValueError("URL resolves to a non-public address")
-    host_header = parsed.netloc.decode("ascii")
-    # Connect to the validated literal, eliminating the second DNS lookup/rebinding gap.
-    return parsed.copy_with(host=str(ips[0])), host_header, parsed.host
+# Checked and pinned destinations live in the connectors' network guard.
+_public_destination = pinned_destination
 
 
 async def extract_url(url: str) -> dict:

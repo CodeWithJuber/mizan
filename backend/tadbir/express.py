@@ -43,6 +43,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "कोड नहीं चलाया जा सका: {reason}",
         "ar": "تعذّر تشغيل الشيفرة: {reason}",
     },
+    "gui_checked": {
+        "en": "This program opens a window ({toolkit}), and MIZAN's sandbox has no screen, so it was not run here. MIZAN checked that it compiles. Run it on your computer with `python main.py`.",
+        "hi-latn": "Yeh program window kholta hai ({toolkit}), aur MIZAN ke sandbox mein screen nahi hai, isliye yahan chalaya nahi gaya. MIZAN ne check kiya ki yeh compile hota hai. Apne computer par `python main.py` se chalaiye.",
+        "ur": "یہ پروگرام ونڈو کھولتا ہے ({toolkit})، اور میزان کے سینڈ باکس میں اسکرین نہیں، اس لیے یہاں نہیں چلایا گیا۔ میزان نے جانچا کہ یہ کمپائل ہوتا ہے۔ اپنے کمپیوٹر پر `python main.py` سے چلائیں۔",
+        "hi": "यह प्रोग्राम विंडो खोलता है ({toolkit}), और मीज़ान के सैंडबॉक्स में स्क्रीन नहीं है, इसलिए यहाँ नहीं चलाया गया। मीज़ान ने जाँचा कि यह कंपाइल होता है। अपने कंप्यूटर पर `python main.py` से चलाइए।",
+        "ar": "هذا البرنامج يفتح نافذة ({toolkit})، وصندوق ميزان المعزول بلا شاشة، فلم يُشغَّل هنا. تحقق ميزان من أنه يُترجَم دون أخطاء. شغّله على حاسوبك بالأمر `python main.py`.",
+    },
     "repaired": {
         "en": "The first version failed; Lisan corrected it and MIZAN ran it again ({tries} tries).",
         "hi-latn": "Pehla version fail hua; Lisan ne sudhaara aur MIZAN ne dobara chalaya ({tries} koshish).",

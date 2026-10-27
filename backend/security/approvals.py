@@ -9,7 +9,11 @@ permission mode:
 - ``ask``: every tool that changes something waits for the user.
 - ``plan``: read-only tools only; changes are refused and proposed instead.
 
-Runs without a context (REST, scheduler, queue) keep the legacy behaviour.
+Runs no one is watching (watchers, schedules, triggers, the queue) bind a
+*deferred* context: an action that needs a person is not run and not refused
+for good, but held with its exact parameters in :class:`HeldActions`; the
+owner allows or denies it later, and it then runs exactly once.
+
 Pending decisions are in-process futures, so the backend must keep a single
 worker process (``uvicorn --workers 1``).
 """
@@ -17,12 +21,19 @@ worker process (``uvicorn --workers 1``).
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import os
+import sqlite3
+import threading
 import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 MODES = ("auto", "auto_edits", "ask", "plan")
 APPROVAL_TIMEOUT_SECONDS = 600
@@ -63,6 +74,11 @@ EDIT_TOOLS = frozenset(
 )
 
 
+# Runs inside MIZAN's isolated sandbox (no host access, egress allowlist):
+# unattended runs may use it without a person present.
+SANDBOXED_TOOLS = frozenset({"workspace_run"})
+
+
 def tool_category(tool_name: str, read_only_hint: bool = False) -> str:
     if tool_name in READ_ONLY_TOOLS or read_only_hint:
         return "read"
@@ -77,10 +93,24 @@ class ApprovalContext:
     session_id: str
     mode: str = "auto_edits"
     always: set[str] = field(default_factory=set)
+    # No one is watching this run: actions that need a person are held.
+    deferred: bool = False
+    origin: str = ""  # "watcher:<id>", "schedule", "trigger:<id>", "queue"
+    # One call the owner already allowed (a held action): (tool, params digest).
+    granted: tuple[str, str] | None = None
+
+    def was_granted(self, tool_name: str, params: dict) -> bool:
+        return self.granted == (tool_name, params_digest(params))
 
     def needs_approval(self, tool_name: str, read_only_hint: bool = False) -> bool:
         category = tool_category(tool_name, read_only_hint)
-        if category == "read" or self.mode == "auto" or tool_name in self.always:
+        if category == "read" or tool_name in self.always:
+            return False
+        if self.deferred:
+            # Unattended: private project edits and sandboxed runs go ahead;
+            # anything else that acts on the world waits for the owner.
+            return category == "execute" and tool_name not in SANDBOXED_TOOLS
+        if self.mode == "auto":
             return False
         if self.mode == "auto_edits":
             return category == "execute"
@@ -196,3 +226,151 @@ async def request_approval(
         return decision
     finally:
         broker.close(approval_id)
+
+
+# ── Held actions: decisions for runs no one is watching ──────────────────
+
+HELD_TTL = timedelta(hours=24)
+
+
+def params_digest(params: dict) -> str:
+    return hashlib.sha256(
+        json.dumps(params, sort_keys=True, ensure_ascii=False, default=str).encode()
+    ).hexdigest()
+
+
+class HeldActions:
+    """Actions an unattended run wanted to take, waiting for their owner.
+
+    Each is stored with the exact parameters and their SHA-256; a decision is
+    accepted once, by the owner, before it expires, and only if the stored
+    parameters still match their digest."""
+
+    def __init__(self, path: str | None = None):
+        directory = Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
+        self.path = path or str(directory / "held_actions.db")
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        with self._connect() as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS held (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, origin TEXT NOT NULL,
+                    session_id TEXT NOT NULL, tool TEXT NOT NULL, params TEXT NOT NULL,
+                    params_sha256 TEXT NOT NULL, reason TEXT NOT NULL, created TEXT NOT NULL,
+                    expires TEXT NOT NULL, status TEXT NOT NULL, decided TEXT,
+                    decided_via TEXT, result TEXT);
+                CREATE INDEX IF NOT EXISTS idx_held_owner ON held(owner_id, status);
+                """
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _run(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        with self._lock, self._connect() as conn:
+            return conn.execute(sql, params).fetchall()
+
+    def hold(self, context: ApprovalContext, tool: str, params: dict, reason: str = "") -> str:
+        held_id = uuid.uuid4().hex
+        now = datetime.now(UTC)
+        self._run(
+            "INSERT INTO held (id, owner_id, origin, session_id, tool, params, params_sha256, "
+            "reason, created, expires, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+            (held_id, context.user_id, context.origin or "unattended", context.session_id, tool,
+             json.dumps(params, ensure_ascii=False, default=str), params_digest(params),
+             reason[:300], now.isoformat(), (now + HELD_TTL).isoformat()),
+        )  # fmt: skip
+        return held_id
+
+    @staticmethod
+    def _public(row: sqlite3.Row) -> dict:
+        item = dict(row)
+        item["params"] = json.loads(item["params"])
+        item["result"] = json.loads(item["result"]) if item.get("result") else None
+        return item
+
+    def get(self, owner_id: str, held_id: str) -> dict | None:
+        rows = self._run("SELECT * FROM held WHERE id = ? AND owner_id = ?", (held_id, owner_id))
+        return self._public(rows[0]) if rows else None
+
+    def pending(self, owner_id: str) -> list[dict]:
+        now = datetime.now(UTC).isoformat()
+        rows = self._run(
+            "SELECT * FROM held WHERE owner_id = ? AND status = 'pending' AND expires > ? "
+            "ORDER BY created DESC LIMIT 100",
+            (owner_id, now),
+        )
+        return [self._public(row) for row in rows]
+
+    def claim(self, owner_id: str, held_id: str, decision: str, via: str = "web") -> dict | None:
+        """Take one pending action for a decision (allow | deny), at most once."""
+        if decision not in {"allow", "deny"}:
+            return None
+        now = datetime.now(UTC)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM held WHERE id = ? AND owner_id = ? AND status = 'pending'",
+                (held_id, owner_id),
+            ).fetchone()
+            if row is None or row["expires"] <= now.isoformat():
+                return None
+            if params_digest(json.loads(row["params"])) != row["params_sha256"]:
+                return None  # changed after it was held: never run it
+            status = "allowed" if decision == "allow" else "denied"
+            updated = conn.execute(
+                "UPDATE held SET status = ?, decided = ?, decided_via = ? "
+                "WHERE id = ? AND status = 'pending'",
+                (status, now.isoformat(), via, held_id),
+            ).rowcount
+            if not updated:
+                return None
+        return {**self._public(row), "status": status}
+
+    def finish(self, held_id: str, result: dict) -> None:
+        self._run(
+            "UPDATE held SET status = 'done', result = ? WHERE id = ?",
+            (json.dumps(result, ensure_ascii=False, default=str)[:20000], held_id),
+        )
+
+
+_HELD_STORES: dict[str, HeldActions] = {}
+
+
+def held_store() -> HeldActions:
+    path = str(Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan")) / "held_actions.db")
+    if path not in _HELD_STORES:
+        _HELD_STORES[path] = HeldActions(path)
+    return _HELD_STORES[path]
+
+
+_collected: ContextVar[list[dict] | None] = ContextVar("mizan_held_in_run", default=None)
+
+
+@contextmanager
+def collecting_held() -> Iterator[list[dict]]:
+    """Collect the actions held while this block runs (shared with child tasks)."""
+    found: list[dict] = []
+    token = _collected.set(found)
+    try:
+        yield found
+    finally:
+        _collected.reset(token)
+
+
+def hold_action(context: ApprovalContext, tool: str, params: dict, reason: str = "") -> str:
+    held_id = held_store().hold(context, tool, params, reason)
+    found = _collected.get()
+    if found is not None:
+        found.append({"id": held_id, "tool": tool, "reason": reason})
+    return held_id
+
+
+@contextmanager
+def unattended(owner_id: str, session_id: str, origin: str) -> Iterator[ApprovalContext]:
+    """Bind a deferred approval context for a run no one is watching."""
+    context = ApprovalContext(owner_id, session_id, "ask", deferred=True, origin=origin)
+    with bind_approvals(context):
+        yield context

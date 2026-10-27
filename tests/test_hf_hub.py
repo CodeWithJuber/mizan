@@ -166,15 +166,15 @@ def test_the_sample_is_fixed_and_carries_the_ayah(monkeypatch):
 def test_a_quoted_ayah_does_not_decide_the_language():
     ayah = "قَالَ فَٱذْهَبْ فَإِنَّ لَكَ فِى ٱلْحَيَوٰةِ أَن تَقُولَ لَا مِسَاسَ وَإِنَّ لَكَ مَوْعِدًا لَّن تُخْلَفَهُۥ"
     assert fahm.detect_language(f"What is the NAME of the sea in this ayah?\n\n{ayah}") == "en"
-    assert fahm.detect_language("وفقًا للآية المرفقة، لمن يتوجه المؤمن بالعبادة؟") == "ar"
+    assert fahm.detect_language("بحسب هذه الآية، ماذا يطلب المؤمنون من ربهم؟") == "ar"
     assert fahm.detect_language(ayah) == "ar"  # only the ayah: it is Arabic
 
 
 def test_a_question_about_an_ayah_is_noticed_in_every_script():
     for text in (
-        "وفقًا للآية المرفقة، لمن وحده يتوجه المؤمن بالعبادة؟ سورة 1 آية 5",
+        "بحسب هذه الآية، ماذا يطلب المؤمنون من ربهم؟ سورة 1 آية 6",
         "In Surah 20 ayah 97, what is the name of the sea?",
-        "Surah 53 ayah 45 me Allah ne kin do jodiyon ka zikr kiya hai",
+        "Surah 112 ayah 1 me Allah ke baare mein kya kaha gaya hai",
     ):
         understood = fahm.understand(text)
         assert understood.intent == "quran" and understood.entities["question"], text
@@ -182,8 +182,8 @@ def test_a_question_about_an_ayah_is_noticed_in_every_script():
 
 def test_writing_code_about_citations_is_not_a_quran_lookup():
     text = (
-        "Write a Python function format_citation(surah, ayah) that returns 'Surah <surah>, "
-        "Ayah <ayah>', for example format_citation(2, 255) returns 'Surah 2, Ayah 255'."
+        "Write a JavaScript function that builds a quran.com link from a surah and ayah, "
+        "so that Surah 36, Ayah 1 gives the right URL, and test it."
     )
     assert fahm.understand(text).intent != "quran"
 

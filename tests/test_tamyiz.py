@@ -155,6 +155,7 @@ def test_names_and_quotations_do_not_decide_the_language():
         ("2**100 kitna hai", "compute"),
         ("Pehle 10 prime numbers nikalo program se", "build_and_run"),
         ("Mere liye ek chhota sa notes app bana do", "build_project"),
+        ("Help me write a Python script that Ui", "build_and_run"),
     ],
 )
 def test_the_intent_is_the_most_probable_buildable_recipe(text, intent):
