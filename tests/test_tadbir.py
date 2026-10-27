@@ -398,7 +398,20 @@ async def test_tools_mizan_may_not_use_are_left_to_the_agent_loop(agent, monkeyp
     assert "orchestrator" not in result["usage"]
 
 
-async def test_lisan_only_maps_wording_and_mizan_validates_it(agent, monkeypatch):
+async def test_mizan_understands_a_program_request_without_lisan(agent, monkeypatch):
+    fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
+    agent.ai_client = ScriptedProvider([fib])
+    fake = tools(
+        agent, monkeypatch, workspace_run={"stdout": "12586269025\n", "stderr": "", "exit_code": 0}
+    )
+    result = await agent.execute("Fibonacci series ka 50th number kya hai?")
+    assert result["orchestration"]["intent"] == "build_and_run"
+    assert result["orchestration"]["entities"].get("understood_by") is None  # Fahm, alone
+    assert len(agent.ai_client.requests) == 1  # Lisan writes the code; nothing was mapped
+    assert fake.calls[0][0] == "workspace_run" and "12586269025" in result["result"]
+
+
+async def test_lisan_only_maps_wording_and_mizan_validates_it(agent, monkeypatch, unplaced_wording):
     agent.ai_client = ScriptedProvider(
         [
             '{"intent":"build_and_run","request":"print the 50th Fibonacci number","language":"python"}',
@@ -428,10 +441,17 @@ def test_doubtful_lisan_mappings_are_rejected(parsed):
     assert fahm.validate_parsed(parsed, "summarize the latest Quran news 2", "en") is None
 
 
-async def test_rejected_mapping_falls_back_to_the_agent_loop(agent):
+async def test_rejected_mapping_falls_back_to_the_agent_loop(agent, unplaced_wording):
     agent.ai_client = ScriptedProvider(['{"intent":"converse"}', "Python is a language."])
     result = await agent.execute("Explain what Python code is used for")
     assert "orchestrator" not in result["usage"]
+    assert result["result"] == "Python is a language."
+
+
+async def test_a_question_is_answered_in_words_without_a_mapping_call(agent):
+    agent.ai_client = ScriptedProvider(["Python is a language."])
+    result = await agent.execute("Explain what Python code is used for")
+    assert len(agent.ai_client.requests) == 1 and not agent.ai_client.requests[0].get("tools")
     assert result["result"] == "Python is a language."
 
 
@@ -982,7 +1002,9 @@ async def test_compound_parts_run_on_different_agents_in_parallel(monkeypatch, t
 # ── Ta'allum: learning wording from verified work ────────────────────────
 
 
-async def test_verified_wording_is_learned_and_reused_without_asking_lisan(agent, monkeypatch):
+async def test_verified_wording_is_learned_and_reused_without_asking_lisan(
+    agent, monkeypatch, unplaced_wording
+):
     fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
     agent.ai_client = ScriptedProvider(
         [

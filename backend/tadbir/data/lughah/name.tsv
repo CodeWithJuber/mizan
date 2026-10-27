@@ -1,0 +1,639 @@
+index:0	Aal-Imran
+index:1	Abasa
+index:2	Ad-Duha
+index:3	Ad-Dukhan
+index:4	Adh-Dhariyat
+index:5	Al-A'la
+index:6	Al-A'raf
+index:7	Al-Adiyat
+index:8	Al-Ahqaf
+index:9	Al-Ahzab
+index:10	Al-Alaq
+index:11	Al-An'am
+index:12	Al-Anbiya
+index:13	Al-Anfal
+index:14	Al-Ankabut
+index:15	Al-Asr
+index:16	Al-Balad
+index:17	Al-Baqarah
+index:18	Al-Bayyinah
+index:19	Al-Buruj
+index:20	Al-Fajr
+index:21	Al-Falaq
+index:22	Al-Fath
+index:23	Al-Fatihah
+index:24	Al-Fil
+index:25	Al-Furqan
+index:26	Al-Ghashiyah
+index:27	Al-Hadid
+index:28	Al-Hajj
+index:29	Al-Haqqah
+index:30	Al-Hashr
+index:31	Al-Hijr
+index:32	Al-Hujurat
+index:33	Al-Humazah
+index:34	Al-Ikhlas
+index:35	Al-Infitar
+index:36	Al-Insan
+index:37	Al-Inshiqaq
+index:38	Al-Isra
+index:39	Al-Jathiyah
+index:40	Al-Jinn
+index:41	Al-Jumu'ah
+index:42	Al-Kafirun
+index:43	Al-Kahf
+index:44	Al-Kawthar
+index:45	Al-Layl
+index:46	Al-Ma'arij
+index:47	Al-Ma'idah
+index:48	Al-Ma'un
+index:49	Al-Masad
+index:50	Al-Mu'minun
+index:51	Al-Muddaththir
+index:52	Al-Mujadilah
+index:53	Al-Mulk
+index:54	Al-Mumtahanah
+index:55	Al-Munafiqun
+index:56	Al-Mursalat
+index:57	Al-Mutaffifin
+index:58	Al-Muzzammil
+index:59	Al-Qadr
+index:60	Al-Qalam
+index:61	Al-Qamar
+index:62	Al-Qari'ah
+index:63	Al-Qasas
+index:64	Al-Qiyamah
+index:65	Al-Waqi'ah
+index:66	An-Naba
+index:67	An-Nahl
+index:68	An-Najm
+index:69	An-Naml
+index:70	An-Nas
+index:71	An-Nasr
+index:72	An-Nazi'at
+index:73	An-Nisa
+index:74	An-Nur
+index:75	Ar-Ra'd
+index:76	Ar-Rahman
+index:77	Ar-Rum
+index:78	As-Saff
+index:79	As-Saffat
+index:80	As-Sajdah
+index:81	Ash-Shams
+index:82	Ash-Sharh
+index:83	Ash-Shu'ara
+index:84	Ash-Shura
+index:85	At-Taghabun
+index:86	At-Tahrim
+index:87	At-Takathur
+index:88	At-Takwir
+index:89	At-Talaq
+index:90	At-Tariq
+index:91	At-Tawbah
+index:92	At-Tin
+index:93	At-Tur
+index:94	Az-Zalzalah
+index:95	Az-Zukhruf
+index:96	Az-Zumar
+index:97	Fatir
+index:98	Forty Hadith Qudsi
+index:99	Forty Hadith Qudsi hadith
+index:100	Forty Hadith of Shah Waliullah Dehlawi
+index:101	Forty Hadith of Shah Waliullah Dehlawi hadith
+index:102	Forty Hadith of an-Nawawi
+index:103	Forty Hadith of an-Nawawi hadith
+index:104	Fussilat
+index:105	Ghafir
+index:106	Hud
+index:107	Ibrahim
+index:108	Jami` at-Tirmidhi
+index:109	Jami` at-Tirmidhi hadith
+index:110	Luqman
+index:111	Maryam
+index:112	Muhammad
+index:113	Muwatta Malik
+index:114	Muwatta Malik hadith
+index:115	Nuh
+index:116	Qaf
+index:117	Quraysh
+index:118	Saba
+index:119	Sad
+index:120	Sahih Muslim
+index:121	Sahih Muslim hadith
+index:122	Sahih al-Bukhari
+index:123	Sahih al-Bukhari hadith
+index:124	Sunan Abi Dawud
+index:125	Sunan Abi Dawud hadith
+index:126	Sunan Ibn Majah
+index:127	Sunan Ibn Majah hadith
+index:128	Sunan an-Nasa'i
+index:129	Sunan an-Nasa'i hadith
+index:130	Surah Aal Imran ayah
+index:131	Surah Aal-Imran
+index:132	Surah Abasa
+index:133	Surah Abasa ayah
+index:134	Surah Ad Duha ayah
+index:135	Surah Ad Dukhan ayah
+index:136	Surah Ad-Duha
+index:137	Surah Ad-Dukhan
+index:138	Surah Adh Dhariyat ayah
+index:139	Surah Adh-Dhariyat
+index:140	Surah Al A'la ayah
+index:141	Surah Al A'raf ayah
+index:142	Surah Al Adiyat ayah
+index:143	Surah Al Ahqaf ayah
+index:144	Surah Al Ahzab ayah
+index:145	Surah Al Alaq ayah
+index:146	Surah Al An'am ayah
+index:147	Surah Al Anbiya ayah
+index:148	Surah Al Anfal ayah
+index:149	Surah Al Ankabut ayah
+index:150	Surah Al Asr ayah
+index:151	Surah Al Balad ayah
+index:152	Surah Al Baqarah ayah
+index:153	Surah Al Bayyinah ayah
+index:154	Surah Al Buruj ayah
+index:155	Surah Al Fajr ayah
+index:156	Surah Al Falaq ayah
+index:157	Surah Al Fath ayah
+index:158	Surah Al Fatihah ayah
+index:159	Surah Al Fil ayah
+index:160	Surah Al Furqan ayah
+index:161	Surah Al Ghashiyah ayah
+index:162	Surah Al Hadid ayah
+index:163	Surah Al Hajj ayah
+index:164	Surah Al Haqqah ayah
+index:165	Surah Al Hashr ayah
+index:166	Surah Al Hijr ayah
+index:167	Surah Al Hujurat ayah
+index:168	Surah Al Humazah ayah
+index:169	Surah Al Ikhlas ayah
+index:170	Surah Al Infitar ayah
+index:171	Surah Al Insan ayah
+index:172	Surah Al Inshiqaq ayah
+index:173	Surah Al Isra ayah
+index:174	Surah Al Jathiyah ayah
+index:175	Surah Al Jinn ayah
+index:176	Surah Al Jumu'ah ayah
+index:177	Surah Al Kafirun ayah
+index:178	Surah Al Kahf ayah
+index:179	Surah Al Kawthar ayah
+index:180	Surah Al Layl ayah
+index:181	Surah Al Ma'arij ayah
+index:182	Surah Al Ma'idah ayah
+index:183	Surah Al Ma'un ayah
+index:184	Surah Al Masad ayah
+index:185	Surah Al Mu'minun ayah
+index:186	Surah Al Muddaththir ayah
+index:187	Surah Al Mujadilah ayah
+index:188	Surah Al Mulk ayah
+index:189	Surah Al Mumtahanah ayah
+index:190	Surah Al Munafiqun ayah
+index:191	Surah Al Mursalat ayah
+index:192	Surah Al Mutaffifin ayah
+index:193	Surah Al Muzzammil ayah
+index:194	Surah Al Qadr ayah
+index:195	Surah Al Qalam ayah
+index:196	Surah Al Qamar ayah
+index:197	Surah Al Qari'ah ayah
+index:198	Surah Al Qasas ayah
+index:199	Surah Al Qiyamah ayah
+index:200	Surah Al Waqi'ah ayah
+index:201	Surah Al-A'la
+index:202	Surah Al-A'raf
+index:203	Surah Al-Adiyat
+index:204	Surah Al-Ahqaf
+index:205	Surah Al-Ahzab
+index:206	Surah Al-Alaq
+index:207	Surah Al-An'am
+index:208	Surah Al-Anbiya
+index:209	Surah Al-Anfal
+index:210	Surah Al-Ankabut
+index:211	Surah Al-Asr
+index:212	Surah Al-Balad
+index:213	Surah Al-Baqarah
+index:214	Surah Al-Bayyinah
+index:215	Surah Al-Buruj
+index:216	Surah Al-Fajr
+index:217	Surah Al-Falaq
+index:218	Surah Al-Fath
+index:219	Surah Al-Fatihah
+index:220	Surah Al-Fil
+index:221	Surah Al-Furqan
+index:222	Surah Al-Ghashiyah
+index:223	Surah Al-Hadid
+index:224	Surah Al-Hajj
+index:225	Surah Al-Haqqah
+index:226	Surah Al-Hashr
+index:227	Surah Al-Hijr
+index:228	Surah Al-Hujurat
+index:229	Surah Al-Humazah
+index:230	Surah Al-Ikhlas
+index:231	Surah Al-Infitar
+index:232	Surah Al-Insan
+index:233	Surah Al-Inshiqaq
+index:234	Surah Al-Isra
+index:235	Surah Al-Jathiyah
+index:236	Surah Al-Jinn
+index:237	Surah Al-Jumu'ah
+index:238	Surah Al-Kafirun
+index:239	Surah Al-Kahf
+index:240	Surah Al-Kawthar
+index:241	Surah Al-Layl
+index:242	Surah Al-Ma'arij
+index:243	Surah Al-Ma'idah
+index:244	Surah Al-Ma'un
+index:245	Surah Al-Masad
+index:246	Surah Al-Mu'minun
+index:247	Surah Al-Muddaththir
+index:248	Surah Al-Mujadilah
+index:249	Surah Al-Mulk
+index:250	Surah Al-Mumtahanah
+index:251	Surah Al-Munafiqun
+index:252	Surah Al-Mursalat
+index:253	Surah Al-Mutaffifin
+index:254	Surah Al-Muzzammil
+index:255	Surah Al-Qadr
+index:256	Surah Al-Qalam
+index:257	Surah Al-Qamar
+index:258	Surah Al-Qari'ah
+index:259	Surah Al-Qasas
+index:260	Surah Al-Qiyamah
+index:261	Surah Al-Waqi'ah
+index:262	Surah An Naba ayah
+index:263	Surah An Nahl ayah
+index:264	Surah An Najm ayah
+index:265	Surah An Naml ayah
+index:266	Surah An Nas ayah
+index:267	Surah An Nasr ayah
+index:268	Surah An Nazi'at ayah
+index:269	Surah An Nisa ayah
+index:270	Surah An Nur ayah
+index:271	Surah An-Naba
+index:272	Surah An-Nahl
+index:273	Surah An-Najm
+index:274	Surah An-Naml
+index:275	Surah An-Nas
+index:276	Surah An-Nasr
+index:277	Surah An-Nazi'at
+index:278	Surah An-Nisa
+index:279	Surah An-Nur
+index:280	Surah Ar Ra'd ayah
+index:281	Surah Ar Rahman ayah
+index:282	Surah Ar Rum ayah
+index:283	Surah Ar-Ra'd
+index:284	Surah Ar-Rahman
+index:285	Surah Ar-Rum
+index:286	Surah As Saff ayah
+index:287	Surah As Saffat ayah
+index:288	Surah As Sajdah ayah
+index:289	Surah As-Saff
+index:290	Surah As-Saffat
+index:291	Surah As-Sajdah
+index:292	Surah Ash Shams ayah
+index:293	Surah Ash Sharh ayah
+index:294	Surah Ash Shu'ara ayah
+index:295	Surah Ash Shura ayah
+index:296	Surah Ash-Shams
+index:297	Surah Ash-Sharh
+index:298	Surah Ash-Shu'ara
+index:299	Surah Ash-Shura
+index:300	Surah At Taghabun ayah
+index:301	Surah At Tahrim ayah
+index:302	Surah At Takathur ayah
+index:303	Surah At Takwir ayah
+index:304	Surah At Talaq ayah
+index:305	Surah At Tariq ayah
+index:306	Surah At Tawbah ayah
+index:307	Surah At Tin ayah
+index:308	Surah At Tur ayah
+index:309	Surah At-Taghabun
+index:310	Surah At-Tahrim
+index:311	Surah At-Takathur
+index:312	Surah At-Takwir
+index:313	Surah At-Talaq
+index:314	Surah At-Tariq
+index:315	Surah At-Tawbah
+index:316	Surah At-Tin
+index:317	Surah At-Tur
+index:318	Surah Az Zalzalah ayah
+index:319	Surah Az Zukhruf ayah
+index:320	Surah Az Zumar ayah
+index:321	Surah Az-Zalzalah
+index:322	Surah Az-Zukhruf
+index:323	Surah Az-Zumar
+index:324	Surah Fatir
+index:325	Surah Fatir ayah
+index:326	Surah Fussilat
+index:327	Surah Fussilat ayah
+index:328	Surah Ghafir
+index:329	Surah Ghafir ayah
+index:330	Surah Hud
+index:331	Surah Hud ayah
+index:332	Surah Ibrahim
+index:333	Surah Ibrahim ayah
+index:334	Surah Luqman
+index:335	Surah Luqman ayah
+index:336	Surah Maryam
+index:337	Surah Maryam ayah
+index:338	Surah Muhammad
+index:339	Surah Muhammad ayah
+index:340	Surah Nuh
+index:341	Surah Nuh ayah
+index:342	Surah Qaf
+index:343	Surah Qaf ayah
+index:344	Surah Quraysh
+index:345	Surah Quraysh ayah
+index:346	Surah Saba
+index:347	Surah Saba ayah
+index:348	Surah Sad
+index:349	Surah Sad ayah
+index:350	Surah Ta Ha ayah
+index:351	Surah Ta-Ha
+index:352	Surah Ya Sin ayah
+index:353	Surah Ya-Sin
+index:354	Surah Yunus
+index:355	Surah Yunus ayah
+index:356	Surah Yusuf
+index:357	Surah Yusuf ayah
+index:358	Ta-Ha
+index:359	Ya-Sin
+index:360	Yunus
+index:361	Yusuf
+index:362	aadiyat
+index:363	aala
+index:364	abas
+index:365	abudawud
+index:366	alamnashrah
+index:367	alaq
+index:368	alhamd
+index:369	aliimran
+index:370	anaam
+index:371	ankaboot
+index:372	araaf
+index:373	asar
+index:374	asr
+index:375	ayatalkursi
+index:376	ayatulkursi
+index:377	ayetelkursi
+index:378	bani israil
+index:379	baniisrail
+index:380	baqara
+index:381	baraah
+index:382	bayyina
+index:383	bukhari
+index:384	burooj
+index:385	dahr
+index:386	dehlawi
+index:387	dhuhr
+index:388	duha
+index:389	duhr
+index:390	dukhaan
+index:391	esha
+index:392	fajar
+index:393	fajr
+index:394	falak
+index:395	fatiha
+index:396	feel
+index:397	fussilat
+index:398	ghashiya
+index:399	haaqqa
+index:400	hamimsajdah
+index:401	hujraat
+index:402	humaza
+index:403	ibnmajah
+index:404	ikhlaas
+index:405	imran
+index:406	infitaar
+index:407	insaan
+index:408	inshiqaaq
+index:409	inshirah
+index:410	iqra
+index:411	isha
+index:412	ishaa
+index:413	jasiyah
+index:414	juma
+index:415	jumma
+index:416	kafiroon
+index:417	kafirun
+index:418	kahaf
+index:419	kausar
+index:420	kauthar
+index:421	lahab
+index:422	lail
+index:423	maarij
+index:424	maghrib
+index:425	magrib
+index:426	maida
+index:427	malik
+index:428	maoon
+index:429	mominun
+index:430	mudassir
+index:431	mujadila
+index:432	mumin
+index:433	muminoon
+index:434	mumtahina
+index:435	munafiqoon
+index:436	mursalaat
+index:437	muslim
+index:438	mutaffifeen
+index:439	muzammil
+index:440	naas
+index:441	nabaa
+index:442	nasai
+index:443	nawawi
+index:444	naziat
+index:445	nisaa
+index:446	nooh
+index:447	noor
+index:448	qaria
+index:449	qiyama
+index:450	qudsi
+index:451	qulhuwallah
+index:452	quraish
+index:453	raad
+index:454	rahman
+index:455	rehman
+index:456	room
+index:457	saffaat
+index:458	sajda
+index:459	shams
+index:460	shoora
+index:461	shuara
+index:462	suad
+index:463	surah Aal Imran
+index:464	surah Abasa
+index:465	surah Ad Duha
+index:466	surah Ad Dukhan
+index:467	surah Adh Dhariyat
+index:468	surah Al A'la
+index:469	surah Al A'raf
+index:470	surah Al Adiyat
+index:471	surah Al Ahqaf
+index:472	surah Al Ahzab
+index:473	surah Al Alaq
+index:474	surah Al An'am
+index:475	surah Al Anbiya
+index:476	surah Al Anfal
+index:477	surah Al Ankabut
+index:478	surah Al Asr
+index:479	surah Al Balad
+index:480	surah Al Baqarah
+index:481	surah Al Bayyinah
+index:482	surah Al Buruj
+index:483	surah Al Fajr
+index:484	surah Al Falaq
+index:485	surah Al Fath
+index:486	surah Al Fatihah
+index:487	surah Al Fil
+index:488	surah Al Furqan
+index:489	surah Al Ghashiyah
+index:490	surah Al Hadid
+index:491	surah Al Hajj
+index:492	surah Al Haqqah
+index:493	surah Al Hashr
+index:494	surah Al Hijr
+index:495	surah Al Hujurat
+index:496	surah Al Humazah
+index:497	surah Al Ikhlas
+index:498	surah Al Infitar
+index:499	surah Al Insan
+index:500	surah Al Inshiqaq
+index:501	surah Al Isra
+index:502	surah Al Jathiyah
+index:503	surah Al Jinn
+index:504	surah Al Jumu'ah
+index:505	surah Al Kafirun
+index:506	surah Al Kahf
+index:507	surah Al Kawthar
+index:508	surah Al Layl
+index:509	surah Al Ma'arij
+index:510	surah Al Ma'idah
+index:511	surah Al Ma'un
+index:512	surah Al Masad
+index:513	surah Al Mu'minun
+index:514	surah Al Muddaththir
+index:515	surah Al Mujadilah
+index:516	surah Al Mulk
+index:517	surah Al Mumtahanah
+index:518	surah Al Munafiqun
+index:519	surah Al Mursalat
+index:520	surah Al Mutaffifin
+index:521	surah Al Muzzammil
+index:522	surah Al Qadr
+index:523	surah Al Qalam
+index:524	surah Al Qamar
+index:525	surah Al Qari'ah
+index:526	surah Al Qasas
+index:527	surah Al Qiyamah
+index:528	surah Al Waqi'ah
+index:529	surah An Naba
+index:530	surah An Nahl
+index:531	surah An Najm
+index:532	surah An Naml
+index:533	surah An Nas
+index:534	surah An Nasr
+index:535	surah An Nazi'at
+index:536	surah An Nisa
+index:537	surah An Nur
+index:538	surah Ar Ra'd
+index:539	surah Ar Rahman
+index:540	surah Ar Rum
+index:541	surah As Saff
+index:542	surah As Saffat
+index:543	surah As Sajdah
+index:544	surah Ash Shams
+index:545	surah Ash Sharh
+index:546	surah Ash Shu'ara
+index:547	surah Ash Shura
+index:548	surah At Taghabun
+index:549	surah At Tahrim
+index:550	surah At Takathur
+index:551	surah At Takwir
+index:552	surah At Talaq
+index:553	surah At Tariq
+index:554	surah At Tawbah
+index:555	surah At Tin
+index:556	surah At Tur
+index:557	surah Az Zalzalah
+index:558	surah Az Zukhruf
+index:559	surah Az Zumar
+index:560	surah Fatir
+index:561	surah Fussilat
+index:562	surah Ghafir
+index:563	surah Hud
+index:564	surah Ibrahim
+index:565	surah Luqman
+index:566	surah Maryam
+index:567	surah Muhammad
+index:568	surah Nuh
+index:569	surah Qaf
+index:570	surah Quraysh
+index:571	surah Saba
+index:572	surah Sad
+index:573	surah Ta Ha
+index:574	surah Ya Sin
+index:575	surah Yunus
+index:576	surah Yusuf
+index:577	taariq
+index:578	tabbat
+index:579	taha
+index:580	tahreem
+index:581	takasur
+index:582	takathur
+index:583	takweer
+index:584	tauba
+index:585	taubah
+index:586	teen
+index:587	tirmidhi
+index:588	toor
+index:589	waqia
+index:590	waqiah
+index:591	yaseen
+index:592	yasin
+index:593	younus
+index:594	yousuf
+index:595	zariyat
+index:596	zilzaal
+index:597	zilzal
+index:598	zohar
+index:599	zuha
+index:600	zuhar
+index:601	zuhr
+index:602	zukhruf
+mizan:217	Ayatul Kursi
+mizan:218	Ayat al-Kursi
+mizan:219	Bismillah
+mizan:220	Alhamdulillah
+mizan:221	Subhanallah
+mizan:222	Allahu Akbar
+mizan:223	InshaAllah
+mizan:224	MashaAllah
+mizan:225	Assalamu alaikum
+mizan:226	Quran
+mizan:227	Hadith
+mizan:228	Ramadan
+mizan:229	Eid ul Fitr
+mizan:230	Eid al-Adha
+mizan:231	Hajj
+mizan:232	Umrah
+mizan:233	Zakat
+mizan:234	Hijri
+mizan:235	Muharram
+mizan:236	Shawwal
+mizan:237	Dhul Hijjah
+mizan:238	Jumuah
+mizan:239	Prophet Muhammad
+mizan:240	Imam Bukhari
+mizan:241	Imam Nawawi
+mizan:242	Allah
+mizan:243	Makkah
+mizan:244	Madinah
+mizan:245	Tafsir Ibn Kathir
+mizan:246	Sahih Bukhari
+mizan:247	Sahih Muslim
+mizan:248	Riyad as-Salihin
+mizan:249	Python
+mizan:250	JavaScript
+mizan:251	GitHub
+mizan:252	Hugging Face

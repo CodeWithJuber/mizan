@@ -29,7 +29,7 @@ and before the model-driven loop.
 
 | Part | Module | Notes |
 |------|--------|-------|
-| **Fahm** (understanding) | `fahm.py` | Language from script and lexicon: English, Hinglish, Urdu, Hindi, Arabic. Intent and entities from deterministic recognisers. No model. |
+| **Fahm** (understanding) | `fahm.py`, `lughah.py`, `qasd.py` | Language (English, Hinglish, Urdu, Hindi, Arabic) and intent are posteriors of a naive Bayes model fitted by leave-one-out (`core/tamyiz.py`); entities come from exact parsers, whose findings are also the model's evidence. No word lists or cue patterns, no language model. See [fahm.md](fahm.md). |
 | **Plan** | `engine.py` | Each recipe declares its steps. They stream to the chat's Activity card as a live plan. |
 | **Act** | `engine.py` | Tools run through `BaseAgent._execute_tool_safe`, so chat permissions, Fitrah, Izn and approvals all apply. |
 | **Verify** | `engine.py`, `express.furqan` | Sandbox exit codes; MIZAN's own calculation cross-checks sandbox output; citations, numbers and links in any wording must come from MIZAN's facts. |
@@ -59,8 +59,9 @@ and before the model-driven loop.
 | qiyas | a puzzle given as worked examples (JSON `train` input/output grids and `test` inputs, as in ARC) | Lisan proposes the rule as a Python `transform(grid)`. MIZAN runs it in the sandbox on every example and accepts it only if it reproduces all of them. Otherwise Lisan revises it from the examples it got wrong, at most twice. Only a proven rule's answer is verified; an unproven best guess says how many examples it fits. |
 | use_tool | anything else Lisan maps to an action: a connector, a skill, memory | MIZAN chooses the tool from the user's permitted tools (BM25 × the tool's reliability posterior). Shell, raw files, raw HTTP and host Python are never chosen. Lisan fills the arguments; MIZAN validates them against the tool's JSON Schema with `jsonschema`, allows one retry, and runs the tool through the agent's gate. Lisan may word the result (Furqan). The answer is `evidence_observed`, not verified. |
 
-**Lisan plans, MIZAN validates.** When Fahm does not place a request, or
-places only part of a message, Lisan maps the wording into one to four steps of
+**Lisan plans, MIZAN validates.** When Fahm finds an action more probable
+than conversation but no recipe can be built from the words, or places only
+part of a message, Lisan maps the wording into one to four steps of
 MIZAN's action schema. MIZAN validates each step (invalid ones are dropped) and
 runs them under one plan, each by its own recipe and agent.
 

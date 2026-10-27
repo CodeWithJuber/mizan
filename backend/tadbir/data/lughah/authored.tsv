@@ -1,0 +1,253 @@
+# Request-style lines written for MIZAN (CC0). label<TAB>text
+en	Show me Surah Al-Fatiha with its translation
+en	What is 15% of 200?
+en	Search the web for the latest AI news
+en	Can you run this script for me?
+en	Explain recursion simply
+en	Summarize this page for me
+en	What did I tell you yesterday?
+en	Write a Python function that reverses a string
+en	Remind me every morning to read the Quran
+en	What are the prayer times today?
+en	Build me a small to-do app
+en	Read this article and tell me the main points
+en	How many days until Ramadan?
+en	What is today's Hijri date?
+en	Calculate the area of a circle with radius 7
+en	Find the next number in this sequence
+en	Please fix the bug in my code
+en	Add a dark mode to the website
+en	Which tools do you have?
+en	What can you do for me?
+en	Tell me about the battle of Badr
+en	Who won the match last night?
+en	Translate this paragraph into Urdu
+en	Open the file and count the rows
+en	Run main.py and show me the output
+en	List my datasets on Hugging Face
+en	Import the training file into my project
+en	What does this ayah say about patience?
+en	Give me the hadith about intention
+en	Quote Sahih Bukhari number one
+en	Is it going to rain tomorrow?
+en	Thanks, that was really helpful
+en	Good morning, how are you today?
+en	I need help planning my week
+en	Could you check whether this link still works?
+en	Write a short poem about the sea
+en	Why is the sky blue?
+en	How do I sort a list in JavaScript?
+en	Make the button bigger and green
+en	Send me an ayah after Fajr every day
+en	When is Maghrib today?
+en	Look up the price of gold right now
+en	According to this page, what was the total revenue?
+en	Compute the sum of the numbers in sales.csv
+en	Which month had the highest sales?
+en	Do you remember my favourite colour?
+en	Try again, think harder this time
+en	That answer is wrong, please check it
+en	Keep going with the sequence
+en	Write a program that prints the first ten primes and run it
+en	Create a landing page for my bakery
+en	Please explain the meaning of this verse
+en	What is the square root of 144?
+en	Convert 100 dollars to rupees
+en	Hello there
+en	Can you help me with my homework?
+en	I am feeling a bit stressed today
+en	What should I cook for dinner tonight?
+en	Tell me a fun fact about honey bees
+en	How long is the flight from Delhi to Dubai?
+hi-latn	Mujhe Surah Yasin sunao
+hi-latn	Ayatul Kursi ka tarjuma batao
+hi-latn	Ek python program likho jo prime numbers print kare
+hi-latn	Is code ko run karke dekho
+hi-latn	Aaj ki taarikh kya hai
+hi-latn	Kal Hijri date kya hogi
+hi-latn	Latest news search karo
+hi-latn	Mera pichla message yaad hai kya
+hi-latn	Yeh file padh ke summary do
+hi-latn	Bhai thoda jaldi batao
+hi-latn	Tumhare paas kaun kaun se tools hain
+hi-latn	Tum kya kya kar sakte ho
+hi-latn	2+2 kitna hota hai
+hi-latn	Is page me kya likha hai padho
+hi-latn	Har subah Fajr ke baad ek ayat bhejo
+hi-latn	Maghrib ka time kya hai aaj
+hi-latn	Namaz ke auqat bata dijiye
+hi-latn	Mere liye ek website bana do
+hi-latn	Button ka color hara kar do
+hi-latn	Is sequence ka agla number kya hoga
+hi-latn	Karo koshish, jaldi haar mat mano
+hi-latn	Dhundo pahle phir batana
+hi-latn	Internet se dekh ke batao
+hi-latn	Yeh link khol ke padho
+hi-latn	Sales.csv me total kitna hai nikalo
+hi-latn	Main.py chala ke output dikhao
+hi-latn	Hugging Face pe mere datasets dikhao
+hi-latn	Is file ko project me le aao
+hi-latn	Is ayat ka matlab samjhao
+hi-latn	Bukhari ki pehli hadees sunao
+hi-latn	Kya haal hai bhai
+hi-latn	Assalamu alaikum, kaise ho aap
+hi-latn	Shukriya, bahut madad mili
+hi-latn	Mujhe kal subah yaad dilana
+hi-latn	Kya tum Urdu me jawab de sakte ho
+hi-latn	Mujhe aik sawal poochna hai
+hi-latn	Meherbani kar ke is ka jawab dein
+hi-latn	Yeh kitne ka hai
+hi-latn	Aap ka bohat shukriya
+hi-latn	Mujhe samajh nahi aaya, dobara samjhao
+hi-latn	Thoda aur detail me batao
+hi-latn	Galat jawab hai, phir se check karo
+hi-latn	Isko javascript me likh do
+hi-latn	Calculator wala app banao jisme history ho
+hi-latn	Mere project me login page jodo
+hi-latn	Aaj mausam kaisa rahega
+hi-latn	Kal ka match kisne jeeta
+hi-latn	Sona aaj kitne ka chal raha hai
+hi-latn	Roza kab se shuru hoga
+hi-latn	Eid kab hai is saal
+hi-latn	Sabr ke baare me koi ayat batao
+hi-latn	Ek kahani sunao bachon ke liye
+hi-latn	Mera mood kharab hai, kuch acha batao
+hi-latn	Yeh error kyun aa raha hai
+hi-latn	Python me 2**100 calculate karke run karo
+hi-latn	Surah Rahman ki terahvi ayat dikhao
+hi-latn	Tum internet se learn karo saare number patterns
+hi-latn	Kya hua, jawab kyun nahi diya
+hi-latn	Jaldi haar kyun maan rahe ho
+hi-latn	Isko table me dikhao
+hi-latn	Sab files ki list do
+hi-latn	Mujhe ek email likhne me madad karo
+hi-latn	Bhai ye wala code samjha do
+hi-latn	Aap ka naam kya hai
+hi-latn	Main theek hoon, aap sunaiye
+hi-latn	Isha ke baad mujhe yaad dila dena
+hi-latn	Har roz raat 10 baje Quran padhne ka reminder do
+hi-latn	Ye number pattern kaise banta hai samjhao
+hi-latn	Agla term nikalo is series ka
+hi-latn	Ek baar aur try karo
+hi-latn	Thik hai, ab aage badho
+hi-latn	Kitne din baaki hain Ramzan me
+hi-latn	Mujhe Hindi me batao
+hi-latn	Kripya iska uttar dijiye
+ur	مجھے سورہ یٰسین سنائیں
+ur	آیت الکرسی کا ترجمہ بتائیں
+ur	آج کی تاریخ کیا ہے؟
+ur	نماز کے اوقات بتا دیں
+ur	یہ فائل پڑھ کر خلاصہ دیں
+ur	تازہ خبریں تلاش کریں
+ur	آپ کیا کیا کر سکتے ہیں؟
+ur	اس آیت کا مطلب سمجھائیں
+ur	بخاری کی پہلی حدیث سنائیں
+ur	مجھے ایک ویب سائٹ بنا دیں
+ur	یہ کوڈ چلا کر دیکھیں
+ur	اگلا نمبر کیا ہوگا؟
+ur	مغرب کا وقت کیا ہے؟
+ur	ہر صبح فجر کے بعد ایک آیت بھیجیں
+ur	شکریہ، بہت مدد ملی
+ur	السلام علیکم، آپ کیسے ہیں؟
+ur	مجھے سمجھ نہیں آیا، دوبارہ بتائیں
+ur	اس صفحے پر کیا لکھا ہے؟
+ur	اس آیت میں کس چیز کا ذکر ہے؟
+ur	رمضان کب شروع ہوگا؟
+ur	یہ غلطی کیوں آ رہی ہے؟
+ur	میرے پچھلے پیغام میں کیا تھا؟
+ur	براہ مہربانی اس کا جواب دیں
+ur	اس کا اردو میں ترجمہ کریں
+ar	اعرض لي سورة الفاتحة مع الترجمة
+ar	ما تاريخ اليوم بالهجري؟
+ar	ابحث عن آخر الأخبار
+ar	ماذا تستطيع أن تفعل؟
+ar	اشرح لي معنى هذه الآية
+ar	اقرأ هذه الصفحة ولخصها
+ar	اكتب برنامجا بلغة بايثون يطبع الأعداد الأولية
+ar	شغل هذا الكود وأرني النتيجة
+ar	متى صلاة المغرب اليوم؟
+ar	أرسل لي آية كل صباح بعد الفجر
+ar	ما الرقم التالي في هذه المتتالية؟
+ar	ما معنى كلمة الصمد؟
+ar	ماذا تقول هذه الآية عن الصبر؟
+ar	هل تذكر ما قلته لك أمس؟
+ar	شكرا جزيلا على المساعدة
+ar	السلام عليكم، كيف حالك؟
+ar	أعطني الحديث الأول من صحيح البخاري
+ar	كم يساوي خمسة عشر بالمئة من مئتين؟
+ar	أنشئ لي موقعا صغيرا لمخبزي
+ar	لماذا السماء زرقاء؟
+ar	من فاز بالمباراة أمس؟
+ar	ترجم هذه الفقرة إلى الإنجليزية
+hi	मुझे सूरह यासीन सुनाओ
+hi	आयतुल कुर्सी का अनुवाद बताओ
+hi	आज की तारीख क्या है?
+hi	नमाज़ का समय बताइए
+hi	ताज़ा खबरें खोजो
+hi	तुम क्या क्या कर सकते हो?
+hi	इस आयत का मतलब समझाओ
+hi	एक पायथन प्रोग्राम लिखो और चलाओ
+hi	यह फ़ाइल पढ़कर सारांश दो
+hi	अगला नंबर क्या होगा?
+hi	धन्यवाद, बहुत मदद मिली
+hi	मेरे लिए एक वेबसाइट बना दो
+hi	रमज़ान कब शुरू होगा?
+hi	मुझे हिंदी में जवाब दो
+hi	यह गलती क्यों आ रही है?
+hi	कल का मौसम कैसा रहेगा?
+en	Show me Surah Yasin
+en	Read Surah Mulk please
+en	Bukhari hadith number 1
+en	Sahih Muslim 8
+en	Surah Rahman ayah 13
+en	Recite Ayatul Kursi
+en	Surah Ikhlas with translation
+en	Surah Kahf verses 10 to 12
+en	Tirmidhi 2516 please
+en	Give me Quran 2:255
+en	Riyad as-Salihin hadith 1
+en	Show Surah Baqarah ayah 286
+hi-latn	Surah Mulk padh ke sunao
+hi-latn	Bukhari ki hadees number 1 dikhao
+hi-latn	Muslim ki hadees 8 batao
+hi-latn	Surah Ikhlas tarjume ke saath
+hi-latn	Surah Kahf ki ayat 10 se 12 tak
+hi-latn	Tirmidhi 2516 dikhao
+hi-latn	Quran 2:255 ka tarjuma do
+hi-latn	Surah Baqarah ki aakhri ayat
+name	Ayatul Kursi
+name	Ayat al-Kursi
+name	Bismillah
+name	Alhamdulillah
+name	Subhanallah
+name	Allahu Akbar
+name	InshaAllah
+name	MashaAllah
+name	Assalamu alaikum
+name	Quran
+name	Hadith
+name	Ramadan
+name	Eid ul Fitr
+name	Eid al-Adha
+name	Hajj
+name	Umrah
+name	Zakat
+name	Hijri
+name	Muharram
+name	Shawwal
+name	Dhul Hijjah
+name	Jumuah
+name	Prophet Muhammad
+name	Imam Bukhari
+name	Imam Nawawi
+name	Allah
+name	Makkah
+name	Madinah
+name	Tafsir Ibn Kathir
+name	Sahih Bukhari
+name	Sahih Muslim
+name	Riyad as-Salihin
+name	Python
+name	JavaScript
+name	GitHub
+name	Hugging Face

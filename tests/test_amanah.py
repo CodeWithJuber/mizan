@@ -149,7 +149,9 @@ async def test_a_page_read_by_mizan_reaches_lisan_fenced_and_without_the_instruc
     assert "Amanah" in result["result"]
 
 
-async def test_pasted_text_that_instructs_the_ai_is_named_to_the_model_as_material(agent):
+async def test_pasted_text_that_instructs_the_ai_is_named_to_the_model_as_material(
+    agent, unplaced_wording
+):
     agent.ai_client = ScriptedProvider(
         ['{"steps":[{"intent":"converse"}]}', "The meeting moves to Thursday at 3pm."]
     )

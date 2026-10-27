@@ -33,6 +33,20 @@ def isolated_provider_mode(monkeypatch):
 
 
 @pytest.fixture
+def unplaced_wording(monkeypatch):
+    """Qasd reads every message as an action whose recipe finds nothing to build
+    in the words (a page to read, but no link), so P(converse) < ½ and MIZAN
+    asks Lisan to map the wording. Tests of that path use it, whatever Qasd
+    would make of their particular sentence."""
+    from tadbir import qasd
+
+    def posterior(message, project=False, overlay=None):
+        return {"web_read": 0.7, "converse": 0.3}
+
+    monkeypatch.setattr(qasd, "posterior", posterior)
+
+
+@pytest.fixture
 def temp_db():
     """Provide a temporary database file for tests."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
