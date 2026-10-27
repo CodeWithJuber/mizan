@@ -129,18 +129,27 @@ class WorkspaceStore:
                     result.append(self._metadata(path))
             return sorted(result, key=lambda item: item["updated_at"], reverse=True)
 
-    def create(self, name: str) -> dict:
+    def create(self, name: str, *, reserved: bool = False) -> dict:
+        """A new project. ``reserved`` is the one Scratch project MIZAN runs plain-chat
+        code in: it never counts against the user's project quota."""
         if not name or len(name) > 100:
             raise HTTPException(422, "Project name must be 1..100 characters")
         with _LOCK:
-            if len(self.list()) >= MAX_WORKSPACES:
-                raise HTTPException(413, "Workspace quota reached")
+            projects = [item for item in self.list() if not item.get("reserved")]
+            if not reserved and len(projects) >= MAX_WORKSPACES:
+                raise HTTPException(
+                    413,
+                    f"Workspace quota reached: {MAX_WORKSPACES} projects. Delete one in "
+                    "Coding workspace to create another.",
+                )
             workspace_id = uuid.uuid4().hex
             path = self.root / workspace_id
             path.mkdir(mode=0o700)
             (path / "files").mkdir(mode=0o700)
             (path / "checkpoints").mkdir(mode=0o700)
             result = {"id": workspace_id, "name": name, "created_at": now(), "updated_at": now()}
+            if reserved:
+                result["reserved"] = True
             self._atomic_json(path / "metadata.json", result)
             return result
 

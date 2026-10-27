@@ -2877,7 +2877,9 @@ Match the requested depth and self-correct errors."""
             from tadbir import Tadbir
 
             try:
-                handled = await Tadbir(self).handle(task, stream_callback)
+                handled = await Tadbir(self).handle(
+                    task, stream_callback, history=(context or {}).get("history")
+                )
             except Exception:
                 logger.exception("[TADBIR] orchestration failed; using the agent loop")
                 handled = None

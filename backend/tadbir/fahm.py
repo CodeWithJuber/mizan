@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, hadith, project, qiyas, quran, waqt
+from . import calc, hadith, project, qiyas, quran, silsila, waqt
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -167,6 +167,10 @@ def understand(text: str) -> Understanding:
     puzzle = qiyas.parse(message)
     if puzzle is not None:
         return Understanding("qiyas", language, 0.9, {"puzzle": puzzle})
+
+    sequence = silsila.parse(message)
+    if sequence is not None:
+        return Understanding("silsila", language, 0.9, {"sequence": sequence})
 
     fenced = _fenced_code(message)
     if fenced and (asks_run or len(message) - len(fenced[0]) < 40):
@@ -359,6 +363,11 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         if not _selected_project() or len(change) < 4:
             return None
         entities["request"] = f"{message}\n\n(Change: {change})"
+    elif intent == "silsila":
+        sequence = silsila._run_of_numbers(message)
+        if sequence is None:
+            return None  # only terms the user actually wrote
+        entities["sequence"] = sequence
     elif intent == "web_search":
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:

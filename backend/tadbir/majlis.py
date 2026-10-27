@@ -23,6 +23,7 @@ ROLE_FOR = {
     "run_code": "katib",
     "build_and_run": "katib",
     "qiyas": "katib",
+    "silsila": "katib",
     "build_project": "katib",
     "compute": "katib",
     "web_search": "mundhir",

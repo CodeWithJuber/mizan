@@ -43,18 +43,32 @@ def candidates(agent: Any, allowed: Any) -> list[dict]:
     return found
 
 
+# Words that say nothing about which tool is meant.
+_GENERIC = {
+    "the", "and", "for", "with", "from", "into", "find", "get", "show", "give", "take", "make",
+    "time", "learn", "can", "you", "please", "all", "some", "use", "help", "this", "that",
+    "what", "how", "want", "need", "try", "kar", "karo", "batao", "dikhao", "mere", "mera",
+}  # fmt: skip
+
+
 def choose(agent: Any, tools: list[dict], need: str, request: str) -> dict | None:
-    """MIZAN's choice: relevance to the need, weighted by the tool's reliability."""
+    """MIZAN's choice: relevance to the need, weighted by the tool's reliability.
+
+    A tool must share at least two of the need's meaningful words (one when the
+    need has only one), so a vague request is never matched to an unrelated tool.
+    """
     if not tools:
         return None
     documents = [
         tokenize(f"{tool['name'].replace('_', ' ')} {tool.get('description', '')}")
         for tool in tools
     ]
+    meaningful = {word for word in tokenize(need) if len(word) > 2 and word not in _GENERIC}
+    required = min(2, len(meaningful))
     scores = bm25_scores(tokenize(f"{need} {need} {request}"), documents)
     best, best_score = None, 0.0
-    for tool, score in zip(tools, scores, strict=True):
-        if score <= 0:
+    for tool, document, score in zip(tools, documents, scores, strict=True):
+        if score <= 0 or not required or len(meaningful & set(document)) < required:
             continue
         try:
             reliability = agent.adaptive.beta(f"tool:{tool['name']}", forgetting=0.98).mean

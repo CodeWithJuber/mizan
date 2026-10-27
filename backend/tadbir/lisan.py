@@ -147,6 +147,30 @@ class Lisan:
         )
         return extract_code(reply)
 
+    async def propose_sequence_rule(self, terms: list[int]) -> str:
+        reply = await self.ask(
+            "Find the rule of this integer sequence. Write Python with either `def a(n)` "
+            "returning the n-th term (n starts at 1) or `def next_term(previous)` returning the "
+            "next term from the list of earlier terms. Begin with a comment stating the rule in "
+            "one sentence. Standard library only, no printing. MIZAN will accept it only if it "
+            "reproduces every term. Reply with exactly one fenced code block.",
+            ", ".join(str(term) for term in terms),
+            max_tokens=3000,
+        )
+        return extract_code(reply)
+
+    async def revise_sequence_rule(self, terms: list[int], program: str, wrong: str) -> str:
+        reply = await self.ask(
+            "MIZAN ran this rule on the sequence and it did not reproduce every term. Find a "
+            "rule that fits all of them and return the corrected complete program (`def a(n)` "
+            "or `def next_term(previous)`), beginning with a one-sentence comment stating the "
+            "rule. Reply with exactly one fenced code block.",
+            f"Sequence: {', '.join(str(term) for term in terms)}\n\nProgram:\n```python\n"
+            f"{program}\n```\n\nWhat MIZAN found:\n{wrong}",
+            max_tokens=3000,
+        )
+        return extract_code(reply)
+
     async def revise_rule(self, examples: str, program: str, wrong: str) -> str:
         reply = await self.ask(
             "MIZAN ran this `transform` on every example and it did not reproduce all of them. "
@@ -225,6 +249,8 @@ class Lisan:
             '{"steps":[<1 to 4 actions in order>]}. Give each action a "text" field with the '
             "words of the message it covers. Actions: "
             '{"intent":"compute","expression":"<arithmetic using + - * / ** % and numbers>"} | '
+            '{"intent":"silsila"} (find the next term or the rule of a number sequence the user '
+            "wrote) | "
             '{"intent":"build_and_run","request":"<precise English description of a program '
             'that computes and prints what the user wants>","language":"python"} | '
             '{"intent":"quran","surah":<1-114>,"ayah_start":<n or null>,"ayah_end":<n or null>} | '

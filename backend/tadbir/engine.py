@@ -45,6 +45,7 @@ from . import (
     project,
     qiyas,
     quran,
+    silsila,
     taallum,
     trace,
     waqt,
@@ -130,12 +131,25 @@ class Tadbir:
 
     # ── entry point ──────────────────────────────────────────────────────
 
-    async def handle(self, task: str, stream_callback=None) -> dict | None:
+    async def handle(
+        self, task: str, stream_callback=None, history: list[dict] | None = None
+    ) -> dict | None:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
         parts = fahm.understand_parts(task)
         understanding = fahm.understand(task)
+        if parts is None and understanding.intent in {"converse", "web_search"}:
+            # "Find the next number", "search number theory": a follow-up about the
+            # sequence asked earlier in this chat, which MIZAN takes from the history.
+            earlier = silsila.from_history(history) if silsila.follow_up(task) else None
+            if earlier:
+                understanding = fahm.Understanding(
+                    "silsila",
+                    understanding.language,
+                    0.8,
+                    {"sequence": earlier, "understood_by": "conversation"},
+                )
         self._stream = stream_callback
         started = time.time()
         if parts is not None:
@@ -743,6 +757,135 @@ class Tadbir:
             "test_outputs": outputs,
         }
         return Outcome("\n\n".join(parts), proven, facts, succeeded=proven)
+
+    async def _silsila(self, task: str, u: fahm.Understanding) -> Outcome:
+        """A sequence's next term, from a rule proven on every given term."""
+        seq: list[int] = u.entities["sequence"]
+        can_test = self._allowed("workspace_run") and self.lisan.available
+        await self._begin(
+            [
+                f"Read the {len(seq)} terms (MIZAN)",
+                "Try MIZAN's exact methods: polynomials in n and in the n-th prime, recurrences",
+                "Look the terms up in the OEIS",
+                "Test Lisan's proposed rule on every term in the sandbox",
+                "Reply",
+            ]
+        )
+        await self._step()
+        rules = silsila.own_rules(seq)
+        trace.event("verify", "silsila.own", rules=[rule.to_dict() for rule in rules])
+        await self._step()
+        matches = await self._external(
+            "oeis_search",
+            {"terms": seq},
+            silsila.oeis(seq),
+            lambda found: f"{len(found)} matching sequence(s)",
+        )
+        await self._step()
+        tested: tuple[str, dict] | None = None
+        tries = 0
+        if not rules and not matches and can_test:
+            try:
+                program = await self.lisan.propose_sequence_rule(seq)
+            except LisanUnavailable:
+                program = ""
+            while program and tries <= MAX_REPAIRS:
+                tries += 1
+                run = await self._run(silsila.harness(program, seq), "python")
+                report = silsila.read(str(run.get("stdout", "")))
+                trace.event("verify", "silsila.lisan", attempt=tries, report=report)
+                if silsila.proven(report, seq):
+                    tested = (program, report or {})
+                    break
+                if run.get("declined") or (run.get("error") and not run.get("stderr")):
+                    break
+                if tries > MAX_REPAIRS:
+                    break
+                try:
+                    program = await self.lisan.revise_sequence_rule(
+                        seq, program, silsila.feedback(report, str(run.get("stderr", "")))
+                    )
+                except LisanUnavailable:
+                    break
+        await self._step()
+        language = u.language
+        candidates: list[tuple[int, str]] = []
+        for rule in rules:
+            candidates.append(
+                (
+                    rule.next,
+                    phrase(
+                        "silsila_rule",
+                        language,
+                        formula=rule.formula,
+                        method=rule.method,
+                        total=len(seq),
+                    ),
+                )  # fmt: skip
+            )
+        for match in matches:
+            candidates.append(
+                (
+                    match["next"],
+                    phrase("silsila_oeis", language, id=match["id"], name=match["name"]),
+                )
+            )
+        if tested is not None:
+            program, report = tested
+            candidates.append(
+                (
+                    int(report["next"]),
+                    phrase(
+                        "silsila_tested",
+                        language,
+                        rule=silsila.rule_comment(program) or "—",
+                        total=len(seq),
+                    ),
+                )  # fmt: skip
+            )
+        terms = ", ".join(str(value) for value in seq)
+        if not candidates:
+            tried = phrase("silsila_tried_lisan", language, tries=tries) if tries else ""
+            text = phrase("silsila_none", language, total=len(seq), terms=terms, lisan=tried)
+            return Outcome(text, False, {"sequence": seq, "rules": []}, succeeded=False)
+        answers = sorted({value for value, _ in candidates})
+        lines = []
+        if len(answers) == 1:
+            lines.append(phrase("silsila_next", language, value=answers[0], terms=terms))
+        else:
+            lines.append(phrase("silsila_several", language, total=len(seq), terms=terms))
+        for value, reason in candidates:
+            lines.append(f"- **{value}**: {reason}")
+        facts = {
+            "sequence": seq,
+            "next": answers,
+            "rules": [rule.to_dict() for rule in rules],
+            "oeis": matches,
+        }
+        return Outcome("\n".join(lines), True, facts)
+
+    async def _external(
+        self, name: str, params: dict, work: Awaitable[Any], summary: Callable[[Any], str]
+    ) -> Any:
+        """A read from an outside reference MIZAN trusts (not a user tool), shown like a tool call."""
+        call_id = uuid.uuid4().hex
+        await emit("tool_start", {"call_id": call_id, "name": name, "input": params})
+        started = time.perf_counter()
+        with trace.span("execute_tool", name, input=params, source=True) as record:
+            result = await work
+            record["attributes"]["result"] = summary(result)
+            record["attributes"]["ok"] = True
+        await emit(
+            "tool_result",
+            {
+                "call_id": call_id,
+                "name": name,
+                "ok": True,
+                "summary": summary(result),
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+            },
+        )
+        return result
 
     async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
         from workspace.context import bound_workspace_id

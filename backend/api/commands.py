@@ -136,17 +136,16 @@ async def cmd_web_search(args="", **kwargs):
         result = await skill.search(query)
         if "error" in result:
             return f"Search failed: {result['error']}"
-        results = result.get("results", [])
+        results = [r for r in result.get("results", []) if isinstance(r, dict)][:10]
         if not results:
             return f"No results found for '{query}'."
-        # Clean HTML tags from titles
-        import re
-
-        clean = [re.sub(r"<[^>]+>", "", r).strip() for r in results]
-        clean = [c for c in clean if c][:10]
         lines = [f"**Web search results for '{query}':**", ""]
-        for i, title in enumerate(clean, 1):
-            lines.append(f"{i}. {title}")
+        for i, item in enumerate(results, 1):
+            title = str(item.get("title") or item.get("url") or "").strip()
+            url = str(item.get("url") or "").strip()
+            line = f"{i}. [{title}]({url})" if url else f"{i}. {title}"
+            snippet = str(item.get("snippet") or "").strip()
+            lines.append(f"{line}\n   {snippet[:240]}" if snippet else line)
         return "\n".join(lines)
     except Exception as e:
         return f"Search failed: {e}"
