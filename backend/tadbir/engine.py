@@ -1802,6 +1802,8 @@ class Tadbir:
             f"({ayah['number']}) {ayah['translation']}"
             for ayah in data["ayahs"]
             if ayah.get("translation")
+        ) or "\n".join(  # an Arabic question: the ayah's own Arabic is the source
+            f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
         )
         if not translation or not self.lisan.available:
             return ""

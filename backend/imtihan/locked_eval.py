@@ -149,7 +149,10 @@ def language_ok(answer: str, expected: str | None) -> bool:
     wanted = _LANGUAGES.get(expected or "")
     if not wanted:
         return True
-    prose = re.sub(r"```.*?```|^>.*$", " ", answer or "", flags=re.DOTALL | re.MULTILINE)
+    # The answer's own words: quoted source text (code, blockquotes, numbered
+    # translation lines, italic source notes) is not the answer.
+    prose = re.sub(r"```.*?```", " ", answer or "", flags=re.DOTALL)
+    prose = re.sub(r"^(?:>.*|\(\d+\)\s.*|_.*_\s*)$", " ", prose, flags=re.MULTILINE)
     return detect_language(prose) in wanted
 
 

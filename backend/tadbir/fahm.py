@@ -55,7 +55,21 @@ def _selected_project() -> str | None:
     return str(selected) if selected else None
 
 
+# Quranic text is fully vowelled: a word with two or more marks is quoted, not the user's own.
+_VOWEL_MARKS = re.compile("[\u064b-\u0652\u0670\u06d6-\u06ed]")
+_ARABIC_SCRIPT_WORD = re.compile("[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+")
+
+
+def _own_script(text: str) -> str:
+    """The text without quoted, vowelled Arabic, when the user's own words remain."""
+    stripped = _ARABIC_SCRIPT_WORD.sub(
+        lambda word: " " if len(_VOWEL_MARKS.findall(word.group(0))) >= 2 else word.group(0), text
+    )
+    return stripped if re.search(r"[^\W\d_]{2,}", stripped) else text
+
+
 def detect_language(text: str) -> str:
+    text = _own_script(text)
     arabic = re.findall(r"[؀-ۿ]", text)
     devanagari = re.findall(r"[ऀ-ॿ]", text)
     latin = re.findall(r"[A-Za-z]", text)
@@ -137,8 +151,9 @@ _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 # A question about a page the user names ("According to <url>, what was …?").
 _ASKS = re.compile(
-    r"\?|\baccording\s+to\b|\b(?:what|which|who|when|where|how\s+(?:many|much))\b|"
-    r"\b(?:find|tell\s+me|cite|give\s+me|kya|kitna|kitne|batao)\b",
+    r"[?؟]|\baccording\s+to\b|\b(?:what|which|who|when|where|how\s+(?:many|much))\b|"
+    r"\b(?:find|tell\s+me|cite|give\s+me|kya|kitna|kitne|batao|kis|kin|kaun|kaisa|kaise)\b|"
+    r"(?<!\w)(?:ما|ماذا|من|لمن|كيف|متى|أين|هل|كم|کیا|کون|کس|کب|کہاں|کتنا|کیسے|क्या|कौन|किस)(?!\w)",
     re.IGNORECASE,
 )
 # A file in the selected project, named in the user's words (`sales.csv`, app.log).
@@ -330,7 +345,9 @@ def understand(text: str) -> Understanding:
         return Understanding("salah", language, 0.9, {"prayer": prayer})
 
     explain = bool(_EXPLAIN.search(message))
-    reference = quran.parse_reference(message)
+    # "Write a function format_citation … 'Surah 2, Ayah 255'": code, not a lookup.
+    writes_code = bool(_BUILD.search(message))
+    reference = None if writes_code else quran.parse_reference(message)
     if reference is not None:
         # "What did the people say in 2:71?": a question about what the ayah says.
         questioned = bool(_ASKS.search(message)) and not explain and len(words) > 4
@@ -341,7 +358,7 @@ def understand(text: str) -> Understanding:
             {"reference": reference, "explain": explain, "question": questioned},
         )
 
-    narration = hadith.parse_reference(message)
+    narration = None if writes_code else hadith.parse_reference(message)
     if narration is not None:
         return Understanding("hadith", language, 0.95, {"reference": narration, "explain": explain})
 

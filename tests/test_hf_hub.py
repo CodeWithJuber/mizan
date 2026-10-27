@@ -161,3 +161,39 @@ def test_the_sample_is_fixed_and_carries_the_ayah(monkeypatch):
     assert [t["id"] for t in chosen] == [f"lock-EVAL-{i:03d}" for i in range(4)]
     assert "The ayah (Surah 1, Ayah 1):" in chosen[0]["prompt"]
     assert chosen[0]["block"] == "locked_eval"
+
+
+def test_a_quoted_ayah_does_not_decide_the_language():
+    ayah = "قَالَ فَٱذْهَبْ فَإِنَّ لَكَ فِى ٱلْحَيَوٰةِ أَن تَقُولَ لَا مِسَاسَ وَإِنَّ لَكَ مَوْعِدًا لَّن تُخْلَفَهُۥ"
+    assert fahm.detect_language(f"What is the NAME of the sea in this ayah?\n\n{ayah}") == "en"
+    assert fahm.detect_language("وفقًا للآية المرفقة، لمن يتوجه المؤمن بالعبادة؟") == "ar"
+    assert fahm.detect_language(ayah) == "ar"  # only the ayah: it is Arabic
+
+
+def test_a_question_about_an_ayah_is_noticed_in_every_script():
+    for text in (
+        "وفقًا للآية المرفقة، لمن وحده يتوجه المؤمن بالعبادة؟ سورة 1 آية 5",
+        "In Surah 20 ayah 97, what is the name of the sea?",
+        "Surah 53 ayah 45 me Allah ne kin do jodiyon ka zikr kiya hai",
+    ):
+        understood = fahm.understand(text)
+        assert understood.intent == "quran" and understood.entities["question"], text
+
+
+def test_writing_code_about_citations_is_not_a_quran_lookup():
+    text = (
+        "Write a Python function format_citation(surah, ayah) that returns 'Surah <surah>, "
+        "Ayah <ayah>', for example format_citation(2, 255) returns 'Surah 2, Ayah 255'."
+    )
+    assert fahm.understand(text).intent != "quran"
+
+
+def test_quoted_source_lines_are_not_the_answers_language():
+    answer = (
+        "**Surah An-Najm 53:45** · النجم\n\n> وَأَنَّهُۥ خَلَقَ ٱلزَّوْجَيْنِ\n"
+        "(45) And that He creates the two mates - the male and female -\n\n"
+        "_Arabi matan: api.alquran.cloud. Tarjuma: Saheeh International._\n\n"
+        "Is ayah mein Allah ne yeh bataya hai ke Woh mard aur aurat ki takhleeq karta hai [1]."
+    )
+    assert locked_eval.language_ok(answer, "hi-hinglish")
+    assert not locked_eval.language_ok("Allah created the male and the female.", "hi-hinglish")
