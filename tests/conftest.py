@@ -40,7 +40,7 @@ def unplaced_wording(monkeypatch):
     would make of their particular sentence."""
     from tadbir import qasd
 
-    def posterior(message, project=False, overlay=None):
+    def posterior(message, project=False, overlay=None, earlier=()):
         return {"web_read": 0.7, "converse": 0.3}
 
     monkeypatch.setattr(qasd, "posterior", posterior)

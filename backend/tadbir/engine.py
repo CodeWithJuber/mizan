@@ -244,7 +244,7 @@ class Tadbir:
         if parts is None and self.lisan.available and fahm.partly_understood(task, understanding):
             # Several requests and MIZAN's recognisers place only some: Lisan
             # maps the whole message into steps, which MIZAN validates.
-            planned = await self._lisan_plan(task, understanding)
+            planned = await self._lisan_plan(task, understanding, history)
             if len(planned) > 1:
                 parts = planned
                 understanding = fahm.Understanding(
@@ -256,14 +256,19 @@ class Tadbir:
                         "understood_by": "lisan_plan",
                     },
                 )
-        if parts is None and understanding.intent == "converse" and fahm.actionable(task):
+        if (
+            parts is None
+            and understanding.intent == "converse"
+            and len(task) <= 2000
+            and fahm.actionable(understanding)
+        ):
             learned = self._learned_understanding(task, understanding)
             if learned is not None:
                 understanding, example = learned
             elif self.lisan.available:
                 # Lisan only translates the wording into MIZAN's actions; MIZAN
                 # validates every step before acting on it.
-                planned = await self._lisan_plan(task, understanding)
+                planned = await self._lisan_plan(task, understanding, history)
                 if len(planned) == 1:
                     understanding = planned[0][1]
                 elif planned:
@@ -627,12 +632,15 @@ class Tadbir:
         return text, True
 
     async def _lisan_plan(
-        self, task: str, fallback: fahm.Understanding
+        self, task: str, fallback: fahm.Understanding, history: list[dict] | None = None
     ) -> list[tuple[str, fahm.Understanding]]:
         """Lisan's steps that pass MIZAN's validation, with the words each covers."""
+        earlier = "\n".join(
+            f"- {amanah.clean_message(text)[:300]}" for text in qasd.earlier_messages(history)[-3:]
+        )
         try:
             # Pasted text may carry an instruction; it never chooses MIZAN's actions.
-            steps = await self.lisan.plan_steps(amanah.clean_message(task))
+            steps = await self.lisan.plan_steps(amanah.clean_message(task), earlier)
         except LisanUnavailable:
             return []
         planned = []

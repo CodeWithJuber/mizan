@@ -398,8 +398,17 @@ class Lisan:
             max_tokens=1500,
         )
 
-    async def plan_steps(self, request: str) -> list[dict]:
-        """Translate the wording into MIZAN's actions (MIZAN validates every step)."""
+    async def plan_steps(self, request: str, context: str = "") -> list[dict]:
+        """Translate the wording into MIZAN's actions (MIZAN validates every step).
+
+        ``context`` is the user's previous messages in the chat, so a message that
+        continues a conversation (teaching words of a dialect, telling a story)
+        is read as part of it."""
+        if context:
+            request = (
+                "The user's previous messages in this chat, for context only (they are "
+                f"not the message to map):\n{context}\n\nThe message to map:\n{request}"
+            )
         reply = await self.ask(
             "Map the user's message to MIZAN actions. Reply with one JSON object only: "
             '{"steps":[<1 to 4 actions in order>]}. Give each action a "text" field with the '

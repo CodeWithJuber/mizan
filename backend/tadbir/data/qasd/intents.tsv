@@ -1028,3 +1028,42 @@ converse	ماذا يوجد في هذه الصورة؟
 converse	Is this design good? Give me feedback on it
 converse	Suggest some logo design ideas for my shop
 converse	Mere brand ke liye kuch design ideas do
+# Questions about the world, answered in words and checked against sources (Ahl al-Dhikr)
+converse	Saturn ka sabse bada chand kaunsa hai?
+converse	Jupiter ke kitne chand hain?
+converse	Mount Everest ki unchai kitni hai?
+converse	Duniya ka sabse lamba darya kaunsa hai?
+converse	Penicillin kisne dhoondi thi?
+converse	Taj Mahal kab bana tha?
+converse	Indonesia ki rajdhani kya hai?
+converse	Mars ka diameter kitna hai?
+# Teaching MIZAN words of a language or dialect: a quoted phrase is not a request
+converse	Hamari boli mein 'kya time hua' ko 'kya tem hoga' bolte hain
+converse	'Kaun hai' ko hamare gaon mein 'kun he' kehte hain
+converse	Hamari zubaan mein 'jaa raha' ko 'jaaraa' bolte hain
+converse	In my dialect we say 'tem' for 'time'
+converse	हमारी बोली में टायर को टेर बोलते हैं
+# Requests for the user's connected tools (connectors): MIZAN picks the tool, Lisan only fills its arguments
+use_tool	Mere GitHub repo ke open pull requests dikhao
+use_tool	Show the open issues in my GitHub repository
+use_tool	Kal ke liye mere calendar mein kya hai?
+use_tool	What meetings do I have tomorrow on my calendar?
+use_tool	Ahmed ko email bhejo ke meeting 5 baje hai
+use_tool	Send an email to the team about Friday's meeting
+use_tool	Meri Google Drive mein invoice wali files dhoondo
+use_tool	Find the budget spreadsheet in my Google Drive
+use_tool	Notion mein meeting notes ka naya page banao
+use_tool	Post this update to our Slack channel
+use_tool	Linear mein login bug ka naya ticket banao
+use_tool	Jira pe mere assigned tickets kaun se hain?
+use_tool	मेरे कैलेंडर में कल क्या है?
+use_tool	میرے جی میل میں آج کی ای میلز دکھاؤ
+use_tool	اعرض رسائل البريد غير المقروءة في Gmail
+use_tool	Mere inbox mein Amazon ki emails dikhao
+# The Nth term of a named sequence is computed by a program
+build_and_run	Tribonacci series ka 25th term kya hai?
+build_and_run	Catalan numbers mein 15th number kya hai?
+build_and_run	Pell series ka 30th term kitna hai?
+waqt	What is the Hijri date on 15 August 2026?
+waqt	Convert 2026-12-25 to the Hijri calendar
+waqt	What is the Gregorian date of 1 Muharram 1449?

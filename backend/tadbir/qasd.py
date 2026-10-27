@@ -7,7 +7,13 @@ A naive Bayes model (``core.tamyiz``) reads three kinds of evidence:
 - what MIZAN's parsers find in it (``e:qref`` a valid Quran reference,
   ``e:expr`` an exact calculation, ``e:url`` a link the user wrote, …): the
   parsers are grammars, and the model learns how much each finding counts;
-- the context (``c:project`` when a coding project is selected).
+- the context (``c:project`` when a coding project is selected);
+- the conversation: the user's earlier messages in the chat are the prior
+  (as Lughah does for the language). Each class starts with one pseudo-count,
+  spread by the model's own prior, and every earlier message adds its
+  posterior, so in a chat that has been conversation for a while, a short
+  message that reads a little like a request stays conversation, while a
+  clear request still wins on its own words.
 
 It is fitted on the seed examples in ``data/qasd`` (the smoothing and the
 weight of each kind of evidence by leave-one-out), and every request MIZAN carries out and verifies after
@@ -26,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections import Counter
+from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -108,23 +115,73 @@ def facet_model(facet: str) -> Tamyiz:
         return fitted(f"qasd.{facet}", _features, lambda: facet_examples(facet))
 
 
-def posterior(message: str, project: bool = False, overlay: Overlay | None = None) -> dict:
+CHAT_WINDOW = 12  # earlier user messages read as the prior (as Lughah reads them)
+
+
+def _alone(message: str, project: bool, overlay: Overlay | None) -> dict[str, float]:
     found: dict[str, float] = model().posterior(compose(message, project), overlay)
     return found
 
 
+def posterior(
+    message: str,
+    project: bool = False,
+    overlay: Overlay | None = None,
+    earlier: Sequence[str] = (),
+) -> dict:
+    """P(intent | message, the chat's earlier messages).
+
+    Bayes with the conversation as the prior: the model's own prior is divided
+    out and the chat's prior multiplied in, so without earlier messages this is
+    the model's posterior unchanged."""
+    found = _alone(message, project, overlay)
+    if not earlier:
+        return found
+    base = prior(project, overlay)
+    chat = prior(project, overlay, earlier)
+    scores = {
+        label: probability * chat.get(label, 0.0) / max(base.get(label, 0.0), 1e-300)
+        for label, probability in found.items()
+    }
+    total = sum(scores.values()) or 1.0
+    return {label: score / total for label, score in scores.items()}
+
+
 def ranked(
-    message: str, project: bool = False, overlay: Overlay | None = None
+    message: str,
+    project: bool = False,
+    overlay: Overlay | None = None,
+    earlier: Sequence[str] = (),
 ) -> list[tuple[str, float]]:
-    found = posterior(message, project, overlay)
+    found = posterior(message, project, overlay, earlier)
     return sorted(found.items(), key=lambda item: -item[1])
 
 
-def prior(project: bool = False, overlay: Overlay | None = None) -> dict[str, float]:
-    """What the model believes before reading any words: the posterior of a
-    message that carries no evidence at all."""
+def prior(
+    project: bool = False, overlay: Overlay | None = None, earlier: Sequence[str] = ()
+) -> dict[str, float]:
+    """What MIZAN believes before reading the message's words: the posterior of
+    a message that carries no evidence at all, updated by the chat so far
+    (a Dirichlet with one pseudo-count per class, spread by that posterior,
+    plus each earlier message's posterior)."""
     found: dict[str, float] = model().posterior_of({}, overlay)
-    return found
+    if not earlier:
+        return found
+    counts = {label: len(found) * probability for label, probability in found.items()}
+    for text in list(earlier)[-CHAT_WINDOW:]:
+        for label, probability in _alone(text, project, overlay).items():
+            counts[label] = counts.get(label, 0.0) + probability
+    total = sum(counts.values())
+    return {label: count / total for label, count in counts.items()}
+
+
+def earlier_messages(history: Sequence[dict] | None) -> list[str]:
+    """The user's own earlier messages in the chat, oldest first."""
+    return [
+        str(turn.get("content") or "")
+        for turn in history or ()
+        if isinstance(turn, dict) and turn.get("role") == "user" and turn.get("content")
+    ][-CHAT_WINDOW:]
 
 
 def prefers(message: str, first: str, second: str, project: bool = False) -> bool:

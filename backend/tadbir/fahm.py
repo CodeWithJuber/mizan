@@ -489,28 +489,43 @@ _BUILDERS = {
 def understand(text: str, history: list[dict] | None = None, overlay: Any = None) -> Understanding:
     message = text.strip()
     language = detect_language(message, history)
-    ranked = qasd.ranked(message, project=bool(_selected_project()), overlay=overlay)
+    # The chat so far is the prior: in a conversation, a message that reads only
+    # a little like a request stays conversation (qasd.prior).
+    earlier = qasd.earlier_messages(history)
+    project = bool(_selected_project())
+    ranked = qasd.ranked(message, project=project, overlay=overlay, earlier=earlier)
     # MAP first over families of recipes (a request to make something is one
     # family whether it builds or edits), conversation, and "an action MIZAN
     # could not build from these words" (the mass of the families that failed;
     # that goes on as conversation, where Lisan may map the wording). Within the
     # chosen family, the most probable intent MIZAN can build is the plan.
     unbuilt = 0.0
-    before = _families(sorted(qasd.prior(overlay=overlay).items(), key=lambda item: -item[1]))
+    # The actions that outranked conversation and had evidence, but that MIZAN
+    # could not build from these words: Lisan may map those (``actionable``).
+    mappable = 0.0
+    before = _families(
+        sorted(qasd.prior(project, overlay, earlier).items(), key=lambda item: -item[1])
+    )
     baseline = {family: mass for family, mass, _members in before}
-    for family, mass, members in _families(ranked):
+    families = _families(ranked)
+    for family, mass, members in families:
         if family == "converse" or unbuilt > mass:
             break
         if mass <= baseline.get(family, 0.0):
             # The words did not make this kind of request any more likely than
             # it was before reading them ("?"): no evidence to act on.
             continue
-        if family in FIXED_ANSWERS and mass <= 0.5:
-            # A fixed answer reads nothing in the message, so it answers the
-            # question only when that kind of question is more probable than
-            # every other reading together ("Tum pagal ho?" is not a question
-            # about tools even when it is the likeliest single reading).
+        if mass <= 0.5:
+            # Not decisive: MIZAN acts on a kind of request only when it is more
+            # probable than every other reading together. Below that it does not
+            # guess an action from the likeliest crumb ("Garbage area 👇 कुलडी"
+            # is not a website request because "website" is its likeliest single
+            # reading); Lisan may read the wording (``actionable``). A fixed
+            # answer reads nothing in the message ("Tum pagal ho?" is not a
+            # question about tools), so it is never mapped.
             unbuilt += mass
+            if family not in FIXED_ANSWERS:
+                mappable += sum(p for intent, p in members if intent not in _WORDS_ONLY)
             continue
         for intent, _probability in members:
             build = _BUILDERS.get(intent)
@@ -519,7 +534,14 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
                 built.confidence = mass
                 return built
         unbuilt += mass
-    return Understanding("converse", language, 0.0, {"posterior": dict(ranked[:3])})
+        mappable += sum(p for intent, p in members if intent not in _WORDS_ONLY)
+    conversation = next((mass for family, mass, _m in families if family == "converse"), 0.0)
+    return Understanding(
+        "converse",
+        language,
+        0.0,
+        {"posterior": dict(ranked[:3]), "mappable": mappable, "conversation": conversation},
+    )
 
 
 # Families of recipes: intents that are kinds of one request.
@@ -661,16 +683,17 @@ def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹०१२३४५६७८९", "0123456789" * 3)
 
 
-def actionable(text: str) -> bool:
-    """MIZAN finds some action more probable than conversation, but could not build it.
+def actionable(understanding: Understanding) -> bool:
+    """MIZAN finds an action more probable than conversation, but could not build it.
 
+    Only the kinds of request that each outranked conversation, with more
+    evidence than before reading the words, count (``understand``); many small
+    readings spread over unrelated actions are uncertainty, not a request.
     Then Lisan may map the wording, and MIZAN validates the mapping."""
-    if len(text) > 2000:
+    if understanding.intent != "converse":
         return False
-    found: dict[str, float] = qasd.posterior(text, project=bool(_selected_project()))
-    # Kinds of request answered in words (a follow-up, "?") are not actions to map.
-    acting = sum(p for intent, p in found.items() if intent not in _WORDS_ONLY)
-    return acting > 0.5
+    entities = understanding.entities or {}
+    return float(entities.get("mappable") or 0.0) > float(entities.get("conversation") or 0.0)
 
 
 def validate_parsed(parsed: dict, message: str, language: str) -> Understanding | None:
