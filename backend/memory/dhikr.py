@@ -48,6 +48,8 @@ CHAT_PREFERENCE_LIMITS = {
     "greeting": 120,
     "avoid_greetings": 300,
     "custom_instructions": 2000,
+    # "off" stops MIZAN's nightly self-review (Muhasaba) from posting corrections.
+    "muhasaba": 8,
 }
 
 

@@ -1,6 +1,6 @@
 {"block": "scripture", "id": "quran-2-255", "prompt": "Ayatul Kursi sunao (Arabic text).", "score": {"kind": "quote", "source": "quran", "reference": "2:255", "min": "matches"}}
-{"block": "scripture", "id": "quran-112", "prompt": "Surah Ikhlas poori Arabic mein sunao.", "score": {"kind": "quote", "source": "quran", "reference": "112", "min": "matches"}}
+{"block": "scripture", "id": "quran-112", "prompt": "Surah Ikhlas poori Arabic mein sunao.", "score": {"kind": "quote", "source": "quran", "reference": "Surah 112", "min": "matches"}}
 {"block": "scripture", "id": "quran-2-286", "prompt": "Give the Arabic text of Quran 2:286.", "score": {"kind": "quote", "source": "quran", "reference": "2:286", "min": "matches"}}
-{"block": "scripture", "id": "quran-103", "prompt": "Surah Al-Asr ka Arabic text do.", "score": {"kind": "quote", "source": "quran", "reference": "103", "min": "matches"}}
+{"block": "scripture", "id": "quran-103", "prompt": "Surah Al-Asr ka Arabic text do.", "score": {"kind": "quote", "source": "quran", "reference": "Surah 103", "min": "matches"}}
 {"block": "scripture", "id": "hadith-bukhari-1", "prompt": "Bukhari 1 (Arabic text)", "score": {"kind": "quote", "source": "hadith", "reference": "Bukhari 1", "min": "excerpt"}}
 {"block": "scripture", "id": "hadith-nawawi-13", "prompt": "40 Hadith Nawawi, hadith 13, in Arabic.", "score": {"kind": "quote", "source": "hadith", "reference": "Nawawi 13", "min": "excerpt"}}

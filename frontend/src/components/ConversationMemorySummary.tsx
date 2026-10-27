@@ -18,6 +18,7 @@ const preferenceFields = [
   { key: "greeting", label: "Preferred greeting", limit: 120 },
   { key: "avoid_greetings", label: "Greetings to avoid", limit: 300 },
   { key: "custom_instructions", label: "Other reply preferences", limit: 2000 },
+  { key: "muhasaba", label: "MIZAN's corrections of earlier answers (write off to stop them)", limit: 8 },
 ] as const;
 
 function PreferenceField({ field, saved }: {

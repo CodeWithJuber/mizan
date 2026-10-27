@@ -139,6 +139,12 @@ immediately.
 | `hybrid` | Tadbir handles what it understands. Anything else goes to the model-driven agent loop, which keeps the capability and execution guards. This was the default before. |
 | `llm` | Tadbir is off. The model drives the agent loop as before. |
 
+## Learning automatically
+
+Majlis, Ta'allum, Hifz (verified programs re-run without the model) and
+Muhasaba (a daily self-review that corrects mistakes it can prove) are described in
+[automatic-learning.md](automatic-learning.md).
+
 ## Seeing what MIZAN adds
 
 The debug mode ([debug-mode.md](debug-mode.md)) sends one message to the base

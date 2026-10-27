@@ -39,6 +39,7 @@ from . import (
     express,
     fahm,
     hadith,
+    hifz,
     isnad,
     majlis,
     project,
@@ -600,6 +601,14 @@ class Tadbir:
         if not self._allowed("workspace_run") or not self.lisan.available:
             raise Defer
         language = u.entities["code_language"]
+        from security.auth import current_user_id
+
+        store, owner = self.coordinator.adaptive, current_user_id() or ""
+        kept = hifz.recall(store, owner, task, language)
+        if kept is not None:
+            reused = await self._reuse_program(u, kept, store, owner)
+            if reused is not None:
+                return reused
         await self._begin(
             [
                 "Understand the request (Fahm)",
@@ -637,7 +646,42 @@ class Tadbir:
         ]
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
+        if verified:
+            hifz.keep(store, owner, task, language, code, str(run.get("stdout", "")))
+            trace.event("learn", "hifz", kept=True, language=language)
         return Outcome("\n\n".join(parts), verified, {"run": _run_facts(run), "attempts": tries})
+
+    async def _reuse_program(
+        self, u: fahm.Understanding, kept: dict, store: Any, owner: str
+    ) -> Outcome | None:
+        """Re-run a program MIZAN verified before; its output must match again."""
+        language = kept["language"]
+        await self._begin(
+            [
+                "Recall a program MIZAN verified before (Hifz)",
+                "Run it in MIZAN's isolated sandbox",
+                "Check the output matches what was verified",
+                "Reply",
+            ]
+        )
+        await self._step()
+        run = await self._run(kept["code"], language)
+        await self._step()
+        worked = (
+            run.get("exit_code") == 0
+            and not run.get("error")
+            and hifz.matches(kept, str(run.get("stdout", "")))
+        )
+        reliability = hifz.record(store, owner, kept, worked)
+        trace.event("learn", "hifz", reused=True, worked=worked, reliability=reliability)
+        if not worked:
+            return None  # the kept program no longer holds: Lisan writes a new one
+        parts = [
+            f"**{phrase('code', u.language)}**\n{fence(kept['code'], language)}",
+            self._run_text(run, u.language),
+            f"_{phrase('hifz_reused', u.language, runs=int(kept.get('runs', 1)) + 1)}_",
+        ]
+        return Outcome("\n\n".join(parts), True, {"run": _run_facts(run), "reused": True})
 
     async def _qiyas(self, task: str, u: fahm.Understanding) -> Outcome:
         """Infer the rule from the examples; accept it only if it reproduces every one."""
@@ -1328,6 +1372,8 @@ class Tadbir:
             return Outcome(phrase("page_failed", u.language, reason=found["error"]), False, {})
         results = [r for r in found.get("results", []) if isinstance(r, dict)][:6]
         if not results:
+            if u.entities.get("understood_by") in {"lisan", "mizan_learned"}:
+                raise Defer  # a search MIZAN chose found nothing: answer in words instead
             return Outcome(phrase("no_results", u.language), False, {})
         sources = [
             {"title": r.get("title", ""), "url": r.get("url", ""), "text": r.get("snippet", "")}

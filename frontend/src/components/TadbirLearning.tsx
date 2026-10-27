@@ -20,10 +20,17 @@ interface Wording {
   by_intent: Record<string, number>;
 }
 
+interface Programs {
+  programs: number;
+  reuses: number;
+  items: { request: string; language: string; runs: number; reliability: number }[];
+}
+
 export default function TadbirLearning({ api }: { api: ApiClient }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState<WorkRow[]>([]);
   const [wording, setWording] = useState<Wording | null>(null);
+  const [programs, setPrograms] = useState<Programs | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -32,6 +39,7 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       const data = await api.get("/tadbir/learning");
       setRows(workRows((data.routing as RoutingRow[]) ?? []));
       setWording((data.wording as Wording) ?? null);
+      setPrograms((await api.get("/tadbir/programs")) as unknown as Programs);
       setError("");
     } catch {
       setError("MIZAN's learning could not be loaded");
@@ -130,6 +138,50 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           This is MIZAN's own understanding, not model training. Training the own model's weights still needs an
           approved data bundle (Ruh Model → Own learning).
         </p>
+      </div>
+
+      <div className="card">
+        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+          Programs MIZAN keeps · حفظ
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          A program MIZAN verified for you is kept. The same request, with the same numbers, re-runs it in the
+          sandbox with no model call, and the output must match what was verified. A program whose output
+          changes is distrusted and written again.
+        </p>
+        {programs && programs.items.length > 0 ? (
+          <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
+            {programs.items.map((item, index) => (
+              <li key={index} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="min-w-0 flex-1 truncate text-gray-900 dark:text-gray-100">{item.request}</span>
+                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">{item.language}</span>
+                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                  {item.runs} run{item.runs === 1 ? "" : "s"} · {percent(item.reliability)} reliable
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-gray-400 dark:text-gray-500 mb-3">No programs kept yet</div>
+        )}
+        <button
+          className="btn-secondary btn-sm"
+          disabled={busy || !programs?.programs}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await api.del("/tadbir/programs");
+              addToast({ type: "success", title: "MIZAN forgot the programs it kept for you" });
+              await load();
+            } catch {
+              addToast({ type: "error", title: "Could not forget the kept programs" });
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Forget my programs
+        </button>
       </div>
     </div>
   );

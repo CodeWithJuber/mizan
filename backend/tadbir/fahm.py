@@ -99,6 +99,13 @@ _SEARCH = re.compile(
     r"search\s+karo|internet\s+(?:par|pe|se))\b|\blatest\b|\bnews\b|\btoday'?s\b|\baaj\s+ki\b",
     re.IGNORECASE,
 )
+# The message brings its own material to work on: not a request to search.
+_PROVIDED = re.compile(
+    r"\b(?:here\s+is|here's|based\s+(?:only\s+)?on\s+(?:this|the\s+following)|using\s+it|"
+    r"this\s+(?:page|text|review|email|article|output|document|passage)|tool\s+output)\b"
+    r"|\n---\n|^---$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _READ = re.compile(
     r"\b(?:read|summari[sz]e|summary|padho|padh\s*kar|kya\s+likha|explain\s+this\s+page|"
     r"open|kholo|dekho)\b",
@@ -145,8 +152,10 @@ def understand(text: str) -> Understanding:
     if narration is not None:
         return Understanding("hadith", language, 0.95, {"reference": narration, "explain": explain})
 
+    asks_run = bool(re.search(_RUN, message, re.IGNORECASE))
     when = waqt.parse(message)
-    if when is not None and len(words) <= 25:
+    # "a program that prints today's date, run it" is a program, not a date question.
+    if when is not None and len(words) <= 25 and not (_BUILD.search(message) and asks_run):
         return Understanding("waqt", language, 0.9, {"request": when})
 
     puzzle = qiyas.parse(message)
@@ -154,7 +163,6 @@ def understand(text: str) -> Understanding:
         return Understanding("qiyas", language, 0.9, {"puzzle": puzzle})
 
     fenced = _fenced_code(message)
-    asks_run = bool(re.search(_RUN, message, re.IGNORECASE))
     if fenced and (asks_run or len(message) - len(fenced[0]) < 40):
         code, code_language = fenced
         return Understanding(
@@ -207,7 +215,7 @@ def understand(text: str) -> Understanding:
     if _RECALL.search(message):
         return Understanding("recall", language, 0.8, {"query": message})
 
-    if _SEARCH.search(message) and not url:
+    if _SEARCH.search(message) and not url and not _PROVIDED.search(message):
         query = _SEARCH.sub(" ", message)
         query = re.sub(
             r"\b(?:karo|kro|please|for|about|ke\s+baare\s+mein|par|pe|me|mein)\b",
@@ -294,10 +302,8 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
     entities: dict[str, Any] = {"understood_by": "lisan"}
     if intent == "compute":
         expression = str(parsed.get("expression", ""))[:300]
-        try:
-            calc.evaluate(expression)
-        except calc.CalcError:
-            return None
+        if calc.find_expression(expression) is None:
+            return None  # not a calculation (for example a bare number)
         entities["expression"] = expression
     elif intent == "build_and_run":
         request = str(parsed.get("request", "")).strip()[:1500]
