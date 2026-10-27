@@ -260,7 +260,8 @@ def _notice(findings: list[dict]) -> str:
 # project and are never rewritten here (a marker must not reach their files).
 _UNTRUSTED = frozenset(
     {"web_search", "web_browse", "web_read", "http_get", "fetch_url", "recall_memory",
-     "read_skill_file", "read_file", "browse", "search_web"}
+     "read_skill_file", "read_file", "browse", "search_web", "hf_preview", "hf_files",
+     "hf_repos"}
 )  # fmt: skip
 
 

@@ -14,7 +14,7 @@ CATEGORIES = {
     "coding": (0.20, ("agent_coding", "code")),
     "reasoning": (0.20, ("arc", "games", "exactness", "consistency")),
     "general": (0.30, ("knowledge", "abstention", "scripture", "multilingual", "learning",
-                       "safety")),
+                       "safety", "locked_eval")),
 }  # fmt: skip
 
 

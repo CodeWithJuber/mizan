@@ -985,6 +985,10 @@ class BaseAgent:
             return True
         if allows_user_web_tool(tool_name, self.skill_registry, native_tools=self.tools):
             return True
+        from skills.builtin.huggingface_hub import allows_user_hf_tool
+
+        if allows_user_hf_tool(tool_name, self.skill_registry, native_tools=self.tools):
+            return True
         if tool_name.startswith("mcp__"):
             # Only the signed-in user's own connector tools, never another source.
             from connectors.tools import is_user_tool

@@ -29,6 +29,7 @@ def isolated_provider_mode(monkeypatch):
     # Legacy suites test the model-driven agent loop; tests/test_tadbir.py
     # covers MIZAN's own orchestration (the production default).
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
+    monkeypatch.setenv("MIZAN_LOCKED_EVAL", "off")  # tests never download the locked eval
 
 
 @pytest.fixture

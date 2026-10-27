@@ -66,7 +66,7 @@ MAX_REPAIRS = 2
 # Tools that read or run (no outside effect), safe to call again after a passing failure.
 _RETRYABLE = frozenset(
     {"workspace_run", "workspace_read", "workspace_glob", "workspace_grep", "web_browse",
-     "web_search", "web_read", "http_get"}
+     "web_search", "web_read", "http_get", "hf_repos", "hf_files", "hf_preview", "hf_import"}
 )  # fmt: skip
 _TRANSIENT = re.compile(
     r"\b(?:busy|try again|temporar\w*|unavailable|overloaded|rate.?limit\w*|too many requests|"
@@ -1661,6 +1661,84 @@ class Tadbir:
                 problems.append(f"{name} is empty.")
         return run, "\n".join(problems), changed
 
+    async def _hf_hub(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Hugging Face, read by MIZAN on the server (its code sandbox has no network)."""
+        action = u.entities.get("action")
+        tool = {"repos": "hf_repos", "files": "hf_files", "import": "hf_import"}.get(str(action))
+        if tool is None or not self._allowed(tool):
+            raise Defer
+        language = u.language
+        if action == "repos":
+            await self._begin(["Ask Hugging Face for the account's repositories (MIZAN)", "Reply"])
+            parts: list[str] = []
+            owner = str(u.entities.get("owner") or "")
+            for kind in u.entities.get("kinds") or ["datasets"]:
+                found = await self._tool("hf_repos", {"owner": owner, "kind": kind})
+                if found.get("error"):
+                    return Outcome(phrase("hf_failed", language, reason=found["error"]), False, {})
+                owner = str(found.get("owner") or owner)
+                rows = found.get("repos") or []
+                lines = [phrase("hf_repos", language, kind=kind, owner=owner, count=len(rows))]
+                lines += [
+                    f"- [{row['id']}](https://huggingface.co/{'' if kind == 'models' else kind + '/'}"
+                    f"{row['id']})"
+                    + (" · private" if row.get("private") else "")
+                    + (f" · {row['downloads']} downloads" if row.get("downloads") else "")
+                    for row in rows
+                ]
+                parts.append("\n".join(lines))
+            await self._step()
+            return Outcome("\n\n".join(parts), True, {"owner": owner}, provenance="evidence")
+        repo, kind = str(u.entities["repo"]), str(u.entities.get("kind") or "datasets")
+        if action == "files":
+            await self._begin(
+                ["List the repository's files (MIZAN)", "Read its first rows", "Reply"]
+            )
+            listing = await self._tool("hf_files", {"repo": repo, "kind": kind})
+            if listing.get("error"):
+                return Outcome(phrase("hf_failed", language, reason=listing["error"]), False, {})
+            await self._step()
+            shown = listing.get("files") or []
+            lines = [
+                phrase("hf_files", language, repo=repo, count=listing.get("total", len(shown)),
+                       size=_size(int(listing.get("bytes") or 0))),
+                *[f"- `{item['path']}` · {_size(int(item.get('size') or 0))}" for item in shown[:40]],
+            ]  # fmt: skip
+            if len(shown) > 40:
+                lines.append(f"- … {len(shown) - 40} more")
+            if kind == "datasets" and self._allowed("hf_preview"):
+                sample = await self._tool("hf_preview", {"repo": repo, "rows": 2})
+                if sample.get("rows"):
+                    text = json.dumps(sample["rows"], ensure_ascii=False, indent=1)[:1500]
+                    lines += ["", f"**{phrase('hf_preview', language, split=sample.get('split'))}**",
+                              fence(text, "json")]  # fmt: skip
+            await self._step()
+            lines += ["", f"_{phrase('hf_next', language, repo=repo)}_"]
+            return Outcome("\n".join(lines), True, {"repo": repo}, provenance="evidence")
+        await self._begin(
+            ["Read the file from Hugging Face (MIZAN)", "Save it into your project", "Reply"]
+        )
+        params = {"repo": repo, "kind": kind, "path": u.entities["path"],
+                  "revision": u.entities.get("revision") or "main"}  # fmt: skip
+        imported = await self._tool("hf_import", params)
+        await self._step()
+        if imported.get("error"):
+            return Outcome(phrase("hf_failed", language, reason=imported["error"]), False, {})
+        rows = f", {imported['rows']} rows" if imported.get("rows") is not None else ""
+        lines = [
+            phrase("hf_imported", language, source_path=u.entities["path"], repo=repo,
+                   path=imported["path"], size=_size(int(imported.get("bytes") or 0)), rows=rows),
+        ]  # fmt: skip
+        if imported.get("sampled"):
+            lines.append(
+                phrase("hf_sampled", language, total=_size(int(imported.get("size_on_hub") or 0)))
+            )
+        lines.append(
+            f"`sha256 {str(imported.get('sha256') or '')[:16]}…` · {imported.get('source')}"
+        )
+        await self._step()
+        return Outcome("\n\n".join(lines), True, {"imported": imported["path"]})
+
     async def _quran(self, task: str, u: fahm.Understanding) -> Outcome:
         reference: quran.Reference = u.entities["reference"]
         await self._begin(
@@ -1712,7 +1790,38 @@ class Tadbir:
             )
         if u.entities.get("explain"):
             lines.append(f"\n_{phrase('quran_no_tafsir', u.language)}_")
+        elif u.entities.get("question"):
+            answer = await self._ayah_answer(task, data, u.language)
+            if answer:
+                lines += ["", f"**{phrase('quran_answer', u.language)}**", answer]
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
+
+    async def _ayah_answer(self, task: str, data: dict, language: str) -> str:
+        """The question answered from the ayah's translation only (reading, not tafsir)."""
+        translation = "\n".join(
+            f"({ayah['number']}) {ayah['translation']}"
+            for ayah in data["ayahs"]
+            if ayah.get("translation")
+        ) or "\n".join(  # an Arabic question: the ayah's own Arabic is the source
+            f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
+        )
+        if not translation or not self.lisan.available:
+            return ""
+        source = [
+            {
+                "title": f"{data['reference']} ({data.get('translation') or 'translation'})",
+                "url": "",
+                "text": translation,
+            }
+        ]
+        try:
+            draft = await self.lisan.answer_from_sources(task, source, language)
+        except LisanUnavailable:
+            return ""
+        # Furqan: no number, name or citation the translation does not hold.
+        if furqan(draft, json.dumps(source, ensure_ascii=False), max_citation=1):
+            return ""
+        return draft
 
     async def _hadith(self, task: str, u: fahm.Understanding) -> Outcome:
         reference: hadith.HadithRef = u.entities["reference"]
@@ -2121,6 +2230,15 @@ class Tadbir:
             task, {"memories": memories[:6000]}, u.language, fallback
         )
         return Outcome(text, True, {"memories": True}, provenance="evidence")
+
+
+def _size(count: int) -> str:
+    value = float(count)
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)} bytes" if unit == "bytes" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{count} bytes"
 
 
 def _transient(name: str, result: Any) -> bool:

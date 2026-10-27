@@ -38,6 +38,9 @@ BASIS = {
     "silsila": "MIZAN checked the rule on every term",
     "build_project": "MIZAN's checks of the project passed",
     "edit_project": "MIZAN's checks of the change passed",
+    "project_task": "MIZAN ran the program on your files and checked its outputs",
+    "run_file": "MIZAN ran the file in your project's sandbox",
+    "hf_hub": "read by MIZAN from Hugging Face",
 }
 MAX_CLAIMS = 40
 _FENCE = re.compile(r"```.*?```", re.DOTALL)

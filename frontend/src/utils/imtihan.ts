@@ -145,6 +145,7 @@ export const BLOCK_LABELS: Record<string, string> = {
   agent_recovery: "Agent: recover from failures",
   agent_guardrail: "Agent: keep to the request",
   games: "Interactive games (ARC-AGI-3 style)",
+  locked_eval: "Your locked eval (mizan-eval-v1)",
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {

@@ -36,6 +36,9 @@ ROLE_FOR = {
     "recall": "khalifah",
     "capabilities": "khalifah",
     "edit_project": "katib",
+    "project_task": "katib",
+    "run_file": "katib",
+    "hf_hub": "mundhir",
     "use_tool": "khalifah",
 }
 ROLE_NAMES = {
@@ -55,6 +58,9 @@ NEEDS = {
     "web_read": "web_browse",
     "recall": "recall_memory",
     "edit_project": "workspace_write",
+    "project_task": "workspace_run",
+    "run_file": "workspace_run",
+    "hf_hub": "hf_repos",
 }
 # Prior pseudo-counts (successes, failures): strong for the specialist, good
 # for Khalifah (which can do every kind of work), weak for the rest.

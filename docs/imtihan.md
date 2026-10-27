@@ -84,6 +84,21 @@ Four dimensions are reported per arm:
 
 **Official ARC-AGI-3:** with `ARC_API_KEY` set, `POST /api/imtihan/arc3 {game_id?, max_actions?}` (admin) lets Mustakshif play a real game through the official API: a scorecard is opened, every RESET carries its `card_id`, and the scorecard is closed at the end and returned for checking on arcprize.org.
 
+## Your locked eval (mizan-eval-v1)
+
+The owner's locked evaluation set is published on Hugging Face (`Zubairshaikh/mizan-eval-v1`, CC-BY-4.0, 300 items) and anchored by its SHA-256 (`14844d6f…`). `backend/imtihan/locked_eval.py` downloads it once into `$MIZAN_DATA_DIR/imtihan/` and uses it only when the hash matches. Its lock rules are kept: it is never copied into this repository or into training data, and only aggregate scores are reported.
+
+A fixed sample (the first 4 items by id in each of Arabic, English, Hinglish, Roman Urdu, Urdu, abstention and coding) runs through both arms, scored by rule from the lock's rubric:
+
+| Item | Passes when |
+|---|---|
+| Grounded question (with its ayah) | The answer cites the ayah's locator (`2:71`, `Surah 2, Ayah 71`, Arabic-Indic digits too), is in the question's language, and does not refuse |
+| General or dialogue | In the question's language, and not refused |
+| Abstention | The answer declines or says the ayah does not tell |
+| Coding | The answer's code passes the item's assert tests in the sandbox |
+
+The rubric's key points and `must_not` claims need a reader, so they are not scored by rule. The 25 tool items ask about the owner's own workspace and are left out. `MIZAN_LOCKED_EVAL=off` turns the block off (the test suite does).
+
 ## How MIZAN answers ARC: Qiyas
 
 ARC puzzles go to MIZAN's Qiyas recipe (قياس, reasoning by analogy).
