@@ -1813,6 +1813,74 @@ class BaseAgent:
             if graded:
                 result["isnad"] = graded
 
+    def _settled_evidence(self, task: str) -> list[dict]:
+        """What sources settled for this user before that bears on the task."""
+        try:
+            from tadbir import ahl_dhikr
+
+            if not ahl_dhikr.enabled():
+                return []
+            settled: list[dict] = ahl_dhikr.evidence_for(
+                self.adaptive, current_user_id() or "", task
+            )
+            return settled
+        except Exception:  # noqa: BLE001 - evidence is a help, never a failure
+            return []
+
+    async def _ahl_dhikr(self, result: dict, task: str) -> None:
+        """Ahl al-Dhikr: the claims of an answer in the model's own words, asked
+        of MIZAN's sources before it is shown (Quran 16:43)."""
+        text = result.get("result")
+        if not isinstance(text, str) or not text.strip() or result.get("orchestrator") == "mizan":
+            return
+        try:
+            from tadbir import ahl_dhikr, fahm, isnad, sijill
+            from tadbir.express import phrase
+
+            if not ahl_dhikr.enabled() or not isinstance(task, str):
+                return
+            ruling = ahl_dhikr.ruling(task)
+            if not ruling and not ahl_dhikr.factual(task):
+                return
+            language = fahm.detect_language(task)
+            ledger = (result.get("isnad") or {}).get("ledger") or []
+
+            async def web(query: str) -> Any:
+                if not self._chat_tool_allowed("web_search"):
+                    return None
+                # MIZAN asks, not the model: the words-only flag is lifted for this read.
+                binding = _language_only.set(False)
+                try:
+                    return await self._execute_tool_safe("web_search", {"query": query})
+                finally:
+                    _language_only.reset(binding)
+
+            findings, heard = await ahl_dhikr.consult(
+                task,
+                ledger,
+                store=self.adaptive,
+                user_id=current_user_id() or "",
+                language=language,
+                web=web,
+            )
+        except Exception:  # noqa: BLE001 - asking never loses the answer
+            logger.debug("Ahl al-Dhikr skipped", exc_info=True)
+            return
+        # "Found none" only when a source answered; a source that could not be
+        # reached says nothing about the claims.
+        shown = ahl_dhikr.apply(text, findings, language, asked=bool(heard))
+        if ruling and not ahl_dhikr.machine_readable(text):
+            shown = f"{shown}\n\n_{phrase('ahl_ruling', language)}_"
+        result["result"] = shown
+        if findings:
+            result["isnad"] = isnad.summary(ahl_dhikr.regrade(ledger, findings))
+            settled = sum(1 for finding in findings if finding.verdict != "unknown")
+            if settled:
+                sijill.note(
+                    "ahl_dhikr", {"detail": f"Sources settled {settled} claim(s) of this answer"}
+                )
+        result["ahl"] = ahl_dhikr.report(findings, heard, ruling_question=ruling)
+
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
         timings = getattr(self, "_execution_timings", None)
@@ -2582,7 +2650,7 @@ Match the requested depth and self-correct errors."""
         details = {
             k: v
             for k, v in (context or {}).items()
-            if k not in {"history", "conversation_memory", "user_preferences"}
+            if k not in {"history", "conversation_memory", "user_preferences", "verified_evidence"}
         }
         context_blocks = []
         if details:
@@ -2594,6 +2662,14 @@ Match the requested depth and self-correct errors."""
                 "current request wins]\n"
                 + json.dumps(recalled, ensure_ascii=False)
                 + "\n[END PRIOR CONVERSATION]"
+            )
+        settled = (context or {}).get("verified_evidence", [])
+        if settled:
+            context_blocks.append(
+                "[SETTLED BY MIZAN FROM SOURCES — sentences a source confirmed or contradicted "
+                "for this user before; they outrank your own memory, cite their source]\n"
+                + json.dumps(settled, ensure_ascii=False)
+                + "\n[END SETTLED]"
             )
         if mem0_block:
             context_blocks.append(f"[RELEVANT MEMORIES — retrieved context]\n{mem0_block}")
@@ -2727,6 +2803,7 @@ Match the requested depth and self-correct errors."""
                         result["isnad"] = graded
                 if result.get("success", True) and not result.get("task_verified"):
                     await self._truth_gate(result)
+                    await self._ahl_dhikr(result, task)
                 for key in (
                     "completion_status",
                     "task_verified",
@@ -2735,6 +2812,7 @@ Match the requested depth and self-correct errors."""
                     "isnad",
                     "amanah",
                     "sidq",
+                    "ahl",
                 ):
                     if key in result:
                         result["usage"][key] = result[key]
@@ -3005,6 +3083,9 @@ Match the requested depth and self-correct errors."""
                 "language_model_answers",
                 tools_for_model="none" if full_orchestration() else "all permitted",
             )
+            settled = self._settled_evidence(task)
+            if settled:
+                context = {**(context or {}), "verified_evidence": settled}
 
         try:
             full_response = ""

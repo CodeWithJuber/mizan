@@ -55,6 +55,20 @@
   "labels": 2,
   "vocabulary": 2915
  },
+ "qasd.fact": {
+  "sha256": "a0481afa989ffbca57181bc32675f60e0afd840358a89b49493172b82cb8f771",
+  "alpha": 1.0,
+  "weights": [
+   3.3812159637073895,
+   0.24656955792248783,
+   1.6899559197484115
+  ],
+  "loo_loss": 0.23499826876337238,
+  "loo_accuracy": 0.8333333333333334,
+  "examples": 72.0,
+  "labels": 2,
+  "vocabulary": 2608
+ },
  "qasd.harder": {
   "sha256": "64c71e02d7573012da093cae9c048fb87ac2c492e86cc397b3de10fbe5224d93",
   "alpha": 0.03,
@@ -68,5 +82,19 @@
   "examples": 31.0,
   "labels": 2,
   "vocabulary": 1042
+ },
+ "qasd.ruling": {
+  "sha256": "9b306990cfb520ae916786bcbd4cf0f69c1dac42c845730618588c25c883aa32",
+  "alpha": 0.01,
+  "weights": [
+   0.5826509606308035,
+   0.01822691852572675,
+   0.40455917306754535
+  ],
+  "loo_loss": 0.44918804249829447,
+  "loo_accuracy": 0.8,
+  "examples": 80.0,
+  "labels": 2,
+  "vocabulary": 3007
  }
 }
