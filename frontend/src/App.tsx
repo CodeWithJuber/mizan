@@ -858,8 +858,18 @@ function AppInner() {
     }
   }, [selectedAgent, workspaceId, persistActiveDraft, recovery.isBlocked, recovery.reset]);
 
-  /** Abort the authenticated fetch; the server cancels the owned generation. */
+  /** Ask the server to stop this run, then close the stream. A dropped
+   *  connection alone never stops a run: the server finishes and saves it. */
   const stopGeneration = useCallback(() => {
+    const requestId = activeRequestIdRef.current;
+    const sessionId = sessionIdRef.current;
+    if (sessionId) {
+      void authFetch(`${config.API_URL}/chat/${encodeURIComponent(sessionId)}/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestId ? { request_id: requestId } : {}),
+      }).catch(() => undefined);
+    }
     sendControllerRef.current?.abort();
     finalizeStop(streamBufferRef.current?.getText() ?? "", true);
   }, [finalizeStop]);
@@ -3134,7 +3144,17 @@ function AppInner() {
               )}
 
               <ChatRunStatus progress={streaming ? runProgress : null} recovery={recovery.state} storageUnavailable={draftStorageFailed}
-                onRefresh={() => void recovery.refresh()} />
+                onRefresh={() => void recovery.refresh()}
+                onStop={() => {
+                  const state = recovery.state;
+                  if (!state) return;
+                  const requestId = state.request?.request_id ?? state.requestId;
+                  void authFetch(`${config.API_URL}/chat/${encodeURIComponent(state.sessionId)}/stop`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(requestId ? { request_id: requestId } : {}),
+                  }).catch(() => undefined).finally(() => void recovery.refresh());
+                }} />
               <div ref={messagesEndRef} />
 
               {/* Scroll to bottom arrow */}

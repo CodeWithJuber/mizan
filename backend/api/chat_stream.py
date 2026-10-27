@@ -49,6 +49,7 @@ class ChatRunLease:
     producer: asyncio.Task | None = None
     transport_finished: bool = False
     history_saved: bool | None = None
+    stop_requested: bool = False
 
     def update(self, *, status: str | None = None, phase: str | None = None) -> None:
         if status is not None:
@@ -294,10 +295,16 @@ class ChatEventChannel:
         self.request_id = request_id
         self.sequence = 0
         self.closed = False
+        # The reader went away (a phone switching networks, a locked screen, a
+        # restarting proxy) or stopped reading. The run is not tied to it: it
+        # finishes and saves its answer, which the app reads from history.
+        self.detached = False
 
     async def emit(self, kind: str, **data: Any) -> None:
         if self.closed:
             raise StreamDeliveryError("Chat reader disconnected")
+        if self.detached:
+            return
         payload = {
             **data,
             "type": kind,
@@ -319,8 +326,11 @@ class ChatEventChannel:
         frame = f"id: {self.sequence}\nevent: {kind}\ndata: {encoded}\n\n"
         try:
             await asyncio.wait_for(self.queue.put(frame), timeout=SEND_TIMEOUT_SECONDS)
-        except TimeoutError as exc:
-            raise StreamDeliveryError("Chat reader is too slow") from exc
+        except TimeoutError:
+            self.detach()  # a stalled reader no longer holds up the run
+
+    def detach(self) -> None:
+        self.detached = True
 
     def close(self) -> None:
         self.closed = True

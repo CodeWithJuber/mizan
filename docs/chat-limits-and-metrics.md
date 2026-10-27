@@ -61,12 +61,27 @@ visibly reasoning Claude model is not cut off as stalled.
 A local timeout closes the stream where supported; it cannot establish whether
 the upstream provider stopped or charged for its work.
 
-A stream that closes before a completion or error event is incomplete. The chat
-keeps the received text and a visible error notice instead of treating the close
-as a user Stop. It never automatically repeats an uncertain POST. Check history
-before retrying: the server may have completed work after the connection failed.
-An explicit Stop remains a separate local action; a cancelled history receipt
-alone does not prove that the user pressed Stop.
+**A dropped connection does not stop the run.** Phones switch networks, lock
+their screens and pause background tabs, and a proxy may restart. The run
+belongs to the server, not to the connection: when the reader disconnects, or
+stops reading for `SEND_TIMEOUT_SECONDS`, the server stops sending to it and the
+run goes on to finish and save its answer, within `MIZAN_CHAT_RUN_SECONDS`. The
+run-state endpoint reports it as active until then; the app polls it and then
+reads the saved answer from history. Only the Stop button cancels a run:
+`POST /api/chat/{session_id}/stop` (optionally with the `request_id` it names)
+cancels the owner's active run, saves what was produced, and records the reason
+`user_stopped`. While a recovered run is active, the status banner offers
+**Stop this run**.
+
+A stream that closes before a completion or error event is incomplete on that
+connection. The chat keeps the received text and a visible notice, and never
+automatically repeats an uncertain POST: it waits for the server's run and then
+reads history.
+
+After a deploy, a browser tab opened earlier still runs the old app. When it
+first opens a page whose code file the new build no longer has, Vite reports
+`vite:preloadError` and the tab reloads once to get the new build
+(`frontend/src/utils/staleBuild.ts`), instead of showing "Something went wrong".
 
 The delivery deadline applies to the actual ASGI network write. With the outer
 transport guard active, the response does not apply another network deadline to
