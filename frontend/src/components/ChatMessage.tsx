@@ -885,6 +885,9 @@ export function ChatMessageBubble({
             {/* Perception card */}
             {msg.perception && <PerceptionCard perception={msg.perception} />}
 
+            {/* Pictures MIZAN made for this answer (Shahid's screenshot) */}
+            <ChatImages images={msg.images} align="start" />
+
             {/* Model transparency: observed model + usage + cost (workstreams C/E) */}
             {msg.stopped && (
               <p role="status" className="text-xs text-gray-500 mt-2">

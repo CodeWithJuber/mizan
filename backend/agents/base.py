@@ -962,6 +962,10 @@ class BaseAgent:
 
         if allows_user_hf_tool(tool_name, self.skill_registry, native_tools=self.tools):
             return True
+        from skills.builtin.shahid_browser import allows_user_shahid_tool
+
+        if allows_user_shahid_tool(tool_name, self.skill_registry, native_tools=self.tools):
+            return True
         if tool_name.startswith("mcp__"):
             # Only the signed-in user's own connector tools, never another source.
             from connectors.tools import is_user_tool
@@ -2230,6 +2234,10 @@ class BaseAgent:
             }
         # Izn in an interactive chat: plan mode refuses changes; other modes
         # ask the user (through the live chat) before acting.
+        from security.approvals import ALWAYS_ASK_TOOLS
+
+        if approvals is None and tool_name in ALWAYS_ASK_TOOLS:
+            return {"error": "This sends something to a site, and no one is here to approve it"}
         if approvals is not None:
             read_only = self._read_only_hint(tool_name)
             if approvals.blocks(tool_name, read_only):

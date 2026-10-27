@@ -45,7 +45,7 @@ import { runChatRequest } from "./utils/chatRequest.ts";
 import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "./utils/chatRecovery.ts";
 import { useChatRecovery } from "./hooks/useChatRecovery.ts";
 import { ChatRunStatus } from "./components/ChatRunStatus.tsx";
-import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
+import { keptImages, chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
 import { checkLine, isReceipt, removedLine } from "./utils/mahw.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import AgentActivityView, { type ApprovalDecision } from "./components/AgentActivity";
@@ -988,6 +988,7 @@ function AppInner() {
             activity: hasActivity(activityRef.current) ? activityRef.current : undefined,
             requestId: typeof data.request_id === "string" ? data.request_id : undefined,
             messageId: typeof data.message_id === "string" ? data.message_id : undefined,
+            images: keptImages(data.images),
             meta: usageMeta,
           };
           if (appendToLastRef.current) {

@@ -819,6 +819,27 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने {files} नहीं लिखीं: आपके अनुरोध में इनका नाम नहीं था, और पढ़ी गई एक फ़ाइल AI को आदेश देने की कोशिश कर रही थी।",
         "ar": "لم يكتب ميزان {files}: لم يذكرها طلبك، وحاول ملف قرأه أن يوجّه الذكاء الاصطناعي.",
     },
+    "browse_held": {
+        "en": "Nothing was sent to the site: it wanted to send {requests}, and that needs your Allow.",
+        "hi-latn": "Site ko kuch nahi bheja gaya: woh {requests} bhejna chahti thi, aur uske liye aapki ijazat chahiye.",
+        "ur": "سائٹ کو کچھ نہیں بھیجا گیا: وہ {requests} بھیجنا چاہتی تھی، اور اس کے لیے آپ کی اجازت چاہیے۔",
+        "hi": "साइट को कुछ नहीं भेजा गया: वह {requests} भेजना चाहती थी, और उसके लिए आपकी इजाज़त चाहिए।",
+        "ar": "لم يُرسَل شيء إلى الموقع: أراد إرسال {requests}، وهذا يحتاج إلى إذنك.",
+    },
+    "browse_witness": {
+        "en": "MIZAN's browser took {steps} steps on {pages} page(s); each step's address and fingerprints are in your signed receipts.",
+        "hi-latn": "MIZAN ke browser ne {pages} page par {steps} kadam liye; har kadam ka pata aur fingerprint aapki signed receipts mein hai.",
+        "ur": "میزان کے براؤزر نے {pages} صفحات پر {steps} قدم اٹھائے؛ ہر قدم کا پتا اور فنگرپرنٹ آپ کی دستخط شدہ رسیدوں میں ہے۔",
+        "hi": "मीज़ान के ब्राउज़र ने {pages} पेज पर {steps} क़दम लिए; हर क़दम का पता और फ़िंगरप्रिंट आपकी साइन की हुई रसीदों में है।",
+        "ar": "اتخذ متصفح ميزان {steps} خطوات في {pages} صفحة؛ عنوان كل خطوة وبصمتها في إيصالاتك الموقّعة.",
+    },
+    "browse_sent": {
+        "en": "It sent only what you allowed.",
+        "hi-latn": "Usne sirf wahi bheja jiski aapne ijazat di.",
+        "ur": "اس نے صرف وہی بھیجا جس کی آپ نے اجازت دی۔",
+        "hi": "उसने सिर्फ़ वही भेजा जिसकी आपने इजाज़त दी।",
+        "ar": "لم يرسل إلا ما أذنتَ به.",
+    },
     "page_failed": {
         "en": "MIZAN could not read that page: {reason}",
         "hi-latn": "MIZAN woh page nahi padh saka: {reason}",

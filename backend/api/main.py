@@ -2084,6 +2084,12 @@ async def stream_chat(
                 return
             # Save before the terminal event: a disconnected browser can read
             # the final response and exact observed usage without resubmitting.
+            # Pictures MIZAN made for the answer (a browser screenshot), by kept id.
+            made = [
+                {"sha": str(item["sha"]), "media_type": str(item.get("media_type", "image/png"))}
+                for item in result.get("images") or []
+                if isinstance(item, dict) and item.get("sha")
+            ][:4]
             await save_assistant(
                 final,
                 {
@@ -2092,6 +2098,7 @@ async def stream_chat(
                     "status": "complete",
                     "usage": result.get("usage", {}),
                     **chat_completion_receipt(result),
+                    **({"images": made} if made else {}),
                 },
             )
             session["history"].append({"role": "assistant", "content": final})
@@ -2122,6 +2129,7 @@ async def stream_chat(
                 "chat_complete",
                 **understanding_kw,
                 response=final,
+                images=made,
                 usage=result.get("usage", {}),
                 **chat_completion_receipt(result),
                 agent=agent.name if agent else None,

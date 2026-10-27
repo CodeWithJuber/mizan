@@ -405,6 +405,23 @@ def _web_read(_intent: str, message: str, language: str) -> Understanding | None
     return Understanding("web_read", language, 0.0, {"url": url[0].rstrip(").,;"), "urls": urls})
 
 
+def _browse(_intent: str, message: str, language: str) -> Understanding | None:
+    """Use a page in MIZAN's browser sandbox (Shahid): the sites are the hosts of
+    the links in the user's own words, never of a link inside pasted text."""
+    own = _own_words(message)
+    urls = list(dict.fromkeys(found.rstrip(").,;") for found in _URL.findall(own)))[:4]
+    if not urls:
+        return None
+    from . import shahid
+
+    origins = shahid.origins_from(urls)
+    if not origins or not shahid.available():
+        return None
+    return Understanding(
+        "browse", language, 0.0, {"url": shahid.https(urls[0]), "urls": urls, "origins": origins}
+    )
+
+
 def _sequence(message: str) -> dict | None:
     """The terms a sequence question gives: with one missing inside it, the
     known terms at their positions; otherwise the run of numbers."""
@@ -469,6 +486,7 @@ _BUILDERS = {
     ),
     "hf_hub": _with("hf_hub", hub_request),
     "web_read": _web_read,
+    "browse": _browse,
     "build_and_run": _with(
         "build_and_run",
         lambda m: {
@@ -552,6 +570,7 @@ FAMILIES = {
     "sequence": ("silsila", "silsila_follow"),
     "code": ("run_code", "build_and_run", "run_file", "run_follow"),
     "make": ("build_project", "edit_project", "project_task"),
+    "page": ("web_read", "browse"),
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
 # Recipes whose answer is the same whatever the message says.

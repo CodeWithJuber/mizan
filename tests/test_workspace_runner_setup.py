@@ -127,6 +127,31 @@ def test_override_exposes_only_the_dedicated_socket_and_content_pinned_images():
         )
 
 
+def test_the_browser_sandbox_is_optional_and_content_pinned():
+    without = setup.workspace_override(
+        1002, 1002, "t" * 64, runtime_image=IMAGE, runner_image=RUNNER_IMAGE
+    )
+    assert (
+        "MIZAN_WORKSPACE_BROWSER_IMAGE"
+        not in without["services"]["workspace-runner"]["environment"]
+    )
+    browser = "sha256:" + "b" * 64
+    configured = setup.workspace_override(
+        1002, 1002, "t" * 64, runtime_image=IMAGE, runner_image=RUNNER_IMAGE, browser_image=browser
+    )
+    runner = configured["services"]["workspace-runner"]
+    assert runner["environment"]["MIZAN_WORKSPACE_BROWSER_IMAGE"] == browser
+    with pytest.raises(setup.SetupError, match="content IDs"):
+        setup.workspace_override(
+            1002,
+            1002,
+            "t" * 64,
+            runtime_image=IMAGE,
+            runner_image=RUNNER_IMAGE,
+            browser_image="workspace-browser:latest",
+        )
+
+
 def test_research_override_is_optional_and_changes_only_the_backend_environment():
     original = setup.workspace_override(
         1002, 1002, "t" * 64, runtime_image=IMAGE, runner_image=RUNNER_IMAGE

@@ -364,12 +364,14 @@ def workspace_override(
     runtime_image: str,
     runner_image: str,
     research_dir: str | None = None,
+    browser_image: str | None = None,
 ) -> dict:
     validate_research_option(research_dir)
     require(uid >= 1000 and gid > 0, "Worker must use an unprivileged service account")
     require(bool(re.fullmatch(r"[A-Za-z0-9_-]{64}", token)), "Invalid managed runner token")
+    pinned = (runtime_image, runner_image, *((browser_image,) if browser_image else ()))
     require(
-        all(re.fullmatch(r"sha256:[a-f0-9]{64}", image) for image in (runtime_image, runner_image)),
+        all(re.fullmatch(r"sha256:[a-f0-9]{64}", image) for image in pinned),
         "Worker images must be pinned to locally pulled content IDs",
     )
     return {
@@ -392,6 +394,8 @@ def workspace_override(
                     "DOCKER_HOST": "unix:///var/run/docker.sock",
                     "MIZAN_WORKSPACE_RUNNER_TOKEN": token,
                     "MIZAN_WORKSPACE_RUNTIME_IMAGE": runtime_image,
+                    # Shahid, MIZAN's browser sandbox, when its image was pulled.
+                    **({"MIZAN_WORKSPACE_BROWSER_IMAGE": browser_image} if browser_image else {}),
                 },
                 "volumes": [
                     {
@@ -995,7 +999,8 @@ class Installer:
                 env=env,
             )
             images = self.state.setdefault("images", {})
-            for role, daemon in (("runtime", self.worker), ("runner", DOCKER)):
+            roles = (("runtime", self.worker), ("runner", DOCKER), ("browser", self.worker))
+            for role, daemon in roles:
                 source = f"ghcr.io/{REPOSITORY}/workspace-{role}:{self.sha}"
                 previous = images.get(role)
                 if previous:
@@ -1006,12 +1011,22 @@ class Installer:
                     )
                     if present.returncode == 0:
                         continue
-                self.run_command(
-                    [*daemon, "pull", source],
-                    stage=f"Pull tested workspace {role} image",
-                    env=env,
-                    timeout=600,
-                )
+                try:
+                    pulled = self.run_command(
+                        [*daemon, "pull", source],
+                        stage=f"Pull tested workspace {role} image",
+                        env=env,
+                        timeout=900 if role == "browser" else 600,
+                        check=role != "browser",
+                    )
+                except SetupError:
+                    if role != "browser":
+                        raise
+                    pulled = subprocess.CompletedProcess([], 1, "", "")
+                if pulled.returncode != 0:
+                    # Optional: without its image MIZAN reads pages but has no browser.
+                    report("Workspace runner: browser image not available; Shahid stays off.")
+                    continue
                 image = json.loads(
                     self.run_command(
                         [*daemon, "image", "inspect", source],
@@ -1481,6 +1496,7 @@ class Installer:
             runtime_image=self.state["images"]["runtime"]["id"],
             runner_image=self.state["images"]["runner"]["id"],
             research_dir=self.research_dir,
+            browser_image=(self.state["images"].get("browser") or {}).get("id"),
         )
         content = compose_document(override)
         self.state["pending_override_sha256"] = hashlib.sha256(content.encode()).hexdigest()
