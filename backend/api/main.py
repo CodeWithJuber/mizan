@@ -9,6 +9,7 @@ Secured with Wali Guardian, Izn Permissions, and Input Validation
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -417,6 +418,23 @@ async def lifespan(app: FastAPI):
         )
         telegram_task = asyncio.create_task(_telegram_bot.run(telegram_stop))
 
+    # Bab: email, when MIZAN's own mailbox is configured (IMAP polling + SMTP).
+    mail_task = None
+    if os.getenv("MIZAN_EMAIL", "on").lower() not in {"off", "0", "false", "no"}:
+        from gateway import mail as bab_mail
+
+        mail_config = bab_mail.MailConfig.from_env()
+        if mail_config is not None:
+            global _mail_bot
+            from gateway import store as bab_mail_store
+
+            _mail_bot = bab_mail.MailBot(
+                mail_config,
+                bab_mail_store.store(),
+                functools.partial(_bab_turn, channel="email"),
+            )
+            mail_task = asyncio.create_task(_mail_bot.run(telegram_stop))
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -435,8 +453,10 @@ async def lifespan(app: FastAPI):
     self_review_task.cancel()
     watch_task.cancel()
     sakk_task.cancel()
+    telegram_stop.set()
+    if mail_task is not None:
+        mail_task.cancel()
     if telegram_task is not None and _telegram_bot is not None:
-        telegram_stop.set()
         telegram_task.cancel()
         await _telegram_bot.close()
     await learning_service.stop()
@@ -3398,12 +3418,15 @@ async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
 # === BAB (باب): the user's own MIZAN from outside apps (Telegram) ===
 
 _telegram_bot = None  # gateway.telegram.TelegramBot while the poller runs
+_mail_bot = None  # gateway.mail.MailBot while MIZAN's mailbox is read
 
 
-async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, list[dict]]:
+async def _bab_turn(
+    owner_id: str, session_id: str, text: str, channel: str = "telegram"
+) -> tuple[str, list[dict]]:
     """One message from a linked outside account: the same turn as the web
     chat, as its owner, saved to their chat. Actions that need a person are
-    held and come back as buttons."""
+    held and come back as buttons (Telegram) or a pointer to MIZAN (email)."""
     from security import approvals
     from security.approvals import collecting_held
     from tadbir import waqt
@@ -3413,7 +3436,7 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
     if user is None or template is None:
         return "MIZAN cannot answer right now: no agent is running.", []
     await memory.authorize_session(session_id, owner_id, create=True)
-    await memory.save_message(session_id, "user", text, metadata={"channel": "telegram"})
+    await memory.save_message(session_id, "user", text, metadata={"channel": channel})
     agent = await chat_agent_for(user, template)
     session = active_sessions.setdefault(session_id, {"history": []})
     binding = bind_principal(user)
@@ -3423,7 +3446,7 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
         zone = _remembered_zone(owner_id)
         with (
             waqt.bind_timezone(zone),
-            approvals.unattended(owner_id, session_id, "telegram"),
+            approvals.unattended(owner_id, session_id, channel),
             collecting_held() as found,
         ):
             result = await agent.execute(text, context)
@@ -3434,12 +3457,12 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
         reply = str(result.get("result") or "").strip() or "—"
         metadata: dict = {
             "status": "complete",
-            "channel": "telegram",
+            "channel": channel,
             "usage": result.get("usage", {}),
         }
     else:
         failure = chat_failure_payload(result)
-        reply, metadata = failure["message"], {"status": "error", "channel": "telegram", **failure}
+        reply, metadata = failure["message"], {"status": "error", "channel": channel, **failure}
     if held:
         metadata["held"] = held
     await memory.save_message(session_id, "assistant", reply, metadata=metadata)
@@ -3723,6 +3746,48 @@ async def telegram_unlink(user: TokenPayload = Depends(require_auth)):
     from gateway import store as bab_store
 
     return {"unlinked": bab_store.store().unlink("telegram", user.user_id)}
+
+
+@app.get("/api/bab/email")
+async def email_status(user: TokenPayload = Depends(require_auth)):
+    """Whether MIZAN reads its own mailbox, its address, and whether your address is linked."""
+    from gateway import store as bab_store
+
+    bot = _mail_bot
+    link = bab_store.store().link_for_owner("email", user.user_id)
+    return {
+        "available": bool(bot is not None and bot.running),
+        "address": bot.config.address if bot is not None else "",
+        "linked": link is not None,
+        "linked_address": link["external_id"] if link else None,
+        "linked_at": link["linked"] if link else None,
+        "error": getattr(bot, "error", "") if bot is not None else "",
+    }
+
+
+@app.post("/api/bab/email/link")
+async def email_link(user: TokenPayload = Depends(require_auth)):
+    """A one-time code (10 minutes): mail "link <code>" to MIZAN from your own address."""
+    from gateway import store as bab_store
+    from gateway.store import CODE_TTL
+
+    bot = _mail_bot
+    if bot is None or not bot.running:
+        raise HTTPException(503, "MIZAN is not reading a mailbox")
+    code = bab_store.store().new_code(user.user_id, "email")
+    return {
+        "code": code,
+        "address": bot.config.address,
+        "subject": f"link {code}",
+        "expires_in": int(CODE_TTL.total_seconds()),
+    }
+
+
+@app.delete("/api/bab/email/link")
+async def email_unlink(user: TokenPayload = Depends(require_auth)):
+    from gateway import store as bab_store
+
+    return {"unlinked": bab_store.store().unlink("email", user.user_id)}
 
 
 class PlaceRequest(BaseModel):
@@ -4930,12 +4995,14 @@ async def update_settings(
 
 _CHANNEL_TOKENS = {
     "telegram": "TELEGRAM_BOT_TOKEN",
+    "email": "MIZAN_EMAIL_PASSWORD",
     "discord": "DISCORD_BOT_TOKEN",
     "whatsapp": "WHATSAPP_TOKEN",
     "slack": "SLACK_APP_TOKEN",
 }
 _CHANNEL_NAMES = {
     "telegram": "Telegram",
+    "email": "Email",
     "discord": "Discord",
     "whatsapp": "WhatsApp",
     "slack": "Slack",
@@ -4945,8 +5012,9 @@ _CHANNEL_NAMES = {
 def _channel_state(name: str) -> dict:
     """What a channel really is: MIZAN reports only what it runs.
 
-    Web chat is always on. No external channel adapter runs yet, so none is
-    reported as connected, whatever token is saved."""
+    Web chat is always on. Telegram and email are connected only while their
+    poller runs; the others are never reported as connected, whatever token
+    is saved."""
     if name == "webchat":
         return {
             "id": "webchat",
@@ -4970,6 +5038,17 @@ def _channel_state(name: str) -> dict:
             "startable": False,
             "has_token": True,
             "detail": "Running. Each user links their own Telegram account under Link Telegram.",
+        }
+    if name == "email" and _mail_bot is not None and _mail_bot.running:
+        return {
+            "id": name,
+            "type": name,
+            "name": _CHANNEL_NAMES[name],
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "has_token": True,
+            "detail": "Reading MIZAN's mailbox. Each user links their own address under Link email.",
         }
     return {
         "id": name,

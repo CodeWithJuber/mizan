@@ -37,8 +37,8 @@ POLL_SECONDS = 50
 
 # (owner, session, text) -> (reply, held actions [{id, tool, reason}])
 RunTurn = Callable[[str, str, str], Awaitable[tuple[str, list[dict]]]]
-# (owner, held id, "allow" | "deny") -> a line for the user
 # (owner, held id, allow | deny, start of the SHA-256 of the parameters shown)
+# -> a line for the user
 Decide = Callable[[str, str, str, str | None], Awaitable[str]]
 # (owner, session, audio, mime) -> the words heard; ValueError carries a line for the user
 Hear = Callable[[str, str, bytes, str], Awaitable[str]]

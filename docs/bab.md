@@ -1,4 +1,4 @@
-# Bab (باب): your own MIZAN from Telegram and on your devices
+# Bab (باب): your own MIZAN from Telegram, by email and on your devices
 
 When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It uses long polling over the Bot API (`httpx`), so no public webhook is needed. Each user links their own Telegram account. The code is in `backend/gateway/telegram.py` and `backend/gateway/store.py`.
 
@@ -38,7 +38,43 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
 | `POST /api/bab/telegram/link` | A one-time link for your account |
 | `DELETE /api/bab/telegram/link` | Unlink your account |
 
-Links, codes and the poll position live in `$MIZAN_DATA_DIR/bab.db`.
+| `GET /api/bab/email` | Whether MIZAN reads its mailbox, its address, and your linked address |
+| `POST /api/bab/email/link` | A one-time code: mail `link <code>` to MIZAN from your own address |
+| `DELETE /api/bab/email/link` | Unlink your address |
+
+Links, codes and the poll positions live in `$MIZAN_DATA_DIR/bab.db`.
+
+## Email
+
+MIZAN gets its own mailbox and answers mail from the address each user links
+(`backend/gateway/mail.py`, standard library only: IMAP over TLS, SMTP).
+
+- **Turning it on (administrator):** System settings → Channels: MIZAN's
+  address, an app password for it, the IMAP and SMTP servers, and the
+  receiving server's name as it writes it first in `Authentication-Results`
+  (Gmail: `mx.google.com`). MIZAN reads the inbox every 30 seconds,
+  read-only: nothing is marked, moved or deleted. On first start, mail
+  already there is not answered.
+- **Linking (each user):** MIZAN → Channels → **Link email** gives a one-time
+  code (10 minutes). Send a mail from your own address to MIZAN's with the
+  subject `link <code>`; MIZAN replies when it is linked.
+- **Who it answers:** only a linked address, and only when the sender is
+  proven. A From line proves nothing, so the receiving server's own
+  `Authentication-Results` header (RFC 8601; the topmost one carrying its
+  name, which a sender cannot put above it) must say `dmarc=pass` for the
+  From address's domain. Unproven, unlinked and automatic mail (RFC 3834
+  `Auto-Submitted`, `Precedence: bulk`) is ignored and never answered, so
+  nothing bounces to forged senders and two robots never answer each other.
+- **What is read:** your own words. Quoted lines (`>`, with the "On … wrote:"
+  line before them) and the signature after `-- ` are left out. An attached
+  message (`message/rfc822`) is fenced as quoted data, never as your request.
+  HTML-only mail is read as its text. Messages over 1 MB are skipped.
+- **The turn:** the same as the web chat's; the chat shows in MIZAN. The
+  answer goes back as a reply in the same thread (`In-Reply-To`,
+  `References`), marked `Auto-Submitted: auto-replied`.
+- **Actions are never allowed by email.** Mail can be forged or replayed, so
+  held actions are named in the reply with a pointer to Held actions in MIZAN,
+  where each shows exactly what it would do.
 
 ## Notifications on your devices (Web Push)
 

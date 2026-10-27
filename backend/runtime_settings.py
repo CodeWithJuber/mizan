@@ -247,6 +247,27 @@ SETTINGS: tuple[Setting, ...] = (
     # ── Channels ──
     Setting("TELEGRAM_BOT_TOKEN", "Channels", "Telegram bot token", "secret", "",
             apply="restart"),
+    Setting("MIZAN_EMAIL_ADDRESS", "Channels", "Email: MIZAN's address", "text",
+            "MIZAN's own mailbox. People mail it from their linked address and get the "
+            "answer back by mail.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_USERNAME", "Channels", "Email: sign-in name", "text",
+            "Empty means the address itself.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_PASSWORD", "Channels", "Email: password", "secret",
+            "An app password for the mailbox (never your main password).", "",
+            apply="restart"),
+    Setting("MIZAN_EMAIL_IMAP_HOST", "Channels", "Email: IMAP server", "text",
+            "For example imap.gmail.com (TLS, port 993).", "", apply="restart"),
+    Setting("MIZAN_EMAIL_IMAP_PORT", "Channels", "Email: IMAP port", "int", "", "993",
+            minimum=1, maximum=65535, apply="restart"),
+    Setting("MIZAN_EMAIL_SMTP_HOST", "Channels", "Email: SMTP server", "text",
+            "For example smtp.gmail.com.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_SMTP_PORT", "Channels", "Email: SMTP port", "int",
+            "465 (TLS) or 587 (STARTTLS).", "465", minimum=1, maximum=65535,
+            apply="restart"),
+    Setting("MIZAN_EMAIL_AUTHSERV", "Channels", "Email: receiving server's name", "text",
+            "The name your mail server writes first in Authentication-Results (Gmail: "
+            "mx.google.com). Mail is answered only when that header says dmarc=pass for the "
+            "sender's domain.", "", apply="restart"),
     Setting("DISCORD_BOT_TOKEN", "Channels", "Discord bot token", "secret", "",
             apply="restart"),
     Setting("SLACK_APP_TOKEN", "Channels", "Slack app token", "secret", "", apply="restart"),
