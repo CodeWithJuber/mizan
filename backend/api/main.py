@@ -3124,11 +3124,31 @@ async def _bab_decide(owner_id: str, held_id: str, decision: str) -> str:
 
 
 async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
-    """Send a notice to the owner's linked Telegram, with buttons for held actions."""
+    """Send a notice to the owner's devices (Web Push) and linked Telegram,
+    with buttons for held actions there."""
+    from gateway import push
+    from gateway import store as bab_store
+
+    try:
+        preferences = await memory.get_chat_preferences(owner_id)
+        preview = any(
+            item["key"] == "push_preview" and str(item["value"]).lower() == "on"
+            for item in preferences
+        )
+        await push.notify(
+            bab_store.store(),
+            owner_id,
+            "MIZAN",
+            text,
+            f"/?session={muraqabah_session(owner_id)}",
+            preview=preview,
+            tag="muraqabah",
+        )
+    except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
+        logger.warning("Push notice not sent: %s", exc)
     bot = _telegram_bot
     if bot is None or not bot.running:
         return
-    from gateway import store as bab_store
     from gateway.telegram import held_buttons
 
     link = bab_store.store().link_for_owner("telegram", owner_id)
@@ -3138,6 +3158,71 @@ async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
         await bot.send(link["chat_id"], text, held_buttons(metadata.get("held") or []))
     except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
         logger.warning("Telegram notice not sent: %s", exc)
+
+
+class PushSubscription(BaseModel):
+    endpoint: str = Field(..., min_length=10, max_length=2000)
+    keys: dict[str, str] = Field(default_factory=dict)
+
+
+@app.get("/api/bab/push/key")
+async def push_key(user: TokenPayload = Depends(require_auth)):
+    """MIZAN's public key for this browser to subscribe with, and its devices."""
+    from gateway import push
+    from gateway import store as bab_store
+
+    store = bab_store.store()
+    return {
+        "public_key": await asyncio.to_thread(push.public_key, store),
+        "devices": len(push.subscriptions(store, user.user_id)),
+    }
+
+
+@app.post("/api/bab/push/subscription")
+async def push_subscribe(body: PushSubscription, user: TokenPayload = Depends(require_auth)):
+    """Turn notifications on for this browser (a known push service only)."""
+    from gateway import push
+    from gateway import store as bab_store
+
+    try:
+        push.subscribe(
+            bab_store.store(),
+            user.user_id,
+            body.endpoint,
+            body.keys.get("p256dh", ""),
+            body.keys.get("auth", ""),
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, f"Subscription refused: {exc}") from None
+    return {"subscribed": True}
+
+
+@app.delete("/api/bab/push/subscription")
+async def push_unsubscribe(
+    endpoint: str = Query(..., min_length=10, max_length=2000),
+    user: TokenPayload = Depends(require_auth),
+):
+    from gateway import push
+    from gateway import store as bab_store
+
+    return {"removed": push.unsubscribe(bab_store.store(), user.user_id, endpoint)}
+
+
+@app.post("/api/bab/push/test")
+async def push_test(user: TokenPayload = Depends(require_auth)):
+    """Send yourself a test notice on every device you turned notifications on for."""
+    from gateway import push
+    from gateway import store as bab_store
+
+    return await push.notify(
+        bab_store.store(),
+        user.user_id,
+        "MIZAN",
+        "Notifications work. Assalamu alaikum!",
+        "/",
+        preview=True,
+        tag="test",
+    )
 
 
 @app.get("/api/bab/telegram")

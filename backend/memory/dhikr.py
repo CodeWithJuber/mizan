@@ -52,6 +52,8 @@ CHAT_PREFERENCE_LIMITS = {
     "muhasaba": 8,
     # "off" stops MIZAN from bringing your words from other chats into a reply.
     "cross_chat_recall": 8,
+    # "on" shows a notice's text on the lock screen (default: only "a new notice").
+    "push_preview": 8,
 }
 
 
