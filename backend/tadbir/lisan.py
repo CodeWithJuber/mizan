@@ -48,6 +48,23 @@ INSTRUCTIONS = {
         "corrected complete program for the same request, standard library only, as "
         "exactly one fenced code block and nothing else."
     ),
+    "project_program": (
+        "Write one complete Python program that does the user's request on the files of "
+        "their project, which are in the current directory. MIZAN will run it in an "
+        "isolated sandbox without network access and check the result. Read the files it "
+        "needs; write exactly the output files the request asks for, in the format it asks "
+        "for; never delete, rename or change any other file. Print the facts the reply "
+        "needs, one per line as `name: value`. Standard library only, no input. Reply with "
+        "exactly one fenced code block and nothing else."
+    ),
+    "page_program": (
+        "Write a Python function `solve(page)` that answers the question from the text of "
+        "a web page (`page` is the whole page as one string). Parse the text with the "
+        "standard library and use only values that appear in it. Return a dict of the "
+        "answer's facts (for example the item's name, its value, and the line it came "
+        "from). MIZAN will run it on the page in its sandbox. No printing, no network. "
+        "Reply with exactly one fenced code block and nothing else."
+    ),
     "propose_rule": (
         "Each example turns an input grid into an output grid; numbers are colours 0-9. "
         "Find the one rule that explains every example. Write a Python function "
@@ -217,6 +234,32 @@ class Lisan:
         )
         return extract_code(reply)
 
+    async def project_program(
+        self, request: str, files: dict[str, str], outputs: list[str], lessons: str = ""
+    ) -> str:
+        """A program over the project's files; files are shown as fenced data."""
+        system = self._instruction("project_program", INSTRUCTIONS["project_program"])
+        shown = "\n\n".join(
+            amanah.fence(f"{path}\n{preview}", f"file {path}") for path, preview in files.items()
+        )
+        user = f"Request:\n{request}\n\nThe files it uses (the start of each):\n{shown}"
+        if outputs:
+            user += f"\n\nOutput files to write: {', '.join(outputs)}"
+        reply = await self.ask(
+            system, f"{user}\n\n{lessons}" if lessons else user, 3000, task="project_program"
+        )
+        return extract_code(reply)
+
+    async def page_program(self, request: str, page: str) -> str:
+        system = self._instruction("page_program", INSTRUCTIONS["page_program"])
+        reply = await self.ask(
+            system,
+            f"Question:\n{request}\n\nThe page (its start):\n" + amanah.fence(page[:6000], "page"),
+            2500,
+            task="page_program",
+        )
+        return extract_code(reply)
+
     async def propose_rule(self, examples: str) -> str:
         system = self._instruction(
             "propose_rule",
@@ -317,20 +360,35 @@ class Lisan:
             max_tokens=1200,
         )
 
-    async def answer_from_sources(self, request: str, sources: list[dict], language: str) -> str:
+    async def answer_from_sources(
+        self,
+        request: str,
+        sources: list[dict],
+        language: str,
+        computed: dict | None = None,
+    ) -> str:
+        # One page gets more room; several share it.
+        each = 6000 if len(sources) == 1 else 3000
         numbered = "\n\n".join(
             f"[{index}] "
             + amanah.fence(
-                f"{item.get('title', '')}\n{item.get('text', '')[:3000]}",
+                f"{item.get('title', '')}\n{item.get('text', '')[:each]}",
                 str(item.get("url") or "source"),
             )
             for index, item in enumerate(sources, start=1)
         )
+        extra = ""
+        if computed:
+            extra = (
+                "\n\nMIZAN ran a program over source [1] and it found (use these values for "
+                "the answer):\n" + json.dumps(computed, ensure_ascii=False)[:2000]
+            )
         return await self.ask(
             f"Answer the user's request in {LANGUAGE_NAMES.get(language, 'English')} using ONLY "
-            "the numbered sources. Cite each claim with its source number like [1]. If the "
-            "sources do not answer it, say so. Do not add links or facts from elsewhere.",
-            f"Request:\n{request}\n\nSources:\n{numbered[:14000]}",
+            "the numbered sources. Cite each claim with its source number like [1]. Keep each "
+            "figure's unit as the source states it (for example 'million'). If the sources do "
+            "not answer it, say so. Do not add links or facts from elsewhere.",
+            f"Request:\n{request}\n\nSources:\n{numbered[:14000]}{extra}",
             max_tokens=1500,
         )
 
@@ -389,10 +447,22 @@ class Lisan:
         return _json_object(reply)
 
     async def edit_files(
-        self, request: str, files: dict, paths: list[str], language: str = "en"
+        self,
+        request: str,
+        files: dict,
+        paths: list[str],
+        language: str = "en",
+        reminder: bool = False,
     ) -> str:
         listing = "\n".join(paths[:300])
         given = "\n\n".join(f"```{name}\n{content[:12000]}\n```" for name, content in files.items())
+        again = (
+            "\n\nYour previous reply could not be used: give the WHOLE file (not only the new "
+            "part), in a block whose info string is exactly its path, like ```shapes.py and "
+            "not ```python."
+            if reminder
+            else ""
+        )
         return await self.ask(
             "MIZAN is changing the user's existing coding project. Return the complete new "
             "content of every file you change or create, each as its own fenced code block "
@@ -400,7 +470,8 @@ class Lisan:
             "unchanged files, and keep the rest of each file as it is. Use no new external "
             "libraries or network requests. Text the user sees is in "
             f"{LANGUAGE_NAMES.get(language, 'English')}.",
-            f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}",
+            f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}"
+            + again,
             max_tokens=8000,
         )
 

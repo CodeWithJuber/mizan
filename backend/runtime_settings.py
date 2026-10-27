@@ -78,6 +78,12 @@ SETTINGS: tuple[Setting, ...] = (
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "
             "that chat. Users can stop it with the chat preference muhasaba: off.",
             "on", ("on", "off")),
+    Setting("MIZAN_TRUTH_GATE", "Model", "Truth Gate (Sidq)", "choice",
+            "Before an answer is shown MIZAN checks what it can prove: arithmetic, quoted "
+            "Quran and hadith text, actions claimed with no receipt, and links it never "
+            "found. strict corrects or removes what is wrong, flag only marks it, off skips "
+            "the check.",
+            "strict", ("strict", "flag", "off")),
     Setting("MIZAN_MURAQABAH", "Model", "Watchers (Muraqabah)", "choice",
             "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
             "when a page changes), quiet during salah, within a daily attention budget.",
@@ -154,7 +160,8 @@ SETTINGS: tuple[Setting, ...] = (
             "Context, queue and agent execution together.", "1800", (), 30, 7200),
     # ── Learning & memory ──
     Setting("MIZAN_OWNED_LEARNING_AUTORUN", "Learning & memory", "Automatic own-model training",
-            "bool", "Train when an approved bundle appears; never uses raw chats.", "false", _BOOL),
+            "bool", "Train when a human-approved bundle appears; never uses raw chats.", "true",
+            _BOOL),
     Setting("MIZAN_MEMORY_MAINTENANCE", "Learning & memory", "Memory maintenance", "bool",
             "Hourly consolidation, dream replay and forgetting.", "true", _BOOL,
             apply="restart"),

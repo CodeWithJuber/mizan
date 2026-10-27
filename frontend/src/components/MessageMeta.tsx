@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MessageUsageMeta } from "../types";
 import { amanahHeadline, isAmanah, kindLabels } from "../utils/amanah.ts";
 import { isIsnad } from "../utils/isnad.ts";
+import { isSidq, sidqHeadline, sidqLines } from "../utils/sidq.ts";
 import IsnadView from "./IsnadView";
 import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
 export { fmtCost, fmtLatency, fmtTokens } from "../utils/responseMetrics.ts";
@@ -25,7 +26,7 @@ interface MessageMetaProps {
  */
 export function MessageMeta({ meta }: MessageMetaProps) {
   const [open, setOpen] = useState(false);
-  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah)) return null;
+  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah) && !isSidq(meta?.sidq)) return null;
   const m = meta as MessageUsageMeta;
 
   const { parts, explanations } = usageMetrics(m);
@@ -64,6 +65,23 @@ export function MessageMeta({ meta }: MessageMetaProps) {
         </button>
       )}
       {isIsnad(m.isnad) && <IsnadView isnad={m.isnad} />}
+      {isSidq(m.sidq) && (
+        <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <summary className="cursor-pointer select-none inline-flex items-center gap-1">
+            <span aria-hidden="true">⚖</span>
+            <span>{sidqHeadline(m.sidq)}</span>
+          </summary>
+          <p className="mt-1 leading-relaxed">
+            Before showing this answer MIZAN checked what it could prove: arithmetic, quoted Quran and hadith
+            text, actions claimed without a receipt, and links.
+          </p>
+          <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+            {sidqLines(m.sidq).map((line) => (
+              <li key={line} className="wrap-break-word">{line}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       {isAmanah(m.amanah) && (
         <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
           <summary className="cursor-pointer select-none inline-flex items-center gap-1">

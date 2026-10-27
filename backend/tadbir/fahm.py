@@ -135,6 +135,64 @@ _COMPUTE_VERB = re.compile(
 )
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+# A question about a page the user names ("According to <url>, what was …?").
+_ASKS = re.compile(
+    r"\?|\baccording\s+to\b|\b(?:what|which|who|when|where|how\s+(?:many|much))\b|"
+    r"\b(?:find|tell\s+me|cite|give\s+me|kya|kitna|kitne|batao)\b",
+    re.IGNORECASE,
+)
+# A file in the selected project, named in the user's words (`sales.csv`, app.log).
+_FILE_NAME = re.compile(
+    r"(?<![\w/.-])`?([A-Za-z0-9_][\w./-]{0,120}\.(?:py|js|mjs|cjs|sh|csv|tsv|json|jsonl|log|txt|"
+    r"md|xml|ya?ml|ini|toml|html|css))`?(?![\w-])",
+    re.IGNORECASE,
+)
+_DATA_FILE = re.compile(r"\.(?:csv|tsv|json|jsonl|log|xml)$", re.IGNORECASE)
+_RUNNABLE = re.compile(r"\.(?:py|js|mjs|cjs|sh)$", re.IGNORECASE)
+# Work over data: compute, count, sort, filter, total… ("hisab karo", "gino").
+_DATA_VERB = re.compile(
+    r"\b(?:compute|calculate|count|counts|total|totals|sum|average|mean|median|sort|sorted|"
+    r"group|aggregate|work\s+out|tally|filter|which|how\s+many|extract|parse|convert|merge|"
+    r"dedupe|deduplicate|summari[sz]e\s+the\s+(?:numbers|data)|hisab|gino|ginti|nikalo)\b",
+    re.IGNORECASE,
+)
+
+
+def named_files(message: str) -> list[str]:
+    """File names the user wrote in their own words (links removed), in order."""
+    own = _URL.sub(" ", _own_words(message))
+    seen: list[str] = []
+    for name in _FILE_NAME.findall(own):
+        name = name.strip("`./")
+        if name and name not in seen:
+            seen.append(name)
+    return seen[:12]
+
+
+def _project_request(message: str, asks_run: bool) -> Understanding | None:
+    """Work on the selected project's files: run a file, or process its data."""
+    if not _selected_project():
+        return None
+    names = named_files(message)
+    if not names:
+        return None
+    language = detect_language(message)
+    runnable = [name for name in names if _RUNNABLE.search(name)]
+    if asks_run and runnable and not _BUILD.search(message) and not project.change_request(message):
+        return Understanding("run_file", language, 0.85, {"path": runnable[0]})
+    if any(_DATA_FILE.search(name) for name in names) and _DATA_VERB.search(message):
+        return Understanding("project_task", language, 0.8, {"request": message, "files": names})
+    if _WRITE_FROM.search(message) and len(names) >= 2:
+        # "Summarise notes.txt into summary.md": language work Lisan writes into a file.
+        return Understanding("edit_project", language, 0.75, {"request": message})
+    return None
+
+
+_WRITE_FROM = re.compile(
+    r"\b(?:summari[sz]e|translate|rewrite|reformat|document|describe|outline|condense|"
+    r"khulasa|tarjuma)\b",
+    re.IGNORECASE,
+)
 
 
 def _own_words(message: str) -> str:
@@ -301,6 +359,10 @@ def understand(text: str) -> Understanding:
             "run_code", language, 0.9, {"code": code, "code_language": code_language}
         )
 
+    on_project = _project_request(message, asks_run)
+    if on_project is not None:
+        return on_project
+
     expression = calc.find_expression(message)
     if expression:
         wants_python = asks_run and re.search(_CODE_WORDS, message, re.IGNORECASE)
@@ -327,9 +389,18 @@ def understand(text: str) -> Understanding:
 
     # Only a link in the user's own words is read; a link inside pasted text or
     # a Markdown image is material (and may be a way to send data out).
-    url = _URL.search(_own_words(message))
-    if url and (_READ.search(message) or len(message) - len(url[0]) < 25):
-        return Understanding("web_read", language, 0.85, {"url": url[0].rstrip(").,;")})
+    own = _own_words(message)
+    url = _URL.search(own)
+    asks_about_page = (
+        _ASKS.search(message) and project.detect(message) is None and not _BUILD.search(message)
+    )
+    if url and (_READ.search(message) or asks_about_page or len(message) - len(url[0]) < 25):
+        # Every link in the user's own words, in order: when one page is gone,
+        # MIZAN reads the next one the user gave.
+        urls = list(dict.fromkeys(found.rstrip(").,;") for found in _URL.findall(own)))[:4]
+        return Understanding(
+            "web_read", language, 0.85, {"url": url[0].rstrip(").,;"), "urls": urls}
+        )
 
     if _BUILD.search(message) and asks_run:
         code_language = (
@@ -362,6 +433,27 @@ def understand(text: str) -> Understanding:
             return Understanding("web_search", language, 0.75, {"query": message.strip()[:300]})
 
     return Understanding("converse", language, 0.0)
+
+
+_NO_TOPIC = re.compile(
+    r"\b(?:pahle|pehle|abhi|please|plz|it|this|that|isko|ise|usko|use|internet|web|online|"
+    r"google|par|pe|se|me|mein|karo|kro|kar|do|for|now|jaldi|first|then|again|phir|dobara|"
+    r"karke|dekho|bhai|yaar|tum|aap|zara|na|toh|bhi|ab|you|can|could|the|on|and|aur|ek|baar)\b",
+    re.IGNORECASE,
+)
+
+
+_SEARCH_VERB = re.compile(
+    r"\b(?:search|google|look\s+up|find\s+online|browse\s+for|khojo|dhundo|dhoondo|"
+    r"search\s+karo)\b",
+    re.IGNORECASE,
+)
+
+
+def bare_search(text: str) -> bool:
+    """A search request with no topic of its own ("Dhundo pahle", "search it")."""
+    rest = _NO_TOPIC.sub(" ", _SEARCH_VERB.sub(" ", text or ""))
+    return bool(_SEARCH_VERB.search(text or "")) and not re.search(r"[^\W\d_]{2,}", rest)
 
 
 # Clause boundaries between independent requests ("Bukhari 1 aur Surah Ikhlas").

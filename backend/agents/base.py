@@ -1804,6 +1804,38 @@ class BaseAgent:
             logger.debug("Isnad grading skipped", exc_info=True)
             return None
 
+    async def _truth_gate(self, result: dict) -> None:
+        """Sidq: correct or remove what MIZAN can prove wrong before the answer is shown."""
+        text = result.get("result")
+        if not isinstance(text, str) or not text.strip():
+            return
+        try:
+            from tadbir import fahm, sidq
+
+            ledger = (result.get("isnad") or {}).get("ledger")
+            checked, report = await sidq.gate(
+                text,
+                ledger,
+                language=fahm.detect_language(text),
+                max_citation=text.count("](http"),
+            )
+        except Exception:  # noqa: BLE001 - the gate never loses the answer
+            logger.debug("Truth Gate skipped", exc_info=True)
+            return
+        if not report:
+            return
+        result["sidq"] = report
+        changed = len(report.get("corrected", [])) + len(report.get("removed", []))
+        if changed:
+            from tadbir import sijill
+
+            sijill.note("sidq", {"detail": f"Truth Gate corrected or removed {changed} claim(s)"})
+        if checked != text:
+            result["result"] = checked
+            graded = self._isnad(checked)
+            if graded:
+                result["isnad"] = graded
+
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
         timings = getattr(self, "_execution_timings", None)
@@ -2079,6 +2111,12 @@ class BaseAgent:
             return {"error": "Tools are disabled for read-only council evaluation"}
         if _language_only.get():
             return {"error": "MIZAN performs actions itself; the language faculty has no tools"}
+        from tadbir import trace
+
+        # The AGI test's injected faults and fixed pages (bound only during a test run).
+        planted = trace.injected_fault(tool_name) or trace.fixture(tool_name, params)
+        if planted is not None:
+            return planted
         if not self._chat_tool_allowed(tool_name):
             return {"error": "Tool is not permitted in this user's selected workspace context"}
 
@@ -2683,6 +2721,8 @@ Match the requested depth and self-correct errors."""
                     graded = self._isnad(result.get("result"))
                     if graded:
                         result["isnad"] = graded
+                if result.get("success", True) and not result.get("task_verified"):
+                    await self._truth_gate(result)
                 for key in (
                     "completion_status",
                     "task_verified",
@@ -2690,6 +2730,7 @@ Match the requested depth and self-correct errors."""
                     "orchestrator",
                     "isnad",
                     "amanah",
+                    "sidq",
                 ):
                     if key in result:
                         result["usage"][key] = result[key]

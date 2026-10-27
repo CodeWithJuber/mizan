@@ -19,10 +19,14 @@ import type { ApiClient } from "../types";
 import { CompareView, type Run } from "./DebugCompare";
 import {
   BLOCK_LABELS,
+  agenticRows,
   blockRows,
+  categoryRows,
+  gameRows,
   historyPoints,
   intervalText,
   pct,
+  plainArms,
   signed,
   taskRows,
   type Report,
@@ -74,10 +78,46 @@ function Legend2() {
   );
 }
 
+function PlainArmsView({ compared }: { compared: NonNullable<ReturnType<typeof plainArms>> }) {
+  return (
+    <div className="space-y-3">
+      <div className="card p-4 text-sm whitespace-pre-wrap">{compared.prompt}</div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {compared.arms.map((arm) => (
+          <div key={arm.title} className="card p-4 space-y-2 min-w-0">
+            <h4 className="font-semibold text-sm">{arm.title}</h4>
+            {arm.checks.length > 0 && (
+              <ul className="space-y-0.5 text-xs">
+                {arm.checks.map((check) => (
+                  <li key={check.label} className={check.pass ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                    {check.pass ? "✓" : "✗"} {check.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <pre className="max-h-72 overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-xs whitespace-pre-wrap wrap-break-word">
+              {arm.text || "(no answer)"}
+            </pre>
+            {arm.final && (
+              <pre className="overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-[11px] leading-tight font-mono">{arm.final}</pre>
+            )}
+            {arm.calls.length > 0 && (
+              <div className="text-[11px] text-gray-500 wrap-break-word">Tools: {arm.calls.join(" → ")}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReportView({ run, onOpen }: { run: RunDetail; onOpen: (taskId: string) => void }) {
   const result = run.result!;
   const report = result.report;
   const rows = blockRows(report);
+  const categories = categoryRows(report);
+  const dimensions = agenticRows(report);
+  const played = gameRows(report);
   const tasks = taskRows(result.results, result.tasks);
   const hero = (arm: "base" | "mizan", title: string) => (
     <div className="card p-4">
@@ -101,6 +141,116 @@ function ReportView({ run, onOpen }: { run: RunDetail; onOpen: (taskId: string) 
           <div className="text-xs text-gray-500">mean of block pass rates · {run.model}</div>
         </div>
       </div>
+
+      {categories.length > 0 && (
+        <div className="card p-4">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <h3 className="font-semibold text-sm">Weighted index</h3>
+            <span className="text-xs text-gray-500 tabular-nums">
+              Base {pct(report.weighted?.base)} · MIZAN {pct(report.weighted?.mizan)}
+            </span>
+            <div className="ml-auto">
+              <Legend2 />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 mb-3">
+            Categories weighted like the Artificial Analysis index: agents 30%, coding 20%, reasoning 20%, general 30%
+            (re-weighted over the categories that ran).
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-xs text-gray-500 text-left">
+                  <th className="font-normal pb-2">Category</th>
+                  <th className="font-normal pb-2 w-[30%]">Base model</th>
+                  <th className="font-normal pb-2 w-[30%]">MIZAN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((row) => (
+                  <tr key={row.key} className="border-t border-gray-100 dark:border-zinc-800">
+                    <td className="py-2 pr-3">
+                      <div>{row.label}</div>
+                      <div className="text-[11px] text-gray-500">
+                        weight {Math.round(row.weight * 100)}% · {row.blocks.map((b) => BLOCK_LABELS[b] ?? b).join(", ")}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Bar value={row.base} color="var(--viz-base)" label={`Base: ${pct(row.base)}`} />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Bar value={row.mizan} color="var(--viz-mizan)" label={`MIZAN: ${pct(row.mizan)}`} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {dimensions.length > 0 && (
+        <div className="card p-4">
+          <h3 className="font-semibold text-sm mb-1">Agentic work</h3>
+          <p className="text-[11px] text-gray-500 mb-3">
+            Each task runs in a fresh project in the isolated sandbox; a judge checks the final files, a command and the
+            answer. A guardrail violation scores the task 0.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[420px]">
+              <thead>
+                <tr className="text-xs text-gray-500 text-left">
+                  <th className="font-normal pb-2">Dimension</th>
+                  <th className="font-normal pb-2 text-right">Base model</th>
+                  <th className="font-normal pb-2 text-right">MIZAN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dimensions.map((row) => (
+                  <tr key={row.label} className="border-t border-gray-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-3">
+                      {row.label}
+                      {!row.higher && <span className="text-[11px] text-gray-500"> (lower is better)</span>}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{row.base}</td>
+                    <td className="py-1.5 text-right tabular-nums">{row.mizan}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {played.length > 0 && (
+        <div className="card p-4">
+          <h3 className="font-semibold text-sm mb-1">Interactive games (ARC-AGI-3 style)</h3>
+          <p className="text-[11px] text-gray-500 mb-3">
+            Neither arm is told the rules. The base model plays turn by turn from the grid; MIZAN learns what each action
+            does, then plans, with no model call. Efficiency is the optimal number of actions over the number used.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[420px]">
+              <thead>
+                <tr className="text-xs text-gray-500 text-left">
+                  <th className="font-normal pb-2">Measure</th>
+                  <th className="font-normal pb-2 text-right">Base model</th>
+                  <th className="font-normal pb-2 text-right">MIZAN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {played.map((row) => (
+                  <tr key={row.label} className="border-t border-gray-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-3">{row.label}</td>
+                    <td className="py-1.5 text-right tabular-nums">{row.base}</td>
+                    <td className="py-1.5 text-right tabular-nums">{row.mizan}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card p-4">
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -445,7 +595,9 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
               Close
             </button>
           </div>
-          {opened.compare ? (
+          {opened.compare && plainArms(opened.compare) ? (
+            <PlainArmsView compared={plainArms(opened.compare)!} />
+          ) : opened.compare ? (
             <CompareView run={opened.compare} />
           ) : (
             <div className="card p-4 text-sm text-gray-500">This attempt did not run.</div>

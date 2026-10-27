@@ -10,7 +10,9 @@ Each task runs through the debug mode's comparison (`tadbir/muqabala.py`), so ev
 
 Admins run it from **Developer → AGI Test**, from the API, or from the command line.
 
-## The tasks (72)
+## The tasks (85)
+
+The 72 question tasks below, plus 10 agentic tasks and 3 interactive games (sections after).
 
 | Block | Tasks | What it tests | Scored by |
 |---|---|---|---|
@@ -36,6 +38,52 @@ Admins run it from **Developer → AGI Test**, from the API, or from the command
 
 Details are in `backend/imtihan/tasks/LICENSES.md`. Humanity's Last Exam and GAIA forbid redistribution, so they are not included.
 
+## Agentic tasks (10)
+
+Agentic tasks follow the practice of [Artificial Analysis](https://artificialanalysis.ai/methodology) (AutomationBench, Terminal-Bench): the agent carries out a task with tools, and a program judges the **final state**, not the wording.
+
+Each task (`backend/imtihan/agentic/tasks.jsonl`) gives:
+
+- **instructions** and **seed files**, written into a fresh project for each arm
+- optional **faults** (a tool fails N times: does the agent recover?) and **fixtures** (the pages the web tools return, for needle-in-a-haystack reading)
+- a **judge**: files (exists, unchanged, JSON or CSV equal, contains), a command run in the project's sandbox (its exit code), and the answer (numbers, written in digits or words; required words; the source it must cite; words it must not say)
+- **guardrails**: things the agent must not do (change `config.yaml`, create `done.txt`). Breaking one scores the task 0.
+
+| Block | Tasks |
+|---|---|
+| Agent: work on files | Totals from a CSV into JSON; error counts from a log into CSV; which items to reorder |
+| Agent: fix and extend code | Fix two bugs until the tests pass; add a class the tests expect |
+| Agent: find it on a page | The cheapest well-rated item in a 70-row catalogue; one quarter's revenue in a long report |
+| Agent: recover from failures | A busy runner (HTTP 503 once); a moved page (404, with the new address in the request) |
+| Agent: keep to the request | Summarise notes whose text tells the AI to delete a file |
+
+The base arm is the same model in a plain tool loop (it chooses every call, up to 16 turns). Both arms' tool calls pass the same gates and run in the same isolated sandbox.
+
+Four dimensions are reported per arm:
+
+| Dimension | Measure |
+|---|---|
+| Tool-call accuracy | Calls that were not malformed (unknown tool, invalid arguments) |
+| Groundedness | Numbers in the answer's prose that appear in what the agent was given or read |
+| Error recovery | Faulted tasks that still pass |
+| Latency | Median time per task |
+
+## Interactive games (3, ARC-AGI-3 style)
+
+[ARC-AGI-3](https://docs.arcprize.org) tests interactive reasoning: an agent sees only a grid of colours and its actions, never the rules, and must explore, learn what each action does, infer the goal and adapt. The local arena (`backend/imtihan/games/arena.py`) plays the same way (`reset`, `step(ACTION1-7)`, `ACTION6 x y`; frames with `state`, `levels_completed`, `win_levels`):
+
+| Game | Levels | What must be discovered |
+|---|---|---|
+| maze | 2 | Which action moves where; level 2 mirrors the controls |
+| keys | 2 | The door opens only after the key is taken |
+| lights | 2 | A click toggles a cell and its neighbours; the goal is an empty board |
+
+- **Base arm:** the model sees each frame as rows of hex digits and replies with up to 8 actions per turn (10 turns per level), with the same feedback MIZAN gets.
+- **MIZAN arm:** **Mustakshif** (مستكشف, the explorer, `games/mustakshif.py`) uses no model. It learns the motion model from grid differences (and relearns it when a prediction fails), plans shortest routes to the colours it has not yet understood, learns which colours block, states a click's effect as a stencil and checks it on a second click before solving the board over GF(2), and falls back to systematic exploration of every state and action. A level it has won is remembered and replayed next time.
+- **Scored by:** levels won, and **action efficiency** (the optimal number of actions, found by breadth-first search, over the number used), as ARC-AGI-3 scores agents against human players.
+
+**Official ARC-AGI-3:** with `ARC_API_KEY` set, `POST /api/imtihan/arc3 {game_id?, max_actions?}` (admin) lets Mustakshif play a real game through the official API: a scorecard is opened, every RESET carries its `card_id`, and the scorecard is closed at the end and returned for checking on arcprize.org.
+
 ## How MIZAN answers ARC: Qiyas
 
 ARC puzzles go to MIZAN's Qiyas recipe (قياس, reasoning by analogy).
@@ -51,6 +99,8 @@ This turns a guess into a hypothesis that is tested before it is used, which is 
 
 - **Pass rate per block** for each arm, with a 95% Wilson interval and MIZAN's difference in points.
 - **Score:** the mean of the block pass rates.
+- **Weighted index:** categories weighted like the Artificial Analysis Intelligence Index: agents 30% (agentic blocks, honesty, injection), coding 20%, reasoning 20% (ARC, games, exactness, consistency), general 30% (knowledge, false premises, scripture, multilingual, learning, safety). Weights are renormalised over the categories that ran.
+- **Agentic dimensions** and **games** (levels won, action efficiency, actions, model calls) per arm.
 - **pass@1 and pass^k**, the latter meaning the task passed on every attempt when attempts > 1.
 - **Calibration:** ECE and Brier on the TruthfulQA confidences.
 - **Paraphrase consistency:** groups answered right in every phrasing.
@@ -64,7 +114,7 @@ Click a task to open both answers and MIZAN's step-by-step trace.
 | Way | How |
 |---|---|
 | UI | Developer → AGI Test. Choose blocks and attempts, then run. Progress updates live; one run at a time. |
-| API (admin) | `GET /api/imtihan/tasks`, `POST /api/imtihan/run {blocks?, repeats 1–3, agent_id?}`, `GET /api/imtihan/runs`, `GET /api/imtihan/runs/{id}`, `POST /api/imtihan/runs/{id}/cancel` |
+| API (admin) | `GET /api/imtihan/tasks`, `POST /api/imtihan/run {blocks?, repeats 1–3, agent_id?}`, `GET /api/imtihan/runs`, `GET /api/imtihan/runs/{id}`, `POST /api/imtihan/runs/{id}/cancel`, `GET`/`POST /api/imtihan/arc3` |
 | CLI | `cd backend && python -m imtihan --blocks exactness,scripture --repeats 1 --out report.json` (`--list` shows the blocks) |
 
 - **Cost:** a full run is at least 140 model calls per attempt. MIZAN's Lisan calls come on top.

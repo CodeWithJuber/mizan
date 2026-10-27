@@ -121,6 +121,11 @@ class WorkspaceStore:
             raise HTTPException(404, "Workspace not found")
         return path
 
+    def remove(self, workspace_id: str) -> None:
+        """Delete a whole project (the AGI test's throwaway projects)."""
+        with _LOCK:
+            shutil.rmtree(self.project(workspace_id))
+
     def list(self) -> builtins.list[dict]:
         with _LOCK:
             result = []

@@ -74,8 +74,13 @@ def local_sandbox(agent, monkeypatch):
 
 def test_the_task_set_is_complete_and_attributed():
     tasks = runner.load_tasks()
-    assert len(tasks) == 72
+    assert len(tasks) == 85
     assert len({task["id"] for task in tasks}) == len(tasks)
+    acting = [task for task in tasks if "instructions" in task]
+    assert len(acting) == 10 and all(task["judge"] for task in acting)
+    played = [task for task in tasks if "game" in task]
+    assert {task["game"] for task in played} == {"maze", "keys", "lights"}
+    tasks = [task for task in tasks if "instructions" not in task and "game" not in task]
     kinds = {
         "number",
         "contains",
@@ -257,7 +262,7 @@ async def test_imtihan_api_is_admin_only_and_runs_in_the_background(agent, monke
         )
         assert denied.status_code == 403
         catalog = (await client.get("/api/imtihan/tasks", headers=headers)).json()
-        assert sum(entry["tasks"] for entry in catalog["blocks"]) == 72
+        assert sum(entry["tasks"] for entry in catalog["blocks"]) == 85
         bad = await client.post("/api/imtihan/run", json={"blocks": ["nope"]}, headers=headers)
         assert bad.status_code == 400
         started = await client.post(
@@ -307,3 +312,33 @@ def test_mizan_searches_only_for_current_or_outside_information():
     assert fahm.validate_parsed(
         {"intent": "web_search", "query": "cricket score"}, current, "hi-latn"
     )
+
+
+async def test_a_finished_run_is_readable_before_it_is_saved(monkeypatch):
+    saving = asyncio.Event()
+    release = asyncio.Event()
+
+    def slow_save(run):
+        saving.set()
+
+    async def suite(*args, **kwargs):
+        return {"tasks": [], "results": [], "attempts": [], "report": {}}
+
+    monkeypatch.setattr(runner, "run_suite", suite)
+
+    async def to_thread(func, *args):
+        if func is runner._save:
+            slow_save(*args)
+            await release.wait()
+            return None
+        return func(*args)
+
+    monkeypatch.setattr(runner.asyncio, "to_thread", to_thread)
+    started = runner.start(
+        type("A", (), {"ai_model": "m"})(), owner="u", blocks=["exactness"], repeats=1
+    )
+    await saving.wait()
+    detail = await runner.get(started["id"])  # finished, not yet saved
+    assert detail is not None and detail["status"] == "complete" and "saved" not in detail
+    release.set()
+    await runner._JOBS[started["id"]]["task"]
