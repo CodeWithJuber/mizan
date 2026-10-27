@@ -410,13 +410,31 @@ async def erase_chat(
         return await asyncio.to_thread(_finish_chat, private, owner, session_id, parts, left)
 
 
+def _image_shas(metadata_rows: Any) -> set[str]:
+    found: set[str] = set()
+    for raw in metadata_rows:
+        try:
+            metadata = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except ValueError:
+            continue
+        if not isinstance(metadata, dict):
+            continue
+        for item in metadata.get("images") or []:
+            if isinstance(item, dict) and item.get("sha"):
+                found.add(str(item["sha"]))
+    return found
+
+
 def _erase_chat_rows(
     chat_db: str, artifacts_db: str, private: Any, owner: str, session_id: str, held_db: str | None
 ) -> dict:
     messages = _select(
-        chat_db, "SELECT id, role, content FROM agent_messages WHERE session_id = ?", (session_id,)
+        chat_db,
+        "SELECT id, role, content, metadata FROM agent_messages WHERE session_id = ?",
+        (session_id,),
     )
     ids = [row[0] for row in messages]
+    images = _image_shas(row[3] for row in messages)
     asked = [str(row[2] or "") for row in messages if row[1] == "user" and row[2]]
     texts = [str(row[2] or "") for row in messages if row[2]]
     summary = _select(
@@ -428,6 +446,20 @@ def _erase_chat_rows(
     removed["chat messages"] = _run(
         chat_db, "DELETE FROM agent_messages WHERE session_id = ?", (session_id,)
     )
+    # Images attached in this chat (Basar), unless another of the owner's chats
+    # still shows the same picture.
+    shown_elsewhere = _image_shas(
+        row[0]
+        for row in _select(
+            chat_db,
+            "SELECT m.metadata FROM agent_messages m JOIN chat_sessions s "
+            "ON s.session_id = m.session_id WHERE s.owner_id = ? AND m.metadata LIKE '%\"images\"%'",
+            (owner,),
+        )
+    )
+    from perception import basar
+
+    removed["images"] = basar.erase(owner, [sha for sha in images if sha not in shown_elsewhere])
     removed["chat summary"] = _run(
         chat_db, "DELETE FROM session_summaries WHERE session_id = ?", (session_id,)
     )

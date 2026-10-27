@@ -7,6 +7,8 @@ the work verified. A call goes to the cheapest model whose sampled success
 reaches the readiness level (``MIZAN_LISAN_READINESS``, default 0.7); each
 failed attempt at the same work moves one step to a stronger model instead
 of asking the same model again. With no list, Lisan uses the agent's model.
+When the user attached an image to the turn (Basar), only models that read
+images are candidates, as far as the provider's catalog says.
 """
 
 from __future__ import annotations
@@ -26,6 +28,18 @@ _RNG = random.Random()
 def models() -> list[str]:
     raw = os.getenv("MIZAN_LISAN_MODELS", "")
     return [name.strip() for name in raw.split(",") if name.strip()][:6]
+
+
+def _candidates() -> list[str]:
+    listed = models()
+    from perception import basar
+
+    if not basar.current():
+        return listed
+    from providers import accepts_images
+
+    seeing = [model for model in listed if accepts_images(model) is not False]
+    return seeing or listed
 
 
 def readiness() -> float:
@@ -48,7 +62,7 @@ def _posterior(task: str, model: str) -> BetaEstimator:
 
 def choose(task: str, attempt: int, default: str | None, rng: random.Random | None = None) -> Any:
     """The model for this call: cheapest ready one, one step stronger per failed attempt."""
-    candidates = models()
+    candidates = _candidates()
     if not candidates or not task:
         return default
     generator = rng or _RNG

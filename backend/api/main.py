@@ -34,7 +34,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import HTTPConnection
@@ -79,6 +79,7 @@ from mizan_owned.schemas import (
     ReviewRequest,
     resolve_context,
 )
+from perception import basar
 from providers import (
     check_provider_health,
     create_provider,
@@ -738,6 +739,12 @@ class ChatMessage(BaseModel):
     timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_+\-/]+$")
 
 
+class ImageIn(BaseModel):
+    media_type: str = Field("image/png", pattern=r"^image/(png|jpeg|jpg|webp|gif)$")
+    # base64 of the file, with or without a data: prefix (10 MB of image at most)
+    data: str = Field(..., min_length=8, max_length=14_000_000)
+
+
 class StreamChatMessage(ChatMessage):
     # Required rather than auto-generated: one browser action keeps one UUID
     # through ambiguous network failures and never creates a second model call.
@@ -746,6 +753,8 @@ class StreamChatMessage(ChatMessage):
     # Izn for interactive chats: auto | auto_edits | ask | plan. Omitted keeps
     # the legacy behaviour (no prompts) for older clients.
     permission_mode: str | None = Field(None, pattern=r"^(auto|auto_edits|ask|plan)$")
+    # Images the user attached (Basar): shown to the model with this message.
+    images: list[ImageIn] = Field(default_factory=list, max_length=4)
 
 
 class IntegrationCreate(BaseModel):
@@ -1615,6 +1624,53 @@ def chat_provider_attempts(agent) -> dict:
     }
 
 
+def _prepare_images(owner: str, images: list[ImageIn]) -> list[Any]:
+    """Each attached image checked, re-encoded without its metadata, and kept
+    for its owner (Basar); a file that is not a readable image is refused."""
+    prepared = []
+    for item in images:
+        try:
+            image = basar.prepare(basar.decode(item.data))
+        except basar.ImageError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        basar.store(owner, image)
+        prepared.append(image)
+    return prepared
+
+
+async def _earlier_images(owner: str, session_id: str) -> list[Any]:
+    """The images of the user's previous message in this chat, if it had any."""
+    try:
+        recent = await memory.get_messages(session_id, limit=6)
+    except Exception:  # noqa: BLE001 - no history: nothing to show
+        return []
+    for message in reversed(recent):
+        if message.get("role") != "user":
+            continue
+        metadata = message.get("metadata") or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except ValueError:
+                metadata = {}
+        shas = [str(item.get("sha", "")) for item in metadata.get("images") or []]
+        return [image for sha in shas if (image := basar.load(owner, sha)) is not None]
+    return []
+
+
+@app.get("/api/media/{sha}")
+async def get_media(sha: str, user: TokenPayload = Depends(require_auth)):
+    """One of your own images from a chat (Basar); never another user's."""
+    image = basar.load(user.user_id, sha)
+    if image is None:
+        raise HTTPException(404, "Image not found")
+    return Response(
+        content=image.data,
+        media_type=image.media_type,
+        headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @app.post("/api/chat/stream", response_class=StreamingResponse)
 async def stream_chat(
     req: StreamChatMessage,
@@ -1645,6 +1701,8 @@ async def stream_chat(
     agent = (
         await chat_agent_for(user, active_agents[agent_id]) if agent_id in active_agents else None
     )
+    # Decoding and re-encoding is CPU work; keep it off the event loop.
+    attached = await asyncio.to_thread(_prepare_images, user.user_id, req.images)
     request_id, message_id = str(req.request_id), str(uuid.uuid4())
     ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
     previous = ledger.claim(
@@ -1652,7 +1710,11 @@ async def stream_chat(
         request_id,
         req.session_id,
         message_id,
-        req.model_dump(mode="json"),
+        # The receipt keeps which images were sent, never the images themselves.
+        {
+            **req.model_dump(mode="json", exclude={"images"}),
+            "images": [image.sha for image in attached],
+        },
     )
     if previous:
         raise HTTPException(
@@ -1887,12 +1949,18 @@ async def stream_chat(
                     "history": [{"role": m["role"], "content": m["content"]} for m in stored]
                 }
                 active_sessions[req.session_id] = session
+            # Images shown with this turn: the ones attached now, or with no new
+            # ones, those of the message just before it ("is image ka HTML banao").
+            seen = attached or await _earlier_images(user.user_id, req.session_id)
             await memory.save_message(
                 req.session_id,
                 "user",
                 req.content,
                 agent_id,
-                metadata={"request_id": request_id},
+                metadata={
+                    "request_id": request_id,
+                    **({"images": [image.meta() for image in attached]} if attached else {}),
+                },
             )
             session["history"].append({"role": "user", "content": req.content})
             ledger.update(user.user_id, request_id, "running")
@@ -1976,6 +2044,7 @@ async def stream_chat(
                             bind_event_sink(activity_sink),
                             bind_approvals(approval_context),
                             bind_timezone(req.timezone),
+                            basar.bind(seen),
                         ):
                             result = await agent.execute(
                                 task_content,

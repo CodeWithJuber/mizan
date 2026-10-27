@@ -2213,15 +2213,19 @@ class BaseAgent:
             return {"error": f"Permission denied: {perm['reason']}"}
         held = False
         if _model_directed.get():
+            from perception import basar
             from tadbir import amanah
 
-            held = bool(amanah.tainted()) and (
+            # Text inside an image the user attached is outside content, like
+            # a page: a change the model chooses after reading it needs a person.
+            held = bool(amanah.tainted() or basar.current()) and (
                 tool_category(tool_name, self._read_only_hint(tool_name)) != "read"
             )
         if held and approvals is None:
             return {
-                "error": "Amanah: content read in this run tried to instruct the AI, so "
-                "MIZAN will not take this action without a person confirming it",
+                "error": "Amanah: content read in this run (a page, a file or an image) may "
+                "carry instructions, so MIZAN will not take this action without a person "
+                "confirming it",
                 "amanah_blocked": True,
             }
         # Izn in an interactive chat: plan mode refuses changes; other modes
@@ -2695,8 +2699,14 @@ Match the requested depth and self-correct errors."""
         if context_blocks:
             messages.append({"role": "user", "content": "\n\n".join(context_blocks)})
         # Keep the task opaque and last; context must not masquerade as a later request.
+        # Images the user attached to this turn go with it (Basar).
+        from perception import basar
+
         messages.append(
-            {"role": "user", "content": f"{CURRENT_REQUEST_START}\n{task}\n{CURRENT_REQUEST_END}"}
+            {
+                "role": "user",
+                "content": basar.content(f"{CURRENT_REQUEST_START}\n{task}\n{CURRENT_REQUEST_END}"),
+            }
         )
 
         return messages
