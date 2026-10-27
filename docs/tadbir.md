@@ -56,6 +56,7 @@ and before the model-driven loop.
 | web_read | URL + "padho / summarize" | as for web_search, with one page |
 | recall | "yaad hai maine kya bataya tha?" | Lisan may word the recalled memories, checked by Furqan |
 | edit_project | "Button ka color red karo", "add a dark mode toggle" (in a selected project) | Lisan writes the changed files. MIZAN picks the files it reads (BM25), saves with `expected_sha256` so a newer version is never overwritten, and checks the changes: local references, CSS, JSON, `node --check` and `py_compile` in the sandbox, and `unittest` when the project has tests. It repairs at most twice and shows a diff. A build request in a project that already has files becomes an edit. |
+| qiyas | a puzzle given as worked examples (JSON `train` input/output grids and `test` inputs, as in ARC) | Lisan proposes the rule as a Python `transform(grid)`. MIZAN runs it in the sandbox on every example and accepts it only if it reproduces all of them. Otherwise Lisan revises it from the examples it got wrong, at most twice. Only a proven rule's answer is verified; an unproven best guess says how many examples it fits. |
 | use_tool | anything else Lisan maps to an action: a connector, a skill, memory | MIZAN chooses the tool from the user's permitted tools (BM25 × the tool's reliability posterior). Shell, raw files, raw HTTP and host Python are never chosen. Lisan fills the arguments; MIZAN validates them against the tool's JSON Schema with `jsonschema`, allows one retry, and runs the tool through the agent's gate. Lisan may word the result (Furqan). The answer is `evidence_observed`, not verified. |
 
 **Lisan plans, MIZAN validates.** When Fahm does not place a request, or
@@ -137,6 +138,22 @@ immediately.
 | `mizan` (default) | MIZAN performs every action, and **the model never controls a tool**. A request with no recipe or plan is answered in words through the full chat pipeline (memory, persona, history, streaming), with zero tools offered, not even tool discovery. `strict` is accepted as the former name. |
 | `hybrid` | Tadbir handles what it understands. Anything else goes to the model-driven agent loop, which keeps the capability and execution guards. This was the default before. |
 | `llm` | Tadbir is off. The model drives the agent loop as before. |
+
+## Learning automatically
+
+Majlis, Ta'allum, Hifz (verified programs re-run without the model) and
+Muhasaba (a daily self-review that corrects mistakes it can prove) are described in
+[automatic-learning.md](automatic-learning.md).
+
+## Seeing what MIZAN adds
+
+The debug mode ([debug-mode.md](debug-mode.md)) sends one message to the base
+model alone and to MIZAN. It shows every step MIZAN took: Fahm, Majlis,
+tools, Lisan's prompts and replies, Furqan and learning. It also flags what
+the base model got wrong: numbers no fact supports, unbacked action claims,
+and misquoted Quran or hadith text. Every answer also carries its Isnad
+([isnad.md](isnad.md)): each claim graded by what supports it. The AGI test
+([imtihan.md](imtihan.md)) scores the base model and MIZAN on 70 tasks.
 
 ## Limits
 

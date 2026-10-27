@@ -166,7 +166,11 @@ def find_expression(text: str) -> str | None:
         (m.group(0).strip() for m in _EXPRESSION.finditer(text.lower())), key=len, reverse=True
     )
     for candidate in candidates:
-        if not re.search(r"[+\-*/%^×÷!√]|\*\*|[a-z]+\(", candidate):
+        # An operation between operands, a factorial, a root or a function: a
+        # bare (signed) number such as "-2290" is not a calculation.
+        if not re.search(
+            r"[\d).]\s*(?:\*\*|[+\-*/%^×÷])\s*[\d(.√a-z]|\d\s*!|√|[a-z]+\(|%\s*of", candidate
+        ):
             continue
         if re.fullmatch(r"\d{1,3}\s*:\s*\d{1,3}", candidate):
             continue

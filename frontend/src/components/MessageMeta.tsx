@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { MessageUsageMeta } from "../types";
+import { isIsnad } from "../utils/isnad.ts";
+import IsnadView from "./IsnadView";
 import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
 export { fmtCost, fmtLatency, fmtTokens } from "../utils/responseMetrics.ts";
 
@@ -58,6 +60,7 @@ export function MessageMeta({ meta }: MessageMetaProps) {
           </span>
         )}
       </button>
+      {isIsnad(m.isnad) && <IsnadView isnad={m.isnad} />}
       {open && (
         <div className="mt-1.5 space-y-1.5">
           {explanations.map((text) => (

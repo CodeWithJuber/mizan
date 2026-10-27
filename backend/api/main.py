@@ -349,6 +349,26 @@ async def lifespan(app: FastAPI):
         else None
     )
 
+    async def self_review() -> None:
+        # Muhasaba: MIZAN re-checks the answers the model gave in words and
+        # posts a correction where it can prove one wrong.
+        from tadbir import muhasaba
+
+        await asyncio.sleep(600)
+        while True:
+            if os.getenv("MIZAN_MUHASABA", "on").lower() not in {"off", "0", "false", "no"}:
+                try:
+                    await muhasaba.run(memory)
+                except Exception as exc:
+                    logger.warning("Muhasaba review failed: %s", exc)
+            try:
+                interval = max(600.0, float(os.getenv("MIZAN_MUHASABA_SECONDS", "86400")))
+            except ValueError:
+                interval = 86400.0
+            await asyncio.sleep(interval)
+
+    self_review_task = asyncio.create_task(self_review())
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -363,6 +383,7 @@ async def lifespan(app: FastAPI):
         model_limits_task.cancel()
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
+    self_review_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -1172,6 +1193,7 @@ async def get_task_history(agent_id: str | None = None, limit: int = 50):
 
 
 _user_agents: dict[tuple[str, str], Any] = {}
+_user_teams: dict[str, dict[str, Any]] = {}
 
 
 def agent_settings_lock(agent):
@@ -1181,9 +1203,8 @@ def agent_settings_lock(agent):
     return agent._execution_lock
 
 
-async def chat_agent_for(user: TokenPayload, template):
-    if user.has_role("admin"):
-        return template
+def _private_agent(user: TokenPayload, template):
+    """This user's own instance of an agent, with private memory and learning."""
     key = (user.user_id, template.id)
     if key not in _user_agents:
         import hashlib
@@ -1208,8 +1229,27 @@ async def chat_agent_for(user: TokenPayload, template):
         )
         instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
         instance._template_revision = getattr(template, "_config_revision", 0)
+        instance._template_id = template.id
         _user_agents[key] = instance
     instance = _user_agents[key]
+    # The user's agents form their own Majlis: each knows the others, so
+    # MIZAN can give each part of a request to the agent that fits it.
+    team = _user_teams.setdefault(user.user_id, {})
+    team[instance.id] = instance
+    instance._agent_registry = team
+    return instance
+
+
+async def chat_agent_for(user: TokenPayload, template):
+    if user.has_role("admin"):
+        return template
+    for other in active_agents.values():
+        _private_agent(user, other)
+    team = _user_teams.get(user.user_id, {})
+    for member_id, member in list(team.items()):
+        if getattr(member, "_template_id", None) not in active_agents:
+            team.pop(member_id, None)  # its agent was removed
+    instance = _private_agent(user, template)
     if instance._template_revision != getattr(template, "_config_revision", 0):
         async with agent_settings_lock(instance):
             instance.name = template.name
@@ -3502,9 +3542,11 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     """What MIZAN learned from its own verified work: who does which work, and your wording."""
     from tadbir import majlis, taallum
 
-    coordinator = _tadbir_coordinator()
-    if coordinator is None:
+    template = _tadbir_coordinator()
+    if template is None:
         raise HTTPException(503, "No agents are running")
+    # A user's learning lives with that user's own agents.
+    coordinator = await chat_agent_for(user, template)
     return {
         "routing": majlis.report(coordinator),
         "wording": taallum.summary(coordinator.adaptive, user.user_id),
@@ -3516,11 +3558,235 @@ async def forget_tadbir_wording(user: TokenPayload = Depends(require_auth)):
     """Forget the wording MIZAN learned from this user's requests."""
     from tadbir import taallum
 
-    coordinator = _tadbir_coordinator()
-    if coordinator is None:
+    template = _tadbir_coordinator()
+    if template is None:
         raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
     taallum.forget(coordinator.adaptive, user.user_id)
     return {"forgotten": True}
+
+
+def _require_admin(user: TokenPayload) -> None:
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+
+
+@app.post("/api/tadbir/muhasaba")
+async def run_muhasaba(hours: float = 24, user: TokenPayload = Depends(require_auth)):
+    """Run MIZAN's self-review now (admin): re-check recent unverified answers."""
+    from tadbir import muhasaba
+
+    _require_admin(user)
+    return await muhasaba.run(memory, hours=max(0.1, min(hours, 24 * 30)))
+
+
+@app.get("/api/tadbir/programs")
+async def kept_programs(user: TokenPayload = Depends(require_auth)):
+    """The programs MIZAN verified for you and re-runs instead of asking the model (Hifz)."""
+    from tadbir import hifz
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    return hifz.summary(coordinator.adaptive, user.user_id)
+
+
+@app.delete("/api/tadbir/programs")
+async def forget_programs(user: TokenPayload = Depends(require_auth)):
+    from tadbir import hifz
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    hifz.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
+# === DEBUG MODE (Muqabala: the base model alone vs MIZAN) ===
+
+
+class DebugCompareRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=20000)
+    agent_id: str | None = Field(None, max_length=100)
+    # An existing chat whose earlier turns both arms receive; nothing is saved to it.
+    session_id: str | None = Field(None, min_length=1, max_length=100)
+    workspace_id: str | None = Field(None, min_length=1, max_length=100)
+    timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_+\-/]+$")
+    # auto: MIZAN runs the tools it chooses (sandboxed code, project edits); plan: read-only.
+    permission_mode: str = Field("auto", pattern=r"^(auto|plan)$")
+
+
+def _debug_access(user: TokenPayload) -> None:
+    from tadbir import muqabala
+
+    if not muqabala.allowed(user.has_role("admin")):
+        raise HTTPException(403, "Debug mode is not enabled for this account")
+
+
+@app.get("/api/debug/status")
+async def debug_status(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    return {"enabled": muqabala.allowed(user.has_role("admin")), "access": muqabala.access()}
+
+
+@app.post("/api/debug/compare")
+async def debug_compare(req: DebugCompareRequest, user: TokenPayload = Depends(require_auth)):
+    """One message to the base model alone and to MIZAN, with MIZAN's full trace and checks."""
+    from security.approvals import ApprovalContext, bind_approvals
+    from tadbir import muqabala
+    from tadbir.waqt import bind_timezone
+
+    _debug_access(user)
+    workspace_context: Any = None
+    if req.workspace_id:
+        try:
+            from workspace import context as selected_workspace_context
+        except ImportError as exc:
+            raise HTTPException(503, "Coding workspaces are not available") from exc
+        workspace_context = selected_workspace_context
+        workspace_context.authorize_owned_workspace(req.workspace_id, user.user_id)
+    agent_id = req.agent_id or next(iter(active_agents), None)
+    if agent_id not in active_agents:
+        raise HTTPException(503, "No agents available")
+    agent = await chat_agent_for(user, active_agents[agent_id])
+    history: list[dict] = []
+    if req.session_id:
+        await authorize_session(req.session_id, user)
+        stored = await memory.get_messages(req.session_id, limit=50)
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in stored
+            if m["role"] in {"user", "assistant"} and str(m["content"]).strip()
+        ]
+    context = {
+        "history": history,
+        "user_preferences": await memory.get_chat_preferences(user.user_id),
+        **({"workspace_id": req.workspace_id} if req.workspace_id else {}),
+    }
+    approvals = ApprovalContext(user.user_id, f"debug-{uuid.uuid4().hex}", req.permission_mode)
+    workspace_binding = (
+        workspace_context.bind_workspace(req.workspace_id) if workspace_context else None
+    )
+    try:
+        with bind_approvals(approvals), bind_timezone(req.timezone):
+            run = await muqabala.compare(agent, req.prompt, context, history)
+    finally:
+        if workspace_context and workspace_binding is not None:
+            workspace_context.reset_workspace(workspace_binding)
+    run["permission_mode"] = req.permission_mode
+    try:
+        await muqabala.save(user.user_id, run)
+    except Exception:  # noqa: BLE001 - the comparison is still returned
+        logger.warning("Debug comparison could not be saved")
+    return run
+
+
+@app.get("/api/debug/runs")
+async def debug_runs(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    return {"runs": await muqabala.runs(user.user_id)}
+
+
+@app.get("/api/debug/runs/{run_id}")
+async def debug_run(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    if len(run_id) != 32 or not all(char in "0123456789abcdef" for char in run_id):
+        raise HTTPException(400, "Invalid run id")
+    run = await muqabala.get(user.user_id, run_id)
+    if run is None:
+        raise HTTPException(404, "Comparison not found")
+    return run
+
+
+@app.delete("/api/debug/runs")
+async def clear_debug_runs(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    await muqabala.clear(user.user_id)
+    return {"cleared": True}
+
+
+# === IMTIHAN (AGI test: the base model alone vs MIZAN, scored by rule) ===
+
+
+class ImtihanRunRequest(BaseModel):
+    blocks: list[str] | None = Field(None, max_length=20)
+    repeats: int = Field(1, ge=1, le=3)
+    agent_id: str | None = Field(None, max_length=100)
+
+
+@app.get("/api/imtihan/tasks")
+async def imtihan_tasks(user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    return {
+        "blocks": runner.catalog(),
+        "tasks": [
+            {
+                "id": task["id"],
+                "block": task["block"],
+                "prompt": task["prompt"][:400],
+                "source": task.get("source"),
+            }
+            for task in runner.load_tasks()
+        ],
+    }
+
+
+@app.post("/api/imtihan/run")
+async def imtihan_run(req: ImtihanRunRequest, user: TokenPayload = Depends(require_auth)):
+    """Start the AGI test in the background: every task to the base model and to MIZAN."""
+    from imtihan import runner
+
+    _require_admin(user)
+    known = {entry["block"] for entry in runner.catalog()}
+    if req.blocks and not set(req.blocks) <= known:
+        raise HTTPException(400, f"Unknown blocks: {sorted(set(req.blocks) - known)}")
+    agent = active_agents.get(req.agent_id) if req.agent_id else _tadbir_coordinator()
+    if agent is None:
+        raise HTTPException(503, "No agents available")
+    try:
+        return runner.start(agent, owner=user.user_id, blocks=req.blocks, repeats=req.repeats)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/api/imtihan/runs")
+async def imtihan_runs(user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    return {"runs": await runner.runs()}
+
+
+@app.get("/api/imtihan/runs/{run_id}")
+async def imtihan_run_detail(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    run = await runner.get(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    return run
+
+
+@app.post("/api/imtihan/runs/{run_id}/cancel")
+async def imtihan_cancel(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    if not runner.cancel(run_id):
+        raise HTTPException(404, "No running test with that id")
+    return {"cancelled": True}
 
 
 # === AUTOMATION (Qadr) ===

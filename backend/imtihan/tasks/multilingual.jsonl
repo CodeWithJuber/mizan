@@ -1,0 +1,4 @@
+{"block": "multilingual", "id": "lang-hinglish", "prompt": "Ek darjan mein kitne ande hote hain?", "score": {"kind": "number", "expected": "12"}}
+{"block": "multilingual", "id": "lang-urdu", "prompt": "پاکستان کا دارالحکومت کون سا شہر ہے؟", "score": {"kind": "contains", "any": ["اسلام آباد", "islamabad"]}}
+{"block": "multilingual", "id": "lang-arabic", "prompt": "كم عدد أركان الإسلام؟", "score": {"kind": "contains", "any": ["5", "خمس", "٥"]}}
+{"block": "multilingual", "id": "lang-hindi", "prompt": "एक सप्ताह में कितने दिन होते हैं?", "score": {"kind": "contains", "any": ["7", "सात"]}}

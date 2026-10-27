@@ -1,0 +1,3 @@
+{"block": "code", "id": "code-primes", "prompt": "Python program likho jo 1 se 100 tak ke prime numbers ka sum print kare aur run karo.", "score": {"kind": "number", "expected": "1060"}}
+{"block": "code", "id": "code-fibonacci", "prompt": "Write and run a Python program that prints the 30th Fibonacci number, where F1 = 1 and F2 = 1.", "score": {"kind": "number", "expected": "832040"}}
+{"block": "code", "id": "code-multiples", "prompt": "Write and run a program that counts how many positive numbers below 1000 are divisible by 3 or 5, and prints the count.", "score": {"kind": "number", "expected": "466"}}

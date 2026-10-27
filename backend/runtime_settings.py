@@ -68,6 +68,16 @@ SETTINGS: tuple[Setting, ...] = (
             "MIZAN does not recognise goes to the model-driven agent loop. llm: the model "
             "drives the agent loop. strict is the former name of mizan.",
             "mizan", ("mizan", "hybrid", "strict", "llm")),
+    Setting("MIZAN_DEBUG_MODE", "Model", "Debug mode (base model vs MIZAN)", "choice",
+            "Who may send one message to the base model alone and to MIZAN side by side, with "
+            "MIZAN's full trace: admins, every signed-in user, or no one. A comparison runs "
+            "the model twice.",
+            "admins", ("admins", "users", "off")),
+    Setting("MIZAN_MUHASABA", "Model", "Self-review (Muhasaba)", "choice",
+            "Once a day MIZAN re-checks the answers the model gave in words: arithmetic and "
+            "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "
+            "that chat. Users can stop it with the chat preference muhasaba: off.",
+            "on", ("on", "off")),
     # ── Model ──
     Setting("LLM_PROVIDER", "Model", "Provider", "choice",
             "auto picks Anthropic, then OpenRouter, then OpenAI from the configured keys.",

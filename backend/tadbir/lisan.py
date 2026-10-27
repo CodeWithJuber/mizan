@@ -13,10 +13,13 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 from typing import Any
 
 from providers import effective_limits, provider_retry_delay
+
+from . import trace
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -61,6 +64,15 @@ class Lisan:
         return provider is not None and getattr(provider, "provider_name", "") != "mizan-owned"
 
     async def ask(self, system: str, user: str, max_tokens: int = 1500) -> str:
+        if not trace.active():
+            return await self._ask(system, user, max_tokens)
+        purpose = sys._getframe(1).f_code.co_name  # the Lisan task that asked
+        with trace.span("chat", f"lisan.{purpose}", system=system, user=user) as record:
+            reply = await self._ask(system, user, max_tokens)
+            record["attributes"]["reply"] = reply
+            return reply
+
+    async def _ask(self, system: str, user: str, max_tokens: int) -> str:
         if not self.available:
             raise LisanUnavailable("No language model is configured")
         provider = self.agent.ai_client
@@ -118,6 +130,31 @@ class Lisan:
             "corrected complete program for the same request, standard library only, as "
             "exactly one fenced code block and nothing else.",
             f"Request:\n{request}\n\nProgram:\n```\n{code}\n```\n\nError output:\n{error[-3000:]}",
+        )
+        return extract_code(reply)
+
+    async def propose_rule(self, examples: str) -> str:
+        reply = await self.ask(
+            "Each example turns an input grid into an output grid; numbers are colours 0-9. "
+            "Find the one rule that explains every example. Write a Python function "
+            "`transform(grid)` that takes the input grid (a list of rows of ints) and returns "
+            "the output grid. Begin the function with a comment stating the rule in one "
+            "sentence. Standard library only, no printing. MIZAN will run it on every example "
+            "and accept it only if it reproduces all of them. Reply with exactly one fenced "
+            "code block.",
+            examples,
+            max_tokens=4000,
+        )
+        return extract_code(reply)
+
+    async def revise_rule(self, examples: str, program: str, wrong: str) -> str:
+        reply = await self.ask(
+            "MIZAN ran this `transform` on every example and it did not reproduce all of them. "
+            "Find a rule that explains every example and return the corrected complete "
+            "function, beginning with a one-sentence comment stating the rule. Standard "
+            "library only. Reply with exactly one fenced code block.",
+            f"{examples}\n\nProgram:\n```python\n{program}\n```\n\nWhat MIZAN found:\n{wrong}",
+            max_tokens=4000,
         )
         return extract_code(reply)
 

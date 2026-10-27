@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from . import trace
+
 PHRASES: dict[str, dict[str, str]] = {
     "computed": {
         "en": "Calculated exactly by MIZAN.",
@@ -45,6 +47,69 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "پہلا ورژن ناکام ہوا؛ لسان نے درست کیا اور میزان نے دوبارہ چلایا ({tries} کوششیں)۔",
         "hi": "पहला संस्करण विफल हुआ; लिसान ने सुधारा और मीज़ान ने फिर चलाया ({tries} प्रयास)।",
         "ar": "فشلت النسخة الأولى؛ صحّحها لسان وأعاد ميزان تشغيلها ({tries} محاولات).",
+    },
+    "qiyas_proven": {
+        "en": "MIZAN found a rule that reproduces all {total} examples exactly in its sandbox, and applied it to the test input.",
+        "hi-latn": "MIZAN ko ek rule mila jo sandbox me sabhi {total} misaalein bilkul sahi banata hai; wahi rule test input par lagaya.",
+        "ur": "میزان کو ایک قاعدہ ملا جو سینڈ باکس میں تمام {total} مثالیں بالکل درست بناتا ہے، اور وہی ٹیسٹ پر لگایا۔",
+        "hi": "मीज़ान को एक नियम मिला जो सैंडबॉक्स में सभी {total} उदाहरण बिल्कुल सही बनाता है, और वही टेस्ट पर लगाया।",
+        "ar": "وجد ميزان قاعدةً تُعيد إنتاج الأمثلة الـ{total} كلها بدقة في بيئته المعزولة، وطبّقها على مُدخل الاختبار.",
+    },
+    "qiyas_unproven": {
+        "en": "Not verified: MIZAN's best rule reproduces {fitted} of {total} examples, so this answer is a guess.",
+        "hi-latn": "Tasdeeq nahi hui: MIZAN ka behtareen rule {total} me se {fitted} misaalein sahi banata hai, isliye yeh jawab andaza hai.",
+        "ur": "تصدیق نہیں ہوئی: میزان کا بہترین قاعدہ {total} میں سے {fitted} مثالیں درست بناتا ہے، اس لیے یہ جواب اندازہ ہے۔",
+        "hi": "पुष्टि नहीं हुई: मीज़ान का सबसे अच्छा नियम {total} में से {fitted} उदाहरण सही बनाता है, इसलिए यह उत्तर अनुमान है।",
+        "ar": "لم يُتحقَّق: أفضل قاعدة لدى ميزان تُعيد {fitted} من {total} أمثلة، فهذا الجواب تخمين.",
+    },
+    "qiyas_no_rule": {
+        "en": "MIZAN could not find a rule that runs on these {total} examples, so it gives no answer.",
+        "hi-latn": "MIZAN in {total} misaalon par chalne wala koi rule nahi dhoondh saka, isliye jawab nahi diya.",
+        "ur": "میزان ان {total} مثالوں پر چلنے والا کوئی قاعدہ نہیں ڈھونڈ سکا، اس لیے جواب نہیں دیا۔",
+        "hi": "मीज़ान इन {total} उदाहरणों पर चलने वाला कोई नियम नहीं ढूंढ सका, इसलिए उत्तर नहीं दिया।",
+        "ar": "لم يجد ميزان قاعدةً تعمل على هذه الأمثلة الـ{total}، فلم يُعطِ جوابًا.",
+    },
+    "qiyas_answer": {
+        "en": "Test output {n}",
+        "hi-latn": "Test output {n}",
+        "ur": "ٹیسٹ نتیجہ {n}",
+        "hi": "टेस्ट आउटपुट {n}",
+        "ar": "ناتج الاختبار {n}",
+    },
+    "muhasaba_head": {
+        "en": "Correction (Muhasaba): MIZAN re-checked an earlier answer in this chat and found a mistake.",
+        "hi-latn": "Islah (Muhasaba): MIZAN ne is chat ka ek pichla jawab dobara jaancha aur ghalati payi.",
+        "ur": "اصلاح (محاسبہ): میزان نے اس چیٹ کا ایک پچھلا جواب دوبارہ جانچا اور غلطی پائی۔",
+        "hi": "सुधार (मुहासबा): मीज़ान ने इस चैट का एक पिछला उत्तर दोबारा जाँचा और ग़लती पाई।",
+        "ar": "تصحيح (محاسبة): أعاد ميزان فحص جواب سابق في هذه المحادثة فوجد خطأً.",
+    },
+    "muhasaba_arithmetic": {
+        "en": "`{expression}` is **{correct}**, not {claimed} (calculated exactly by MIZAN).",
+        "hi-latn": "`{expression}` ka jawab **{correct}** hai, {claimed} nahi (MIZAN ka exact hisab).",
+        "ur": "`{expression}` کا جواب **{correct}** ہے، {claimed} نہیں (میزان کا درست حساب)۔",
+        "hi": "`{expression}` का उत्तर **{correct}** है, {claimed} नहीं (मीज़ान का सटीक हिसाब)।",
+        "ar": "`{expression}` يساوي **{correct}** لا {claimed} (حسبه ميزان بدقة).",
+    },
+    "muhasaba_quote": {
+        "en": "The text quoted for {reference} does not match the source. The source text is:",
+        "hi-latn": "{reference} ke liye diya gaya matan asal source se nahi milta. Asal matan yeh hai:",
+        "ur": "{reference} کے لیے دیا گیا متن اصل ماخذ سے نہیں ملتا۔ اصل متن یہ ہے:",
+        "hi": "{reference} के लिए दिया गया पाठ मूल स्रोत से मेल नहीं खाता। मूल पाठ यह है:",
+        "ar": "النص المنقول لـ{reference} لا يطابق المصدر. نص المصدر هو:",
+    },
+    "muhasaba_tail": {
+        "en": "MIZAN reviews the answers it did not verify; set the chat preference muhasaba to off to stop these corrections.",
+        "hi-latn": "MIZAN un jawabon ko jaanchta hai jinki tasdeeq nahi hui thi; ye islah band karne ke liye chat preference muhasaba ko off karein.",
+        "ur": "میزان اُن جوابات کو جانچتا ہے جن کی تصدیق نہیں ہوئی تھی؛ یہ اصلاحات بند کرنے کے لیے چیٹ ترجیح muhasaba کو off کریں۔",
+        "hi": "मीज़ान उन उत्तरों को जाँचता है जिनकी पुष्टि नहीं हुई थी; ये सुधार बंद करने के लिए चैट वरीयता muhasaba को off करें।",
+        "ar": "يراجع ميزان الأجوبة التي لم يتحقّق منها؛ لإيقاف هذه التصحيحات اضبط تفضيل المحادثة muhasaba على off.",
+    },
+    "hifz_reused": {
+        "en": "MIZAN re-ran a program it verified before, with no language-model call; the output matches what was verified (run {runs}).",
+        "hi-latn": "MIZAN ne pehle tasdeeq kiya hua program dobara chalaya, bina language model ke; output wahi hai jo tasdeeq hua tha (run {runs}).",
+        "ur": "میزان نے پہلے سے تصدیق شدہ پروگرام دوبارہ چلایا، لینگویج ماڈل کے بغیر؛ نتیجہ وہی ہے جس کی تصدیق ہوئی تھی (رن {runs})۔",
+        "hi": "मीज़ान ने पहले से सत्यापित प्रोग्राम फिर चलाया, भाषा मॉडल के बिना; आउटपुट वही है जो सत्यापित हुआ था (रन {runs})।",
+        "ar": "أعاد ميزان تشغيل برنامج تحقّق منه سابقًا، دون استدعاء النموذج اللغوي؛ والناتج مطابق لما تُحقِّق منه (التشغيل {runs}).",
     },
     "cross_checked": {
         "en": "Verified: the sandbox output matches MIZAN's own exact calculation.",
@@ -563,4 +628,5 @@ def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
         problems.append("Lisan claimed an action")
     if not text.strip():
         problems.append("empty text")
+    trace.event("verify", "furqan", accepted=not problems, problems=problems)
     return problems

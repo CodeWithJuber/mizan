@@ -1054,8 +1054,12 @@ async def test_learning_api_shows_routing_and_forgets_wording(monkeypatch, tmp_p
         await main.tadbir_learning(alice)
     monkeypatch.setattr(main, "active_agents", {a.id: a for a in team.values()})
     khalifah = team["Khalifah"]
+    # A user's learning lives with that user's own agents, not the shared ones.
+    mine = await main.chat_agent_for(alice, khalifah)
+    assert mine is not khalifah and len(mine._agent_registry) == len(team)
     learned = fahm.Understanding("web_search", "en", 0.6, {"understood_by": "lisan"})
-    taallum.learn(khalifah.adaptive, "alice", "cricket score batao abhi", learned, True)
+    taallum.learn(mine.adaptive, "alice", "cricket score batao abhi", learned, True)
+    assert taallum.summary(khalifah.adaptive, "alice")["examples"] == 0
     view = await main.tadbir_learning(alice)
     assert view["wording"]["examples"] == 1
     assert any(r["agent"] == "Katib" and r["specialist"] for r in view["routing"])

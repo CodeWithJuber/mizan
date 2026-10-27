@@ -1766,8 +1766,27 @@ class BaseAgent:
             if not hasattr(self, "_llm_calls"):
                 self._llm_calls = []
             self._llm_calls.append(self._last_llm_call)
+            from tadbir import trace
+
+            trace.model_call(llm_response, latency_ms)
         except Exception:
             pass
+
+    def _isnad(self, text: Any) -> dict | None:
+        """Every claim of a model-written answer, graded by the tool evidence this run holds."""
+        if not isinstance(text, str) or not text.strip():
+            return None
+        try:
+            from agents.events import summarize
+            from tadbir import isnad
+
+            receipts = getattr(self, "_last_tool_results", []) or []
+            evidence = "\n".join(summarize(r.get("result"), 20000) for r in receipts)
+            graded = isnad.ledger(text, evidence=evidence)
+            return isnad.summary(graded) if graded else None
+        except Exception:  # noqa: BLE001 - grading never affects the answer
+            logger.debug("Isnad grading skipped", exc_info=True)
+            return None
 
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
@@ -2626,11 +2645,16 @@ Match the requested depth and self-correct errors."""
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+                if result.get("success", True) and "isnad" not in result:
+                    graded = self._isnad(result.get("result"))
+                    if graded:
+                        result["isnad"] = graded
                 for key in (
                     "completion_status",
                     "task_verified",
                     "answer_delivered",
                     "orchestrator",
+                    "isnad",
                 ):
                     if key in result:
                         result["usage"][key] = result[key]
@@ -2863,13 +2887,18 @@ Match the requested depth and self-correct errors."""
                 return cast(dict, handled)
 
         if not _evaluation_only.get():
-            from tadbir import full_orchestration
+            from tadbir import full_orchestration, trace
 
             if full_orchestration():
                 # MIZAN did not recognise an action here: the model answers in
                 # words with the full conversation, and gets no tools. execute()
                 # restores the flag when this run ends.
                 _language_only.set(True)
+            trace.event(
+                "plan",
+                "language_model_answers",
+                tools_for_model="none" if full_orchestration() else "all permitted",
+            )
 
         try:
             full_response = ""
