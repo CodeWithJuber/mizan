@@ -45,3 +45,38 @@ export function installStaleBuildReload(target: Window = window): void {
     }
   });
 }
+
+/** The path of a page's entry script, as the built index.html names it. */
+export function entryPath(html: string, base: string): string | null {
+  const tag = /<script\b[^>]*\btype=["']module["'][^>]*>/i.exec(html)?.[0] ?? "";
+  const src = /\bsrc=["']([^"']+)["']/i.exec(tag)?.[1];
+  return src ? new URL(src, base).pathname : null;
+}
+
+/** Whether the server now serves a different build than the one this tab runs:
+ *  the entry script of a fresh index.html is compared with this page's own. */
+export async function servedBuildChanged(
+  running: string | null,
+  load: () => Promise<Response> = () => fetch("/", { cache: "no-store" }),
+  base = typeof location === "undefined" ? "http://localhost/" : location.href,
+): Promise<boolean> {
+  if (!running) return false;
+  try {
+    const response = await load();
+    if (!response.ok) return false;
+    const served = entryPath(await response.text(), base);
+    return served !== null && served !== running;
+  } catch {
+    return false; // offline or restarting: not evidence of a new build
+  }
+}
+
+/** After a page fails to render: reload once when the cause is that MIZAN was
+ *  updated since this tab opened (its code files are gone), never otherwise. */
+export async function reloadIfStale(target: Window = window): Promise<boolean> {
+  const running = entryPath(target.document.documentElement.outerHTML, target.location.href);
+  if (!(await servedBuildChanged(running)) || !shouldReload(Date.now(), sessionStore())) return false;
+  target.location.reload();
+  return true;
+}
+

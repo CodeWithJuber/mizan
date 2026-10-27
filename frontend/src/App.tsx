@@ -40,6 +40,7 @@ import { ChatAttachments } from "./components/ChatAttachments";
 import { VoiceInput } from "./components/VoiceInput";
 import { withHeard } from "./utils/voice.ts";
 import { authFetch } from "./utils/authFetch";
+import { reloadIfStale } from "./utils/staleBuild";
 import { runChatRequest } from "./utils/chatRequest.ts";
 import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "./utils/chatRecovery.ts";
 import { useChatRecovery } from "./hooks/useChatRecovery.ts";
@@ -125,6 +126,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
+    // A tab opened before a deploy asks for code files the new build no longer
+    // has; when the server now serves another build, load it.
+    void reloadIfStale();
   }
 
   handleRetry = () => {
@@ -158,6 +162,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Something went wrong. Try again or reload the page.
               </p>
+              {this.state.error?.message && (
+                <p className="mt-2 text-xs text-gray-400 dark:text-gray-500 break-words font-mono">
+                  {this.state.error.name}: {this.state.error.message.slice(0, 200)}
+                </p>
+              )}
             </div>
             <div className="flex items-center justify-center gap-3">
               <button
