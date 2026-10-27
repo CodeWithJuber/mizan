@@ -93,6 +93,19 @@ SETTINGS: tuple[Setting, ...] = (
             "instructions, tries the new version on part of the work, and keeps it only when "
             "MIZAN's own checks show it is better.",
             "on", ("on", "off")),
+    Setting("MIZAN_BUDGET_DAILY_USD", "Model", "Daily spending limit per user (USD)", "float",
+            "Hard limit on what each user's model calls may cost per local day. Every call is "
+            "checked before it is sent and its answer length capped to what is left, so no "
+            "call can overspend. Administrators are not limited unless you set a limit for "
+            "them; users can lower their own. Empty: no limit.", "", minimum=0),
+    Setting("MIZAN_BUDGET_MONTHLY_USD", "Model", "Monthly spending limit per user (USD)",
+            "float",
+            "Hard limit on what each user's model calls may cost per calendar month, checked "
+            "the same way as the daily limit. Empty: no limit.", "", minimum=0),
+    Setting("MIZAN_BUDGET_UNPRICED", "Model", "Models with no known price", "choice",
+            "While a spending limit applies, a model MIZAN has no price for cannot be kept "
+            "inside it. refuse blocks such calls; allow lets them run and charges what the "
+            "provider reports.", "refuse", ("refuse", "allow")),
     Setting("MIZAN_LISAN_MODELS", "Model", "Models for code work (Wazn)", "text",
             "Optional comma-separated model IDs, cheapest first. MIZAN sends code work to the "
             "cheapest model whose verified success is high enough and moves one step up after "

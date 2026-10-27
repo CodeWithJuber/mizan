@@ -15,9 +15,12 @@ Local models (ollama, ruh) have no API cost: priced at 0.0.
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
 import re
+from pathlib import Path
 
 logger = logging.getLogger("mizan.prices")
 
@@ -49,6 +52,61 @@ PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
     "qwen3.8": (0.0, 0.0),
     "ruh-local": (0.0, 0.0),
 }
+
+
+# Live list prices from the OpenRouter catalog (USD per token there, stored
+# per 1M here), refreshed with the model limits and kept on the data volume so
+# a restart without network still knows them.
+_LIVE: dict[str, tuple[float, float]] = {}
+_LIVE_LOADED = False
+
+
+def _live_path() -> Path:
+    return Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan")) / "prices_live.json"
+
+
+def _per_million(value: object) -> float | None:
+    try:
+        number = float(str(value))
+    except (TypeError, ValueError):
+        return None
+    # OpenRouter marks variable-price routers with a negative price.
+    return round(number * 1_000_000, 9) if math.isfinite(number) and number >= 0 else None
+
+
+def record_live(catalog: dict[str, tuple[object, object]]) -> int:
+    """Keep the catalog's list prices; returns how many models have one."""
+    global _LIVE_LOADED
+    live: dict[str, tuple[float, float]] = {}
+    for model, (prompt, completion) in catalog.items():
+        rate_in, rate_out = _per_million(prompt), _per_million(completion)
+        if rate_in is not None and rate_out is not None:
+            live[model.strip().lower()] = (rate_in, rate_out)
+    if live:
+        _LIVE.clear()
+        _LIVE.update(live)
+        _LIVE_LOADED = True
+        try:
+            path = _live_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(_LIVE))
+            tmp.replace(path)
+        except OSError as exc:
+            logger.debug("[PRICES] live prices not saved: %s", exc)
+    return len(live)
+
+
+def _live(model: str) -> tuple[float, float] | None:
+    global _LIVE_LOADED
+    if not _LIVE_LOADED:
+        _LIVE_LOADED = True
+        try:
+            saved = json.loads(_live_path().read_text())
+            _LIVE.update({str(k): (float(v[0]), float(v[1])) for k, v in saved.items()})
+        except (OSError, ValueError, TypeError, IndexError):
+            pass
+    return _LIVE.get((model or "").strip().lower())
 
 
 def _normalize(model: str) -> str:
@@ -88,7 +146,8 @@ def lookup(model: str) -> tuple[float, float] | None:
                     return (float(inp), float(outp))
             except ValueError:
                 logger.warning("[PRICES] ignoring malformed override %r", entry)
-    return PRICES_PER_MILLION.get(_normalize(model))
+    found = PRICES_PER_MILLION.get(_normalize(model))
+    return found if found is not None else _live(model)
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:

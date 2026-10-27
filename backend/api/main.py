@@ -1451,6 +1451,9 @@ def chat_failure_payload(result: dict) -> dict:
     code = result.get("error_code")
     if code == "provider_unavailable" and result.get("provider_status") == 429:
         code = "provider_rate_limited"
+    budget = result.get("budget") if code == "budget_exhausted" else None
+    if isinstance(budget, dict):
+        public_errors["budget_exhausted"] = _budget_message(budget)
     if not isinstance(code, str) or code not in public_errors:
         code = "agent_failed"
     message = public_errors.get(
@@ -1469,8 +1472,29 @@ def chat_failure_payload(result: dict) -> dict:
         "code": code,
         "message": message,
         "usage": {**(usage if isinstance(usage, dict) else {}), **receipt},
+        **({"budget": budget} if isinstance(budget, dict) else {}),
         **receipt,
     }
+
+
+def _budget_message(budget: dict) -> str:
+    """The spending-limit message, built only from numbers and fixed words."""
+    if budget.get("reason") == "unpriced":
+        return (
+            "This model has no known price, so MIZAN cannot keep it inside your spending "
+            "limit. Choose a priced model, or ask an administrator to add its price."
+        )
+    if budget.get("reason") == "unavailable":
+        return "MIZAN cannot read its spending ledger right now, so no paid model call may run."
+    word = "daily" if budget.get("period") == "day" else "monthly"
+    limit = budget.get("limit_usd")
+    amount = f" of ${float(limit):.2f}" if isinstance(limit, (int, float)) else ""
+    renews = str(budget.get("resets_at") or "")[:25]
+    return (
+        f"Your {word} model budget{amount} is used up, so MIZAN did not send this to the "
+        f"model. It renews at {renews}. MIZAN's own tools (Quran, hadith, calculations, "
+        "dates) still work without the model."
+    )
 
 
 def chat_provider_attempts(agent) -> dict:
@@ -2620,6 +2644,76 @@ async def list_memories(
             }
         )
     return {"results": results, "total": len(results)}
+
+
+# === IQTISAD (اقتصاد): hard spending limits on model calls ===
+
+
+class SpendingLimits(BaseModel):
+    """USD limits; null removes that limit (the server or admin limit applies)."""
+
+    daily_usd: float | None = Field(None, ge=0, le=100_000)
+    monthly_usd: float | None = Field(None, ge=0, le=1_000_000)
+
+
+def _iqtisad_ledger():
+    from api import iqtisad
+
+    store = iqtisad.ledger()
+    if store is None:
+        raise HTTPException(503, "The spending ledger is unavailable")
+    return iqtisad, store
+
+
+@app.get("/api/iqtisad")
+async def spending_summary(user: TokenPayload = Depends(require_auth)):
+    """What your model calls cost today and this month, against your limits."""
+    iqtisad, _ = _iqtisad_ledger()
+    return await asyncio.to_thread(iqtisad.summary, user.user_id, admin=user.has_role("admin"))
+
+
+@app.put("/api/iqtisad/limits")
+async def set_own_spending_limits(body: SpendingLimits, user: TokenPayload = Depends(require_auth)):
+    """Set your own limits. They can only make your budget smaller: the server's
+    or an administrator's limit still applies when it is lower."""
+    iqtisad, store = _iqtisad_ledger()
+    await asyncio.to_thread(
+        store.set_limits, user.user_id, "self", body.daily_usd, body.monthly_usd
+    )
+    return await asyncio.to_thread(iqtisad.summary, user.user_id, admin=user.has_role("admin"))
+
+
+@app.get("/api/iqtisad/all")
+async def spending_by_user(user: TokenPayload = Depends(require_auth)):
+    """This month's model spend for every user (administrators)."""
+    _require_admin(user)
+    iqtisad, store = _iqtisad_ledger()
+    _, month, _ = iqtisad.periods(user.user_id)
+    people = {record["id"]: record for record in auth.list_users()}
+    rows = await asyncio.to_thread(store.owners, month)
+    for row in rows:
+        person = people.get(row["owner_id"])
+        row["username"] = person["username"] if person else "system"
+        row["limits_usd"] = (
+            iqtisad.effective_limits(row["owner_id"], admin="admin" in person["roles"])
+            if person
+            else {"day": None, "month": None}
+        )
+    return {"month": month, "users": rows}
+
+
+@app.put("/api/iqtisad/limits/{owner_id}")
+async def set_user_spending_limits(
+    owner_id: str, body: SpendingLimits, user: TokenPayload = Depends(require_auth)
+):
+    """Set one user's limits (administrators). Null for both returns that user
+    to the server's default limits."""
+    _require_admin(user)
+    if owner_id not in {record["id"] for record in auth.list_users()}:
+        raise HTTPException(404, "No such user")
+    _, store = _iqtisad_ledger()
+    await asyncio.to_thread(store.set_limits, owner_id, "admin", body.daily_usd, body.monthly_usd)
+    return {"owner_id": owner_id, "daily_usd": body.daily_usd, "monthly_usd": body.monthly_usd}
 
 
 # === DAFTAR (دفتر): everything MIZAN keeps about you, with provenance ===

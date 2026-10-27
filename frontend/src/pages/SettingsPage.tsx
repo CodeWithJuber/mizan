@@ -12,6 +12,7 @@ import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
 
 const RuntimeSettingsPanel = lazy(() => import("../components/RuntimeSettingsPanel"));
+const SpendingPanel = lazy(() => import("../components/SpendingPanel"));
 
 interface ProviderConfig {
   name: string;
@@ -252,6 +253,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
   const sections = [
     { id: "system", label: "System settings" },
+    { id: "spending", label: "Spending" },
     { id: "providers", label: "AI Providers" },
     { id: "channels", label: "Channels" },
     { id: "security", label: "Security" },
@@ -333,6 +335,11 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {activeSection === "system" && (
             <Suspense fallback={<p className="text-sm text-gray-500">Loading settings…</p>}>
               <RuntimeSettingsPanel />
+            </Suspense>
+          )}
+          {activeSection === "spending" && (
+            <Suspense fallback={<p className="text-sm text-gray-500">Loading spending…</p>}>
+              <SpendingPanel api={api} />
             </Suspense>
           )}
           {/* AI Providers */}
