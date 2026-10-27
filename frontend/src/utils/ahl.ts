@@ -44,11 +44,17 @@ export function ahlHeadline(report: AhlReport): string {
   return settled ? headline : `${headline} — the model's own words, Allahu a'lam`;
 }
 
-/** Each settled claim with where it was settled. */
+/** Each settled claim with where it was settled; a contradicted one with the
+ * source's own sentence, so the reader weighs the two side by side. (Notes are
+ * shown here, under the answer, never inside it.) */
 export function ahlLines(report: AhlReport): { text: string; url?: string }[] {
-  const line = (verb: string) => (item: AhlItem) => ({
-    text: `${verb}: ${item.claim} — ${item.title ?? ""} (${SOURCE_LABELS[item.source ?? ""] ?? item.source ?? ""})`,
-    url: item.url,
-  });
-  return [...report.supported.map(line("Confirmed")), ...report.contradicted.map(line("Contradicted"))];
+  const where = (item: AhlItem) =>
+    `${item.title ?? ""} (${SOURCE_LABELS[item.source ?? ""] ?? item.source ?? ""})`;
+  return [
+    ...report.supported.map((item) => ({ text: `Confirmed: ${item.claim} — ${where(item)}`, url: item.url })),
+    ...report.contradicted.map((item) => ({
+      text: `Contradicted: ${item.claim} — ${where(item)} says: “${item.says ?? ""}”`,
+      url: item.url,
+    })),
+  ];
 }

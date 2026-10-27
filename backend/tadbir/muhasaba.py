@@ -28,10 +28,36 @@ logger = logging.getLogger("mizan.muhasaba")
 _STATED = re.compile(r"=\s*\**\s*(-?\d[\d,]*(?:\.\d+)?)")
 
 
+# A Markdown list marker opening a line ("- ", "* ", "+ ", "1. "): structure, not a sign.
+_LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+
+def computable(text: str) -> bool:
+    """Whether the text states an equation MIZAN can compute: every side of an
+    ``=`` is a number or an expression. Such a claim is settled by computing it
+    (Sidq), never by asking a source."""
+    for line in (text or "").splitlines():
+        sides = [side.strip(" *`.") for side in _LIST_MARK.sub("", line).split("=")]
+        if len(sides) < 2 or not all(sides):
+            continue
+        try:
+            for side in sides:
+                # A side is a whole expression or a plain number, nothing else.
+                expression = calc.find_expression(side) or side
+                if len(expression.strip()) < len(side.strip()) - 1:
+                    raise calc.CalcError("not an expression")
+                calc.evaluate(calc.normalize(expression))
+        except calc.CalcError:
+            continue
+        return True
+    return False
+
+
 def arithmetic(text: str) -> list[dict]:
     """``expression = value`` claims whose value MIZAN computes differently."""
     findings = []
     for line in (text or "").splitlines():
+        line = _LIST_MARK.sub("", line)
         for match in _STATED.finditer(line):
             # The expression is what stands right before this "=".
             left = line[: match.start()].rstrip(" *`")

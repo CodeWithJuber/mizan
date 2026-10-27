@@ -54,7 +54,6 @@ import httpx
 from core.adaptive import BetaEstimator, bm25_scores, tokenize
 
 from . import amanah, isnad, qasd
-from .express import phrase
 from .taallum import content_words
 
 logger = logging.getLogger("mizan.ahl_dhikr")
@@ -278,6 +277,17 @@ async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
         if index not in best or decisive > best[index][0]:
             label = max(reading, key=reading.__getitem__)
             best[index] = (decisive, label, passage)
+    # Contradiction is symmetric: if the source contradicts the claim, the claim
+    # contradicts the source. A one-way reading is the NLI model misreading a
+    # pair (an agreeing page read as "says otherwise"), so it settles nothing.
+    disputed = [index for index, (_, label, _) in best.items() if label == "contradiction"]
+    reverse = await nli([(claims[index], best[index][2].text) for index in disputed])
+    for index, reading in zip(disputed, reverse or [], strict=False):
+        if max(reading, key=reading.__getitem__) != "contradiction":
+            best[index] = (best[index][0], "neutral", best[index][2])
+    if disputed and reverse is None:
+        for index in disputed:
+            best[index] = (best[index][0], "neutral", best[index][2])
     findings = []
     for index, claim in enumerate(claims):
         if index not in best or best[index][1] == "neutral":
@@ -536,12 +546,16 @@ async def consult(
     MIZAN's own ilm only."""
     # A claim is held to the same unit as a source sentence (``sentences``):
     # two words relate nothing a source could support or contradict.
+    # An equation is settled by computing it (Sidq), never by a source.
+    from . import muhasaba
+
     claims = [
         unit["text"]
         for unit in ledger
         if unit.get("grade") == "daif"
         and unit.get("kind", "sentence") == "sentence"
         and len(tokenize(unit["text"])) >= 3
+        and not muhasaba.computable(unit["text"])
     ]
     if not claims:
         return [], []
@@ -596,32 +610,6 @@ def machine_readable(text: str) -> bool:
     except ValueError:
         return False
     return True
-
-
-def apply(text: str, findings: list[Finding], language: str) -> str:
-    """The answer with each contradiction shown next to its claim. That no
-    source confirmed a claim is reported beside the answer (``usage.ahl``), not
-    added to it, so an answer asked for in an exact shape keeps that shape."""
-    if machine_readable(text):
-        return text
-    shown = text
-    for finding in findings:
-        if finding.verdict != "contradicted" or finding.passage is None:
-            continue
-        note = phrase(
-            "ahl_contradicted",
-            language,
-            says=finding.passage.text[:300],
-            title=finding.passage.title,
-            url=finding.passage.url,
-        )
-        position = shown.find(finding.claim)
-        if position >= 0:
-            end = position + len(finding.claim)
-            shown = f"{shown[:end]} _{note}_{shown[end:]}"
-        else:
-            shown = f"{shown}\n\n_{note}_"
-    return shown
 
 
 def regrade(ledger: list[dict], findings: list[Finding]) -> list[dict]:

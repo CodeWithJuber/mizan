@@ -1882,7 +1882,10 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - asking never loses the answer
             logger.debug("Ahl al-Dhikr skipped", exc_info=True)
             return
-        shown = ahl_dhikr.apply(text, findings, language)
+        # What the sources said is shown under the answer (usage.ahl), never
+        # inside it: a note in a table row, a formula, a verse or after a
+        # required last word broke answers in the 27 October benchmark.
+        shown = text
         if ruling and not ahl_dhikr.machine_readable(text):
             shown = f"{shown}\n\n_{phrase('ahl_ruling', language)}_"
         result["result"] = shown

@@ -87,8 +87,18 @@ refusal.
    threshold:
    - **supported**: the claim becomes **hasan** in the Isnad ledger, with
      "*title* (*source*) says so";
-   - **contradicted**: the source's sentence is shown right after the claim,
-     with its link, and the claim stays da'if with "*title* says otherwise".
+   - **contradicted**: only when the contradiction holds both ways. The NLI
+     model also reads the claim against the source's sentence, and
+     contradiction is symmetric, so a one-way reading is a misread and settles
+     nothing (on 27 October an agreeing page was shown as "says otherwise").
+     The claim stays da'if with "*title* says otherwise", and the source's
+     sentence and link are listed **under the answer**.
+
+   Nothing the sources say is ever written into the answer itself. Notes inside
+   the text landed in table rows, formulas, verses, refusals and after a last
+   word the user required (27 October benchmark: 258 notes in 51 answers).
+   An equation ("9.11 = 9 + 0.11", "60 × 60 = 3600") is never asked of a
+   source either: computing it settles it ([Sidq](sidq.md)).
      The model's sentence is never silently rewritten;
    - **neither**: the claim stays unknown.
 

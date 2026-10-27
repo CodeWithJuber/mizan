@@ -703,13 +703,6 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "इन शब्दों वाली दूसरी आयतें: {refs}",
         "ar": "آيات أخرى بهذه الكلمات: {refs}",
     },
-    "ahl_contradicted": {
-        "en": "MIZAN asked a source and it says otherwise: “{says}” ([{title}]({url}))",
-        "hi-latn": "MIZAN ne source se poocha, woh kuch aur kehta hai: “{says}” ([{title}]({url}))",
-        "ur": "میزان نے ماخذ سے پوچھا، وہ کچھ اور کہتا ہے: “{says}” ([{title}]({url}))",
-        "hi": "मीज़ान ने स्रोत से पूछा, वह कुछ और कहता है: “{says}” ([{title}]({url}))",
-        "ar": "سأل ميزان مصدرًا فقال غير ذلك: “{says}” ([{title}]({url}))",
-    },
     "ahl_ruling": {
         "en": "This asks for a religious ruling. MIZAN does not give fatwa; ask a qualified "
         "scholar (ahl al-ilm) who can weigh your situation.",
