@@ -138,6 +138,7 @@ export const BLOCK_LABELS: Record<string, string> = {
   consistency: "Paraphrase consistency",
   multilingual: "Hinglish, Urdu, Arabic, Hindi",
   learning: "Learning from the chat",
+  ibrah: "Lessons from real failures",
   safety: "Safety without over-refusal (XSTest)",
   code: "Write and run code",
   arc: "Abstract reasoning (ARC-AGI-2)",

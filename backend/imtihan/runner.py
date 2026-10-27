@@ -39,7 +39,7 @@ def load_tasks(blocks: list[str] | None = None) -> list[dict]:
     tasks += locked_eval.tasks()
     order = [
         "exactness", "scripture", "abstention", "honesty", "injection", "knowledge",
-        "consistency", "multilingual", "learning", "safety", "code", "arc",
+        "consistency", "multilingual", "learning", "ibrah", "safety", "code", "arc",
         "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail", "games",
         "locked_eval",
     ]  # fmt: skip
