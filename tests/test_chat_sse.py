@@ -31,6 +31,7 @@ class StreamingAgent:
         self._last_tool_results = []
         self.started = asyncio.Event()
         self.cancelled = asyncio.Event()
+        self.release = asyncio.Event()
         self.block = False
         self.failure = False
         self.artifacts = []
@@ -43,7 +44,7 @@ class StreamingAgent:
             await callbacks["stream_callback"]("", chunk_type="tool_use", tool_name="read_file")
             await callbacks["stream_callback"]("مرحبا\n")
             if self.block:
-                await asyncio.Event().wait()
+                await self.release.wait()
             if self.failure:
                 raise RuntimeError("private provider diagnostic should not reach the client")
             await callbacks["stream_callback"]("world")
@@ -54,8 +55,20 @@ class StreamingAgent:
                 "artifacts": self.artifacts,
             }
         finally:
-            if self.block:
+            if self.block and not self.release.is_set():
                 self.cancelled.set()
+
+
+async def stop_run(main, principal, session="session-a"):
+    """The Stop button: cancel the run, then wait until its cleanup finished."""
+    lease = main._stream_runs.get((principal.user_id, session))
+    stopped = await main.stop_chat(session, main.StopChatRequest(), principal)
+    if lease is not None and lease.producer is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(lease.producer), 2)
+        except asyncio.CancelledError:
+            pass
+    return stopped
 
 
 @pytest.fixture
@@ -139,6 +152,9 @@ async def test_active_run_conflict_preserves_both_request_identities_and_owner_s
         assert len(agent.calls) == 1
     finally:
         await response.close()
+    # The reader is gone, but the run is the server's: it is still active.
+    assert main._stream_sessions and not agent.cancelled.is_set()
+    assert (await stop_run(main, principal))["stopped"] is True
     assert not main._stream_sessions and not main._stream_runs
     state = client.get(
         "/api/chat/session-a/run-state",
@@ -148,7 +164,7 @@ async def test_active_run_conflict_preserves_both_request_identities_and_owner_s
     assert state["state"] == "terminal" and state["history_saved"] is True
 
 
-async def test_disconnected_transport_cannot_release_a_still_cleaning_producer(api):
+async def test_a_stopped_run_holds_its_lease_until_cleanup_finished(api):
     main, _, tokens, _, _, agent, _ = api
     cleanup_started, cleanup_release = asyncio.Event(), asyncio.Event()
     original_execute = agent.execute
@@ -163,20 +179,60 @@ async def test_disconnected_transport_cannot_release_a_still_cleaning_producer(a
             raise
 
     agent.execute = slow_cleanup
-    response = await main.stream_chat(
-        main.StreamChatMessage(**message()), main.auth.verify_token(tokens["alice"])
-    )
+    principal = main.auth.verify_token(tokens["alice"])
+    response = await main.stream_chat(main.StreamChatMessage(**message()), principal)
     await anext(response.body_iterator)
     await asyncio.wait_for(agent.started.wait(), 1)
-    closing = asyncio.create_task(response.close())
+    await response.close()
+    assert not cleanup_started.is_set()  # closing the stream stops nothing
+    stopping = asyncio.create_task(stop_run(main, principal))
     try:
         await asyncio.wait_for(cleanup_started.wait(), 1)
         assert main._stream_sessions and main._stream_runs
-        assert not closing.done()
+        assert not stopping.done()
     finally:
         cleanup_release.set()
-        await asyncio.wait_for(closing, 1)
+        await asyncio.wait_for(stopping, 2)
     assert not main._stream_sessions and not main._stream_runs
+
+
+async def test_a_dropped_connection_does_not_stop_the_run_and_its_answer_is_saved(api):
+    main, client, tokens, _, memory, agent, _ = api
+    agent.block = True
+    principal = main.auth.verify_token(tokens["alice"])
+    body = message()
+    response = await main.stream_chat(main.StreamChatMessage(**body), principal)
+    await anext(response.body_iterator)
+    await asyncio.wait_for(agent.started.wait(), 1)
+    lease = main._stream_runs[(principal.user_id, "session-a")]
+    await response.close()  # the phone changed networks
+    state = client.get("/api/chat/session-a/run-state", headers=headers(tokens["alice"])).json()
+    assert state["state"] == "active"
+    # Only the owner can stop it, and only the run it names.
+    with pytest.raises(HTTPException):
+        await main.stop_chat(
+            "session-a", main.StopChatRequest(), main.auth.verify_token(tokens["bob"])
+        )
+    other = main.StopChatRequest(request_id=uuid.uuid4())
+    assert (await main.stop_chat("session-a", other, principal)) == {"stopped": False}
+    assert not lease.producer.done()
+    agent.release.set()
+    await asyncio.wait_for(asyncio.shield(lease.producer), 2)
+    assert not agent.cancelled.is_set()
+    assert not main._stream_sessions and not main._stream_runs
+    stored = await memory.get_messages("session-a")
+    assert stored[-1]["content"] == "مرحبا\nworld"
+    assert stored[-1]["metadata"]["status"] == "complete"
+    state = client.get(
+        "/api/chat/session-a/run-state",
+        params={"request_id": body["request_id"]},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert state["state"] == "terminal" and state["history_saved"] is True
+    # Stop after the end, or for another chat, does nothing.
+    assert (await main.stop_chat("session-a", main.StopChatRequest(), principal)) == {
+        "stopped": False
+    }
 
 
 async def test_restart_receipt_is_unknown_and_same_uuid_is_never_replayed(api):
@@ -551,7 +607,7 @@ def test_command_without_agents_finishes_without_model_invocation(api, monkeypat
 
 @pytest.mark.parametrize("spec_version", ["2.0", "2.4"])
 @pytest.mark.parametrize("cancel_during", ["context", "execution"])
-async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(
+async def test_real_asgi_disconnect_keeps_the_run_and_stop_persists_partial(
     api, monkeypatch, spec_version, cancel_during
 ):
     from providers import LLMResponse
@@ -626,17 +682,19 @@ async def test_real_asgi_disconnect_cancels_agent_and_persists_partial(
             await asyncio.wait_for(main.app(scope, receive, send), timeout=3)
     else:
         await asyncio.wait_for(main.app(scope, receive, send), timeout=3)
+    # The reader is gone; the run is not. Only the Stop button ends it.
+    await asyncio.sleep(0)
+    assert main._stream_sessions and not agent.cancelled.is_set()
+    assert (await stop_run(main, main.auth.verify_token(tokens["alice"])))["stopped"] is True
     if cancel_during == "execution":
         await asyncio.wait_for(agent.cancelled.wait(), timeout=1)
-    # Give the detached producer's shielded finalization one scheduling turn.
-    await asyncio.sleep(0)
     assert not main._stream_sessions
     assert not any(e["type"] == "chat_complete" for e in frames(b"".join(chunks).decode()))
     stored = await memory.get_messages(body["session_id"])
     assert stored[-1]["content"] == ("مرحبا\n" if cancel_during == "execution" else "")
     metadata = stored[-1]["metadata"]
     assert metadata["status"] == "cancelled"
-    assert metadata["cancellation_reason"] == "transport_closed"
+    assert metadata["cancellation_reason"] == "user_stopped"
     assert metadata["request_elapsed_ms"] >= 0
     if cancel_during == "execution":
         assert metadata["execution_stage"] in {"agent_execution", "delivery"}
@@ -681,6 +739,7 @@ async def test_heartbeat_and_active_request_conflicts_do_not_start_more_calls(ap
                 break
     finally:
         await response.close()
+        await stop_run(main, principal)
     assert saw_heartbeat
     assert agent.cancelled.is_set()
     assert len(agent.calls) == 1
@@ -695,11 +754,14 @@ async def test_channel_bounded_backpressure_and_serialized_frame_limit(monkeypat
     channel = ChatEventChannel(session_id="s", message_id="m", request_id="r")
     for _ in range(streams.MAX_QUEUED_EVENTS):
         await channel.emit("chat_stream", chunk="one")
-    with pytest.raises(StreamDeliveryError, match="too slow"):
-        await channel.emit("chat_stream", chunk="overflow")
+    # A reader that stops reading is let go: the run is not held up or stopped.
+    await channel.emit("chat_stream", chunk="overflow")
+    assert channel.detached and channel.queue.qsize() == streams.MAX_QUEUED_EVENTS
+    await channel.emit("chat_stream", chunk="after")  # dropped, not an error
     assert channel.queue.qsize() == streams.MAX_QUEUED_EVENTS
+    fresh = ChatEventChannel(session_id="s", message_id="m", request_id="r")
     with pytest.raises(StreamDeliveryError, match="delivery limit"):
-        await channel.emit("thinking", content="a" * streams.MAX_FRAME_BYTES)
+        await fresh.emit("thinking", content="a" * streams.MAX_FRAME_BYTES)
     channel.close()
     with pytest.raises(StreamDeliveryError, match="disconnected"):
         await channel.emit("chat_stream", chunk="late")

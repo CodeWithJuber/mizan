@@ -1401,6 +1401,34 @@ async def chat_run_state(
     return ledger.run_state(user.user_id, session_id, str(request_id) if request_id else None)
 
 
+class StopChatRequest(BaseModel):
+    request_id: uuid.UUID | None = None
+
+
+@app.post("/api/chat/{session_id}/stop")
+async def stop_chat(
+    session_id: str, req: StopChatRequest, user: TokenPayload = Depends(require_auth)
+):
+    """Stop the user's active run in this chat (the Stop button). A dropped
+    connection never does this: the run goes on and saves its answer."""
+    if not session_id or len(session_id) > 100:
+        raise HTTPException(400, "Invalid session id")
+    if await memory.session_owner(session_id) is None:
+        return {"stopped": False}
+    await authorize_session(session_id, user)
+    lease = _stream_runs.get((user.user_id, session_id))
+    if (
+        lease is None
+        or lease.producer is None
+        or lease.producer.done()
+        or (req.request_id is not None and str(req.request_id) != lease.request_id)
+    ):
+        return {"stopped": False}
+    lease.stop_requested = True
+    lease.producer.cancel()
+    return {"stopped": True, "request_id": lease.request_id}
+
+
 def chat_completion_receipt(result: dict) -> dict:
     """Carry observed completion state through storage and all chat transports."""
     return {
@@ -1486,10 +1514,12 @@ async def stream_chat(
 ):
     """One authenticated POST produces one SSE stream; it is never replayed.
 
-    Disconnecting cancels subsequent agent/tool steps. A provider request
-    already accepted upstream may still complete or incur usage. Clients must
-    not automatically retry with a fresh request UUID after an uncertain
-    network outcome; read owned chat history instead.
+    The run belongs to the server, not to the connection: if the reader
+    disconnects or stalls, the run still finishes and saves its answer, and
+    ``/api/chat/{session_id}/run-state`` reports it active until then. Only
+    ``POST /api/chat/{session_id}/stop`` cancels it. Clients must not
+    automatically retry with a fresh request UUID after an uncertain network
+    outcome; read owned chat history instead.
     """
     request_started = asyncio.get_running_loop().time()
     await authorize_session(req.session_id, user, create=True)
@@ -1939,6 +1969,8 @@ async def stream_chat(
                 thinking_trace=completed_trace.to_dict() if completed_trace else None,
             )
         except asyncio.CancelledError:
+            if lease.stop_requested:
+                cancellation_reason = "user_stopped"
             if terminal_status != "complete":
                 terminal_status = "cancelled"
                 try:
@@ -2000,12 +2032,13 @@ async def stream_chat(
                 reset_principal(binding)
 
     async def event_frames():
-        nonlocal cancellation_reason
         producer = asyncio.create_task(process_stream(), name=f"chat-stream-{message_id}")
         lease.producer = producer
         producer.add_done_callback(release_finished_run)
         try:
             while not producer.done() or not channel.queue.empty():
+                if channel.detached and channel.queue.empty():
+                    break  # a stalled reader: end this stream, the run goes on
                 try:
                     frame = await asyncio.wait_for(channel.queue.get(), timeout=HEARTBEAT_SECONDS)
                 except TimeoutError:
@@ -2014,16 +2047,12 @@ async def stream_chat(
                     continue
                 yield frame
         finally:
-            channel.close()
-            if not producer.done():
-                if cancellation_reason == "task_cancelled":
-                    cancellation_reason = "transport_closed"
-                producer.cancel()
-            # Shield cleanup from Starlette's disconnect cancellation scope.
-            try:
-                await asyncio.shield(producer)
-            except asyncio.CancelledError:
-                pass
+            # The run is not tied to this connection. A phone switching
+            # networks, a locked screen or a restarting proxy ends the stream,
+            # not the work: the run finishes and saves its answer, and the app
+            # reads it from history (run-state shows it active until then).
+            # Only POST /api/chat/{session_id}/stop cancels a run.
+            channel.detach()
 
     return ChatStreamingResponse(
         event_frames(),

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { phaseLabel, type ChatRecoveryState } from "../utils/chatRecovery.ts";
 
-export function ChatRunStatus({ progress, recovery, onRefresh, storageUnavailable }: {
+export function ChatRunStatus({ progress, recovery, onRefresh, onStop, storageUnavailable }: {
   progress: { startedAt: number; phase?: string } | null;
   recovery: ChatRecoveryState | null;
   onRefresh: () => void;
+  onStop?: () => void;
   storageUnavailable?: boolean;
 }) {
   const [now, setNow] = useState(Date.now());
@@ -42,10 +43,16 @@ export function ChatRunStatus({ progress, recovery, onRefresh, storageUnavailabl
         saved history is retained. Copy any text you need if local recovery storage is unavailable.
         Nothing is copied or resent automatically.
       </p>}
-      {blocked && <button type="button" onClick={onRefresh} disabled={recovery.state === "checking"}
-        className="mt-2 min-h-[44px] rounded-lg border border-amber-400/50 px-3 py-2 text-xs font-medium disabled:opacity-50">
-        Refresh run status
-      </button>}
+      {blocked && <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" onClick={onRefresh} disabled={recovery.state === "checking"}
+          className="min-h-[44px] rounded-lg border border-amber-400/50 px-3 py-2 text-xs font-medium disabled:opacity-50">
+          Refresh run status
+        </button>
+        {recovery.state === "active" && onStop && <button type="button" onClick={onStop}
+          className="min-h-[44px] rounded-lg border border-red-400/50 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300">
+          Stop this run
+        </button>}
+      </div>}
     </>}
   </div>;
 }
