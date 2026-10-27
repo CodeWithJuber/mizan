@@ -29,6 +29,7 @@ ROLE_FOR = {
     "web_search": "mundhir",
     "web_read": "mubashir",
     "quran": "khalifah",
+    "quran_search": "khalifah",
     "hadith": "khalifah",
     "waqt": "khalifah",
     "salah": "khalifah",

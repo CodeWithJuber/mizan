@@ -109,8 +109,8 @@ Qasd reads three kinds of evidence:
 - what MIZAN's parsers find in it (`e:` tokens)
 - the context (`c:` tokens)
 
-It returns a posterior over 26 recipes and `converse`. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 907 requests in five languages
+It returns a posterior over 27 recipes and `converse`. The seeds are in
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 949 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -175,9 +175,9 @@ that never saw it.
 | Model | Classes | Examples | Held-out accuracy |
 |---|---|---|---|
 | Lughah | 7 | 6246 (1500 sampled for the fit) | 99.2% |
-| Qasd, exact intent | 27 | 1738 (907 seeds, two contexts) | 74.6% |
-| Qasd, family (what MIZAN acts on) | 17 | same | 78.0% |
-| Qasd, act vs answer in words | 2 | same | 86.8% |
+| Qasd, exact intent | 28 | 1822 (949 seeds, two contexts) | 73.5% |
+| Qasd, family (what MIZAN acts on) | 17 | same | 77.2% |
+| Qasd, act vs answer in words | 2 | same | 86.3% |
 | Facet `current` | 2 | 104 | 86.5% |
 | Facet `harder` | 2 | 31 | 90.3% |
 
@@ -188,7 +188,8 @@ The 26 conversation seeds addressed to MIZAN but not about its tools ("Are you
 crazy?", "Can you predict the future?", "Do you have feelings?") cost 0.7
 points on the earlier seeds (594 of 778 against 599). The trade is deliberate:
 the lost cases are capability questions now answered by Lisan in words, and
-the gained ones are questions that used to get the fixed tool list.
+the gained ones are questions that used to get the fixed tool list. With the
+`run_follow` and `quran_search` seeds too, the earlier seeds score 593 of 778.
 
 ## What is still written by hand, and why
 

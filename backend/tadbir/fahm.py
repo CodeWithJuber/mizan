@@ -340,6 +340,13 @@ def _quran(intent: str, message: str, language: str) -> Understanding | None:
     )
 
 
+def _quran_search(_intent: str, message: str, language: str) -> Understanding | None:
+    # A message that names a reference is read by the reference recipe instead.
+    if quran.parse_reference(message) is not None:
+        return None
+    return Understanding("quran_search", language, 0.0, {"query": message})
+
+
 def _hadith(intent: str, message: str, language: str) -> Understanding | None:
     narration = hadith.parse_reference(message)
     if narration is None:
@@ -420,6 +427,7 @@ _BUILDERS = {
     "quran": _quran,
     "quran_question": _quran,
     "quran_explain": _quran,
+    "quran_search": _quran_search,
     "hadith": _hadith,
     "hadith_explain": _hadith,
     "waqt": _with(
@@ -499,7 +507,7 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
 
 # Families of recipes: intents that are kinds of one request.
 FAMILIES = {
-    "quran": ("quran", "quran_question", "quran_explain"),
+    "quran": ("quran", "quran_question", "quran_explain", "quran_search"),
     "hadith": ("hadith", "hadith_explain"),
     "search": ("web_search", "search_bare"),
     "sequence": ("silsila", "silsila_follow"),
