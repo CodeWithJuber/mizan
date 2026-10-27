@@ -1003,3 +1003,28 @@ again_follow	जवाब कहाँ है?
 again_follow	मेरे सवाल का जवाब दो
 again_follow	أين الجواب؟
 again_follow	لم يصل الرد
+# Basar: a page from an attached image (build) vs a question about the image (words)
+build_project	Design an HTML page for this and preview it
+build_project	Make a web page like this image
+build_project	Convert this screenshot into HTML and CSS
+build_project	Turn this design into a working page and show the preview
+build_project	Build this mockup as a website
+build_project	Is image ka html page bana do aur preview dikhao
+build_project	Image ka html banana tha
+build_project	Is design jaisa page banao
+build_project	Yeh screenshot wali website bana do
+build_project	اس تصویر جیسا ویب پیج بنا دو
+build_project	इस तस्वीर जैसा वेब पेज बनाओ
+build_project	اصنع صفحة ويب مثل هذه الصورة
+converse	What is in this picture?
+converse	Describe this image for me
+converse	What does the text in this screenshot say?
+converse	Is photo mein kya hai?
+converse	Is image mein kya likha hai?
+converse	Yeh tasveer kis jagah ki hai?
+converse	اس تصویر میں کیا ہے؟
+converse	इस फोटो में क्या लिखा है?
+converse	ماذا يوجد في هذه الصورة؟
+converse	Is this design good? Give me feedback on it
+converse	Suggest some logo design ideas for my shop
+converse	Mere brand ke liye kuch design ideas do

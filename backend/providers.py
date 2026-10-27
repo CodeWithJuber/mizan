@@ -59,8 +59,21 @@ def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -
 _OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
 
 
-# OpenRouter catalog facts (id → free/tools/context), refreshed with the limits.
+# OpenRouter catalog facts (id → free/tools/context/images), refreshed with the limits.
 _OPENROUTER_CATALOG: dict[str, dict[str, Any]] = {}
+
+
+def accepts_images(model: str) -> bool | None:
+    """Whether a model reads image input, from OpenRouter's catalog
+    (``input_modalities``); ``None`` when the catalog does not know the model."""
+    info = _OPENROUTER_CATALOG.get((model or "").strip())
+    return None if info is None or "images" not in info else bool(info["images"])
+
+
+_NO_SIGHT = (
+    "[The user attached an image here, but the model answering cannot read images, "
+    "so it has not seen it. Say so plainly; do not describe or guess its content.]"
+)
 
 
 def openrouter_fallback_models(model: str, needs_tools: bool) -> list[str]:
@@ -665,13 +678,16 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             )
         return openai_tools
 
-    def _convert_messages_to_openai(self, system: str, messages: list[dict]) -> list[dict]:
+    def _convert_messages_to_openai(
+        self, system: str, messages: list[dict], images: bool = True
+    ) -> list[dict]:
         """Convert Anthropic-style messages to OpenAI format.
 
         Key: OpenAI requires a single assistant message with both content AND
         tool_calls (not separate messages). Tool results must have string content.
+        For a model known not to read images, an image becomes a note saying so.
         """
-        openai_messages = [{"role": "system", "content": system}]
+        openai_messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
         for msg in messages:
             role = msg["role"]
@@ -684,6 +700,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 text_parts = []
                 tool_calls = []
                 tool_results = []
+                image_parts = []
 
                 for block in content:
                     if isinstance(block, dict):
@@ -713,6 +730,19 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             )
                         elif block_type == "text":
                             text_parts.append(block.get("text", ""))
+                        elif block_type == "image" and not images:
+                            text_parts.append(_NO_SIGHT)
+                        elif block_type == "image":
+                            source = block.get("source") or {}
+                            image_parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{source.get('media_type', 'image/png')};"
+                                        f"base64,{source.get('data', '')}"
+                                    },
+                                }
+                            )
                     elif hasattr(block, "type"):
                         # Content block object from Anthropic SDK
                         if block.type == "text":
@@ -740,6 +770,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     if tool_calls:
                         assistant_msg["tool_calls"] = tool_calls
                     openai_messages.append(assistant_msg)
+                elif image_parts:
+                    parts: list[dict] = [{"type": "text", "text": "\n".join(text_parts)}]
+                    openai_messages.append({"role": role, "content": parts + image_parts})
                 elif text_parts:
                     openai_messages.append({"role": role, "content": "\n".join(text_parts)})
 
@@ -751,7 +784,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return openai_messages
 
     def create(self, model, max_tokens, system, messages, tools=None, temperature=None):
-        openai_messages = self._convert_messages_to_openai(system, messages)
+        openai_messages = self._convert_messages_to_openai(
+            system, messages, images=accepts_images(model) is not False
+        )
 
         kwargs = {
             "model": model,
@@ -870,7 +905,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             self._client,
             model,
             max_tokens,
-            self._convert_messages_to_openai(system, messages),
+            self._convert_messages_to_openai(
+                system, messages, images=accepts_images(model) is not False
+            ),
             self._convert_tools_to_openai(tools) if tools else None,
             temperature,
             request_options=_answer_reasoning_options(self.provider_name, model, max_tokens),
@@ -1766,6 +1803,8 @@ async def refresh_model_limits() -> int:
                             "free": model_id.endswith(":free"),
                             "tools": "tools" in (entry.get("supported_parameters") or []),
                             "context": int(entry.get("context_length") or 0),
+                            "images": "image"
+                            in ((entry.get("architecture") or {}).get("input_modalities") or []),
                         }
                         pricing = entry.get("pricing") or {}
                         live_prices[model_id] = (pricing.get("prompt"), pricing.get("completion"))

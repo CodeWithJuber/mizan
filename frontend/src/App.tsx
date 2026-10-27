@@ -2068,12 +2068,14 @@ function AppInner() {
       return;
     }
     const files = [...attachedFiles];
-    const hasMedia = files.some(
-      (f) => f.type.startsWith("image/") || f.type.startsWith("audio/"),
-    );
+    // Images go with the chat message itself (Basar); audio still uses the
+    // older media connection.
+    const images = files.filter((f) => f.type.startsWith("image/")).slice(0, 4);
+    const hasMedia = files.some((f) => f.type.startsWith("audio/"));
+    const hasImages = images.length > 0;
 
     if (
-      hasMedia &&
+      (hasMedia || hasImages) &&
       (
         chatModelOverride ||
         selectedAgent?.model ||
@@ -2092,7 +2094,7 @@ function AppInner() {
     if (hasMedia && wsStatus !== "connected") {
       addToast({
         type: "warning",
-        title: "Image analysis needs an active media connection",
+        title: "Audio analysis needs an active media connection",
         description:
           "Text chat is still available. Keep your attachment and reconnect before sending it.",
       });
@@ -2100,14 +2102,25 @@ function AppInner() {
     }
 
     const requestId = crypto.randomUUID();
+    const others = files.filter((f) => !f.type.startsWith("image/"));
+    let imagePayload: { media_type: string; data: string }[] = [];
+    try {
+      imagePayload = await Promise.all(
+        images.map(async (file) => ({ media_type: file.type, data: await fileToBase64(file) })),
+      );
+    } catch {
+      addToast({ type: "warning", title: "Could not read the image", description: "Try attaching it again." });
+      return;
+    }
     const userMsg: ChatMessage = {
       id: Date.now(),
       role: "user",
       requestId: hasMedia ? undefined : requestId,
       content:
         content +
-        (files.length > 0 ? ` [${files.map((f) => f.name).join(", ")}]` : ""),
+        (others.length > 0 ? ` [${others.map((f) => f.name).join(", ")}]` : ""),
       ts: new Date().toLocaleTimeString(),
+      ...(hasImages ? { images: images.map((file) => ({ url: URL.createObjectURL(file) })) } : {}),
     };
     setMessages((prev) => [...prev, userMsg]);
     streamingRef.current = true;
@@ -2191,6 +2204,7 @@ function AppInner() {
             ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
             ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
+            ...(imagePayload.length ? { images: imagePayload } : {}),
           }),
         }),
         sessionId,

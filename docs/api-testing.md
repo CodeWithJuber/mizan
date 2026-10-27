@@ -40,6 +40,7 @@ Server-Sent Events. Body:
 | `permission_mode` | no | `auto`, `auto_edits`, `ask` or `plan` |
 | `timezone` | no | An IANA name such as `Asia/Karachi`, for dates and prayer times |
 | `workspace_id` | no | A coding project to work in |
+| `images` | no | Up to 4 images, each `{"media_type": "image/png", "data": "<base64>"}`, at most 10 MB; see [Basar](basar.md) |
 
 ```bash
 curl -N $MIZAN/api/chat/stream -H "Authorization: Bearer $TOKEN" \
@@ -113,6 +114,7 @@ curl $MIZAN/api/debug/compare -H "Authorization: Bearer $TOKEN" -H 'Content-Type
 | `GET /api/daftar/receipts` | Receipts of what was erased |
 | `GET /api/iqtisad` | Your spending and limits |
 | `GET /api/voice`, `POST /api/voice/transcribe` | Speech to text on MIZAN's server (multipart `file`) |
+| `GET /api/media/{sha}` | One of your own chat images |
 
 ## Public routes (no sign-in)
 
@@ -128,6 +130,7 @@ curl $MIZAN/api/debug/compare -H "Authorization: Bearer $TOKEN" -H 'Content-Type
 export MIZAN_URL=https://your-mizan.example
 export MIZAN_TOKEN=…            # or MIZAN_API_KEY=…
 python scripts/mizan_client.py chat "Saturn ka sabse bada chand kaunsa hai?"
+python scripts/mizan_client.py chat "Design an HTML page for this and preview it" --image design.png
 python scripts/mizan_client.py compare "Who built the Taj Mahal?"
 python scripts/mizan_client.py imtihan-run --blocks ibrah
 python scripts/mizan_client.py verify

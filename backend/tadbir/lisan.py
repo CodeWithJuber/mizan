@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from api.iqtisad import BudgetExhausted
+from perception import basar
 from providers import effective_limits, provider_retry_delay
 
 from . import amanah, tajdid, trace, wazn
@@ -177,7 +178,8 @@ class Lisan:
                         model=model,
                         max_tokens=max_tokens,
                         system=f"{_BASE}\n\n{system}",
-                        messages=[{"role": "user", "content": user}],
+                        # The images the user attached to this turn (Basar).
+                        messages=[{"role": "user", "content": basar.content(user)}],
                     ),
                     _call_seconds(),
                 )

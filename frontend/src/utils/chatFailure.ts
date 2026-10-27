@@ -48,7 +48,7 @@ export function chatFailureFields(
 export function restoredMessageFields(
   content: string,
   metadata: Record<string, unknown> = {},
-): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held" | "images"> {
   const failure = metadata.status === "error"
     ? chatFailureFields({ ...metadata, content }) : undefined;
   const meta = failure?.meta ?? messageUsage(metadata);
@@ -61,7 +61,23 @@ export function restoredMessageFields(
     stopped: false,
     interrupted: !failure && (metadata.status === "cancelled" || metadata.partial === true),
     held: heldActions(metadata.held),
+    images: keptImages(metadata.images),
   };
+}
+
+/** The images a user message carried, by their kept ids. */
+export function keptImages(value: unknown): ChatMessage["images"] {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.flatMap((item) =>
+    record(item) && typeof item.sha === "string" && /^[0-9a-f]{64}$/.test(item.sha)
+      ? [{
+          sha: item.sha,
+          width: typeof item.width === "number" ? item.width : undefined,
+          height: typeof item.height === "number" ? item.height : undefined,
+        }]
+      : [],
+  );
+  return items.length ? items : undefined;
 }
 
 function heldActions(value: unknown): ChatMessage["held"] {

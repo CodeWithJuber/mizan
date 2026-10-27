@@ -179,6 +179,15 @@ export interface CognitiveMetadata {
 
 // ===== Chat Types =====
 
+/** An image the user attached (Basar): a local preview while sending, or the
+ *  kept image's id when the chat is read back. */
+export interface ChatImage {
+  sha?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface ChatMessage {
   id: number;
   role: "user" | "assistant" | "system";
@@ -208,6 +217,8 @@ export interface ChatMessage {
   activity?: import("./utils/agentActivity").AgentActivity;
   /** Actions an unattended run (a watcher) held for the owner's approval. */
   held?: HeldActionRef[];
+  /** Images attached to this message (Basar). */
+  images?: ChatImage[];
 }
 
 export interface HeldActionRef {

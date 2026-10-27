@@ -19,6 +19,7 @@ import { speakable } from "../utils/voice.ts";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 import { MessageMeta } from "./MessageMeta";
 import { HeldActions } from "./HeldActions";
+import { ChatImages } from "./ChatImages";
 import { cognitiveMetrics } from "../utils/responseMetrics.ts";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
@@ -825,6 +826,7 @@ export function ChatMessageBubble({
             <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm wrap-break-word">
               {msg.content}
             </div>
+            <ChatImages images={msg.images} />
             {msg.notStarted && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
               Not started — no model execution was started for this message.
             </p>}

@@ -12,6 +12,7 @@ Standard library only. Set the server and a credential, then run a command:
     python scripts/mizan_client.py health
     python scripts/mizan_client.py chat "What is 17*23?"     # streams the answer
     python scripts/mizan_client.py chat "Aur 19*23?" --session my-test
+    python scripts/mizan_client.py chat "Design an HTML page for this" --image design.png
     python scripts/mizan_client.py history my-test
     python scripts/mizan_client.py compare "Who built the Taj Mahal?"   # base model vs MIZAN
     python scripts/mizan_client.py imtihan-run --blocks ibrah           # AGI test (admin)
@@ -28,14 +29,17 @@ the closing event (Isnad grades, Truth Gate, sources asked, usage).
 from __future__ import annotations
 
 import argparse
+import base64
 import getpass
 import json
+import mimetypes
 import os
 import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 
 def base() -> str:
@@ -72,15 +76,23 @@ def show(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
-def chat(text: str, session: str | None, mode: str | None) -> None:
+def chat(text: str, session: str | None, mode: str | None, images: list[str]) -> None:
     """One message over the streaming route (Server-Sent Events)."""
-    body = {
+    body: dict = {
         "session_id": session or f"api-{int(time.time())}",
         "request_id": str(uuid.uuid4()),
         "content": text,
     }
     if mode:
         body["permission_mode"] = mode
+    if images:
+        body["images"] = [
+            {
+                "media_type": mimetypes.guess_type(path)[0] or "image/png",
+                "data": base64.b64encode(Path(path).read_bytes()).decode(),
+            }
+            for path in images
+        ]
     request = urllib.request.Request(  # noqa: S310 - base() accepts only http(s)
         base() + "/api/chat/stream",
         data=json.dumps(body).encode(),
@@ -115,6 +127,7 @@ def main() -> None:
     parser.add_argument("argument", nargs="?")
     parser.add_argument("--session")
     parser.add_argument("--mode", choices=["auto", "auto_edits", "ask", "plan"])
+    parser.add_argument("--image", action="append", default=[], help="attach an image (up to 4)")
     parser.add_argument("--blocks", help="comma-separated AGI-test blocks, e.g. ibrah,quran")
     parser.add_argument("--repeats", type=int, default=1)
     args = parser.parse_args()
@@ -127,7 +140,7 @@ def main() -> None:
     elif command == "health":
         show(call("GET", "/api/health"))
     elif command == "chat":
-        chat(argument or sys.exit("chat needs a message"), args.session, args.mode)
+        chat(argument or sys.exit("chat needs a message"), args.session, args.mode, args.image)
     elif command == "history":
         show(call("GET", f"/api/chat/{argument}"))
     elif command == "sessions":
