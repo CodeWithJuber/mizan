@@ -484,7 +484,12 @@ def _erase_chat_rows(
     ]
     removed["notes"] = _delete_in(db, "memories", "id", note_ids)
     _drop_cached(private, note_ids)
-    removed["task records"] = _delete_in(db, "task_history", "task", asked)
+    removed["task records"] = _delete_in(db, "task_history", "task", asked) + _run(
+        db,
+        "DELETE FROM task_history WHERE json_valid(metadata) "
+        "AND json_extract(metadata, '$.session') = ?",
+        (session_id,),
+    )
     removed["wisdom"] = _delete_in(db, "hikmah", "context", [text[:200] for text in asked])
     names = list(dict.fromkeys(text[:100] for text in asked))
     entities = [
@@ -514,7 +519,10 @@ def _erase_chat_rows(
     )
     removed["learner examples"] = _delete_in(learner, "interactions", "id", interactions)
     removed["debug runs"] = _delete_in(folder / "debug_runs.db", "debug_runs", "prompt", asked)
-    kept = []
+    kept = [
+        "Action receipts (Sakk) stay: which tool ran and how it ended, with keyed "
+        "digests only; no words from this chat are in them"
+    ]
     if unlinked:
         kept.append(
             f"{unlinked} preference(s) you set in this chat stay in your Daftar "

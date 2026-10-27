@@ -36,6 +36,7 @@ tzdata>=2026.5  # IANA timezones for zoneinfo in slim images
 jsonschema>=4.26.0,<5  # MIZAN validates tool arguments (Tadbir Amal)
 pywebpush>=2.5.0,<3  # Web Push with VAPID and encrypted payloads (Bab notices), MPL-2.0
 faster-whisper>=1.2.1,<2  # Speech to text on this server (Sama'), MIT
+rfc8785>=0.1.4,<0.2  # Canonical JSON for Sakk receipt hashes, Apache-2.0
 
 # CLI
 click>=8.5.0,<9

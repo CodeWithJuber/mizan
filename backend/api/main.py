@@ -416,6 +416,7 @@ async def lifespan(app: FastAPI):
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
+    sakk_task = asyncio.create_task(_sakk_daily())
 
     logger.info("MIZAN ready - Bismillah!")
 
@@ -429,6 +430,7 @@ async def lifespan(app: FastAPI):
         memory_maintenance_task.cancel()
     self_review_task.cancel()
     watch_task.cancel()
+    sakk_task.cancel()
     if telegram_task is not None and _telegram_bot is not None:
         telegram_stop.set()
         telegram_task.cancel()
@@ -491,6 +493,8 @@ _PUBLIC_API = {
 # Dev-server previews: the capability in the path is the credential, and every
 # response carries a CSP sandbox (opaque origin), so no session is involved.
 _PUBLIC_API_PREFIXES = ("/api/workspaces/preview/",)
+# Read-only pages anyone may see (the reliability scorecard, signed Sakk roots).
+_OPEN_API_PREFIXES = ("/api/public/",)
 _ADMIN_PREFIXES = (
     "/api/status",
     "/api/integrations",
@@ -528,7 +532,9 @@ async def enforce_api_access(request: HTTPConnection):
     if request.scope["type"] == "websocket":
         yield
         return
-    if request.url.path in _PUBLIC_API or request.url.path.startswith(_PUBLIC_API_PREFIXES):
+    if request.url.path in _PUBLIC_API or request.url.path.startswith(
+        _PUBLIC_API_PREFIXES + _OPEN_API_PREFIXES
+    ):
         yield
         return
     principal = await require_auth(
@@ -1488,6 +1494,18 @@ async def delete_chat(session_id: str, user: TokenPayload = Depends(require_auth
     )
     active_sessions.pop(session_id, None)
     _stream_runs.pop(key, None)
+    from security import sakk
+
+    sakk.record(
+        user.user_id,
+        "erase",
+        {
+            "chat": sakk.store().mac(user.user_id, session_id),
+            "removed": sum(int(v) for v in (receipt.get("removed") or {}).values()),
+            "traces": int(receipt.get("traces") or 0),
+        },
+        "chat erased (Mahw)",
+    )
     return receipt
 
 
@@ -2433,6 +2451,14 @@ async def resolve_chat_approval(
         user.user_id, approval_id, body.decision
     ):
         raise HTTPException(404, "No pending approval with that id")
+    from security import sakk
+
+    sakk.record(
+        user.user_id,
+        "approval",
+        {"approval": approval_id, "decision": body.decision},
+        f"approval · {body.decision}",
+    )
     return {"approval_id": approval_id, "decision": body.decision}
 
 
@@ -2482,6 +2508,14 @@ async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict 
     )
     if item is None:
         return None
+    from security import sakk
+
+    sakk.record(
+        user.user_id,
+        "held_decision",
+        {"held": held_id, "tool": item["tool"], "decision": decision},
+        f"{item['tool']} · {'allowed' if decision == 'allow' else 'denied'} by you",
+    )
     session = item["session_id"]
     if session.startswith("unattended:"):
         session = muraqabah_session(user.user_id)
@@ -4972,10 +5006,12 @@ async def imtihan_run(req: ImtihanRunRequest, user: TokenPayload = Depends(requi
 
 @app.get("/api/imtihan/runs")
 async def imtihan_runs(user: TokenPayload = Depends(require_auth)):
-    from imtihan import runner
+    from imtihan import runner, scorecard
 
     _require_admin(user)
-    return {"runs": await runner.runs()}
+    found = await runner.runs()
+    published = await asyncio.to_thread(scorecard.published_ids)
+    return {"runs": [{**run, "published": run["id"] in published} for run in found]}
 
 
 @app.get("/api/imtihan/runs/{run_id}")
@@ -4997,6 +5033,134 @@ async def imtihan_cancel(run_id: str, user: TokenPayload = Depends(require_auth)
     if not runner.cancel(run_id):
         raise HTTPException(404, "No running test with that id")
     return {"cancelled": True}
+
+
+@app.post("/api/imtihan/runs/{run_id}/publish")
+async def imtihan_publish(run_id: str, user: TokenPayload = Depends(require_auth)):
+    """Publish a finished run's aggregate report on the public reliability page."""
+    from imtihan import runner, scorecard
+
+    _require_admin(user)
+    run = await runner.get(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    try:
+        entry = await asyncio.to_thread(scorecard.publish, run)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    wali.audit.log("scorecard_published", {"run": run_id, "by": user.user_id})
+    return entry
+
+
+@app.delete("/api/imtihan/runs/{run_id}/publish")
+async def imtihan_unpublish(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from imtihan import scorecard
+
+    _require_admin(user)
+    return {"removed": await asyncio.to_thread(scorecard.unpublish, run_id)}
+
+
+def _open_rate_limit(request: Request) -> None:
+    client = request.client.host if request.client else "unknown"
+    if not wali.check_rate_limit(f"public:{client}")["allowed"]:
+        raise HTTPException(429, "Too many requests; try again in a minute")
+
+
+@app.get("/api/public/reliability")
+async def public_reliability(request: Request):
+    """MIZAN's published AGI-test results (aggregates only) and its signed Sakk roots."""
+    from imtihan import scorecard
+
+    _open_rate_limit(request)
+    return await asyncio.to_thread(scorecard.view)
+
+
+@app.get("/api/public/reliability/{run_id}")
+async def public_reliability_run(run_id: str, request: Request):
+    from imtihan import scorecard
+
+    _open_rate_limit(request)
+    entry = await asyncio.to_thread(scorecard.get, run_id[:64])
+    if entry is None:
+        raise HTTPException(404, "No published result with that id")
+    return entry
+
+
+@app.get("/api/public/sakk")
+async def public_sakk(request: Request):
+    """MIZAN's receipt-signing public key and its recent signed daily roots."""
+    from security import sakk
+
+    _open_rate_limit(request)
+    store = sakk.store()
+    return {"public_key": store.public_key(), "roots": store.roots(30)}
+
+
+# === SAKK (صك) — tamper-evident action receipts ===
+
+
+async def _sakk_daily() -> None:
+    """Sign today's root of every chain's head, then check again each hour."""
+    from security import sakk
+
+    while True:
+        try:
+            await asyncio.to_thread(sakk.store().sign_day)
+        except Exception:  # noqa: BLE001 - signing is retried next hour
+            logger.warning("[SAKK] daily root not signed", exc_info=True)
+        await asyncio.sleep(3600)
+
+
+@app.get("/api/sakk")
+async def sakk_receipts(
+    limit: int = 50, before: int | None = None, user: TokenPayload = Depends(require_auth)
+):
+    """Your action receipts, newest first: tool, outcome, time and chain hash."""
+    from security import sakk
+
+    store = sakk.store()
+    return {
+        "receipts": await asyncio.to_thread(store.receipts, user.user_id, limit, before),
+        "public_key": await asyncio.to_thread(store.public_key),
+    }
+
+
+@app.get("/api/sakk/verify")
+async def sakk_verify(user: TokenPayload = Depends(require_auth)):
+    """Recompute your whole chain and say whether every receipt still holds."""
+    from security import sakk
+
+    return await asyncio.to_thread(sakk.store().verify, user.user_id)
+
+
+@app.get("/api/sakk/verify/all")
+async def sakk_verify_all(user: TokenPayload = Depends(require_auth)):
+    from security import sakk
+
+    _require_admin(user)
+    store = sakk.store()
+
+    def check() -> dict:
+        results = {owner: store.verify(owner) for owner in store.owners()}
+        return {
+            "chains": len(results),
+            "ok": all(item["ok"] for item in results.values()),
+            "broken": {owner: item for owner, item in results.items() if not item["ok"]},
+        }
+
+    return await asyncio.to_thread(check)
+
+
+@app.get("/api/sakk/export")
+async def sakk_export(user: TokenPayload = Depends(require_auth)):
+    """Your chain, your digest key and MIZAN's signed proof, to check anywhere
+    with scripts/verify_sakk.py."""
+    from security import sakk
+
+    data = await asyncio.to_thread(sakk.store().export, user.user_id)
+    return JSONResponse(
+        data, headers={"Content-Disposition": 'attachment; filename="mizan-sakk.json"'}
+    )
 
 
 class Arc3PlayRequest(BaseModel):
