@@ -772,9 +772,21 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         kwargs["max_tokens"] = ticket.max_tokens
         kwargs.update(_answer_reasoning_options(self.provider_name, model, ticket.max_tokens))
         try:
-            response = self._client.chat.completions.create(
-                **_adapt_openai_request(self.provider_name, kwargs)
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    **_adapt_openai_request(self.provider_name, kwargs)
+                )
+            except Exception as exc:
+                # Rejected before generating (402): once more, within what the
+                # account can still pay for.
+                affordable = affordable_tokens(exc)
+                if affordable is None or affordable >= kwargs["max_tokens"]:
+                    raise
+                kwargs["max_tokens"] = affordable
+                kwargs.update(_answer_reasoning_options(self.provider_name, model, affordable))
+                response = self._client.chat.completions.create(
+                    **_adapt_openai_request(self.provider_name, kwargs)
+                )
         except Exception as exc:
             _close_ticket(ticket, exc)
             raise
@@ -1068,7 +1080,19 @@ class _OpenAIStreamWrapper:
                     self._provider_name, self._model, self._max_tokens
                 )
         try:
-            self._open()
+            try:
+                self._open()
+            except Exception as exc:
+                # Rejected before generating (402): once more, within what the
+                # account can still pay for.
+                affordable = affordable_tokens(exc)
+                if affordable is None or affordable >= self._max_tokens:
+                    raise
+                self._max_tokens = affordable
+                self._request_options = _answer_reasoning_options(
+                    self._provider_name, self._model, affordable
+                )
+                self._open()
         except Exception as exc:
             if self._ticket is not None:
                 _close_ticket(self._ticket, exc)
@@ -1655,6 +1679,19 @@ def effective_limits(provider: Any, model: str) -> tuple[int, int]:
 
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 529}
+
+
+def affordable_tokens(exc: BaseException) -> int | None:
+    """The output limit the provider says the account can still pay for.
+
+    OpenRouter answers HTTP 402 before generating anything when a request's
+    max_tokens would cost more than the credit left, and says how many tokens
+    it can afford; the same request with that limit may be sent once more.
+    """
+    if getattr(exc, "status_code", None) != 402:
+        return None
+    found = re.search(r"can only afford (\d+)", str(exc))
+    return int(found[1]) if found and int(found[1]) > 0 else None
 
 
 def provider_retry_delay(exc: BaseException, attempt: int) -> float | None:

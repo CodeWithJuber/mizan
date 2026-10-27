@@ -65,6 +65,15 @@ its wait limit".)
 A local timeout closes the stream where supported; it cannot establish whether
 the upstream provider stopped or charged for its work.
 
+**Out of provider credit (HTTP 402).** OpenRouter refuses a request before
+generating anything when its `max_tokens` would cost more than the account's
+credit, and says how many tokens it can afford ("can only afford 1570").
+MIZAN then sends the same request once more with that limit
+(`providers.affordable_tokens`), and otherwise answers with `error_code:
+provider_credit`, which says an administrator needs to add credit. (On 27 Oct
+2026 the production account's credit ran out; requests above about 1,000
+output tokens were refused.)
+
 **A dropped connection does not stop the run.** Phones switch networks, lock
 their screens and pause background tabs, and a proxy may restart. The run
 belongs to the server, not to the connection: when the reader disconnects, or

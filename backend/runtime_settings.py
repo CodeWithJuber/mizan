@@ -84,6 +84,11 @@ SETTINGS: tuple[Setting, ...] = (
             "found. strict corrects or removes what is wrong, flag only marks it, off skips "
             "the check.",
             "strict", ("strict", "flag", "off")),
+    Setting("MIZAN_AMANAH", "Model", "Injection check (Amanah)", "choice",
+            "Outside text (pages, files, tool results, pasted text) is checked for "
+            "instructions aimed at the AI. evidence adds a model trained on licensed "
+            "prompt-injection datasets to the patterns; rules uses the patterns alone.",
+            "evidence", ("evidence", "rules")),
     Setting("MIZAN_MURAQABAH", "Model", "Watchers (Muraqabah)", "choice",
             "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
             "when a page changes), quiet during salah, within a daily attention budget.",
