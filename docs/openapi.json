@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "MIZAN (ميزان) - Agentic Personal AI",
-  "description": "Production-ready agentic AI with Quranic Cognitive Architecture",
+  "description": "MIZAN's API. Sign in with POST /api/auth/login and send `Authorization: Bearer <token>` (or `X-API-Key`). Who may call each route: docs/api-reference.md. Measured reliability: /api/public/reliability.",
   "version": "3.3.0"
  },
  "paths": {
@@ -337,9 +337,42 @@
   "/api/agents": {
    "get": {
     "summary": "List Agents",
-    "description": "List all agents with their Nafs profile",
+    "description": "List all agents with their Nafs profile; ``detail=false`` gives each in a\nfew fields, and ``limit``/``offset`` page through them.",
     "operationId": "list_agents_api_agents_get",
     "parameters": [
+     {
+      "name": "detail",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": true,
+       "title": "Detail"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 200,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     },
      {
       "name": "authorization",
       "in": "header",
@@ -6686,14 +6719,36 @@
   "/api/status": {
    "get": {
     "summary": "System Status",
-    "description": "Full system status - Mizan dashboard",
+    "description": "Full system status - Mizan dashboard; ``detail=false`` lists each agent\nin a few fields.",
     "operationId": "system_status_api_status_get",
+    "parameters": [
+     {
+      "name": "detail",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": true,
+       "title": "Detail"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
        }
       }
      }
@@ -21290,6 +21345,11 @@
      "thinking": {
       "type": "boolean",
       "title": "Thinking",
+      "default": false
+     },
+     "stateless": {
+      "type": "boolean",
+      "title": "Stateless",
       "default": false
      }
     },

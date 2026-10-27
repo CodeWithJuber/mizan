@@ -4,9 +4,9 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-270 routes in 58 areas.
+272 routes in 60 areas.
 
-Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
+Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
 ## agent-skills
 
@@ -26,7 +26,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/api/agents` | user (more for admin) | List all agents with their Nafs profile |
+| GET | `/api/agents` | user (more for admin) | List all agents with their Nafs profile; ``detail=false`` gives each in a few fields, and ``limit``/``offset`` page through them. |
 | POST | `/api/agents` | admin | Resolve a provider once and persist the validated agent before publishing it. |
 | DELETE | `/api/agents/{agent_id}` | admin | Delete agent |
 | GET | `/api/agents/{agent_id}` | user (more for admin) | Get agent |
@@ -154,6 +154,12 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/debug/runs` | debug mode (admins by default, `MIZAN_DEBUG_MODE`) | Debug runs |
 | GET | `/api/debug/runs/{run_id}` | debug mode (admins by default, `MIZAN_DEBUG_MODE`) | Debug run |
 | GET | `/api/debug/status` | user (more for admin) | Debug status |
+
+## docs
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/api/docs` | public | Swagger ui html |
 
 ## doctor
 
@@ -298,6 +304,12 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/nafs/tiers` | admin | Get all 7 Nafs tiers and their permission mappings. |
 | GET | `/api/nafs/{agent_id}` | admin | Get 7-level Nafs status for an agent. |
 | GET | `/api/nafs/{agent_id}/faculties` | admin | Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status. |
+
+## openapi.json
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/api/openapi.json` | public | Openapi |
 
 ## owned
 
@@ -444,7 +456,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/api/status` | admin | Full system status - Mizan dashboard |
+| GET | `/api/status` | admin | Full system status - Mizan dashboard; ``detail=false`` lists each agent in a few fields. |
 
 ## tadbir
 

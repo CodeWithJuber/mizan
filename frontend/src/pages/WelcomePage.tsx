@@ -306,6 +306,14 @@ export default function WelcomePage({
                 {loginLoading ? "Logging in..." : "Log in"}
               </button>
             </form>
+            <p className="text-xs text-gray-500 dark:text-gray-400 space-x-3">
+              <a href="/reliability" className="underline hover:text-mizan-gold">
+                Measured reliability
+              </a>
+              <a href="/api/docs" className="underline hover:text-mizan-gold">
+                API docs
+              </a>
+            </p>
           </div>
         )}
 

@@ -150,7 +150,7 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - API keys managed via `backend/security/vault.py`.
 - Input validation/sanitization in `backend/security/validation.py`; all user input sanitized before processing.
 - Tool calls pass through `izn` permission checks; rate limits enforced by `wali`.
-- Auth before the body: `credentials_first` middleware answers 401 for non-public `/api/*` without a valid credential before routing; roles are still checked by `enforce_api_access`. Tokens: `/api/auth/me`, `/api/auth/logout` (`everywhere`), revocations persisted in `revocations.json`. Limits with `Retry-After`/`RateLimit-*`: failed logins 5/min per IP and per username (`_login_failures`), chat messages 30/min per user (`_chat_messages`). CORS (`_OriginBoundCORS`) sends credentials only with a matched origin.
+- Auth before the body: `credentials_first` middleware answers 401 for non-public `/api/*` without a valid credential before routing; roles are still checked by `enforce_api_access`. Tokens: `/api/auth/me`, `/api/auth/logout` (`everywhere`), revocations persisted in `revocations.json`. Limits with `Retry-After`/`RateLimit-*`: failed logins 5/min per IP and per username (`_login_failures`), chat messages 30/min per user (`_chat_messages`). CORS (`_OriginBoundCORS`) sends credentials only with a matched origin. Errors: one envelope (`error_body`: `detail` + `error{code,status,message}`) for HTTP, validation and unhandled errors. Public `/api/openapi.json` + `/api/docs` (Swagger CSP allows jsDelivr there only). `/api/agents` and `/api/status` take `detail=false` (summary) and agents `limit/offset`.
 
 ## Gotchas
 

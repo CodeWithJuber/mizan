@@ -81,3 +81,57 @@ def test_failed_sign_ins_are_limited_with_retry_after(monkeypatch):
         int(limited.headers["retry-after"]) >= 1 and limited.headers["ratelimit-remaining"] == "0"
     )
     assert asyncio  # the sleep after a failure is patched out for speed
+
+
+def test_every_error_has_one_shape():
+    from api.main import app
+
+    client = TestClient(app)
+    unauthenticated = client.get("/api/agents").json()
+    assert unauthenticated["error"] == {
+        "code": "unauthenticated",
+        "status": 401,
+        "message": "Authentication required",
+    }
+    assert unauthenticated["detail"] == "Authentication required"  # what clients read today
+    from api.main import auth
+
+    user = auth.create_user("envelope-user", "pass", roles=["user"])
+    headers = {"Authorization": f"Bearer {auth.create_token(user)}"}
+    missing = client.get("/api/no-such-route", headers=headers).json()
+    assert missing["error"]["code"] == "not_found"
+    invalid = client.post("/api/chat/stream", json={"content": ""}, headers=headers).json()
+    assert invalid["error"]["code"] == "invalid_request" and isinstance(invalid["detail"], list)
+
+
+def test_the_api_is_documented_in_public():
+    from api.main import app
+
+    client = TestClient(app)
+    spec = client.get("/api/openapi.json")
+    assert spec.status_code == 200 and "/api/chat/stream" in spec.json()["paths"]
+    page = client.get("/api/docs")
+    assert page.status_code == 200 and "cdn.jsdelivr.net" in page.headers["content-security-policy"]
+
+
+def test_agents_can_be_listed_briefly_and_in_pages():
+    from api.main import active_agents, app, auth
+
+    admin = auth.create_user("paging-admin", "pass", roles=["admin"])
+    headers = {"Authorization": f"Bearer {auth.create_token(admin)}"}
+    client = TestClient(app)
+    brief = client.get("/api/agents?detail=false", headers=headers).json()
+    assert brief["total"] == len(active_agents)
+    for item in brief["agents"]:
+        assert set(item) <= {
+            "id",
+            "name",
+            "role",
+            "state",
+            "nafs_level",
+            "current_task",
+            "model",
+            "load",
+        }
+    page = client.get("/api/agents?limit=1&offset=0", headers=headers).json()
+    assert len(page["agents"]) == min(1, len(active_agents))

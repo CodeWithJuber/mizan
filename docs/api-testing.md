@@ -51,6 +51,19 @@ Revocations are kept on disk, so a restart never brings a revoked token back.
 Some routes need an admin account: the AGI test, every user's spending, and
 system settings. Debug mode follows `MIZAN_DEBUG_MODE`.
 
+## Errors, docs and lists
+
+- **Errors.** Every error has one shape. `detail` is what FastAPI always sent;
+  `error` is a stable object with `code` (`unauthenticated`, `forbidden`,
+  `not_found`, `invalid_request`, `rate_limited`, `unavailable`, `internal`, …),
+  `status` and `message`.
+- **Docs.** The live OpenAPI is public at `/api/openapi.json`, with a browsable
+  page at `/api/docs`. Who may call each route is in
+  [api-reference.md](api-reference.md).
+- **Lists.** `GET /api/agents?detail=false&limit=20&offset=0` gives each agent
+  in a few fields, a page at a time. `GET /api/status?detail=false` does the
+  same for the dashboard. The full profiles run to several kilobytes per agent.
+
 ## Chat
 
 **`POST /api/chat/stream`** sends one message and returns the answer as

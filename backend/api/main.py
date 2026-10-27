@@ -33,10 +33,13 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -487,6 +490,8 @@ _PUBLIC_API = {
     "/api/v1/root-analyze",
     "/api/v1/tokenize",
     "/api/v1/q28-features",
+    "/api/openapi.json",
+    "/api/docs",
     # Authorization servers redirect the browser here; the single-use OAuth
     # state (not a session) identifies the waiting connector.
     "/api/connectors/oauth/callback",
@@ -565,10 +570,19 @@ async def enforce_api_access(request: HTTPConnection):
 
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
-    description="Production-ready agentic AI with Quranic Cognitive Architecture",
+    description=(
+        "MIZAN's API. Sign in with POST /api/auth/login and send "
+        "`Authorization: Bearer <token>` (or `X-API-Key`). Who may call each route: "
+        "docs/api-reference.md. Measured reliability: /api/public/reliability."
+    ),
     version=__version__,
     lifespan=lifespan,
     dependencies=[Depends(enforce_api_access)],
+    # Under /api/, where the proxy sends requests to the backend (the site's own
+    # /docs is the web app).
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url=None,
 )
 
 # ===== SECURITY INITIALIZATION =====
@@ -659,7 +673,7 @@ async def credentials_first(request: Request, call_next):
         )
     ):
         return await call_next(request)
-    return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    return JSONResponse(status_code=401, content=error_body(401, "Authentication required"))
 
 
 # ===== SECURITY HEADERS MIDDLEWARE =====
@@ -688,9 +702,11 @@ async def security_headers_middleware(request: Request, call_next):
     # Strict transport security (HTTPS only)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
-    # Content Security Policy
+    # Content Security Policy (the API's docs page loads Swagger UI from jsDelivr)
+    cdn = " https://cdn.jsdelivr.net" if request.url.path == "/api/docs" else ""
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        f"default-src 'self'; script-src 'self' 'unsafe-inline'{cdn}; "
+        f"style-src 'self' 'unsafe-inline'{cdn}; img-src 'self' data:{cdn and ' https://fastapi.tiangolo.com'}"
     )
 
     # Referrer policy
@@ -705,19 +721,58 @@ async def security_headers_middleware(request: Request, call_next):
 # ===== GLOBAL EXCEPTION HANDLER =====
 
 
+# One error shape on every route: FastAPI's `detail` (what clients already
+# read) and a stable `error` object: a machine code, the status, a sentence.
+_ERROR_CODES = {
+    400: "bad_request",
+    401: "unauthenticated",
+    403: "forbidden",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    413: "too_large",
+    422: "invalid_request",
+    429: "rate_limited",
+    500: "internal",
+    502: "upstream_failed",
+    503: "unavailable",
+}
+
+
+def error_body(status: int, detail: Any) -> dict:
+    message = detail if isinstance(detail, str) else "The request is not valid"
+    return {
+        "detail": detail,
+        "error": {
+            "code": _ERROR_CODES.get(status, "error" if status >= 400 else "ok"),
+            "status": status,
+            "message": message,
+        },
+    }
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_body(exc.status_code, exc.detail),
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content=error_body(422, jsonable_encoder(exc.errors())))
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - never expose stack traces"""
     import traceback
 
     logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc) if os.getenv("DEBUG") else "An unexpected error occurred",
-        },
-    )
+    detail = str(exc) if os.getenv("DEBUG") else "An unexpected error occurred"
+    return JSONResponse(status_code=500, content=error_body(500, detail))
 
 
 # ===== AUTH DEPENDENCY =====
@@ -1074,11 +1129,25 @@ async def root():
 # === AGENTS ===
 
 
+_AGENT_SUMMARY = ("id", "name", "role", "state", "nafs_level", "current_task", "model", "load")
+
+
+def _agent_summary(found: dict) -> dict:
+    """An agent in a few fields (the full profile is several kilobytes)."""
+    return {key: found.get(key) for key in _AGENT_SUMMARY if key in found}
+
+
 @app.get("/api/agents")
-async def list_agents(user: TokenPayload = Depends(require_auth)):
-    """List all agents with their Nafs profile"""
+async def list_agents(
+    user: TokenPayload = Depends(require_auth),
+    detail: bool = True,
+    limit: int = Query(200, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List all agents with their Nafs profile; ``detail=false`` gives each in a
+    few fields, and ``limit``/``offset`` page through them."""
     agents_data = []
-    for agent in active_agents.values():
+    for agent in list(active_agents.values())[offset : offset + limit]:
         if user.has_role("admin"):
             d = agent.to_dict()
             d["load"] = balancer.load_weights.get(agent.id, 0)
@@ -1087,8 +1156,8 @@ async def list_agents(user: TokenPayload = Depends(require_auth)):
             d = private.to_dict()
             d["id"] = agent.id
             d.pop("system_prompt", None)
-        agents_data.append(d)
-    return {"agents": agents_data, "total": len(agents_data)}
+        agents_data.append(d if detail else _agent_summary(d))
+    return {"agents": agents_data, "total": len(active_agents), "offset": offset}
 
 
 @app.post("/api/agents")
@@ -4462,16 +4531,13 @@ async def list_permissions(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/status")
-async def system_status():
-    """Full system status - Mizan dashboard"""
+async def system_status(detail: bool = True):
+    """Full system status - Mizan dashboard; ``detail=false`` lists each agent
+    in a few fields."""
     agent_stats = []
     for agent in active_agents.values():
-        agent_stats.append(
-            {
-                **agent.to_dict(),
-                "load": balancer.load_weights.get(agent.id, 0),
-            }
-        )
+        found = {**agent.to_dict(), "load": balancer.load_weights.get(agent.id, 0)}
+        agent_stats.append(found if detail else _agent_summary(found))
 
     task_history = await memory.get_task_history(limit=10)
 
@@ -4494,7 +4560,7 @@ async def system_status():
         "provider": get_provider_status(),
         "security": {
             "auth_enabled": True,
-            "rate_limiting": False,
+            "rate_limiting": True,
             "wali_active": True,
             "izn_active": True,
         },
