@@ -66,6 +66,12 @@ def test_public_nlp_routes_use_installed_package(client, monkeypatch, path, fiel
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", installed_import)
+    from tadbir import sarf
+
+    async def small_corpus():  # the analyzer's corpus, without a download
+        return sarf.build("1:1:1:1\tعِلْمٌ\tN\tROOT:علم|LEM:عِلْم|M|NOM\n", ["knowledge"])
+
+    monkeypatch.setattr(sarf, "corpus", small_corpus)
     response = client.post(path, json={"text": "علم", "lang": "ar"})
     assert response.status_code == 200, response.text
     assert response.json()[field]

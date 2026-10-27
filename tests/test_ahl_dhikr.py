@@ -78,12 +78,12 @@ async def test_a_contradicted_claim_is_shown_with_what_the_source_says(store, so
         QUESTION, daif(claim), store=store, user_id="u1", language="en"
     )
     assert findings[0].verdict == "contradicted"
-    shown = ahl_dhikr.apply(f"{claim} It has a thin atmosphere.", findings, "en", asked=True)
+    shown = ahl_dhikr.apply(f"{claim} It has a thin atmosphere.", findings, "en")
     assert shown.index("says otherwise") > shown.index(claim)
     assert "https://en.wikipedia.org/wiki/Titan_(moon)" in shown and "Allahu a'lam" not in shown
 
 
-async def test_with_no_source_the_answer_says_it_is_the_models_word(store, sources):
+async def test_with_no_source_the_answer_is_reported_as_the_models_word(store, sources):
     findings, heard = await ahl_dhikr.consult(
         QUESTION,
         daif("Saturn's rings are mostly made of ice."),
@@ -92,9 +92,11 @@ async def test_with_no_source_the_answer_says_it_is_the_models_word(store, sourc
         language="en",
     )
     assert [finding.verdict for finding in findings] == ["unknown"]
-    assert "Allahu a'lam" in ahl_dhikr.apply(
-        "Saturn's rings are mostly made of ice.", findings, "en", asked=True
-    )
+    # Reported beside the answer (usage.ahl), never added to it, so an answer
+    # asked for in an exact shape keeps that shape.
+    text = "Saturn's rings are mostly made of ice."
+    assert ahl_dhikr.apply(text, findings, "en") == text
+    assert ahl_dhikr.report(findings, heard)["unknown"] == 1
     assert ahl_dhikr.known(store, "u1") == []  # nothing settled, nothing kept
 
 
@@ -274,7 +276,7 @@ async def test_an_unreachable_source_is_not_called_a_source_that_found_nothing(s
     )
     assert heard == [] and findings[0].verdict == "unknown"
     text = "The largest moon of Saturn is Titan."
-    assert ahl_dhikr.apply(text, findings, "en", asked=bool(heard)) == text
+    assert ahl_dhikr.apply(text, findings, "en") == text
 
 
 def test_an_answer_meant_for_a_program_is_never_changed():
@@ -288,7 +290,7 @@ def test_an_answer_meant_for_a_program_is_never_changed():
         '{"moon": "The largest moon of Saturn is Rhea."}',
         '```json\n{"moon": "Rhea"}\n```',
     ):
-        assert ahl_dhikr.apply(text, [finding], "en", asked=True) == text
+        assert ahl_dhikr.apply(text, [finding], "en") == text
 
 
 def test_a_request_for_json_about_a_quote_is_not_a_ruling_or_a_fact_question():
@@ -342,7 +344,7 @@ async def test_a_page_unrelated_to_the_claim_is_never_shown_as_a_source(store, m
         QUESTION, daif(*claims), store=store, user_id="u1", language="en"
     )
     assert [finding.verdict for finding in findings] == ["unknown", "unknown"]
-    shown = ahl_dhikr.apply(" ".join(claims), findings, "en", asked=bool(heard))
+    shown = ahl_dhikr.apply(" ".join(claims), findings, "en")
     assert "says otherwise" not in shown and "Restivo" not in shown and "kono" not in shown
 
 
@@ -384,5 +386,7 @@ def test_religious_questions_and_answers_are_told_by_evidence():
     assert not ahl_dhikr.religious(QUESTION, TITAN)
     assert not ahl_dhikr.religious("When did the Ottoman Empire end?")
     # An answer that cites the Quran or a hadith is not checked against outside pages.
-    assert ahl_dhikr.religious("Why is patience praised?", "Allah is with the patient (2:153).")
+    assert ahl_dhikr.religious(
+        "Why is patience praised?", "Allah is with the patient (Quran 2:153)."
+    )
     assert ahl_dhikr.cites_scripture("Actions are by intentions (Sahih al-Bukhari 1).")

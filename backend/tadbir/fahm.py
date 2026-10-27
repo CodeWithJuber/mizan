@@ -482,7 +482,10 @@ _BUILDERS = {
     "project_task": _in_project,
     "edit_project": _in_project,
     "compute": _with(
-        "compute", lambda m: (lambda e: {"expression": e} if e else None)(calc.find_expression(m))
+        "compute",
+        lambda m: (lambda e: {"expression": e, "explain": qasd.facet("explain", m)} if e else None)(
+            calc.find_expression(m)
+        ),
     ),
     "hf_hub": _with("hf_hub", hub_request),
     "web_read": _web_read,

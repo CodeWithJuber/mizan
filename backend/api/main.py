@@ -1896,12 +1896,15 @@ async def stream_chat(
             nonlocal persisted
             if persisted or session is None:
                 return
+            from agents.base import run_of
+
+            ran = run_of(agent)  # this request's own run of the agent
             usage = (
-                build_usage_summary(getattr(agent, "_llm_calls", []) or [])
+                build_usage_summary(getattr(ran, "_llm_calls", []) or [])
                 if agent and execution_started
                 else {}
             )
-            if execution_started and (attempts := chat_provider_attempts(agent)):
+            if execution_started and (attempts := chat_provider_attempts(ran)):
                 usage["timings"] = attempts
                 lease.provider_attempt_count = attempts["provider_attempt_count"]
             receipt = (
@@ -2057,12 +2060,15 @@ async def stream_chat(
                 except TimeoutError:
                     if not run_deadline.expired():
                         raise
+                    from agents.base import run_of
+
+                    ran = run_of(agent)  # this request's own run of the agent
                     usage = (
-                        build_usage_summary(getattr(agent, "_llm_calls", []) or [])
+                        build_usage_summary(getattr(ran, "_llm_calls", []) or [])
                         if execution_started
                         else {}
                     )
-                    if execution_started and (attempts := chat_provider_attempts(agent)):
+                    if execution_started and (attempts := chat_provider_attempts(ran)):
                         usage["timings"] = attempts
                     result = {"success": False, "error_code": "chat_run_timeout", "usage": usage}
             observed_count = (
@@ -4458,22 +4464,27 @@ async def health_check():
 
 @app.post("/api/v1/root-analyze")
 async def api_v1_root_analyze(request: dict) -> dict:
-    """Analyze Arabic text to extract root-pattern decomposition.
-
-    Public API endpoint for root analysis as a service.
-    """
+    """Root, pattern (wazn), part of speech and meaning of each Arabic word,
+    from the Quranic Arabic Corpus (the analyzer the chat uses too)."""
     text = request.get("text", "")
-    if not text:
+    if not isinstance(text, str) or not text.strip():
         raise HTTPException(status_code=400, detail="text field required")
+    if len(text) > 2000:
+        raise HTTPException(status_code=413, detail="text is limited to 2000 characters")
+    from tadbir import sarf
 
     try:
-        from ruh_model.tokenizer.bayan import BayanTokenizer
-
-        tokenizer = BayanTokenizer()
-        analysis = tokenizer.analyze(text)
-        return {"text": text, "analysis": analysis, "token_count": len(analysis)}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        corpus = await sarf.corpus()
+    except sarf.Unavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    analysis = sarf.analyze(corpus, text)[:200]
+    return {
+        "text": text,
+        "analysis": analysis,
+        "word_count": len(analysis),
+        "token_count": len(analysis),  # kept for older clients: one entry per word
+        "source": sarf.ATTRIBUTION,
+    }
 
 
 @app.post("/api/v1/tokenize")
@@ -4487,17 +4498,23 @@ async def api_v1_tokenize(request: dict) -> dict:
         raise HTTPException(status_code=400, detail="text field required")
 
     try:
-        from ruh_model.tokenizer.bayan import BayanTokenizer
+        from ruh_model.tokenizer.bayan import BOS_ID, EOS_ID, BayanTokenizer
 
         tokenizer = BayanTokenizer()
         tokens = tokenizer.encode(text)
-        return {
-            "text": text,
-            "tokens": [{"root_id": r, "pattern_id": p} for r, p in tokens],
-            "count": len(tokens),
-        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    # The begin and end markers are units of the model's input, not of the text:
+    # "count" is the text's own units, so "كتب" counts 1, not 3.
+    kinds = {BOS_ID: "begin", EOS_ID: "end"}
+    listed = [{"root_id": r, "pattern_id": p, "kind": kinds.get(r, "unit")} for r, p in tokens]
+    return {
+        "text": text,
+        "tokens": listed,
+        "count": sum(1 for item in listed if item["kind"] == "unit"),
+        "count_with_markers": len(listed),
+        "unit": "word" if tokenizer.version == 1 else "byte",
+    }
 
 
 @app.post("/api/v1/q28-features")
@@ -5178,15 +5195,16 @@ async def public_sakk(request: Request):
 
 
 async def _sakk_daily() -> None:
-    """Sign today's root of every chain's head, then check again each hour."""
+    """Sign a checkpoint of every chain's head: each day, and within ten
+    minutes of any chain moving (nothing is signed when nothing changed)."""
     from security import sakk
 
     while True:
         try:
             await asyncio.to_thread(sakk.store().sign_day)
-        except Exception:  # noqa: BLE001 - signing is retried next hour
-            logger.warning("[SAKK] daily root not signed", exc_info=True)
-        await asyncio.sleep(3600)
+        except Exception:  # noqa: BLE001 - signing is retried at the next check
+            logger.warning("[SAKK] checkpoint not signed", exc_info=True)
+        await asyncio.sleep(600)
 
 
 @app.get("/api/sakk")
@@ -5951,21 +5969,6 @@ async def tasrif_demo(req: TasrifDemoRequest):
         raise HTTPException(500, f"Tasrif demo failed: {exc}") from exc
 
 
-@app.get("/api/ruh/{agent_id}")
-async def get_ruh_energy(agent_id: str):
-    """Get Ruh energy state for an agent."""
-    if agent_id not in active_agents:
-        raise HTTPException(404, "Agent not found")
-    agent = active_agents[agent_id]
-    state = agent.ruh.get_state(agent_id)
-    return {
-        "agent_id": agent_id,
-        "energy": state.energy,
-        "max_energy": state.max_energy,
-        "label": agent.ruh.get_fatigue_label(agent_id),
-    }
-
-
 # ===== TASK QUEUE ENDPOINTS =====
 
 PRIORITY_MAP = {
@@ -6418,6 +6421,23 @@ async def get_model_architecture():
     except Exception as exc:
         logger.error("Architecture query failed: %s", exc)
         raise HTTPException(500, f"Failed to get architecture: {exc}") from exc
+
+
+# Declared after every fixed /api/ruh/... route: a path parameter here would
+# otherwise answer /api/ruh/checkpoints and /api/ruh/architecture as an agent id.
+@app.get("/api/ruh/{agent_id}")
+async def get_ruh_energy(agent_id: str):
+    """Get Ruh energy state for an agent."""
+    if agent_id not in active_agents:
+        raise HTTPException(404, "Agent not found")
+    agent = active_agents[agent_id]
+    state = agent.ruh.get_state(agent_id)
+    return {
+        "agent_id": agent_id,
+        "energy": state.energy,
+        "max_energy": state.max_energy,
+        "label": agent.ruh.get_fatigue_label(agent_id),
+    }
 
 
 # === PLUGINS (Wasilah - وسيلة) ===

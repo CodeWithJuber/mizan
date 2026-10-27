@@ -46,7 +46,7 @@ egress proxy. That proxy:
   the server, other containers, private networks or cloud metadata.
 
 Inside, every request goes through a guard:
-- a navigation outside your sites gets a 204 (the browser stays put);
+- a navigation outside your sites, or a held form post, is aborted (`net::ERR_ABORTED`): the browser stays on its page, with no error page;
 - a request that changes something is held;
 - WebSockets, service workers and downloads are refused.
 

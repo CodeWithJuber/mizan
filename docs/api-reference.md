@@ -499,7 +499,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/v1/qwen3/health` | user | Qwen3 health |
 | POST | `/api/v1/reader/build` | user | Build |
 | GET | `/api/v1/reader/lookup` | user | Lookup |
-| POST | `/api/v1/root-analyze` | public | Analyze Arabic text to extract root-pattern decomposition. |
+| POST | `/api/v1/root-analyze` | public | Root, pattern (wazn), part of speech and meaning of each Arabic word, from the Quranic Arabic Corpus (the analyzer the chat uses too). |
 | POST | `/api/v1/screen` | user | POST /v1/screen — body ``{"text": ..., "doc_type": ...}``. |
 | POST | `/api/v1/tajwid/analyze` | user | Annotate Arabic text with tajwīd rules (Ḥafṣ ʿan ʿĀṣim). |
 | GET | `/api/v1/tajwid/rules` | user | Return the tajwīd rule catalog with classical sources. |

@@ -29,3 +29,14 @@ def test_access_follows_the_apps_own_tables():
     assert who[("POST", "/api/imtihan/run")] == "admin"
     assert who[("GET", "/api/public/reliability")] == "public"
     assert who[("POST", "/api/debug/compare")].startswith("debug mode")
+
+
+def test_fixed_ruh_routes_are_not_answered_as_an_agent_id():
+    # The live benchmark (27 Oct): /api/ruh/checkpoints and /api/ruh/architecture
+    # returned 404 "Agent not found" from the /api/ruh/{agent_id} route.
+    from api.main import app
+
+    paths = [getattr(route, "path", "") for route in app.router.routes]
+    catch_all = paths.index("/api/ruh/{agent_id}")
+    for fixed in ("/api/ruh/checkpoints", "/api/ruh/architecture", "/api/ruh/status"):
+        assert paths.index(fixed) < catch_all

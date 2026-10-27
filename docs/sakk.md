@@ -1,6 +1,6 @@
 # Sakk (صَكّ): signed receipts for everything MIZAN does
 
-A *sakk* is a written deed. Every action MIZAN takes or holds for you is written as a receipt in **your own chain**, and the chains are signed once a day. Nobody can change, remove or reorder a receipt later, not even an administrator with the database, without the chain showing it.
+A *sakk* is a written deed. Every action MIZAN takes or holds for you is written as a receipt in **your own chain**, and the chains are signed in checkpoints, at least once a day. Nobody can change, remove or reorder a receipt later, not even an administrator with the database, without the chain showing it.
 
 Code: `backend/security/sakk.py`, the `/api/sakk*` and `/api/public/*` routes in `backend/api/main.py`, `scripts/verify_sakk.py`, `frontend/src/components/SakkPanel.tsx`.
 
@@ -37,7 +37,7 @@ The short display line ("bash · held") is outside the hashed fields.
 
 `GET /api/sakk/verify` (Settings → Receipts → **Verify my chain**) recomputes the whole chain and names the first receipt that fails.
 
-**The daily signature.** Once a day (UTC) MIZAN signs, with an Ed25519 key of its own, the Merkle root of every chain's latest receipt:
+**The signed checkpoints.** MIZAN signs, with an Ed25519 key of its own, the Merkle root of every chain's latest receipt: at least once a day (UTC), and again within ten minutes of any chain moving (and at once when an AGI test result is published), so the public root never lags the receipts. Nothing is signed when nothing changed:
 - leaves and nodes are hashed as in RFC 6962;
 - a leaf names its owner only as a SHA-256 digest;
 - the roots and the public key are public: `/api/public/sakk`, and the reliability page.

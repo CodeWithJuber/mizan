@@ -698,7 +698,14 @@ class Tadbir:
             raise Defer from exc
         await self._step()
         rendered = calc.render(value)
-        text = f"`{shown}` = **{rendered}**\n\n_{phrase('computed', u.language)}_"
+        text = f"`{shown}` = **{rendered}**"
+        if u.entities.get("explain"):
+            # The working comes from MIZAN's own evaluation, never from the model.
+            working = calc.steps(expression)
+            text += f"\n\n**{phrase('steps', u.language)}**\n" + "\n".join(
+                f"{number}. {line}" for number, line in enumerate(working, 1)
+            )
+        text += f"\n\n_{phrase('computed', u.language)}_"
         return Outcome(text, True, {"expression": expression, "value": rendered})
 
     async def _run(self, code: str, language: str) -> dict:

@@ -375,3 +375,198 @@ deen	no	آپ کیسے ہیں؟
 deen	no	मुझे एक कविता लिख दो
 deen	no	كيف حالك؟
 deen	no	اكتب لي قصيدة
+# fact: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no fact evidence.
+fact	no	quick
+fact	no	READY
+fact	no	Reply with exactly READY and nothing else.
+fact	no	hello
+fact	no	hi
+fact	no	Thanks!
+fact	no	ok
+fact	no	okay thanks
+fact	no	yes
+fact	no	Assalamualaikum
+fact	no	Jazakallah khair
+fact	no	Reply in one sentence.
+fact	no	What is 17*23?
+fact	no	What is 17*23 and explain step by step?
+fact	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+fact	no	Write a Python function that removes duplicates from a list
+fact	no	Write a SQL query that finds customers with no orders
+fact	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+fact	no	Explain the difference between a connection timeout and a read timeout
+fact	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+fact	no	Summarise this in three lines
+fact	no	theek hai
+fact	no	acha
+fact	no	شکریہ
+fact	no	ठीक है
+fact	no	شكرا
+# ruling: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no ruling evidence.
+ruling	no	quick
+ruling	no	READY
+ruling	no	Reply with exactly READY and nothing else.
+ruling	no	hello
+ruling	no	hi
+ruling	no	Thanks!
+ruling	no	ok
+ruling	no	okay thanks
+ruling	no	yes
+ruling	no	Assalamualaikum
+ruling	no	Jazakallah khair
+ruling	no	Reply in one sentence.
+ruling	no	What is 17*23?
+ruling	no	What is 17*23 and explain step by step?
+ruling	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+ruling	no	Write a Python function that removes duplicates from a list
+ruling	no	Write a SQL query that finds customers with no orders
+ruling	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+ruling	no	Explain the difference between a connection timeout and a read timeout
+ruling	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+ruling	no	Summarise this in three lines
+ruling	no	theek hai
+ruling	no	acha
+ruling	no	شکریہ
+ruling	no	ठीक है
+ruling	no	شكرا
+# current: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no current evidence.
+current	no	quick
+current	no	READY
+current	no	Reply with exactly READY and nothing else.
+current	no	hello
+current	no	hi
+current	no	Thanks!
+current	no	ok
+current	no	okay thanks
+current	no	yes
+current	no	Assalamualaikum
+current	no	Jazakallah khair
+current	no	Reply in one sentence.
+current	no	What is 17*23?
+current	no	What is 17*23 and explain step by step?
+current	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+current	no	Write a Python function that removes duplicates from a list
+current	no	Write a SQL query that finds customers with no orders
+current	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+current	no	Explain the difference between a connection timeout and a read timeout
+current	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+current	no	Summarise this in three lines
+current	no	theek hai
+current	no	acha
+current	no	شکریہ
+current	no	ठीक है
+current	no	شكرا
+# harder: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no harder evidence.
+harder	no	quick
+harder	no	READY
+harder	no	Reply with exactly READY and nothing else.
+harder	no	hello
+harder	no	hi
+harder	no	Thanks!
+harder	no	ok
+harder	no	okay thanks
+harder	no	yes
+harder	no	Assalamualaikum
+harder	no	Jazakallah khair
+harder	no	Reply in one sentence.
+harder	no	What is 17*23?
+harder	no	What is 17*23 and explain step by step?
+harder	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+harder	no	Write a Python function that removes duplicates from a list
+harder	no	Write a SQL query that finds customers with no orders
+harder	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+harder	no	Explain the difference between a connection timeout and a read timeout
+harder	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+harder	no	Summarise this in three lines
+harder	no	theek hai
+harder	no	acha
+harder	no	شکریہ
+harder	no	ठीक है
+harder	no	شكرا
+# deen: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no deen evidence.
+deen	no	quick
+deen	no	READY
+deen	no	Reply with exactly READY and nothing else.
+deen	no	hello
+deen	no	hi
+deen	no	Thanks!
+deen	no	ok
+deen	no	okay thanks
+deen	no	yes
+deen	no	Assalamualaikum
+deen	no	Jazakallah khair
+deen	no	Reply in one sentence.
+deen	no	What is 17*23?
+deen	no	What is 17*23 and explain step by step?
+deen	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+deen	no	Write a Python function that removes duplicates from a list
+deen	no	Write a SQL query that finds customers with no orders
+deen	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+deen	no	Explain the difference between a connection timeout and a read timeout
+deen	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+deen	no	Summarise this in three lines
+deen	no	theek hai
+deen	no	acha
+deen	no	شکریہ
+deen	no	ठीक है
+deen	no	شكرا
+# explain: the user asks for the working (the steps, how it was found), not only the result.
+explain	yes	What is 17*23 and explain step by step?
+explain	yes	Calculate 125*204 and show your working
+explain	yes	Show the steps for 45*67
+explain	yes	How did you get that answer? Show the steps
+explain	yes	Solve 3/4 + 5/6 step by step
+explain	yes	Explain how to work out 15% of 240
+explain	yes	What is 12*13? Explain the method
+explain	yes	Walk me through 999*7
+explain	yes	Show working: 1234 + 5678
+explain	yes	Can you explain the calculation of 2^10?
+explain	yes	17*23 kitna hai, step by step samjhao
+explain	yes	45*67 ka hisab steps ke saath batao
+explain	yes	Yeh kaise nikla, tareeqa samjhao
+explain	yes	125*204 ko samjha ke hal karo
+explain	yes	17*23 کتنا ہے؟ مرحلہ وار سمجھائیں
+explain	yes	45*67 کا حساب طریقے کے ساتھ بتائیں
+explain	yes	17*23 कितना है? स्टेप बाय स्टेप समझाओ
+explain	yes	45*67 का हिसाब तरीके के साथ बताओ
+explain	yes	كم يساوي 17*23؟ اشرح خطوة بخطوة
+explain	yes	احسب 45*67 مع توضيح الخطوات
+explain	no	What is 17*23?
+explain	no	17*23
+explain	no	Calculate 125*204
+explain	no	What is 15% of 240?
+explain	no	2^10
+explain	no	Compute 999*7
+explain	no	How much is 1234 + 5678?
+explain	no	17*23 kitna hai?
+explain	no	45*67 batao
+explain	no	125*204 ka jawab
+explain	no	17*23 کتنا ہے؟
+explain	no	45*67 कितना है?
+explain	no	كم يساوي 17*23؟
+explain	no	Explain recursion to a child
+explain	no	Explain how a database index works
+explain	no	What does tawakkul mean?
+explain	no	Write a Python function that adds two numbers
+explain	no	hello
+explain	no	Thanks!
+explain	no	READY
+# ruling: guidance, inspiration and reflection from the Quran is not a request for a ruling.
+ruling	no	Hum koshish toh kar sakte hai quran se guidance lenge maths nahi ishara lenge inspiration lenge
+ruling	no	Quran se inspiration lekar research kaise karein?
+ruling	no	Prime number pe research karni hai, kya Quran mein koi ishara hai?
+ruling	no	How can the Quran inspire new research in mathematics?
+ruling	no	Can we take guidance from the Quran for science research?
+ruling	no	What does the Quran say about reflecting on creation?
+ruling	no	Quran ke paas har cheez ka jawab hai, iske baare mein batao
+ruling	no	قرآن سے رہنمائی لے کر تحقیق کیسے کریں؟
+ruling	no	क़ुरआन से प्रेरणा लेकर रिसर्च कैसे करें?
+ruling	no	كيف نستلهم من القرآن أفكارا للبحث العلمي؟
+ruling	yes	Can I pray with socks on?
+ruling	yes	Can I combine Zuhr and Asr while travelling?
+ruling	yes	Is zakat due on the gold my wife wears?
+ruling	yes	Kya mozon par masah jaiz hai?
+ruling	yes	Kya bina wuzu Quran chhoo sakte hain?
+ruling	yes	Is it permissible to eat food with gelatin?
+ruling	yes	کیا سفر میں نماز قصر کرنا ضروری ہے؟
+ruling	yes	هل يجوز الجمع بين الصلاتين في السفر؟

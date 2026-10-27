@@ -15,6 +15,7 @@ Input (Sama' - سمع) → Process (Fikr - فكر) → Act (Amal - عمل) → R
 """
 
 import asyncio
+import copy
 import inspect
 import json
 import logging
@@ -27,6 +28,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable
 from contextvars import ContextVar, copy_context
 from dataclasses import replace
+from types import MethodType
 from typing import Any, cast
 
 import httpx
@@ -357,6 +359,15 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
 
 _execution_provider: ContextVar[tuple | None] = ContextVar("mizan_execution_provider", default=None)
 _execution_stack: ContextVar[tuple[int, ...]] = ContextVar("mizan_execution_stack", default=())
+# Each agent's run in this request (``run_of``): a run works on its own copy.
+_agent_runs: ContextVar[dict[int, Any] | None] = ContextVar("mizan_agent_runs", default=None)
+
+
+def run_of(agent: Any) -> Any:
+    """The copy of ``agent`` that ran in this request, or the agent itself."""
+    return (_agent_runs.get() or {}).get(id(agent), agent)
+
+
 _evaluation_only: ContextVar[bool] = ContextVar("mizan_evaluation_only", default=False)
 # Tadbir's default mode: MIZAN performs every action itself, so a request it
 # hands to the conversation loop is answered in words, with no tools at all.
@@ -1871,9 +1882,7 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - asking never loses the answer
             logger.debug("Ahl al-Dhikr skipped", exc_info=True)
             return
-        # "Found none" only when a source answered; a source that could not be
-        # reached says nothing about the claims.
-        shown = ahl_dhikr.apply(text, findings, language, asked=bool(heard))
+        shown = ahl_dhikr.apply(text, findings, language)
         if ruling and not ahl_dhikr.machine_readable(text):
             shown = f"{shown}\n\n_{phrase('ahl_ruling', language)}_"
         result["result"] = shown
@@ -2771,156 +2780,254 @@ Match the requested depth and self-correct errors."""
         phase_callback=None,
     ) -> dict:
         # All callers share this boundary: chat, scheduler, federation and delegates.
+        base: Any = getattr(self, "_run_base", self)
         stack = _execution_stack.get()
-        if id(self) in stack:
+        if id(base) in stack:
             raise ValueError("Cyclic agent delegation is not permitted")
-        if not hasattr(self, "_execution_lock"):
-            self._execution_lock = asyncio.Lock()
+        if not hasattr(base, "_execution_lock"):
+            base._execution_lock = asyncio.Lock()
         queued_at = time.perf_counter()
         if phase_callback:
             await phase_callback("queued")
-        async with self._execution_lock:
-            execution_started = time.perf_counter()
-            self._execution_timings: dict[str, Any] = {
-                "provider_ms": 0.0,
-                "tool_ms": 0.0,
-                "provider_attempts": [],
+        # Runs never wait for one another: each works on its own copy of the
+        # agent, taken once a settings change in progress has finished, so it
+        # keeps the configuration it started with.
+        async with base._execution_lock:
+            run = base._run_copy()
+        _agent_runs.set({**(_agent_runs.get() or {}), id(base): run})
+        base._active_runs = getattr(base, "_active_runs", 0) + 1
+        base.state, base.current_task = "acting", task
+        try:
+            result: dict = await run._execute_run(
+                task,
+                context,
+                stream_callback,
+                tool_callback,
+                thinking_callback,
+                model_override,
+                phase_callback,
+                queued_at=queued_at,
+                stack=stack,
+            )
+            return result
+        finally:
+            base._finish_run(run)
+
+    # Counters a run adds to; added back to the agent when the run ends.
+    _RUN_COUNTERS = (
+        "total_tasks",
+        "success_count",
+        "error_count",
+        "total_duration_ms",
+        "learning_iterations",
+        "hikmah_count",
+    )
+    # What the last finished run leaves on the agent, for diagnostics.
+    _RUN_TRACES = (
+        "_llm_calls",
+        "_execution_timings",
+        "_last_tool_results",
+        "_faculty_guidance",
+        "_runtime_state_note",
+    )
+
+    def _run_copy(self) -> Any:
+        run: Any = copy.copy(self)
+        run._run_base = self
+
+        # Methods bound to the agent (its tool table) are bound to the run, so
+        # a tool works with this run's model and state.
+        def rebind(value: Any) -> Any:
+            if inspect.ismethod(value) and value.__self__ is self:
+                return MethodType(value.__func__, run)
+            return value
+
+        for name, value in list(vars(run).items()):
+            if inspect.ismethod(value):
+                setattr(run, name, rebind(value))
+            elif isinstance(value, dict) and any(inspect.ismethod(v) for v in value.values()):
+                setattr(run, name, {key: rebind(item) for key, item in value.items()})
+        if isinstance(getattr(self, "config", None), dict):
+            run.config = dict(self.config)
+        run._run_start = {name: getattr(self, name, 0) for name in self._RUN_COUNTERS}
+        run._run_nafs = getattr(self, "nafs_level", None)
+        return run
+
+    def _finish_run(self, run: Any) -> None:
+        for name in self._RUN_COUNTERS:
+            added = getattr(run, name, 0) - run._run_start.get(name, 0)
+            if added:
+                setattr(self, name, getattr(self, name, 0) + added)
+        if getattr(run, "nafs_level", None) != run._run_nafs:
+            self.nafs_level = run.nafs_level
+        # The last run's traces, and anything a run set up for the first time
+        # (a store opened on first use), stay on the agent.
+        kept = vars(self)
+        for name, value in vars(run).items():
+            if name in self._RUN_TRACES or (
+                name not in kept and name not in {"_run_base", "_run_start", "_run_nafs"}
+            ):
+                setattr(self, name, value)
+        self._active_runs = max(0, getattr(self, "_active_runs", 1) - 1)
+        if not self._active_runs:
+            self.current_task = None
+            self.state = "error" if run.state == "error" else "resting"
+
+    async def _execute_run(
+        self,
+        task,
+        context,
+        stream_callback,
+        tool_callback,
+        thinking_callback,
+        model_override,
+        phase_callback,
+        *,
+        queued_at: float,
+        stack: tuple[int, ...],
+    ) -> dict:
+        """One run, on this run's own copy of the agent."""
+        execution_started = time.perf_counter()
+        self._execution_timings: dict[str, Any] = {
+            "provider_ms": 0.0,
+            "tool_ms": 0.0,
+            "provider_attempts": [],
+        }
+        self._llm_calls = []
+        if phase_callback:
+            await phase_callback("agent_execution")
+        model, provider = self.ai_model, self.ai_client
+        if provider and getattr(provider, "provider_name", "") == "mizan-owned":
+            model = "mizan-owned"
+            model_override = None
+        if model_override and model_override != model:
+            provider = create_provider(model=model_override)
+            if provider is None:
+                raise ValueError("Requested model provider is unavailable")
+            model = normalize_model_for_provider(model_override, provider.provider_name)
+        binding = _execution_provider.set((id(self), model, provider))
+        stack_binding = _execution_stack.set((*stack, id(getattr(self, "_run_base", self))))
+        from workspace.context import bind_chat_session, reset_chat_session
+
+        session_binding = bind_chat_session((context or {}).get("session_id"))
+        language_binding = _language_only.set(False)
+        from tadbir import amanah
+
+        try:
+            with amanah.bind() as taint_record:
+                result = await self._execute_impl(
+                    task, context, stream_callback, tool_callback, thinking_callback
+                )
+            from api.usage import build_usage_summary
+
+            if taint_record and "amanah" not in result:
+                result["amanah"] = amanah.summary(taint_record)
+            result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+            if result.get("success", True) and "isnad" not in result:
+                graded = self._isnad(result.get("result"))
+                if graded:
+                    result["isnad"] = graded
+            if result.get("success", True) and not result.get("task_verified"):
+                await self._truth_gate(result)
+                await self._ahl_dhikr(result, task)
+            for key in (
+                "completion_status",
+                "task_verified",
+                "answer_delivered",
+                "orchestrator",
+                "isnad",
+                "amanah",
+                "sidq",
+                "ahl",
+            ):
+                if key in result:
+                    result["usage"][key] = result[key]
+            # The user's words from other chats the model was shown, so the
+            # answer says what it drew on (MIZAN's own recipes do not use them).
+            recalled = (context or {}).get("conversation_memory") or []
+            if recalled and result.get("orchestrator") != "mizan":
+                result["usage"]["recalled"] = [
+                    {
+                        "session_id": str(item.get("session_id", "")),
+                        "created_at": str(item.get("created_at", "")),
+                        "content": str(item.get("content", ""))[:200],
+                    }
+                    for item in recalled[:5]
+                    if isinstance(item, dict)
+                ]
+            # Capture successful chat pairs in the authenticated user's own
+            # candidate store. Capture is not review, training or promotion.
+            if (
+                result.get("success")
+                and result.get("capture_eligible", False)
+                and (context or {}).get("session_id")
+            ):
+                from security.auth import current_user_id
+
+                owner = current_user_id()
+                if owner and result["usage"].get("model"):
+                    try:
+                        from learner.ruh_learner import RuhLearner
+
+                        learner = RuhLearner.for_owner(owner)
+                        await learner.initialize()
+                        await learner.capture(
+                            prompt=task,
+                            response=str(result.get("result", "")),
+                            provider=getattr(provider, "provider_name", "unknown"),
+                            model=result["usage"]["model"],
+                            metadata={
+                                "session_id": (context or {})["session_id"],
+                                "review_status": "unreviewed",
+                            },
+                        )
+                        result["learning_capture"] = "unreviewed_candidate"
+                    except Exception:
+                        logger.warning("Chat learning capture unavailable")
+                        result["learning_capture"] = "unavailable"
+            finished = time.perf_counter()
+            execution_ms = (finished - execution_started) * 1000
+            measured = self._execution_timings
+            result["usage"]["timings"] = {
+                "queue_wait_ms": round((execution_started - queued_at) * 1000, 1),
+                "execution_ms": round(execution_ms, 1),
+                "provider_ms": round(measured["provider_ms"], 1),
+                "tool_ms": round(measured["tool_ms"], 1),
+                "other_execution_ms": round(
+                    max(0.0, execution_ms - measured["provider_ms"] - measured["tool_ms"]),
+                    1,
+                ),
+                "total_ms": round((finished - queued_at) * 1000, 1),
+                "provider_attempt_count": len(measured["provider_attempts"]),
+                "provider_attempts": measured["provider_attempts"],
             }
-            self._llm_calls = []
-            if phase_callback:
-                await phase_callback("agent_execution")
-            model, provider = self.ai_model, self.ai_client
-            if provider and getattr(provider, "provider_name", "") == "mizan-owned":
-                model = "mizan-owned"
-                model_override = None
-            if model_override and model_override != model:
-                provider = create_provider(model=model_override)
-                if provider is None:
-                    raise ValueError("Requested model provider is unavailable")
-                model = normalize_model_for_provider(model_override, provider.provider_name)
-            binding = _execution_provider.set((id(self), model, provider))
-            stack_binding = _execution_stack.set((*stack, id(self)))
-            from workspace.context import bind_chat_session, reset_chat_session
-
-            session_binding = bind_chat_session((context or {}).get("session_id"))
-            language_binding = _language_only.set(False)
-            from tadbir import amanah
-
-            try:
-                with amanah.bind() as taint_record:
-                    result = await self._execute_impl(
-                        task, context, stream_callback, tool_callback, thinking_callback
-                    )
-                from api.usage import build_usage_summary
-
-                if taint_record and "amanah" not in result:
-                    result["amanah"] = amanah.summary(taint_record)
-                result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
-                if result.get("success", True) and "isnad" not in result:
-                    graded = self._isnad(result.get("result"))
-                    if graded:
-                        result["isnad"] = graded
-                if result.get("success", True) and not result.get("task_verified"):
-                    await self._truth_gate(result)
-                    await self._ahl_dhikr(result, task)
-                for key in (
-                    "completion_status",
-                    "task_verified",
-                    "answer_delivered",
-                    "orchestrator",
-                    "isnad",
-                    "amanah",
-                    "sidq",
-                    "ahl",
-                ):
-                    if key in result:
-                        result["usage"][key] = result[key]
-                # The user's words from other chats the model was shown, so the
-                # answer says what it drew on (MIZAN's own recipes do not use them).
-                recalled = (context or {}).get("conversation_memory") or []
-                if recalled and result.get("orchestrator") != "mizan":
-                    result["usage"]["recalled"] = [
-                        {
-                            "session_id": str(item.get("session_id", "")),
-                            "created_at": str(item.get("created_at", "")),
-                            "content": str(item.get("content", ""))[:200],
-                        }
-                        for item in recalled[:5]
-                        if isinstance(item, dict)
-                    ]
-                # Capture successful chat pairs in the authenticated user's own
-                # candidate store. Capture is not review, training or promotion.
-                if (
-                    result.get("success")
-                    and result.get("capture_eligible", False)
-                    and (context or {}).get("session_id")
-                ):
-                    from security.auth import current_user_id
-
-                    owner = current_user_id()
-                    if owner and result["usage"].get("model"):
-                        try:
-                            from learner.ruh_learner import RuhLearner
-
-                            learner = RuhLearner.for_owner(owner)
-                            await learner.initialize()
-                            await learner.capture(
-                                prompt=task,
-                                response=str(result.get("result", "")),
-                                provider=getattr(provider, "provider_name", "unknown"),
-                                model=result["usage"]["model"],
-                                metadata={
-                                    "session_id": (context or {})["session_id"],
-                                    "review_status": "unreviewed",
-                                },
-                            )
-                            result["learning_capture"] = "unreviewed_candidate"
-                        except Exception:
-                            logger.warning("Chat learning capture unavailable")
-                            result["learning_capture"] = "unavailable"
-                finished = time.perf_counter()
-                execution_ms = (finished - execution_started) * 1000
-                measured = self._execution_timings
-                result["usage"]["timings"] = {
-                    "queue_wait_ms": round((execution_started - queued_at) * 1000, 1),
-                    "execution_ms": round(execution_ms, 1),
-                    "provider_ms": round(measured["provider_ms"], 1),
-                    "tool_ms": round(measured["tool_ms"], 1),
-                    "other_execution_ms": round(
-                        max(0.0, execution_ms - measured["provider_ms"] - measured["tool_ms"]),
-                        1,
-                    ),
-                    "total_ms": round((finished - queued_at) * 1000, 1),
-                    "provider_attempt_count": len(measured["provider_attempts"]),
-                    "provider_attempts": measured["provider_attempts"],
-                }
-                result.setdefault("metrics_kind", "heuristic_response_delivery")
-                result["metric_provenance"] = {
-                    "accuracy": "not_measured",
-                    "qalb": "keyword_tone_heuristic",
-                    "yaqin": "inference_heuristic_not_task_verification",
-                    "ruh": "workload_counter_not_compute_capacity",
-                    "lubb": "text_rules_not_accuracy_evaluation",
-                    "lawwama": {
-                        "kind": "rule_flags_not_observed_error_rate",
-                        "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
-                    },
-                }
-                return result
-            except asyncio.CancelledError:
+            result.setdefault("metrics_kind", "heuristic_response_delivery")
+            result["metric_provenance"] = {
+                "accuracy": "not_measured",
+                "qalb": "keyword_tone_heuristic",
+                "yaqin": "inference_heuristic_not_task_verification",
+                "ruh": "workload_counter_not_compute_capacity",
+                "lubb": "text_rules_not_accuracy_evaluation",
+                "lawwama": {
+                    "kind": "rule_flags_not_observed_error_rate",
+                    "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
+                },
+            }
+            return result
+        except asyncio.CancelledError:
+            self.state = "resting"
+            raise
+        except Exception:
+            self.state = "error"
+            raise
+        finally:
+            self.current_task = None
+            if self.state in {"acting", "thinking"}:
                 self.state = "resting"
-                raise
-            except Exception:
-                self.state = "error"
-                raise
-            finally:
-                self.current_task = None
-                if self.state in {"acting", "thinking"}:
-                    self.state = "resting"
-                reset_chat_session(session_binding)
-                _language_only.reset(language_binding)
-                _execution_stack.reset(stack_binding)
-                _execution_provider.reset(binding)
+            reset_chat_session(session_binding)
+            _language_only.reset(language_binding)
+            _execution_stack.reset(stack_binding)
+            _execution_provider.reset(binding)
 
     async def _execute_impl(
         self,

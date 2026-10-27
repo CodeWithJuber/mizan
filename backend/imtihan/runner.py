@@ -112,6 +112,15 @@ def _arm_row(
     return row
 
 
+def concurrency() -> int:
+    """Tasks run at once (``MIZAN_IMTIHAN_CONCURRENCY``, 1-8, default 4)."""
+    try:
+        value = int(os.getenv("MIZAN_IMTIHAN_CONCURRENCY", "4"))
+    except ValueError:
+        value = 4
+    return max(1, min(8, value))
+
+
 async def run_task(agent: Any, task: dict, attempt: int, authentic: str | None) -> dict:
     history = list(task.get("history") or [])
     context = {"history": history}
@@ -150,45 +159,57 @@ async def run_suite(
         for task in tasks
         if task.get("score", {}).get("kind") == "quote"
     }
-    results: list[dict] = []
-    attempts: list[dict] = []
+    jobs = [(attempt, task) for attempt in range(1, repeats + 1) for task in tasks]
+    outcomes: list[dict | None] = [None] * len(jobs)
     done = 0
+    # Several tasks at once, bounded, so a run takes minutes and chats are not
+    # starved: each run of the agent works on its own copy (agents/base.py).
+    gate = asyncio.Semaphore(concurrency())
+
+    async def one(number: int, attempt: int, task: dict) -> None:
+        nonlocal done
+        async with gate:
+            try:
+                if agentic.is_agentic(task):
+                    outcome = await agentic.run_task(agent, task, attempt, owner)
+                elif games.is_game(task):
+                    outcome = await games.run_task(agent, task, attempt, owner)
+                else:
+                    outcome = await run_task(agent, task, attempt, sources.get(task["id"]))
+            except Exception as exc:  # noqa: BLE001 - one task never stops the suite
+                logger.warning("Imtihan task %s failed: %s", task["id"], exc)
+                outcome = {
+                    "rows": [
+                        {
+                            "task_id": task["id"],
+                            "block": task["block"],
+                            "arm": arm,
+                            "attempt": attempt,
+                            "pass": False,
+                            "error": type(exc).__name__,
+                        }
+                        for arm in report.ARMS
+                    ],
+                    "compare": None,
+                }
+        outcomes[number] = outcome
+        done += 1
+        if progress is not None:
+            maybe = progress(done, total, task["id"])
+            if asyncio.iscoroutine(maybe):
+                await maybe
+
     approvals = ApprovalContext(owner, f"imtihan-{uuid.uuid4().hex}", "auto")
     with bind_approvals(approvals), bind_timezone("UTC"):
-        for attempt in range(1, repeats + 1):
-            for task in tasks:
-                try:
-                    if agentic.is_agentic(task):
-                        outcome = await agentic.run_task(agent, task, attempt, owner)
-                    elif games.is_game(task):
-                        outcome = await games.run_task(agent, task, attempt, owner)
-                    else:
-                        outcome = await run_task(agent, task, attempt, sources.get(task["id"]))
-                except Exception as exc:  # noqa: BLE001 - one task never stops the suite
-                    logger.warning("Imtihan task %s failed: %s", task["id"], exc)
-                    outcome = {
-                        "rows": [
-                            {
-                                "task_id": task["id"],
-                                "block": task["block"],
-                                "arm": arm,
-                                "attempt": attempt,
-                                "pass": False,
-                                "error": type(exc).__name__,
-                            }
-                            for arm in report.ARMS
-                        ],
-                        "compare": None,
-                    }
-                results.extend(outcome["rows"])
-                attempts.append(
-                    {"task_id": task["id"], "attempt": attempt, "compare": outcome["compare"]}
-                )
-                done += 1
-                if progress is not None:
-                    maybe = progress(done, total, task["id"])
-                    if asyncio.iscoroutine(maybe):
-                        await maybe
+        await asyncio.gather(
+            *(one(number, attempt, task) for number, (attempt, task) in enumerate(jobs))
+        )
+    results: list[dict] = []
+    attempts: list[dict] = []
+    for (attempt, task), outcome in zip(jobs, outcomes, strict=True):
+        assert outcome is not None
+        results.extend(outcome["rows"])
+        attempts.append({"task_id": task["id"], "attempt": attempt, "compare": outcome["compare"]})
     return {
         "tasks": [
             {

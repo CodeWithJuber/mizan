@@ -13,7 +13,7 @@ import operator
 import re
 from collections.abc import Callable
 from fractions import Fraction
-from typing import Any
+from typing import Any, cast
 
 MAX_DIGITS = 20000
 MAX_EXPONENT = 100000
@@ -139,6 +139,91 @@ def evaluate(expression: str) -> Number:
     if sum(1 for _ in ast.walk(tree)) > MAX_NODES:
         raise CalcError("Expression is too complex")
     return _evaluate(tree)
+
+
+_SIGNS = {
+    ast.Add: "+",
+    ast.Sub: "−",
+    ast.Mult: "×",
+    ast.Div: "÷",
+    ast.FloorDiv: "//",
+    ast.Mod: "mod",
+    ast.Pow: "^",
+}
+
+
+def steps(expression: str) -> list[str]:
+    """The working: every operation in the order it is evaluated, each with its
+    exact value. A product of two whole numbers is also shown by place value
+    (17 × 23 = 17 × 20 + 17 × 3), the distributive law written out."""
+    tree = ast.parse(normalize(expression), mode="eval")
+    lines: list[str] = []
+
+    def walk(node: ast.AST) -> Number:
+        if isinstance(node, ast.Expression):
+            return walk(node.body)
+        if isinstance(node, ast.BinOp) and type(node.op) in _SIGNS:
+            left, right = walk(node.left), walk(node.right)
+            value = _evaluate(
+                ast.Expression(
+                    body=ast.BinOp(left=_literal(left), op=node.op, right=_literal(right))
+                )
+            )
+            sign = _SIGNS[type(node.op)]
+            if isinstance(node.op, ast.Mult) and _place_value(left, right):
+                parts = _parts(int(right))
+                lines.append(
+                    f"{_short(left)} × {_short(right)} = "
+                    + " + ".join(f"{_short(left)} × {part}" for part in parts)
+                )
+                products = [int(left) * part for part in parts]
+                lines.extend(
+                    f"{_short(left)} × {part} = {product}"
+                    for part, product in zip(parts, products, strict=True)
+                )
+                lines.append(" + ".join(str(p) for p in products) + f" = {_short(value)}")
+            else:
+                lines.append(f"{_short(left)} {sign} {_short(right)} = {_short(value)}")
+            return value
+        value = _evaluate(ast.Expression(body=cast(ast.expr, node)))
+        if isinstance(node, (ast.Call, ast.UnaryOp)) and ast.unparse(node) != _short(value):
+            lines.append(f"{ast.unparse(node)} = {_short(value)}")
+        return value
+
+    walk(tree)
+    return lines
+
+
+def _short(value: Number) -> str:
+    """A step's number: an exact fraction stays a/b (the answer line gives its decimal)."""
+    if isinstance(value, Fraction) and value.denominator != 1:
+        return f"{value.numerator}/{value.denominator}"
+    return render(value)
+
+
+def _literal(value: Number) -> ast.expr:
+    """A computed value back as an expression, exact fractions kept exact."""
+    if isinstance(value, Fraction):
+        return ast.BinOp(
+            left=ast.Constant(value.numerator), op=ast.Div(), right=ast.Constant(value.denominator)
+        )
+    return ast.Constant(value)
+
+
+def _place_value(left: Number, right: Number) -> bool:
+    whole = isinstance(left, int) and isinstance(right, int)
+    return whole and 10 <= abs(int(right)) < 10**6 and len(_parts(int(right))) > 1
+
+
+def _parts(number: int) -> list[int]:
+    """A whole number by place value: 2305 → [2000, 300, 5]."""
+    digits = str(abs(number))
+    sign = -1 if number < 0 else 1
+    return [
+        sign * int(digit) * 10 ** (len(digits) - index - 1)
+        for index, digit in enumerate(digits)
+        if digit != "0"
+    ]
 
 
 def render(value: Number) -> str:

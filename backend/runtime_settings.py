@@ -73,6 +73,10 @@ SETTINGS: tuple[Setting, ...] = (
             "MIZAN's full trace: admins, every signed-in user, or no one. A comparison runs "
             "the model twice.",
             "admins", ("admins", "users", "off")),
+    Setting("MIZAN_IMTIHAN_CONCURRENCY", "Model", "AGI test tasks at once", "int",
+            "How many AGI test tasks run at the same time (each runs both arms). Chats are "
+            "never queued behind a run: every run of an agent works on its own copy.",
+            "4", minimum=1, maximum=8),
     Setting("MIZAN_MUHASABA", "Model", "Self-review (Muhasaba)", "choice",
             "Once a day MIZAN re-checks the answers the model gave in words: arithmetic and "
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "

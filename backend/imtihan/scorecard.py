@@ -73,6 +73,7 @@ def publish(run: dict) -> dict:
         {"run": run["id"], "report": found},
         "AGI test result published",
     )
+    sakk.store().sign_day()  # the published result is in a signed checkpoint at once
     entry = {
         "run_id": run["id"],
         "created_at": run.get("created_at"),

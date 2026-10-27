@@ -88,9 +88,10 @@ refusal.
      The model's sentence is never silently rewritten;
    - **neither**: the claim stays unknown.
 
-If no claim could be settled, the answer ends with: *"MIZAN asked its sources
-and found none that confirms these claims; they are the language model's
-words, not established facts. Allahu a'lam."*
+Claims no source settled are reported under the answer ("Sources asked: 2 not
+found — the model's own words, Allahu a'lam"), not added to its text. A note
+inside the text broke answers asked for in an exact shape (one sentence,
+JSON), as the live benchmark of 27 October found.
 
 Without the NLI model, every claim stays unknown and nothing is guessed.
 

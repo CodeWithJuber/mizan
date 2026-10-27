@@ -584,9 +584,10 @@ def machine_readable(text: str) -> bool:
     return True
 
 
-def apply(text: str, findings: list[Finding], language: str, *, asked: bool) -> str:
-    """The answer with each contradiction shown next to its claim; a note when
-    the sources answered and none supported anything it says."""
+def apply(text: str, findings: list[Finding], language: str) -> str:
+    """The answer with each contradiction shown next to its claim. That no
+    source confirmed a claim is reported beside the answer (``usage.ahl``), not
+    added to it, so an answer asked for in an exact shape keeps that shape."""
     if machine_readable(text):
         return text
     shown = text
@@ -606,8 +607,6 @@ def apply(text: str, findings: list[Finding], language: str, *, asked: bool) -> 
             shown = f"{shown[:end]} _{note}_{shown[end:]}"
         else:
             shown = f"{shown}\n\n_{note}_"
-    if asked and findings and all(finding.verdict == "unknown" for finding in findings):
-        shown = f"{shown}\n\n_{phrase('ahl_none', language)}_"
     return shown
 
 

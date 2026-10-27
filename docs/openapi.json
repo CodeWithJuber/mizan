@@ -6599,7 +6599,7 @@
   "/api/v1/root-analyze": {
    "post": {
     "summary": "Api V1 Root Analyze",
-    "description": "Analyze Arabic text to extract root-pattern decomposition.\n\nPublic API endpoint for root analysis as a service.",
+    "description": "Root, pattern (wazn), part of speech and meaning of each Arabic word,\nfrom the Quranic Arabic Corpus (the analyzer the chat uses too).",
     "operationId": "api_v1_root_analyze_api_v1_root_analyze_post",
     "requestBody": {
      "content": {
@@ -11051,53 +11051,6 @@
     ]
    }
   },
-  "/api/ruh/{agent_id}": {
-   "get": {
-    "summary": "Get Ruh Energy",
-    "description": "Get Ruh energy state for an agent.",
-    "operationId": "get_ruh_energy_api_ruh__agent_id__get",
-    "parameters": [
-     {
-      "name": "agent_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "title": "Agent Id"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    },
-    "x-mizan-access": "user",
-    "security": [
-     {
-      "bearer": []
-     },
-     {
-      "apiKey": []
-     }
-    ]
-   }
-  },
   "/api/queue/tasks": {
    "post": {
     "summary": "Enqueue Task",
@@ -11972,6 +11925,53 @@
       "content": {
        "application/json": {
         "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/ruh/{agent_id}": {
+   "get": {
+    "summary": "Get Ruh Energy",
+    "description": "Get Ruh energy state for an agent.",
+    "operationId": "get_ruh_energy_api_ruh__agent_id__get",
+    "parameters": [
+     {
+      "name": "agent_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Agent Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
        }
       }
      }

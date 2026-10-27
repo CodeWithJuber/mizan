@@ -22,6 +22,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने सटीक हिसाब किया।",
         "ar": "حسبه ميزان بدقة.",
     },
+    "steps": {
+        "en": "Steps",
+        "hi-latn": "Steps",
+        "ur": "مراحل",
+        "hi": "चरण",
+        "ar": "الخطوات",
+    },
     "ran_ok": {
         "en": "Ran in MIZAN's isolated sandbox (exit code 0, {ms} ms).",
         "hi-latn": "MIZAN ke isolated sandbox mein chalaya gaya (exit code 0, {ms} ms).",
@@ -653,18 +660,6 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "میزان نے ماخذ سے پوچھا، وہ کچھ اور کہتا ہے: “{says}” ([{title}]({url}))",
         "hi": "मीज़ान ने स्रोत से पूछा, वह कुछ और कहता है: “{says}” ([{title}]({url}))",
         "ar": "سأل ميزان مصدرًا فقال غير ذلك: “{says}” ([{title}]({url}))",
-    },
-    "ahl_none": {
-        "en": "MIZAN asked its sources and found none that confirms these claims; they are "
-        "the language model's words, not established facts. Allahu a'lam.",
-        "hi-latn": "MIZAN ne apne sources se poocha, in baaton ki tasdeeq kahin nahi mili; yeh "
-        "language model ke alfaaz hain, sabit shuda baat nahi. Allahu a'lam.",
-        "ur": "میزان نے اپنے ماخذ سے پوچھا، ان باتوں کی تصدیق کہیں نہیں ملی؛ یہ زبان کے ماڈل "
-        "کے الفاظ ہیں، ثابت شدہ بات نہیں۔ واللہ اعلم۔",
-        "hi": "मीज़ान ने अपने स्रोतों से पूछा, इन बातों की पुष्टि कहीं नहीं मिली; ये भाषा मॉडल के "
-        "शब्द हैं, सिद्ध तथ्य नहीं। अल्लाहु आलम।",
-        "ar": "سأل ميزان مصادره فلم يجد ما يؤكد هذه الأقوال؛ إنها كلمات النموذج اللغوي لا حقائق "
-        "ثابتة. والله أعلم.",
     },
     "ahl_ruling": {
         "en": "This asks for a religious ruling. MIZAN does not give fatwa; ask a qualified "

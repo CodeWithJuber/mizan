@@ -270,6 +270,30 @@ async def test_arithmetic_is_answered_by_mizan_with_no_model_call(agent):
     assert result["orchestration"]["intent"] == "compute"
 
 
+async def test_the_working_is_shown_when_asked_and_comes_from_mizan(agent):
+    # The live benchmark (27 Oct): "17*23 and explain step by step" got the
+    # result alone. The steps are MIZAN's own evaluation, with no model call.
+    result = await agent.execute("What is 17*23 and explain step by step?")
+    text = result["result"]
+    assert "**391**" in text and "17 × 23 = 17 × 20 + 17 × 3" in text
+    assert "340 + 51 = 391" in text and agent.ai_client.requests == []
+    plain = await agent.execute("What is 17*23?")
+    assert "17 × 20" not in plain["result"]
+
+
+def test_steps_follow_the_order_of_evaluation_exactly():
+    from tadbir import calc
+
+    assert calc.steps("2+3*4") == ["3 × 4 = 12", "2 + 12 = 14"]
+    assert calc.steps("(1/3+1/6)*12") == [
+        "1 ÷ 3 = 1/3",
+        "1 ÷ 6 = 1/6",
+        "1/3 + 1/6 = 1/2",
+        "1/2 × 12 = 6",
+    ]
+    assert calc.steps("125*204")[0] == "125 × 204 = 125 × 200 + 125 × 4"
+
+
 async def test_run_request_is_planned_run_and_cross_checked_by_mizan(agent, monkeypatch):
     fake = tools(
         agent,

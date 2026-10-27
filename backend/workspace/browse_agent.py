@@ -131,12 +131,10 @@ async def run(job: dict) -> dict:
             held.append(entry)
         elif len(blocked) < MAX_LISTED:
             blocked.append(entry)
-        if navigation:
-            # 204 No Content: the browser stays on the page it is on, so the
-            # steps after a refused link or a held form still have their page.
-            await route.fulfill(status=204, body="")
-        else:
-            await route.abort("blockedbyclient")
+        # A refused navigation is aborted (net::ERR_ABORTED): the browser stays on
+        # the page it is on and shows no error page, so the steps after a
+        # refused link or a held form still have their page.
+        await route.abort("aborted" if navigation else "blockedbyclient")
 
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     async with async_playwright() as playwright:
