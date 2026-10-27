@@ -73,10 +73,11 @@ def fitted(name: str, featurize: Callable, examples: Callable[[], list[tuple[str
 
 def refit_all() -> dict:
     """Refit every registered model from scratch and store the result with the code."""
-    from tadbir import lughah, qasd
+    from tadbir import amanah, lughah, qasd
 
     lughah.model()
     qasd.model()
+    amanah.model()
     for facet in sorted({row[0] for row in qasd._rows("facets.tsv")}):
         qasd.facet_model(facet)
     stored: dict = {}

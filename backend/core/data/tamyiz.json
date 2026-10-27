@@ -1,4 +1,18 @@
 {
+ "amanah": {
+  "sha256": "8e75fcdd01d01b9061eb5f1431f941e2b57bdf0c8b74ae405aeb4e4e79b65eb9",
+  "alpha": 0.01,
+  "weights": [
+   1.8510460055984586,
+   0.031396215526217526,
+   0.378762944422572
+  ],
+  "loo_loss": 0.20910800023397821,
+  "loo_accuracy": 0.9257390050468637,
+  "examples": 11094.0,
+  "labels": 2,
+  "vocabulary": 133916
+ },
  "lughah": {
   "sha256": "088f505cb5cfd076bc816002036aa9ef4e2fe64928b328cb83ef5c844abd1b89",
   "alpha": 0.3,

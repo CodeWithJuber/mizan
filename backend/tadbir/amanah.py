@@ -19,19 +19,35 @@ user pastes is data. Some of it is written to instruct the AI that reads it
    every later action that changes something needs the user's approval. The
    data never chooses an action (as in CaMeL, Debenedetti et al. 2025).
 
+Which text is an instruction aimed at an AI is weighed as evidence, not only
+matched: a naive Bayes model (``core.tamyiz``) over character n-grams, words and
+word pairs, with each pattern above as an ``e:`` evidence token, trained on
+licensed prompt-injection datasets against ordinary text (``data/amanah``,
+LICENSES.md) and fitted by grouped leave-one-out. A window of text whose
+posterior favours "attack" (MAP) is treated like a pattern match. The hidden-
+text, comment and exfiltration-link guards stay as they are.
+``MIZAN_AMANAH=rules`` uses the patterns alone.
+
 In MIZAN's default mode the model has no tools, so the plan always comes from
 the user's own words; Amanah also covers the modes where the model acts.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
+import threading
 import unicodedata
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import cache
+from pathlib import Path
 from typing import Any
+
+from core.tamyiz import Tamyiz, char_ngrams, letters
 
 # Characters that render as nothing or reorder text.
 _INVISIBLE = re.compile("[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
@@ -91,6 +107,113 @@ PATTERNS: dict[str, re.Pattern[str]] = {
         r"|\bcurl\s+[^|\n]{1,200}\|\s*(?:ba|z)?sh\b|\brm\s+-rf\s+[/~])"
     ),
 }
+# ── Evidence: a learned model of text aimed at an AI ─────────────────────
+
+DATA = Path(__file__).parent / "data" / "amanah"
+WINDOW = 300  # characters the model reads at a time, as in its training
+MAX_WINDOWS = 200  # the model reads the first ~60 KB; the patterns read everything
+_LOCK = threading.Lock()
+
+
+def _mode() -> str:
+    return (
+        "rules" if os.getenv("MIZAN_AMANAH", "evidence").strip().lower() == "rules" else "evidence"
+    )
+
+
+def _features(text: str) -> Counter[str]:
+    folded = fold(text)
+    found: Counter[str] = Counter()
+    for kind, pattern in PATTERNS.items():
+        if pattern.search(folded):
+            found["e:" + kind] += 1
+    words = letters(folded).lower()
+    found.update(char_ngrams(words, (3, 4)))
+    tokens = words.split()
+    found.update("w:" + word for word in tokens)
+    found.update(
+        "b:" + first + "_" + second for first, second in zip(tokens, tokens[1:], strict=False)
+    )
+    return found
+
+
+def corpus() -> list[tuple[str, str, str]]:
+    """(window, label, source) rows; windows of one source are held out together."""
+    rows = []
+    for label in ("attack", "data"):
+        for line in (DATA / f"{label}.tsv").read_text(encoding="utf-8").splitlines():
+            source, _, text = line.partition("\t")
+            if text.strip():
+                rows.append((text, label, source))
+    return rows
+
+
+@cache
+def model() -> Tamyiz:
+    with _LOCK:
+        from core import tamyiz_cache
+
+        return tamyiz_cache.fitted("amanah", _features, corpus)
+
+
+def _sentences(text: str) -> list[tuple[int, int]]:
+    spans, start = [], 0
+    for match in re.finditer(r"[.!?\u06d4\u0964\n]+\s*", text):
+        if match.end() > start:
+            spans.append((start, match.end()))
+            start = match.end()
+    if start < len(text):
+        spans.append((start, len(text)))
+    return [(a, b) for a, b in spans if text[a:b].strip()]
+
+
+def windows(text: str) -> list[list[tuple[int, int]]]:
+    """Runs of whole sentences of at most WINDOW characters (a longer sentence is cut)."""
+    groups: list[list[tuple[int, int]]] = []
+    current: list[tuple[int, int]] = []
+    for start, end in _sentences(text):
+        while end - start > WINDOW:
+            if current:
+                groups.append(current)
+                current = []
+            groups.append([(start, start + WINDOW)])
+            start += WINDOW
+        if current and end - current[0][0] > WINDOW:
+            groups.append(current)
+            current = []
+        current.append((start, end))
+    if current:
+        groups.append(current)
+    return groups[:MAX_WINDOWS]
+
+
+def attack_probability(text: str) -> float:
+    return float(model().posterior(text).get("attack", 0.0))
+
+
+def instructions(text: str) -> list[tuple[int, int, float]]:
+    """Spans of ``text`` the model reads as aimed at an AI: in a window it flags, the
+    sentences it flags on their own, or the whole window when no one sentence is."""
+    if _mode() != "evidence" or not text or not text.strip():
+        return []
+    found: list[tuple[int, int, float]] = []
+    for group in windows(text):
+        start, end = group[0][0], group[-1][1]
+        probability = _read(text[start:end])
+        if probability <= 0.5:
+            continue
+        parts = [(a, b, _read(text[a:b])) for a, b in group] if len(group) > 1 else []
+        flagged = [(a, b, p) for a, b, p in parts if p > 0.5]
+        found += flagged or [(start, end, probability)]
+    return found
+
+
+def _read(chunk: str) -> float:
+    """P(attack) of a piece of text, with MIZAN's own markers left out."""
+    chunk = chunk.replace(_MARK, " ").replace(_IMAGE_MARK, " ")
+    return attack_probability(chunk) if len(letters(chunk)) >= 8 else 0.0
+
+
 _MARK = "[Amanah: an instruction aimed at the AI was removed]"
 _IMAGE_MARK = "[Amanah: an image link that would send data out was removed]"
 
@@ -128,6 +251,21 @@ def scan(text: str, source: str = "") -> list[dict]:
             )
             if len(findings) >= 12:
                 break
+    matched = [m.span() for p in PATTERNS.values() for m in p.finditer(folded)]
+    for start, end, probability in instructions(folded):
+        if len(findings) >= 12:
+            break
+        if any(start <= a < end for a, _b in matched):
+            continue  # already reported by its pattern
+        findings.append(
+            {
+                "kind": "instruction",
+                "excerpt": _excerpt(folded, start, min(end, start + 120)),
+                "hidden": any(begin <= start < stop for begin, stop in comments),
+                "source": source,
+                "p": round(probability, 3),
+            }
+        )
     if smuggled:
         findings.append(
             {"kind": "hidden_text", "excerpt": smuggled[:120], "hidden": True, "source": source}
@@ -190,6 +328,8 @@ def neutralize(text: str) -> tuple[str, list[dict]]:
         while start < end and clean[start] in ".!?\n'\" ":
             start += 1  # a match may begin on the previous sentence's stop
         start, end = _sentence(clean, start, end)
+        clean = clean[:start] + " " + _MARK + " " + clean[end:]
+    for start, end, _probability in sorted(instructions(clean), reverse=True):
         clean = clean[:start] + " " + _MARK + " " + clean[end:]
     return re.sub(r"[ \t]{2,}", " ", clean).strip(), findings
 
