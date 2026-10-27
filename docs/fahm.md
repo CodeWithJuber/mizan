@@ -130,16 +130,35 @@ intents.
    says) is built only when it is more probable than every other reading
    together (P > ½); otherwise its mass counts as unbuilt. "Tum pagal ho?"
    was once its likeliest single reading at P = 0.28 and got the tool list.
-4. If an action was more probable than conversation (P(converse) < ½), Lisan
-   may map the wording into MIZAN's action schema. MIZAN validates every
+4. A family is acted on only if the words made it more probable than it was
+   before reading them: its posterior must exceed its prior (the posterior of
+   a message with no evidence at all). A bare "?" carries no evidence, so it
+   can never start a recipe; it once ran a Quran search on the text "?".
+5. If the actions MIZAN could build are together more probable than the kinds
+   of request answered in words (conversation and the follow-ups below; P > ½),
+   Lisan may map the wording into MIZAN's action schema. MIZAN validates every
    step and runs it itself.
 
 **Follow-ups** are intents whose words name something said earlier in the
 chat, and Tadbir takes it from there: `silsila_follow` ("karo koshish", the
 sequence asked before), `search_bare` ("dhundo pahle", the topic asked before)
-and `run_follow` ("run this code", "isko chalao": the longest runnable block in
-the most recent message that shows one). With nothing earlier to take, the
-request goes on as conversation.
+`run_follow` ("run this code", "isko chalao": the longest runnable block in
+the most recent message that shows one) and `again_follow` ("?", "jawab nahi
+aaya": the user's last request when no answer followed it, because the reply
+failed or came back empty, is taken up again). With nothing earlier to take,
+the request goes on as conversation.
+
+A problem that carries its own definition is not a follow-up even when it
+mentions a sequence: "A sequence is defined by x₀ = 1 and x(n+1) = x(n) +
+1/x(n) … find the limit" was once read as `silsila_follow` (P = 0.76) and
+answered with an earlier sequence. Proof, limit and convergence questions in
+five languages are now conversation seeds.
+
+**A term missing inside a sequence** ("13, 26, 64, 118, 274, ?, 628, 778,
+1126") is read with every known term at its position, and the rule must
+reproduce all of them, the terms after the gap included; the answer is the
+missing term (376 here, from 2p² + 3p − 1 over the n-th prime). A `?` at the
+end asks for the next term.
 
 **Facets** are separate yes/no models on their own seeds (`facets.tsv`):
 

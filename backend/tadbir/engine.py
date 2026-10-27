@@ -169,6 +169,18 @@ class Tadbir:
             return None
         parts = fahm.understand_parts(task)
         understanding = fahm.understand(task, history=history, overlay=self._learned_intents())
+        if parts is None and understanding.intent == "again_follow":
+            # "?", "Jawab nahi aaya": the request before this one got no answer,
+            # so MIZAN takes it up again; with nothing unanswered it is words.
+            unanswered = _unanswered_request(history)
+            if unanswered:
+                task = unanswered
+                parts = fahm.understand_parts(task)
+                understanding = fahm.understand(
+                    task, history=history, overlay=self._learned_intents()
+                )
+            else:
+                understanding = fahm.Understanding("converse", understanding.language, 0.0)
         if parts is None and understanding.intent in {"silsila_follow", "search_bare"}:
             # "Find the next number", "karo koshish", "dhundo pahle": a follow-up
             # about what was asked earlier in this chat, which MIZAN takes from
@@ -922,6 +934,8 @@ class Tadbir:
     async def _silsila(self, task: str, u: fahm.Understanding) -> Outcome:
         """A sequence's next term, from a rule proven on every given term."""
         seq: list[int] = u.entities["sequence"]
+        if u.entities.get("gap"):
+            return await self._silsila_missing(u)
         can_test = self._allowed("workspace_run") and self.lisan.available
         await self._begin(
             [
@@ -1031,6 +1045,70 @@ class Tadbir:
         facts = {
             "sequence": seq,
             "next": answers,
+            "rules": [rule.to_dict() for rule in rules],
+            "oeis": matches,
+        }
+        return Outcome("\n".join(lines), True, facts)
+
+    async def _silsila_missing(self, u: fahm.Understanding) -> Outcome:
+        """A term missing inside a sequence, from a rule proven on every known
+        term, those after the gap included."""
+        seq: list[int] = u.entities["sequence"]
+        positions: list[int] = u.entities["positions"]
+        gap: int = u.entities["gap"]
+        await self._begin(
+            [
+                f"Read the {len(seq)} known terms and where one is missing (MIZAN)",
+                "Try MIZAN's exact methods: polynomials in n and in the n-th prime",
+                "Look the terms up in the OEIS",
+                "Reply",
+            ]
+        )
+        await self._step()
+        rules = silsila.missing_rules(seq, positions, gap)
+        trace.event("verify", "silsila.own", rules=[rule.to_dict() for rule in rules], gap=gap)
+        await self._step()
+        matches = await self._external(
+            "oeis_search",
+            {"terms": seq, "positions": positions},
+            silsila.oeis_missing(seq, positions, gap),
+            lambda found: f"{len(found)} matching sequence(s)",
+        )
+        await self._step()
+        language = u.language
+        terms = silsila.shown(seq, positions, gap)
+        candidates = [
+            (
+                rule.next,
+                phrase(
+                    "silsila_rule",
+                    language,
+                    formula=rule.formula,
+                    method=rule.method,
+                    total=len(seq),
+                ),
+            )
+            for rule in rules
+        ]
+        candidates += [
+            (match["next"], phrase("silsila_oeis", language, id=match["id"], name=match["name"]))
+            for match in matches
+        ]
+        if not candidates:
+            text = phrase("silsila_missing_none", language, total=len(seq), terms=terms)
+            return Outcome(text, False, {"sequence": seq, "gap": gap, "rules": []}, succeeded=False)
+        answers = sorted({value for value, _ in candidates})
+        lines = [
+            phrase("silsila_missing", language, value=answers[0], terms=terms)
+            if len(answers) == 1
+            else phrase("silsila_missing_several", language, total=len(seq), terms=terms)
+        ]
+        lines += [f"- **{value}**: {reason}" for value, reason in candidates]
+        facts = {
+            "sequence": seq,
+            "positions": positions,
+            "gap": gap,
+            "missing": answers,
             "rules": [rule.to_dict() for rule in rules],
             "oeis": matches,
         }
@@ -2501,6 +2579,16 @@ def _earlier_program(history: list[dict] | None) -> tuple[str, str] | None:
         programs = fahm.fenced_programs(str(turn.get("content") or ""))
         if programs:
             return max(programs, key=lambda found: len(found[0]))
+    return None
+
+
+def _unanswered_request(history: list[dict] | None) -> str | None:
+    """The user's last message when no answer followed it (a reply that failed
+    or came back empty is not kept in the history)."""
+    turns = [turn for turn in history or [] if turn.get("role") in {"user", "assistant"}]
+    if turns and turns[-1].get("role") == "user":
+        text = str(turns[-1].get("content") or "").strip()
+        return text or None
     return None
 
 
