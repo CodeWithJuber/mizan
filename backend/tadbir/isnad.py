@@ -27,6 +27,7 @@ GRADES = ("sahih", "hasan", "daif", "mawdu")
 BASIS = {
     "compute": "MIZAN calculated it exactly",
     "quran": "read verbatim from MIZAN's Quran source",
+    "quran_search": "found by MIZAN's own Quran index and read verbatim from its source",
     "hadith": "read verbatim from MIZAN's hadith source",
     "waqt": "MIZAN's calendar (Umm al-Qura) and clock",
     "salah": "computed by MIZAN for your place (Adhan astronomical method)",

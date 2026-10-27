@@ -612,6 +612,36 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने उद्धृत पाठ को मूल स्रोत से बदल दिया ({reference})।",
         "ar": "استبدل ميزان النص المقتبس بنص المصدر ({reference}).",
     },
+    "quran_found": {
+        "en": "Found in MIZAN's own index of the Quran by the words: {words}",
+        "hi-latn": "MIZAN ne Quran ke apne index mein in alfaaz se dhoondha: {words}",
+        "ur": "میزان نے قرآن کے اپنے اشاریے میں ان الفاظ سے تلاش کیا: {words}",
+        "hi": "मीज़ान ने क़ुरआन के अपने इंडेक्स में इन शब्दों से ढूँढा: {words}",
+        "ar": "وجده ميزان في فهرسه للقرآن بهذه الكلمات: {words}",
+    },
+    "quran_also": {
+        "en": "Other ayahs with these words: {refs}",
+        "hi-latn": "In alfaaz wali doosri ayaat: {refs}",
+        "ur": "ان الفاظ والی دوسری آیات: {refs}",
+        "hi": "इन शब्दों वाली दूसरी आयतें: {refs}",
+        "ar": "آيات أخرى بهذه الكلمات: {refs}",
+    },
+    "quran_search_none": {
+        "en": "MIZAN found no ayah with these words in its index of the Quran (Arabic, "
+        "transliteration and translations). It does not quote ayahs from memory; a surah "
+        "and ayah number, or other words from the ayah, will find it.",
+        "hi-latn": "MIZAN ko Quran ke apne index (Arabi, transliteration aur tarjume) mein in "
+        "alfaaz wali koi ayat nahi mili. Woh ayaat yaaddasht se nahi likhta; surah aur ayat "
+        "number, ya ayat ke doosre alfaaz se mil jayegi.",
+        "ur": "میزان کو قرآن کے اپنے اشاریے (عربی، رومن اور تراجم) میں ان الفاظ والی کوئی آیت "
+        "نہیں ملی۔ وہ آیات یادداشت سے نہیں لکھتا؛ سورت اور آیت نمبر، یا آیت کے دوسرے الفاظ سے "
+        "مل جائے گی۔",
+        "hi": "मीज़ान को क़ुरआन के अपने इंडेक्स (अरबी, लिप्यंतरण और अनुवाद) में इन शब्दों वाली "
+        "कोई आयत नहीं मिली। वह आयतें याद से नहीं लिखता; सूरह और आयत नंबर, या आयत के दूसरे "
+        "शब्दों से मिल जाएगी।",
+        "ar": "لم يجد ميزان آية بهذه الكلمات في فهرسه للقرآن (العربي والنقحرة والترجمات). لا "
+        "يكتب الآيات من الذاكرة؛ رقم السورة والآية أو كلمات أخرى من الآية تجدها.",
+    },
     "quran_answer": {
         "en": "Answer from the ayah's own words (its translation, above), not tafsir",
         "hi-latn": "Jawab ayat ke apne alfaaz (upar diye tarjume) se, tafsir nahi",
@@ -767,11 +797,11 @@ PHRASES: dict[str, dict[str, str]] = {
         "ar": "سأتذكر ذلك. حُفظ في ملاحظاتك كما قلته؛ يمكنك رؤيته أو نسيانه في دفترك.",
     },
     "capabilities": {
-        "en": "Yes. MIZAN works through its own tools, and they are real:",
-        "hi-latn": "Haan. MIZAN apne asli tools se kaam karta hai:",
-        "ur": "جی ہاں۔ میزان اپنے حقیقی ٹولز سے کام کرتا ہے:",
-        "hi": "हाँ। मीज़ान अपने असली टूल्स से काम करता है:",
-        "ar": "نعم. يعمل ميزان بأدواته الحقيقية:",
+        "en": "MIZAN works through its own tools, and they are real:",
+        "hi-latn": "MIZAN apne asli tools se kaam karta hai:",
+        "ur": "میزان اپنے حقیقی ٹولز سے کام کرتا ہے:",
+        "hi": "मीज़ान अपने असली टूल्स से काम करता है:",
+        "ar": "يعمل ميزان بأدواته الحقيقية:",
     },
     "capabilities_tail": {
         "en": "Ask in any language; MIZAN plans and checks the work, and the language model only helps with wording and writing code.",

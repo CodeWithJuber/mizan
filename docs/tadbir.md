@@ -49,6 +49,8 @@ and before the model-driven loop.
 | run_code | "Python me 2\*\*100 run karo", or a fenced code block plus "run" | none. MIZAN writes `print(...)` itself, runs it, and cross-checks the output against its own calculation. |
 | build_and_run | "Ek python program likho jo … aur run karo", "Help me write a Python script that …" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. A program that opens a window (tkinter, PyQt, pygame, …, read from its imports) is compiled instead of run, because the sandbox has no screen; the reply shows the code and says it was not run. |
 | quran | "Ayatul Kursi", "Surah Ikhlas", "سورة البقرة 255" | none |
+| quran_search | "Sidratul muntaha kya hai", "Quran me Kausar ka zikr", "light upon light" (no reference) | MIZAN finds the ayah in its own index ([Fihris](fihris.md)) and quotes it from the source; Lisan only answers the question from the ayah's translation |
+| run_follow | "Run this code", "isko chalao" after a program in the chat | none: MIZAN runs the longest runnable block of the most recent message that shows one |
 | hadith | "Bukhari 1", "Sahih Muslim 2564b", "Tirmidhi 2516 dikhao", "بخاری شریف حدیث نمبر 1" | none |
 | waqt | "aaj ki date kya hai", "aaj ki hijri date", "15 March 2026 hijri mein", "1 Ramadan 1448 kab hai", "Eid kab hai" | none |
 | build_project | "Ek calculator app banao", "Create a quiz game", "Python CLI todo app banao" | Lisan writes each file and repairs what MIZAN's checks find. A new project is created, or the selected project is used when it is empty. An existing project is edited by the agent loop. Frameworks and backends (React, Django, databases, logins) also go to the agent loop. |

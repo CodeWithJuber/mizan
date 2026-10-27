@@ -109,8 +109,8 @@ Qasd reads three kinds of evidence:
 - what MIZAN's parsers find in it (`e:` tokens)
 - the context (`c:` tokens)
 
-It returns a posterior over 24 recipes and `converse`. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 696 requests in five languages
+It returns a posterior over 27 recipes and `converse`. The seeds are in
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 949 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -126,9 +126,20 @@ intents.
 3. A family whose recipe could not be built from these words adds its mass to
    "an action MIZAN could not build". Once that mass outweighs the next
    family, or conversation comes next, the request goes on as conversation.
+   A **fixed answer** (`capabilities`, the same list whatever the message
+   says) is built only when it is more probable than every other reading
+   together (P > ½); otherwise its mass counts as unbuilt. "Tum pagal ho?"
+   was once its likeliest single reading at P = 0.28 and got the tool list.
 4. If an action was more probable than conversation (P(converse) < ½), Lisan
    may map the wording into MIZAN's action schema. MIZAN validates every
    step and runs it itself.
+
+**Follow-ups** are intents whose words name something said earlier in the
+chat, and Tadbir takes it from there: `silsila_follow` ("karo koshish", the
+sequence asked before), `search_bare` ("dhundo pahle", the topic asked before)
+and `run_follow` ("run this code", "isko chalao": the longest runnable block in
+the most recent message that shows one). With nothing earlier to take, the
+request goes on as conversation.
 
 **Facets** are separate yes/no models on their own seeds (`facets.tsv`):
 
@@ -164,14 +175,21 @@ that never saw it.
 | Model | Classes | Examples | Held-out accuracy |
 |---|---|---|---|
 | Lughah | 7 | 6246 (1500 sampled for the fit) | 99.2% |
-| Qasd, exact intent | 25 | 1323 (696 seeds, two contexts) | 76.0% |
-| Qasd, family (what MIZAN acts on) | 16 | same | 80.1% |
-| Qasd, act vs answer in words | 2 | same | 86.8% |
+| Qasd, exact intent | 28 | 1822 (949 seeds, two contexts) | 73.5% |
+| Qasd, family (what MIZAN acts on) | 17 | same | 77.2% |
+| Qasd, act vs answer in words | 2 | same | 86.3% |
 | Facet `current` | 2 | 104 | 86.5% |
 | Facet `harder` | 2 | 31 | 90.3% |
 
 At run time the parsers add precision on top: a recipe is built only when its
 parser finds what the recipe needs.
+
+The 26 conversation seeds addressed to MIZAN but not about its tools ("Are you
+crazy?", "Can you predict the future?", "Do you have feelings?") cost 0.7
+points on the earlier seeds (594 of 778 against 599). The trade is deliberate:
+the lost cases are capability questions now answered by Lisan in words, and
+the gained ones are questions that used to get the fixed tool list. With the
+`run_follow` and `quran_search` seeds too, the earlier seeds score 593 of 778.
 
 ## What is still written by hand, and why
 

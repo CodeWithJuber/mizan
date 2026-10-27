@@ -43,6 +43,7 @@ from . import (
     calc,
     express,
     fahm,
+    fihris,
     hadith,
     hifz,
     hudud,
@@ -201,6 +202,23 @@ class Tadbir:
                     if topic
                     else fahm.Understanding("converse", understanding.language, 0.0)
                 )
+        if parts is None and understanding.intent == "run_follow":
+            # "Run this code": the program shown most recently in this chat.
+            program = _earlier_program(history)
+            understanding = (
+                fahm.Understanding(
+                    "run_code",
+                    understanding.language,
+                    understanding.confidence,
+                    {
+                        "code": program[0],
+                        "code_language": program[1],
+                        "understood_by": "conversation",
+                    },
+                )
+                if program
+                else fahm.Understanding("converse", understanding.language, 0.0)
+            )
         self._stream = stream_callback
         started = time.time()
         if parts is not None:
@@ -553,6 +571,7 @@ class Tadbir:
                 data = await fetch()
             except (
                 quran.QuranUnavailable,
+                fihris.Unavailable,
                 hadith.HadithUnavailable,
                 hadith.HadithNotFound,
             ) as exc:
@@ -1831,6 +1850,54 @@ class Tadbir:
                 lines += ["", f"**{phrase('quran_answer', u.language)}**", answer]
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
 
+    async def _quran_search(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Ayahs found by their words in MIZAN's own index, then quoted verbatim
+        from the source and the question answered from the ayah's words."""
+
+        async def search() -> dict:
+            return {"matches": await fihris.search(u.entities.get("query") or task)}
+
+        found, error = await self._from_source(
+            "quran_index",
+            (u.entities.get("query") or task)[:120],
+            search,
+            lambda data: ", ".join(match.label for match in data["matches"]) or "no ayah",
+        )
+        if error is not None:
+            return Outcome(phrase("quran_unavailable", u.language, reason=error), False, {})
+        matches = found["matches"]
+        if not matches:
+            return Outcome(phrase("quran_search_none", u.language), False, {})
+        best = matches[0]
+        reference = quran.Reference(best.surah, best.ayah, best.ayah)
+        quoted = await self._quran(
+            task,
+            fahm.Understanding(
+                "quran", u.language, u.confidence, {"reference": reference, "question": True}
+            ),
+        )
+        lines = [
+            f"_{phrase('quran_found', u.language, words=', '.join(best.words))}_",
+            "",
+            quoted.text,
+        ]
+        # Other ayahs are shown only when they are as likely as chance among
+        # the matches (softmax of their standardised scores), not every weak hit.
+        top = max(match.score for match in matches)
+        weights = [math.exp(match.score - top) for match in matches]
+        others = [
+            f"{quran.SURAHS[match.surah - 1][0]} {match.label}"
+            for match, weight in zip(matches[1:], weights[1:], strict=True)
+            if weight / sum(weights) >= 1 / len(matches)
+        ]
+        if others:
+            lines += ["", f"_{phrase('quran_also', u.language, refs=' · '.join(others))}_"]
+        return Outcome(
+            "\n".join(lines),
+            quoted.verified,
+            {**quoted.facts, "found_by": best.words, "also": [m.label for m in matches[1:]]},
+        )
+
     async def _ayah_answer(self, task: str, data: dict, language: str) -> str:
         """The question answered from the ayah's translation only (reading, not tafsir)."""
         translation = "\n".join(
@@ -2415,7 +2482,9 @@ def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | N
 
     Fahm's own choices are not fed back to it (that would only confirm itself)."""
     if source == "conversation":
-        return "search_bare" if u.intent == "web_search" else "silsila_follow"
+        return {"web_search": "search_bare", "run_code": "run_follow"}.get(
+            u.intent, "silsila_follow"
+        )
     if source != "lisan":
         return None
     if u.intent == "quran":
@@ -2423,6 +2492,16 @@ def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | N
     if u.intent == "hadith":
         return "hadith_explain" if u.entities.get("explain") else "hadith"
     return u.intent
+
+
+def _earlier_program(history: list[dict] | None) -> tuple[str, str] | None:
+    """The program in the most recent message of this chat that shows one: of
+    its runnable blocks, the longest (a whole program rather than a fragment)."""
+    for turn in list(reversed(history or []))[:8]:
+        programs = fahm.fenced_programs(str(turn.get("content") or ""))
+        if programs:
+            return max(programs, key=lambda found: len(found[0]))
+    return None
 
 
 def _earlier_request(history: list[dict] | None) -> str | None:

@@ -23,8 +23,13 @@ backend/frontend images tagged with the exact commit. `Deploy Production`
 runs only after that CI succeeds, skips an obsolete commit, checks the pinned
 SSH host key, and updates the existing Compose project's backend/frontend.
 The running reverse proxy, database volume, host configuration and `.env`
-are preserved. Nginx reloads to resolve the new container addresses; checks
+are preserved. Nginx reloads to resolve the new container addresses as soon
+as they start (and again after the checks), so the restart window is the old
+backend's drain plus the new one's start-up, about 15 seconds; checks
 then verify health and authentication through the public HTTPS URL.
+During that window the web app shows "MIZAN is restarting", reads wait for
+the health check and are sent again, and a chat message sent meanwhile says
+to check the chat before sending it again (`frontend/src/utils/restarting.ts`).
 A failed health or anonymous-auth denial check restores the
 previous images. Deployment state is stored in `/var/lib/mizan-deploy`.
 

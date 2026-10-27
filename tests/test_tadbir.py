@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import amal, calc, fahm, hadith, majlis, project, quran, taallum, waqt
+from tadbir import amal, calc, fahm, hadith, majlis, project, qasd, quran, taallum, waqt
 from tadbir.express import furqan
 
 
@@ -103,11 +103,26 @@ def tools(agent, monkeypatch, **results):
         ("Yaad hai maine kya bataya tha?", "recall", "hi-latn"),
         ("Explain recursion simply", "converse", "en"),
         ("Assalamu alaikum bhai kaise ho", "converse", "hi-latn"),
+        # Addressed to MIZAN, but not about its tools (none of these is a seed)
+        ("Kya tum pagal ho gaye?", "converse", "hi-latn"),
+        ("Can you tell the future of Pakistan?", "converse", "en"),
+        ("Are you better than ChatGPT?", "converse", "en"),
     ],
 )
 def test_fahm_understands_without_a_model(text, intent, language):
     understanding = fahm.understand(text)
     assert (understanding.intent, understanding.language) == (intent, language)
+
+
+def test_a_fixed_answer_needs_a_majority(monkeypatch):
+    # The capabilities answer reads nothing in the message: as the likeliest
+    # single reading but not more probable than the rest together, the
+    # message goes on as conversation.
+    ranked = [("capabilities", 0.4), ("converse", 0.35), ("recall", 0.25)]
+    monkeypatch.setattr(qasd, "ranked", lambda *args, **kwargs: ranked)
+    assert fahm.understand("Tum pagal ho?").intent == "converse"
+    ranked[:] = [("capabilities", 0.6), ("converse", 0.4)]
+    assert fahm.understand("Tum kya kar sakte ho?").intent == "capabilities"
 
 
 def test_mizan_writes_the_program_for_a_run_request():
@@ -285,6 +300,42 @@ async def test_run_request_is_planned_run_and_cross_checked_by_mizan(agent, monk
     assert all(item["status"] == "completed" for item in final_plan)
 
 
+async def test_run_this_code_runs_the_program_shown_earlier_in_the_chat(agent, monkeypatch):
+    # Production: "Run this code" after an answer with a program was answered
+    # "I have no tool access"; MIZAN now runs that program itself.
+    fake = tools(
+        agent, monkeypatch, workspace_run={"stdout": "False\n", "stderr": "", "exit_code": 0}
+    )
+    earlier = (
+        "Here is the sketch:\n```python\nnew_code = compile(src)\n```\n"
+        "And the program:\n```python\ndef evaluate_me(p):\n    return not p\n\n"
+        "print(evaluate_me(True))\n```"
+    )
+    history = [
+        {"role": "user", "content": "Write evaluate_me"},
+        {"role": "assistant", "content": earlier},
+    ]
+    result = await agent.execute("Run this code", {"history": history})
+    assert [name for name, _ in fake.calls] == ["workspace_run"]
+    # The whole program, not the fragment before it.
+    assert fake.calls[0][1]["command"].startswith("def evaluate_me(p):")
+    assert "False" in result["result"]
+    assert agent.ai_client.requests == []
+
+
+async def test_run_this_code_with_no_program_in_the_chat_runs_nothing(agent, monkeypatch):
+    fake = tools(agent, monkeypatch, workspace_run={"stdout": "", "stderr": "", "exit_code": 0})
+    await agent.execute(
+        "Execute the above program", {"history": [{"role": "assistant", "content": "Hello"}]}
+    )
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("text", ["Execute the above program", "Ab isko run karo", "Run it please"])
+def test_run_requests_without_code_are_follow_ups(text):
+    assert fahm.understand(text).intent == "run_follow"
+
+
 async def test_a_wrong_sandbox_result_is_not_marked_verified(agent, monkeypatch):
     tools(agent, monkeypatch, workspace_run={"stdout": "42\n", "stderr": "", "exit_code": 0})
     result = await agent.execute("Python me 2**10 run karo")
@@ -320,6 +371,8 @@ async def test_capabilities_come_from_the_registry_not_the_model(agent):
     result = await agent.execute("Hai tumhare paas tools?")
     assert agent.ai_client.requests == []
     assert "sandbox" in result["result"] and "web search" in result["result"]
+    # It lists what MIZAN can do; it never answers "yes" to a question it did not read.
+    assert not result["result"].startswith(("Yes", "Haan"))
 
 
 async def test_quran_text_never_passes_through_the_model(agent, monkeypatch):

@@ -75,14 +75,26 @@ _CODE_LABELS = {
 }  # fmt: skip
 
 
-def _fenced_code(text: str) -> tuple[str, str] | None:
-    match = re.search(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", text, re.DOTALL)
-    if not match or not match[2].strip():
+_FENCE = re.compile(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", re.DOTALL)
+
+
+def _runnable(match: re.Match) -> tuple[str, str] | None:
+    if not match[2].strip():
         return None
     language = _CODE_LABELS.get(match[1].lower())
     if language is None:
         language = "python" if re.search(r"\bprint\(|\bdef |\bimport ", match[2]) else ""
     return (match[2].strip("\n"), language) if language else None
+
+
+def _fenced_code(text: str) -> tuple[str, str] | None:
+    match = _FENCE.search(text)
+    return _runnable(match) if match else None
+
+
+def fenced_programs(text: str) -> list[tuple[str, str]]:
+    """Every fenced block in the text that MIZAN can run, with its language."""
+    return [found for match in _FENCE.finditer(text) if (found := _runnable(match))]
 
 
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
@@ -328,6 +340,13 @@ def _quran(intent: str, message: str, language: str) -> Understanding | None:
     )
 
 
+def _quran_search(_intent: str, message: str, language: str) -> Understanding | None:
+    # A message that names a reference is read by the reference recipe instead.
+    if quran.parse_reference(message) is not None:
+        return None
+    return Understanding("quran_search", language, 0.0, {"query": message})
+
+
 def _hadith(intent: str, message: str, language: str) -> Understanding | None:
     narration = hadith.parse_reference(message)
     if narration is None:
@@ -408,6 +427,7 @@ _BUILDERS = {
     "quran": _quran,
     "quran_question": _quran,
     "quran_explain": _quran,
+    "quran_search": _quran_search,
     "hadith": _hadith,
     "hadith_explain": _hadith,
     "waqt": _with(
@@ -428,6 +448,8 @@ _BUILDERS = {
         ),
     ),
     "run_code": _run_code,
+    # "Run this code": a program shown earlier in the chat; Tadbir takes it from there.
+    "run_follow": _with("run_follow", lambda m: None if _fenced_code(m) else {}),
     "run_file": _in_project,
     "project_task": _in_project,
     "edit_project": _in_project,
@@ -466,6 +488,13 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
     for family, mass, members in _families(ranked):
         if family == "converse" or unbuilt > mass:
             break
+        if family in FIXED_ANSWERS and mass <= 0.5:
+            # A fixed answer reads nothing in the message, so it answers the
+            # question only when that kind of question is more probable than
+            # every other reading together ("Tum pagal ho?" is not a question
+            # about tools even when it is the likeliest single reading).
+            unbuilt += mass
+            continue
         for intent, _probability in members:
             build = _BUILDERS.get(intent)
             built: Understanding | None = build(intent, message, language) if build else None
@@ -478,14 +507,16 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
 
 # Families of recipes: intents that are kinds of one request.
 FAMILIES = {
-    "quran": ("quran", "quran_question", "quran_explain"),
+    "quran": ("quran", "quran_question", "quran_explain", "quran_search"),
     "hadith": ("hadith", "hadith_explain"),
     "search": ("web_search", "search_bare"),
     "sequence": ("silsila", "silsila_follow"),
-    "code": ("run_code", "build_and_run", "run_file"),
+    "code": ("run_code", "build_and_run", "run_file", "run_follow"),
     "make": ("build_project", "edit_project", "project_task"),
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
+# Recipes whose answer is the same whatever the message says.
+FIXED_ANSWERS = frozenset({"capabilities"})
 
 
 def _families(ranked: list[tuple[str, float]]) -> list[tuple[str, float, list[tuple[str, float]]]]:
@@ -521,7 +552,7 @@ def _clauses(text: str) -> list[str]:
     return parts if 2 <= len(parts) <= 4 else []
 
 
-_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare"}
+_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare", "run_follow"}
 
 
 def _decisive_action(text: str) -> str | None:

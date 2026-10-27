@@ -88,19 +88,33 @@ def agent(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("hidden", [True, False])
 async def test_hidden_reasoning_or_comments_do_not_hold_a_session_forever(agent, hidden):
+    # Reasoning shows the model is working, so only the total budget ends it;
+    # comments and keepalives show nothing, so the first-progress wait does.
     item = chunk(reasoning="private hidden trace") if hidden else SimpleNamespace(choices=[])
     stream = SlowChunks([item] * 100)
     provider = NativeFixture([stream])
     agent.ai_client = provider
-    result = await asyncio.wait_for(agent.execute("answer", stream_callback=AsyncMock()), 1)
+    result = await asyncio.wait_for(agent.execute("answer", stream_callback=AsyncMock()), 2)
     assert not result["success"]
     assert result["error_code"] == "provider_timeout"
-    assert result["provider_timeout_phase"] == "first_progress"
+    assert result["provider_timeout_phase"] == ("total" if hidden else "first_progress")
     assert provider.posts == 1 and provider.create_posts == 0
     assert stream.closed.is_set()
     assert result["usage"].get("calls", []) == []
     assert result["usage"]["timings"]["provider_attempts"][0]["outcome"] == "timed_out"
     assert not result["answer_delivered"] and not result["task_verified"]
+
+
+async def test_reasoning_before_the_answer_can_outlast_the_first_progress_wait(agent):
+    # Production: a reasoning model thought past the 60 s first-progress wait
+    # and its answer was cut off as "exceeded its wait limit".
+    thinking = [chunk(reasoning="working")] * 8  # 8 × 15 ms, well past 50 ms
+    stream = SlowChunks(thinking + [chunk(content="Three sides."), chunk(finish="stop")])
+    provider = NativeFixture([stream])
+    agent.ai_client = provider
+    result = await asyncio.wait_for(agent.execute("answer", stream_callback=AsyncMock()), 2)
+    assert result["success"] and "Three sides." in result["result"]
+    assert provider.posts == 1 and provider.create_posts == 0
 
 
 async def test_tool_argument_progress_can_outlast_first_text_budget_without_replay(agent):
@@ -137,13 +151,13 @@ async def test_continuous_text_still_has_total_budget_and_keeps_partial_bytes(ag
     assert stream.closed.is_set()
 
 
-async def test_reasoning_after_visible_prefix_does_not_extend_progress_gap(agent):
+async def test_reasoning_after_visible_prefix_is_bounded_by_the_total_budget(agent):
     stream = SlowChunks([chunk(content="Partial")] + [chunk(reasoning="hidden")] * 100)
     provider = NativeFixture([stream])
     agent.ai_client = provider
     emitted = AsyncMock()
-    result = await asyncio.wait_for(agent.execute("answer", stream_callback=emitted), 1)
-    assert result["provider_timeout_phase"] == "progress"
+    result = await asyncio.wait_for(agent.execute("answer", stream_callback=emitted), 2)
+    assert result["provider_timeout_phase"] == "total"
     assert emitted.await_args_list[0].args == ("Partial",)
     assert provider.posts == 1 and provider.create_posts == 0
     assert stream.closed.is_set()

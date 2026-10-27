@@ -32,8 +32,9 @@ def buffered_first_progress() -> float:
 
 
 def provider_limits() -> ProviderLimits:
-    # Sixty seconds matches the default SDK I/O budget, but comments and
-    # hidden reasoning cannot indefinitely postpone the first usable output.
+    # Sixty seconds of silence matches the default SDK I/O budget. Streamed
+    # reasoning is progress (the model is working); comments and keepalives
+    # are not, and the total budget bounds every call.
     return ProviderLimits(
         bounded_seconds("MIZAN_LLM_FIRST_PROGRESS_SECONDS", 60, minimum=1, maximum=180),
         bounded_seconds("MIZAN_LLM_PROGRESS_SECONDS", 60, minimum=1, maximum=180),
