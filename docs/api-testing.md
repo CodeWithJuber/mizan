@@ -28,6 +28,14 @@ TOKEN=$(curl -s $MIZAN/api/auth/login -H 'Content-Type: application/json' \
   -d '{"username":"you","password":"…"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
 ```
 
+A token lasts 24 hours.
+- `GET /api/auth/me` says whose it is, its roles, and when it was issued and expires.
+- `POST /api/auth/logout` ends it at once.
+- `POST /api/auth/logout {"everywhere": true}` also ends every other token the
+  account was given before now. Use it when a token may have leaked.
+
+Revocations are kept on disk, so a restart never brings a revoked token back.
+
 Some routes need an admin account: the AGI test, every user's spending, and
 system settings. Debug mode follows `MIZAN_DEBUG_MODE`.
 

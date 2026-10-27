@@ -929,6 +929,44 @@ async def register(req: LoginRequest):
     return {"token": token, "user_id": user.id, "username": user.username}
 
 
+@app.get("/api/auth/me")
+async def auth_me(user: TokenPayload = Depends(require_auth)):
+    """Who this credential belongs to, its roles, and when the token expires."""
+    from datetime import UTC, datetime
+
+    def moment(value: float) -> str:
+        return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds")
+
+    api_key = user.jti.startswith("apikey_")
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "roles": user.roles,
+        "credential": "api_key" if api_key else "token",
+        "issued_at": None if api_key else moment(user.iat),
+        "expires_at": None if api_key else moment(user.exp),
+    }
+
+
+class LogoutRequest(BaseModel):
+    # Also end every other token this account was given before now.
+    everywhere: bool = False
+
+
+@app.post("/api/auth/logout")
+async def logout(req: LogoutRequest | None = None, user: TokenPayload = Depends(require_auth)):
+    """End this token now (it stays revoked across restarts); with
+    ``everywhere``, every token the account was given before now."""
+    if user.jti.startswith("apikey_"):
+        raise HTTPException(400, "An API key is not a session: remove the key instead")
+    auth.revoke_token(user.jti, user.exp)
+    everywhere = bool(req and req.everywhere)
+    if everywhere:
+        auth.revoke_all(user.user_id)
+    wali.audit.log("logout", {"user_id": user.user_id, "everywhere": everywhere})
+    return {"logged_out": True, "everywhere": everywhere}
+
+
 @app.post("/api/auth/api-key")
 async def create_api_key(user: TokenPayload = Depends(require_auth)):
     """Create an API key for the authenticated user"""

@@ -82,6 +82,163 @@
     "x-mizan-access": "public"
    }
   },
+  "/api/auth/me": {
+   "get": {
+    "summary": "Auth Me",
+    "description": "Who this credential belongs to, its roles, and when the token expires.",
+    "operationId": "auth_me_api_auth_me_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "summary": "Logout",
+    "description": "End this token now (it stays revoked across restarts); with\n``everywhere``, every token the account was given before now.",
+    "operationId": "logout_api_auth_logout_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/LogoutRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Req"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/auth/api-key": {
    "post": {
     "summary": "Create Api Key",
@@ -19560,6 +19717,17 @@
     ],
     "title": "LoginRequest"
    },
+   "LogoutRequest": {
+    "properties": {
+     "everywhere": {
+      "type": "boolean",
+      "title": "Everywhere",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "LogoutRequest"
+   },
    "LookupResponse": {
     "properties": {
      "ref": {
@@ -21118,13 +21286,17 @@
       "type": "array",
       "maxItems": 4,
       "title": "Images"
+     },
+     "thinking": {
+      "type": "boolean",
+      "title": "Thinking",
+      "default": false
      }
     },
     "type": "object",
     "required": [
      "session_id",
-     "content",
-     "request_id"
+     "content"
     ],
     "title": "StreamChatMessage"
    },

@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Default persistent data directory (matches the Wali sandbox allow-list).
 DEFAULT_DATA_DIR = "/data/mizan"
 USERS_FILENAME = "users.json"
+REVOCATIONS_FILENAME = "revocations.json"
 
 
 def hash_password(password: str) -> str:
@@ -154,12 +155,18 @@ class MizanAuth:
         self._lock = threading.Lock()
 
         self._users: dict[str, UserRecord] = {}
-        self._revoked_tokens: set = set()
+        # Revoked token ids with their expiry, and per user the time before
+        # which every token is revoked ("log out everywhere"); kept on disk so
+        # a restart never brings a revoked token back.
+        self._revoked_tokens: dict[str, float] = {}
+        self._revoked_before: dict[str, float] = {}
+        self._revocations_file = self.data_dir / REVOCATIONS_FILENAME
         self._api_keys: dict[str, str] = {}  # api_key -> user_id
 
         # Load persisted users before the default-admin check so a
         # restarted server keeps its accounts.
         self._load_users()
+        self._load_revocations()
 
         # Create default admin if no users exist
         self._ensure_default_admin()
@@ -233,6 +240,42 @@ class MizanAuth:
         except OSError as exc:
             logger.warning("Cannot persist users to %s (%s)", self._users_file, exc)
 
+    def _load_revocations(self) -> None:
+        try:
+            raw = json.loads(self._revocations_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        now = time.time()
+        tokens = raw.get("tokens") if isinstance(raw, dict) else None
+        before = raw.get("before") if isinstance(raw, dict) else None
+        if isinstance(tokens, dict):
+            self._revoked_tokens = {
+                str(jti): float(exp)
+                for jti, exp in tokens.items()
+                if isinstance(exp, int | float) and exp > now
+            }
+        if isinstance(before, dict):
+            self._revoked_before = {
+                str(user): float(moment)
+                for user, moment in before.items()
+                if isinstance(moment, int | float)
+            }
+
+    def _save_revocations(self) -> None:
+        now = time.time()
+        self._revoked_tokens = {jti: exp for jti, exp in self._revoked_tokens.items() if exp > now}
+        payload = json.dumps({"tokens": self._revoked_tokens, "before": self._revoked_before})
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.data_dir), prefix="revocations.", suffix=".tmp"
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+            os.replace(tmp_path, self._revocations_file)
+        except OSError as exc:
+            logger.warning("Cannot persist revocations to %s (%s)", self._revocations_file, exc)
+
     def _ensure_default_admin(self):
         """Create default admin user from environment"""
         admin_user = os.getenv("MIZAN_ADMIN_USER", "admin")
@@ -289,8 +332,12 @@ class MizanAuth:
                 algorithms=[self.algorithm],
             )
 
-            # Check if revoked
+            # Revoked by itself, or issued before the account logged out everywhere
             if payload.get("jti") in self._revoked_tokens:
+                return None
+            if float(payload.get("iat") or 0) < self._revoked_before.get(
+                str(payload.get("user_id")), 0.0
+            ):
                 return None
 
             return TokenPayload(
@@ -306,9 +353,17 @@ class MizanAuth:
         except jwt.InvalidTokenError:
             return None
 
-    def revoke_token(self, jti: str):
-        """Revoke a specific token"""
-        self._revoked_tokens.add(jti)
+    def revoke_token(self, jti: str, expires: float | None = None) -> None:
+        """Revoke one token until it would have expired anyway."""
+        with self._lock:
+            self._revoked_tokens[jti] = expires or time.time() + self.expiry_hours * 3600
+            self._save_revocations()
+
+    def revoke_all(self, user_id: str) -> None:
+        """Revoke every token this account was given until now."""
+        with self._lock:
+            self._revoked_before[user_id] = time.time()
+            self._save_revocations()
 
     def create_api_key(self, user_id: str) -> str | None:
         """Create an API key for a user"""
