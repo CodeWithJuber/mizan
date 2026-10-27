@@ -180,6 +180,43 @@ def learn(store: Any, user_id: str, message: str, intent: str, project: bool) ->
     return True
 
 
+def unlearn(store: Any, user_id: str, messages: list[str]) -> int:
+    """Forget what was learned from these requests (Mahw); returns how many
+    examples were dropped. The overlay is rebuilt from what is kept."""
+    candidates = {
+        compose(message.strip(), project)
+        for message in messages
+        if message.strip()
+        for project in (False, True)
+    }
+    if not candidates:
+        return 0
+    data = store.get(_key(user_id)) or {}
+    learned = list(data.get("examples") or [])
+    by_short = {text[:2000]: text for text in candidates}
+    kept = [item for item in learned if item.get("text") not in by_short]
+    if len(kept) == len(learned):
+        return 0
+    dropped = {
+        hashlib.sha256(f"{item['intent']}\t{by_short[item['text']]}".encode()).hexdigest()[:16]
+        for item in learned
+        if item.get("text") in by_short
+    }
+    rebuilt = Overlay()
+    vectorize = model().vector
+    for item in kept:
+        rebuilt.add(item["intent"], vectorize(item["text"]))
+    store.put(
+        _key(user_id),
+        {
+            "overlay": rebuilt.to_dict(),
+            "examples": kept,
+            "seen": [digest for digest in data.get("seen") or [] if digest not in dropped],
+        },
+    )
+    return len(learned) - len(kept)
+
+
 def summary(store: Any, user_id: str) -> dict:
     try:
         data = store.get(_key(user_id)) or {}

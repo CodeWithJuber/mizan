@@ -43,6 +43,7 @@ import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "./util
 import { useChatRecovery } from "./hooks/useChatRecovery.ts";
 import { ChatRunStatus } from "./components/ChatRunStatus.tsx";
 import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
+import { checkLine, isReceipt, removedLine } from "./utils/mahw.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
 import AgentActivityView, { type ApprovalDecision } from "./components/AgentActivity";
 import PermissionModeSwitch, { loadPermissionMode } from "./components/PermissionModeSwitch";
@@ -481,6 +482,8 @@ function AppInner() {
   );
   const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string>(sessionId);
+  // Set once startNewSession exists (it is defined further down).
+  const startNewSessionRef = useRef<(() => void) | null>(null);
   const resyncRef = useRef<(() => void) | null>(null);
   // Bounded auto-continuations when a stream ends with finish_reason=length
   const continuationRef = useRef(0);
@@ -1617,6 +1620,41 @@ function AppInner() {
     }
   }, []);
 
+  const deleteSession = useCallback(
+    async (sid: string) => {
+      if (
+        !window.confirm(
+          "Delete this chat and everything MIZAN learned from it? This cannot be undone.",
+        )
+      )
+        return;
+      try {
+        const res = await authFetch(`${config.API_URL}/chat/${encodeURIComponent(sid)}`, {
+          method: "DELETE",
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !isReceipt(body)) {
+          addToast({
+            type: "error",
+            title: "Chat not deleted",
+            description: typeof body?.detail === "string" ? body.detail : "Please try again.",
+          });
+          return;
+        }
+        addToast({
+          type: body.traces ? "warning" : "success",
+          title: "Chat deleted",
+          description: `${removedLine(body)}. ${checkLine(body)}`,
+        });
+        if (sid === sessionIdRef.current) startNewSessionRef.current?.();
+        await loadChatSessions();
+      } catch {
+        addToast({ type: "error", title: "Chat not deleted", description: "Please try again." });
+      }
+    },
+    [addToast, loadChatSessions],
+  );
+
   const switchSession = useCallback(
     async (sid: string) => {
       const requestToken = localStorage.getItem("mizan_token");
@@ -1827,6 +1865,7 @@ function AppInner() {
     continuationRef.current = 0;
     addTerminalLine("New chat session started", "gold");
   }, [persistActiveDraft, recovery.reset, historyLoads]);
+  startNewSessionRef.current = startNewSession;
 
   // "New chat" discards the visible session (recoverable via History), so it
   // confirms first. The /new chat command keeps its no-confirm behavior.
@@ -2705,13 +2744,16 @@ function AppInner() {
                             </div>
                           )}
                           {chatSessions.map((s) => (
-                            <button
+                            <div
                               key={s.session_id}
-                              className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                              className={`group flex items-center transition-colors ${
                                 sessionId === s.session_id
                                   ? "bg-amber-50 dark:bg-amber-500/10"
                                   : "hover:bg-gray-50 dark:hover:bg-zinc-800"
                               }`}
+                            >
+                            <button
+                              className="min-w-0 flex-1 flex items-center gap-2 px-3 py-2.5 text-left"
                               onClick={() => switchSession(s.session_id)}
                             >
                               <div className="min-w-0 flex-1">
@@ -2731,6 +2773,21 @@ function AppInner() {
                                 </span>
                               )}
                             </button>
+                            <button
+                              className="shrink-0 mr-1.5 p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition"
+                              title="Delete this chat"
+                              aria-label="Delete this chat"
+                              onClick={() => deleteSession(s.session_id)}
+                            >
+                              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </button>
+                            </div>
                           ))}
                         </div>
                       </div>

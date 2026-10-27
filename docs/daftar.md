@@ -32,6 +32,8 @@ Every entry shows:
   2. Press **Show what would go** to see every note and preference about it (BM25 over their words).
   3. Press **Forget these N**. Nothing is removed before you confirm.
 - **Expiry:** a note can be given one ("forget after 1 week"). An expired note is never recalled, and it is removed the next time the ledger is read.
+- **Everywhere:** a forgotten note is also removed from its search vector and from the pathway network, which is rebuilt from the notes you keep. You get a receipt saying what was removed and whether any copy was found afterwards ([Mahw](mahw.md)).
+- **A whole chat:** delete it from the chat's History list ([Mahw](mahw.md)).
 
 ## Taking it with you
 
@@ -48,7 +50,8 @@ All routes act on the signed-in user's own ledger.
 | `GET /api/daftar?query=&kind=` | The ledger and counts per kind |
 | `POST /api/daftar` | Add a note (`content`, `tags`, `expires`) |
 | `PATCH /api/daftar/{id}` | Edit a note (`content`, `tags`, `expires`) or a preference (`content`) |
-| `POST /api/daftar/forget` | `{ids}` to forget entries; `{topic}` to preview; `{topic, confirm: true}` to forget the topic |
+| `POST /api/daftar/forget` | `{ids}` to forget entries; `{topic}` to preview; `{topic, confirm: true}` to forget the topic. Forgetting notes returns Mahw's `receipt` |
+| `GET /api/daftar/receipts` | Receipts of what you asked MIZAN to forget, newest first |
 | `GET /api/daftar/export?format=md\|json` | Download the ledger |
 | `POST /api/daftar/import` | Import a `mizan-daftar/1` JSON export |
 

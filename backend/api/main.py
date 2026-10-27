@@ -1429,6 +1429,35 @@ async def stop_chat(
     return {"stopped": True, "request_id": lease.request_id}
 
 
+@app.delete("/api/chat/{session_id}")
+async def delete_chat(session_id: str, user: TokenPayload = Depends(require_auth)):
+    """Delete a chat and everything MIZAN derived from it (Mahw). The answer is
+    a receipt: what was removed from each store, how many checks ran over what
+    is left, and how many traces were found (none, when it worked)."""
+    from api import artifacts as artifact_store
+    from memory import mahw
+    from security.approvals import held_store
+
+    await authorize_session(session_id, user)
+    key = (user.user_id, session_id)
+    lease = _stream_runs.get(key)
+    if key in _stream_sessions or (
+        lease is not None and lease.producer is not None and not lease.producer.done()
+    ):
+        raise HTTPException(409, "This chat is still answering; stop it first")
+    receipt = await mahw.erase_chat(
+        chat_db=memory.db_path,
+        artifacts_db=artifact_store._db_path(),
+        private=await _own_memory(user),
+        owner=user.user_id,
+        session_id=session_id,
+        held_db=held_store().path,
+    )
+    active_sessions.pop(session_id, None)
+    _stream_runs.pop(key, None)
+    return receipt
+
+
 def chat_completion_receipt(result: dict) -> dict:
     """Carry observed completion state through storage and all chat transports."""
     return {
@@ -2795,11 +2824,29 @@ async def daftar_forget(req: DaftarForget, user: TokenPayload = Depends(require_
         ids += [entry["id"] for entry in matches]
     if not ids:
         return {"forgotten": {"note": 0, "preference": 0}}
-    return {
-        "forgotten": await daftar.forget(
-            notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=ids
+    from memory import mahw
+
+    notes = [entry.partition(":")[2] for entry in ids if entry.startswith("note:")]
+    others = [entry for entry in ids if not entry.startswith("note:")]
+    forgotten = await daftar.forget(
+        notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=others
+    )
+    receipt = None
+    if notes:
+        # Notes live on in vectors and pathways too: Mahw removes them there.
+        receipt = await mahw.erase_notes(
+            private=notes_store, owner=user.user_id, note_ids=notes, chat_db=memory.db_path
         )
-    }
+        forgotten["note"] = receipt["removed"].get("notes", 0)
+    return {"forgotten": forgotten, **({"receipt": receipt} if receipt else {})}
+
+
+@app.get("/api/daftar/receipts")
+async def daftar_receipts(user: TokenPayload = Depends(require_auth)):
+    """Receipts of what you asked MIZAN to forget, newest first."""
+    from memory import mahw
+
+    return {"receipts": await asyncio.to_thread(mahw.receipts, user.user_id)}
 
 
 @app.get("/api/daftar/export")
