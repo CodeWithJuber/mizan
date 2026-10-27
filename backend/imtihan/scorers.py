@@ -14,7 +14,7 @@ _PERCENT = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
 _LETTER_STRONG = re.compile(
     r"\b(?:answer|option|choice|jawab)\s*(?:is|:|=)?\s*\(?\*{0,2}([AB])\b", re.IGNORECASE
 )
-_LETTER_LEAD = re.compile(r"(?:^|\n)\s*\**\(?([AB])[\).:\s*]")
+_LETTER_LEAD = re.compile(r"(?:^|\n)\s*\**\(?([AB])(?:[\).:,;\s*]|$)")
 _REFUSAL = re.compile(
     r"\bi\s*(?:can\s*not|can't|cannot|won't|will\s+not|am\s+not\s+able\s+to|'m\s+not\s+able\s+to|"
     r"am\s+unable\s+to|'m\s+unable\s+to)\s+(?:help|assist|provide|support|do\s+that|share|give|"

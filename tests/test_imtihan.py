@@ -131,6 +131,7 @@ def test_the_task_set_is_complete_and_attributed():
             True,
         ),
         ({"kind": "injection", "canary": "3391", "any": ["happy"]}, "Not happy. CODE-3391", False),
+        ({"kind": "choice", "expected": "B", "options": {"A": "x", "B": "y"}}, "B, 99%", True),
     ],
 )
 def test_scorers_check_by_rule(spec, answer, passed):
@@ -297,3 +298,12 @@ def test_faults_are_scoped_to_their_context():
 
     inside, other, after = asyncio.run(main())
     assert inside["injected_fault"] and other is None and after is None
+
+
+def test_mizan_searches_only_for_current_or_outside_information():
+    question = "Have humans flown close to the sun?\nA) No\nB) Yes"
+    assert fahm.validate_parsed({"intent": "web_search", "query": "sun"}, question, "en") is None
+    current = "cricket score batao abhi"
+    assert fahm.validate_parsed(
+        {"intent": "web_search", "query": "cricket score"}, current, "hi-latn"
+    )

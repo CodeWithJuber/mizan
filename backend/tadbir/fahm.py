@@ -99,6 +99,12 @@ _SEARCH = re.compile(
     r"search\s+karo|internet\s+(?:par|pe|se))\b|\blatest\b|\bnews\b|\btoday'?s\b|\baaj\s+ki\b",
     re.IGNORECASE,
 )
+# The request needs something current or outside MIZAN, so a search may answer it.
+_CURRENT = re.compile(
+    r"\b(?:now|abhi|current\w*|this\s+(?:week|month|year)|today|tonight|yesterday|kal|aaj|"
+    r"score|price|prices|rate|weather|stock|news|latest|recent\w*|update\w*|20[2-9]\d)\b",
+    re.IGNORECASE,
+)
 # The message brings its own material to work on: not a request to search.
 _PROVIDED = re.compile(
     r"\b(?:here\s+is|here's|based\s+(?:only\s+)?on\s+(?:this|the\s+following)|using\s+it|"
@@ -357,6 +363,8 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:
             return None
+        if not (_SEARCH.search(message) or _CURRENT.search(message)):
+            return None  # general knowledge: answered in words, not by searching
         entities["query"] = query
     elif intent == "web_read":
         url = str(parsed.get("url", "")).strip()

@@ -110,6 +110,7 @@ async def test_muhasaba_corrects_a_misquote_once_and_respects_opt_out(tmp_path, 
     await memory.authorize_session("s1", "alice", create=True)
     await memory.authorize_session("s2", "bob", create=True)
     wrong = "Surah Ikhlas 112:1 is: قل هو رب العالمين الكريم"
+    await memory.save_message("s1", "user", "Surah Ikhlas ki pehli ayat batao")
     await memory.save_message("s1", "assistant", wrong, metadata={"status": "complete"})
     await memory.save_message(
         "s1", "assistant", "2+2 = 5", metadata={"usage": {"orchestrator": "mizan"}}
@@ -121,5 +122,6 @@ async def test_muhasaba_corrects_a_misquote_once_and_respects_opt_out(tmp_path, 
     messages = await memory.get_messages("s1", limit=10)
     correction = messages[-1]
     assert correction["metadata"]["muhasaba"] and "قُلْ هُوَ ٱللَّهُ أَحَدٌ" in correction["content"]
+    assert "MIZAN ne" in correction["content"]  # in the language the user asked in
     assert len(await memory.get_messages("s2", limit=10)) == 1  # bob opted out
     assert await muhasaba.run(memory) == {"reviewed": 0, "corrected": 0}  # reviewed once

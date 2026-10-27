@@ -152,7 +152,7 @@ async def run(memory: Any, *, hours: float = 24, limit: int = 300) -> dict:
             "reviewed_at TEXT NOT NULL, findings INTEGER NOT NULL)"
         )
         rows = conn.execute(
-            "SELECT m.id, m.session_id, m.content, m.metadata FROM agent_messages m "
+            "SELECT m.id, m.session_id, m.content, m.metadata, m.created_at FROM agent_messages m "
             "LEFT JOIN muhasaba_reviews r ON r.message_id = m.id "
             "WHERE m.role = 'assistant' AND m.created_at >= ? AND r.message_id IS NULL "
             "ORDER BY m.created_at LIMIT ?",
@@ -162,7 +162,7 @@ async def run(memory: Any, *, hours: float = 24, limit: int = 300) -> dict:
     finally:
         memory._release_conn(conn)
     reviewed = corrected = 0
-    for message_id, session_id, content, raw in rows:
+    for message_id, session_id, content, raw, created_at in rows:
         try:
             metadata = json.loads(raw or "{}")
         except ValueError:
@@ -173,7 +173,9 @@ async def run(memory: Any, *, hours: float = 24, limit: int = 300) -> dict:
             if owner and not await _opted_out(memory, owner):
                 findings = await review(content)
         if findings:
-            language = fahm.detect_language(content)
+            # Correct in the language the user asked in, not the answer's script.
+            asked = _question(memory, session_id, created_at)
+            language = fahm.detect_language(asked or content)
             correction_id = await memory.save_message(
                 session_id,
                 "assistant",
@@ -195,6 +197,19 @@ async def run(memory: Any, *, hours: float = 24, limit: int = 300) -> dict:
     if corrected:
         logger.info("[MUHASABA] Reviewed %s answers, corrected %s", reviewed, corrected)
     return {"reviewed": reviewed, "corrected": corrected}
+
+
+def _question(memory: Any, session_id: str, before: str) -> str:
+    conn = memory._get_conn()
+    try:
+        row = conn.execute(
+            "SELECT content FROM agent_messages WHERE session_id = ? AND role = 'user' "
+            "AND created_at <= ? ORDER BY created_at DESC LIMIT 1",
+            (session_id, before),
+        ).fetchone()
+    finally:
+        memory._release_conn(conn)
+    return str(row[0]) if row else ""
 
 
 def _mark(memory: Any, message_id: str, findings: int) -> None:
