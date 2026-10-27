@@ -5,9 +5,10 @@
  * versions and models it chose for code work.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiClient } from "../types";
 import { useToast } from "./Toast";
+import { NOTE_LABELS, ago, mergeNotes, type LearningNote } from "../utils/sijill.ts";
 import {
   learnedCount,
   percent,
@@ -47,6 +48,72 @@ interface Harness {
   instructions: HarnessRow[];
   models: string[];
   routing: { task: string; model: string; success: number; evidence: number }[];
+}
+
+/** What MIZAN learns from your work, as it happens (polled every few seconds). */
+function LiveLearning({ api }: { api: ApiClient }) {
+  const [notes, setNotes] = useState<LearningNote[]>([]);
+  const last = useRef(0);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const data = (await api.get(`/tadbir/learning/live?after=${last.current}`)) as unknown as {
+          notes: LearningNote[];
+          last: number;
+        };
+        if (stopped) return;
+        last.current = data.last ?? last.current;
+        if (data.notes?.length) setNotes((previous) => mergeNotes(previous, data.notes));
+        setTick((tick) => tick + 1); // refresh the "ago" times
+      } catch {
+        // the feed is best effort; the next poll tries again
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 4000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [api]);
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="relative flex h-2 w-2" aria-hidden="true">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        </span>
+        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+          Learning now · سجل
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        Each step MIZAN learns from verified work, the moment it happens. No weights change: this is learning by
+        evidence.
+      </p>
+      {notes.length === 0 ? (
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
+          Nothing yet. Ask MIZAN to compute, run code, quote a source or play a game, and watch here.
+        </div>
+      ) : (
+        <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 max-h-72 overflow-y-auto">
+          {notes.map((note) => (
+            <li key={note.seq} className="py-1.5 flex items-start gap-2 text-sm">
+              <span className="shrink-0 text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300">
+                {NOTE_LABELS[note.kind] ?? note.kind}
+              </span>
+              <span className="min-w-0 flex-1 wrap-break-word text-gray-800 dark:text-gray-200">{note.summary}</span>
+              <span className="shrink-0 text-micro text-gray-400 tabular-nums">{ago(note.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export default function TadbirLearning({ api }: { api: ApiClient }) {
@@ -111,6 +178,8 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
   return (
     <div className="space-y-3">
       {error && <div className="text-sm text-red-500">{error}</div>}
+
+      <LiveLearning api={api} />
 
       <div className="card">
         <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">

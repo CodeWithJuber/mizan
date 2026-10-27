@@ -18,6 +18,7 @@ from tadbir import hadith, muqabala, quran, trace
 from tadbir.waqt import bind_timezone
 
 from . import agentic, report, scorers
+from .games import play as games
 
 logger = logging.getLogger("mizan.imtihan")
 
@@ -34,10 +35,11 @@ def load_tasks(blocks: list[str] | None = None) -> list[dict]:
             if line.strip():
                 tasks.append(json.loads(line))
     tasks += agentic.load()
+    tasks += [dict(task) for task in games.TASKS]
     order = [
         "exactness", "scripture", "abstention", "honesty", "injection", "knowledge",
         "consistency", "multilingual", "learning", "safety", "code", "arc",
-        "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail",
+        "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail", "games",
     ]  # fmt: skip
     tasks.sort(key=lambda task: order.index(task["block"]) if task["block"] in order else 99)
     if blocks:
@@ -140,6 +142,8 @@ async def run_suite(
                 try:
                     if agentic.is_agentic(task):
                         outcome = await agentic.run_task(agent, task, attempt, owner)
+                    elif games.is_game(task):
+                        outcome = await games.run_task(agent, task, attempt, owner)
                     else:
                         outcome = await run_task(agent, task, attempt, sources.get(task["id"]))
                 except Exception as exc:  # noqa: BLE001 - one task never stops the suite

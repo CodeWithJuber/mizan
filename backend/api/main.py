@@ -4006,6 +4006,17 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     }
 
 
+@app.get("/api/tadbir/learning/live")
+async def tadbir_learning_live(
+    after: int = Query(0, ge=0), user: TokenPayload = Depends(require_auth)
+):
+    """What MIZAN learned from your work since ``after``, as it happens (Sijill)."""
+    from tadbir import sijill
+
+    notes = sijill.since(user.user_id, after)
+    return {"notes": notes, "last": notes[-1]["seq"] if notes else after}
+
+
 @app.delete("/api/tadbir/learning/wording")
 async def forget_tadbir_wording(user: TokenPayload = Depends(require_auth)):
     """Forget the wording MIZAN learned from this user's requests."""
@@ -4292,6 +4303,35 @@ async def imtihan_cancel(run_id: str, user: TokenPayload = Depends(require_auth)
     if not runner.cancel(run_id):
         raise HTTPException(404, "No running test with that id")
     return {"cancelled": True}
+
+
+class Arc3PlayRequest(BaseModel):
+    game_id: str | None = Field(None, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    max_actions: int = Field(400, ge=10, le=2000)
+
+
+@app.get("/api/imtihan/arc3")
+async def imtihan_arc3_status(user: TokenPayload = Depends(require_auth)):
+    from imtihan.games import arc3
+
+    _require_admin(user)
+    return {"configured": arc3.configured(), "api": arc3.BASE_URL}
+
+
+@app.post("/api/imtihan/arc3")
+async def imtihan_arc3_play(req: Arc3PlayRequest, user: TokenPayload = Depends(require_auth)):
+    """MIZAN's explorer plays one official ARC-AGI-3 game (needs ARC_API_KEY)."""
+    import httpx
+
+    from imtihan.games import arc3
+
+    _require_admin(user)
+    if not arc3.configured():
+        raise HTTPException(409, "Set ARC_API_KEY to play ARC-AGI-3 games")
+    try:
+        return await arc3.play(req.game_id, req.max_actions)
+    except (arc3.Arc3Error, httpx.HTTPError) as exc:
+        raise HTTPException(502, str(exc)[:300]) from exc
 
 
 # === AUTOMATION (Qadr) ===

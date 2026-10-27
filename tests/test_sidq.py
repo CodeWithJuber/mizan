@@ -92,3 +92,25 @@ async def test_the_gate_runs_on_words_only_answers(monkeypatch, tmp_path):
     result = await agent.execute("What is seven times eight, in words?")
     assert "7 * 8 = 56" in result["result"]
     assert result["usage"]["sidq"]["corrected"]
+
+
+def test_every_learning_step_reaches_the_live_record():
+    from types import SimpleNamespace
+
+    from security.auth import bind_principal, reset_principal
+    from tadbir import sijill, trace
+
+    sijill.clear("u-live")
+    tokens = bind_principal(SimpleNamespace(user_id="u-live", roles=["user"]))
+    try:
+        trace.event("learn", "hifz", kept=True, language="python")  # traced or not
+        trace.event("verify", "furqan")  # not a learning step
+        trace.event("learn", "majlis", agent="Katib", intent="build_and_run", worked=True)
+    finally:
+        reset_principal(tokens)
+    notes = sijill.since("u-live")
+    assert [note["kind"] for note in notes] == ["hifz", "majlis"]
+    assert notes[0]["summary"] == "Kept a verified python program to re-run next time"
+    assert "Katib" in notes[1]["summary"] and notes[1]["summary"].endswith("worked")
+    assert sijill.since("u-live", after=notes[0]["seq"]) == notes[1:]
+    assert sijill.since("someone-else") == []

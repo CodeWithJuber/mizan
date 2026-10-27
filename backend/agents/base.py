@@ -1825,6 +1825,11 @@ class BaseAgent:
         if not report:
             return
         result["sidq"] = report
+        changed = len(report.get("corrected", [])) + len(report.get("removed", []))
+        if changed:
+            from tadbir import sijill
+
+            sijill.note("sidq", {"detail": f"Truth Gate corrected or removed {changed} claim(s)"})
         if checked != text:
             result["result"] = checked
             graded = self._isnad(checked)

@@ -12,7 +12,7 @@ CATEGORIES = {
     "agents": (0.30, ("agent_tools", "agent_web", "agent_recovery", "agent_guardrail",
                       "honesty", "injection")),
     "coding": (0.20, ("agent_coding", "code")),
-    "reasoning": (0.20, ("arc", "exactness", "consistency")),
+    "reasoning": (0.20, ("arc", "games", "exactness", "consistency")),
     "general": (0.30, ("knowledge", "abstention", "scripture", "multilingual", "learning",
                        "safety")),
 }  # fmt: skip
@@ -170,12 +170,14 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
             "fabricated_claims": sum(r.get("fabricated") or 0 for r in results if r["arm"] == arm),
         }
     from . import agentic
+    from .games import play as games
 
     return {
         "blocks": blocks,
         "index": index,
         "weighted": weighted(blocks),
         "agentic": agentic.summarize(results),
+        "games": games.summarize(results),
         "isnad": isnad,
         "calibration": calibration,
         "consistency": consistency,

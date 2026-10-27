@@ -101,6 +101,10 @@ def event(op: str, name: str, **attributes: Any) -> None:
     trace = _trace.get()
     if trace is not None:
         _add(trace, op, name, attributes)
+    if op == "learn":
+        from . import sijill
+
+        sijill.note(name, attributes)  # the live learning record, traced or not
 
 
 _faults: ContextVar[dict[str, dict] | None] = ContextVar("mizan_tool_faults", default=None)

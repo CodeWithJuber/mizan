@@ -1,4 +1,4 @@
-import { agenticRows, blockRows, categoryRows, historyPoints, intervalText, pct, signed, taskRows, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
+import { agenticRows, blockRows, categoryRows, gameRows, historyPoints, plainArms, intervalText, pct, signed, taskRows, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
 
 let checks = 0;
 function check(name: string, condition: boolean) {
@@ -65,5 +65,18 @@ check("no categories in an old report", categoryRows(report).length === 0 && age
 const dims = agenticRows(weighted);
 check("agentic success", dims[0].base === "70%" && dims[0].mizan === "90%");
 check("latency in seconds, lower is better", dims[6].mizan === "5.2 s" && !dims[6].higher);
+
+const played: Report = { ...report, games: { mizan: { games: 3, won: 3, levels: 1, efficiency: 0.5, actions: 81, model_calls: 0 } } };
+check("game rows", gameRows(played)[0].mizan === "3/3" && gameRows(played)[0].base === "—" && gameRows(report).length === 0);
+const arms = plainArms({
+  prompt: "Count errors",
+  agentic: {
+    base: { text: "E101", objectives: [{ check: "errors.csv exists", pass: false }], calls: [{ name: "workspace_read" }] },
+    mizan: { text: "E101: 9", objectives: [{ check: "errors.csv exists", pass: true }], calls: [{ name: "web_browse", error: "HTTP 404" }] },
+  },
+});
+check("plain arms", arms !== null && arms.arms.length === 2 && arms.arms[1].checks[0].pass);
+check("failed calls are named", arms!.arms[1].calls[0] === "web_browse (failed: HTTP 404)");
+check("a debug run is not plain", plainArms({ prompt: "x", base: {}, mizan: {} }) === null);
 
 console.log(`imtihan: ${checks} checks passed`);

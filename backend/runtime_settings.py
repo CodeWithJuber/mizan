@@ -160,7 +160,8 @@ SETTINGS: tuple[Setting, ...] = (
             "Context, queue and agent execution together.", "1800", (), 30, 7200),
     # ── Learning & memory ──
     Setting("MIZAN_OWNED_LEARNING_AUTORUN", "Learning & memory", "Automatic own-model training",
-            "bool", "Train when an approved bundle appears; never uses raw chats.", "false", _BOOL),
+            "bool", "Train when a human-approved bundle appears; never uses raw chats.", "true",
+            _BOOL),
     Setting("MIZAN_MEMORY_MAINTENANCE", "Learning & memory", "Memory maintenance", "bool",
             "Hourly consolidation, dream replay and forgetting.", "true", _BOOL,
             apply="restart"),

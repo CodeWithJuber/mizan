@@ -22,9 +22,11 @@ import {
   agenticRows,
   blockRows,
   categoryRows,
+  gameRows,
   historyPoints,
   intervalText,
   pct,
+  plainArms,
   signed,
   taskRows,
   type Report,
@@ -76,12 +78,46 @@ function Legend2() {
   );
 }
 
+function PlainArmsView({ compared }: { compared: NonNullable<ReturnType<typeof plainArms>> }) {
+  return (
+    <div className="space-y-3">
+      <div className="card p-4 text-sm whitespace-pre-wrap">{compared.prompt}</div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {compared.arms.map((arm) => (
+          <div key={arm.title} className="card p-4 space-y-2 min-w-0">
+            <h4 className="font-semibold text-sm">{arm.title}</h4>
+            {arm.checks.length > 0 && (
+              <ul className="space-y-0.5 text-xs">
+                {arm.checks.map((check) => (
+                  <li key={check.label} className={check.pass ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                    {check.pass ? "✓" : "✗"} {check.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <pre className="max-h-72 overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-xs whitespace-pre-wrap wrap-break-word">
+              {arm.text || "(no answer)"}
+            </pre>
+            {arm.final && (
+              <pre className="overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-[11px] leading-tight font-mono">{arm.final}</pre>
+            )}
+            {arm.calls.length > 0 && (
+              <div className="text-[11px] text-gray-500 wrap-break-word">Tools: {arm.calls.join(" → ")}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReportView({ run, onOpen }: { run: RunDetail; onOpen: (taskId: string) => void }) {
   const result = run.result!;
   const report = result.report;
   const rows = blockRows(report);
   const categories = categoryRows(report);
   const dimensions = agenticRows(report);
+  const played = gameRows(report);
   const tasks = taskRows(result.results, result.tasks);
   const hero = (arm: "base" | "mizan", title: string) => (
     <div className="card p-4">
@@ -176,6 +212,36 @@ function ReportView({ run, onOpen }: { run: RunDetail; onOpen: (taskId: string) 
                       {row.label}
                       {!row.higher && <span className="text-[11px] text-gray-500"> (lower is better)</span>}
                     </td>
+                    <td className="py-1.5 text-right tabular-nums">{row.base}</td>
+                    <td className="py-1.5 text-right tabular-nums">{row.mizan}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {played.length > 0 && (
+        <div className="card p-4">
+          <h3 className="font-semibold text-sm mb-1">Interactive games (ARC-AGI-3 style)</h3>
+          <p className="text-[11px] text-gray-500 mb-3">
+            Neither arm is told the rules. The base model plays turn by turn from the grid; MIZAN learns what each action
+            does, then plans, with no model call. Efficiency is the optimal number of actions over the number used.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[420px]">
+              <thead>
+                <tr className="text-xs text-gray-500 text-left">
+                  <th className="font-normal pb-2">Measure</th>
+                  <th className="font-normal pb-2 text-right">Base model</th>
+                  <th className="font-normal pb-2 text-right">MIZAN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {played.map((row) => (
+                  <tr key={row.label} className="border-t border-gray-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-3">{row.label}</td>
                     <td className="py-1.5 text-right tabular-nums">{row.base}</td>
                     <td className="py-1.5 text-right tabular-nums">{row.mizan}</td>
                   </tr>
@@ -529,7 +595,9 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
               Close
             </button>
           </div>
-          {opened.compare ? (
+          {opened.compare && plainArms(opened.compare) ? (
+            <PlainArmsView compared={plainArms(opened.compare)!} />
+          ) : opened.compare ? (
             <CompareView run={opened.compare} />
           ) : (
             <div className="card p-4 text-sm text-gray-500">This attempt did not run.</div>

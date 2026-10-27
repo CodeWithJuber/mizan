@@ -113,13 +113,10 @@ async def gate(
 
 
 def _fix_arithmetic(text: str, finding: dict) -> str:
-    number = ",?".join(re.escape(char) for char in finding["claimed"])
-    pattern = re.compile(
-        re.escape(finding["expression"]) + r"(\s*=\s*\**\s*)" + number + r"(?!\d|\.\d)"
-    )
-    return pattern.sub(
-        lambda m: f"{finding['expression']}{m.group(1)}{finding['correct']}", text, 1
-    )
+    expression, claimed = str(finding["expression"]), str(finding["claimed"])
+    number = ",?".join(re.escape(char) for char in claimed)
+    pattern = re.compile(re.escape(expression) + r"(\s*=\s*\**\s*)" + number + r"(?!\d|\.\d)")
+    return pattern.sub(lambda m: f"{expression}{m.group(1)}{finding['correct']}", text, 1)
 
 
 def _replace_quote(text: str, source: str, reference: str, language: str) -> str:

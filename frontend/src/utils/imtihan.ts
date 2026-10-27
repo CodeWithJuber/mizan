@@ -34,6 +34,63 @@ export interface Report {
   };
   /** Agentic tasks: success and the four dimensions, per arm. */
   agentic?: Partial<Record<Arm, AgenticSummary>>;
+  /** Interactive games (ARC-AGI-3 style): levels won and action efficiency, per arm. */
+  games?: Partial<Record<Arm, GamesSummary>>;
+}
+
+export interface GamesSummary {
+  games: number;
+  won: number;
+  levels: number;
+  efficiency: number;
+  actions: number;
+  model_calls: number;
+}
+
+/** One arm of an agentic task or a game, as the drill-down shows it. */
+export interface PlainArm {
+  title: string;
+  text: string;
+  checks: { label: string; pass: boolean }[];
+  calls: string[];
+  final?: string;
+}
+
+/** Agentic tasks and games keep both arms' text, checks and calls (not a debug trace). */
+export function plainArms(compare: unknown): { prompt: string; arms: PlainArm[] } | null {
+  if (!compare || typeof compare !== "object") return null;
+  const value = compare as { prompt?: string; agentic?: Record<string, unknown>; game?: Record<string, unknown> };
+  const source = value.agentic ?? value.game;
+  if (!source) return null;
+  const arms: PlainArm[] = [];
+  for (const [arm, title] of [["base", "Base model alone"], ["mizan", "MIZAN"]] as const) {
+    const data = source[arm] as
+      | { text?: string; final?: string; objectives?: { check: string; pass: boolean }[]; calls?: { name: string; error?: string | null }[] }
+      | undefined;
+    if (!data) continue;
+    arms.push({
+      title,
+      text: data.text ?? "",
+      final: data.final,
+      checks: (data.objectives ?? []).map((item) => ({ label: item.check, pass: item.pass })),
+      calls: (data.calls ?? []).map((call) => (call.error ? `${call.name} (failed: ${call.error})` : call.name)),
+    });
+  }
+  return { prompt: value.prompt ?? "", arms };
+}
+
+export function gameRows(report: Report) {
+  const base = report.games?.base;
+  const mizan = report.games?.mizan;
+  if (!base && !mizan) return [];
+  const count = (s?: GamesSummary) => (s ? `${s.won}/${s.games}` : "—");
+  return [
+    { label: "Games won (every level)", base: count(base), mizan: count(mizan) },
+    { label: "Levels won", base: pct(base?.levels), mizan: pct(mizan?.levels) },
+    { label: "Action efficiency (optimal ÷ used)", base: pct(base?.efficiency), mizan: pct(mizan?.efficiency) },
+    { label: "Actions taken", base: String(base?.actions ?? "—"), mizan: String(mizan?.actions ?? "—") },
+    { label: "Model calls", base: String(base?.model_calls ?? "—"), mizan: String(mizan?.model_calls ?? "—") },
+  ];
 }
 
 export interface AgenticSummary {

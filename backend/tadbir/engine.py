@@ -1198,7 +1198,7 @@ class Tadbir:
             ]
         )
         originals: dict[str, str] = {}
-        shown: dict[str, str] = {}
+        for_lisan: dict[str, str] = {}
         carriers: set[str] = set()  # files with text that tried to instruct the AI
         shas: dict[str, str | None] = {}
         for path in chosen:
@@ -1206,14 +1206,14 @@ class Tadbir:
             if isinstance(document.get("content"), str) and not document.get("error"):
                 originals[path] = document["content"]
                 shas[path] = document.get("sha256")
-                clean, found = amanah.neutralize(document["content"])
-                if found:
+                clean, findings = amanah.neutralize(document["content"])
+                if findings:
                     carriers.add(path)
-                    amanah.taint([{**item, "source": f"file {path}"} for item in found])
-                shown[path] = clean
+                    amanah.taint([{**item, "source": f"file {path}"} for item in findings])
+                for_lisan[path] = clean
         await self._step()
         try:
-            reply = await self.lisan.edit_files(request, shown, paths, u.language)
+            reply = await self.lisan.edit_files(request, for_lisan, paths, u.language)
         except LisanUnavailable as exc:
             return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
         changes = self._changed_files(reply, paths, originals, request)
@@ -1222,7 +1222,7 @@ class Tadbir:
             # more, reminding it how MIZAN reads files.
             try:
                 reply = await self.lisan.edit_files(
-                    request, shown, paths, u.language, reminder=True
+                    request, for_lisan, paths, u.language, reminder=True
                 )
             except LisanUnavailable as exc:
                 return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
@@ -1309,8 +1309,8 @@ class Tadbir:
         if rounds:
             lines += ["", f"_{phrase('project_repaired', u.language, count=rounds)}_"]
         if held:
-            files = ", ".join(f"`{path}`" for path in held)
-            lines += ["", f"_{phrase('amanah_held_files', u.language, files=files)}_"]
+            listed = ", ".join(f"`{path}`" for path in held)
+            lines += ["", f"_{phrase('amanah_held_files', u.language, files=listed)}_"]
         if problem and not verified:
             lines += ["", fence(problem[-1500:], "text")]
         return Outcome(
@@ -1547,9 +1547,9 @@ class Tadbir:
             document = await self._tool("workspace_read", {"path": path})
             content = document.get("content")
             if isinstance(content, str) and not document.get("error"):
-                clean, found = amanah.neutralize(content)
-                if found:
-                    amanah.taint([{**item, "source": f"file {path}"} for item in found])
+                clean, findings = amanah.neutralize(content)
+                if findings:
+                    amanah.taint([{**item, "source": f"file {path}"} for item in findings])
                 previews[path] = _preview(clean)
         await self._step()
         store, owner = self.coordinator.adaptive, current_user_id() or ""

@@ -121,3 +121,12 @@ Two research directions are deliberately not used for the own model:
 - **Training on machine-generated tasks** (Athanor-style curricula).
 
 Both would put machine-authored targets into training, which the CI-enforced data policy above forbids.
+
+## Learning now (Sijill)
+
+Every learning step above is also noted, the moment it happens, in a live record for the user whose work it came from (`backend/tadbir/sijill.py`): wording learned or reused (Ta'allum), a program kept or re-run (Hifz), a repair lesson (Tajriba), an instruction scored (Tajdid), routing evidence (Majlis), a game level remembered (Mustakshif), a claim corrected before it was shown (Sidq). The **Learning** page shows it at the top as **Learning now**, polling `GET /api/tadbir/learning/live?after=<seq>` every few seconds. The last 200 notes per user are kept in memory.
+
+## Own-model training
+
+`MIZAN_OWNED_LEARNING_AUTORUN` is on by default and read live: the watcher starts whenever an own-learning directory is configured and trains only when a bundle is ready, which requires human-written examples with named reviewers and a digest-bound approval (see [own-learning-cycle.md](own-learning-cycle.md)). Turning it off in System settings takes effect without a restart.
+

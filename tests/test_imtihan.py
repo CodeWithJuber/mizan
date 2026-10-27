@@ -74,11 +74,13 @@ def local_sandbox(agent, monkeypatch):
 
 def test_the_task_set_is_complete_and_attributed():
     tasks = runner.load_tasks()
-    assert len(tasks) == 82
+    assert len(tasks) == 85
     assert len({task["id"] for task in tasks}) == len(tasks)
     acting = [task for task in tasks if "instructions" in task]
     assert len(acting) == 10 and all(task["judge"] for task in acting)
-    tasks = [task for task in tasks if "instructions" not in task]
+    played = [task for task in tasks if "game" in task]
+    assert {task["game"] for task in played} == {"maze", "keys", "lights"}
+    tasks = [task for task in tasks if "instructions" not in task and "game" not in task]
     kinds = {
         "number",
         "contains",
@@ -260,7 +262,7 @@ async def test_imtihan_api_is_admin_only_and_runs_in_the_background(agent, monke
         )
         assert denied.status_code == 403
         catalog = (await client.get("/api/imtihan/tasks", headers=headers)).json()
-        assert sum(entry["tasks"] for entry in catalog["blocks"]) == 82
+        assert sum(entry["tasks"] for entry in catalog["blocks"]) == 85
         bad = await client.post("/api/imtihan/run", json={"blocks": ["nope"]}, headers=headers)
         assert bad.status_code == 400
         started = await client.post(
