@@ -3,6 +3,7 @@ import type { MessageUsageMeta } from "../types";
 import { amanahHeadline, isAmanah, kindLabels } from "../utils/amanah.ts";
 import { isIsnad } from "../utils/isnad.ts";
 import { isSidq, sidqHeadline, sidqLines } from "../utils/sidq.ts";
+import { ahlHeadline, ahlLines, isAhl } from "../utils/ahl.ts";
 import { recalledHeadline, recalledLines } from "../utils/recalled.ts";
 import IsnadView from "./IsnadView";
 import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
@@ -28,7 +29,13 @@ interface MessageMetaProps {
 export function MessageMeta({ meta }: MessageMetaProps) {
   const [open, setOpen] = useState(false);
   const recalled = recalledLines(meta?.recalled);
-  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah) && !isSidq(meta?.sidq) && !recalled.length)
+  if (
+    !hasDisplayableMeta(meta) &&
+    !isAmanah(meta?.amanah) &&
+    !isSidq(meta?.sidq) &&
+    !isAhl(meta?.ahl) &&
+    !recalled.length
+  )
     return null;
   const m = meta as MessageUsageMeta;
 
@@ -100,6 +107,31 @@ export function MessageMeta({ meta }: MessageMetaProps) {
           <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-gray-400 dark:text-gray-500">
             {sidqLines(m.sidq).map((line) => (
               <li key={line} className="wrap-break-word">{line}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {isAhl(m.ahl) && (
+        <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <summary className="cursor-pointer select-none inline-flex items-center gap-1">
+            <span aria-hidden="true">📚</span>
+            <span>{ahlHeadline(m.ahl)}</span>
+          </summary>
+          <p className="mt-1 leading-relaxed">
+            This answer was in the language model's own words, so MIZAN asked its sources about each claim: what it
+            settled before, then Wikipedia and a web search. What a source settled is kept for next time.
+          </p>
+          <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+            {ahlLines(m.ahl).map((line) => (
+              <li key={line.text} className="wrap-break-word">
+                {line.url ? (
+                  <a href={line.url} target="_blank" rel="noreferrer noopener" className="underline">
+                    {line.text}
+                  </a>
+                ) : (
+                  line.text
+                )}
+              </li>
             ))}
           </ul>
         </details>

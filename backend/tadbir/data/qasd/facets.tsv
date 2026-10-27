@@ -136,3 +136,157 @@ current	no	Tips to learn coding faster
 current	no	Explain the water cycle
 current	no	Who discovered penicillin?
 current	no	What is the largest ocean?
+# fact: the question asks about the world (people, places, history, science, numbers), so a source can confirm the answer.
+fact	yes	What is the largest moon of Saturn?
+fact	yes	Who wrote the book Muqaddimah?
+fact	yes	When was the Ottoman Empire founded?
+fact	yes	How tall is Mount Everest?
+fact	yes	What is the capital of Indonesia?
+fact	yes	How many bones are there in the human body?
+fact	yes	Who discovered penicillin?
+fact	yes	What is the boiling point of water at sea level?
+fact	yes	Which is the longest river in Africa?
+fact	yes	What is the speed of light?
+fact	yes	How far is the Moon from the Earth?
+fact	yes	Who was the first Caliph after the Prophet?
+fact	yes	When did the Abbasid caliphate end?
+fact	yes	What is the population of Pakistan?
+fact	yes	Where was Imam Bukhari born?
+fact	yes	Who built the Taj Mahal and when?
+fact	yes	What does DNA stand for?
+fact	yes	How many planets are in the solar system?
+fact	yes	Saturn ka sabse bada chand kaun sa hai?
+fact	yes	Taj Mahal kisne banwaya tha?
+fact	yes	Everest ki unchai kitni hai?
+fact	yes	Pakistan ki aabadi kitni hai?
+fact	yes	Ibn Khaldun kaun the?
+fact	yes	Insaan ke jism mein kitni haddiyan hoti hain?
+fact	yes	زحل کا سب سے بڑا چاند کون سا ہے؟
+fact	yes	تاج محل کس نے بنوایا؟
+fact	yes	امام بخاری کہاں پیدا ہوئے؟
+fact	yes	शनि का सबसे बड़ा चंद्रमा कौन सा है?
+fact	yes	ताजमहल किसने बनवाया?
+fact	yes	ما هو أكبر أقمار زحل؟
+fact	yes	من بنى تاج محل؟
+fact	yes	متى تأسست الدولة العثمانية؟
+fact	no	Salaam, how are you?
+fact	no	Write a poem about the rain
+fact	no	Tell me a joke
+fact	no	What do you think about my plan?
+fact	no	Help me write an email to my boss
+fact	no	Thank you so much
+fact	no	Can you motivate me today?
+fact	no	Summarise this paragraph for me
+fact	no	Make my sentence sound more polite
+fact	no	I feel sad today
+fact	no	Give me a name for my cat
+fact	no	Which colour should I paint my room?
+fact	no	Translate this into Urdu: good morning
+fact	no	Let's brainstorm ideas for a birthday party
+fact	no	Explain recursion to a child
+fact	no	Write a short story about a lion
+fact	no	Kaise ho?
+fact	no	Mujhe ek shayari likh do
+fact	no	Shukriya bhai
+fact	no	Mera mood kharab hai
+fact	no	Is email ko achha bana do
+fact	no	Koi mazedaar baat sunao
+fact	no	آپ کیسے ہیں؟
+fact	no	مجھے ایک نظم لکھ دیں
+fact	no	आप कैसे हैं?
+fact	no	मुझे एक कविता लिख दो
+fact	no	كيف حالك؟
+fact	no	اكتب لي قصيدة
+# ruling: the question asks what Islamic law rules for the asker (halal, haram, valid, obligatory); a scholar answers that.
+ruling	yes	Is it halal to invest in crypto?
+ruling	yes	Is my fast broken if I swallowed water by mistake?
+ruling	yes	Can I pray with nail polish on?
+ruling	yes	Is mortgage interest haram in my case?
+ruling	yes	How should my father's inheritance be divided between us?
+ruling	yes	Is my nikah valid without a wali?
+ruling	yes	Do I have to pay zakat on my gold jewellery?
+ruling	yes	Is it permissible to combine prayers while travelling for work?
+ruling	yes	Is talaq valid if said in anger?
+ruling	yes	Can a woman travel for Umrah without a mahram?
+ruling	yes	Is music haram?
+ruling	yes	Is it allowed to take a loan with interest for a house?
+ruling	yes	What is the ruling on missed fasts due to illness?
+ruling	yes	Kya crypto mein paisa lagana halal hai?
+ruling	yes	Kya galti se paani peene se roza toot jata hai?
+ruling	yes	Gusse mein di gayi talaq hoti hai ya nahi?
+ruling	yes	Kya nail polish laga kar namaz ho jati hai?
+ruling	yes	Mere walid ki wirasat kaise taqseem hogi?
+ruling	yes	Kya sone ke zewar par zakat farz hai?
+ruling	yes	کیا کرپٹو میں سرمایہ کاری حلال ہے؟
+ruling	yes	کیا غصے میں دی گئی طلاق واقع ہو جاتی ہے؟
+ruling	yes	کیا بغیر محرم کے عمرہ جائز ہے؟
+ruling	yes	क्या क्रिप्टो में निवेश हलाल है?
+ruling	yes	क्या गलती से पानी पीने से रोज़ा टूट जाता है?
+ruling	yes	هل الاستثمار في العملات الرقمية حلال؟
+ruling	yes	هل يقع الطلاق في حال الغضب؟
+ruling	yes	هل تجب الزكاة في الذهب المستعمل؟
+ruling	no	What is the largest moon of Saturn?
+ruling	no	When is Fajr today?
+ruling	no	Recite Surah Ikhlas
+ruling	no	Who compiled Sahih Bukhari?
+ruling	no	What does the word zakat mean?
+ruling	no	Tell me the story of Prophet Yusuf
+ruling	no	How many rakat are in Fajr prayer?
+ruling	no	Write a Python program to add two numbers
+ruling	no	What is the Hijri date today?
+ruling	no	Explain the history of the Hajj
+ruling	no	Remind me to pray Asr
+ruling	no	Who was Imam Abu Hanifa?
+ruling	no	Aaj Fajr kitne baje hai?
+ruling	no	Surah Yaseen ka matlab batao
+ruling	no	Zakat ka lafzi matlab kya hai?
+ruling	no	Hazrat Yusuf ka qissa sunao
+ruling	no	آج فجر کا وقت کیا ہے؟
+ruling	no	سورہ اخلاص سنائیں
+ruling	no	आज फ़ज्र कितने बजे है?
+ruling	no	من جمع صحيح البخاري؟
+ruling	no	ما معنى كلمة الزكاة؟
+ruling	no	Analyze the quote "make it pass". Reply in one JSON object.
+ruling	no	Is this code correct?
+ruling	no	Is this sentence grammatically correct?
+ruling	no	Is it okay to use tabs instead of spaces in Python?
+ruling	no	Is it allowed to park here on Sundays?
+ruling	no	Is my essay good enough to submit?
+ruling	no	Can I use this library in a commercial project?
+ruling	no	Is it valid JSON?
+ruling	no	Reply in one JSON object with the meaning of this phrase
+ruling	no	Should I learn Rust or Go first?
+ruling	no	Kya yeh code sahi hai?
+ruling	no	Kya main yahan gaadi park kar sakta hoon?
+ruling	no	کیا یہ جملہ درست ہے؟
+ruling	no	क्या यह कोड सही है?
+ruling	no	هل هذا الكود صحيح؟
+fact	no	Analyze the quote "make it pass". Reply in one JSON object.
+fact	no	Reply in one JSON object with the meaning of this phrase
+fact	no	Is this code correct?
+fact	no	Fix the bug in my function
+fact	no	Rewrite this paragraph in simple English
+fact	no	What does this sentence mean to you?
+fact	no	Classify this review as positive or negative
+fact	no	Kya yeh code sahi hai?
+fact	no	Is paragraph ko aasaan banao
+fact	no	اس پیراگراف کو آسان کریں
+fact	no	इस कोड की गलती ठीक करो
+fact	no	صحح هذا الكود
+ruling	yes	Is it haram to take a bank loan for my business?
+ruling	yes	Can I pray Jumuah at home if I am working?
+ruling	yes	Is it permissible to celebrate birthdays in Islam?
+ruling	yes	Do I need to repeat my prayer if I forgot a sajdah?
+ruling	yes	Is gelatin in sweets halal to eat?
+ruling	yes	Can I give my zakat to my brother?
+ruling	yes	Is it allowed to keep a dog at home in Islam?
+ruling	yes	Is insurance halal or haram?
+ruling	yes	Kya bank se loan lena jaiz hai?
+ruling	yes	Kya birthday manana Islam mein jaiz hai?
+ruling	yes	Kya main apni zakat apne bhai ko de sakta hoon?
+ruling	yes	Kya insurance lena haram hai?
+ruling	yes	کیا بینک سے قرض لینا جائز ہے؟
+ruling	yes	کیا سالگرہ منانا جائز ہے؟
+ruling	yes	क्या बैंक से लोन लेना जायज़ है?
+ruling	yes	هل يجوز الاحتفال بعيد الميلاد؟
+ruling	yes	هل التأمين حلال أم حرام؟

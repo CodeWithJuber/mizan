@@ -6,6 +6,7 @@
 import type { AmanahSummary } from "./utils/amanah.ts";
 import type { IsnadSummary } from "./utils/isnad.ts";
 import type { SidqReport } from "./utils/sidq.ts";
+import type { AhlReport } from "./utils/ahl.ts";
 
 // ===== API Types =====
 
@@ -245,6 +246,8 @@ export interface MessageUsageMeta {
   amanah?: AmanahSummary;
   /** What the Truth Gate (Sidq) corrected, removed or marked before the answer was shown. */
   sidq?: SidqReport | { mode: string; passed: true };
+  /** What MIZAN's sources said about the claims of an answer in the model's own words (Ahl al-Dhikr). */
+  ahl?: AhlReport;
   /** Your own words from other chats that the model was shown for this answer. */
   recalled?: { session_id: string; created_at: string; content: string }[];
   task_verified?: boolean;

@@ -165,6 +165,9 @@ end asks for the next term.
 - `current`: the answer depends on something current or outside MIZAN; this
   gates a web search that Lisan proposes
 - `harder`: the user asks for more effort on what came before
+- `fact`: the question asks about the world, so the claims of an answer in the
+  model's own words are asked of MIZAN's sources (Ahl al-Dhikr, `docs/ahl-dhikr.md`)
+- `ruling`: the question asks for a religious ruling, which a scholar gives
 
 **Several requests in one message.** The message is split at its
 conjunctions, and the simpler explanation wins:

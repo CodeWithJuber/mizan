@@ -124,15 +124,16 @@ def _delete_in(
 
 
 def _forget_learned(adaptive: Any, owner: str, texts: Sequence[str]) -> int:
-    """Drop learned wording (Qasd, Ta'allum) and kept programs (Hifz) that came
-    from these requests; the rest of what was learned stays."""
+    """Drop learned wording (Qasd, Ta'allum), kept programs (Hifz) and what
+    sources settled (Ahl al-Dhikr) that came from these requests; the rest of
+    what was learned stays."""
     if adaptive is None or not texts:
         return 0
-    from tadbir import hifz, qasd, taallum
+    from tadbir import ahl_dhikr, hifz, qasd, taallum
 
     removed = 0
     words = [taallum.content_words(text) for text in texts]
-    for module in (hifz, taallum):
+    for module in (hifz, taallum, ahl_dhikr):
         try:
             items = module._load(adaptive, owner)
         except Exception:  # noqa: BLE001 - nothing learned yet

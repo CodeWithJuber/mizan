@@ -647,6 +647,36 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "इन शब्दों वाली दूसरी आयतें: {refs}",
         "ar": "آيات أخرى بهذه الكلمات: {refs}",
     },
+    "ahl_contradicted": {
+        "en": "MIZAN asked a source and it says otherwise: “{says}” ([{title}]({url}))",
+        "hi-latn": "MIZAN ne source se poocha, woh kuch aur kehta hai: “{says}” ([{title}]({url}))",
+        "ur": "میزان نے ماخذ سے پوچھا، وہ کچھ اور کہتا ہے: “{says}” ([{title}]({url}))",
+        "hi": "मीज़ान ने स्रोत से पूछा, वह कुछ और कहता है: “{says}” ([{title}]({url}))",
+        "ar": "سأل ميزان مصدرًا فقال غير ذلك: “{says}” ([{title}]({url}))",
+    },
+    "ahl_none": {
+        "en": "MIZAN asked its sources and found none that confirms these claims; they are "
+        "the language model's words, not established facts. Allahu a'lam.",
+        "hi-latn": "MIZAN ne apne sources se poocha, in baaton ki tasdeeq kahin nahi mili; yeh "
+        "language model ke alfaaz hain, sabit shuda baat nahi. Allahu a'lam.",
+        "ur": "میزان نے اپنے ماخذ سے پوچھا، ان باتوں کی تصدیق کہیں نہیں ملی؛ یہ زبان کے ماڈل "
+        "کے الفاظ ہیں، ثابت شدہ بات نہیں۔ واللہ اعلم۔",
+        "hi": "मीज़ान ने अपने स्रोतों से पूछा, इन बातों की पुष्टि कहीं नहीं मिली; ये भाषा मॉडल के "
+        "शब्द हैं, सिद्ध तथ्य नहीं। अल्लाहु आलम।",
+        "ar": "سأل ميزان مصادره فلم يجد ما يؤكد هذه الأقوال؛ إنها كلمات النموذج اللغوي لا حقائق "
+        "ثابتة. والله أعلم.",
+    },
+    "ahl_ruling": {
+        "en": "This asks for a religious ruling. MIZAN does not give fatwa; ask a qualified "
+        "scholar (ahl al-ilm) who can weigh your situation.",
+        "hi-latn": "Yeh deeni hukm (fatwa) ka sawaal hai. MIZAN fatwa nahi deta; kisi qabil "
+        "aalim (ahl-e-ilm) se poochiye jo aapki surat-e-haal samajh sake.",
+        "ur": "یہ دینی حکم (فتویٰ) کا سوال ہے۔ میزان فتویٰ نہیں دیتا؛ کسی مستند عالم (اہلِ علم) "
+        "سے پوچھیں جو آپ کی صورتِ حال کو سمجھ سکے۔",
+        "hi": "यह धार्मिक हुक्म (फ़तवा) का सवाल है। मीज़ान फ़तवा नहीं देता; किसी योग्य आलिम (अहले इल्म) "
+        "से पूछिए जो आपकी स्थिति को समझ सके।",
+        "ar": "هذا سؤال عن حكم شرعي. ميزان لا يُفتي؛ اسأل عالمًا مؤهلًا (أهل العلم) يقدّر حالتك.",
+    },
     "quran_search_none": {
         "en": "MIZAN found no ayah with these words in its index of the Quran (Arabic, "
         "transliteration and translations). It does not quote ayahs from memory; a surah "

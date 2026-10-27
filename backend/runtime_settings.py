@@ -84,6 +84,17 @@ SETTINGS: tuple[Setting, ...] = (
             "found. strict corrects or removes what is wrong, flag only marks it, off skips "
             "the check.",
             "strict", ("strict", "flag", "off")),
+    Setting("MIZAN_AHL_DHIKR", "Model", "Ask sources (Ahl al-Dhikr)", "choice",
+            "When a question asks about the world and the answer is in the language model's "
+            "own words, MIZAN asks its sources about each claim before the answer is shown "
+            "(what it settled before, Wikipedia, a web search) and shows what they say. What "
+            "a source settles is kept, so the same claim comes from memory next time.",
+            "on", ("on", "off")),
+    Setting("MIZAN_CONTACT", "Model", "Contact for sources", "text",
+            "How the sites MIZAN reads (Wikipedia and others) can reach this server's "
+            "operator, sent in MIZAN's User-Agent as their policies ask, for example an "
+            "email address. Empty sends only the project's address.",
+            ""),
     Setting("MIZAN_AMANAH", "Model", "Injection check (Amanah)", "choice",
             "Outside text (pages, files, tool results, pasted text) is checked for "
             "instructions aimed at the AI. evidence adds a model trained on licensed "
