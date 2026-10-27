@@ -33,7 +33,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import HTTPConnection
@@ -712,6 +712,19 @@ class MemoryStore(BaseModel):
     memory_type: str = Field(default="semantic", pattern=r"^(episodic|semantic|procedural)$")
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     tags: list[str] = []
+    expires: str = Field(default="", max_length=40)
+
+
+class DaftarEdit(BaseModel):
+    content: str | None = Field(None, min_length=1, max_length=50000)
+    tags: list[str] | None = None
+    expires: str | None = Field(None, max_length=40)
+
+
+class DaftarForget(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=500)
+    topic: str = Field(default="", max_length=200)
+    confirm: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -1203,19 +1216,30 @@ def agent_settings_lock(agent):
     return agent._execution_lock
 
 
+_private_memories: dict[str, DhikrMemorySystem] = {}
+
+
+def _private_memory(user: TokenPayload) -> DhikrMemorySystem:
+    """This user's own memory database, shared by all their agents."""
+    import hashlib
+
+    directory = (
+        Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
+        / "private"
+        / hashlib.sha256(user.user_id.encode()).hexdigest()
+    )
+    key = str(directory)
+    if key not in _private_memories:
+        directory.mkdir(parents=True, exist_ok=True)
+        _private_memories[key] = DhikrMemorySystem(db_path=str(directory / "memory.db"))
+    return _private_memories[key]
+
+
 def _private_agent(user: TokenPayload, template):
     """This user's own instance of an agent, with private memory and learning."""
     key = (user.user_id, template.id)
     if key not in _user_agents:
-        import hashlib
-
-        directory = (
-            Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
-            / "private"
-            / hashlib.sha256(user.user_id.encode()).hexdigest()
-        )
-        directory.mkdir(parents=True, exist_ok=True)
-        private_memory = DhikrMemorySystem(db_path=str(directory / "memory.db"))
+        private_memory = _private_memory(user)
         instance = create_agent(
             template.role,
             name=template.name,
@@ -2367,9 +2391,34 @@ async def get_plan(plan_id: str):
 # === MEMORY ===
 
 
+async def _own_agent(user: TokenPayload):
+    """The agent whose memory and learning belong to this user, if agents are running."""
+    template = _tadbir_coordinator()
+    return None if template is None else await chat_agent_for(user, template)
+
+
+async def _own_memory(user: TokenPayload) -> DhikrMemorySystem:
+    """This user's notes: admins share the main store, everyone else has their own."""
+    agent = await _own_agent(user)
+    if agent is not None:
+        return cast(DhikrMemorySystem, agent.memory)
+    return memory if user.has_role("admin") else _private_memory(user)
+
+
+def _expiry(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(422, "expires must be an ISO date or time") from None
+    return (moment if moment.tzinfo else moment.replace(tzinfo=UTC)).isoformat()
+
+
 @app.post("/api/memory/query")
-async def query_memory(req: MemoryQuery):
-    memories = await memory.recall(req.query, req.memory_type, req.agent_id, req.limit)
+async def query_memory(req: MemoryQuery, user: TokenPayload = Depends(require_auth)):
+    own = await _own_memory(user)
+    memories = await own.recall(req.query, req.memory_type, req.agent_id, req.limit)
     return {
         "query": req.query,
         "results": [
@@ -2389,20 +2438,32 @@ async def query_memory(req: MemoryQuery):
 
 
 @app.post("/api/memory/store")
-async def store_memory(req: MemoryStore):
-    mem_id = await memory.remember(req.content, req.memory_type, req.importance, tags=req.tags)
+async def store_memory(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
+    """Save a note to this user's own memory, which their agents recall."""
+    own = await _own_memory(user)
+    mem_id = await own.remember(
+        req.content,
+        req.memory_type,
+        req.importance,
+        tags=req.tags,
+        source="manual",
+        expires=_expiry(req.expires),
+    )
     return {"id": mem_id, "stored": True}
 
 
 @app.post("/api/memory/consolidate")
-async def consolidate_memory():
-    result = await memory.consolidate()
+async def consolidate_memory(user: TokenPayload = Depends(require_auth)):
+    result = await (await _own_memory(user)).consolidate()
     return result
 
 
 @app.get("/api/memory/list")
-async def list_memories(memory_type: str | None = None, limit: int = 30):
-    """List recent memories without search filtering."""
+async def list_memories(
+    memory_type: str | None = None, limit: int = 30, user: TokenPayload = Depends(require_auth)
+):
+    """List this user's recent memories without search filtering."""
+    memory = await _own_memory(user)
     conn = memory._get_conn()
     c = conn.cursor()
     sql = "SELECT * FROM memories WHERE 1=1"
@@ -2435,6 +2496,132 @@ async def list_memories(memory_type: str | None = None, limit: int = 30):
             }
         )
     return {"results": results, "total": len(results)}
+
+
+# === DAFTAR (دفتر): everything MIZAN keeps about you, with provenance ===
+
+
+@app.get("/api/daftar")
+async def daftar_ledger(
+    query: str = Query("", max_length=200),
+    kind: str = Query("", pattern=r"^(|note|preference|summary|learned)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    from memory import daftar
+
+    agent = await _own_agent(user)
+    return await daftar.ledger(
+        notes_store=await _own_memory(user),
+        memory=memory,
+        adaptive=getattr(agent, "adaptive", None),
+        owner_id=user.user_id,
+        query=query,
+        kind=kind,
+    )
+
+
+@app.post("/api/daftar")
+async def daftar_add(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
+    """Save a note to remember; it goes to this user's own memory, which their agents recall."""
+    own = await _own_memory(user)
+    note = await own.remember(
+        req.content,
+        req.memory_type,
+        req.importance,
+        tags=req.tags,
+        source="manual",
+        expires=_expiry(req.expires),
+    )
+    return {"id": f"note:{note}"}
+
+
+@app.patch("/api/daftar/{entry_id}")
+async def daftar_edit(entry_id: str, req: DaftarEdit, user: TokenPayload = Depends(require_auth)):
+    from memory import daftar
+
+    kind, _, key = entry_id.partition(":")
+    if kind == "preference":
+        if req.content is None:
+            raise HTTPException(422, "A preference needs its new value")
+        try:
+            return await memory.set_chat_preference(user.user_id, key, req.content)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    if kind != "note":
+        raise HTTPException(422, "Only notes and preferences can be edited")
+    expires = None if req.expires is None else _expiry(req.expires)
+    notes_store = await _own_memory(user)
+    if not daftar.edit_note(notes_store, key, content=req.content, tags=req.tags, expires=expires):
+        raise HTTPException(404, "No such note")
+    return {"edited": entry_id}
+
+
+@app.post("/api/daftar/forget")
+async def daftar_forget(req: DaftarForget, user: TokenPayload = Depends(require_auth)):
+    """Forget chosen entries, or everything about a topic (first a preview, then confirm)."""
+    from memory import daftar
+
+    notes_store = await _own_memory(user)
+    ids = list(req.ids)
+    if req.topic.strip():
+        found = await daftar.ledger(
+            notes_store=notes_store,
+            memory=memory,
+            adaptive=None,
+            owner_id=user.user_id,
+            query=req.topic,
+        )
+        matches = [e for e in found["entries"] if e["kind"] in ("note", "preference")]
+        if not req.confirm:
+            return {"preview": matches}
+        ids += [entry["id"] for entry in matches]
+    if not ids:
+        return {"forgotten": {"note": 0, "preference": 0}}
+    return {
+        "forgotten": await daftar.forget(
+            notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=ids
+        )
+    }
+
+
+@app.get("/api/daftar/export")
+async def daftar_export(
+    format: str = Query("json", pattern=r"^(json|md)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    from memory import daftar
+
+    agent = await _own_agent(user)
+    found = await daftar.ledger(
+        notes_store=await _own_memory(user),
+        memory=memory,
+        adaptive=getattr(agent, "adaptive", None),
+        owner_id=user.user_id,
+    )
+    if format == "md":
+        return PlainTextResponse(
+            daftar.to_markdown(found["entries"], user.username),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="mizan-daftar.md"'},
+        )
+    return JSONResponse(
+        daftar.to_json(found["entries"]),
+        headers={"Content-Disposition": 'attachment; filename="mizan-daftar.json"'},
+    )
+
+
+@app.post("/api/daftar/import")
+async def daftar_import(data: dict, user: TokenPayload = Depends(require_auth)):
+    from memory import daftar
+
+    try:
+        return {
+            "imported": await daftar.import_entries(
+                notes_store=await _own_memory(user), memory=memory, owner_id=user.user_id, data=data
+            )
+        }
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 # === PERCEPTION (Sam' + Basar - سَمْع + بَصَر) ===

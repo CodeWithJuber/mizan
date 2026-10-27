@@ -15,6 +15,7 @@ import {
 } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { ConversationMemorySummary } from "./components/ConversationMemorySummary";
+import DaftarPanel from "./components/DaftarPanel";
 import type {
   Agent,
   ChatMessage,
@@ -3619,173 +3620,177 @@ function AppInner() {
               </div>
             </div>
 
-            <ConversationMemorySummary />
+            <div className="flex-1 overflow-y-auto">
+              <DaftarPanel api={api} />
 
-            {/* Add Memory Form */}
-            {showAddMemory && (
-              <div className="mx-5 mt-3 p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg">
-                <textarea
-                  className="input w-full h-20 resize-none text-sm"
-                  placeholder="What should your AI remember?"
-                  value={newMemory.content}
-                  onChange={(e) =>
-                    setNewMemory({ ...newMemory, content: e.target.value })
-                  }
-                />
-                <div className="flex flex-wrap items-center gap-3 mt-2">
-                  <select
-                    className="input text-sm py-1.5"
-                    value={newMemory.memory_type}
+              <ConversationMemorySummary />
+
+              {/* Add Memory Form */}
+              {showAddMemory && (
+                <div className="mx-5 mt-3 p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg">
+                  <textarea
+                    className="input w-full h-20 resize-none text-sm"
+                    placeholder="What should your AI remember?"
+                    value={newMemory.content}
                     onChange={(e) =>
-                      setNewMemory({
-                        ...newMemory,
-                        memory_type: e.target.value,
-                      })
-                    }
-                  >
-                    <option value="semantic">Knowledge / Fact</option>
-                    <option value="episodic">Experience / Event</option>
-                    <option value="procedural">How-to / Process</option>
-                  </select>
-                  <input
-                    className="input text-sm py-1.5 w-40"
-                    placeholder="Tags (comma-separated)"
-                    value={newMemory.tags}
-                    onChange={(e) =>
-                      setNewMemory({ ...newMemory, tags: e.target.value })
+                      setNewMemory({ ...newMemory, content: e.target.value })
                     }
                   />
-                  <button
-                    className="btn-secondary text-sm"
-                    onClick={() => setShowAddMemory(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="btn-gold text-sm ml-auto"
-                    disabled={!newMemory.content.trim()}
-                    onClick={async () => {
-                      await authFetch(`${config.API_URL}/memory/store`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          content: newMemory.content,
-                          memory_type: newMemory.memory_type,
-                          importance: newMemory.importance,
-                          tags: newMemory.tags
-                            .split(",")
-                            .map((t) => t.trim())
-                            .filter(Boolean),
-                        }),
-                      });
-                      setNewMemory({
-                        content: "",
-                        memory_type: "semantic",
-                        importance: 0.7,
-                        tags: "",
-                      });
-                      setShowAddMemory(false);
-                      loadMemories("", memoryTypeFilter);
-                      addToast({ type: "success", title: "Memory saved" });
-                    }}
-                  >
-                    Save Memory
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Type filter tabs */}
-            <div className="flex gap-1 px-5 pt-3">
-              {(
-                [
-                  { key: "all", label: "All" },
-                  { key: "semantic", label: "Knowledge" },
-                  { key: "episodic", label: "Events" },
-                  { key: "procedural", label: "How-to" },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.key}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                    memoryTypeFilter === tab.key
-                      ? "bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20"
-                      : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-transparent"
-                  }`}
-                  onClick={() => {
-                    setMemoryTypeFilter(tab.key);
-                    loadMemories(memoryQuery, tab.key);
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Memory list */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {memories.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-                  <Icons.Memory />
-                  <p className="mt-3 font-medium">No knowledge records stored yet</p>
-                  <p className="text-sm mt-1 text-center max-w-sm">
-                    Add memories manually, or start chatting — your AI will
-                    save conversation history separately in your chat memory.
-                  </p>
-                  <button
-                    className="btn-gold btn-sm mt-4"
-                    onClick={() => setShowAddMemory(true)}
-                  >
-                    <Icons.Plus /> Add Your First Memory
-                  </button>
+                  <div className="flex flex-wrap items-center gap-3 mt-2">
+                    <select
+                      className="input text-sm py-1.5"
+                      value={newMemory.memory_type}
+                      onChange={(e) =>
+                        setNewMemory({
+                          ...newMemory,
+                          memory_type: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="semantic">Knowledge / Fact</option>
+                      <option value="episodic">Experience / Event</option>
+                      <option value="procedural">How-to / Process</option>
+                    </select>
+                    <input
+                      className="input text-sm py-1.5 w-40"
+                      placeholder="Tags (comma-separated)"
+                      value={newMemory.tags}
+                      onChange={(e) =>
+                        setNewMemory({ ...newMemory, tags: e.target.value })
+                      }
+                    />
+                    <button
+                      className="btn-secondary text-sm"
+                      onClick={() => setShowAddMemory(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn-gold text-sm ml-auto"
+                      disabled={!newMemory.content.trim()}
+                      onClick={async () => {
+                        await authFetch(`${config.API_URL}/memory/store`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            content: newMemory.content,
+                            memory_type: newMemory.memory_type,
+                            importance: newMemory.importance,
+                            tags: newMemory.tags
+                              .split(",")
+                              .map((t) => t.trim())
+                              .filter(Boolean),
+                          }),
+                        });
+                        setNewMemory({
+                          content: "",
+                          memory_type: "semantic",
+                          importance: 0.7,
+                          tags: "",
+                        });
+                        setShowAddMemory(false);
+                        loadMemories("", memoryTypeFilter);
+                        addToast({ type: "success", title: "Memory saved" });
+                      }}
+                    >
+                      Save Memory
+                    </button>
+                  </div>
                 </div>
               )}
-              {memories.map((mem) => (
-                <div key={mem.id} className="card">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      className={`badge ${
-                        mem.type === "episodic"
-                          ? "badge-info"
-                          : mem.type === "semantic"
-                            ? "badge-warning"
-                            : "badge-success"
-                      }`}
+
+              {/* Type filter tabs */}
+              <div className="flex gap-1 px-5 pt-3">
+                {(
+                  [
+                    { key: "all", label: "All" },
+                    { key: "semantic", label: "Knowledge" },
+                    { key: "episodic", label: "Events" },
+                    { key: "procedural", label: "How-to" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      memoryTypeFilter === tab.key
+                        ? "bg-mizan-gold/10 text-mizan-gold border border-mizan-gold/20"
+                        : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-transparent"
+                    }`}
+                    onClick={() => {
+                      setMemoryTypeFilter(tab.key);
+                      loadMemories(memoryQuery, tab.key);
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Memory list */}
+              <div className="p-4 space-y-2">
+                {memories.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                    <Icons.Memory />
+                    <p className="mt-3 font-medium">No knowledge records stored yet</p>
+                    <p className="text-sm mt-1 text-center max-w-sm">
+                      Add memories manually, or start chatting — your AI will
+                      save conversation history separately in your chat memory.
+                    </p>
+                    <button
+                      className="btn-gold btn-sm mt-4"
+                      onClick={() => setShowAddMemory(true)}
                     >
-                      {mem.type === "semantic"
-                        ? "knowledge"
-                        : mem.type === "procedural"
-                          ? "how-to"
-                          : mem.type}
-                    </span>
-                    <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
-                      {mem.agent_id
-                        ? `Agent: ${mem.agent_id.substring(0, 8)}`
-                        : "System"}
-                    </span>
-                    <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
-                      Importance: {(mem.importance * 100).toFixed(0)}%
-                    </span>
+                      <Icons.Plus /> Add Your First Memory
+                    </button>
                   </div>
-                  <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {typeof mem.content === "string"
-                      ? mem.content
-                      : JSON.stringify(mem.content)}
-                  </div>
-                  {(mem.tags?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {mem.tags!.map((t) => (
-                        <span
-                          key={t}
-                          className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono"
-                        >
-                          {t}
-                        </span>
-                      ))}
+                )}
+                {memories.map((mem) => (
+                  <div key={mem.id} className="card">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span
+                        className={`badge ${
+                          mem.type === "episodic"
+                            ? "badge-info"
+                            : mem.type === "semantic"
+                              ? "badge-warning"
+                              : "badge-success"
+                        }`}
+                      >
+                        {mem.type === "semantic"
+                          ? "knowledge"
+                          : mem.type === "procedural"
+                            ? "how-to"
+                            : mem.type}
+                      </span>
+                      <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
+                        {mem.agent_id
+                          ? `Agent: ${mem.agent_id.substring(0, 8)}`
+                          : "System"}
+                      </span>
+                      <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                        Importance: {(mem.importance * 100).toFixed(0)}%
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                      {typeof mem.content === "string"
+                        ? mem.content
+                        : JSON.stringify(mem.content)}
+                    </div>
+                    {(mem.tags?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {mem.tags!.map((t) => (
+                          <span
+                            key={t}
+                            className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-gray-500 dark:text-gray-400 font-mono"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
