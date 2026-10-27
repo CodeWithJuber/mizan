@@ -22,6 +22,7 @@ import difflib
 import json
 import math
 import os
+import re
 import shlex
 import time
 import uuid
@@ -42,6 +43,7 @@ from . import (
     fahm,
     hadith,
     hifz,
+    hudud,
     isnad,
     majlis,
     project,
@@ -61,6 +63,24 @@ from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable
 MODES = ("mizan", "hybrid", "strict", "llm")
 _RENEWALS: set[asyncio.Task] = set()  # instruction renewals running in the background
 MAX_REPAIRS = 2
+# Tools that read or run (no outside effect), safe to call again after a passing failure.
+_RETRYABLE = frozenset(
+    {"workspace_run", "workspace_read", "workspace_glob", "workspace_grep", "web_browse",
+     "web_search", "web_read", "http_get"}
+)  # fmt: skip
+_TRANSIENT = re.compile(
+    r"\b(?:busy|try again|temporar\w*|unavailable|overloaded|rate.?limit\w*|too many requests|"
+    r"502|503|504|429)\b",
+    re.IGNORECASE,
+)
+RETRY_DELAYS = (0.5, 2.0)
+# Questions a program answers better than reading: the cheapest, a total, a count…
+_ANALYTIC = re.compile(
+    r"\b(?:cheapest|lowest|highest|most|least|largest|smallest|biggest|maximum|minimum|total|"
+    r"sum|average|mean|median|count|how\s+many|rank\w*|top\s+\d+|sorted|best[- ]rated|"
+    r"rated\s+(?:\d|at\s+least|above|below)|(?:\d|stars?)\s+or\s+(?:more|less|higher|lower))\b",
+    re.IGNORECASE,
+)
 
 
 def orchestration_mode() -> str:
@@ -146,15 +166,36 @@ class Tadbir:
         parts = fahm.understand_parts(task)
         understanding = fahm.understand(task)
         if parts is None and understanding.intent in {"converse", "web_search"}:
-            # "Find the next number", "search number theory": a follow-up about the
-            # sequence asked earlier in this chat, which MIZAN takes from the history.
-            earlier = silsila.from_history(history) if silsila.follow_up(task) else None
+            # "Find the next number", "search number theory", "karo koshish": a
+            # follow-up about the sequence asked earlier in this chat, which MIZAN
+            # takes from the history.
+            topicless = understanding.intent == "web_search" and fahm.bare_search(task)
+            earlier = (
+                silsila.from_history(history) if silsila.follow_up(task) or topicless else None
+            )
             if earlier:
                 understanding = fahm.Understanding(
                     "silsila",
                     understanding.language,
                     0.8,
-                    {"sequence": earlier, "understood_by": "conversation"},
+                    {
+                        "sequence": earlier,
+                        "understood_by": "conversation",
+                        **({"effort": "deep"} if silsila.harder(task) else {}),
+                    },
+                )
+            elif topicless:
+                # "Dhundo pahle": search for what the user asked before, not these words.
+                topic = _earlier_request(history)
+                understanding = (
+                    fahm.Understanding(
+                        "web_search",
+                        understanding.language,
+                        0.7,
+                        {"query": topic[:300], "understood_by": "conversation"},
+                    )
+                    if topic
+                    else fahm.Understanding("converse", understanding.language, 0.0)
                 )
         self._stream = stream_callback
         started = time.time()
@@ -441,6 +482,16 @@ class Tadbir:
         started = time.perf_counter()
         with trace.span("execute_tool", name, input=params, agent=self.agent.name) as record:
             result = trace.injected_fault(name) or await self.agent._execute_tool_safe(name, params)
+            for delay in RETRY_DELAYS:
+                # A passing failure (busy, 503, rate limit) of a tool that only reads
+                # or runs: wait and call it again rather than give up.
+                if not _transient(name, result):
+                    break
+                trace.event("recover", "retry", tool=name, error=str(result["error"])[:200])
+                await asyncio.sleep(delay)
+                result = trace.injected_fault(name) or await self.agent._execute_tool_safe(
+                    name, params
+                )
             if trace.active():
                 record["attributes"]["ok"] = not tool_result_failed(result)
                 record["attributes"]["result"] = summarize(result, 4000)
@@ -840,12 +891,14 @@ class Tadbir:
         await self._step()
         tested: tuple[str, dict] | None = None
         tries = 0
+        # "Karo koshish": the user asked MIZAN to try harder, so Lisan gets more rounds.
+        rounds = MAX_REPAIRS * 3 if u.entities.get("effort") == "deep" else MAX_REPAIRS
         if not rules and not matches and can_test:
             try:
                 program = await self.lisan.propose_sequence_rule(seq)
             except LisanUnavailable:
                 program = ""
-            while program and tries <= MAX_REPAIRS:
+            while program and tries <= rounds:
                 tries += 1
                 run = await self._run(silsila.harness(program, seq), "python")
                 report = silsila.read(str(run.get("stdout", "")))
@@ -861,7 +914,7 @@ class Tadbir:
                     break
                 if run.get("declined") or (run.get("error") and not run.get("stderr")):
                     break
-                if tries > MAX_REPAIRS:
+                if tries > rounds:
                     break
                 try:
                     program = await self.lisan.revise_sequence_rule(
@@ -1145,24 +1198,56 @@ class Tadbir:
             ]
         )
         originals: dict[str, str] = {}
+        shown: dict[str, str] = {}
+        carriers: set[str] = set()  # files with text that tried to instruct the AI
         shas: dict[str, str | None] = {}
         for path in chosen:
             document = await self._tool("workspace_read", {"path": path})
             if isinstance(document.get("content"), str) and not document.get("error"):
                 originals[path] = document["content"]
                 shas[path] = document.get("sha256")
+                clean, found = amanah.neutralize(document["content"])
+                if found:
+                    carriers.add(path)
+                    amanah.taint([{**item, "source": f"file {path}"} for item in found])
+                shown[path] = clean
         await self._step()
         try:
-            reply = await self.lisan.edit_files(request, originals, paths, u.language)
+            reply = await self.lisan.edit_files(request, shown, paths, u.language)
         except LisanUnavailable as exc:
             return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
-        changes = {
-            path: content
-            for path, content in project.extract_files(reply, set(paths), new_files=True).items()
-            if content != originals.get(path)
-        }
+        changes = self._changed_files(reply, paths, originals, request)
         if not changes:
-            return Outcome(phrase("edit_nothing", u.language), False, {}, tool_backed=False)
+            # Lisan put the file in a block without its path, or gave a snippet: ask once
+            # more, reminding it how MIZAN reads files.
+            try:
+                reply = await self.lisan.edit_files(
+                    request, shown, paths, u.language, reminder=True
+                )
+            except LisanUnavailable as exc:
+                return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
+            changes = self._changed_files(reply, paths, originals, request)
+        held: list[str] = []
+        if carriers:
+            # A file tried to instruct the AI: only what the user named may be created,
+            # and the file that carried the instruction changes only if the user named it.
+            named = {name.split("/")[-1] for name in fahm.named_files(request)}
+            held = sorted(
+                path
+                for path in changes
+                if path.split("/")[-1] not in named and (path not in originals or path in carriers)
+            )
+            for path in held:
+                changes.pop(path)
+            if held:
+                trace.event("verify", "amanah", held=held)
+        if not changes:
+            text = phrase("edit_nothing", u.language)
+            if held:
+                text += "\n\n" + phrase(
+                    "amanah_held_files", u.language, files=", ".join(f"`{p}`" for p in held)
+                )
+            return Outcome(text, False, {}, tool_backed=False)
         await self._step()
         current = dict(originals)
         for path, content in changes.items():
@@ -1180,7 +1265,9 @@ class Tadbir:
                 )
             except LisanUnavailable:
                 break
-            fixed = project.extract_files(reply, set(changes))
+            fixed = project.extract_files(reply, set(changes)) or project.infer_file(
+                reply, {path: current[path] for path in changes}, list(changes)
+            )
             if not fixed:
                 break
             rounds += 1
@@ -1221,6 +1308,9 @@ class Tadbir:
             lines.append(f"- {mark} {label}{note}")
         if rounds:
             lines += ["", f"_{phrase('project_repaired', u.language, count=rounds)}_"]
+        if held:
+            files = ", ".join(f"`{path}`" for path in held)
+            lines += ["", f"_{phrase('amanah_held_files', u.language, files=files)}_"]
         if problem and not verified:
             lines += ["", fence(problem[-1500:], "text")]
         return Outcome(
@@ -1229,6 +1319,14 @@ class Tadbir:
             {"files": sorted(changes), "repairs": rounds},
             succeeded=not problem,
         )
+
+    def _changed_files(
+        self, reply: str, paths: list[str], originals: dict[str, str], request: str
+    ) -> dict[str, str]:
+        files = project.extract_files(reply, set(paths), new_files=True) or project.infer_file(
+            reply, originals, fahm.named_files(request)
+        )
+        return {path: content for path, content in files.items() if content != originals.get(path)}
 
     async def _save_edit(self, path: str, content: str, shas: dict[str, str | None]) -> str | None:
         params: dict = {"path": path, "content": content}
@@ -1359,6 +1457,209 @@ class Tadbir:
                 output = (str(run.get("stdout", "")) + str(run.get("stderr", ""))).strip()
                 problems.append(f"`{command}` failed (exit code {run.get('exit_code')}):\n{output}")
         return checks, "\n\n".join(problems)
+
+    async def _run_file(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Run a file of the selected project in its sandbox and show exactly what it printed."""
+        from workspace.context import bound_workspace_id
+
+        if not bound_workspace_id() or not self._allowed("workspace_run"):
+            raise Defer
+        path = str(u.entities["path"]).strip().lstrip("./")
+        await self._begin(
+            [
+                "Find the file in the project (MIZAN)",
+                f"Run `{path}` in the project's sandbox",
+                "Reply with its exact output",
+            ]
+        )
+        if self._allowed("workspace_glob"):
+            listing = await self._tool("workspace_glob", {"pattern": "**/*"})
+            files = {
+                str(f.get("path")): int(f.get("size", 0))
+                for f in listing.get("files", [])
+                if isinstance(f, dict)
+            }
+            found = _in_project(path, files) if files else path
+            if found is None:
+                return Outcome(phrase("run_file_missing", u.language, path=path), False, {})
+            path = found
+        if not project.editable(path):
+            raise Defer
+        await self._step()
+        runner = {"py": "python", "sh": "bash"}.get(path.rsplit(".", 1)[-1].lower(), "node")
+        run = await self._tool(
+            "workspace_run",
+            {
+                "command": f"{runner} {shlex.quote(path)} < /dev/null",
+                "language": "shell",
+                "timeout_s": 60,
+            },
+        )
+        await self._step()
+        text = f"{phrase('ran_file', u.language, path=path)}\n\n{self._run_text(run, u.language)}"
+        return Outcome(
+            text, _ran_clean(run), {"path": path, "run": _run_facts(run)}, succeeded=_code_ran(run)
+        )
+
+    async def _project_task(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Work on the project's own files: Lisan writes the program, MIZAN runs and checks it.
+
+        The program runs in the project's sandbox within Hudud's limits (it may write
+        only the files the request names), MIZAN checks the exit code, that each output
+        exists and parses, and that nothing else changed, repairs what fails, and words
+        the reply from what the program printed (Furqan checks the numbers).
+        """
+        from security.auth import current_user_id
+        from workspace.context import bound_workspace_id
+
+        needed = ("workspace_glob", "workspace_read", "workspace_run")
+        if not bound_workspace_id() or not self.lisan.available:
+            raise Defer
+        if not all(self._allowed(name) for name in needed):
+            raise Defer
+        request = str(u.entities.get("request") or task)
+        listing = await self._tool("workspace_glob", {"pattern": "**/*"})
+        if listing.get("error"):
+            raise Defer
+        before = {
+            str(f.get("path")): int(f.get("size", 0))
+            for f in listing.get("files", [])
+            if isinstance(f, dict)
+        }
+        named = [str(name) for name in u.entities.get("files") or fahm.named_files(request)]
+        inputs = [found for name in named if (found := _in_project(name, before))]
+        creates = [name for name in named if _in_project(name, before) is None]
+        writable = creates + [path for path in inputs if _writes_to(request, path)]
+        if not inputs:
+            missing = ", ".join(f"`{name}`" for name in named)
+            return Outcome(phrase("task_missing", u.language, files=missing), False, {})
+        await self._begin(
+            [
+                "Read the files the request names (MIZAN)",
+                "Write the program (Lisan)",
+                "Run it on the project within the request's limits (Hudud)",
+                "Check the outputs; repair what fails (MIZAN)",
+                "Reply from what the program found",
+            ]
+        )
+        previews: dict[str, str] = {}
+        for path in inputs[:6]:
+            document = await self._tool("workspace_read", {"path": path})
+            content = document.get("content")
+            if isinstance(content, str) and not document.get("error"):
+                clean, found = amanah.neutralize(content)
+                if found:
+                    amanah.taint([{**item, "source": f"file {path}"} for item in found])
+                previews[path] = _preview(clean)
+        await self._step()
+        store, owner = self.coordinator.adaptive, current_user_id() or ""
+        lessons = tajriba.relevant(store, owner, "project_task", request)
+        try:
+            code = await self.lisan.project_program(
+                request, previews, writable, tajriba.render(lessons)
+            )
+        except LisanUnavailable as exc:
+            return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
+        await self._step()
+        run, problem, changed = await self._task_run(code, writable, set(before))
+        if _code_ran(run):
+            self._lisan_outcome("project_program", not problem, _signature(run))
+            tajriba.credit(store, owner, lessons, not problem)
+        await self._step()
+        tries, failing = 1, None
+        context = f"{request}\n\nFiles (the start of each):\n" + "\n\n".join(
+            f"{path}:\n{preview[:1500]}" for path, preview in previews.items()
+        )
+        while problem and tries <= MAX_REPAIRS:
+            if run.get("declined") or (run.get("error") and not run.get("stderr")):
+                break  # the sandbox itself failed; a new program cannot help
+            failing = failing or (code, problem)
+            try:
+                code = await self.lisan.fix_code(context, "python", code, problem, attempt=tries)
+            except LisanUnavailable:
+                break
+            tries += 1
+            run, problem, changed = await self._task_run(code, writable, set(before))
+        verified = not problem
+        if verified and failing is not None:
+            lesson = tajriba.learn(store, owner, "project_task", request, *failing, code)
+            if lesson:
+                trace.event("learn", "tajriba", signature=lesson["signature"])
+        written = [path for path in changed if path in writable or path in creates]
+        outputs: dict[str, str] = {}
+        for path in written[:4]:
+            document = await self._tool("workspace_read", {"path": path})
+            if isinstance(document.get("content"), str):
+                outputs[path] = _preview(document["content"], 20, 1500)
+        stdout = str(run.get("stdout", ""))
+        facts = {"program_output": stdout[-4000:], "files_written": outputs}
+        fallback = "\n\n".join(
+            part
+            for part in (
+                phrase("task_done", u.language) if verified else "",
+                self._run_text(run, u.language),
+            )
+            if part
+        )
+        answer = fallback
+        if verified and stdout.strip():
+            answer, _phrased = await self._phrase_with_lisan(task, facts, u.language, fallback)
+        parts = [answer]
+        if not verified and problem:
+            parts.append(phrase("task_failed", u.language, reason=problem[-600:]))
+        if outputs:
+            parts.append(
+                f"**{phrase('task_files', u.language)}**\n"
+                + "\n".join(
+                    f"- `{path}`\n{fence(preview, '')}" for path, preview in outputs.items()
+                )
+            )
+        parts.append(f"**{phrase('code', u.language)}**\n{fence(code, 'python')}")
+        if tries > 1 and verified:
+            parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
+        return Outcome(
+            "\n\n".join(parts),
+            verified,
+            {"run": _run_facts(run), "files": sorted(outputs), "attempts": tries},
+            succeeded=verified,
+        )
+
+    async def _task_run(
+        self, code: str, writable: list[str], before: set[str]
+    ) -> tuple[dict, str, list[str]]:
+        """Run a project program within Hudud's limits; the run, the first problem, what changed."""
+        run = await self._run(hudud.guard(code, writable), "python")
+        changed = [str(path) for path in run.get("changed_files") or []]
+        if not _ran_clean(run):
+            error = str(run.get("stderr") or run.get("error") or run.get("stdout", ""))
+            if hudud.refused(error):
+                error += (
+                    "\n\nThe program may write only these files: "
+                    + (", ".join(writable) or "none")
+                    + ". Do not delete, rename or change any other file."
+                )
+            return run, error[-3000:], changed
+        problems = []
+        stray = [path for path in changed if path not in writable]
+        if stray:
+            problems.append(f"The program changed files the request did not name: {stray}")
+        for name in writable:
+            if name not in before and name not in changed:
+                problems.append(f"The program did not write {name}.")
+                continue
+            kind = name.rsplit(".", 1)[-1].lower()
+            if kind not in {"json", "csv"}:
+                continue
+            document = await self._tool("workspace_read", {"path": name})
+            content = str(document.get("content") or "")
+            if kind == "json":
+                try:
+                    json.loads(content)
+                except ValueError as exc:
+                    problems.append(f"{name} is not valid JSON: {exc}")
+            elif not content.strip():
+                problems.append(f"{name} is empty.")
+        return run, "\n".join(problems), changed
 
     async def _quran(self, task: str, u: fahm.Understanding) -> Outcome:
         reference: quran.Reference = u.entities["reference"]
@@ -1677,36 +1978,109 @@ class Tadbir:
                 "Reply with the source",
             ]
         )
-        page = await self._tool("web_browse", {"url": u.entities["url"]})
+        # The user's own links, in order: when one page is gone, read the next one.
+        urls = [str(u.entities["url"])]
+        urls += [str(url) for url in u.entities.get("urls") or [] if str(url) not in urls]
+        page: dict = {}
+        used, failed = urls[0], []
+        for url in urls[:4]:
+            page = await self._tool("web_browse", {"url": url})
+            if not page.get("error"):
+                used = url
+                break
+            failed.append((url, str(page["error"])[:160]))
         await self._step()
         if page.get("error"):
             return Outcome(phrase("page_failed", u.language, reason=page["error"]), False, {})
+        text = str(page.get("content", ""))
         sources = [
             {
-                "title": page.get("title") or u.entities["url"],
-                "url": page.get("url") or u.entities["url"],
-                "text": str(page.get("content", ""))[:8000],
+                "title": page.get("title") or used,
+                "url": page.get("url") or used,
+                "text": _passages(text, task),
             }
         ]
-        return await self._answer_from(task, sources, u)
+        computed = None
+        if _ANALYTIC.search(task) and _tabular(text):
+            computed = await self._compute_from_page(task, text)
+        outcome = await self._answer_from(task, sources, u, computed=computed)
+        if failed:
+            note = phrase(
+                "page_fallback", u.language, failed=failed[0][0], reason=failed[0][1], url=used
+            )
+            outcome.text = f"_{note}_\n\n{outcome.text}"
+        return outcome
 
-    async def _answer_from(self, task: str, sources: list[dict], u: fahm.Understanding) -> Outcome:
+    async def _compute_from_page(self, task: str, page: str) -> dict | None:
+        """Lisan writes ``solve(page)``; MIZAN runs it on the page and checks what it returns."""
+        if not self._allowed("workspace_run") or not self.lisan.available:
+            return None
+        try:
+            program = await self.lisan.page_program(task, page)
+        except LisanUnavailable:
+            return None
+        for attempt in range(MAX_REPAIRS + 1):
+            run = await self._run(_page_harness(program, page), "python")
+            result = _page_result(str(run.get("stdout", "")))
+            if _ran_clean(run) and result is not None:
+                invented = _ungrounded(result, page)
+                if not invented:
+                    trace.event("verify", "page_program", ok=True, attempt=attempt + 1)
+                    self._lisan_outcome("page_program", attempt == 0)
+                    return result
+                problem = f"These values are not in the page: {invented}. Use only the page's text."
+            elif not _code_ran(run):
+                return None  # the sandbox itself failed
+            else:
+                problem = str(run.get("stderr") or "") or "solve(page) returned nothing"
+            trace.event("verify", "page_program", ok=False, attempt=attempt + 1, problem=problem)
+            if attempt == MAX_REPAIRS:
+                break
+            try:
+                program = await self.lisan.fix_code(
+                    f"Write `solve(page)` returning a dict that answers: {task}\n\nThe page's "
+                    f"start:\n{page[:3000]}",
+                    "python",
+                    program,
+                    problem,
+                    attempt=attempt + 1,
+                )
+            except LisanUnavailable:
+                return None
+        self._lisan_outcome("page_program", False)
+        return None
+
+    async def _answer_from(
+        self,
+        task: str,
+        sources: list[dict],
+        u: fahm.Understanding,
+        computed: dict | None = None,
+    ) -> Outcome:
         listing = "\n".join(
             f"{index}. [{s['title'] or s['url']}]({s['url']})"
             for index, s in enumerate(sources, start=1)
         )
         source_block = f"**{phrase('sources', u.language)}**\n{listing}"
         answer, verified = "", False
+        evidence = json.dumps(
+            {"sources": sources, **({"computed": computed} if computed else {})},
+            ensure_ascii=False,
+        )
         if self.lisan.available:
             try:
-                draft = await self.lisan.answer_from_sources(task, sources, u.language)
-                if not furqan(
-                    draft, json.dumps(sources, ensure_ascii=False), max_citation=len(sources)
-                ):
+                draft = await self.lisan.answer_from_sources(
+                    task, sources, u.language, computed=computed
+                )
+                if not furqan(draft, evidence, max_citation=len(sources)):
                     answer, verified = draft, True
             except LisanUnavailable:
                 pass
         await self._step()
+        if not answer and computed:
+            answer = "\n".join(f"- **{key}**: {value}" for key, value in computed.items())
+        if computed:
+            answer += f"\n\n_{phrase('page_computed', u.language)}_"
         if not answer:
             if len(sources) == 1:
                 excerpt = sources[0]["text"][:800].strip()
@@ -1747,6 +2121,127 @@ class Tadbir:
             task, {"memories": memories[:6000]}, u.language, fallback
         )
         return Outcome(text, True, {"memories": True}, provenance="evidence")
+
+
+def _transient(name: str, result: Any) -> bool:
+    return (
+        name in _RETRYABLE
+        and isinstance(result, dict)
+        and bool(result.get("error"))
+        and not result.get("declined")
+        and bool(_TRANSIENT.search(str(result["error"])))
+    )
+
+
+def _in_project(name: str, files: dict[str, int]) -> str | None:
+    """The project path a file name the user wrote refers to, if it is there."""
+    name = name.strip().lstrip("./")
+    if name in files:
+        return name
+    same = [path for path in files if path.split("/")[-1] == name.split("/")[-1]]
+    return same[0] if len(same) == 1 else None
+
+
+def _preview(content: str, lines: int = 40, limit: int = 4000) -> str:
+    """The start of a file, enough for Lisan to see its format."""
+    rows = content.splitlines()
+    shown = "\n".join(rows[:lines])[:limit]
+    more = len(rows) - min(len(rows), lines)
+    return shown + (f"\n… ({more} more lines, {len(rows)} in all)" if more > 0 else "")
+
+
+def _writes_to(message: str, name: str) -> bool:
+    """The request asks to write this (existing) file: "save to X", "update X"."""
+    escaped = re.escape(name.split("/")[-1])
+    return bool(
+        re.search(
+            r"\b(?:save|write|update|overwrite|append|replace|store|put|export|output|rewrite)\b"
+            r"[^.?!\n]{0,60}?" + escaped + "|" + escaped + r"[^.?!\n]{0,25}?\b(?:update|overwrite)",
+            message,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _passages(text: str, request: str, budget: int = 6000) -> str:
+    """A long page cut to the lines that answer the request (BM25), in page order."""
+    if len(text) <= budget:
+        return text
+    from core.adaptive import bm25_scores, tokenize
+
+    rows = [row for row in text.splitlines() if row.strip()]
+    scores = bm25_scores(tokenize(request), [tokenize(row) for row in rows])
+    keep: set[int] = set(range(min(3, len(rows))))  # the title and opening
+    used = sum(len(rows[i]) for i in keep)
+    for index in sorted(range(len(rows)), key=lambda i: scores[i], reverse=True):
+        if scores[index] <= 0 or used + len(rows[index]) > budget:
+            continue
+        keep.add(index)
+        used += len(rows[index])
+    out: list[str] = []
+    for index in sorted(keep):
+        if out and index - 1 not in keep:
+            out.append("…")
+        out.append(rows[index])
+    return "\n".join(out)
+
+
+def _tabular(text: str) -> bool:
+    """Rows of data: many lines that share a separator."""
+    rows = text.splitlines()
+    return any(sum(1 for row in rows if row.count(sep) >= 2) >= 8 for sep in ("|", "\t", ",", ";"))
+
+
+def _page_harness(program: str, page: str) -> str:
+    """Run Lisan's ``solve(page)`` on the page MIZAN read, within Hudud's limits."""
+    return hudud.guard(
+        f"{program}\n\nimport json as _json\n_PAGE = _json.loads({json.dumps(page)!r})\n"
+        "print('MIZAN_RESULT ' + _json.dumps(solve(_PAGE), default=str, ensure_ascii=False))\n",
+        [],
+    )
+
+
+def _page_result(stdout: str) -> dict | None:
+    for line in reversed((stdout or "").splitlines()):
+        if line.startswith("MIZAN_RESULT "):
+            try:
+                value = json.loads(line[len("MIZAN_RESULT ") :])
+            except ValueError:
+                return None
+            if isinstance(value, dict) and value:
+                return value
+            return {"answer": value} if value not in (None, "", [], {}) else None
+    return None
+
+
+def _ungrounded(result: dict, page: str) -> list[str]:
+    """The names in a computed result when none of them is in the page (an invented item).
+
+    Links and other values that only describe the answer are not checked; an
+    answer must name at least one thing the page itself says.
+    """
+    folded = " ".join(page.split()).lower()
+    names = [
+        " ".join(value.split())
+        for value in result.values()
+        if isinstance(value, str)
+        and re.search(r"[^\W\d_]{3,}", value)
+        and not re.match(r"https?://", value.strip())
+    ]
+    if not names or any(name.lower() in folded for name in names):
+        return []
+    return [name[:80] for name in names]
+
+
+def _earlier_request(history: list[dict] | None) -> str | None:
+    """The user's most recent message in this chat that names a topic of its own."""
+    for turn in list(reversed(history or []))[:8]:
+        if turn.get("role") != "user":
+            continue
+        text = str(turn.get("content") or "").strip()
+        if text and not fahm.bare_search(text) and len(re.findall(r"\w+", text)) >= 2:
+            return text
+    return None
 
 
 def _matches(stdout: str, value: calc.Number) -> bool:

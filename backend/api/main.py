@@ -4238,7 +4238,8 @@ async def imtihan_tasks(user: TokenPayload = Depends(require_auth)):
             {
                 "id": task["id"],
                 "block": task["block"],
-                "prompt": task["prompt"][:400],
+                "prompt": str(task.get("prompt") or task.get("instructions") or "")[:400],
+                "agentic": "instructions" in task,
                 "source": task.get("source"),
             }
             for task in runner.load_tasks()

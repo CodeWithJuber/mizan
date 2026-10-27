@@ -38,9 +38,20 @@ _CUE = re.compile(
 )
 _FOLLOW = re.compile(
     r"\b(?:next\s+number|agla\s+number|sequence|series|pattern|number\s+theor\w*|try\s+again|"
-    r"find\s+(?:it|the\s+next)|solve\s+it|oeis)\b",
+    r"find\s+(?:it|the\s+next)|solve\s+it|oeis)\b" + "|" + r"\b(?:koshish|try\s+harder|"
+    r"don'?t\s+give\s+up|give\s+up|haar|dobara\s+try|phir\s+se\s+try|keep\s+trying)\b",
     re.IGNORECASE,
 )
+# "Karo koshish", "jaldi haar kyun maan rahe ho": the user asks for more effort.
+_HARDER = re.compile(
+    r"\b(?:koshish|try\s+harder|give\s+up|haar|dobara|phir\s+se|keep\s+trying|take\s+time|"
+    r"learn)\b",
+    re.IGNORECASE,
+)
+
+
+def harder(text: str) -> bool:
+    return bool(_HARDER.search(text or ""))
 
 
 @dataclass

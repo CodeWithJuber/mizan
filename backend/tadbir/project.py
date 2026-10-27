@@ -231,6 +231,53 @@ def extract_files(reply: str, allowed: set[str], *, new_files: bool = False) -> 
     return found
 
 
+_PATH_COMMENT = re.compile(
+    r"^\s*(?:#|//|/\*|<!--)\s*([A-Za-z0-9_][\w./-]*\.\w+)\s*(?:\*/|-->)?\s*$"
+)
+
+
+def infer_file(reply: str, originals: dict[str, str], named: list[str]) -> dict[str, str]:
+    """One unnamed code block in Lisan's reply, as the one file it must be.
+
+    Lisan sometimes answers with ```python instead of ```shapes.py. The block is
+    taken as a file only when it names it in a first-line comment, or when the
+    request names exactly one existing file to change (tests aside); and only
+    when it is the whole file (it keeps most of the original's lines), never a
+    snippet that would drop the rest of the file.
+    """
+    blocks = re.findall(r"```[ \t]*([^\n`]*)\n(.*?)```", reply, re.DOTALL)
+    if len(blocks) != 1:
+        return {}
+    body = blocks[0][1].strip("\n")
+    first, _, rest = body.partition("\n")
+    hinted = _PATH_COMMENT.match(first)
+    if hinted and _local(hinted.group(1)) in originals:
+        target: str | None = _local(hinted.group(1))
+        body = rest.strip("\n")
+    else:
+        targets = [name for name in named if name in originals]
+        if len(targets) > 1:
+            targets = [name for name in targets if not _is_test(name)]
+        target = targets[0] if len(targets) == 1 else None
+    if target is None or not _whole(originals[target], body):
+        return {}
+    return {target: body + "\n"}
+
+
+def _is_test(path: str) -> bool:
+    name = path.split("/")[-1]
+    return name.startswith("test_") or bool(re.search(r"(?:_test\.py|\.(?:test|spec)\.\w+)$", name))
+
+
+def _whole(original: str, new: str) -> bool:
+    """The new text keeps most of the original's lines: a whole file, not a snippet."""
+    lines = {line.strip() for line in original.splitlines() if line.strip()}
+    if len(lines) < 3:
+        return True
+    kept = {line.strip() for line in new.splitlines()} & lines
+    return len(kept) / len(lines) >= 0.6
+
+
 # ── editing an existing project ──────────────────────────────────────────
 
 TEXT_EXTENSIONS = {

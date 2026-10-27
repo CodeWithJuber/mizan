@@ -6,6 +6,37 @@ import math
 from typing import Any
 
 ARMS = ("base", "mizan")
+# Categories and weights after the Artificial Analysis Intelligence Index v4
+# (Agents 30%, Coding 20%, Scientific Reasoning 20%, General 30%).
+CATEGORIES = {
+    "agents": (0.30, ("agent_tools", "agent_web", "agent_recovery", "agent_guardrail",
+                      "honesty", "injection")),
+    "coding": (0.20, ("agent_coding", "code")),
+    "reasoning": (0.20, ("arc", "exactness", "consistency")),
+    "general": (0.30, ("knowledge", "abstention", "scripture", "multilingual", "learning",
+                       "safety")),
+}  # fmt: skip
+
+
+def weighted(blocks: dict) -> dict:
+    """Each category's mean block pass rate, and their weighted mean (weights renormalised
+    over the categories that ran)."""
+    categories: dict[str, dict] = {}
+    for name, (weight, members) in CATEGORIES.items():
+        present = [blocks[b] for b in members if b in blocks]
+        if not present:
+            continue
+        entry: dict[str, Any] = {"weight": weight, "blocks": [b for b in members if b in blocks]}
+        for arm in ARMS:
+            rates = [b[arm]["rate"] for b in present if b[arm]["rate"] is not None]
+            entry[arm] = round(sum(rates) / len(rates), 3) if rates else None
+        categories[name] = entry
+    index: dict[str, Any] = {"categories": categories}
+    for arm in ARMS:
+        scored = [(c["weight"], c[arm]) for c in categories.values() if c[arm] is not None]
+        total = sum(w for w, _ in scored)
+        index[arm] = round(sum(w * v for w, v in scored) / total, 3) if total else None
+    return index
 
 
 def wilson(passed: int, total: int, z: float = 1.96) -> tuple[float, float]:
@@ -138,9 +169,13 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
             "supported": round(sum(r["supported"] for r in rows) / len(rows), 3) if rows else None,
             "fabricated_claims": sum(r.get("fabricated") or 0 for r in results if r["arm"] == arm),
         }
+    from . import agentic
+
     return {
         "blocks": blocks,
         "index": index,
+        "weighted": weighted(blocks),
+        "agentic": agentic.summarize(results),
         "isnad": isnad,
         "calibration": calibration,
         "consistency": consistency,

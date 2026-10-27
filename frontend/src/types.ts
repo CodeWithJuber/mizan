@@ -5,6 +5,7 @@
 
 import type { AmanahSummary } from "./utils/amanah.ts";
 import type { IsnadSummary } from "./utils/isnad.ts";
+import type { SidqReport } from "./utils/sidq.ts";
 
 // ===== API Types =====
 
@@ -234,6 +235,8 @@ export interface MessageUsageMeta {
   isnad?: IsnadSummary;
   /** Instructions aimed at the AI that MIZAN found in outside text and ignored (Amanah). */
   amanah?: AmanahSummary;
+  /** What the Truth Gate (Sidq) corrected, removed or marked before the answer was shown. */
+  sidq?: SidqReport | { mode: string; passed: true };
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

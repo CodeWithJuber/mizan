@@ -62,6 +62,9 @@ PATTERNS: dict[str, re.Pattern[str]] = {
         r"language model|agent)s?\b"
         r"|\b(?:ai|llm)\s+(?:assistants?|agents?|models?)\s*[:,]\s*(?:ignore|you|please|do|"
         r"say|reply|respond|forward|send)\b"
+        r"|\b(?:ai|llm)\s+(?:assistants?|agents?|models?)\s+(?:reading|processing|summari[sz]ing|"
+        r"parsing|seeing)\s+(?:this|these)\b"
+        r"|\bif\s+you\s+are\s+an?\s+(?:ai|llm|assistant|agent|language model)\b"
         r"|\byou\s+are\s+now\b|\bfrom\s+now\s+on,?\s+you\b|\b(?:developer|god|dan)\s+mode\b"
         r"|\bjailbreak)",
         re.MULTILINE,

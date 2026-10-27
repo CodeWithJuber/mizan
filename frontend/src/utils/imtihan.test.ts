@@ -1,4 +1,4 @@
-import { blockRows, historyPoints, intervalText, pct, signed, taskRows, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
+import { agenticRows, blockRows, categoryRows, historyPoints, intervalText, pct, signed, taskRows, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
 
 let checks = 0;
 function check(name: string, condition: boolean) {
@@ -44,5 +44,26 @@ check("passes counted across attempts", table[0].base.passed === 1 && table[0].b
 check("first attempt detail", table[0].base.detail === "expects 4");
 check("errors are not failures", table[1].base.error && table[1].base.scored === 0 && table[1].base.detail === "RateLimitError");
 check("no rows", table[1].mizan.scored === 0 && !table[1].mizan.error);
+
+const weighted: Report = {
+  ...report,
+  weighted: {
+    categories: {
+      coding: { weight: 0.2, blocks: ["agent_coding"], base: 0.5, mizan: 1 },
+      agents: { weight: 0.3, blocks: ["agent_web"], base: 0.75, mizan: 0.875 },
+    },
+    base: 0.65,
+    mizan: 0.925,
+  },
+  agentic: {
+    base: { tasks: 10, success: 0.7, objectives: 0.86, tool_accuracy: 1, groundedness: 1, recovery: 1, guardrail_violations: 0, latency_median_ms: 7871.5, tool_calls: 39 },
+    mizan: { tasks: 10, success: 0.9, objectives: 0.95, tool_accuracy: 1, groundedness: 1, recovery: 1, guardrail_violations: 0, latency_median_ms: 5244.7, tool_calls: 43 },
+  },
+};
+check("categories by weight", categoryRows(weighted)[0].label === "Agents" && categoryRows(weighted)[1].weight === 0.2);
+check("no categories in an old report", categoryRows(report).length === 0 && agenticRows(report).length === 0);
+const dims = agenticRows(weighted);
+check("agentic success", dims[0].base === "70%" && dims[0].mizan === "90%");
+check("latency in seconds, lower is better", dims[6].mizan === "5.2 s" && !dims[6].higher);
 
 console.log(`imtihan: ${checks} checks passed`);

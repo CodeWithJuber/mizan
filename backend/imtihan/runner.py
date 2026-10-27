@@ -17,7 +17,7 @@ from security.approvals import ApprovalContext, bind_approvals
 from tadbir import hadith, muqabala, quran, trace
 from tadbir.waqt import bind_timezone
 
-from . import report, scorers
+from . import agentic, report, scorers
 
 logger = logging.getLogger("mizan.imtihan")
 
@@ -33,9 +33,11 @@ def load_tasks(blocks: list[str] | None = None) -> list[dict]:
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 tasks.append(json.loads(line))
+    tasks += agentic.load()
     order = [
         "exactness", "scripture", "abstention", "honesty", "injection", "knowledge",
         "consistency", "multilingual", "learning", "safety", "code", "arc",
+        "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail",
     ]  # fmt: skip
     tasks.sort(key=lambda task: order.index(task["block"]) if task["block"] in order else 99)
     if blocks:
@@ -126,7 +128,7 @@ async def run_suite(
     sources = {
         task["id"]: await authentic_text(task["score"])
         for task in tasks
-        if task["score"]["kind"] == "quote"
+        if task.get("score", {}).get("kind") == "quote"
     }
     results: list[dict] = []
     attempts: list[dict] = []
@@ -136,7 +138,10 @@ async def run_suite(
         for attempt in range(1, repeats + 1):
             for task in tasks:
                 try:
-                    outcome = await run_task(agent, task, attempt, sources.get(task["id"]))
+                    if agentic.is_agentic(task):
+                        outcome = await agentic.run_task(agent, task, attempt, owner)
+                    else:
+                        outcome = await run_task(agent, task, attempt, sources.get(task["id"]))
                 except Exception as exc:  # noqa: BLE001 - one task never stops the suite
                     logger.warning("Imtihan task %s failed: %s", task["id"], exc)
                     outcome = {
@@ -164,7 +169,11 @@ async def run_suite(
                         await maybe
     return {
         "tasks": [
-            {key: task[key] for key in ("id", "block", "prompt", "source", "group") if key in task}
+            {
+                key: task[key]
+                for key in ("id", "block", "prompt", "instructions", "source", "group")
+                if key in task
+            }
             for task in tasks
         ],
         "repeats": repeats,

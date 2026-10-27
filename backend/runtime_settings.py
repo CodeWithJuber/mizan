@@ -78,6 +78,12 @@ SETTINGS: tuple[Setting, ...] = (
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "
             "that chat. Users can stop it with the chat preference muhasaba: off.",
             "on", ("on", "off")),
+    Setting("MIZAN_TRUTH_GATE", "Model", "Truth Gate (Sidq)", "choice",
+            "Before an answer is shown MIZAN checks what it can prove: arithmetic, quoted "
+            "Quran and hadith text, actions claimed with no receipt, and links it never "
+            "found. strict corrects or removes what is wrong, flag only marks it, off skips "
+            "the check.",
+            "strict", ("strict", "flag", "off")),
     Setting("MIZAN_MURAQABAH", "Model", "Watchers (Muraqabah)", "choice",
             "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
             "when a page changes), quiet during salah, within a daily attention budget.",

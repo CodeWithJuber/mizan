@@ -108,8 +108,12 @@ _faults: ContextVar[dict[str, dict] | None] = ContextVar("mizan_tool_faults", de
 
 @contextmanager
 def bind_faults(faults: dict[str, dict] | None) -> Iterator[None]:
-    """Make named tools fail for this run only (the AGI test checks honesty under faults)."""
-    token = _faults.set(faults or None)
+    """Make named tools fail for this run only (the AGI test checks honesty under faults).
+
+    A fault with ``times`` fails that many calls and then clears, so the test
+    can see whether the agent recovers; without it the tool fails every time.
+    """
+    token = _faults.set({name: dict(spec) for name, spec in (faults or {}).items()} or None)
     try:
         yield
     finally:
@@ -121,8 +125,50 @@ def injected_fault(tool: str) -> dict | None:
     faults = _faults.get()
     if not faults or tool not in faults:
         return None
-    reason = str(faults[tool].get("error") or "injected fault: the tool is unavailable")
+    spec = faults[tool]
+    if "times" in spec:
+        if int(spec["times"]) <= 0:
+            return None
+        spec["times"] = int(spec["times"]) - 1
+    reason = str(spec.get("error") or "injected fault: the tool is unavailable")
     return {"error": reason, "exit_code": None, "injected_fault": True}
+
+
+_fixtures: ContextVar[dict[str, dict] | None] = ContextVar("mizan_tool_fixtures", default=None)
+
+
+@contextmanager
+def bind_fixtures(fixtures: dict[str, dict] | None) -> Iterator[None]:
+    """Pages the web tools return for this run only (deterministic agentic tests)."""
+    token = _fixtures.set(fixtures or None)
+    try:
+        yield
+    finally:
+        _fixtures.reset(token)
+
+
+def fixture(tool: str, params: dict) -> dict | None:
+    """The bound page for a web tool call, if the test provides one."""
+    pages = (_fixtures.get() or {}).get(tool)
+    if not pages:
+        return None
+    if tool in ("web_browse", "web_read", "http_get"):
+        url = str(params.get("url") or params.get("action") or "").strip().rstrip("/")
+        for address, page in pages.items():
+            if address.rstrip("/") == url:
+                if isinstance(page, dict) and page.get("error"):
+                    return {"error": page["error"], "url": url}
+                content = page if isinstance(page, str) else str(page.get("content", ""))
+                title = "" if isinstance(page, str) else str(page.get("title", ""))
+                return {"url": url, "title": title, "content": content, "characters": len(content)}
+        return {"error": "HTTP 404: page not found", "url": url}
+    if tool == "web_search":
+        query = str(params.get("query") or "").lower()
+        for words, results in pages.items():
+            if all(word in query for word in words.lower().split()):
+                return {"query": query, "results": results}
+        return {"query": query, "results": []}
+    return None
 
 
 def model_call(response: Any, latency_ms: float) -> None:
