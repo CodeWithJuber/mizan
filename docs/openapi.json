@@ -19565,6 +19565,18 @@
       "type": "string",
       "pattern": "^(allow|deny)$",
       "title": "Decision"
+     },
+     "params_sha256": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[0-9a-f]{12,64}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params Sha256"
      }
     },
     "type": "object",

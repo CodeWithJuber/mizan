@@ -215,3 +215,28 @@ def test_a_denied_held_action_never_runs(held_api, store):
         f"/api/chat/held/{held_id}", json={"decision": "deny"}, headers=alice_headers
     )
     assert response.json()["status"] == "denied" and held_api.ran == []
+
+
+def test_an_approval_holds_only_for_the_parameters_that_were_shown(held_api, store):
+    from security import approvals, sakk
+
+    alice, alice_headers = held_api.alice
+    context = ApprovalContext(alice.id, "unattended:watcher", "ask", deferred=True)
+    params = {"command": "ls ~/Documents"}
+    held_id = store.hold(context, "bash", params, "Host commands")
+    view = approvals.shown(params)
+    assert view["complete"] and '"command": "ls ~/Documents"' in view["text"]
+    url = f"/api/chat/held/{held_id}"
+    wrong = held_api.client.post(
+        url, json={"decision": "allow", "params_sha256": "0" * 12}, headers=alice_headers
+    )
+    assert wrong.status_code == 404 and held_api.ran == []
+    right = held_api.client.post(
+        url,
+        json={"decision": "allow", "params_sha256": view["params_sha256"][:12]},
+        headers=alice_headers,
+    )
+    assert right.status_code == 200 and held_api.ran == [("bash", params)]
+    # The receipt names the exact parameters that were decided on.
+    decided = [r for r in sakk.store().receipts(alice.id) if r["kind"] == "held_decision"]
+    assert decided[0]["params_sha256"] == view["params_sha256"] and decided[0]["via"] == "web"

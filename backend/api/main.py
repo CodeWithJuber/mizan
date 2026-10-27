@@ -2772,6 +2772,9 @@ async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
 
 class HeldDecision(BaseModel):
     decision: str = Field(..., pattern=r"^(allow|deny)$")
+    # The SHA-256 (or its first 12+ characters) of the parameters you were
+    # shown; given, the decision applies only to exactly those parameters.
+    params_sha256: str | None = Field(None, pattern=r"^[0-9a-f]{12,64}$")
 
 
 @app.get("/api/chat/held")
@@ -2788,22 +2791,30 @@ async def decide_held_action(
 ):
     """Allow or deny one held action. Allowed, it runs exactly once, as it was
     held, through your own agent and its gates; the result is posted to the chat."""
-    outcome = await _decide_held(user, held_id, body.decision)
+    outcome = await _decide_held(user, held_id, body.decision, seen=body.params_sha256)
     if outcome is None:
-        raise HTTPException(404, "No action is waiting for you with that id")
+        raise HTTPException(404, "No action is waiting for you with that id and those parameters")
     return outcome
 
 
-async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict | None:
+async def _decide_held(
+    user: TokenPayload,
+    held_id: str,
+    decision: str,
+    *,
+    seen: str | None = None,
+    via: str = "web",
+) -> dict | None:
     """Claim one held action for its owner and, if allowed, run it once.
-    None when nothing is waiting for this owner under that id."""
+    None when nothing is waiting for this owner under that id (or, with
+    ``seen``, not with the parameters the owner was shown)."""
     import re
 
     from security.approvals import ApprovalContext, bind_approvals, held_store, params_digest
 
     store = held_store()
     item = (
-        store.claim(user.user_id, held_id, decision)
+        store.claim(user.user_id, held_id, decision, via=via, seen=seen)
         if re.fullmatch(r"[0-9a-f]{32}", held_id)
         else None
     )
@@ -2814,7 +2825,14 @@ async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict 
     sakk.record(
         user.user_id,
         "held_decision",
-        {"held": held_id, "tool": item["tool"], "decision": decision},
+        {
+            "held": held_id,
+            "tool": item["tool"],
+            "decision": decision,
+            # The receipt names exactly what was decided on.
+            "params_sha256": item["params_sha256"],
+            "via": via,
+        },
         f"{item['tool']} · {'allowed' if decision == 'allow' else 'denied'} by you",
     )
     session = item["session_id"]
@@ -3444,16 +3462,16 @@ def _remembered_zone(owner_id: str) -> str | None:
         return None
 
 
-async def _bab_decide(owner_id: str, held_id: str, decision: str) -> str:
+async def _bab_decide(owner_id: str, held_id: str, decision: str, seen: str | None) -> str:
     user = _owner_token(owner_id)
     if user is None:
         return "Your MIZAN account is not available."
     try:
-        outcome = await _decide_held(user, held_id, decision)
+        outcome = await _decide_held(user, held_id, decision, seen=seen, via="telegram")
     except HTTPException as exc:
         return str(exc.detail)
     if outcome is None:
-        return "Already decided, or it expired."
+        return "Already decided, expired, or changed since you were shown it."
     if outcome["status"] == "denied":
         return "Denied: it will not run."
     result = outcome.get("result") or {}
@@ -3488,13 +3506,12 @@ async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
     bot = _telegram_bot
     if bot is None or not bot.running:
         return
-    from gateway.telegram import held_buttons
-
     link = bab_store.store().link_for_owner("telegram", owner_id)
     if link is None:
         return
     try:
-        await bot.send(link["chat_id"], text, held_buttons(metadata.get("held") or []))
+        await bot.send(link["chat_id"], text)
+        await bot.send_held(link["chat_id"], metadata.get("held") or [])
     except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
         logger.warning("Telegram notice not sent: %s", exc)
 

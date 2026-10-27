@@ -62,8 +62,14 @@ person is **held** instead of run:
 - Each held action is stored with its exact parameters and their SHA-256
   (`$MIZAN_DATA_DIR/held_actions.db`) and expires after 24 hours.
 - A watcher's notice says what waits and shows **Allow once / Deny** under the
-  message. `GET /api/chat/held` lists your held actions.
+  message, with **what it will do**: the exact parameters and the first 12
+  characters of their SHA-256 (the fingerprint). Allow is offered only once
+  every parameter can be read there. `GET /api/chat/held` lists your held
+  actions with their parameters.
 - `POST /api/chat/held/{id}` with `{"decision": "allow" | "deny"}` decides one.
+  Add `"params_sha256"` (the fingerprint or the full digest) and the decision
+  holds only for exactly the parameters you were shown; the web app and
+  Telegram always send it. The Sakk receipt of the decision names the digest.
   It is accepted once, only from the owner, only before it expires, and only
   if the stored parameters still match their digest. An allowed action runs
   exactly as it was held, through your own agent, and its result is posted

@@ -313,8 +313,17 @@ class HeldActions:
         )
         return [self._public(row) for row in rows]
 
-    def claim(self, owner_id: str, held_id: str, decision: str, via: str = "web") -> dict | None:
-        """Take one pending action for a decision (allow | deny), at most once."""
+    def claim(
+        self,
+        owner_id: str,
+        held_id: str,
+        decision: str,
+        via: str = "web",
+        seen: str | None = None,
+    ) -> dict | None:
+        """Take one pending action for a decision (allow | deny), at most once.
+        ``seen`` is the start of the SHA-256 of the parameters the person was
+        shown; given, the decision holds only for exactly those parameters."""
         if decision not in {"allow", "deny"}:
             return None
         now = datetime.now(UTC)
@@ -327,6 +336,8 @@ class HeldActions:
                 return None
             if params_digest(json.loads(row["params"])) != row["params_sha256"]:
                 return None  # changed after it was held: never run it
+            if seen is not None and (len(seen) < 12 or not row["params_sha256"].startswith(seen)):
+                return None  # not what the person was shown
             status = "allowed" if decision == "allow" else "denied"
             updated = conn.execute(
                 "UPDATE held SET status = ?, decided = ?, decided_via = ? "
@@ -368,11 +379,35 @@ def collecting_held() -> Iterator[list[dict]]:
         _collected.reset(token)
 
 
+SHOWN_CHARS = 1500  # what fits on an approval card in a chat app
+
+
+def shown(params: dict, limit: int = SHOWN_CHARS) -> dict:
+    """The parameters as the person will read them before deciding, whether
+    they fit whole, and the SHA-256 an approval of them is bound to."""
+    text = json.dumps(params, indent=1, sort_keys=True, ensure_ascii=False, default=str)
+    return {
+        "text": text if len(text) <= limit else text[:limit],
+        "complete": len(text) <= limit,
+        "params_sha256": params_digest(params),
+    }
+
+
 def hold_action(context: ApprovalContext, tool: str, params: dict, reason: str = "") -> str:
     held_id = held_store().hold(context, tool, params, reason)
     found = _collected.get()
     if found is not None:
-        found.append({"id": held_id, "tool": tool, "reason": reason})
+        view = shown(params)
+        found.append(
+            {
+                "id": held_id,
+                "tool": tool,
+                "reason": reason,
+                "shown": view["text"],
+                "complete": view["complete"],
+                "params_sha256": view["params_sha256"],
+            }
+        )
     return held_id
 
 
