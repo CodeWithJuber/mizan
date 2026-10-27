@@ -103,14 +103,18 @@ Identification", arXiv 2504.21540](https://arxiv.org/abs/2504.21540)).
 
 ## Qasd: what the request is for
 
-Qasd reads three kinds of evidence:
+Qasd reads four kinds of evidence:
 
 - the request's own words, as n-grams and words
 - what MIZAN's parsers find in it (`e:` tokens)
 - the context (`c:` tokens)
+- the chat so far, as the prior (below)
 
-It returns a posterior over 27 recipes and `converse`. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 949 requests in five languages
+It returns a posterior over 28 recipes and `converse`. `use_tool` is the
+request for one of the user's connected tools (GitHub, calendar, email, Drive):
+it has no recipe of its own, so it goes to Lisan, which picks among the tools
+the user actually has, and MIZAN checks the arguments against the tool's schema. The seeds are in
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 1059 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -123,21 +127,41 @@ intents.
 2. Families are tried most probable first. Within a family, the most probable
    recipe whose parser finds what it needs (a reference, an expression, a
    link, a schedule) becomes the plan.
-3. A family whose recipe could not be built from these words adds its mass to
-   "an action MIZAN could not build". Once that mass outweighs the next
-   family, or conversation comes next, the request goes on as conversation.
-   A **fixed answer** (`capabilities`, the same list whatever the message
-   says) is built only when it is more probable than every other reading
-   together (P > ½); otherwise its mass counts as unbuilt. "Tum pagal ho?"
-   was once its likeliest single reading at P = 0.28 and got the tool list.
+3. A family is acted on only when it is **decisive**: more probable than
+   every other reading together (P > ½). Below that, MIZAN does not guess an
+   action from the likeliest crumb; the family's mass counts as "an action
+   MIZAN could not build", and so does the mass of a family whose recipe could
+   not be built from these words. Once that mass outweighs the next family, or
+   conversation comes next, the request goes on as conversation. On the seed
+   requests held out one at a time, this turns away 87 wrong actions and
+   leaves 62 right but undecided ones to Lisan (step 5). "Tum pagal ho?" was
+   once given the tool list at P = 0.28, and "Garbage area 👇 कुलडी 😁" was
+   built as a website at P = 0.25.
 4. A family is acted on only if the words made it more probable than it was
    before reading them: its posterior must exceed its prior (the posterior of
    a message with no evidence at all). A bare "?" carries no evidence, so it
    can never start a recipe; it once ran a Quran search on the text "?".
-5. If the actions MIZAN could build are together more probable than the kinds
-   of request answered in words (conversation and the follow-ups below; P > ½),
-   Lisan may map the wording into MIZAN's action schema. MIZAN validates every
-   step and runs it itself.
+5. If the action families that each outranked conversation, with more
+   evidence than before (step 4), could not be built and together outweigh
+   conversation, Lisan may map the wording into MIZAN's action schema. Many
+   small readings spread over unrelated actions are uncertainty, not a
+   request, and are never mapped. Lisan sees the user's last three messages
+   as context, so a word taught in a dialect lesson reads as part of the
+   lesson. A fixed answer (`capabilities`) is never mapped. MIZAN validates
+   every step and runs it itself.
+
+**The chat is the prior.** As Lughah does for the language, Qasd reads the
+user's earlier messages in the chat (up to 12) as a Dirichlet prior: each
+class starts with one pseudo-count, spread by the model's own prior, and every
+earlier message adds its posterior. The model's prior is divided out of the
+message's posterior and the chat's multiplied in. In a chat that has been
+conversation for a while, a short message that reads only a little like a
+request stays conversation; a clear request ("Surah Ikhlas sunao", "2**100
+kitna hai") still wins on its own words. Replaying the owner's chat of
+27 October (35 messages teaching words of their dialect) took 9 actions
+before; now nothing is built or searched: the two lines that quote "kya time
+hua" are still answered with the time, and two are read by Lisan with the
+chat as context.
 
 **Follow-ups** are intents whose words name something said earlier in the
 chat, and Tadbir takes it from there: `silsila_follow` ("karo koshish", the
