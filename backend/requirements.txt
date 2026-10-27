@@ -34,6 +34,7 @@ hijridate>=2.6.0,<3  # Umm al-Qura Hijri calendar (Tadbir dates)
 adhanpy>=1.0.5,<2  # Prayer times computed locally (Muraqabah quiet windows), MIT
 tzdata>=2026.5  # IANA timezones for zoneinfo in slim images
 jsonschema>=4.26.0,<5  # MIZAN validates tool arguments (Tadbir Amal)
+pywebpush>=2.5.0,<3  # Web Push with VAPID and encrypted payloads (Bab notices), MPL-2.0
 
 # CLI
 click>=8.5.0,<9

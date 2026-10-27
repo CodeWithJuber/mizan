@@ -1,4 +1,4 @@
-# Bab (باب): your own MIZAN from Telegram
+# Bab (باب): your own MIZAN from Telegram and on your devices
 
 When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It uses long polling over the Bot API (`httpx`), so no public webhook is needed. Each user links their own Telegram account. The code is in `backend/gateway/telegram.py` and `backend/gateway/store.py`.
 
@@ -38,3 +38,24 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
 | `DELETE /api/bab/telegram/link` | Unlink your account |
 
 Links, codes and the poll position live in `$MIZAN_DATA_DIR/bab.db`.
+
+## Notifications on your devices (Web Push)
+
+MIZAN is installable as an app (`manifest.webmanifest`, icons). It sends standard Web Push to every device where you turned notifications on, even when the app is closed. It uses VAPID (RFC 8292) and end-to-end encrypted payloads (RFC 8291), sent with `pywebpush` (MPL-2.0). The code is in `backend/gateway/push.py`.
+
+- **Turning it on:** MIZAN → Channels → **Notifications on this device** → Turn on. The browser asks for permission, and MIZAN keeps the subscription for this device only. **Test** sends one notice. On iPhone, add MIZAN to the Home Screen first.
+- **What sends:** watcher notices, including the ones that hold an action for you.
+- **The lock screen:** shows only "MIZAN has a new notice". To show the text, set the chat preference `push_preview: on`. Pressing a notice opens the watcher chat.
+- **Where MIZAN sends:**
+  - only to known push services over HTTPS: Google FCM, Mozilla, Apple, Microsoft WNS;
+  - a subscription to any other address is refused, so MIZAN never posts to an address a browser chose;
+  - a device the push service reports gone (404/410) is removed.
+- **Signing key:** MIZAN makes its own key on first use. It is sealed with the data key (`connectors.key`) and kept in `bab.db`.
+- **The service worker** (`/sw.js`) only shows notifications. It caches nothing and handles no requests, so a deploy is never served stale. nginx serves it and the manifest with `no-cache`.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/bab/push/key` | MIZAN's public key to subscribe with, and how many of your devices are on |
+| `POST /api/bab/push/subscription` | Turn notifications on for this device |
+| `DELETE /api/bab/push/subscription?endpoint=` | Turn them off |
+| `POST /api/bab/push/test` | Send yourself a test notice |
