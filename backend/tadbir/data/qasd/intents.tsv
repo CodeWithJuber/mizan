@@ -347,7 +347,7 @@ build_and_run	Write a function to check palindromes, test it on racecar
 build_and_run	Program likho jo 1000 tak ke prime count kare aur chala do
 build_and_run	اكتب برنامجا بلغة بايثون يطبع الأعداد الأولية وشغله
 build_and_run	एक पायथन प्रोग्राम लिखो और चलाओ जो 1 से 10 तक छापे
-build_and_run	Write a function format_citation that returns 'Surah 2, Ayah 255' for (2, 255)
+build_and_run	Write a function slugify that turns 'Hello World' into 'hello-world' and test it
 build_and_run	Write a Python function that returns the sum of a list, with tests
 build_and_run	Write code to check if 97 is prime and run it
 build_and_run	Program se 100 factorial ke digits ka sum nikalo
@@ -699,3 +699,30 @@ converse	Main Surah Mulk yaad kar raha hoon lekin roz bhool jaata hoon, koi achh
 converse	My grandmother loves Surah Yasin and I want to write her a short heartfelt note for her birthday, can you help me with the words?
 converse	Ramzan mein mera plan hai ke har din ek para parhoon aur saath mein tafseer bhi, kya yeh routine sahi hai ya kuch behtar suggest karoge
 converse	I have been feeling distant from prayer lately even though I read Surah Kahf every Friday, how can I bring my heart back?
+build_and_run	Help me write a Python script that renames all my photos by date
+build_and_run	Can you write me a script that converts a CSV file to JSON?
+build_and_run	I need a Python program that tells me how many days are left until Ramadan
+build_and_run	Help me write a small program that checks if a year is a leap year
+build_and_run	Write me a Python script with a simple window and a button
+build_and_run	Make a Python program with a small UI where I type my name and it greets me
+build_and_run	Mujhe ek Python script chahiye jo meri files ko size ke hisaab se sort kare
+build_and_run	Ek Python script likhne mein madad karo jo password generate kare
+build_and_run	Python mein ek chhota GUI program banao jisme ek button ho
+build_and_run	مجھے ایک پائتھن اسکرپٹ لکھ دیں جو فائلوں کے نام بدل دے
+build_and_run	मेरे लिए एक पायथन स्क्रिप्ट लिखो जो फ़ाइलें गिने
+build_and_run	ساعدني في كتابة برنامج بايثون يحسب متوسط الدرجات
+converse	How do I write my first Python script?
+converse	What is the difference between a script and a program?
+converse	Which Python GUI library is best for beginners?
+converse	Python script kaise likhte hain, samjhao
+build_and_run	What is the 40th Fibonacci number?
+build_and_run	Prime numbers mein 100th prime kaunsa hai?
+build_and_run	Lucas series ka 20th term kya hai?
+build_and_run	Tribonacci sequence ka 25th number batao
+build_and_run	What's the 1000th prime number?
+build_and_run	Catalan numbers ka 10th term nikalo
+build_and_run	पचासवाँ फ़िबोनाची नंबर क्या है?
+build_and_run	Write a script that reads surah numbers and ayah counts from a CSV and prints the total
+build_and_run	Write a function that checks whether a Quran reference like Surah 2, Ayah 300 is valid, with tests
+build_and_run	Python function likho jo surah aur ayah number se quran.com ka link banaye
+build_and_run	Make a program that lists how many ayahs Surah 2 and Surah 3 have

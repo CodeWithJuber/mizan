@@ -4,6 +4,8 @@ import pytest
 
 from tadbir import isnad, sidq
 
+REAL_DEAD_LINKS = sidq.dead_links  # the tests below replace it with an offline stand-in
+
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
@@ -114,3 +116,40 @@ def test_every_learning_step_reaches_the_live_record():
     assert "Katib" in notes[1]["summary"] and notes[1]["summary"].endswith("worked")
     assert sijill.since("u-live", after=notes[0]["seq"]) == notes[1:]
     assert sijill.since("someone-else") == []
+
+
+async def test_every_redirect_hop_is_checked_and_a_private_one_is_not_followed(monkeypatch):
+    import httpx
+
+    from connectors import net_guard
+
+    async def public(url, **kwargs):
+        return None
+
+    async def pinned(url):
+        host = httpx.URL(url).host
+        if host == "internal.example":
+            raise ValueError("URL resolves to a non-public address")
+        return httpx.URL(url), host, host
+
+    asked = []
+
+    def handler(request):
+        host = request.headers["host"]
+        asked.append(host)
+        routes = {
+            "a.example": httpx.Response(302, headers={"location": "http://internal.example/"}),
+            "b.example": httpx.Response(301, headers={"location": "https://c.example/gone"}),
+            "c.example": httpx.Response(404),
+        }
+        return routes.get(host, httpx.Response(200))
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(net_guard, "check_url", public)
+    monkeypatch.setattr(net_guard, "pinned_destination", pinned)
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
+    )
+    dead = await REAL_DEAD_LINKS(["https://a.example/x", "https://b.example/y"])
+    assert dead == ["https://b.example/y"]  # moved, then gone
+    assert "internal.example" not in asked  # the private hop was never opened

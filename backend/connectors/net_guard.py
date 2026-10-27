@@ -12,7 +12,11 @@ import asyncio
 import ipaddress
 import os
 import socket
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    import httpx
 
 
 class BlockedDestination(ValueError):
@@ -50,3 +54,33 @@ async def check_url(url: str, *, require_https: bool = False) -> None:
 async def request_hook(request) -> None:
     """httpx2 request hook: re-check every request, redirects and OAuth calls included."""
     await check_url(str(request.url))
+
+
+async def pinned_destination(url: str) -> tuple[httpx.URL, str, str]:
+    """A public HTTP(S) URL resolved once and pinned to that address (no DNS
+    rebinding between the check and the request), with the Host header and
+    TLS server name kept."""
+    import httpx
+
+    parsed = httpx.URL(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.host or parsed.userinfo:
+        raise ValueError("Only public HTTP(S) URLs without credentials are allowed")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    addresses = await asyncio.get_running_loop().getaddrinfo(
+        parsed.host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM
+    )
+    ips = [ipaddress.ip_address(item[4][0]) for item in addresses]
+    if not ips or any(
+        not ip.is_global
+        or ip.is_multicast
+        or (
+            isinstance(ip, ipaddress.IPv6Address)
+            and ip.ipv4_mapped is not None
+            and not ip.ipv4_mapped.is_global
+        )
+        for ip in ips
+    ):
+        raise ValueError("URL resolves to a non-public address")
+    host_header = parsed.netloc.decode("ascii")
+    # Connect to the validated literal, eliminating the second DNS lookup/rebinding gap.
+    return parsed.copy_with(host=str(ips[0])), host_header, parsed.host

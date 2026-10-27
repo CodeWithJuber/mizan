@@ -236,7 +236,7 @@ async def lifespan(app: FastAPI):
         aid = agent_id or (choose_agent_for_task(task) if active_agents else None)
         if aid and aid in active_agents:
             agent = active_agents[aid]
-            return await agent.execute(task)
+            return await _run_unattended(agent, task, None, "schedule")
         return {"error": "No agent available"}
 
     scheduler.set_executor(execute_scheduled_task)
@@ -282,7 +282,7 @@ async def lifespan(app: FastAPI):
         if not agent_id or agent_id not in active_agents:
             return {"error": "No agent available"}
         agent = active_agents[agent_id]
-        result = await agent.execute(task_text)
+        result = await _run_unattended(agent, task_text, payload.get("owner_id"), "queue")
         await manager.broadcast(
             {
                 "type": "queue_task_complete",
@@ -1446,8 +1446,11 @@ def chat_failure_payload(result: dict) -> dict:
         "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
         "model_refused": "The model declined this request. Rephrase it or choose another model.",
         "provider_unavailable": "The model provider returned an error and stayed unavailable after automatic retries and fallback models. Try again in a moment or choose another model.",
+        "provider_rate_limited": "The selected model is rate-limited by its provider right now (free models are often busy). Try again in a minute, or choose another model.",
     }
     code = result.get("error_code")
+    if code == "provider_unavailable" and result.get("provider_status") == 429:
+        code = "provider_rate_limited"
     if not isinstance(code, str) or code not in public_errors:
         code = "agent_failed"
     message = public_errors.get(
@@ -2354,6 +2357,75 @@ async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
     return {"pending": broker.pending_for(user.user_id)}
 
 
+class HeldDecision(BaseModel):
+    decision: str = Field(..., pattern=r"^(allow|deny)$")
+
+
+@app.get("/api/chat/held")
+async def list_held_actions(user: TokenPayload = Depends(require_auth)):
+    """Actions your watchers and other unattended runs held for your approval."""
+    from security.approvals import held_store
+
+    return {"held": held_store().pending(user.user_id)}
+
+
+@app.post("/api/chat/held/{held_id}")
+async def decide_held_action(
+    held_id: str, body: HeldDecision, user: TokenPayload = Depends(require_auth)
+):
+    """Allow or deny one held action. Allowed, it runs exactly once, as it was
+    held, through your own agent and its gates; the result is posted to the chat."""
+    import re
+
+    from security.approvals import ApprovalContext, bind_approvals, held_store, params_digest
+
+    store = held_store()
+    item = (
+        store.claim(user.user_id, held_id, body.decision)
+        if re.fullmatch(r"[0-9a-f]{32}", held_id)
+        else None
+    )
+    if item is None:
+        raise HTTPException(404, "No action is waiting for you with that id")
+    session = item["session_id"]
+    if session.startswith("unattended:"):
+        session = muraqabah_session(user.user_id)
+    if body.decision == "deny":
+        store.finish(held_id, {"declined": True})
+        return {"held_id": held_id, "status": "denied"}
+    template = _tadbir_coordinator()
+    if template is None:
+        store.finish(held_id, {"error": "No agent available"})
+        raise HTTPException(503, "No agent available")
+    agent = await chat_agent_for(user, template)
+    binding = bind_principal(user)
+    try:
+        # The owner's decision approves this one exact call; nothing else.
+        context = ApprovalContext(
+            user.user_id,
+            session,
+            "ask",
+            granted=(item["tool"], params_digest(item["params"])),
+        )
+        with bind_approvals(context):
+            result = await agent._execute_tool_safe(item["tool"], item["params"])
+    except Exception as exc:  # noqa: BLE001 - reported to the owner, never re-run
+        result = {"error": f"{type(exc).__name__}: {exc}"[:500]}
+    finally:
+        reset_principal(binding)
+    outcome = result if isinstance(result, dict) else {"result": str(result)[:20000]}
+    store.finish(held_id, outcome)
+    shown = json.dumps(outcome, ensure_ascii=False, default=str)[:3000]
+    await memory.authorize_session(session, user.user_id, create=True)
+    await memory.save_message(
+        session,
+        "assistant",
+        f"**You allowed: {item['tool']}**\n\n```json\n{shown}\n```",
+        metadata={"held_result": held_id, "status": "complete"},
+    )
+    return {"held_id": held_id, "status": "done", "result": outcome}
+
+
 @app.get("/api/chat/{session_id}")
 async def get_chat_history(
     session_id: str,
@@ -2699,19 +2771,51 @@ def _owner_token(owner_id: str) -> TokenPayload | None:
     )
 
 
+def _unattended_principal(owner_id: str | None) -> TokenPayload | None:
+    """Who an unattended run acts for: its creator, else the first administrator."""
+    if owner_id:
+        token = _owner_token(owner_id)
+        if token is not None:
+            return token
+    for record in auth.list_users():
+        if "admin" in record["roles"] and record["enabled"]:
+            return _owner_token(record["id"])
+    return None
+
+
+async def _run_unattended(agent, task: str, owner_id: str | None, origin: str) -> dict:
+    """A run no one is watching (a schedule, a trigger, the queue): it acts as its
+    owner, through that owner's gates, and every action that needs a person is
+    held for them instead of run."""
+    from security import approvals
+
+    user = _unattended_principal(owner_id)
+    if user is None:
+        return {"error": "No owner to act for"}
+    binding = bind_principal(user)
+    try:
+        with approvals.unattended(user.user_id, f"unattended:{origin}", origin):
+            return cast(dict, await agent.execute(task))
+    finally:
+        reset_principal(binding)
+
+
 async def _watcher_task(owner_id: str, task: str) -> str:
-    """Run a watcher's task as its owner, through their own agent and its gates."""
+    """Run a watcher's task as its owner, through their own agent and its gates;
+    actions that need a person are held for the owner (no one is watching)."""
     user = _owner_token(owner_id)
     template = _tadbir_coordinator()
     if user is None or template is None:
         return ""
     from automation import muraqabah
+    from security import approvals
 
     agent = await chat_agent_for(user, template)
     binding = bind_principal(user)
+    session = muraqabah_session(owner_id)
     try:
-        with muraqabah.running_watcher():
-            result = await agent.execute(task, {"session_id": muraqabah_session(owner_id)})
+        with muraqabah.running_watcher(), approvals.unattended(owner_id, session, "watcher"):
+            result = await agent.execute(task, {"session_id": session})
     finally:
         reset_principal(binding)
     return str(result.get("result") or "")
@@ -3000,14 +3104,20 @@ async def ingest_knowledge(req: KnowledgeIngest):
     if not content:
         raise HTTPException(422, "No content extracted from source")
 
+    from tadbir import amanah
+
     chunks = chunk_content(content)
     stored_ids = []
     for chunk in chunks:
+        # Stored text is read back into prompts later: an instruction hidden in
+        # the source is neutralized now, and the note says where it came from.
+        clean, _found = amanah.neutralize(chunk)
         mem_id = await memory.remember(
-            content=chunk,
+            content=clean,
             memory_type="semantic",
             importance=0.8,
             tags=["knowledge", source_type, result.get("title", "")[:50]],
+            source=f"knowledge:{req.source[:300]}",
         )
         stored_ids.append(mem_id)
 
@@ -3052,14 +3162,18 @@ async def upload_knowledge(request: Request):
     if not content:
         raise HTTPException(422, "No text content extracted from PDF")
 
+    from tadbir import amanah
+
     chunks = chunk_content(content)
     stored_ids = []
     for chunk in chunks:
+        clean, _found = amanah.neutralize(chunk)
         mem_id = await memory.remember(
-            content=chunk,
+            content=clean,
             memory_type="semantic",
             importance=0.8,
             tags=["knowledge", "pdf", filename[:50]],
+            source=f"knowledge:{filename[:300]}",
         )
         stored_ids.append(mem_id)
 
@@ -3939,67 +4053,92 @@ async def update_settings(
 
 # === CHANNEL MANAGEMENT ===
 
+_CHANNEL_TOKENS = {
+    "telegram": "TELEGRAM_BOT_TOKEN",
+    "discord": "DISCORD_BOT_TOKEN",
+    "whatsapp": "WHATSAPP_TOKEN",
+    "slack": "SLACK_APP_TOKEN",
+}
+_CHANNEL_NAMES = {
+    "telegram": "Telegram",
+    "discord": "Discord",
+    "whatsapp": "WhatsApp",
+    "slack": "Slack",
+}
+
+
+def _channel_state(name: str) -> dict:
+    """What a channel really is: MIZAN reports only what it runs.
+
+    Web chat is always on. No external channel adapter runs yet, so none is
+    reported as connected, whatever token is saved."""
+    if name == "webchat":
+        return {
+            "id": "webchat",
+            "type": "webchat",
+            "name": "WebChat",
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "detail": "Built in.",
+            "connected_users": len(manager.connections),
+            "messages_processed": 0,
+        }
+    has_token = bool(os.getenv(_CHANNEL_TOKENS[name]))
+    return {
+        "id": name,
+        "type": name,
+        "name": _CHANNEL_NAMES[name],
+        "status": "configured" if has_token else "unavailable",
+        "running": False,
+        "startable": False,
+        "has_token": has_token,
+        "detail": (
+            "Token saved, but MIZAN does not run this channel yet."
+            if has_token
+            else "Not available yet: MIZAN does not run this channel."
+        ),
+        "connected_users": 0,
+        "messages_processed": 0,
+    }
+
+
+def _known_channel(name: str) -> None:
+    if name not in _CHANNEL_TOKENS:
+        raise HTTPException(404, f"Unknown channel: {name}")
+
 
 @app.post("/api/channels/{name}/start")
 async def start_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
-    """Start a channel adapter"""
-    token_map = {
-        "telegram": "TELEGRAM_BOT_TOKEN",
-        "discord": "DISCORD_BOT_TOKEN",
-        "whatsapp": "WHATSAPP_TOKEN",
-        "slack": "SLACK_APP_TOKEN",
-    }
-    if name not in token_map:
-        raise HTTPException(404, f"Unknown channel: {name}")
-    token = os.getenv(token_map[name])
-    if not token:
-        raise HTTPException(400, f"No token configured for {name}. Set {token_map[name]} first.")
-
-    wali.audit.log("channel_start", {"channel": name})
-    return {"status": "started", "channel": name, "message": f"{name} adapter started"}
+    """Starting an external channel is not available: none runs yet."""
+    _known_channel(name)
+    raise HTTPException(501, _channel_state(name)["detail"])
 
 
 @app.post("/api/channels/{name}/stop")
 async def stop_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
-    """Stop a channel adapter"""
-    wali.audit.log("channel_stop", {"channel": name})
-    return {"status": "stopped", "channel": name}
+    _known_channel(name)
+    raise HTTPException(501, _channel_state(name)["detail"])
 
 
 @app.get("/api/channels/{name}/status")
 async def channel_status(name: str):
-    """Get real-time channel status"""
-    token_map = {
-        "telegram": "TELEGRAM_BOT_TOKEN",
-        "discord": "DISCORD_BOT_TOKEN",
-        "whatsapp": "WHATSAPP_TOKEN",
-        "slack": "SLACK_APP_TOKEN",
-    }
-    if name not in token_map:
-        raise HTTPException(404, f"Unknown channel: {name}")
-    has_token = bool(os.getenv(token_map[name]))
+    """The channel's real state (never 'connected' unless MIZAN runs it)."""
+    _known_channel(name)
+    state = _channel_state(name)
     return {
         "channel": name,
-        "has_token": has_token,
-        "connected": False,
-        "status": "configured" if has_token else "not_configured",
+        "has_token": state["has_token"],
+        "connected": state["running"],
+        "status": state["status"],
+        "detail": state["detail"],
     }
 
 
 @app.post("/api/channels/{name}/test")
 async def test_channel(name: str, user: TokenPayload | None = Depends(get_current_user)):
-    """Send a test message through a channel"""
-    token_map = {
-        "telegram": "TELEGRAM_BOT_TOKEN",
-        "discord": "DISCORD_BOT_TOKEN",
-        "whatsapp": "WHATSAPP_TOKEN",
-        "slack": "SLACK_APP_TOKEN",
-    }
-    if name not in token_map:
-        raise HTTPException(404, f"Unknown channel: {name}")
-    if not os.getenv(token_map[name]):
-        raise HTTPException(400, f"No token configured for {name}")
-    return {"status": "test_sent", "channel": name, "message": "Test message dispatched"}
+    _known_channel(name)
+    raise HTTPException(501, _channel_state(name)["detail"])
 
 
 @app.post("/api/shura")
@@ -4494,50 +4633,8 @@ async def gateway_status(user: TokenPayload | None = Depends(get_current_user)):
 
 @app.get("/api/gateway/channels")
 async def list_channels(user: TokenPayload | None = Depends(get_current_user)):
-    """List all channel adapters"""
-    channels = [
-        {
-            "id": "webchat",
-            "type": "webchat",
-            "name": "WebChat",
-            "status": "connected",
-            "connected_users": len(manager.connections),
-            "messages_processed": 0,
-        },
-        {
-            "id": "telegram",
-            "type": "telegram",
-            "name": "Telegram",
-            "status": "disconnected" if not os.getenv("TELEGRAM_BOT_TOKEN") else "connected",
-            "connected_users": 0,
-            "messages_processed": 0,
-        },
-        {
-            "id": "discord",
-            "type": "discord",
-            "name": "Discord",
-            "status": "disconnected" if not os.getenv("DISCORD_BOT_TOKEN") else "connected",
-            "connected_users": 0,
-            "messages_processed": 0,
-        },
-        {
-            "id": "slack",
-            "type": "slack",
-            "name": "Slack",
-            "status": "disconnected" if not os.getenv("SLACK_APP_TOKEN") else "connected",
-            "connected_users": 0,
-            "messages_processed": 0,
-        },
-        {
-            "id": "whatsapp",
-            "type": "whatsapp",
-            "name": "WhatsApp",
-            "status": "disconnected" if not os.getenv("WHATSAPP_TOKEN") else "connected",
-            "connected_users": 0,
-            "messages_processed": 0,
-        },
-    ]
-    return {"channels": channels}
+    """Every channel with its real state."""
+    return {"channels": [_channel_state(name) for name in ("webchat", *_CHANNEL_TOKENS)]}
 
 
 # ===== NAFS 7-LEVEL ENDPOINTS =====
@@ -5141,7 +5238,12 @@ async def enqueue_task(
 ):
     """Add a task to the priority queue."""
     priority = PRIORITY_MAP.get(req.priority.lower(), TaskPriority.TAHSINIYYAH)
-    payload = {"task": req.task, "agent_id": req.agent_id, **req.metadata}
+    payload = {
+        "task": req.task,
+        "agent_id": req.agent_id,
+        **req.metadata,
+        "owner_id": user.user_id if user else None,
+    }
     task_id = await task_queue.enqueue(payload, priority, req.agent_id)
     await manager.broadcast(
         {

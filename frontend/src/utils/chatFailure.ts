@@ -48,7 +48,7 @@ export function chatFailureFields(
 export function restoredMessageFields(
   content: string,
   metadata: Record<string, unknown> = {},
-): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held"> {
   const failure = metadata.status === "error"
     ? chatFailureFields({ ...metadata, content }) : undefined;
   const meta = failure?.meta ?? messageUsage(metadata);
@@ -60,7 +60,18 @@ export function restoredMessageFields(
     // local Stop action has evidence for the user-stopped label.
     stopped: false,
     interrupted: !failure && (metadata.status === "cancelled" || metadata.partial === true),
+    held: heldActions(metadata.held),
   };
+}
+
+function heldActions(value: unknown): ChatMessage["held"] {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.flatMap((item) =>
+    record(item) && typeof item.id === "string" && typeof item.tool === "string"
+      ? [{ id: item.id, tool: item.tool, reason: typeof item.reason === "string" ? item.reason : undefined }]
+      : [],
+  );
+  return items.length ? items : undefined;
 }
 
 /** JSON failures may be returned directly or inside an HTTP detail object. */

@@ -22,7 +22,6 @@ import math
 import os
 import re
 import subprocess
-import sys
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
@@ -564,7 +563,6 @@ class BaseAgent:
             "list_files": self._tool_list_files,
             "python_exec": self._tool_python_exec,
             "create_agent": self._tool_create_agent,
-            "create_skill": self._tool_create_skill,
             "compact_context": self._tool_compact_context,
             "recall_memory": self._tool_recall_memory,
             "delegate_task": self._tool_delegate_task,
@@ -694,32 +692,6 @@ class BaseAgent:
                             "type": "string",
                             "description": "Optional role description for the agent",
                             "default": "",
-                        },
-                    },
-                    "required": ["name"],
-                },
-            },
-            {
-                "name": "create_skill",
-                "description": "Dynamically create a new skill/tool at runtime. The skill code will be saved and registered immediately. Use this to add new capabilities on the fly.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Skill name (snake_case, e.g. 'my_custom_skill')",
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "What the skill does",
-                        },
-                        "code": {
-                            "type": "string",
-                            "description": "Full Python code for the skill class. Must subclass SkillBase.",
-                        },
-                        "tools": {
-                            "type": "object",
-                            "description": "Simple tool definitions as {name: {description, params}} for auto-generating a skill without full code.",
                         },
                     },
                     "required": ["name"],
@@ -2173,13 +2145,21 @@ class BaseAgent:
                     "error": "Plan mode is read-only: describe this step in the plan instead",
                     "plan_mode": True,
                 }
-            if izn_asks or held or approvals.needs_approval(tool_name, read_only):
-                decision = await request_approval(
-                    approvals,
-                    tool_name,
-                    params,
-                    reason=perm.get("reason", "") if izn_asks else _AMANAH_REASON if held else "",
-                )
+            if approvals.was_granted(tool_name, params):
+                pass  # the owner allowed exactly this call when it was held
+            elif izn_asks or held or approvals.needs_approval(tool_name, read_only):
+                reason = perm.get("reason", "") if izn_asks else _AMANAH_REASON if held else ""
+                if approvals.deferred:
+                    # No one is watching this run: keep the exact action for
+                    # its owner to allow or deny later; never run it now.
+                    from security.approvals import hold_action
+
+                    held_id = hold_action(approvals, tool_name, params, reason)
+                    return {
+                        "error": "Held for the owner's approval: no one is watching this run",
+                        "held_for_approval": held_id,
+                    }
+                decision = await request_approval(approvals, tool_name, params, reason=reason)
                 if decision == "deny":
                     return {"error": "The user declined this action", "declined": True}
 
@@ -3929,185 +3909,6 @@ Match the requested depth and self-correct errors."""
                     "message": f"Failed to create agent '{name}': {e}",
                 }
             )
-
-    async def _tool_create_skill(
-        self, name: str, description: str = "", code: str = "", tools: dict | None = None, **kwargs
-    ) -> str:
-        """
-        Dynamically create a new skill at runtime (Khalq al-Hikmah).
-
-        Two modes:
-        1. Full code: provide complete Python skill class code
-        2. Simple tools: provide tool definitions and auto-generate the skill
-
-        The skill is saved to skills/builtin/ and immediately registered.
-        """
-
-        # Validate skill name
-        if not re.match(r"^[a-z][a-z0-9_]*$", name):
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "Skill name must be snake_case (lowercase letters, digits, underscores)",
-                }
-            )
-
-        skills_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills", "builtin")
-        skill_path = os.path.join(skills_dir, f"{name}.py")
-
-        if code:
-            # Mode 1: Full code provided — validate it defines a SkillBase subclass
-            if "SkillBase" not in code:
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "Skill code must define a class that inherits from SkillBase. "
-                        "Import with: from ..base import SkillBase, SkillManifest",
-                    }
-                )
-            skill_code = code
-        elif tools:
-            # Mode 2: Auto-generate skill from tool definitions
-            skill_code = self._generate_skill_code(name, description, tools)
-        else:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "Either 'code' (full Python) or 'tools' (dict of tool definitions) required",
-                }
-            )
-
-        # Security check: block dangerous patterns in skill code
-        dangerous = ["os.system", "subprocess.call", "eval(", "exec(", "__import__"]
-        for pattern in dangerous:
-            if pattern in skill_code and "subprocess.run" not in skill_code:
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": f"Blocked dangerous pattern in skill code: {pattern}",
-                    }
-                )
-
-        try:
-            # Write skill file
-            os.makedirs(skills_dir, exist_ok=True)
-            with open(skill_path, "w") as f:
-                f.write(skill_code)
-
-            # Register in skill registry
-            if self.skill_registry:
-                module_path = f"skills.builtin.{name}"
-                # Force reimport if already loaded
-                if module_path in sys.modules:
-                    del sys.modules[module_path]
-                self.skill_registry._load_skill_module(module_path)
-
-                logger.info(f"[KHALQ] Dynamic skill created: {name}")
-                return json.dumps(
-                    {
-                        "success": True,
-                        "skill_name": name,
-                        "path": skill_path,
-                        "message": f"Skill '{name}' created and registered. Its tools are now available.",
-                        "tools": list(self.skill_registry.get_skill(name).get_tools().keys())
-                        if self.skill_registry.get_skill(name)
-                        else [],
-                    }
-                )
-            else:
-                return json.dumps(
-                    {
-                        "success": True,
-                        "skill_name": name,
-                        "path": skill_path,
-                        "message": f"Skill '{name}' saved but registry not available. Will load on restart.",
-                    }
-                )
-
-        except Exception as e:
-            # Cleanup on failure
-            if os.path.exists(skill_path):
-                os.unlink(skill_path)
-            logger.error(f"[KHALQ] Skill creation failed: {e}")
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": str(e),
-                }
-            )
-
-    def _generate_skill_code(self, name: str, description: str, tools: dict) -> str:
-        """Auto-generate a skill class from simple tool definitions."""
-        class_name = "".join(word.capitalize() for word in name.split("_")) + "Skill"
-
-        tool_methods = []
-        tool_registrations = []
-        tool_schemas = []
-
-        for tool_name, tool_def in tools.items():
-            if isinstance(tool_def, str):
-                tool_def = {"description": tool_def}
-            desc = tool_def.get("description", f"Execute {tool_name}")
-            params = tool_def.get("params", {})
-
-            safe_name = tool_name.replace("-", "_")
-            tool_registrations.append(f'            "{tool_name}": self.{safe_name},')
-            tool_methods.append(
-                f"    async def {safe_name}(self, params: dict) -> dict:\n"
-                f'        """{desc}"""\n'
-                f'        return {{"executed": "{tool_name}", "params": params}}'
-            )
-            schema_props = {
-                k: {"type": v if isinstance(v, str) else "string", "description": f"{k} parameter"}
-                for k, v in params.items()
-            }
-            tool_schemas.append(
-                f'            {{"name": "{tool_name}", '
-                f'"description": "{desc}", '
-                f'"input_schema": {{"type": "object", "properties": {json.dumps(schema_props)}}}}}'
-            )
-
-        return f'''"""
-Auto-generated skill: {name}
-{description}
-"""
-
-import logging
-from ..base import SkillBase, SkillManifest
-
-logger = logging.getLogger("mizan.{name}")
-
-
-class {class_name}(SkillBase):
-    """{description or name}"""
-
-    manifest = SkillManifest(
-        name="{name}",
-        version="1.0.0",
-        description="{description}",
-        tags=["{name}"],
-    )
-
-    def __init__(self, config: dict = None):
-        super().__init__(config)
-        self._tools = {{
-{chr(10).join(tool_registrations)}
-        }}
-
-    async def execute(self, params: dict, context: dict = None) -> dict:
-        action = params.get("action", "")
-        handler = self._tools.get(action)
-        if handler:
-            return await handler(params)
-        return {{"error": f"Unknown action: {{action}}"}}
-
-{"".join(chr(10) + m + chr(10) for m in tool_methods)}
-
-    def get_tool_schemas(self) -> list[dict]:
-        return [
-{chr(10).join(tool_schemas)}
-        ]
-'''
 
     # ── Context window estimation constants ──
     # Rough estimate: 1 token ~ 4 characters

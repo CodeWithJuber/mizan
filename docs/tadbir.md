@@ -47,7 +47,7 @@ and before the model-driven loop.
 | capabilities | "Hai tumhare paas tools?" | none: answered from the live tool registry |
 | compute | "2**100 kitna hai?" | none |
 | run_code | "Python me 2\*\*100 run karo", or a fenced code block plus "run" | none. MIZAN writes `print(...)` itself, runs it, and cross-checks the output against its own calculation. |
-| build_and_run | "Ek python program likho jo … aur run karo" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. |
+| build_and_run | "Ek python program likho jo … aur run karo", "Help me write a Python script that …" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. A program that opens a window (tkinter, PyQt, pygame, …, read from its imports) is compiled instead of run, because the sandbox has no screen; the reply shows the code and says it was not run. |
 | quran | "Ayatul Kursi", "Surah Ikhlas", "سورة البقرة 255" | none |
 | hadith | "Bukhari 1", "Sahih Muslim 2564b", "Tirmidhi 2516 dikhao", "بخاری شریف حدیث نمبر 1" | none |
 | waqt | "aaj ki date kya hai", "aaj ki hijri date", "15 March 2026 hijri mein", "1 Ramadan 1448 kab hai", "Eid kab hai" | none |

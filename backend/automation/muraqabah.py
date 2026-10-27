@@ -354,6 +354,9 @@ class Store:
                 CREATE INDEX IF NOT EXISTS idx_notices_owner ON notices(owner_id, status);
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(notices)")}
+            if "meta" not in columns:  # actions a task held for the owner's approval
+                conn.execute("ALTER TABLE notices ADD COLUMN meta TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=10)
@@ -453,13 +456,13 @@ class Store:
         )  # fmt: skip
 
     # notices
-    def notice(self, owner: str, watcher: dict, text: str) -> str:
+    def notice(self, owner: str, watcher: dict, text: str, meta: dict | None = None) -> str:
         notice_id = uuid.uuid4().hex[:12]
         self._run(
-            "INSERT INTO notices (id, owner_id, watcher_id, kind, text, status, created) "
-            "VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+            "INSERT INTO notices (id, owner_id, watcher_id, kind, text, status, created, meta) "
+            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
             (notice_id, owner, watcher["id"], watcher["trigger"]["kind"], text,
-             _utc(datetime.now(UTC))),
+             _utc(datetime.now(UTC)), json.dumps(meta) if meta else None),
         )  # fmt: skip
         return notice_id
 
@@ -605,6 +608,7 @@ async def fire(
     owner = watcher["owner_id"]
     state = dict(watcher["state"])
     text: str | None
+    held: list[dict] = []
     if watcher["trigger"]["kind"] == "page":
         page = await read_page(owner, watcher["trigger"]["url"])
         digest = hashlib.sha256((page or "").encode()).hexdigest()
@@ -620,11 +624,20 @@ async def fire(
         local = now.astimezone(place.zone if place else ZoneInfo("UTC")).date()
         text = f"**{watcher['title']}**\n\n" + await ayah_text(local)
     else:
-        result = await run_task(owner, watcher["task"])
+        from security.approvals import collecting_held
+
+        with collecting_held() as found:
+            result = await run_task(owner, watcher["task"])
+        held = found
+        if held:
+            waiting = ", ".join(sorted({item["tool"] for item in held}))
+            result = (
+                f"{result}\n\n" if result else ""
+            ) + f"_Waiting for your approval: {waiting}._"
         text = f"**{watcher['title']}**\n\n{result}" if result else None
     store.fired(watcher, now, state)
     if text:
-        store.notice(owner, watcher, text)
+        store.notice(owner, watcher, text, {"held": held} if held else None)
 
 
 async def deliver_waiting(store: Store, now: datetime, deliver: Deliver,
@@ -637,7 +650,8 @@ async def deliver_waiting(store: Store, now: datetime, deliver: Deliver,
         if verdict == "hold":
             store.mark(notice["id"], "held", deliver_after=_utc(until) if until else None)
         elif verdict == "deliver":
-            await deliver(notice["owner_id"], notice["text"], {"notice_id": notice["id"]})
+            extra = json.loads(notice["meta"]) if notice.get("meta") else {}
+            await deliver(notice["owner_id"], notice["text"], {"notice_id": notice["id"], **extra})
             store.mark(notice["id"], "delivered", delivered=_utc(now))
         else:
             store.mark(notice["id"], "digest")

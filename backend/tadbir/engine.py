@@ -17,7 +17,9 @@ loop; ``llm`` turns Tadbir off. ``strict`` is the former name of ``mizan``.
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import base64
 import difflib
 import json
 import math
@@ -660,6 +662,20 @@ class Tadbir:
             "workspace_run", {"command": code, "language": language, "timeout_s": 60}
         )
 
+    async def _run_or_check(self, code: str, language: str) -> tuple[dict, str | None]:
+        """Run the program; one that opens a window (the sandbox has no screen)
+        is compiled instead, and the toolkit is returned so the reply says so."""
+        toolkit = _window_toolkit(code) if language == "python" else None
+        if toolkit is None:
+            return await self._run(code, language), None
+        encoded = base64.b64encode(code.encode()).decode()
+        check = (
+            "import base64\n"
+            f"compile(base64.b64decode('{encoded}').decode(), 'main.py', 'exec')\n"
+            "print('main.py compiles')\n"
+        )
+        return await self._run(check, "python"), toolkit
+
     def _run_text(self, run: dict, language: str) -> str:
         if run.get("error"):
             return phrase("not_run", language, reason=str(run["error"])[:300])
@@ -739,7 +755,7 @@ class Tadbir:
             raise Defer from exc
         await self._step()
         tries = 1
-        run = await self._run(code, language)
+        run, toolkit = await self._run_or_check(code, language)
         await self._step()
         first = _ran_clean(run)
         if _code_ran(run):
@@ -761,11 +777,12 @@ class Tadbir:
             except LisanUnavailable:
                 break
             tries += 1
-            run = await self._run(code, language)
+            run, toolkit = await self._run_or_check(code, language)
             if _code_ran(run):
                 self._lisan_outcome("fix_code", _ran_clean(run), _signature(run))
                 tajriba.credit(store, owner, known, _ran_clean(run))
-        verified = run.get("exit_code") == 0 and not run.get("error")
+        # A program that was only compiled is not verified: it never ran.
+        verified = run.get("exit_code") == 0 and not run.get("error") and toolkit is None
         if verified and failing is not None:
             # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
             lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
@@ -775,6 +792,8 @@ class Tadbir:
             f"**{phrase('code', u.language)}**\n{fence(code, language)}",
             self._run_text(run, u.language),
         ]
+        if toolkit is not None and _ran_clean(run):
+            parts.append(phrase("gui_checked", u.language, toolkit=toolkit))
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
         if verified:
@@ -2406,6 +2425,34 @@ def _matches(stdout: str, value: calc.Number) -> bool:
 def _code_ran(run: dict) -> bool:
     """The program itself ran (a verdict on the code), not a sandbox or permission failure."""
     return not run.get("declined") and not (run.get("error") and not run.get("stderr"))
+
+
+# Python packages that open a window; MIZAN's sandbox has no screen to show one.
+_WINDOW_TOOLKITS = {
+    "tkinter": "tkinter", "turtle": "turtle", "customtkinter": "customtkinter",
+    "PyQt5": "PyQt", "PyQt6": "PyQt", "PySide2": "PySide", "PySide6": "PySide",
+    "wx": "wxPython", "kivy": "Kivy", "pygame": "pygame", "PySimpleGUI": "PySimpleGUI",
+    "dearpygui": "Dear PyGui", "flet": "Flet", "arcade": "Arcade", "pyglet": "pyglet",
+}  # fmt: skip
+
+
+def _window_toolkit(code: str) -> str | None:
+    """The window toolkit a Python program imports, read from its syntax tree."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # let the run report the syntax error
+    for node in ast.walk(tree):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names = [node.module]
+        for name in names:
+            toolkit = _WINDOW_TOOLKITS.get(name.split(".")[0])
+            if toolkit:
+                return toolkit
+    return None
 
 
 def _ran_clean(run: dict) -> bool:

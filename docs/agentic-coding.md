@@ -45,7 +45,30 @@ A tool that waits for you emits an `approval_request` event. Answer it with
 counts as deny. `GET /api/chat/approvals` lists pending requests. Izn rules that
 return `APPROVAL_REQUIRED` now prompt you the same way instead of failing.
 
-Requests without `permission_mode` (REST, scheduler, queue) behave as before.
+Requests without `permission_mode` from an interactive caller (REST) behave as before.
+
+### Runs no one is watching
+
+Watchers, schedules, triggers and queued tasks run while no one is watching,
+so no one could answer a prompt. They act as their owner (the watcher's
+owner, the queued task's sender, or for schedules and triggers the first
+administrator) through that owner's own gates. Every action that needs a
+person is **held** instead of run:
+
+- What goes ahead: reading, private project edits, and programs in MIZAN's
+  isolated sandbox (`workspace_run`).
+- What is held: host commands, outside writes, connector actions, anything
+  Izn asks about, and anything Amanah marked tainted.
+- Each held action is stored with its exact parameters and their SHA-256
+  (`$MIZAN_DATA_DIR/held_actions.db`) and expires after 24 hours.
+- A watcher's notice says what waits and shows **Allow once / Deny** under the
+  message. `GET /api/chat/held` lists your held actions.
+- `POST /api/chat/held/{id}` with `{"decision": "allow" | "deny"}` decides one.
+  It is accepted once, only from the owner, only before it expires, and only
+  if the stored parameters still match their digest. An allowed action runs
+  exactly as it was held, through your own agent, and its result is posted
+  to the chat. Your decision approves that one call (tool plus parameter
+  digest) and nothing else, so Izn does not ask again for it.
 
 Pending approvals are held in process memory, so the backend must run a single
 worker. The production image already does (`uvicorn --workers 1`).

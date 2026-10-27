@@ -398,6 +398,22 @@ async def test_tools_mizan_may_not_use_are_left_to_the_agent_loop(agent, monkeyp
     assert "orchestrator" not in result["usage"]
 
 
+async def test_a_window_program_is_compiled_not_run(agent, monkeypatch):
+    # The sandbox has no screen: MIZAN checks the program compiles and says so,
+    # shows the code, and never claims it ran (no repair calls are wasted).
+    ui = "```python\nimport tkinter as tk\nroot = tk.Tk()\nroot.mainloop()\n```"
+    agent.ai_client = ScriptedProvider([ui])
+    fake = tools(agent, monkeypatch, workspace_run={"stdout": "main.py compiles\n", "exit_code": 0})
+    result = await agent.execute("Help me write a Python script with a window")
+    assert result["orchestration"]["intent"] == "build_and_run"
+    assert (
+        "compile(" in fake.calls[0][1]["command"] and "mainloop" not in fake.calls[0][1]["command"]
+    )
+    assert "tkinter" in result["result"] and "import tkinter" in result["result"]
+    assert result["completion_status"] != "verified_by_mizan"
+    assert len(agent.ai_client.requests) == 1
+
+
 async def test_mizan_understands_a_program_request_without_lisan(agent, monkeypatch):
     fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
     agent.ai_client = ScriptedProvider([fib])
