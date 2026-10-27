@@ -36,6 +36,18 @@ A token lasts 24 hours.
 
 Revocations are kept on disk, so a restart never brings a revoked token back.
 
+**Limits.** Each limit answers 429 with `Retry-After`, `RateLimit-Limit` and
+`RateLimit-Remaining`:
+- failed sign-ins: 5 a minute per client address and per account name (a
+  successful sign-in costs nothing);
+- chat messages: 30 a minute per user, bursts of 10;
+- public routes: per client address.
+
+**Other guarantees.**
+- A request with no valid credential gets 401 before its body is read.
+- Cross-origin responses carry `Access-Control-Allow-Credentials` only together
+  with a matched, echoed origin.
+
 Some routes need an admin account: the AGI test, every user's spending, and
 system settings. Debug mode follows `MIZAN_DEBUG_MODE`.
 

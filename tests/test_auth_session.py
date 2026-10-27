@@ -40,3 +40,44 @@ def test_me_and_logout_routes():
     assert client.post("/api/auth/logout", headers=headers).json()["logged_out"]
     assert client.get("/api/auth/me", headers=headers).status_code == 401
     assert client.get("/api/auth/me").status_code == 401
+
+
+def test_an_unknown_caller_gets_401_before_its_body_is_read():
+    from api.main import app
+
+    client = TestClient(app)
+    malformed = client.post(
+        "/api/chat/stream", content=b"{not json", headers={"Content-Type": "application/json"}
+    )
+    assert malformed.status_code == 401
+    assert client.get("/api/health").status_code in {200, 503}  # public stays public
+
+
+def test_cors_credentials_only_with_a_matched_origin():
+    from api.main import app
+
+    client = TestClient(app)
+    foreign = client.get("/api/health", headers={"Origin": "https://attacker.example"})
+    assert "access-control-allow-credentials" not in foreign.headers
+    assert "access-control-allow-origin" not in foreign.headers
+
+
+def test_failed_sign_ins_are_limited_with_retry_after(monkeypatch):
+    import asyncio
+
+    from api import main
+
+    async def no_wait(_seconds):
+        return None
+
+    monkeypatch.setattr(main.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(main, "_login_failures", main.RateLimiter(per_minute=5, burst=5))
+    client = TestClient(main.app)
+    body = {"username": "nobody-here", "password": "wrong"}
+    codes = [client.post("/api/auth/login", json=body).status_code for _ in range(6)]
+    assert codes[:5] == [401] * 5 and codes[5] == 429
+    limited = client.post("/api/auth/login", json=body)
+    assert (
+        int(limited.headers["retry-after"]) >= 1 and limited.headers["ratelimit-remaining"] == "0"
+    )
+    assert asyncio  # the sleep after a failure is patched out for speed

@@ -106,7 +106,7 @@ from security.auth import (
 )
 from security.izn import IznPermission
 from security.validation import InputValidator
-from security.wali import SecurityConfig, WaliGuardian
+from security.wali import RateLimiter, SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
 from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
@@ -582,9 +582,33 @@ auth = MizanAuth(
 izn = IznPermission()
 validator = InputValidator(max_input_length=security_config.max_input_length)
 
+
+class _OriginBoundCORS(CORSMiddleware):
+    """Starlette sends Access-Control-Allow-Credentials on every response that
+    has an Origin header, matched or not; it is sent here only together with
+    a matched, echoed origin."""
+
+    async def simple_response(self, scope, receive, send, request_headers) -> None:
+        origin = request_headers.get("origin", "")
+        if self.is_allowed_origin(origin):
+            await super().simple_response(scope, receive, send, request_headers)
+            return
+
+        async def without_credentials(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != b"access-control-allow-credentials"
+                ]
+            await send(message)
+
+        await super().simple_response(scope, receive, without_credentials, request_headers)
+
+
 # CORS - configurable, not wildcard
 app.add_middleware(
-    CORSMiddleware,
+    _OriginBoundCORS,
     allow_origins=security_config.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "PUT"],
@@ -613,6 +637,29 @@ thinking_stream = ThinkingStream()
 # Task queue + worker
 task_queue = MizanTaskQueue(db_path=os.getenv("QUEUE_DB_PATH", "/data/mizan_queue.db"))
 task_worker: TaskWorker | None = None
+
+
+# ===== AUTHENTICATION BEFORE THE BODY =====
+
+
+@app.middleware("http")
+async def credentials_first(request: Request, call_next):
+    """A request with no valid credential is answered 401 before its body is
+    read, so a malformed body from an unknown caller is never parsed (route
+    dependencies run only after the body). Roles are still checked by
+    ``enforce_api_access``."""
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or not path.startswith("/api/")
+        or path in _PUBLIC_API
+        or path.startswith(_PUBLIC_API_PREFIXES + _OPEN_API_PREFIXES)
+        or auth.extract_token(
+            request.headers.get("authorization"), request.headers.get("x-api-key")
+        )
+    ):
+        return await call_next(request)
+    return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
 
 # ===== SECURITY HEADERS MIDDLEWARE =====
@@ -900,15 +947,46 @@ manager = ConnectionManager(max_connections=security_config.ws_max_connections)
 # ===== AUTH ROUTES =====
 
 
+# Failed sign-ins, counted per client and per account name: five a minute,
+# then 429 with Retry-After (a forwarded client address can be forged, the
+# account name cannot be spread). A successful sign-in costs nothing.
+_login_failures = RateLimiter(per_minute=5, burst=5)
+# Chat messages per signed-in user (each message may start model work).
+_chat_messages = RateLimiter(per_minute=30, burst=10)
+
+
+def _rate_headers(limiter: RateLimiter, key: str) -> dict[str, str]:
+    remaining = max(0, int(limiter.peek(key)))
+    headers = {"RateLimit-Limit": str(limiter.per_minute), "RateLimit-Remaining": str(remaining)}
+    wait = limiter.wait_seconds(key)
+    if wait:
+        headers["Retry-After"] = str(wait)
+        headers["RateLimit-Reset"] = str(wait)
+    return headers
+
+
 @app.post("/api/auth/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     """Authenticate and get JWT token"""
+    client = request.client.host if request.client else "unknown"
+    keys = (f"ip:{client}", f"user:{req.username.casefold()}")
+    for key in keys:
+        if _login_failures.peek(key) < 1:
+            raise HTTPException(
+                429,
+                "Too many failed sign-ins; try again later",
+                headers=_rate_headers(_login_failures, key),
+            )
     user = auth.authenticate(req.username, req.password)
     if not user:
+        for key in keys:
+            _login_failures.check(key)
         wali.audit.log("login_failed", {"username": req.username}, severity="warning")
         # Add delay on failed login to prevent brute force attacks
         await asyncio.sleep(1)
-        raise HTTPException(401, "Invalid credentials")
+        raise HTTPException(
+            401, "Invalid credentials", headers=_rate_headers(_login_failures, keys[1])
+        )
 
     token = auth.create_token(user)
     wali.audit.log("login_success", {"username": req.username, "user_id": user.id})
@@ -1730,6 +1808,12 @@ async def stream_chat(
     outcome; read owned chat history instead.
     """
     request_started = asyncio.get_running_loop().time()
+    if not _chat_messages.check(f"user:{user.user_id}"):
+        raise HTTPException(
+            429,
+            "Too many messages; wait a moment",
+            headers=_rate_headers(_chat_messages, f"user:{user.user_id}"),
+        )
     await authorize_session(req.session_id, user, create=True)
     workspace_context: Any = None
     if req.workspace_id:
@@ -5212,8 +5296,17 @@ async def imtihan_unpublish(run_id: str, user: TokenPayload = Depends(require_au
 
 def _open_rate_limit(request: Request) -> None:
     client = request.client.host if request.client else "unknown"
-    if not wali.check_rate_limit(f"public:{client}")["allowed"]:
-        raise HTTPException(429, "Too many requests; try again in a minute")
+    found = wali.check_rate_limit(f"public:{client}")
+    if not found["allowed"]:
+        raise HTTPException(
+            429,
+            "Too many requests; try again in a minute",
+            headers={
+                "Retry-After": str(found["retry_after"]),
+                "RateLimit-Limit": str(found["limit"]),
+                "RateLimit-Remaining": "0",
+            },
+        )
 
 
 @app.get("/api/public/reliability")

@@ -246,9 +246,11 @@ class TestDoctorEndpoints:
 
 
 class TestErrorHandling:
-    def test_404_unknown_endpoint(self, client):
-        resp = client.get("/api/nonexistent")
+    def test_404_unknown_endpoint(self, client, auth_headers):
+        resp = client.get("/api/nonexistent", headers=auth_headers)
         assert resp.status_code in (404, 429)
+        # Without a credential the caller learns nothing about which routes exist.
+        assert client.get("/api/nonexistent").status_code == 401
 
     def test_memory_store_missing_content(self, client, auth_headers):
         resp = client.post(
