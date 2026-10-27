@@ -6,6 +6,8 @@ webhook is needed. What it accepts:
 - private chats only, and only from a Telegram account its MIZAN user linked
   (MIZAN → Channels → Link Telegram gives a one-time link);
 - text (forwarded text counts as quoted data, never as the user's request);
+- voice notes, when the server can hear (Sama'): transcribed on MIZAN's own
+  server, shown back as "Heard: ...", then answered like typed text;
 - the buttons under a reply that allow or deny an action MIZAN held, from the
   same linked account only.
 
@@ -37,6 +39,10 @@ POLL_SECONDS = 50
 RunTurn = Callable[[str, str, str], Awaitable[tuple[str, list[dict]]]]
 # (owner, held id, "allow" | "deny") -> a line for the user
 Decide = Callable[[str, str, str], Awaitable[str]]
+# (owner, session, audio, mime) -> the words heard; ValueError carries a line for the user
+Hear = Callable[[str, str, bytes, str], Awaitable[str]]
+MAX_VOICE_BYTES = 2 * 1024 * 1024
+MAX_VOICE_SECONDS = 90
 
 
 class TelegramError(RuntimeError):
@@ -87,11 +93,14 @@ class TelegramBot:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         concurrency: int = 4,
+        hear: Hear | None = None,
     ):
         self._base = f"{API}/bot{token}"
+        self._files = f"{API}/file/bot{token}"
         self.store = store
         self.run_turn = run_turn
         self.decide = decide
+        self.hear = hear
         self._client = httpx.AsyncClient(timeout=POLL_SECONDS + 15, transport=transport)
         self._owner_locks: dict[str, asyncio.Lock] = {}
         self._gate = asyncio.Semaphore(concurrency)
@@ -175,18 +184,50 @@ class TelegramBot:
             self.store.unlink(CHANNEL, link["owner_id"])
             await self.send(chat_id, "Unlinked. This bot will no longer answer you.")
             return
+        owner = link["owner_id"]
+        voice = message.get("voice") or message.get("audio")
+        if not text and voice and self.hear is not None:
+            try:
+                text = await self._heard(owner, link["session_id"], voice)
+            except ValueError as exc:
+                await self.send(chat_id, str(exc))
+                return
+            await self.send(chat_id, f"Heard: {text}" if text else "I heard no words in that.")
         if not text:
-            await self.send(chat_id, "For now MIZAN reads text messages here.")
+            await self.send(chat_id, "For now MIZAN reads text messages and voice notes here.")
             return
         if _forwarded(message):
             # Someone else's words: data to work on, never the user's request.
             text = f"Forwarded message:\n```\n{text}\n```"
-        owner = link["owner_id"]
         lock = self._owner_locks.setdefault(owner, asyncio.Lock())
         async with lock, self._gate:
             await self._typing(chat_id)
             reply, held = await self.run_turn(owner, link["session_id"], text)
         await self.send(chat_id, reply, held_buttons(held))
+
+    async def _heard(self, owner: str, session: str, voice: dict) -> str:
+        """Download a voice note (sizes checked before and while reading) and hear it."""
+        hear = self.hear
+        if hear is None:
+            raise ValueError("For now MIZAN reads text messages here.")
+        if int(voice.get("file_size") or 0) > MAX_VOICE_BYTES:
+            raise ValueError("That voice note is over 2 MB; send a shorter one.")
+        if int(voice.get("duration") or 0) > MAX_VOICE_SECONDS:
+            raise ValueError("That voice note is over 90 seconds; send a shorter one.")
+        found = await self.call("getFile", file_id=voice.get("file_id", ""))
+        path = str((found or {}).get("file_path", ""))
+        if not path or ".." in path:
+            raise ValueError("Telegram did not give that voice note back; try again.")
+        audio = bytearray()
+        async with self._client.stream("GET", f"{self._files}/{path}") as response:
+            if response.status_code != 200:
+                raise ValueError("Telegram did not give that voice note back; try again.")
+            async for piece in response.aiter_bytes():
+                audio += piece
+                if len(audio) > MAX_VOICE_BYTES:
+                    raise ValueError("That voice note is over 2 MB; send a shorter one.")
+        mime = str(voice.get("mime_type") or "audio/ogg")
+        return (await hear(owner, session, bytes(audio), mime)).strip()
 
     async def _on_button(self, query: dict) -> None:
         sender = str((query.get("from") or {}).get("id", ""))

@@ -231,6 +231,17 @@ SETTINGS: tuple[Setting, ...] = (
             apply="restart"),
     Setting("SLACK_APP_TOKEN", "Channels", "Slack app token", "secret", "", apply="restart"),
     Setting("WHATSAPP_TOKEN", "Channels", "WhatsApp token", "secret", "", apply="restart"),
+    Setting("MIZAN_STT", "Channels", "Voice input (Sama')", "choice",
+            "on lets people speak to MIZAN (the composer microphone and Telegram voice notes). "
+            "Speech is turned into text on this server; the audio is kept nowhere.", "on",
+            ("on", "off")),
+    Setting("MIZAN_STT_MODEL_SIZE", "Channels", "Voice model size", "choice",
+            "tiny is fastest; small hears Urdu, Hindi and Arabic best but needs about 500 MB "
+            "of memory and more time. Downloaded once into the data volume.", "base",
+            ("tiny", "base", "small")),
+    Setting("MIZAN_STT_DAILY_SECONDS", "Channels", "Voice seconds per user per day", "int",
+            "How many seconds of speech each non-admin user may send per day.", "1800",
+            minimum=0),
 )  # fmt: skip
 
 BY_KEY = {item.key: item for item in SETTINGS}

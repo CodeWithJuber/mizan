@@ -104,6 +104,8 @@ layer(base);
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* One column no wider than the screen: content wraps or shrinks instead. */
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -159,7 +161,7 @@ layer(base);
 }
 
 @utility chat-textarea {
-  @apply flex-1 resize-none bg-transparent border-none outline-hidden text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
+  @apply flex-1 min-w-0 resize-none bg-transparent border-none outline-hidden text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
   font-family:
     'DM Sans',
     -apple-system,
