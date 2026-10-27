@@ -124,6 +124,8 @@ export interface RunSummary {
   blocks: string[] | null;
   index: Report["index"] | null;
   progress?: { done: number; total: number; current?: string };
+  /** Shown on the public reliability page. */
+  published?: boolean;
 }
 
 export const BLOCK_LABELS: Record<string, string> = {

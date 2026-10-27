@@ -2074,6 +2074,23 @@ class BaseAgent:
         self._require_answer_progress(response)
 
     async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
+        """Execute a tool through every check, then write its Sakk receipt.
+
+        The receipt (tool, outcome, keyed digests of the parameters and the
+        result, linked to the owner's previous receipt) is written whatever
+        happened: done, held, declined, refused or raised.
+        """
+        result: Any = {"error": "raised"}
+        try:
+            result = await self._execute_tool_checked(tool_name, params)
+            return result
+        finally:
+            if not _evaluation_only.get() and not _language_only.get():
+                from security import sakk
+
+                sakk.record_tool(current_user_id() or "", tool_name, params, result)
+
+    async def _execute_tool_checked(self, tool_name: str, params: dict) -> Any:
         """Execute a tool with Wali security checks and self-healing.
 
         Tool resolution order:
@@ -3437,8 +3454,19 @@ Match the requested depth and self-correct errors."""
         """
         if not self.memory:
             return
+        from workspace.context import current_chat_session
+
+        # The chat it came from, so deleting the chat deletes this record too (Mahw).
+        session = current_chat_session()
         try:
-            await self.memory.save_task(self.id, task, result[:5000], success, duration_ms)
+            await self.memory.save_task(
+                self.id,
+                task,
+                result[:5000],
+                success,
+                duration_ms,
+                metadata={"session": session} if session else None,
+            )
         except Exception as exc:
             logger.warning(
                 "Task telemetry unavailable for agent %s (%s)", self.id, type(exc).__name__
@@ -4048,12 +4076,16 @@ Match the requested depth and self-correct errors."""
         # Persist facts to memory if available
         if self.memory and facts:
             try:
+                from workspace.context import current_chat_session
+
+                session = current_chat_session()
                 await self.memory.save_task(
                     self.id,
                     "context_compaction_facts",
                     json.dumps(facts)[:5000],
                     True,
                     0,
+                    metadata={"session": session} if session else None,
                 )
             except Exception as e:
                 logger.warning(f"[COMPACT] Failed to persist facts to memory: {e}")

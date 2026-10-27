@@ -13,6 +13,7 @@ import { PasswordInput } from "../components/PasswordInput";
 
 const RuntimeSettingsPanel = lazy(() => import("../components/RuntimeSettingsPanel"));
 const SpendingPanel = lazy(() => import("../components/SpendingPanel"));
+const SakkPanel = lazy(() => import("../components/SakkPanel"));
 
 interface ProviderConfig {
   name: string;
@@ -254,6 +255,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   const sections = [
     { id: "system", label: "System settings" },
     { id: "spending", label: "Spending" },
+    { id: "receipts", label: "Receipts" },
     { id: "providers", label: "AI Providers" },
     { id: "channels", label: "Channels" },
     { id: "security", label: "Security" },
@@ -340,6 +342,11 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {activeSection === "spending" && (
             <Suspense fallback={<p className="text-sm text-gray-500">Loading spending…</p>}>
               <SpendingPanel api={api} />
+            </Suspense>
+          )}
+          {activeSection === "receipts" && (
+            <Suspense fallback={<p className="text-sm text-gray-500">Loading receipts…</p>}>
+              <SakkPanel api={api} />
             </Suspense>
           )}
           {/* AI Providers */}

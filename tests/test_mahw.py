@@ -109,6 +109,41 @@ async def test_deleting_a_chat_removes_every_copy_and_finds_no_trace(stores):
     assert [r["kind"] for r in mahw.receipts(OWNER)] == ["chat"]
 
 
+async def test_a_task_record_of_the_chat_goes_even_when_its_text_differs(stores):
+    chat, private, folder = stores
+    await seed_chat(chat, private, folder, "chat-secret", SECRET)
+    # The agent records the request as it ran it (rewritten, or a refusal), and
+    # long chats keep compaction facts; both carry the chat they came from.
+    await private.save_task(
+        "agent",
+        f"[rewritten] {SECRET}",
+        "Today's limit is used up",
+        False,
+        1.0,
+        metadata={"session": "chat-secret"},
+    )
+    await private.save_task(
+        "agent",
+        "context_compaction_facts",
+        json.dumps([SECRET]),
+        True,
+        0,
+        metadata={"session": "chat-secret"},
+    )
+    await private.save_task("agent", "other chat", "kept", True, 1.0, metadata={"session": "x"})
+
+    receipt = await mahw.erase_chat(
+        chat_db=chat.db_path,
+        artifacts_db=chat.db_path,
+        private=private,
+        owner=OWNER,
+        session_id="chat-secret",
+    )
+    assert receipt["removed"]["task records"] == 3 and receipt["traces"] == 0
+    left = [row["task"] for row in await private.get_task_history(limit=10)]
+    assert left == ["other chat"]
+
+
 async def test_a_copy_mahw_does_not_know_about_is_reported(stores):
     chat, private, folder = stores
     await seed_chat(chat, private, folder, "chat-secret", SECRET)

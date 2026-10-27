@@ -57,6 +57,7 @@ dependencies = [
     "tzdata>=2026.5",
     "jsonschema>=4.26.0,<5",
     "pywebpush>=2.5.0,<3",
+    "rfc8785>=0.1.4,<0.2",
 ]
 
 [project.optional-dependencies]

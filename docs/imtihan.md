@@ -135,3 +135,7 @@ Click a task to open both answers and MIZAN's step-by-step trace.
 - **Cost:** a full run is at least 140 model calls per attempt. MIZAN's Lisan calls come on top.
 - **Tool faults:** these are injected for one task only (`tadbir/trace.py` `bind_faults`). They never affect another chat.
 - **History:** runs are kept in `$MIZAN_DATA_DIR/imtihan/runs.db` (the last 20).
+
+## Publishing a result
+
+**Publish on the public page** (on a finished run) shows its aggregate report on `/reliability` to anyone, without sign-in: the charts above, never prompts, answers or per-task rows; the locked eval only as its block score. The report's SHA-256 is written into a signed Sakk receipt, so a published number cannot be changed later unnoticed ([Sakk](sakk.md)). **Remove from the public page** takes it down.
