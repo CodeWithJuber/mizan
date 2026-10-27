@@ -1910,8 +1910,10 @@ class BaseAgent:
         progress = {"seen": False, "at": llm_start}
 
         def observed_progress() -> None:
-            # Text and tool argument deltas count; private reasoning, comments
-            # and keepalives do not. No private content crosses this callback.
+            # Text, tool argument and reasoning deltas count (the model is
+            # working; reasoning never becomes answer text); comments and
+            # keepalives do not. No private content crosses this callback. A
+            # model that only reasons is still bounded by the total budget.
             with progress_lock:
                 progress.update(seen=True, at=time.perf_counter())
 

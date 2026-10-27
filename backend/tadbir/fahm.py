@@ -75,14 +75,26 @@ _CODE_LABELS = {
 }  # fmt: skip
 
 
-def _fenced_code(text: str) -> tuple[str, str] | None:
-    match = re.search(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", text, re.DOTALL)
-    if not match or not match[2].strip():
+_FENCE = re.compile(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", re.DOTALL)
+
+
+def _runnable(match: re.Match) -> tuple[str, str] | None:
+    if not match[2].strip():
         return None
     language = _CODE_LABELS.get(match[1].lower())
     if language is None:
         language = "python" if re.search(r"\bprint\(|\bdef |\bimport ", match[2]) else ""
     return (match[2].strip("\n"), language) if language else None
+
+
+def _fenced_code(text: str) -> tuple[str, str] | None:
+    match = _FENCE.search(text)
+    return _runnable(match) if match else None
+
+
+def fenced_programs(text: str) -> list[tuple[str, str]]:
+    """Every fenced block in the text that MIZAN can run, with its language."""
+    return [found for match in _FENCE.finditer(text) if (found := _runnable(match))]
 
 
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
@@ -428,6 +440,8 @@ _BUILDERS = {
         ),
     ),
     "run_code": _run_code,
+    # "Run this code": a program shown earlier in the chat; Tadbir takes it from there.
+    "run_follow": _with("run_follow", lambda m: None if _fenced_code(m) else {}),
     "run_file": _in_project,
     "project_task": _in_project,
     "edit_project": _in_project,
@@ -489,7 +503,7 @@ FAMILIES = {
     "hadith": ("hadith", "hadith_explain"),
     "search": ("web_search", "search_bare"),
     "sequence": ("silsila", "silsila_follow"),
-    "code": ("run_code", "build_and_run", "run_file"),
+    "code": ("run_code", "build_and_run", "run_file", "run_follow"),
     "make": ("build_project", "edit_project", "project_task"),
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
@@ -530,7 +544,7 @@ def _clauses(text: str) -> list[str]:
     return parts if 2 <= len(parts) <= 4 else []
 
 
-_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare"}
+_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare", "run_follow"}
 
 
 def _decisive_action(text: str) -> str | None:

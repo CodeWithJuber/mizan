@@ -49,15 +49,19 @@ Wall-clock budgets supplement the provider SDK's socket inactivity timeout:
 
 | Environment setting | Default seconds | Allowed range | Covers |
 |---|---:|---:|---|
-| `MIZAN_LLM_FIRST_PROGRESS_SECONDS` | 60 | 1–180 | First visible text or tool-argument progress |
+| `MIZAN_LLM_FIRST_PROGRESS_SECONDS` | 60 | 1–180 | First progress: text, tool arguments or streamed reasoning |
 | `MIZAN_LLM_BUFFERED_FIRST_PROGRESS_SECONDS` | 180 | 1–900 | Same, for providers without streaming deltas |
 | `MIZAN_LLM_PROGRESS_SECONDS` | 60 | 1–180 | Subsequent meaningful progress |
 | `MIZAN_LLM_MAX_CALL_SECONDS` | 600 | 1–1800 | Entire provider call |
 | `MIZAN_CHAT_RUN_SECONDS` | 1800 | 30–7200 | Context preparation, agent queue and execution |
 
-Comments, keepalives and OpenRouter-style hidden reasoning do not extend the progress
-deadline. Claude thinking deltas count as liveness only (never as answer text), so a
-visibly reasoning Claude model is not cut off as stalled.
+Comments and keepalives do not extend the progress deadline. Streamed reasoning
+does, as liveness only (never as answer text): Claude thinking deltas and the
+`reasoning` deltas OpenRouter and OpenAI-compatible providers send. A model that
+is visibly reasoning is not cut off as stalled; `MIZAN_LLM_MAX_CALL_SECONDS`
+still bounds the whole call. (On 27 Oct 2026 a reasoning model on production
+thought for more than 60 s before its first word and was cut off with "exceeded
+its wait limit".)
 A local timeout closes the stream where supported; it cannot establish whether
 the upstream provider stopped or charged for its work.
 

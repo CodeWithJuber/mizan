@@ -201,6 +201,23 @@ class Tadbir:
                     if topic
                     else fahm.Understanding("converse", understanding.language, 0.0)
                 )
+        if parts is None and understanding.intent == "run_follow":
+            # "Run this code": the program shown most recently in this chat.
+            program = _earlier_program(history)
+            understanding = (
+                fahm.Understanding(
+                    "run_code",
+                    understanding.language,
+                    understanding.confidence,
+                    {
+                        "code": program[0],
+                        "code_language": program[1],
+                        "understood_by": "conversation",
+                    },
+                )
+                if program
+                else fahm.Understanding("converse", understanding.language, 0.0)
+            )
         self._stream = stream_callback
         started = time.time()
         if parts is not None:
@@ -2415,7 +2432,9 @@ def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | N
 
     Fahm's own choices are not fed back to it (that would only confirm itself)."""
     if source == "conversation":
-        return "search_bare" if u.intent == "web_search" else "silsila_follow"
+        return {"web_search": "search_bare", "run_code": "run_follow"}.get(
+            u.intent, "silsila_follow"
+        )
     if source != "lisan":
         return None
     if u.intent == "quran":
@@ -2423,6 +2442,16 @@ def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | N
     if u.intent == "hadith":
         return "hadith_explain" if u.entities.get("explain") else "hadith"
     return u.intent
+
+
+def _earlier_program(history: list[dict] | None) -> tuple[str, str] | None:
+    """The program in the most recent message of this chat that shows one: of
+    its runnable blocks, the longest (a whole program rather than a fragment)."""
+    for turn in list(reversed(history or []))[:8]:
+        programs = fahm.fenced_programs(str(turn.get("content") or ""))
+        if programs:
+            return max(programs, key=lambda found: len(found[0]))
+    return None
 
 
 def _earlier_request(history: list[dict] | None) -> str | None:

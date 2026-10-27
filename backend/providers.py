@@ -1136,7 +1136,12 @@ class _OpenAIStreamWrapper:
                     "tool_calls": "tool_use",
                 }.get(finish, "incomplete")
             delta = choice.delta
-            self._reasoning_observed = self._reasoning_observed or _has_reasoning(delta)
+            reasoning = _has_reasoning(delta)
+            self._reasoning_observed = self._reasoning_observed or reasoning
+            # Reasoning deltas show the model is working, as Anthropic's thinking
+            # deltas do: a liveness signal only, never answer text.
+            if reasoning and self._progress_callback:
+                self._progress_callback()
             if getattr(delta, "content", None):
                 if self._progress_callback:
                     self._progress_callback()

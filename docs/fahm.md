@@ -109,8 +109,8 @@ Qasd reads three kinds of evidence:
 - what MIZAN's parsers find in it (`e:` tokens)
 - the context (`c:` tokens)
 
-It returns a posterior over 24 recipes and `converse`. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 881 requests in five languages
+It returns a posterior over 26 recipes and `converse`. The seeds are in
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 907 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -133,6 +133,13 @@ intents.
 4. If an action was more probable than conversation (P(converse) < ½), Lisan
    may map the wording into MIZAN's action schema. MIZAN validates every
    step and runs it itself.
+
+**Follow-ups** are intents whose words name something said earlier in the
+chat, and Tadbir takes it from there: `silsila_follow` ("karo koshish", the
+sequence asked before), `search_bare` ("dhundo pahle", the topic asked before)
+and `run_follow` ("run this code", "isko chalao": the longest runnable block in
+the most recent message that shows one). With nothing earlier to take, the
+request goes on as conversation.
 
 **Facets** are separate yes/no models on their own seeds (`facets.tsv`):
 
@@ -168,9 +175,9 @@ that never saw it.
 | Model | Classes | Examples | Held-out accuracy |
 |---|---|---|---|
 | Lughah | 7 | 6246 (1500 sampled for the fit) | 99.2% |
-| Qasd, exact intent | 26 | 1686 (881 seeds, two contexts) | 75.0% |
-| Qasd, family (what MIZAN acts on) | 17 | same | 78.4% |
-| Qasd, act vs answer in words | 2 | same | 87.1% |
+| Qasd, exact intent | 27 | 1738 (907 seeds, two contexts) | 74.6% |
+| Qasd, family (what MIZAN acts on) | 17 | same | 78.0% |
+| Qasd, act vs answer in words | 2 | same | 86.8% |
 | Facet `current` | 2 | 104 | 86.5% |
 | Facet `harder` | 2 | 31 | 90.3% |
 

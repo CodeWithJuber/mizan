@@ -300,6 +300,42 @@ async def test_run_request_is_planned_run_and_cross_checked_by_mizan(agent, monk
     assert all(item["status"] == "completed" for item in final_plan)
 
 
+async def test_run_this_code_runs_the_program_shown_earlier_in_the_chat(agent, monkeypatch):
+    # Production: "Run this code" after an answer with a program was answered
+    # "I have no tool access"; MIZAN now runs that program itself.
+    fake = tools(
+        agent, monkeypatch, workspace_run={"stdout": "False\n", "stderr": "", "exit_code": 0}
+    )
+    earlier = (
+        "Here is the sketch:\n```python\nnew_code = compile(src)\n```\n"
+        "And the program:\n```python\ndef evaluate_me(p):\n    return not p\n\n"
+        "print(evaluate_me(True))\n```"
+    )
+    history = [
+        {"role": "user", "content": "Write evaluate_me"},
+        {"role": "assistant", "content": earlier},
+    ]
+    result = await agent.execute("Run this code", {"history": history})
+    assert [name for name, _ in fake.calls] == ["workspace_run"]
+    # The whole program, not the fragment before it.
+    assert fake.calls[0][1]["command"].startswith("def evaluate_me(p):")
+    assert "False" in result["result"]
+    assert agent.ai_client.requests == []
+
+
+async def test_run_this_code_with_no_program_in_the_chat_runs_nothing(agent, monkeypatch):
+    fake = tools(agent, monkeypatch, workspace_run={"stdout": "", "stderr": "", "exit_code": 0})
+    await agent.execute(
+        "Execute the above program", {"history": [{"role": "assistant", "content": "Hello"}]}
+    )
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("text", ["Execute the above program", "Ab isko run karo", "Run it please"])
+def test_run_requests_without_code_are_follow_ups(text):
+    assert fahm.understand(text).intent == "run_follow"
+
+
 async def test_a_wrong_sandbox_result_is_not_marked_verified(agent, monkeypatch):
     tools(agent, monkeypatch, workspace_run={"stdout": "42\n", "stderr": "", "exit_code": 0})
     result = await agent.execute("Python me 2**10 run karo")
