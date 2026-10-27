@@ -554,6 +554,22 @@ def partly_understood(text: str, whole: Understanding | None = None) -> bool:
     )
 
 
+def _covers(whole: Understanding, part: Understanding) -> bool:
+    """The whole message's plan already holds everything this part asks for:
+    the same kind of recipe, and each of the part's entities contained in the
+    whole's (a clause within the whole request, the same reference)."""
+    if _FAMILY.get(whole.intent, whole.intent) != _FAMILY.get(part.intent, part.intent):
+        return False
+    for key, value in part.entities.items():
+        held = whole.entities.get(key)
+        if isinstance(value, str) and isinstance(held, str):
+            if value.strip().casefold() not in held.casefold():
+                return False
+        elif held != value:
+            return False
+    return True
+
+
 def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
     """Two to four independent requests in one message, every one of them a recipe."""
     message = text.strip()
@@ -563,14 +579,21 @@ def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
     understood = [(part, understand(part)) for part in parts]
     if any(u.intent in _WORDS_ONLY for _part, u in understood):
         return None
-    # One request or several? When the parts are different actions, keep the
-    # split only if it explains the message better than the whole does: the
-    # joint probability of the parts against the whole message's probability.
-    # ("Every morning after Fajr send an ayah and the Hijri date" is one watcher.)
-    if len({u.intent for _part, u in understood}) > 1:
-        whole = understand(message)
+    # One request or several? The simpler explanation wins:
+    # - when one plan for the whole message already holds what every part asks
+    #   for, it is one request ("write a function that … and returns …": the
+    #   program's request is the whole text; "Bukhari 1 and Bukhari 2" is two,
+    #   because one plan holds only one reference);
+    # - when the parts are different actions, the split is kept only if it
+    #   explains the message better than the whole does: the joint probability
+    #   of the parts against the whole message's probability ("Every morning
+    #   after Fajr send an ayah and the Hijri date" is one watcher).
+    whole = understand(message)
+    if whole.intent not in _WORDS_ONLY:
+        if all(_covers(whole, u) for _part, u in understood):
+            return None
         joint = math.prod(u.confidence for _part, u in understood)
-        if whole.intent not in _WORDS_ONLY and whole.confidence >= joint:
+        if len({u.intent for _part, u in understood}) > 1 and whole.confidence >= joint:
             return None
     language = detect_language(message)
     for _part, u in understood:

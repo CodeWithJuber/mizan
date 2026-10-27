@@ -166,6 +166,19 @@ def test_asking_how_to_build_is_conversation_not_a_build():
     assert qasd.prefers("website kaise banate hain?", "converse", "build_project")
 
 
+def test_a_message_is_split_only_when_one_plan_cannot_hold_it():
+    # One program: its request is the whole text, which holds every clause.
+    assert (
+        fahm.understand_parts("Write a function that adds two numbers and returns the result")
+        is None
+    )
+    # Two lookups of one kind: one plan would hold only one reference.
+    parts = fahm.understand_parts("Bukhari 1 aur Bukhari 2 dikhao")
+    assert [u.intent for _part, u in parts] == ["hadith", "hadith"]
+    parts = fahm.understand_parts("2+2 kitna hai aur aaj ki date kya hai")
+    assert [u.intent for _part, u in parts] == ["compute", "waqt"]
+
+
 def test_a_verified_wording_is_learned_for_that_user_only():
     store = AdaptiveStateStore(None)
     wording = "zxq qorvath blenkish"  # words the seeds never saw

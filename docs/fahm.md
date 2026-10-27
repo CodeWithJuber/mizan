@@ -137,10 +137,17 @@ intents.
 - `harder`: the user asks for more effort on what came before
 
 **Several requests in one message.** The message is split at its
-conjunctions. The split is kept only if it explains the message better than
-the whole does: the product of the parts' probabilities against the whole's.
-"Every morning after Fajr send an ayah and the Hijri date" is one watcher;
-"Bukhari 1 aur Surah Ikhlas" is two requests. A clause MIZAN cannot place
+conjunctions, and the simpler explanation wins:
+
+- If one plan for the whole message already holds what every part asks
+  for, it is one request. "Write a function that … and returns …" is one
+  program, because its request is the whole text. "Bukhari 1 aur Bukhari 2"
+  is two, because one plan holds only one reference.
+- When the parts are different actions, the split is kept only if it
+  explains the message better than the whole does: the product of the
+  parts' probabilities against the whole's. "Every morning after Fajr send
+  an ayah and the Hijri date" is one watcher; "Bukhari 1 aur Surah Ikhlas" is
+  two requests. A clause MIZAN cannot place
 counts as a separate request only when it is decisively an action of its own
 (its family's P > ½).
 
