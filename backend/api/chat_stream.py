@@ -325,7 +325,15 @@ class ChatEventChannel:
         self.sequence += 1
         frame = f"id: {self.sequence}\nevent: {kind}\ndata: {encoded}\n\n"
         try:
-            await asyncio.wait_for(self.queue.put(frame), timeout=SEND_TIMEOUT_SECONDS)
+            self.queue.put_nowait(frame)
+            return
+        except asyncio.QueueFull:
+            pass
+        # asyncio.timeout, not wait_for: on Python 3.11 wait_for drops a
+        # cancellation (the Stop button) that arrives as the put completes.
+        try:
+            async with asyncio.timeout(SEND_TIMEOUT_SECONDS):
+                await self.queue.put(frame)
         except TimeoutError:
             self.detach()  # a stalled reader no longer holds up the run
 
