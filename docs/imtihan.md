@@ -134,6 +134,7 @@ Click a task to open both answers and MIZAN's step-by-step trace.
 | CLI | `cd backend && python -m imtihan --blocks exactness,scripture --repeats 1 --out report.json` (`--list` shows the blocks) |
 
 - **Cost:** a full run is at least 140 model calls per attempt. MIZAN's Lisan calls come on top.
+- **Stateless:** a run recalls none of the owner's chats, learns nothing from its tasks (no Ta'allum, Qasd, Hifz, Tajriba or Majlis update), and is never kept as training data (`memory/stateless.py`). Otherwise a test would teach MIZAN its own answers.
 - **Speed:** tasks run several at a time (`MIZAN_IMTIHAN_CONCURRENCY`, default 4, 1-8; Settings → System settings), each with both arms at once. Chats are never queued behind a run: every run of an agent works on its own copy (`docs/chat-limits-and-metrics.md`). Results keep the task order.
 - **Tool faults:** these are injected for one task only (`tadbir/trace.py` `bind_faults`). They never affect another chat.
 - **History:** runs are kept in `$MIZAN_DATA_DIR/imtihan/runs.db` (the last 20).

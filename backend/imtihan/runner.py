@@ -200,7 +200,11 @@ async def run_suite(
                 await maybe
 
     approvals = ApprovalContext(owner, f"imtihan-{uuid.uuid4().hex}", "auto")
-    with bind_approvals(approvals), bind_timezone("UTC"):
+    from memory import stateless
+
+    # A test must not teach MIZAN its own answers, recall the owner's chats, or
+    # become training data (memory/stateless.py).
+    with bind_approvals(approvals), bind_timezone("UTC"), stateless.bind():
         await asyncio.gather(
             *(one(number, attempt, task) for number, (attempt, task) in enumerate(jobs))
         )

@@ -76,3 +76,12 @@ When no trace is bound, recording does nothing. Ordinary chats pay nothing for i
 - `session_id` gives both arms that chat's earlier turns. Nothing is saved to the chat.
 - `permission_mode`: with `auto`, MIZAN runs the tools it chooses, such as sandboxed code and project edits. `plan` is read-only.
 - **Storage:** comparisons are kept per user in `$MIZAN_DATA_DIR/private/<user hash>/debug_runs.db`. Long text is trimmed to 6,000 characters. They are never saved to chat history and never become training data.
+
+## Comparisons change nothing
+
+A comparison is an evaluation, so it is stateless (`memory/stateless.py`):
+- MIZAN's arm recalls none of your other chats;
+- it learns nothing from the run (no learned wording, routing or programs);
+- it never becomes a training candidate.
+
+The same holds for a chat sent with `stateless: true`.

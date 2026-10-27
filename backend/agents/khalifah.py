@@ -272,6 +272,10 @@ class KhalifahAgent:
         client_id: str,
     ) -> None:
         """Record the interaction for Ruh Model training; swallow non-critical errors."""
+        from memory import stateless
+
+        if stateless.active():
+            return  # an evaluation run is never a training candidate
         provider = _build_provider()
         provider_name = provider.provider_name if provider else "unknown"
         model = get_default_model(provider_name) if provider else "unknown"

@@ -808,6 +808,9 @@ class StreamChatMessage(ChatMessage):
     # sent only when asked for (the web app's thinking panel); by default the
     # stream carries the answer, its status and its receipts.
     thinking: bool = False
+    # An evaluation: no recall of other chats, nothing learned, nothing captured
+    # as a training candidate (memory/stateless.py). Reported in usage.memory.
+    stateless: bool = False
 
 
 class IntegrationCreate(BaseModel):
@@ -1527,7 +1530,9 @@ async def chat_context(
     # Chat routes have already appended the current input for persistence.
     # Pass prior turns once; BaseAgent appends the current task itself.
     preferences = await memory.get_chat_preferences(user.user_id)
-    recall_off = any(
+    from memory import stateless
+
+    recall_off = stateless.active() or any(
         item["key"] == "cross_chat_recall" and str(item["value"]).strip().lower() == "off"
         for item in preferences
     )
@@ -2172,11 +2177,15 @@ async def stream_chat(
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:
-                        context = await chat_context(
-                            user, req.session_id, session, agent, req.content, req.workspace_id
-                        )
+                        from memory import stateless
+
+                        with stateless.bind(req.stateless):
+                            context = await chat_context(
+                                user, req.session_id, session, agent, req.content, req.workspace_id
+                            )
                         await phase_cb("queued")
                         with (
+                            stateless.bind(req.stateless),
                             bind_event_sink(activity_sink),
                             bind_approvals(approval_context),
                             bind_timezone(req.timezone),
