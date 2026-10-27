@@ -47,6 +47,7 @@ from . import (
     isnad,
     majlis,
     project,
+    qasd,
     qiyas,
     quran,
     silsila,
@@ -164,27 +165,28 @@ class Tadbir:
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
         parts = fahm.understand_parts(task)
-        understanding = fahm.understand(task)
-        if parts is None and understanding.intent in {"converse", "web_search"}:
-            # "Find the next number", "search number theory", "karo koshish": a
-            # follow-up about the sequence asked earlier in this chat, which MIZAN
-            # takes from the history.
-            topicless = understanding.intent == "web_search" and fahm.bare_search(task)
-            earlier = (
-                silsila.from_history(history) if silsila.follow_up(task) or topicless else None
-            )
+        understanding = fahm.understand(task, history=history, overlay=self._learned_intents())
+        if parts is None and understanding.intent in {"silsila_follow", "search_bare"}:
+            # "Find the next number", "karo koshish", "dhundo pahle": a follow-up
+            # about what was asked earlier in this chat, which MIZAN takes from
+            # the history.
+            topicless = understanding.intent == "search_bare"
+            earlier = silsila.from_history(history)
             if earlier:
+                harder = understanding.entities.get("harder") or silsila.harder(task)
                 understanding = fahm.Understanding(
                     "silsila",
                     understanding.language,
-                    0.8,
+                    understanding.confidence,
                     {
                         "sequence": earlier,
                         "understood_by": "conversation",
-                        **({"effort": "deep"} if silsila.harder(task) else {}),
+                        **({"effort": "deep"} if harder else {}),
                     },
                 )
-            elif topicless:
+            elif not topicless:
+                understanding = fahm.Understanding("converse", understanding.language, 0.0)
+            else:
                 # "Dhundo pahle": search for what the user asked before, not these words.
                 topic = _earlier_request(history)
                 understanding = (
@@ -207,7 +209,7 @@ class Tadbir:
                 {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
             )
         example: dict | None = None
-        if parts is None and self.lisan.available and fahm.partly_understood(task):
+        if parts is None and self.lisan.available and fahm.partly_understood(task, understanding):
             # Several requests and MIZAN's recognisers place only some: Lisan
             # maps the whole message into steps, which MIZAN validates.
             planned = await self._lisan_plan(task, understanding)
@@ -411,6 +413,20 @@ class Tadbir:
         elif source == "mizan_learned" and example is not None:
             taallum.reweigh(store, user, example, outcome.verified)
             trace.event("learn", "taallum", reused=True, worked=outcome.verified)
+        # Qasd learns the wording of a request that Lisan or the conversation had
+        # to place and MIZAN then verified, so the next one is understood alone.
+        label = _qasd_label(task, u, source)
+        if (
+            outcome.verified
+            and label
+            and qasd.learn(store, user, task, label, bool(fahm._selected_project()))
+        ):
+            trace.event("learn", "qasd", intent=label, by=source)
+
+    def _learned_intents(self) -> Any:
+        from security.auth import current_user_id
+
+        return qasd.overlay(getattr(self.coordinator, "adaptive", None), current_user_id() or "")
 
     # ── shared actions ───────────────────────────────────────────────────
 
@@ -2349,6 +2365,21 @@ def _ungrounded(result: dict, page: str) -> list[str]:
     if not names or any(name.lower() in folded for name in names):
         return []
     return [name[:80] for name in names]
+
+
+def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | None:
+    """The Qasd class a verified request teaches, when Lisan or the chat placed it.
+
+    Fahm's own choices are not fed back to it (that would only confirm itself)."""
+    if source == "conversation":
+        return "search_bare" if u.intent == "web_search" else "silsila_follow"
+    if source != "lisan":
+        return None
+    if u.intent == "quran":
+        return "quran_explain" if u.entities.get("explain") else "quran"
+    if u.intent == "hadith":
+        return "hadith_explain" if u.entities.get("explain") else "hadith"
+    return u.intent
 
 
 def _earlier_request(history: list[dict] | None) -> str | None:

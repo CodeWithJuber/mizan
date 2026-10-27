@@ -1,0 +1,58 @@
+{
+ "lughah": {
+  "sha256": "088f505cb5cfd076bc816002036aa9ef4e2fe64928b328cb83ef5c844abd1b89",
+  "alpha": 0.3,
+  "weights": [
+   0.0010000011106676412,
+   0.0618851047879471,
+   4.452419426585484
+  ],
+  "loo_loss": 0.03684398711322792,
+  "loo_accuracy": 0.992,
+  "examples": 6246.0,
+  "labels": 7,
+  "vocabulary": 78995
+ },
+ "qasd": {
+  "sha256": "a43996be9bf512edfa194b1e0bc9d0edd30d92c8a1e1b328201849acf3f461fe",
+  "alpha": 0.01,
+  "weights": [
+   1.0450902461187421,
+   0.030286580733994144,
+   0.6634853430119793
+  ],
+  "loo_loss": 0.8208844932706355,
+  "loo_accuracy": 0.7603930461073318,
+  "examples": 1323.0,
+  "labels": 25,
+  "vocabulary": 9266
+ },
+ "qasd.current": {
+  "sha256": "9cea30e1aabce83f1beb909b6ee5657890b7e4e7d18aa40f45b0f063f7d7f939",
+  "alpha": 0.3,
+  "weights": [
+   0.0010000011106676412,
+   0.12269562456874068,
+   0.0010000011106676412
+  ],
+  "loo_loss": 0.28768068389048945,
+  "loo_accuracy": 0.8653846153846154,
+  "examples": 104.0,
+  "labels": 2,
+  "vocabulary": 2915
+ },
+ "qasd.harder": {
+  "sha256": "64c71e02d7573012da093cae9c048fb87ac2c492e86cc397b3de10fbe5224d93",
+  "alpha": 0.03,
+  "weights": [
+   0.0010000011106676412,
+   0.049385523698692466,
+   1.0956680736031055
+  ],
+  "loo_loss": 0.3793542385263046,
+  "loo_accuracy": 0.9032258064516129,
+  "examples": 31.0,
+  "labels": 2,
+  "vocabulary": 1042
+ }
+}

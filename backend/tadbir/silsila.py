@@ -31,27 +31,13 @@ MAX_TERMS = 40
 SPARE = 2  # terms a rule must reproduce beyond those that fixed its parameters
 MARKER = "__SILSILA__"
 _NUMBERS = re.compile(r"-?\d+")
-_CUE = re.compile(
-    r"\b(?:next|agla|agle|aage|aagay|sequence|series|pattern|missing|what\s+comes|"
-    r"kaun\s*sa\s+number|find\s+the\s+number)\b|اگلا|अगला|التالي",
-    re.IGNORECASE,
-)
-_FOLLOW = re.compile(
-    r"\b(?:next\s+number|agla\s+number|sequence|series|pattern|number\s+theor\w*|try\s+again|"
-    r"find\s+(?:it|the\s+next)|solve\s+it|oeis)\b" + "|" + r"\b(?:koshish|try\s+harder|"
-    r"don'?t\s+give\s+up|give\s+up|haar|dobara\s+try|phir\s+se\s+try|keep\s+trying)\b",
-    re.IGNORECASE,
-)
-# "Karo koshish", "jaldi haar kyun maan rahe ho": the user asks for more effort.
-_HARDER = re.compile(
-    r"\b(?:koshish|try\s+harder|give\s+up|haar|dobara|phir\s+se|keep\s+trying|take\s+time|"
-    r"learn)\b",
-    re.IGNORECASE,
-)
 
 
 def harder(text: str) -> bool:
-    return bool(_HARDER.search(text or ""))
+    """The user asks for more effort ("Karo koshish"), as Qasd's ``harder`` facet reads it."""
+    from . import qasd
+
+    return qasd.facet("harder", text or "")
 
 
 @dataclass
@@ -72,10 +58,14 @@ class Rule:
 
 
 def parse(text: str) -> list[int] | None:
-    """The sequence a message asks about: at least four numbers and a cue like "next"."""
-    if not _CUE.search(text or ""):
+    """The sequence a message asks about: a run of at least four numbers, in a
+    message MIZAN's intent model reads as a sequence question."""
+    found = _run_of_numbers(text)
+    if found is None:
         return None
-    return _run_of_numbers(text)
+    from . import qasd
+
+    return found if qasd.prefers(text, "silsila", "converse") else None
 
 
 def _run_of_numbers(text: str) -> list[int] | None:
@@ -93,8 +83,11 @@ def _run_of_numbers(text: str) -> list[int] | None:
 
 
 def follow_up(text: str) -> bool:
-    """A message that refers to an earlier sequence without restating it."""
-    return bool(_FOLLOW.search(text or "")) and _run_of_numbers(text) is None
+    """A message about an earlier sequence that does not restate it."""
+    from . import qasd
+
+    ranked = qasd.ranked(text or "")
+    return _run_of_numbers(text) is None and bool(ranked) and ranked[0][0] == "silsila_follow"
 
 
 def from_history(history: list[dict] | None) -> list[int] | None:

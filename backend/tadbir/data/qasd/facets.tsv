@@ -1,0 +1,138 @@
+# Seed examples for Qasd's yes/no facets (CC0). facet<TAB>label<TAB>text
+# current: the answer depends on something current or outside MIZAN (news, prices, results).
+current	yes	Who won the match last night?
+current	yes	What is the gold price today?
+current	yes	Latest AI news
+current	yes	Weather tomorrow in Mumbai
+current	yes	Kal ka match kisne jeeta
+current	yes	Aaj mausam kaisa hai
+current	yes	Bitcoin ka current rate kya hai
+current	yes	Who is the president of the USA right now?
+current	yes	When does the iPhone 18 launch?
+current	yes	Python 3.15 release date
+current	yes	Top headlines today
+current	yes	Stock price of Apple now
+current	yes	What happened in Gaza this week?
+current	yes	Election results 2026
+current	yes	Is the website down right now?
+current	yes	Current exchange rate of dollar to rupee
+current	yes	Abhi petrol kitne ka hai
+current	yes	Recent updates on the new law
+current	yes	ما آخر الأخبار اليوم؟
+current	yes	آج کی تازہ خبریں
+current	yes	आज का मौसम कैसा है
+current	yes	Score of today's cricket match
+current	yes	New releases this month
+current	yes	Who won the 2026 World Cup?
+current	no	Why is the sky blue?
+current	no	What is the capital of France?
+current	no	Explain recursion
+current	no	Who was Salahuddin Ayyubi?
+current	no	What are the pillars of Islam?
+current	no	How does photosynthesis work?
+current	no	Tell me a joke
+current	no	What is a prime number?
+current	no	Summarize the story of Prophet Yusuf
+current	no	Difference between list and tuple
+current	no	Sabr ka matlab kya hai
+current	no	Roza kyun rakhte hain
+current	no	Write a poem about the sea
+current	no	How do I sort a list in Python?
+current	no	What is machine learning?
+current	no	Who wrote Sahih Bukhari?
+current	no	لماذا السماء زرقاء؟
+current	no	نماز کیوں پڑھتے ہیں؟
+current	no	प्रकाश संश्लेषण क्या है?
+current	no	Explain the theory of relativity
+current	no	Translate hello into Arabic
+current	no	Give me tips for better sleep
+current	no	What is zakat?
+current	no	Kaise pata chale ki number prime hai
+# harder: the user asks for more effort on what was asked before.
+harder	yes	Karo koshish
+harder	yes	Jaldi haar kyun maan rahe ho
+harder	yes	Try harder
+harder	yes	Don't give up
+harder	yes	Take your time and think deeply
+harder	yes	Can you learn and take time to find the next number
+harder	yes	Keep trying
+harder	yes	Dobara koshish karo, dhyan se
+harder	yes	Phir se try karo, achhe se socho
+harder	yes	Tum internet se learn karo saare number theories
+harder	yes	Think more carefully this time
+harder	yes	Give it another serious try
+harder	yes	Mehnat karo thodi
+harder	yes	Haar mat mano
+harder	yes	کوشش کریں، ہار نہ مانیں
+harder	yes	حاول مرة أخرى بجد
+harder	yes	हार मत मानो, फिर से कोशिश करो
+harder	no	Find the next number
+harder	no	Agla number kya hoga
+harder	no	What comes next then?
+harder	no	Solve it
+harder	no	Check OEIS for this sequence
+harder	no	Use number theory to find it
+harder	no	Next term please
+harder	no	Show the pattern
+harder	no	Ok thanks
+harder	no	What is the rule?
+harder	no	Explain the formula
+harder	no	اگلا نمبر بتائیں
+harder	no	ما الرقم التالي؟
+harder	no	अगला नंबर क्या है
+current	yes	What's the price of silver this week?
+current	yes	Aaj Sensex kitna gira?
+current	yes	Latest version of Node.js
+current	yes	Is Netflix down today?
+current	yes	Dubai mein aaj ka temperature
+current	yes	Who is leading the election now?
+current	yes	Recent earthquake news
+current	yes	Train 12951 ka current status
+current	yes	Flight EK500 ka status batao
+current	yes	Kal ki taaza khabrein
+current	yes	What did the central bank decide yesterday?
+current	yes	Upcoming Apple event date
+current	yes	Price of the new Pixel phone in India now
+current	yes	Who won the Ballon d'Or this year?
+current	yes	Is there a public holiday in the UAE next week?
+current	yes	Current USD to AED rate
+current	yes	Abhi Bitcoin upar hai ya neeche
+current	yes	Latest research on Alzheimer's this year
+current	yes	Mumbai traffic right now
+current	yes	New movies releasing this Friday
+current	yes	آج سونے کا ریٹ کیا ہے
+current	yes	अभी डॉलर का रेट क्या है
+current	yes	ما سعر الذهب اليوم؟
+current	yes	Today's IPL points table
+current	yes	Kya aaj bank khule hain
+current	yes	Status of the ceasefire talks
+current	yes	Most downloaded apps this week
+current	yes	Is the Hajj registration open yet this season?
+current	no	Who was Umar ibn al-Khattab?
+current	no	What is the boiling point of water?
+current	no	Explain how a car engine works
+current	no	Write a story about a brave girl
+current	no	What does HTTP stand for?
+current	no	Teach me the Arabic alphabet
+current	no	How many days are in a leap year?
+current	no	Why do leaves change colour in autumn?
+current	no	Iman ke arkan kitne hain
+current	no	Give me a recipe for biryani
+current	no	What is the meaning of tawakkul?
+current	no	Difference between a virus and bacteria
+current	no	How do magnets work?
+current	no	Explain compound interest
+current	no	Write an email to my teacher asking for leave
+current	no	قرآن کتنے پاروں میں ہے؟
+current	no	ما معنى الصبر؟
+current	no	गुरुत्वाकर्षण क्या है?
+current	no	Who built the pyramids?
+current	no	What is the speed of light?
+current	no	How can I become more patient?
+current	no	Safar ki dua batao
+current	no	What is an API?
+current	no	Shukr ka matlab samjhao
+current	no	Tips to learn coding faster
+current	no	Explain the water cycle
+current	no	Who discovered penicillin?
+current	no	What is the largest ocean?

@@ -66,22 +66,6 @@ _NOUN = (
     r"site|game|calculator|todo|to-do|portfolio|dashboard|quiz|timer|stopwatch|clock|"
     r"converter|tracker|counter|form|page|project|tool|cli)"
 )
-_MAKE = (
-    r"(?:build|create|make|develop|code|generate|banao|banaao|bnao|bana\s*do|bana\s*ke\s*do|"
-    r"bana\s*dijiye|tayyar\s+karo|likho)"
-)
-_REQUEST = re.compile(
-    rf"\b{_MAKE}\b[^.\n?]{{0,80}}\b{_NOUN}\b|\b{_NOUN}\b[^.\n?]{{0,80}}\b{_MAKE}\b"
-    r"|(?:ویب\s*سائٹ|ایپ|گیم|کیلکولیٹر)[^.\n؟]{0,60}(?:بناؤ|بنا\s*دو|بنائیں)"
-    r"|(?:वेबसाइट|ऐप|गेम|कैलकुलेटर)[^.\n?]{0,60}(?:बनाओ|बना\s*दो|बनाएं|बनाइए)",
-    re.IGNORECASE,
-)
-# Asking how to build something is a question, not a request to build it.
-_QUESTION = re.compile(
-    r"\b(?:how|kaise|kaisay|kese|why|kyun|kyon|steps|tutorial|guide|sikhao|seekhna|explain)\b"
-    r"|کیسے|कैसे",
-    re.IGNORECASE,
-)
 # Stacks beyond the blueprints go to the general agent loop.
 _BEYOND = re.compile(
     r"\b(?:react|next\.?js|vue|angular|svelte|django|flask|fastapi|express|laravel|php|"
@@ -101,13 +85,16 @@ _STOP = {
 
 
 def out_of_scope(message: str) -> bool:
-    """A question about building, or a stack beyond MIZAN's blueprints."""
-    return bool(_QUESTION.search(message) or _BEYOND.search(message))
+    """A stack beyond the blueprints, or (as MIZAN's intent model reads it) a
+    question about building rather than a request to build."""
+    from . import qasd
+
+    return bool(_BEYOND.search(message)) or qasd.prefers(message, "converse", "build_project")
 
 
-def detect(message: str) -> dict | None:
-    """The project a message asks MIZAN to build, or None."""
-    if not _REQUEST.search(message) or out_of_scope(message):
+def blueprint(message: str) -> dict | None:
+    """The blueprint and name of a project to build; None for stacks beyond them."""
+    if _BEYOND.search(message):
         return None
     kind = "python" if _PYTHON.search(message) else "web"
     return {"kind": kind, "name": project_name(message)}
@@ -287,18 +274,6 @@ TEXT_EXTENSIONS = {
 _SKIP_DIRS = {"node_modules", "dist", "build", ".git", "__pycache__", ".venv", "venv", ".next"}
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,159}$")
 _ENTRY = {"index.html", "app.js", "main.js", "script.js", "style.css", "main.py", "app.py"}
-_CHANGE = re.compile(
-    r"\b(?:add|change|update|fix|remove|delete|rename|refactor|improve|replace|edit|"
-    r"make\s+(?:it|the|this)|badlo|badal\s*do|jodo|jod\s*do|hatao|hata\s*do|"
-    r"th[ie]e?k\s+karo|sudhaa?ro|add\s+karo|change\s+karo|update\s+karo|fix\s+karo|"
-    r"lagao|laga\s*do|daalo|daal\s*do)\b"
-    r"|بدلو|بدل دو|ہٹاؤ|جوڑو|ٹھیک کرو|बदलो|बदल दो|हटाओ|जोड़ो|ठीक करो"
-    # "button ka color red karo": a thing in the project, then what to make it.
-    r"|\b(?:colou?r|rang|size|font|title|text|heading|button|background|theme|layout|page|"
-    r"menu|footer|header|logo|image|form|link)\b[^.?!\n]{0,40}\b(?:karo|kar\s*do|kijiye|"
-    r"rakho|kardo)\b",
-    re.IGNORECASE,
-)
 
 
 def editable(path: str) -> bool:
@@ -309,11 +284,6 @@ def editable(path: str) -> bool:
     if any(part in _SKIP_DIRS or part.startswith(".") for part in parts):
         return False
     return path.rsplit(".", 1)[-1].lower() in TEXT_EXTENSIONS if "." in parts[-1] else False
-
-
-def change_request(message: str) -> bool:
-    """A request to change the selected project, not a question about it."""
-    return bool(_CHANGE.search(message)) and not _QUESTION.search(message)
 
 
 def relevant_files(files: list[dict], request: str, budget: int = 60_000) -> list[str]:

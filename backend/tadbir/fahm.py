@@ -1,32 +1,31 @@
 """Fahm (فهم): MIZAN's own understanding of a request.
 
-Deterministic and inspectable: language from script and lexicon, intent from
-recognizers that also extract what the plan needs (code, expression, Quran or
-hadith reference, URL, search query). Nothing here calls a language model; requests
-it cannot place confidently go back to the general agent loop.
+Understanding is weighed, not matched by hand-written cues:
+
+- the **language** is the posterior of Lughah (``lughah.py``), a naive Bayes
+  model over letters and letter sequences, with the chat's earlier messages
+  as its prior;
+- the **intent** is the posterior of Qasd (``qasd.py``), a naive Bayes model
+  over the request's words and over what MIZAN's parsers find in it, fitted
+  on examples and on MIZAN's own verified work.
+
+Parsing stays exact, because it is reading, not guessing: a Quran or hadith
+reference, a calculation, a date, a link, a file name, a code block, a grid
+puzzle and a schedule are each read by a grammar, and those findings are the
+evidence Qasd weighs. MIZAN then takes the intents in order of probability and
+plans the first whose details it can build from the message. When
+conversation is more probable than every buildable action, it answers in
+words. Nothing here calls a language model.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import amanah, calc, hadith, project, qiyas, quran, silsila, waqt
-
-_HINGLISH = {
-    "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
-    "bhai", "batao", "bata", "kaise", "kaisa", "mujhe", "tum", "tumhe", "tumhare", "aap",
-    "apna", "aur", "yeh", "woh", "kar", "karke", "sakte", "sakta", "chahiye", "kitna",
-    "kitne", "hota", "hoti", "dikhao", "sunao", "likho", "chalao", "padho", "samjhao",
-    "matlab", "accha", "theek", "haan", "lekin", "bhi", "toh", "abhi", "phir", "kuch",
-    "sab", "koi", "paas", "wala", "wali", "liye", "tarjuma", "karna", "karni", "hoga",
-    "ka", "ki", "ke", "ko", "se", "ye", "ek", "banao", "bnao", "banaiye", "jisme", "jismein",
-    "sakein", "sake", "jodo", "dena", "dijiye",
-}  # fmt: skip
-_URDU_LETTERS = set("ٹڈڑںےھہگپچژکی")
-_RUN = r"(?:\brun\b|\bexecute\b|\bexec\b|\bchala\w*|\bchalao\b|चला|چلا|\bchalake\b)"
-_CODE_WORDS = r"\b(?:python|code|script|program|javascript|node|bash|shell|function)\b"
+from . import amanah, calc, hadith, lughah, project, qasd, qiyas, quran, silsila, waqt
 
 
 @dataclass
@@ -55,107 +54,39 @@ def _selected_project() -> str | None:
     return str(selected) if selected else None
 
 
-# Quranic text is fully vowelled: a word with two or more marks is quoted, not the user's own.
-_VOWEL_MARKS = re.compile("[\u064b-\u0652\u0670\u06d6-\u06ed]")
-_ARABIC_SCRIPT_WORD = re.compile("[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+")
+def _user_texts(history: list[dict] | None) -> list[str]:
+    return [
+        str(turn.get("content") or "")
+        for turn in (history or [])[-12:]
+        if turn.get("role") == "user" and str(turn.get("content") or "").strip()
+    ]
 
 
-def _own_script(text: str) -> str:
-    """The text without quoted, vowelled Arabic, when the user's own words remain."""
-    stripped = _ARABIC_SCRIPT_WORD.sub(
-        lambda word: " " if len(_VOWEL_MARKS.findall(word.group(0))) >= 2 else word.group(0), text
-    )
-    return stripped if re.search(r"[^\W\d_]{2,}", stripped) else text
+def detect_language(text: str, history: list[dict] | None = None) -> str:
+    return lughah.language(text, prior=_user_texts(history))
 
 
-def detect_language(text: str) -> str:
-    text = _own_script(text)
-    arabic = re.findall(r"[؀-ۿ]", text)
-    devanagari = re.findall(r"[ऀ-ॿ]", text)
-    latin = re.findall(r"[A-Za-z]", text)
-    if arabic and len(arabic) >= max(len(latin), len(devanagari)):
-        return "ur" if any(ch in _URDU_LETTERS for ch in arabic) else "ar"
-    if devanagari and len(devanagari) >= len(latin):
-        return "hi"
-    words = set(re.findall(r"[a-z]+", text.lower()))
-    strong = words & (_HINGLISH - {"ka", "ki", "ke", "ko", "se", "ye", "toh", "bhi", "koi"})
-    if len(strong) >= 2 or (len(strong) == 1 and (len(words & _HINGLISH) >= 2 or len(words) <= 6)):
-        return "hi-latn"
-    return "en"
+# ── grammars: exact readers whose findings are evidence ─────────────────
+
+_CODE_LABELS = {
+    "py": "python", "python": "python", "python3": "python", "js": "javascript",
+    "javascript": "javascript", "node": "javascript", "sh": "shell", "bash": "shell",
+    "shell": "shell", "zsh": "shell",
+}  # fmt: skip
 
 
 def _fenced_code(text: str) -> tuple[str, str] | None:
     match = re.search(r"```[ \t]*([A-Za-z0-9+#-]*)[^\n]*\n(.*?)```", text, re.DOTALL)
     if not match or not match[2].strip():
         return None
-    label = match[1].lower()
-    language = {
-        "py": "python", "python": "python", "python3": "python", "js": "javascript",
-        "javascript": "javascript", "node": "javascript", "sh": "shell", "bash": "shell",
-        "shell": "shell", "zsh": "shell",
-    }.get(label)  # fmt: skip
+    language = _CODE_LABELS.get(match[1].lower())
     if language is None:
         language = "python" if re.search(r"\bprint\(|\bdef |\bimport ", match[2]) else ""
     return (match[2].strip("\n"), language) if language else None
 
 
-_CAPABILITY = re.compile(
-    r"\b(?:do you have|have you got|you have|any)\s+(?:any\s+)?(?:tools?|abilities|capabilit\w*)"
-    r"|\bwhat can you do\b|\bwhat are your (?:tools|capabilities|abilities)\b"
-    r"|\b(?:tools?|kya kya)\b[^?.!\n]{0,30}\b(?:hai|hain|he|kar sakte|kar sakta)\b"
-    r"|\b(?:tumhare|aapke|tere)\s+paas\b[^?.!\n]{0,30}\btools?\b"
-    r"|\bkya\s+kya\s+kar\s+sakte\b|\bkya\s+kar\s+sakte\s+ho\b"
-    r"|کیا کر سکتے|کون سے ٹولز|क्या कर सकते",
-    re.IGNORECASE,
-)
-_SEARCH = re.compile(
-    r"\b(?:search|google|look\s+up|find\s+online|browse\s+for|khojo|dhundo|dhoondo|"
-    r"search\s+karo|internet\s+(?:par|pe|se))\b|\blatest\b|\bnews\b|\btoday'?s\b|\baaj\s+ki\b",
-    re.IGNORECASE,
-)
-# The request needs something current or outside MIZAN, so a search may answer it.
-_CURRENT = re.compile(
-    r"\b(?:now|abhi|current\w*|this\s+(?:week|month|year)|today|tonight|yesterday|kal|aaj|"
-    r"score|price|prices|rate|weather|stock|news|latest|recent\w*|update\w*|20[2-9]\d)\b",
-    re.IGNORECASE,
-)
-# The message brings its own material to work on: not a request to search.
-_PROVIDED = re.compile(
-    r"\b(?:here\s+is|here's|based\s+(?:only\s+)?on\s+(?:this|the\s+following)|using\s+it|"
-    r"this\s+(?:page|text|review|email|article|output|document|passage)|tool\s+output)\b"
-    r"|\n---\n|^---$",
-    re.IGNORECASE | re.MULTILINE,
-)
-_READ = re.compile(
-    r"\b(?:read|summari[sz]e|summary|padho|padh\s*kar|kya\s+likha|explain\s+this\s+page|"
-    r"open|kholo|dekho)\b",
-    re.IGNORECASE,
-)
-_RECALL = re.compile(
-    r"\bwhat did i (?:tell|say|share)\b|\bdo you remember\b|\bremember when\b|"
-    r"\byaad\s+hai\b|\bmaine\s+(?:kya|jo)\s+(?:bataya|kaha)\b|یاد ہے|याद है",
-    re.IGNORECASE,
-)
-_BUILD = re.compile(
-    r"\b(?:write|create|make|build|likho|banao|bana\s*do)\b[^.\n]{0,60}"
-    r"\b(?:program|script|code|function)\b"
-    r"|\b(?:program|script|code|function)\b[^.\n]{0,80}\b(?:likho|banao|bana\s*do|likh\s*do)\b",
-    re.IGNORECASE,
-)
-_COMPUTE_VERB = re.compile(
-    r"\b(?:calculate|compute|solve|evaluate|kitna|kitne|kya\s+hai|what\s+is|how\s+much|"
-    r"hisab|nikalo|batao|equals?)\b|=\s*\??\s*$|\?\s*$",
-    re.IGNORECASE,
-)
 _URL = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-# A question about a page the user names ("According to <url>, what was …?").
-_ASKS = re.compile(
-    r"[?؟]|\baccording\s+to\b|\b(?:what|which|who|when|where|how\s+(?:many|much))\b|"
-    r"\b(?:find|tell\s+me|cite|give\s+me|kya|kitna|kitne|batao|kis|kin|kaun|kaisa|kaise)\b|"
-    r"(?<!\w)(?:ما|ماذا|من|لمن|كيف|متى|أين|هل|كم|کیا|کون|کس|کب|کہاں|کتنا|کیسے|क्या|कौन|किस)(?!\w)",
-    re.IGNORECASE,
-)
 # A file in the selected project, named in the user's words (`sales.csv`, app.log).
 _FILE_NAME = re.compile(
     r"(?<![\w/.-])`?([A-Za-z0-9_][\w./-]{0,120}\.(?:py|js|mjs|cjs|sh|csv|tsv|json|jsonl|log|txt|"
@@ -164,13 +95,16 @@ _FILE_NAME = re.compile(
 )
 _DATA_FILE = re.compile(r"\.(?:csv|tsv|json|jsonl|log|xml)$", re.IGNORECASE)
 _RUNNABLE = re.compile(r"\.(?:py|js|mjs|cjs|sh)$", re.IGNORECASE)
-# Work over data: compute, count, sort, filter, total… ("hisab karo", "gino").
-_DATA_VERB = re.compile(
-    r"\b(?:compute|calculate|count|counts|total|totals|sum|average|mean|median|sort|sorted|"
-    r"group|aggregate|work\s+out|tally|filter|which|how\s+many|extract|parse|convert|merge|"
-    r"dedupe|deduplicate|summari[sz]e\s+the\s+(?:numbers|data)|hisab|gino|ginti|nikalo)\b",
-    re.IGNORECASE,
-)
+_JAVASCRIPT = re.compile(r"\b(?:javascript|node|js)\b", re.IGNORECASE)
+
+
+def _own_words(message: str) -> str:
+    """The message without pasted material (a region that is only a link stays)."""
+    own = _IMAGE.sub(" ", message)
+    for region in amanah.pasted(message):
+        if not _URL.fullmatch(region.strip().rstrip(".,;)")):
+            own = own.replace(region, " ")
+    return own
 
 
 def named_files(message: str) -> list[str]:
@@ -184,49 +118,61 @@ def named_files(message: str) -> list[str]:
     return seen[:12]
 
 
-def _project_request(message: str, asks_run: bool) -> Understanding | None:
-    """Work on the selected project's files: run a file, or process its data."""
-    if not _selected_project():
-        return None
-    names = named_files(message)
-    if not names:
-        return None
-    language = detect_language(message)
-    runnable = [name for name in names if _RUNNABLE.search(name)]
-    if asks_run and runnable and not _BUILD.search(message) and not project.change_request(message):
-        return Understanding("run_file", language, 0.85, {"path": runnable[0]})
-    if any(_DATA_FILE.search(name) for name in names) and _DATA_VERB.search(message):
-        return Understanding("project_task", language, 0.8, {"request": message, "files": names})
-    if _WRITE_FROM.search(message) and len(names) >= 2:
-        # "Summarise notes.txt into summary.md": language work Lisan writes into a file.
-        return Understanding("edit_project", language, 0.75, {"request": message})
-    return None
+def plain_words(message: str) -> str:
+    """The user's words, without code blocks, links and file names (those are evidence)."""
+    text = re.sub(r"```.*?(?:```|$)", " ", message or "", flags=re.DOTALL)
+    text = _FILE_NAME.sub(" ", _URL.sub(" ", _IMAGE.sub(" ", text)))
+    return text
 
 
-_WRITE_FROM = re.compile(
-    r"\b(?:summari[sz]e|translate|rewrite|reformat|document|describe|outline|condense|"
-    r"khulasa|tarjuma)\b",
-    re.IGNORECASE,
-)
+def evidence(message: str) -> list[str]:
+    """What MIZAN's parsers find in a message, as tokens for Qasd to weigh."""
+    from knowledge import hf_hub
+
+    found: list[str] = []
+    if quran.parse_reference(message) is not None:
+        found.append("qref")
+    if hadith.parse_reference(message) is not None:
+        found.append("href")
+    if waqt.parse(message) is not None:
+        found.append("date")
+    if qiyas.parse(message) is not None:
+        found.append("grid")
+    if silsila._run_of_numbers(message) is not None:
+        found.append("seq")
+    if _fenced_code(message) is not None:
+        found.append("code")
+    expression = calc.find_expression(message)
+    if expression:
+        found.append("expr")
+        # How much of the message the calculation is, in quarters (expr0 … expr4).
+        share = len(re.sub(r"\s+", "", expression)) / (len(re.sub(r"\s+", "", message)) or 1)
+        found.append(f"expr{round(4 * share)}")
+    own = _own_words(message)
+    if _URL.search(own):
+        found.append("hf" if hf_hub.parse_link(own) is not None else "url")
+    for name in named_files(message):
+        found.append(
+            "datafile"
+            if _DATA_FILE.search(name)
+            else "runfile"
+            if _RUNNABLE.search(name)
+            else "file"
+        )
+    if amanah.pasted(message):
+        found.append("pasted")
+    if _trigger(message) is not None:
+        found.append("schedule")
+    if _prayer_named(message):
+        found.append("prayer")
+    words = len(re.findall(r"\w+", message))
+    found.append(f"len{words.bit_length()}")  # length on a log₂ scale
+    return found
 
 
-def _own_words(message: str) -> str:
-    """The message without pasted material (a region that is only a link stays)."""
-    own = _IMAGE.sub(" ", message)
-    for region in amanah.pasted(message):
-        if not _URL.fullmatch(region.strip().rstrip(".,;)")):
-            own = own.replace(region, " ")
-    return own
+# ── schedules (Muraqabah): time grammar ─────────────────────────────────
 
-
-_EXPLAIN = re.compile(
-    r"\b(?:tafsee?r|tafsir|explain|explanation|meaning|matlab|samjhao|sharh|sharah|tashreeh)\b"
-    r"|تفسیر|تفسير|شرح|تشریح|व्याख्या|तशरीह",
-    re.IGNORECASE,
-)
-
-
-_WATCH_CUE = re.compile(
+_SEND = re.compile(
     r"\b(?:bhej(?:o|na|iye|en|a\s+karo)|send|remind|yaad\s+dila(?:o|na|iye|ya\s+karo)|"
     r"bata(?:o|na|iye|ya\s+karo)|notify|alert|message\s+karo)\b",
     re.IGNORECASE,
@@ -236,6 +182,8 @@ _PRAYER_NAMES = {
     "dhuhr": "dhuhr", "duhr": "dhuhr", "asr": "asr", "asar": "asr", "maghrib": "maghrib",
     "magrib": "maghrib", "isha": "isha", "esha": "isha", "ishaa": "isha",
 }  # fmt: skip
+_FAST_TIMES = {"sehri": "fajr", "sahri": "fajr", "suhoor": "fajr", "iftar": "maghrib",
+               "iftari": "maghrib"}  # fmt: skip
 _PRAYER = r"(fajr|fajar|zuhr|zohar|zuhar|dhuhr|duhr|asr|asar|maghrib|magrib|isha|esha|ishaa)"
 _MINUTES = r"(?:\d{1,3}\s*(?:min|mins|minute|minutes|mint|minat)\s*)?"
 _RELATIVE = re.compile(
@@ -246,13 +194,6 @@ _RELATIVE = re.compile(
     + _MINUTES
     + r"(after|before)\s+"
     + _PRAYER,
-    re.IGNORECASE,
-)
-_SALAH_WORD = "(" + _PRAYER[1:-1] + "|sehri|sahri|suhoor|iftar|iftari)"
-_SALAH_TIME = re.compile(
-    r"(?:" + _PRAYER + r"|namaz|namaaz|nam[aā]z|prayer|salah|salat|sehri|sahri|suhoor|iftar|iftari)"
-    r"\s*(?:ka|ki|ke|of)?\s*(?:time|times|timing|timings|waqt|waqat|auqat|kab)\b"
-    r"|\b(?:prayer|namaz|salah)\s+times?\b|\bwhen\s+is\s+" + _PRAYER,
     re.IGNORECASE,
 )
 _EVENING = re.compile(r"\b(?:shaam|sham|evening|raat|night)\b", re.IGNORECASE)
@@ -271,22 +212,28 @@ _REMINDER = re.compile(
 )
 
 
-def watch_request(message: str) -> dict | None:
-    """A standing request ("every day after Fajr, send me an ayah"), or None."""
-    if not _WATCH_CUE.search(message):
-        return None
+def _prayer_named(message: str) -> str | None:
+    for word in re.findall(r"[a-z]+", message.lower()):
+        if word in _PRAYER_NAMES:
+            return _PRAYER_NAMES[word]
+        if word in _FAST_TIMES:
+            return _FAST_TIMES[word]
+    return None
+
+
+def _trigger(message: str) -> dict | None:
+    """When a standing request fires: around a prayer, or daily at a clock time."""
     relative = _RELATIVE.search(message)
-    clock = _CLOCK.search(message)
-    trigger: dict | None = None
     if relative:
         name = (relative.group(1) or relative.group(4) or "").lower()
         direction = (relative.group(2) or relative.group(3) or "").lower()
         before = direction in {"pehle", "before"}
         offset = _OFFSET.search(message)
         minutes = int(offset.group(1)) if offset else (30 if before else 20)
-        trigger = {"kind": "prayer", "prayer": _PRAYER_NAMES[name],
-                   "offset": -minutes if before else minutes}  # fmt: skip
-    elif clock and _EVERY.search(message):
+        return {"kind": "prayer", "prayer": _PRAYER_NAMES[name],
+                "offset": -minutes if before else minutes}  # fmt: skip
+    clock = _CLOCK.search(message)
+    if clock and _EVERY.search(message):
         hour, minute = int(clock.group(1)), int(clock.group(2) or 0)
         meridiem = clock.group(3).lower().replace(".", "")
         if (meridiem == "pm" or (meridiem == "baje" and _EVENING.search(message))) and hour < 12:
@@ -295,7 +242,13 @@ def watch_request(message: str) -> dict | None:
             hour = 0
         if hour > 23 or minute > 59:
             return None
-        trigger = {"kind": "daily", "time": f"{hour:02d}:{minute:02d}"}
+        return {"kind": "daily", "time": f"{hour:02d}:{minute:02d}"}
+    return None
+
+
+def watch_request(message: str) -> dict | None:
+    """The schedule and task of a standing request, when the message has a schedule."""
+    trigger = _trigger(message)
     if trigger is None:
         return None
     if _AYAH_WORD.search(message) and quran.parse_reference(message) is None:
@@ -309,7 +262,7 @@ def watch_request(message: str) -> dict | None:
                 "task": f"remind:{what[:300]}",
                 "title": f"Reminder: {what[:60]}",
             }
-    what = _bare(_WATCH_CUE.sub(" ", message))
+    what = _bare(_SEND.sub(" ", message))
     if not what:
         return None
     # Anything else is a request MIZAN runs each time, in the user's own words.
@@ -325,157 +278,14 @@ def _bare(text: str) -> str:
     return text
 
 
-def understand(text: str) -> Understanding:
-    message = text.strip()
-    language = detect_language(message)
-    words = re.findall(r"\w+", message)
-
-    if _CAPABILITY.search(message) and len(words) <= 25:
-        return Understanding("capabilities", language, 0.9)
-
-    standing = watch_request(message)
-    if standing is not None:
-        return Understanding("watch", language, 0.9, standing)
-
-    salah = _SALAH_TIME.search(message)
-    if salah and len(words) <= 20:
-        named = next((m.lower() for m in re.findall(_SALAH_WORD, message, re.IGNORECASE) if m), "")
-        prayer = {"sehri": "fajr", "sahri": "fajr", "suhoor": "fajr", "iftar": "maghrib",
-                  "iftari": "maghrib"}.get(named, _PRAYER_NAMES.get(named))  # fmt: skip
-        return Understanding("salah", language, 0.9, {"prayer": prayer})
-
-    explain = bool(_EXPLAIN.search(message))
-    # "Write a function format_citation … 'Surah 2, Ayah 255'": code, not a lookup.
-    writes_code = bool(_BUILD.search(message))
-    reference = None if writes_code else quran.parse_reference(message)
-    if reference is not None:
-        # "What did the people say in 2:71?": a question about what the ayah says.
-        questioned = bool(_ASKS.search(message)) and not explain and len(words) > 4
-        return Understanding(
-            "quran",
-            language,
-            0.95,
-            {"reference": reference, "explain": explain, "question": questioned},
-        )
-
-    narration = None if writes_code else hadith.parse_reference(message)
-    if narration is not None:
-        return Understanding("hadith", language, 0.95, {"reference": narration, "explain": explain})
-
-    asks_run = bool(re.search(_RUN, message, re.IGNORECASE))
-    when = waqt.parse(message)
-    # "a program that prints today's date, run it" is a program, not a date question.
-    if when is not None and len(words) <= 25 and not (_BUILD.search(message) and asks_run):
-        return Understanding("waqt", language, 0.9, {"request": when})
-
-    puzzle = qiyas.parse(message)
-    if puzzle is not None:
-        return Understanding("qiyas", language, 0.9, {"puzzle": puzzle})
-
-    sequence = silsila.parse(message)
-    if sequence is not None:
-        return Understanding("silsila", language, 0.9, {"sequence": sequence})
-
-    fenced = _fenced_code(message)
-    if fenced and (asks_run or len(message) - len(fenced[0]) < 40):
-        code, code_language = fenced
-        return Understanding(
-            "run_code", language, 0.9, {"code": code, "code_language": code_language}
-        )
-
-    on_project = _project_request(message, asks_run)
-    if on_project is not None:
-        return on_project
-
-    expression = calc.find_expression(message)
-    if expression:
-        wants_python = asks_run and re.search(_CODE_WORDS, message, re.IGNORECASE)
-        compact = re.sub(r"\s+", "", message)
-        dominant = len(re.sub(r"\s+", "", expression)) >= 0.4 * max(1, len(compact))
-        if wants_python:
-            normalized = calc.normalize(expression)
-            return Understanding(
-                "run_code",
-                language,
-                0.9,
-                {
-                    "code": f"print({normalized})",
-                    "code_language": "python",
-                    "expression": expression,
-                    "generated_by": "mizan",
-                },
-            )
-        asked = re.search(re.escape(expression) + r"\s*(?:=\s*)?\?", message)
-        if dominant or asked or _COMPUTE_VERB.search(message):
-            return Understanding(
-                "compute", language, 0.9 if dominant else 0.8, {"expression": expression}
-            )
-
-    hub = hub_request(message)
-    if hub is not None:
-        return Understanding("hf_hub", language, 0.85, hub)
-
-    # Only a link in the user's own words is read; a link inside pasted text or
-    # a Markdown image is material (and may be a way to send data out).
-    own = _own_words(message)
-    url = _URL.search(own)
-    asks_about_page = (
-        _ASKS.search(message) and project.detect(message) is None and not _BUILD.search(message)
-    )
-    if url and (_READ.search(message) or asks_about_page or len(message) - len(url[0]) < 25):
-        # Every link in the user's own words, in order: when one page is gone,
-        # MIZAN reads the next one the user gave.
-        urls = list(dict.fromkeys(found.rstrip(").,;") for found in _URL.findall(own)))[:4]
-        return Understanding(
-            "web_read", language, 0.85, {"url": url[0].rstrip(").,;"), "urls": urls}
-        )
-
-    if _BUILD.search(message) and asks_run:
-        code_language = (
-            "javascript" if re.search(r"\b(?:javascript|node|js)\b", message, re.I) else "python"
-        )
-        return Understanding(
-            "build_and_run", language, 0.8, {"request": message, "code_language": code_language}
-        )
-
-    build = project.detect(message)
-    if build is not None:
-        return Understanding("build_project", language, 0.8, build)
-
-    if _selected_project() and project.change_request(message):
-        return Understanding("edit_project", language, 0.75, {"request": message})
-
-    if _RECALL.search(message):
-        return Understanding("recall", language, 0.8, {"query": message})
-
-    if _SEARCH.search(message) and not url and not _PROVIDED.search(message):
-        query = _SEARCH.sub(" ", message)
-        query = re.sub(
-            r"\b(?:karo|kro|please|for|about|ke\s+baare\s+mein|par|pe|me|mein)\b",
-            " ",
-            query,
-            flags=re.I,
-        )
-        query = re.sub(r"\s+", " ", query).strip(" ?.!,:")
-        if len(query) >= 2:  # "latest AI news" leaves "AI"
-            return Understanding("web_search", language, 0.75, {"query": message.strip()[:300]})
-
-    return Understanding("converse", language, 0.0)
+# ── Hugging Face ────────────────────────────────────────────────────────
 
 
-_HUB_WORD = re.compile(r"\b(?:hugging\s*face|huggingface|hf)\b", re.IGNORECASE)
-_HUB_LIST = re.compile(
-    r"\b(?:list|show|dikhao|dikha\s*do|batao|kaun\s+se|kya\s+kya|which|what|mere|my|apne)\b",
-    re.IGNORECASE,
-)
-_HUB_IMPORT = re.compile(
-    r"\b(?:import|download|le\s*aao|lao|laao|utha\w*|daal\w*|copy|bring|fetch|project\s+me)\b",
-    re.IGNORECASE,
-)
+_HUB_NAME = re.compile(r"hugging\s*face|huggingface|\bhf\b", re.IGNORECASE)  # the platform's name
 
 
 def hub_request(message: str) -> dict | None:
-    """A request about Hugging Face: list an account, inspect a repository, import a file."""
+    """List an account, inspect a repository, or import a file the user names."""
     from knowledge import hf_hub
 
     own = _own_words(message)
@@ -485,38 +295,211 @@ def hub_request(message: str) -> dict | None:
     if re.search(r"\btrain", message, re.IGNORECASE) and "models" not in kinds:
         kinds.append("models")  # "datasets / training": the trained models too
     if link is None:
-        if _HUB_WORD.search(own) and _HUB_LIST.search(own) and len(own.split()) <= 25:
-            return {"action": "repos", "owner": "", "kinds": kinds}
-        return None
+        # Without a link, the request must name the platform it is about.
+        if not _HUB_NAME.search(own):
+            return None
+        return {"action": "repos", "owner": "", "kinds": kinds}
     if "owner" in link:
         return {"action": "repos", "owner": link["owner"], "kinds": kinds}
     named = [name for name in named_files(own) if "." in name]
-    path = link.get("path") or (named[0] if named and _HUB_IMPORT.search(own) else None)
+    path = link.get("path") or (named[0] if named else None)
     entities = {"repo": link["repo"], "kind": link["kind"], "revision": link["revision"]}
     if path:
         return {"action": "import", "path": path, **entities}
     return {"action": "files", **entities}
 
 
-_NO_TOPIC = re.compile(
-    r"\b(?:pahle|pehle|abhi|please|plz|it|this|that|isko|ise|usko|use|internet|web|online|"
-    r"google|par|pe|se|me|mein|karo|kro|kar|do|for|now|jaldi|first|then|again|phir|dobara|"
-    r"karke|dekho|bhai|yaar|tum|aap|zara|na|toh|bhi|ab|you|can|could|the|on|and|aur|ek|baar)\b",
-    re.IGNORECASE,
-)
+# ── building each intent's plan from the message ────────────────────────
 
 
-_SEARCH_VERB = re.compile(
-    r"\b(?:search|google|look\s+up|find\s+online|browse\s+for|khojo|dhundo|dhoondo|"
-    r"search\s+karo)\b",
-    re.IGNORECASE,
-)
+def _quran(intent: str, message: str, language: str) -> Understanding | None:
+    reference = quran.parse_reference(message)
+    if reference is None:
+        return None
+    return Understanding(
+        "quran",
+        language,
+        0.0,
+        {
+            "reference": reference,
+            "explain": intent == "quran_explain",
+            "question": intent == "quran_question",
+        },
+    )
+
+
+def _hadith(intent: str, message: str, language: str) -> Understanding | None:
+    narration = hadith.parse_reference(message)
+    if narration is None:
+        return None
+    explain = intent == "hadith_explain"
+    return Understanding("hadith", language, 0.0, {"reference": narration, "explain": explain})
+
+
+def _run_code(_intent: str, message: str, language: str) -> Understanding | None:
+    fenced = _fenced_code(message)
+    if fenced:
+        code, code_language = fenced
+        return Understanding(
+            "run_code", language, 0.0, {"code": code, "code_language": code_language}
+        )
+    expression = calc.find_expression(message)
+    if not expression:
+        return None
+    return Understanding(
+        "run_code",
+        language,
+        0.0,
+        {
+            "code": f"print({calc.normalize(expression)})",
+            "code_language": "python",
+            "expression": expression,
+            "generated_by": "mizan",
+        },
+    )
+
+
+def _in_project(intent: str, message: str, language: str) -> Understanding | None:
+    if not _selected_project():
+        return None
+    names = named_files(message)
+    if intent == "run_file":
+        runnable = [name for name in names if _RUNNABLE.search(name)]
+        return Understanding("run_file", language, 0.0, {"path": runnable[0]}) if runnable else None
+    if intent == "project_task":
+        if not any(_DATA_FILE.search(name) for name in names):
+            return None
+        return Understanding("project_task", language, 0.0, {"request": message, "files": names})
+    return Understanding("edit_project", language, 0.0, {"request": message})
+
+
+def _web_read(_intent: str, message: str, language: str) -> Understanding | None:
+    # Only a link in the user's own words is read; a link inside pasted text or
+    # a Markdown image is material (and may be a way to send data out).
+    own = _own_words(message)
+    url = _URL.search(own)
+    if not url:
+        return None
+    # Every link in the user's own words, in order: when one page is gone,
+    # MIZAN reads the next one the user gave.
+    urls = list(dict.fromkeys(found.rstrip(").,;") for found in _URL.findall(own)))[:4]
+    return Understanding("web_read", language, 0.0, {"url": url[0].rstrip(").,;"), "urls": urls})
+
+
+def _simple(intent: str, entities: dict | None = None):
+    def build(_intent: str, message: str, language: str) -> Understanding | None:
+        return Understanding(intent, language, 0.0, dict(entities or {}))
+
+    return build
+
+
+def _with(intent: str, read):
+    def build(_intent: str, message: str, language: str) -> Understanding | None:
+        found = read(message)
+        return None if found is None else Understanding(intent, language, 0.0, found)
+
+    return build
+
+
+_BUILDERS = {
+    "capabilities": _simple("capabilities"),
+    "watch": _with("watch", watch_request),
+    "salah": _with("salah", lambda m: {"prayer": _prayer_named(m)}),
+    "quran": _quran,
+    "quran_question": _quran,
+    "quran_explain": _quran,
+    "hadith": _hadith,
+    "hadith_explain": _hadith,
+    "waqt": _with(
+        "waqt", lambda m: (lambda w: None if w is None else {"request": w})(waqt.parse(m))
+    ),
+    "qiyas": _with(
+        "qiyas", lambda m: (lambda p: None if p is None else {"puzzle": p})(qiyas.parse(m))
+    ),
+    "silsila": _with(
+        "silsila",
+        lambda m: (lambda s: None if s is None else {"sequence": s})(silsila._run_of_numbers(m)),
+    ),
+    # "Karo koshish": about a sequence asked earlier; Tadbir takes it from the chat.
+    "silsila_follow": _with(
+        "silsila_follow",
+        lambda m: (
+            None if silsila._run_of_numbers(m) is not None else {"harder": qasd.facet("harder", m)}
+        ),
+    ),
+    "run_code": _run_code,
+    "run_file": _in_project,
+    "project_task": _in_project,
+    "edit_project": _in_project,
+    "compute": _with(
+        "compute", lambda m: (lambda e: {"expression": e} if e else None)(calc.find_expression(m))
+    ),
+    "hf_hub": _with("hf_hub", hub_request),
+    "web_read": _web_read,
+    "build_and_run": _with(
+        "build_and_run",
+        lambda m: {
+            "request": m,
+            "code_language": "javascript" if _JAVASCRIPT.search(m) else "python",
+        },
+    ),
+    "build_project": _with("build_project", project.blueprint),
+    "recall": _with("recall", lambda m: {"query": m}),
+    "web_search": _with("web_search", lambda m: {"query": m.strip()[:300]}),
+    # "Dhundo pahle": a search with no topic of its own; Tadbir takes the topic from the chat.
+    "search_bare": _simple("search_bare"),
+}
+
+
+def understand(text: str, history: list[dict] | None = None, overlay: Any = None) -> Understanding:
+    message = text.strip()
+    language = detect_language(message, history)
+    ranked = qasd.ranked(message, project=bool(_selected_project()), overlay=overlay)
+    # MAP first over families of recipes (a request to make something is one
+    # family whether it builds or edits), conversation, and "an action MIZAN
+    # could not build from these words" (the mass of the families that failed;
+    # that goes on as conversation, where Lisan may map the wording). Within the
+    # chosen family, the most probable intent MIZAN can build is the plan.
+    unbuilt = 0.0
+    for family, mass, members in _families(ranked):
+        if family == "converse" or unbuilt > mass:
+            break
+        for intent, _probability in members:
+            build = _BUILDERS.get(intent)
+            built: Understanding | None = build(intent, message, language) if build else None
+            if built is not None:
+                built.confidence = mass
+                return built
+        unbuilt += mass
+    return Understanding("converse", language, 0.0, {"posterior": dict(ranked[:3])})
+
+
+# Families of recipes: intents that are kinds of one request.
+FAMILIES = {
+    "quran": ("quran", "quran_question", "quran_explain"),
+    "hadith": ("hadith", "hadith_explain"),
+    "search": ("web_search", "search_bare"),
+    "sequence": ("silsila", "silsila_follow"),
+    "code": ("run_code", "build_and_run", "run_file"),
+    "make": ("build_project", "edit_project", "project_task"),
+}
+_FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
+
+
+def _families(ranked: list[tuple[str, float]]) -> list[tuple[str, float, list[tuple[str, float]]]]:
+    """The posterior summed by family, most probable first, each with its members."""
+    grouped: dict[str, list[tuple[str, float]]] = {}
+    for intent, probability in ranked:
+        grouped.setdefault(_FAMILY.get(intent, intent), []).append((intent, probability))
+    found = [(family, sum(p for _i, p in members), members) for family, members in grouped.items()]
+    return sorted(found, key=lambda item: -item[1])
 
 
 def bare_search(text: str) -> bool:
-    """A search request with no topic of its own ("Dhundo pahle", "search it")."""
-    rest = _NO_TOPIC.sub(" ", _SEARCH_VERB.sub(" ", text or ""))
-    return bool(_SEARCH_VERB.search(text or "")) and not re.search(r"[^\W\d_]{2,}", rest)
+    """A search request with no topic of its own ("Dhundo pahle", "search it"):
+    the most probable intent of the message is a topicless search."""
+    ranked = qasd.ranked(text or "", project=bool(_selected_project()))
+    return bool(ranked) and ranked[0][0] == "search_bare"
 
 
 # Clause boundaries between independent requests ("Bukhari 1 aur Surah Ikhlas").
@@ -536,18 +519,55 @@ def _clauses(text: str) -> list[str]:
     return parts if 2 <= len(parts) <= 4 else []
 
 
-def partly_understood(text: str) -> bool:
-    """Several requests, some of which MIZAN's recognisers cannot place on their own."""
-    understood = [understand(part) for part in _clauses(text)]
-    known = [u for u in understood if u.intent not in {"converse", "capabilities"}]
+_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare"}
+
+
+def _decisive_action(text: str) -> str | None:
+    """The family of action a clause asks for, when Qasd finds that family more
+    probable than all the alternatives together (P > ½); otherwise None."""
+    families = _families(qasd.ranked(text, project=bool(_selected_project())))
+    if families and families[0][0] != "converse" and families[0][1] > 0.5:
+        return families[0][0]
+    return None
+
+
+def partly_understood(text: str, whole: Understanding | None = None) -> bool:
+    """Several requests, some of which MIZAN's recognisers cannot place on their own.
+
+    A clause MIZAN cannot place counts only when it is decisively an action of
+    its own (its top action has P > ½) and not the action the whole message was
+    understood as ("…program likho … aur run karo" is one request; "twelve
+    squared, then Bukhari 1" is two)."""
+    clauses = _clauses(text)
+    understood = [understand(part) for part in clauses]
+    known = [u for u in understood if u.intent not in _WORDS_ONLY]
+    whole_intent = _FAMILY.get(whole.intent, whole.intent) if whole is not None else None
     return (
         bool(known)
         and len(known) < len(understood)
         and any(
-            u.intent == "converse" and actionable(part)
-            for part, u in zip(_clauses(text), understood, strict=True)
+            u.intent == "converse"
+            and (action := _decisive_action(part)) is not None
+            and action != whole_intent
+            for part, u in zip(clauses, understood, strict=True)
         )
     )
+
+
+def _covers(whole: Understanding, part: Understanding) -> bool:
+    """The whole message's plan already holds everything this part asks for:
+    the same kind of recipe, and each of the part's entities contained in the
+    whole's (a clause within the whole request, the same reference)."""
+    if _FAMILY.get(whole.intent, whole.intent) != _FAMILY.get(part.intent, part.intent):
+        return False
+    for key, value in part.entities.items():
+        held = whole.entities.get(key)
+        if isinstance(value, str) and isinstance(held, str):
+            if value.strip().casefold() not in held.casefold():
+                return False
+        elif held != value:
+            return False
+    return True
 
 
 def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
@@ -557,32 +577,41 @@ def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
     if not parts:
         return None
     understood = [(part, understand(part)) for part in parts]
-    if any(u.intent in {"converse", "capabilities"} for _part, u in understood):
+    if any(u.intent in _WORDS_ONLY for _part, u in understood):
         return None
+    # One request or several? The simpler explanation wins:
+    # - when one plan for the whole message already holds what every part asks
+    #   for, it is one request ("write a function that … and returns …": the
+    #   program's request is the whole text; "Bukhari 1 and Bukhari 2" is two,
+    #   because one plan holds only one reference);
+    # - when the parts are different actions, the split is kept only if it
+    #   explains the message better than the whole does: the joint probability
+    #   of the parts against the whole message's probability ("Every morning
+    #   after Fajr send an ayah and the Hijri date" is one watcher).
+    whole = understand(message)
+    if whole.intent not in _WORDS_ONLY:
+        if all(_covers(whole, u) for _part, u in understood):
+            return None
+        joint = math.prod(u.confidence for _part, u in understood)
+        if len({u.intent for _part, u in understood}) > 1 and whole.confidence >= joint:
+            return None
     language = detect_language(message)
     for _part, u in understood:
         u.language = language
     return understood
 
 
-_ACTION_CUES = re.compile(
-    r"\d|https?://|\b(?:python|code|program|script|run|execute|calculate|compute|sum|total|"
-    r"search|find|latest|news|quran|qur'an|surah|ayah|ayat|verse|fibonacci|prime|factorial|"
-    r"kitna|kitne|nikalo|dhundo|khojo|chalao|hadith|hadees|hadis|bukhari|tirmidhi|nawawi|"
-    r"app|website|game|banao|bana|build|create|date|tarikh|hijri|eid|show|list|get|fetch|send|"
-    r"remember|save|open|check|dikhao|bhejo|rakho|repo|repos|issues?|email|mail|calendar|"
-    r"event|file|files|note|notes|tasks?|reminder|connector|skill)\b"
-    r"|سورة|سورہ|آیت|آية|حديث|حدیث|सूरह|आयत|हदीस",
-    re.IGNORECASE,
-)
-
-
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹०१२३४५६७८९", "0123456789" * 3)
 
 
 def actionable(text: str) -> bool:
-    """Worth asking Lisan to map the wording to an action (cheap pre-check)."""
-    return bool(_ACTION_CUES.search(text)) and len(text) <= 2000
+    """MIZAN finds some action more probable than conversation, but could not build it.
+
+    Then Lisan may map the wording, and MIZAN validates the mapping."""
+    if len(text) > 2000:
+        return False
+    found: dict[str, float] = qasd.posterior(text, project=bool(_selected_project()))
+    return found.get("converse", 0.0) < 0.5
 
 
 def validate_parsed(parsed: dict, message: str, language: str) -> Understanding | None:
@@ -626,7 +655,9 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         narration = hadith.validated(str(parsed.get("collection", "")), number)
         if narration is None or str(number) not in digits:
             return None
-        entities.update(reference=narration, explain=bool(_EXPLAIN.search(message)))
+        entities.update(
+            reference=narration, explain=qasd.prefers(message, "hadith_explain", "hadith")
+        )
     elif intent == "build_project":
         kind = parsed.get("kind", "web")
         if kind not in project.BLUEPRINTS or project.out_of_scope(message):
@@ -651,8 +682,10 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:
             return None
-        if not (_SEARCH.search(message) or _CURRENT.search(message)):
-            return None  # general knowledge: answered in words, not by searching
+        # General knowledge is answered in words; a search is for what is
+        # current or outside MIZAN, as MIZAN's own model judges the message.
+        if not (qasd.facet("current", message) or qasd.prefers(message, "web_search", "converse")):
+            return None
         entities["query"] = query
     elif intent == "watch":
         from automation import muraqabah

@@ -1,0 +1,701 @@
+# Seed examples for Qasd, MIZAN's intent model (CC0). label<TAB>text
+# "[project] " in front of a text means a coding project is selected in that chat.
+# These are examples to learn from, not patterns: the model weighs their letters,
+# words and the evidence MIZAN's parsers find in them, and keeps learning from
+# every verified request.
+capabilities	Which tools do you have?
+capabilities	Do you have any abilities like search or code?
+capabilities	Tum kya kya kar sakte ho
+capabilities	Aapke paas kaun se tools hain
+capabilities	Kya kya kar sakte ho tum
+capabilities	What are your capabilities?
+capabilities	Tell me what you are able to do
+capabilities	List your tools
+capabilities	Tumhare paas internet access hai kya
+capabilities	Can you run code and browse the web?
+capabilities	آپ کیا کیا کر سکتے ہیں؟
+capabilities	آپ کے پاس کون سے ٹولز ہیں؟
+capabilities	ماذا تستطيع أن تفعل؟
+capabilities	ما هي أدواتك؟
+capabilities	तुम क्या क्या कर सकते हो?
+capabilities	तुम्हारे पास कौन से टूल्स हैं?
+capabilities	What features do you have?
+capabilities	Tools dikhao apne
+capabilities	What can you help me with?
+capabilities	Can you search the web?
+capabilities	Do you have access to tools?
+capabilities	Kya tum code chala sakte ho?
+capabilities	Tum internet use kar sakte ho kya?
+capabilities	What are you able to do for me?
+capabilities	Show me what you can do
+capabilities	Which features and tools are available?
+capabilities	Tell me your abilities
+capabilities	Kya kya features hain tumhare paas
+capabilities	What kind of tasks can you handle?
+capabilities	Are you able to run Python code?
+capabilities	Can you read web pages?
+capabilities	Tum kya kar sakte ho mere liye
+capabilities	Do you have any tools or not?
+capabilities	What all can MIZAN do?
+capabilities	آپ میں کون کون سی صلاحیتیں ہیں؟
+capabilities	ما الذي يمكنك مساعدتي فيه؟
+capabilities	Tumhare paas kaun kaun se tools hain?
+capabilities	What can you actually do?
+capabilities	Tools hai kya tumhare paas?
+capabilities	What are you capable of?
+capabilities	तुम्हारे पास क्या क्या टूल्स हैं?
+capabilities	आप क्या कर सकते हैं?
+watch	Har subah Fajr ke baad ek ayat bhejo
+watch	Every day after Fajr send me an ayah
+watch	Remind me every morning at 7 am to drink water
+watch	Har roz raat 10 baje Quran padhne ka reminder do
+watch	Isha ke 15 min baad mujhe azkar yaad dilana
+watch	Send me the Hijri date every day at 8 am
+watch	Maghrib se 10 minute pehle iftar ka reminder bhejo
+watch	Daily 9 pm mujhe aaj ka summary bhejna
+watch	Every evening at 6 pm remind me to call my mother
+watch	Har subah 6 baje ek hadith bhej dena
+watch	Remind me 20 minutes before Asr to finish work
+watch	Zuhr ke baad roz ek dua bhejo
+watch	ہر صبح فجر کے بعد ایک آیت بھیجیں
+watch	أرسل لي آية كل صباح بعد الفجر
+watch	हर सुबह फज्र के बाद एक आयत भेजो
+watch	Rozana 7 baje mujhe exercise ka yaad dilao
+watch	Every night at 11 pm remind me to sleep
+watch	After Isha every day send me Surah Mulk reminder
+salah	Maghrib ka time kya hai aaj
+salah	When is Fajr today?
+salah	Namaz ke auqat bata dijiye
+salah	Prayer times today
+salah	Isha kab hai
+salah	Asr ki namaz ka waqt kya hai
+salah	Sehri ka time kya hai
+salah	Iftar kab hoga aaj
+salah	What time is Dhuhr?
+salah	Aaj ke namaz timings batao
+salah	مغرب کا وقت کیا ہے؟
+salah	نماز کے اوقات بتا دیں
+salah	متى صلاة المغرب اليوم؟
+salah	मगरिब का समय क्या है?
+salah	Zuhr ka waqt batao
+salah	When is the next prayer?
+quran	Surah Ikhlas dikhao
+quran	Show me Surah Al-Fatiha
+quran	Recite Surah Mulk
+quran	Surah Baqarah 286 with translation
+quran	مجھے سورہ یٰسین سنائیں
+quran	اعرض لي سورة الفاتحة
+quran	सूरह फातिहा दिखाओ
+quran	Mujhe Surah Mulk padh ke sunao
+quran	Show 18:10
+quran	Read Ayat al-Kursi
+quran	Ayatul Kursi padh ke sunao
+quran	3:190
+quran	Quran 2:285-286
+quran	Surah Mulk ayat 1
+quran	surah yaseen ayat 5-7
+quran	Surah Baqarah ki pehli ayat dikhao
+quran	سورة الملك
+quran	سورہ رحمٰن
+quran	मुझे सूरह फातिहा सुनाओ
+quran	Surah Nas ayah 1
+quran	Surah Kahf
+quran	Surah Ikhlas tarjume ke saath
+quran	Read 112:1-4
+quran	Surah Asr sunao
+quran	सूरह यासीन दिखाओ
+quran	आयतुल कुर्सी सुनाओ
+quran_question	What did the people say in 2:71?
+quran_question	According to Surah 2, Ayah 255, who has the knowledge of what is before and behind them?
+quran_question	In this ayah, who is being addressed? The ayah (Surah 20, Ayah 97)
+quran_question	2:286 ke mutabik Allah kisi par kitna bojh daalta hai?
+quran_question	Surah Ikhlas ke mutabik Allah kaisa hai?
+quran_question	Is ayat me kis cheez ka zikr hai? Surah 1, Ayah 5
+quran_question	What does Surah Asr say about loss?
+quran_question	Which people are mentioned in Surah Fil?
+quran_question	Surah Kahf ayat 10 me naujawan kya dua karte hain?
+quran_question	According to 3:190, what are signs for people of understanding?
+quran_question	سورة الإخلاص ماذا تقول عن الله؟
+quran_question	ما الذي تذكره الآية ٢:٢٥٥ عن الكرسي؟
+quran_question	سورہ اخلاص کے مطابق اللہ کیسا ہے؟
+quran_question	اس آیت میں کس چیز کا ذکر ہے؟ سورہ 1، آیت 5
+quran_question	सूरह इखलास के अनुसार अल्लाह कैसा है?
+quran_question	In 2:255, what does not overtake Him?
+quran_question	Surah Fatiha ki ayat 5 me hum kis se madad maangte hain?
+quran_question	What is the NAME of the sea in this ayah? The ayah (Surah 20, Ayah 97)
+quran_question	وفقا للآية المرفقة، ماذا يطلب المؤمن من ربه؟ سورة 1 آية 6
+quran_question	حسب الآية، من الذي لا تأخذه سنة ولا نوم؟ سورة 2 آية 255
+quran_question	بحسب سورة الإخلاص، هل لله ولد؟
+quran_question	ما الذي تأمر به هذه الآية؟ سورة 4 آية 1
+quran_question	وفقًا لسورة العصر، من هم الذين ليسوا في خسر؟
+quran_question	اس آیت کے مطابق مومن کس سے مدد مانگتا ہے؟ سورہ 1 آیت 5
+quran_question	سورہ العصر کے مطابق کون لوگ خسارے میں نہیں؟
+quran_question	आयत 2:255 के अनुसार किसको नींद नहीं आती?
+quran_question	According to the attached ayah, whom alone does the believer worship? Surah 1, Ayah 5
+quran_explain	Explain Ayatul Kursi
+quran_explain	Surah Ikhlas ki tafseer batao
+quran_explain	2:255 ka matlab samjhao
+quran_explain	What is the meaning of Surah Asr?
+quran_explain	Surah Fatiha ki tashreeh karo
+quran_explain	Give me the tafsir of 112:1
+quran_explain	سورہ اخلاص کی تفسیر بتائیں
+quran_explain	اشرح لي معنى سورة العصر
+quran_explain	सूरह इखलास की व्याख्या करो
+quran_explain	Explain the meaning of Surah Kawthar
+quran_explain	Surah Mulk ayat 2 ka matlab kya hai
+quran_explain	Tafseer of Surah Nas please
+hadith	Show me Sahih Muslim 8
+hadith	Bukhari ki hadees number 52 sunao
+hadith	Quote Sahih Bukhari number one
+hadith	Bukhari 2
+hadith	Sahih Muslim hadith no. 8
+hadith	Muslim 1599
+hadith	Tirmidhi 1987 dikhao
+hadith	Muslim ki pehli hadees
+hadith	hadith 3 of muslim
+hadith	Abu Dawud 4607
+hadith	ibn majah 4041
+hadith	nawawi 40 hadith number 6
+hadith	nawawi hadith 13
+hadith	صحيح مسلم ٨
+hadith	رواه البخاري 6018
+hadith	مسلم شریف کی حدیث نمبر 8
+hadith	मुस्लिम की हदीस नंबर 8
+hadith	Tirmidhi 1924
+hadith	Muwatta Malik 2
+hadith	sunan nasai 1
+hadith_explain	Bukhari 1 ka matlab samjhao
+hadith_explain	What is the meaning of Muslim 2564?
+hadith_explain	Nawawi 13 ki sharah batao
+hadith_explain	بخاری 1 کی تشریح کریں
+hadith_explain	اشرح حديث البخاري ١
+hadith_explain	Explain the hadith Bukhari 6018
+hadith_explain	Tirmidhi 2516 ki tashreeh karo
+hadith_explain	Explain Bukhari 6018
+hadith_explain	Tirmidhi 1987 ka matlab batao
+waqt	Kal Hijri date kya hogi
+waqt	How many days until Ramadan?
+waqt	Today's Islamic date please
+waqt	Convert 10 Muharram 1448 to Gregorian
+waqt	Roza kab se shuru hoga
+waqt	Eid kab hai is saal
+waqt	متى يبدأ رمضان؟
+waqt	रमज़ान कब शुरू होगा?
+waqt	aaj kaunsi tareekh hai
+waqt	aaj ki islamic date batao
+waqt	Which date is it today?
+waqt	abhi time kya hua hai
+waqt	آج کون سی تاریخ ہے
+waqt	ما هو تاريخ اليوم الهجري؟
+waqt	आज कौन सी तारीख है
+waqt	20 April 2026 hijri me kya hogi
+waqt	1 Shawwal 1448 kab hai
+waqt	Ramzan kab shuru hoga
+waqt	Eid ul Adha 1448 kab hai
+waqt	Bakra Eid kab hai
+waqt	Current time please
+waqt	आज क्या तारीख है?
+waqt	ईद कब है?
+qiyas	Solve this puzzle {"train": [{"input": [[0,1],[1,0]], "output": [[1,0],[0,1]]}], "test": [{"input": [[1,1],[0,0]]}]}
+qiyas	Find the rule and give the test output: {"train": [{"input": [[1,0,0]], "output": [[0,0,1]]}], "test": [{"input": [[0,1,0]]}]}
+qiyas	ARC task {"train": [{"input": [[2,2],[0,0]], "output": [[0,0],[2,2]]}, {"input": [[3,0],[3,0]], "output": [[3,0],[3,0]]}], "test": [{"input": [[4,4],[0,0]]}]}
+qiyas	Is grid puzzle ka jawab do {"train": [{"input": [[1]], "output": [[1,1],[1,1]]}], "test": [{"input": [[2]]}]}
+qiyas	```json\n{"train": [{"input": [[0,5],[5,0]], "output": [[5,0],[0,5]]}], "test": [{"input": [[5,5],[0,0]]}]}\n```\nWhat is the output grid?
+qiyas	اس پہیلی کا حل بتائیں {"train": [{"input": [[1,0]], "output": [[0,1]]}], "test": [{"input": [[2,0]]}]}
+silsila	Find the next number 13,26,64,118,274,376
+silsila	Next number in 2, 4, 8, 16, 32?
+silsila	Is sequence ka agla number kya hoga 7, 35, 3385, 74099
+silsila	What comes next: 1, 1, 2, 3, 5, 8, 13
+silsila	Series complete karo 3, 9, 27, 81
+silsila	Missing number in 2, 6, 12, 20, 30?
+silsila	agla number batao 1 4 9 16 25
+silsila	Find the pattern: 5, 10, 20, 40, 80
+silsila	ما الرقم التالي في المتتالية 2، 4، 6، 8؟
+silsila	اگلا نمبر کیا ہوگا 3، 6، 9، 12
+silsila	अगला नंबर क्या होगा 2, 3, 5, 7, 11
+silsila	Pattern pehchano 1, 8, 27, 64, 125
+silsila	What is the next term of 1, 3, 6, 10, 15?
+silsila_follow	Try again, think harder
+silsila_follow	Find the next number
+silsila_follow	Agla number kya hoga
+silsila_follow	Don't give up, solve it
+silsila_follow	Keep trying to find the pattern
+silsila_follow	Ek baar aur try karo
+silsila_follow	Tum internet se learn karo saare number theories sab pattern sequence
+silsila_follow	Dobara try karo sequence ko
+silsila_follow	What comes next then?
+silsila_follow	Solve it properly
+silsila_follow	Use number theory to find it
+silsila_follow	Phir se koshish karo
+silsila_follow	کوشش کریں، اگلا نمبر ڈھونڈیں
+silsila_follow	Check OEIS for this sequence
+silsila_follow	Take help of all number theories and search the internet
+silsila_follow	Use maths theories and the internet to solve it
+silsila_follow	Learn from the internet all the number patterns and solve it
+silsila_follow	Research the sequence online and find the next term
+silsila_follow	You can use any number theory for this
+silsila_follow	Saari number theories use karke dhundo
+silsila_follow	Next number batao isme
+silsila_follow	What is the next one?
+silsila_follow	Continue the series
+silsila_follow	Isko solve karo dhyan se
+silsila_follow	Try a different method
+silsila_follow	Think step by step and find the next term
+silsila_follow	Is pattern ka rule kya hai
+silsila_follow	Can you take more time on it?
+silsila_follow	Take your time and learn to find the next term
+silsila_follow	Koshish karo phir se
+silsila_follow	Itni jaldi haar mat mano
+silsila_follow	Don't give up so fast
+run_code	Run this: ```python\nfor i in range(3): print(i)\n```
+run_code	```js\nconsole.log(5*5)\n```\nchala ke dikhao
+run_code	Execute this code ```python\nimport math\nprint(math.pi)\n```
+run_code	```bash\necho hello\n```
+run_code	Is code ko chalao ```python\nprint(sum(range(10)))\n```
+run_code	Python me 12345 * 6789 nikal ke run karo
+run_code	Run python and print 3**50
+run_code	```python\nx = [1,2,3]\nprint(x[::-1])\n```
+run_code	Python se 25! calculate karke chalao
+run_code	```python\nprint(2+3)\n```\nchalao
+run_code	Python me 3**40 calculate karke chalao
+run_code	Python me 7**7 run karke dikhao
+run_code	Run this in python: 2**64
+run_file	[project] main.py chala ke output dikhao
+run_file	[project] Run app.py
+run_file	[project] Run main.py and show me the output
+run_file	[project] script.js chalao
+run_file	[project] Execute report.py
+run_file	[project] build.sh run karo
+run_file	[project] solve.py chala do
+run_file	[project] Run tests.py please
+run_file	[project] Run `main.py` and show the output
+run_file	[project] Run app.py in this project and tell me the result
+run_file	[project] `main.py` chala ke dikhao kya print hota hai
+project_task	[project] Compute the sum of the numbers in sales.csv
+project_task	[project] Sales.csv me total kitna hai nikalo
+project_task	[project] Which month had the highest sales in sales.csv?
+project_task	[project] Count the errors in app.log
+project_task	[project] data.json me kitne users hain gino
+project_task	[project] Sort people.csv by age and save it to sorted.csv
+project_task	[project] Average marks nikalo results.csv se
+project_task	[project] How many rows are in orders.tsv?
+project_task	[project] Extract all emails from contacts.json
+project_task	[project] Filter the failed entries in events.jsonl
+project_task	[project] Group expenses.csv by category and total it
+project_task	[project] Summarise the numbers in metrics.csv
+compute	12345 * 6789
+compute	Calculate 2**100
+compute	20! kitna hai
+compute	What is the square root of 144?
+compute	(3+4)*5 = ?
+compute	Twelve squared kitna
+compute	2^10 kya hai
+compute	15% of 3000 nikalo
+compute	كم يساوي 5 ضرب 7؟
+compute	5 ضرب 7 کتنا ہے؟
+compute	5 गुणा 7 कितना है?
+compute	What is 7 times 8?
+compute	100/7 calculate karo
+compute	45 + 67 + 89
+compute	3+5?
+compute	7*8 kitna hota hai?
+compute	What is 20% of 450?
+compute	2/5 + 1/10
+compute	25% of 80 kitna
+compute	9 + 10?
+compute	दो और दो कितना होता है? 2+2
+compute	15 का 20% कितना है?
+hf_hub	https://huggingface.co/Zubairshaikh ispe datasets training hai
+hf_hub	Hugging Face pe mere datasets dikhao
+hf_hub	List my datasets on Hugging Face
+hf_hub	https://huggingface.co/datasets/Zubairshaikh/mizan-eval-v1
+hf_hub	Show the files in https://huggingface.co/datasets/Zubairshaikh/mizan-eval-v1
+hf_hub	Import https://huggingface.co/datasets/Zubairshaikh/mizan-eval-v1/blob/main/eval_v1.jsonl
+hf_hub	Mere HF models kaun se hain
+hf_hub	Which models do I have on huggingface?
+hf_hub	hf pe mere repos list karo
+hf_hub	Preview https://huggingface.co/datasets/Zubairshaikh/mizan-eval-v1
+hf_hub	https://huggingface.co/datasets/Zubairshaikh/mizan-corpus-v2 se data.jsonl project me le aao
+web_read	Read https://example.com and tell me the main points
+web_read	Summarize https://news.example.org/story
+web_read	According to https://example.com/report, what was the total revenue?
+web_read	Yeh link khol ke padho https://example.com
+web_read	https://example.com/page
+web_read	Is page me kya likha hai https://example.com/x
+web_read	What does https://example.com/docs say about installation?
+web_read	Open https://example.org and find the contact email
+web_read	https://example.com/a pe kitne items hain?
+web_read	اس صفحے پر کیا لکھا ہے؟ https://example.com
+web_read	اقرأ هذه الصفحة ولخصها https://example.com
+web_read	इस पेज को पढ़ो https://example.com
+web_read	https://example.org/news padh ke summary batao
+web_read	Is link ko padho aur khulasa do https://example.org/a
+web_read	Using https://example.org/specs, what is the maximum file size?
+web_read	From https://example.com/pricing, what does the pro plan cost?
+web_read	Based on https://example.com/faq, how do I reset my password?
+web_read	Check https://example.com/status and tell me if it is up
+web_read	According to https://example.org/report, how many users signed up?
+web_read	https://example.com/docs ke hisaab se limit kya hai?
+web_read	In https://example.com/changelog, what changed in version 2?
+web_read	इस लिंक को पढ़ो https://example.com/a
+build_and_run	Write a program that prints the first ten primes and run it
+build_and_run	Write a Python script that reverses a string and run it
+build_and_run	Code likh ke chalao jo 1 se 100 tak ka sum de
+build_and_run	Write and run a JavaScript program that prints today's weekday
+build_and_run	Ek script banao jo 20 random numbers sort kare aur run karo
+build_and_run	Write a function to check palindromes, test it on racecar
+build_and_run	Program likho jo 1000 tak ke prime count kare aur chala do
+build_and_run	اكتب برنامجا بلغة بايثون يطبع الأعداد الأولية وشغله
+build_and_run	एक पायथन प्रोग्राम लिखो और चलाओ जो 1 से 10 तक छापे
+build_and_run	Write a function format_citation that returns 'Surah 2, Ayah 255' for (2, 255)
+build_and_run	Write a Python function that returns the sum of a list, with tests
+build_and_run	Write code to check if 97 is prime and run it
+build_and_run	Program se 100 factorial ke digits ka sum nikalo
+build_and_run	Write a script that counts vowels in a sentence and run it
+build_and_run	Ek function likho jo string reverse kare aur test karo
+build_and_run	Generate the first 20 Fibonacci numbers with a program
+build_and_run	Python code likho jo 1 se 50 tak ke even numbers print kare
+build_and_run	Write and run code that converts 100 Celsius to Fahrenheit
+build_and_run	Code banao jo list sort kare aur output dikhao
+build_and_run	Write a program that finds the GCD of 48 and 180
+build_and_run	Run a script to compute 2 to the power 64
+build_and_run	Ek program likho jo 20 prime print kare aur chalao
+build_and_run	Pehle 15 fibonacci numbers program se nikalo
+build_and_run	Factorial of 30 program se nikalo
+build_and_run	Fibonacci series ka 100th number kya hoga?
+build_and_run	एक प्रोग्राम लिखो जो 10 तक गिनती छापे और चलाओ
+build_project	Mere liye ek website bana do
+build_project	Create a landing page for my bakery
+build_project	Make a stopwatch web page
+build_project	Portfolio website banao mere liye
+build_project	Build a tip calculator
+build_project	Ek timer app bana do
+build_project	Make a simple counter game
+build_project	أنشئ لي موقعا صغيرا لمخبزي
+build_project	Calculator wala app banao jisme history ho
+build_project	Build a weather app UI
+build_project	Ek quiz game banao science par
+build_project	Create a BMI calculator web page
+build_project	Make a portfolio site for a photographer
+build_project	Banao ek todo list app
+build_project	Create a simple notes app
+build_project	Build a currency converter page
+build_project	Ek stopwatch website banao
+build_project	Make a guess the number game
+build_project	Create a landing page for my tailoring shop
+build_project	Ek simple todo app banao
+build_project	Create a memory card game
+build_project	Python CLI notes app banao
+build_project	ایک ٹائمر ایپ بنا دو
+build_project	एक टू डू ऐप बनाओ
+build_project	Build a calculator app
+build_project	Python command line quiz banao
+build_project	एक टाइमर ऐप बनाओ
+build_project	एक कैलकुलेटर वेबसाइट बना दो
+build_project	मेरे लिए एक गेम बनाओ
+build_project	एक नोट्स ऐप बनाइए
+edit_project	[project] Add a dark mode to the website
+edit_project	[project] Make the button bigger and green
+edit_project	[project] Fix the bug in app.js
+edit_project	[project] Mere project me login form jodo
+edit_project	[project] Title change karo "My Shop"
+edit_project	[project] Remove the footer
+edit_project	[project] Header me logo lagao
+edit_project	[project] Rename the heading to Welcome
+edit_project	[project] Summarise notes.txt into summary.md
+edit_project	[project] Translate README.md into Urdu as README.ur.md
+edit_project	[project] Background ka rang neela kar do
+edit_project	[project] Add input validation to the form
+edit_project	[project] Isme ek reset button jod do
+edit_project	[project] Change the font to Inter
+edit_project	[project] Navbar me About link jodo
+edit_project	[project] Make the layout mobile friendly
+edit_project	[project] Fix the button alignment
+edit_project	[project] Add a footer with copyright
+edit_project	[project] Heading ka size bada karo
+edit_project	[project] Remove the dark mode toggle
+edit_project	[project] Add a reset button to the calculator
+edit_project	[project] Button ka rang hara karo
+edit_project	[project] Ek contact page banao
+edit_project	[project] Footer ka text badlo
+edit_project	[project] Fix the failing test in utils.py
+edit_project	[project] Make the tests pass in calc.py
+edit_project	[project] Refactor helpers.py to remove duplication
+edit_project	[project] Add error handling to main.py
+edit_project	[project] parser.py me bug theek karo
+edit_project	[project] Update server.py to use port 8080
+edit_project	[project] Fix the crash in app.py when the list is empty
+edit_project	[project] utils.js me ek naya function jodo
+recall	What did I tell you yesterday?
+recall	Do you remember my favourite colour?
+recall	Maine jo kaha tha woh yaad hai?
+recall	Remember when I told you about my trip?
+recall	What did I say my name was?
+recall	یاد ہے میں نے کیا کہا تھا؟
+recall	याद है मैंने क्या बताया था?
+recall	هل تذكر ما قلته لك أمس؟
+recall	What did I share with you last week?
+recall	What is my name?
+recall	Do you remember what I asked earlier?
+recall	Pichli baar maine kya poocha tha
+recall	What did we talk about yesterday?
+recall	Tumhe yaad hai mera favourite colour kya hai
+recall	Remind me what I told you about my job
+recall	What was my last question?
+recall	Maine apne bare me kya bataya tha?
+recall	میں نے پچھلی بار کیا پوچھا تھا؟
+recall	मैंने पिछली बार क्या पूछा था?
+recall	Yaad hai maine kya kaha tha?
+recall	Mujhe batao maine pehle kya bataya tha
+recall	क्या तुम्हें याद है मैंने क्या कहा था?
+web_search	latest AI news search karo
+web_search	Search the web for the latest AI news
+web_search	Who won the match last night?
+web_search	Look up the price of gold right now
+web_search	Google karo best laptops 2026
+web_search	Internet se dhundo Python 3.15 release date
+web_search	Find online the population of Mumbai in 2026
+web_search	Aaj ki taaza khabrein kya hain
+web_search	Kal ka match kisne jeeta
+web_search	Sona aaj kitne ka chal raha hai
+web_search	Aaj mausam kaisa rahega Mumbai me
+web_search	What's the current bitcoin price?
+web_search	Search number theory sequences on OEIS
+web_search	تازہ خبریں تلاش کریں
+web_search	ابحث عن آخر الأخبار
+web_search	ताज़ा खबरें खोजो
+web_search	Khojo ki iPhone 18 kab launch hoga
+web_search	Today's top headlines
+web_search	Browse for reviews of the Pixel 11
+web_search	What is the latest version of Python?
+web_search	Current price of petrol in Delhi
+web_search	Who won the election yesterday?
+web_search	Latest updates on the Gaza ceasefire
+web_search	Search online for cheap flights to Dubai
+web_search	Google best phones under 20000
+web_search	Aaj ka gold rate kya hai
+web_search	Latest cricket score batao
+web_search	What's trending on the news right now?
+web_search	Find the newest research on intermittent fasting
+web_search	Kal ki khabar dhundo Pakistan ke baare me
+web_search	Search the web for MIZAN AI reviews
+web_search	Latest news about Sudan search karo
+web_search	Search the latest news about the economy
+web_search	Aaj ke weather ki news search karo
+web_search	latest tech news search karo
+web_search	[project] Search for the latest React version
+web_search	[project] Latest Python release kya hai search karo
+web_search	आज की ताज़ा खबरें खोजो
+search_bare	Search it
+search_bare	Pehle search karo
+search_bare	Isko google karo
+search_bare	Internet pe dekho
+search_bare	Web pe dhoondo pehle
+search_bare	Search karo na
+search_bare	Look it up first
+search_bare	Google it please
+search_bare	Online check karo
+search_bare	Search online then answer
+search_bare	Pahle internet se dekho phir batao
+search_bare	تلاش کریں پہلے
+search_bare	ابحث عنه
+search_bare	Can you search that?
+search_bare	Look it up for me online
+search_bare	Search for it please
+search_bare	Isko internet pe search karo
+search_bare	Pehle web pe check karo
+search_bare	Search karke batao
+search_bare	Find it on the internet
+search_bare	Search kar lo
+search_bare	Net pe dekh lo pehle
+search_bare	Pehle dhoond ke aao
+search_bare	Look online
+search_bare	Do a web search
+search_bare	Search the internet first
+search_bare	Pehle dhundo
+search_bare	search it for me please
+converse	How do I build a React app?
+converse	Why is the sky blue?
+converse	Tell me a fun fact about honey bees
+converse	Thanks, that was really helpful
+converse	Shukriya, bahut madad mili
+converse	Good morning, how are you today?
+converse	Kya haal hai bhai
+converse	I am feeling a bit stressed today
+converse	Mera mood kharab hai, kuch acha batao
+converse	Write a short poem about the sea
+converse	Ek kahani sunao bachon ke liye
+converse	What should I cook for dinner tonight?
+converse	Can you help me with my homework?
+converse	How do I sort a list in JavaScript?
+converse	Yeh error kyun aa raha hai: TypeError undefined
+converse	Mujhe ek email likhne me madad karo
+converse	Translate this sentence into Urdu: I love my family
+converse	What is the capital of France?
+converse	Who was Salahuddin Ayyubi?
+converse	Tell me about the battle of Badr
+converse	What is a prime number?
+converse	What is a sequence in mathematics?
+converse	Explain how a hash table works
+converse	Difference between list and tuple in Python?
+converse	What are the pillars of Islam?
+converse	Sabr ke baare me kuch batao
+converse	How can I improve my focus?
+converse	Give me tips for better sleep
+converse	Kya tum Urdu me jawab de sakte ho
+converse	Mujhe samajh nahi aaya, dobara samjhao
+converse	Thoda aur detail me batao
+converse	Aap ka naam kya hai
+converse	Main theek hoon, aap sunaiye
+converse	Hello there
+converse	thanks
+converse	hmm
+converse	Kya hua
+converse	Who are you?
+converse	Are you an AI?
+converse	Write an essay on climate change
+converse	Plan a 3 day trip to Istanbul
+converse	What is the difference between zakat and sadaqah?
+converse	How should I prepare for an interview?
+converse	Explain the theory of relativity
+converse	Which is better, Python or JavaScript, for beginners?
+converse	Summarize the story of Prophet Yusuf
+converse	Here is my essay, please improve the grammar: Me and him goes to school
+converse	Based only on this text, who wrote the letter? --- The letter was written by Amina in 1990.
+converse	Using it, answer: the meeting is on Tuesday. When is the meeting?
+converse	This review says the food was cold. Was the reviewer happy?
+converse	السلام عليكم، كيف حالك؟
+converse	شكرا جزيلا على المساعدة
+converse	لماذا السماء زرقاء؟
+converse	السلام علیکم، آپ کیسے ہیں؟
+converse	شکریہ، بہت مدد ملی
+converse	मुझे हिंदी में जवाब दो
+converse	धन्यवाद, बहुत मदद मिली
+converse	How do I make a website? Explain the steps
+converse	What is machine learning?
+converse	Kaise pata chale ki koi number prime hai?
+converse	Tell me about Imam Bukhari's life
+converse	What is the Hijri calendar?
+converse	Why do Muslims pray five times a day?
+converse	Is it okay to drink water while standing?
+converse	Explain the importance of Surah Fatiha in daily prayer
+converse	Galat jawab hai, phir se socho
+converse	That answer is wrong
+converse	I have a question
+converse	Mujhe aik sawal poochna hai
+converse	Write a cover letter for a teacher job
+converse	Let's talk about productivity
+converse	What do you think about remote work?
+converse	Tell me a joke
+converse	Mujhe Hindi me batao
+converse	Convert 100 dollars to rupees roughly, no need to search
+converse	I have 2, 4, 6, 8 rupees in coins
+converse	My marks were 70, 80, 90 and 85 this year
+converse	Rooms 101, 102, 103 and 104 are booked for the guests
+converse	Call me at 3, 4 or 5 pm
+converse	Mere paas 10, 20, 50, 100 ke note hain
+converse	The meeting is on the 5th, 12th, 19th and 26th
+converse	We sold 12, 15, 9 and 20 boxes last week, nice
+converse	I am 25 years old and my brother is 30
+converse	How do I make a website from scratch?
+converse	What is the best way to learn Python?
+converse	Explain this code to me: for i in range(3): print(i)
+converse	Why is my code slow?
+converse	What is the difference between HTML and CSS?
+converse	Is JavaScript hard to learn?
+converse	Which laptop is good for coding?
+converse	Tell me about the life of Imam Abu Hanifa
+converse	What is the meaning of taqwa?
+converse	How can I be more patient?
+converse	Dua for anxiety batao
+converse	What are the benefits of fasting?
+converse	Mujhe neend nahi aati, kya karun?
+converse	Ek motivational baat batao
+converse	How to stay consistent with prayer?
+converse	Can you explain what an API is?
+converse	What is a database?
+converse	Teach me recursion with an example
+converse	Why do we need sleep?
+converse	Who was the first caliph?
+converse	What is the story of Musa and Khidr?
+converse	Write a dua for my exams
+converse	Help me write a message to my teacher
+converse	Kya main tumse ek baat pooch sakta hoon?
+converse	Bas aise hi baat kar raha tha
+converse	That is interesting, tell me more
+converse	No thanks, that's all
+converse	Haan theek hai
+converse	Nahi, kuch nahi
+converse	OK got it
+converse	Explain loops simply
+converse	Salaam bhai, kya haal hai
+converse	What is Python used for?
+converse	App kaise banate hain?
+converse	Vue app banao
+converse	Make this shorter
+converse	Explain this code
+converse	Roza kyun rakhte hain?
+converse	mera trip 3 din ka hai
+converse	okay
+converse	Hmm theek
+converse	result batao
+converse	output dikhao
+converse	aur batao kya aaya
+converse	tell me what it says
+converse	and show me the answer
+converse	then tell me
+converse	phir mujhe batana
+converse	and explain it
+converse	uska jawab do
+converse	and tell me the highest
+converse	aur summary do
+converse	chalao
+converse	then show the result
+converse	run karo
+converse	isko chalao
+converse	run it
+converse	execute it
+converse	chala do
+converse	[project] tell me what it does
+converse	[project] Explain how this code works
+converse	[project] What does app.js do?
+converse	[project] Thanks, that looks good
+converse	[project] Why did you use flexbox here?
+converse	[project] Is this code secure?
+converse	[project] ok
+converse	[project] Kya yeh sahi hai?
+converse	[project] What should I build next?
+converse	[project] How do I deploy this?
+converse	[project] Show me the result
+converse	[project] Which file has the main logic?
+converse	मुझे एक कहानी सुनाओ
+converse	आप कैसे हैं?
+converse	क्या आप मेरी मदद करेंगे?
+build_project	Mujhe ek stopwatch chahiye jo phone ke browser pe chale
+build_project	Ek notes app chahiye mujhe jo web pe chale
+build_project	I need a little timer page that works in the browser
+build_project	I want a quiz game I can open in my browser
+build_project	Hamein apni dukaan ke liye ek website chahiye
+build_project	Mujhe BMI calculator ka web page chahiye
+build_project	Need a simple expense tracker page
+build_project	मुझे एक कैलकुलेटर चाहिए जो ब्राउज़र में चले
+build_project	مجھے ایک ٹائمر ایپ چاہیے جو براؤزر میں چلے
+build_project	Bachon ke liye ek counter game chahiye
+build_project	I'd like a portfolio site for my drawings
+converse	Mujhe thodi madad chahiye apne career ke baare mein
+converse	I need some advice about my studies
+converse	Mujhe sabr chahiye, dua karo
+converse	I want to understand how browsers work
+converse	मुझे थोड़ा आराम चाहिए
+quran_question	Main aaj kal Surah Baqarah parh raha hoon aur mujhe yeh samajhna hai ke Surah 2 Ayat 286 ke mutabik Allah insaan par kitna bojh daalta hai aur woh dua kya hai
+quran_question	Bhai ek sawal hai, mere dost ne kaha ke Surah 49 Ayat 13 mein insaanon ki pehchaan ka zikr hai, to us ayat ke hisaab se Allah ke nazdeek sab se izzat wala kaun hai?
+quran_question	Mera beta pooch raha tha aur mujhe sahi jawab dena hai: Surah 112 ayat 3 ke mutabik kya Allah ki koi aulaad hai ya nahi, zara ayat se batao
+quran_question	I was reading with my family last night and we got stuck on one point: according to Surah 94, Ayah 5 and 6, what comes together with hardship?
+quran_question	Hamare halqe mein aaj bahas hui ke Surah 103 ayat 3 mein kin logon ko khasare se bahar rakha gaya hai, aap us ayat ki roshni mein batayein
+quran_question	میں نے آج تلاوت کے دوران سوچا اور سمجھنا چاہتا ہوں کہ سورہ 2 آیت 153 کے مطابق اللہ کس کے ساتھ ہے، براہ کرم آیت سے بتائیں
+quran_question	قرأت اليوم في الحلقة وأريد أن أفهم: بحسب سورة 13 الآية 28، بماذا تطمئن القلوب؟ أرجو الجواب من الآية نفسها
+quran_question	Can you check this for me, my teacher said Surah 65 Ayah 3 talks about trust, so according to that ayah what is Allah to the one who relies on Him?
+converse	Main Surah Mulk yaad kar raha hoon lekin roz bhool jaata hoon, koi achha tareeqa batao jis se hifz pakka ho jaye aur dohraana aasaan ho
+converse	My grandmother loves Surah Yasin and I want to write her a short heartfelt note for her birthday, can you help me with the words?
+converse	Ramzan mein mera plan hai ke har din ek para parhoon aur saath mein tafseer bhi, kya yeh routine sahi hai ya kuch behtar suggest karoge
+converse	I have been feeling distant from prayer lately even though I read Surah Kahf every Friday, how can I bring my heart back?
