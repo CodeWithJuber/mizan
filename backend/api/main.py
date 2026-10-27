@@ -746,15 +746,21 @@ class ImageIn(BaseModel):
 
 
 class StreamChatMessage(ChatMessage):
-    # Required rather than auto-generated: one browser action keeps one UUID
-    # through ambiguous network failures and never creates a second model call.
-    request_id: uuid.UUID
+    # One UUID per user action: a client that resends it after an ambiguous
+    # network failure never creates a second model call. A client that omits
+    # it gets one made here (sent back in every event), and its retries are
+    # new requests.
+    request_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     workspace_id: str | None = Field(None, min_length=1, max_length=100)
     # Izn for interactive chats: auto | auto_edits | ask | plan. Omitted keeps
     # the legacy behaviour (no prompts) for older clients.
     permission_mode: str | None = Field(None, pattern=r"^(auto|auto_edits|ask|plan)$")
     # Images the user attached (Basar): shown to the model with this message.
     images: list[ImageIn] = Field(default_factory=list, max_length=4)
+    # The agents' internal telemetry ("thinking" events, cognitive scores) is
+    # sent only when asked for (the web app's thinking panel); by default the
+    # stream carries the answer, its status and its receipts.
+    thinking: bool = False
 
 
 class IntegrationCreate(BaseModel):
@@ -1867,9 +1873,14 @@ async def stream_chat(
             thinking_stream.add_step(
                 trace.request_id, ThinkingPhase(phase), content, confidence, metadata
             )
-            await deliver(
-                "thinking", phase=phase, content=content, confidence=confidence, metadata=metadata
-            )
+            if req.thinking:
+                await deliver(
+                    "thinking",
+                    phase=phase,
+                    content=content,
+                    confidence=confidence,
+                    metadata=metadata,
+                )
 
         async def save_assistant(content: str, metadata: dict):
             nonlocal persistence_failed
@@ -2140,24 +2151,30 @@ async def stream_chat(
                 **chat_completion_receipt(result),
                 agent=agent.name if agent else None,
                 success=True,
-                cognitive={
-                    k: result[k]
-                    for k in (
-                        "nafs_level",
-                        "nafs_name",
-                        "ruh_energy",
-                        "qalb",
-                        "yaqin",
-                        "mizan_label",
-                        "cognitive_method",
-                        "lubb",
-                        "lawwama",
-                        "metrics_kind",
-                        "metric_provenance",
-                    )
-                    if result.get(k) is not None
-                },
-                thinking_trace=completed_trace.to_dict() if completed_trace else None,
+                **(
+                    {
+                        "cognitive": {
+                            k: result[k]
+                            for k in (
+                                "nafs_level",
+                                "nafs_name",
+                                "ruh_energy",
+                                "qalb",
+                                "yaqin",
+                                "mizan_label",
+                                "cognitive_method",
+                                "lubb",
+                                "lawwama",
+                                "metrics_kind",
+                                "metric_provenance",
+                            )
+                            if result.get(k) is not None
+                        },
+                        "thinking_trace": completed_trace.to_dict() if completed_trace else None,
+                    }
+                    if req.thinking
+                    else {}
+                ),
             )
         except asyncio.CancelledError:
             if lease.stop_requested:

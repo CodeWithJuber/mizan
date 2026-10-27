@@ -39,12 +39,13 @@ Server-Sent Events. Body:
 | Field | Required | Meaning |
 |---|---|---|
 | `session_id` | yes | Any id you choose; the same id continues the same chat |
-| `request_id` | yes | A fresh UUID per message. Never reuse it for a retry |
+| `request_id` | no | A fresh UUID per message. Sending the same id again answers 409 instead of running twice, so after a dropped connection read `GET /api/chat/{session_id}/run-state` rather than resending. If you leave it out, MIZAN makes one and returns it in every event; a resend is then a new request |
 | `content` | yes | The message |
 | `permission_mode` | no | `auto`, `auto_edits`, `ask` or `plan` |
 | `timezone` | no | An IANA name such as `Asia/Karachi`, for dates and prayer times |
 | `workspace_id` | no | A coding project to work in |
 | `images` | no | Up to 4 images, each `{"media_type": "image/png", "data": "<base64>"}`, at most 10 MB; see [Basar](basar.md) |
+| `thinking` | no | `true` adds the agents' internal telemetry: `thinking` events, and `cognitive` and `thinking_trace` in `chat_complete`. Without it the stream carries the answer, its status and its receipts |
 
 ```bash
 curl -N $MIZAN/api/chat/stream -H "Authorization: Bearer $TOKEN" \
@@ -56,13 +57,15 @@ Events arrive in this order:
 
 - `status` and `typing`: progress.
 - `todo`: MIZAN's plan steps.
-- `thinking`.
+- `thinking`: only when the request has `thinking: true`.
 - `chat_stream`: the answer, in its `chunk` field.
 - `chat_complete` or `error`. The closing event holds:
   - `response`: the full answer;
   - `usage`: model, tokens and cost, plus `isnad` (each claim's grade), `sidq`
     (Truth Gate), `ahl` (what sources said), `amanah` (injections removed) and
     `orchestrator` (`mizan` when MIZAN did the work itself);
+    each of these is present only when it applies (no claims to grade, no
+    gate run, no source asked, nothing injected), so read them as optional;
   - `task_verified` and `completion_status`.
 
 **`POST /api/chat`** takes the same body without `request_id`. It answers
