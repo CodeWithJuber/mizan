@@ -46,7 +46,18 @@ class AgentSkill:
     diagnostics: list[str] = field(default_factory=list)
     reader: Callable[[str], bytes] | None = None
 
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.body.encode("utf-8", "replace")).hexdigest()[:16]
+
+    def findings(self) -> list[dict]:
+        """Instructions in the skill aimed at overriding the AI (Amanah); bundled skills are trusted."""
+        if self.scope == "bundled":
+            return []
+        return list(_scan(self.name, self.description, self.body))
+
     def summary(self) -> dict[str, Any]:
+        found = self.findings()
         return {
             "name": self.name,
             "description": self.description,
@@ -57,6 +68,7 @@ class AgentSkill:
             "metadata": self.metadata,
             "files": self.files,
             "diagnostics": self.diagnostics,
+            **({"amanah": [finding["excerpt"] for finding in found[:3]]} if found else {}),
         }
 
     def read(self, relative: str) -> bytes:
@@ -66,6 +78,13 @@ class AgentSkill:
         if self.reader is None:
             raise ValueError("Skill files are unavailable")
         return self.reader(relative)
+
+
+@lru_cache(maxsize=512)
+def _scan(name: str, description: str, body: str) -> tuple[dict, ...]:
+    from tadbir import amanah
+
+    return tuple(amanah.scan(f"{description}\n{body}", f"skill:{name}"))
 
 
 class SkillParseError(ValueError):
@@ -280,24 +299,52 @@ def _state_path(user_id: str) -> Path:
     return user_root(user_id) / ".state.json"
 
 
-def disabled_skills(user_id: str) -> set[str]:
+def _state(user_id: str) -> dict:
     try:
         data = json.loads(_state_path(user_id).read_text())
     except (OSError, ValueError):
-        return set()
-    disabled = data.get("disabled") if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_state(user_id: str, data: dict) -> None:
+    path = _state_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data))
+    os.replace(temporary, path)
+
+
+def disabled_skills(user_id: str) -> set[str]:
+    disabled = _state(user_id).get("disabled")
     return {str(name) for name in disabled} if isinstance(disabled, list) else set()
 
 
 def set_enabled(user_id: str, name: str, enabled: bool) -> set[str]:
     disabled = disabled_skills(user_id)
     (disabled.discard if enabled else disabled.add)(name)
-    path = _state_path(user_id)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"disabled": sorted(disabled)}))
-    os.replace(temporary, path)
+    _write_state(user_id, {**_state(user_id), "disabled": sorted(disabled)})
     return disabled
+
+
+def trusted_skills(user_id: str) -> dict[str, str]:
+    """Skills the user accepted despite Amanah's findings, pinned to their content."""
+    trusted = _state(user_id).get("trusted")
+    return {str(k): str(v) for k, v in trusted.items()} if isinstance(trusted, dict) else {}
+
+
+def trust(user_id: str, skill: AgentSkill) -> None:
+    _write_state(
+        user_id,
+        {**_state(user_id), "trusted": {**trusted_skills(user_id), skill.name: skill.digest}},
+    )
+
+
+def held(user_id: str, skill: AgentSkill) -> bool:
+    """A skill whose instructions try to override the AI waits for the user's trust."""
+    if not skill.findings():
+        return False
+    return trusted_skills(user_id).get(skill.name) != skill.digest
 
 
 def all_skills(user_id: str, workspace_id: str | None = None) -> list[AgentSkill]:
@@ -320,4 +367,6 @@ def available_skills(
     if not include_disabled:
         for name in disabled_skills(user_id):
             chosen.pop(name, None)
+        for name in [name for name, skill in chosen.items() if held(user_id, skill)]:
+            chosen.pop(name)
     return dict(sorted(chosen.items()))

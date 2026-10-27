@@ -53,6 +53,7 @@ dependencies = [
     "pyyaml>=6.0.3,<7",
     "mcp>=2.3.0,<3",
     "hijridate>=2.6.0,<3",
+    "adhanpy>=1.0.5,<2",
     "tzdata>=2026.5",
     "jsonschema>=4.26.0,<5",
 ]

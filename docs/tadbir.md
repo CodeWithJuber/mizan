@@ -153,7 +153,7 @@ tools, Lisan's prompts and replies, Furqan and learning. It also flags what
 the base model got wrong: numbers no fact supports, unbacked action claims,
 and misquoted Quran or hadith text. Every answer also carries its Isnad
 ([isnad.md](isnad.md)): each claim graded by what supports it. The AGI test
-([imtihan.md](imtihan.md)) scores the base model and MIZAN on 70 tasks.
+([imtihan.md](imtihan.md)) scores the base model and MIZAN on 72 tasks.
 
 ## Limits
 

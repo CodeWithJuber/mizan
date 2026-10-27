@@ -8,7 +8,9 @@ of actions that MIZAN's facts do not contain; the template is used instead.
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
 from . import trace
 
@@ -47,6 +49,55 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "پہلا ورژن ناکام ہوا؛ لسان نے درست کیا اور میزان نے دوبارہ چلایا ({tries} کوششیں)۔",
         "hi": "पहला संस्करण विफल हुआ; लिसान ने सुधारा और मीज़ान ने फिर चलाया ({tries} प्रयास)।",
         "ar": "فشلت النسخة الأولى؛ صحّحها لسان وأعاد ميزان تشغيلها ({tries} محاولات).",
+    },
+    "silsila_next": {
+        "en": "The next number after {terms} is **{value}**.",
+        "hi-latn": "{terms} ke baad agla number **{value}** hai.",
+        "ur": "{terms} کے بعد اگلا عدد **{value}** ہے۔",
+        "hi": "{terms} के बाद अगला संख्या **{value}** है।",
+        "ar": "العدد التالي بعد {terms} هو **{value}**.",
+    },
+    "silsila_several": {
+        "en": "More than one rule reproduces all {total} terms of {terms}, and they give different next numbers:",
+        "hi-latn": "{terms} ke sabhi {total} terms ko ek se zyada rule sahi banate hain, aur unke agle number alag hain:",
+        "ur": "{terms} کے تمام {total} اعداد کو ایک سے زیادہ قاعدے درست بناتے ہیں، اور ان کے اگلے اعداد مختلف ہیں:",
+        "hi": "{terms} के सभी {total} पदों को एक से अधिक नियम सही बनाते हैं, और उनके अगले संख्या अलग हैं:",
+        "ar": "أكثر من قاعدة تُعيد الحدود الـ{total} كلها في {terms}، وتعطي أعدادًا تالية مختلفة:",
+    },
+    "silsila_rule": {
+        "en": "`{formula}` ({method}); MIZAN checked that it reproduces all {total} terms exactly.",
+        "hi-latn": "`{formula}` ({method}); MIZAN ne jaancha ki yeh sabhi {total} terms bilkul sahi banata hai.",
+        "ur": "`{formula}` ({method})؛ میزان نے جانچا کہ یہ تمام {total} اعداد بالکل درست بناتا ہے۔",
+        "hi": "`{formula}` ({method}); मीज़ान ने जाँचा कि यह सभी {total} पद बिल्कुल सही बनाता है।",
+        "ar": "`{formula}` ({method})؛ تحقّق ميزان أنها تُعيد الحدود الـ{total} كلها بدقة.",
+    },
+    "silsila_oeis": {
+        "en": "OEIS {id}: {name}",
+        "hi-latn": "OEIS {id}: {name}",
+        "ur": "OEIS {id}: {name}",
+        "hi": "OEIS {id}: {name}",
+        "ar": "OEIS {id}: {name}",
+    },
+    "silsila_tested": {
+        "en": "{rule} (a rule Lisan proposed; MIZAN ran it in its sandbox and it reproduces all {total} terms).",
+        "hi-latn": "{rule} (Lisan ka diya rule; MIZAN ne sandbox me chala kar dekha, yeh sabhi {total} terms sahi banata hai).",
+        "ur": "{rule} (لسان کا تجویز کردہ قاعدہ؛ میزان نے سینڈ باکس میں چلایا، یہ تمام {total} اعداد درست بناتا ہے)۔",
+        "hi": "{rule} (लिसान का प्रस्तावित नियम; मीज़ान ने सैंडबॉक्स में चलाया, यह सभी {total} पद सही बनाता है)।",
+        "ar": "{rule} (قاعدة اقترحها لسان؛ شغّلها ميزان في بيئته المعزولة فأعادت الحدود الـ{total} كلها).",
+    },
+    "silsila_none": {
+        "en": "MIZAN found no rule that reproduces all {total} terms of {terms}. It tried polynomials in n, polynomials in the n-th prime and linear recurrences up to order 3, and the OEIS has no sequence with these terms{lisan}. So it gives no next number rather than a guess. If you know where the sequence comes from, tell MIZAN and it will check that rule on every term.",
+        "hi-latn": "MIZAN ko {terms} ke sabhi {total} terms ko sahi banane wala koi rule nahi mila. Usne n ke polynomial, n-th prime ke polynomial aur order 3 tak ki linear recurrences aazmayin, aur OEIS me in terms wali koi sequence nahi hai{lisan}. Isliye andaza lagane ke bajaye koi agla number nahi diya. Agar aapko sequence ka source maloom hai to bataiye, MIZAN us rule ko har term par jaanchega.",
+        "ur": "میزان کو {terms} کے تمام {total} اعداد درست بنانے والا کوئی قاعدہ نہیں ملا۔ اس نے n کے کثیر رقمی، n-ویں مفرد عدد کے کثیر رقمی اور تین درجے تک کی خطی تکرار آزمائی، اور OEIS میں ان اعداد والی کوئی ترتیب نہیں{lisan}۔ اس لیے اندازے کی بجائے کوئی اگلا عدد نہیں دیا۔ اگر آپ کو ترتیب کا ماخذ معلوم ہو تو بتائیں، میزان وہ قاعدہ ہر عدد پر جانچے گا۔",
+        "hi": "मीज़ान को {terms} के सभी {total} पदों को सही बनाने वाला कोई नियम नहीं मिला। उसने n के बहुपद, n-वें अभाज्य के बहुपद और 3 तक की रैखिक पुनरावृत्तियाँ आज़माईं, और OEIS में इन पदों वाली कोई अनुक्रम नहीं है{lisan}। इसलिए अनुमान के बजाय कोई अगली संख्या नहीं दी। यदि आपको अनुक्रम का स्रोत पता हो तो बताइए, मीज़ान वह नियम हर पद पर जाँचेगा।",
+        "ar": "لم يجد ميزان قاعدةً تُعيد الحدود الـ{total} كلها في {terms}. جرّب كثيرات حدود في n وفي العدد الأولي رقم n والتكرارات الخطية حتى الرتبة 3، ولا يحوي OEIS متتالية بهذه الحدود{lisan}. لذلك لا يعطي عددًا تاليًا بدل التخمين. إن عرفت مصدر المتتالية فأخبر ميزان ليتحقّق من قاعدتها على كل حد.",
+    },
+    "silsila_tried_lisan": {
+        "en": "; Lisan proposed {tries} rule(s) and none reproduced every term in MIZAN's sandbox",
+        "hi-latn": "; Lisan ne {tries} rule diye, koi bhi MIZAN ke sandbox me har term sahi nahi bana saka",
+        "ur": "؛ لسان نے {tries} قاعدے دیے، کوئی بھی میزان کے سینڈ باکس میں ہر عدد درست نہ بنا سکا",
+        "hi": "; लिसान ने {tries} नियम दिए, कोई भी मीज़ान के सैंडबॉक्स में हर पद सही नहीं बना सका",
+        "ar": "؛ واقترح لسان {tries} قاعدة لم تُعِد أيٌّ منها كل الحدود في بيئة ميزان",
     },
     "qiyas_proven": {
         "en": "MIZAN found a rule that reproduces all {total} examples exactly in its sandbox, and applied it to the test input.",
@@ -103,6 +154,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "میزان اُن جوابات کو جانچتا ہے جن کی تصدیق نہیں ہوئی تھی؛ یہ اصلاحات بند کرنے کے لیے چیٹ ترجیح muhasaba کو off کریں۔",
         "hi": "मीज़ान उन उत्तरों को जाँचता है जिनकी पुष्टि नहीं हुई थी; ये सुधार बंद करने के लिए चैट वरीयता muhasaba को off करें।",
         "ar": "يراجع ميزان الأجوبة التي لم يتحقّق منها؛ لإيقاف هذه التصحيحات اضبط تفضيل المحادثة muhasaba على off.",
+    },
+    "amanah_ignored": {
+        "en": "Amanah: {count} instruction(s) aimed at the AI were found in what MIZAN read and were ignored; they did not change this answer or any action.",
+        "hi-latn": "Amanah: jo MIZAN ne padha usme AI ke liye {count} hidayat chhupi thi; MIZAN ne unhe nazar-andaz kiya, is jawab ya kisi action par unka asar nahi hua.",
+        "ur": "امانت: میزان نے جو پڑھا اس میں AI کے لیے {count} ہدایت تھی؛ میزان نے اسے نظرانداز کیا، اس جواب یا کسی عمل پر اس کا اثر نہیں ہوا۔",
+        "hi": "अमानत: मीज़ान ने जो पढ़ा उसमें AI के लिए {count} निर्देश थे; मीज़ान ने उन्हें अनदेखा किया, इस जवाब या किसी काम पर उनका असर नहीं हुआ।",
+        "ar": "أمانة: وُجد فيما قرأه ميزان {count} من التعليمات الموجّهة إلى الذكاء الاصطناعي، فتجاهلها؛ ولم تؤثر في هذا الجواب ولا في أي إجراء.",
     },
     "hifz_reused": {
         "en": "MIZAN re-ran a program it verified before, with no language-model call; the output matches what was verified (run {runs}).",
@@ -335,6 +393,48 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "میزان پروجیکٹ مکمل نہ کر سکا: {reason}",
         "hi": "मीज़ान प्रोजेक्ट पूरा नहीं कर सका: {reason}",
         "ar": "تعذّر على ميزان إكمال المشروع: {reason}",
+    },
+    "watch_created": {
+        "en": 'Saved: **{title}**, {when}. Next: {next}. Notices arrive in your Muraqabah chat; MIZAN holds them during salah and learns from your "useful" and "not now". Manage it on the Watchers page.',
+        "hi-latn": 'Save ho gaya: **{title}**, {when}. Agli baar: {next}. Paigham aapki Muraqabah chat me aayenge; namaz ke waqt MIZAN unhe rok kar rakhta hai aur aapke "useful" aur "not now" se seekhta hai. Watchers page par badal sakte hain.',
+        "ur": 'محفوظ ہو گیا: **{title}**، {when}۔ اگلی بار: {next}۔ پیغامات آپ کی مراقبہ چیٹ میں آئیں گے؛ نماز کے وقت میزان انہیں روکے رکھتا ہے اور آپ کے "useful" اور "not now" سے سیکھتا ہے۔',
+        "hi": 'सहेज लिया: **{title}**, {when}। अगली बार: {next}। संदेश आपकी मुराक़बा चैट में आएँगे; नमाज़ के समय मीज़ान उन्हें रोके रखता है और आपके "useful" और "not now" से सीखता है।',
+        "ar": 'حُفظ: **{title}**، {when}. المرة القادمة: {next}. تصل التنبيهات إلى محادثة المراقبة؛ ويؤخرها ميزان وقت الصلاة ويتعلّم من "مفيد" و"ليس الآن".',
+    },
+    "watch_need_place": {
+        "en": 'To time this around the prayer, MIZAN needs your city. Write it in the request (for example "... after Fajr in Karachi") or set it on the Watchers page.',
+        "hi-latn": 'Namaz ke hisaab se waqt rakhne ke liye MIZAN ko aapka shehar chahiye. Paigham me likhiye (jaise "... Fajr ke baad, Karachi") ya Watchers page par set kijiye.',
+        "ur": "نماز کے حساب سے وقت رکھنے کے لیے میزان کو آپ کا شہر چاہیے۔ پیغام میں لکھیے یا Watchers صفحے پر درج کیجیے۔",
+        "hi": "नमाज़ के हिसाब से समय रखने के लिए मीज़ान को आपका शहर चाहिए। संदेश में लिखिए या Watchers पेज पर सेट कीजिए।",
+        "ar": "ليضبط ميزان الوقت حسب الصلاة يحتاج إلى مدينتك. اكتبها في الطلب أو حدّدها في صفحة المراقبة.",
+    },
+    "watch_failed": {
+        "en": "MIZAN could not save the watcher: {reason}",
+        "hi-latn": "MIZAN watcher save nahi kar saka: {reason}",
+        "ur": "میزان واچر محفوظ نہیں کر سکا: {reason}",
+        "hi": "मीज़ान वॉचर सहेज नहीं सका: {reason}",
+        "ar": "تعذّر على ميزان حفظ المراقِب: {reason}",
+    },
+    "salah_header": {
+        "en": "**Prayer times for {place}**, {date} ({hijri})",
+        "hi-latn": "**{place} ke namaz ke auqaat**, {date} ({hijri})",
+        "ur": "**{place} کے اوقاتِ نماز**، {date} ({hijri})",
+        "hi": "**{place} के नमाज़ के औक़ात**, {date} ({hijri})",
+        "ar": "**مواقيت الصلاة في {place}**، {date} ({hijri})",
+    },
+    "salah_method": {
+        "en": "Computed by MIZAN with the {method} method, Asr by the {asr} school. Your masjid's iqamah and its own timetable come first.",
+        "hi-latn": "MIZAN ne {method} tareeqe se hisaab kiya, Asr {asr} mazhab ke mutabiq. Aapki masjid ki iqamat aur uska timetable muqaddam hai.",
+        "ur": "میزان نے {method} طریقے سے حساب کیا، عصر {asr} مذہب کے مطابق۔ آپ کی مسجد کی اقامت اور اس کا نظام الاوقات مقدم ہے۔",
+        "hi": "मीज़ान ने {method} तरीक़े से हिसाब किया, अस्र {asr} मज़हब के मुताबिक़। आपकी मस्जिद की इक़ामत और उसका टाइमटेबल पहले है।",
+        "ar": "حسبها ميزان بطريقة {method}، والعصر على مذهب {asr}. وتقويم مسجدك وإقامته مقدَّمان.",
+    },
+    "salah_need_place": {
+        "en": 'Which city? For example "Fajr time in Karachi", or set your city on the Watchers page.',
+        "hi-latn": 'Kaunsa shehar? Jaise "Fajr ka time Karachi", ya Watchers page par apna shehar set kijiye.',
+        "ur": 'کون سا شہر؟ مثلاً "کراچی میں فجر کا وقت"، یا Watchers صفحے پر اپنا شہر درج کیجیے۔',
+        "hi": 'कौन-सा शहर? जैसे "कराची में फ़ज्र का समय", या Watchers पेज पर अपना शहर सेट कीजिए।',
+        "ar": 'أي مدينة؟ مثلاً "وقت الفجر في كراتشي"، أو حدّد مدينتك في صفحة المراقبة.',
     },
     "waqt_today": {
         "en": "Today is **{gregorian}** · **{hijri}** ({hijri_ar}).",
@@ -611,7 +711,66 @@ _ACTION_CLAIM = re.compile(
 )
 
 
-def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
+_CAUTION_KEY = re.compile(r"warn|error|stderr|caution|deprecat|alert", re.IGNORECASE)
+_CAUTION_LINE = re.compile(
+    r"\b(?:warning|deprecated|deprecation|caution|insecure|unsafe|expired|truncated|"
+    r"partial(?:ly)?|skipped|rate[ -]?limit(?:ed)?|quota)\b",
+    re.IGNORECASE,
+)
+_ACKNOWLEDGED = re.compile(
+    r"warn|error|caution|careful|deprecat|fail|insecure|unsafe|expire|truncat|partial|skipp|"
+    r"limit|quota|chetavani|dhyan|ehtiyat|khabardar|ghalti|galti|"
+    r"\u062a\u062d\u0630\u064a\u0631|\u062a\u0646\u0628\u064a\u0647|\u062e\u0637\u0623|"
+    r"\u0627\u062d\u062a\u06cc\u0627\u0637|\u062e\u0628\u0631\u062f\u0627\u0631|"
+    r"\u063a\u0644\u0637\u06cc|\u091a\u0947\u0924\u093e\u0935\u0928\u0940|"
+    r"\u0924\u094d\u0930\u0941\u091f\u093f|\u0938\u093e\u0935\u0927\u093e\u0928",
+    re.IGNORECASE,
+)
+
+
+def cautions(result: Any, limit: int = 4) -> list[str]:
+    """Warnings and errors a tool's result carries, which any wording of it must keep."""
+    found: list[str] = []
+
+    def walk(value: Any, depth: int = 0) -> None:
+        if depth > 6 or len(found) >= limit:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if _CAUTION_KEY.search(str(key)) and item not in (None, "", [], {}, False, 0):
+                    found.append(f"{key}: {item}"[:200])
+                else:
+                    walk(item, depth + 1)
+        elif isinstance(value, list):
+            for item in value[:50]:
+                walk(item, depth + 1)
+        elif isinstance(value, str):
+            stripped = value.strip()
+            if stripped[:1] in "{[":
+                try:
+                    walk(json.loads(stripped), depth + 1)
+                    return
+                except ValueError:
+                    pass
+            found.extend(
+                line.strip()[:200] for line in value.splitlines() if _CAUTION_LINE.search(line)
+            )
+
+    walk(result)
+    return list(dict.fromkeys(found))[:limit]
+
+
+def acknowledges(text: str, caution: str) -> bool:
+    """The wording mentions the caution: its kind, or its own distinctive words."""
+    if _ACKNOWLEDGED.search(text):
+        return True
+    words = {word.lower() for word in re.findall(r"[^\W\d_]{5,}", caution)}
+    return bool(words) and sum(word in text.lower() for word in words) * 3 >= len(words)
+
+
+def furqan(
+    text: str, facts_text: str, *, max_citation: int = 0, warnings: list[str] | None = None
+) -> list[str]:
     """Reasons the text is unsupported (empty when it may be delivered)."""
     problems = []
     support = facts_text.replace(",", "")
@@ -628,5 +787,10 @@ def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
         problems.append("Lisan claimed an action")
     if not text.strip():
         problems.append("empty text")
+    # Safety omission: a warning or error in the tool's result may not be dropped.
+    for caution in warnings or []:
+        if not acknowledges(text, caution):
+            problems.append(f"the wording leaves out a warning: {caution[:80]}")
+            break
     trace.event("verify", "furqan", accepted=not problems, problems=problems)
     return problems

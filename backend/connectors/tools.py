@@ -16,8 +16,8 @@ def user_tool_schemas(user_id: str) -> list[dict]:
             continue
         disabled = set(server.get("disabled_tools") or [])
         for tool in server.get("tools") or []:
-            if tool.get("name") in disabled:
-                continue
+            if tool.get("name") in disabled or tool.get("held"):
+                continue  # held by Amanah until the user trusts it
             schemas.append(
                 {
                     "name": tool["exposed"],

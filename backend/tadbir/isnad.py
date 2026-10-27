@@ -29,10 +29,13 @@ BASIS = {
     "quran": "read verbatim from MIZAN's Quran source",
     "hadith": "read verbatim from MIZAN's hadith source",
     "waqt": "MIZAN's calendar (Umm al-Qura) and clock",
+    "salah": "computed by MIZAN for your place (Adhan astronomical method)",
+    "watch": "MIZAN saved the watcher and computed when it runs",
     "capabilities": "MIZAN's live tool registry",
     "run_code": "MIZAN ran it in its sandbox and checked the result",
     "build_and_run": "MIZAN ran it in its sandbox and checked the result",
     "qiyas": "the rule reproduced every example in MIZAN's sandbox",
+    "silsila": "MIZAN checked the rule on every term",
     "build_project": "MIZAN's checks of the project passed",
     "edit_project": "MIZAN's checks of the change passed",
 }

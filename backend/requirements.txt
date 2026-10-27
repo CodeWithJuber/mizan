@@ -31,6 +31,7 @@ cryptography>=50.0.2,<51
 # Automation
 croniter>=6.2.4,<7
 hijridate>=2.6.0,<3  # Umm al-Qura Hijri calendar (Tadbir dates)
+adhanpy>=1.0.5,<2  # Prayer times computed locally (Muraqabah quiet windows), MIT
 tzdata>=2026.5  # IANA timezones for zoneinfo in slim images
 jsonschema>=4.26.0,<5  # MIZAN validates tool arguments (Tadbir Amal)
 

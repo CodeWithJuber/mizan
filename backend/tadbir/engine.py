@@ -28,6 +28,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from agents.events import emit, summarize
@@ -35,6 +36,7 @@ from agents.execution_contract import tool_result_failed
 
 from . import (
     amal,
+    amanah,
     calc,
     express,
     fahm,
@@ -45,14 +47,19 @@ from . import (
     project,
     qiyas,
     quran,
+    silsila,
     taallum,
+    tajdid,
+    tajriba,
     trace,
     waqt,
+    wazn,
 )
-from .express import fence, furqan, phrase
-from .lisan import Lisan, LisanUnavailable
+from .express import cautions, fence, furqan, phrase
+from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable
 
 MODES = ("mizan", "hybrid", "strict", "llm")
+_RENEWALS: set[asyncio.Task] = set()  # instruction renewals running in the background
 MAX_REPAIRS = 2
 
 
@@ -130,12 +137,25 @@ class Tadbir:
 
     # ── entry point ──────────────────────────────────────────────────────
 
-    async def handle(self, task: str, stream_callback=None) -> dict | None:
+    async def handle(
+        self, task: str, stream_callback=None, history: list[dict] | None = None
+    ) -> dict | None:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
         parts = fahm.understand_parts(task)
         understanding = fahm.understand(task)
+        if parts is None and understanding.intent in {"converse", "web_search"}:
+            # "Find the next number", "search number theory": a follow-up about the
+            # sequence asked earlier in this chat, which MIZAN takes from the history.
+            earlier = silsila.from_history(history) if silsila.follow_up(task) else None
+            if earlier:
+                understanding = fahm.Understanding(
+                    "silsila",
+                    understanding.language,
+                    0.8,
+                    {"sequence": earlier, "understood_by": "conversation"},
+                )
         self._stream = stream_callback
         started = time.time()
         if parts is not None:
@@ -266,6 +286,22 @@ class Tadbir:
             outcome.text = f"{outcome.text}\n\n_{note}_"
         outcome.isnad = self._isnad(outcome, intent)
         return outcome
+
+    def _lisan_outcome(self, task: str, worked: bool, feedback: str = "") -> None:
+        """Credit the instruction version (Tajdid) and model (Wazn) with MIZAN's verdict."""
+        info = self.lisan.last.pop(task, None)
+        if info is None:
+            return
+        tajdid.record(task, info.get("variant", "base"), worked, feedback)
+        wazn.record(task, info.get("model"), worked)
+        trace.event(
+            "learn", "tajdid", task=task, variant=info.get("variant"), model=info.get("model"),
+            worked=worked,
+        )  # fmt: skip
+        if tajdid.wants_challenger(task) and task in INSTRUCTIONS:
+            renewal = asyncio.create_task(tajdid.evolve(task, INSTRUCTIONS[task], self.lisan))
+            _RENEWALS.add(renewal)
+            renewal.add_done_callback(_RENEWALS.discard)
 
     def _isnad(self, outcome: Outcome, intent: str) -> list[dict]:
         """Every claim of this outcome, graded by what supports it."""
@@ -419,6 +455,12 @@ class Tadbir:
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+        if amanah.untrusted(name):
+            # Outside text: an instruction aimed at the AI is removed before
+            # anything (Lisan, the user, memory) reads the result.
+            result, found = amanah.guard_value(result, name)
+            if found:
+                trace.event("verify", "amanah", tool=name, findings=found)
         self.coordinator._last_tool_results.append({"name": name, "result": result})
         return result if isinstance(result, dict) else {"result": result}
 
@@ -479,7 +521,8 @@ class Tadbir:
             text = await self.lisan.express(request, facts, language)
         except LisanUnavailable:
             return fallback, False
-        if furqan(text, json.dumps(facts, ensure_ascii=False)):
+        warnings = cautions(facts.get("result"))
+        if furqan(text, json.dumps(facts, ensure_ascii=False), warnings=warnings):
             return fallback, False
         return text, True
 
@@ -488,7 +531,8 @@ class Tadbir:
     ) -> list[tuple[str, fahm.Understanding]]:
         """Lisan's steps that pass MIZAN's validation, with the words each covers."""
         try:
-            steps = await self.lisan.plan_steps(task)
+            # Pasted text may carry an instruction; it never chooses MIZAN's actions.
+            steps = await self.lisan.plan_steps(amanah.clean_message(task))
         except LisanUnavailable:
             return []
         planned = []
@@ -619,27 +663,47 @@ class Tadbir:
             ]
         )
         await self._step()
+        request = str(u.entities.get("request") or task)
+        # Tajriba: verified lessons from earlier repairs of similar work.
+        lessons = tajriba.relevant(store, owner, "build_and_run", request)
         try:
-            code = await self.lisan.write_code(str(u.entities.get("request") or task), language)
+            code = await self.lisan.write_code(request, language, tajriba.render(lessons))
         except LisanUnavailable as exc:
             raise Defer from exc
         await self._step()
         tries = 1
         run = await self._run(code, language)
         await self._step()
+        first = _ran_clean(run)
+        if _code_ran(run):
+            self._lisan_outcome("write_code", first, _signature(run))
+            tajriba.credit(store, owner, lessons, first)
+        failing: tuple[str, str] | None = None
         while (run.get("exit_code") != 0 or run.get("error")) and tries <= MAX_REPAIRS:
             if run.get("declined") or "not permitted" in str(run.get("error", "")):
                 break
             if run.get("error") and not run.get("stderr"):
                 break  # the sandbox itself failed; rewriting the code cannot help
             error = str(run.get("stderr") or run.get("error") or run.get("stdout", ""))
+            failing = failing or (code, error)
+            known = tajriba.relevant(store, owner, "build_and_run", tajriba.signature(error))
             try:
-                code = await self.lisan.fix_code(task, language, code, error)
+                code = await self.lisan.fix_code(
+                    task, language, code, error, tajriba.render(known), attempt=tries
+                )
             except LisanUnavailable:
                 break
             tries += 1
             run = await self._run(code, language)
+            if _code_ran(run):
+                self._lisan_outcome("fix_code", _ran_clean(run), _signature(run))
+                tajriba.credit(store, owner, known, _ran_clean(run))
         verified = run.get("exit_code") == 0 and not run.get("error")
+        if verified and failing is not None:
+            # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
+            lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
+            if lesson:
+                trace.event("learn", "tajriba", signature=lesson["signature"])
         parts = [
             f"**{phrase('code', u.language)}**\n{fence(code, language)}",
             self._run_text(run, u.language),
@@ -712,13 +776,19 @@ class Tadbir:
             report = qiyas.read(str(run.get("stdout", "")))
             fitted = qiyas.passed(report, puzzle)
             trace.event("verify", "qiyas", examples=total, reproduced=fitted, attempt=attempts)
+            if _code_ran(run):
+                self._lisan_outcome(
+                    "propose_rule" if attempts == 1 else "revise_rule",
+                    fitted == total,
+                    _signature(run) or f"reproduced {max(0, fitted)} of {total} examples",
+                )
             if fitted > best[0]:
                 best = (fitted, program, report)
             if fitted == total or run.get("declined") or attempts > MAX_REPAIRS:
                 break
             wrong = qiyas.failures(report, puzzle, str(run.get("stderr") or run.get("error", "")))
             try:
-                program = await self.lisan.revise_rule(examples, program, wrong)
+                program = await self.lisan.revise_rule(examples, program, wrong, attempt=attempts)
             except LisanUnavailable:
                 break
         await self._step()
@@ -743,6 +813,144 @@ class Tadbir:
             "test_outputs": outputs,
         }
         return Outcome("\n\n".join(parts), proven, facts, succeeded=proven)
+
+    async def _silsila(self, task: str, u: fahm.Understanding) -> Outcome:
+        """A sequence's next term, from a rule proven on every given term."""
+        seq: list[int] = u.entities["sequence"]
+        can_test = self._allowed("workspace_run") and self.lisan.available
+        await self._begin(
+            [
+                f"Read the {len(seq)} terms (MIZAN)",
+                "Try MIZAN's exact methods: polynomials in n and in the n-th prime, recurrences",
+                "Look the terms up in the OEIS",
+                "Test Lisan's proposed rule on every term in the sandbox",
+                "Reply",
+            ]
+        )
+        await self._step()
+        rules = silsila.own_rules(seq)
+        trace.event("verify", "silsila.own", rules=[rule.to_dict() for rule in rules])
+        await self._step()
+        matches = await self._external(
+            "oeis_search",
+            {"terms": seq},
+            silsila.oeis(seq),
+            lambda found: f"{len(found)} matching sequence(s)",
+        )
+        await self._step()
+        tested: tuple[str, dict] | None = None
+        tries = 0
+        if not rules and not matches and can_test:
+            try:
+                program = await self.lisan.propose_sequence_rule(seq)
+            except LisanUnavailable:
+                program = ""
+            while program and tries <= MAX_REPAIRS:
+                tries += 1
+                run = await self._run(silsila.harness(program, seq), "python")
+                report = silsila.read(str(run.get("stdout", "")))
+                trace.event("verify", "silsila.lisan", attempt=tries, report=report)
+                if _code_ran(run):
+                    self._lisan_outcome(
+                        "propose_sequence_rule" if tries == 1 else "revise_sequence_rule",
+                        silsila.proven(report, seq),
+                        _signature(run) or silsila.feedback(report).split("\n")[0],
+                    )
+                if silsila.proven(report, seq):
+                    tested = (program, report or {})
+                    break
+                if run.get("declined") or (run.get("error") and not run.get("stderr")):
+                    break
+                if tries > MAX_REPAIRS:
+                    break
+                try:
+                    program = await self.lisan.revise_sequence_rule(
+                        seq,
+                        program,
+                        silsila.feedback(report, str(run.get("stderr", ""))),
+                        attempt=tries,
+                    )
+                except LisanUnavailable:
+                    break
+        await self._step()
+        language = u.language
+        candidates: list[tuple[int, str]] = []
+        for rule in rules:
+            candidates.append(
+                (
+                    rule.next,
+                    phrase(
+                        "silsila_rule",
+                        language,
+                        formula=rule.formula,
+                        method=rule.method,
+                        total=len(seq),
+                    ),
+                )  # fmt: skip
+            )
+        for match in matches:
+            candidates.append(
+                (
+                    match["next"],
+                    phrase("silsila_oeis", language, id=match["id"], name=match["name"]),
+                )
+            )
+        if tested is not None:
+            program, report = tested
+            candidates.append(
+                (
+                    int(report["next"]),
+                    phrase(
+                        "silsila_tested",
+                        language,
+                        rule=silsila.rule_comment(program) or "—",
+                        total=len(seq),
+                    ),
+                )  # fmt: skip
+            )
+        terms = ", ".join(str(value) for value in seq)
+        if not candidates:
+            tried = phrase("silsila_tried_lisan", language, tries=tries) if tries else ""
+            text = phrase("silsila_none", language, total=len(seq), terms=terms, lisan=tried)
+            return Outcome(text, False, {"sequence": seq, "rules": []}, succeeded=False)
+        answers = sorted({value for value, _ in candidates})
+        lines = []
+        if len(answers) == 1:
+            lines.append(phrase("silsila_next", language, value=answers[0], terms=terms))
+        else:
+            lines.append(phrase("silsila_several", language, total=len(seq), terms=terms))
+        for value, reason in candidates:
+            lines.append(f"- **{value}**: {reason}")
+        facts = {
+            "sequence": seq,
+            "next": answers,
+            "rules": [rule.to_dict() for rule in rules],
+            "oeis": matches,
+        }
+        return Outcome("\n".join(lines), True, facts)
+
+    async def _external(
+        self, name: str, params: dict, work: Awaitable[Any], summary: Callable[[Any], str]
+    ) -> Any:
+        """A read from an outside reference MIZAN trusts (not a user tool), shown like a tool call."""
+        call_id = uuid.uuid4().hex
+        await emit("tool_start", {"call_id": call_id, "name": name, "input": params})
+        started = time.perf_counter()
+        with trace.span("execute_tool", name, input=params, source=True) as record:
+            result = await work
+            record["attributes"]["result"] = summary(result)
+            record["attributes"]["ok"] = True
+        await emit(
+            "tool_result",
+            {
+                "call_id": call_id,
+                "name": name,
+                "ok": True,
+                "summary": summary(result),
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+            },
+        )
+        return result
 
     async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
         from workspace.context import bound_workspace_id
@@ -878,7 +1086,7 @@ class Tadbir:
         for _attempt in range(2):
             try:
                 arguments = amal.restrict(
-                    await self.lisan.fill_arguments(task, need, tool, error),
+                    await self.lisan.fill_arguments(amanah.clean_message(task), need, tool, error),
                     tool.get("input_schema"),
                 )
             except LisanUnavailable as exc:
@@ -1281,6 +1489,83 @@ class Tadbir:
             lines.append(f"\n_{note}_")
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
 
+    async def _watch(self, task: str, u: fahm.Understanding) -> Outcome:
+        """A standing request: MIZAN saves a watcher (Muraqabah) and says when it runs."""
+        from automation import muraqabah
+        from security.auth import current_user_id
+
+        owner = current_user_id()
+        if not owner or muraqabah.inside_watcher():
+            raise Defer  # a watcher's own task never creates watchers
+        await self._begin(["Understand the standing request (MIZAN)", "Save the watcher", "Reply"])
+        store = muraqabah.default_store()
+        trigger = u.entities["trigger"]
+        if store.place(owner) is None:
+            place = muraqabah.city_in(task)
+            if place is not None:
+                store.set_place(owner, place)
+            elif trigger["kind"] == "prayer":
+                return Outcome(phrase("watch_need_place", u.language), False, {}, tool_backed=False)
+        try:
+            watcher = store.add(owner, u.entities["title"], trigger, u.entities["task"])
+        except ValueError as exc:
+            reason = str(exc)
+            return Outcome(phrase("watch_failed", u.language, reason=reason), False, {}, tool_backed=False)  # fmt: skip
+        await self._step()
+        place = store.place(owner)
+        due = watcher.get("next_due")
+        upcoming = (
+            datetime.fromisoformat(due).astimezone(place.zone if place else UTC).strftime("%a %d %b, %H:%M")
+            if due
+            else "—"
+        )  # fmt: skip
+        text = phrase("watch_created", u.language, title=watcher["title"], when=watcher["when"], next=upcoming)  # fmt: skip
+        return Outcome(text, True, {"watcher": watcher["id"], "when": watcher["when"]}, tool_backed=False)  # fmt: skip
+
+    async def _salah(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Prayer times computed by MIZAN for the user's place (or a city named in the message)."""
+        from automation import muraqabah
+        from security.auth import current_user_id
+
+        owner = current_user_id()
+        place = muraqabah.city_in(task)
+        if place is None and owner:
+            place = muraqabah.default_store().place(owner)
+        if place is None:
+            return Outcome(phrase("salah_need_place", u.language), False, {}, tool_backed=False)
+        await self._begin(["Compute the prayer times for your place (MIZAN)", "Reply"])
+        now = datetime.now(UTC)
+        day = now.astimezone(place.zone).date()
+        times = muraqabah.prayer_times(place, day)
+        asked = u.entities.get("prayer")
+        upcoming = next((name for name in muraqabah.PRAYERS if times[name] > now), None)
+        lines = [
+            phrase(
+                "salah_header", u.language, place=place.label, date=waqt.gregorian_text(day),
+                hijri=waqt.hijri_text(waqt.to_hijri(day)),
+            ),
+            "",
+        ]  # fmt: skip
+        for name in ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"):
+            label = (
+                name.title() if not (name == "dhuhr" and day.weekday() == 4) else "Dhuhr (Jumu'ah)"
+            )
+            row = f"{label}: {times[name]:%H:%M}"
+            if name == asked:
+                row = f"**{row}**"
+            lines.append(f"- {row}" + (" ←" if name == upcoming else ""))
+        lines += [
+            "",
+            "_"
+            + phrase(
+                "salah_method", u.language, method=place.method.replace("_", " ").title(),
+                asr="Hanafi" if place.hanafi else "Shafi'i",
+            )
+            + "_",
+        ]  # fmt: skip
+        facts = {"place": place.label, "times": {k: f"{v:%H:%M}" for k, v in times.items()}}
+        return Outcome("\n".join(lines), True, facts, tool_backed=False)
+
     async def _waqt(self, task: str, u: fahm.Understanding) -> Outcome:
         request: waqt.WaqtRequest = u.entities["request"]
         language = u.language
@@ -1435,8 +1720,12 @@ class Tadbir:
                         for index, s in enumerate(sources, start=1)
                     )
                 )
+        ignored = [item for item in amanah.tainted() if amanah.untrusted(item.get("source", ""))]
+        notice = (
+            f"\n\n_{phrase('amanah_ignored', u.language, count=len(ignored))}_" if ignored else ""
+        )
         return Outcome(
-            f"{answer}\n\n{source_block}",
+            f"{answer}\n\n{source_block}{notice}",
             verified,
             {"sources": len(sources)},
             provenance="evidence",
@@ -1468,6 +1757,21 @@ def _matches(stdout: str, value: calc.Number) -> bool:
         return math.isclose(float(printed), float(value), rel_tol=1e-9, abs_tol=1e-12)
     except (ValueError, OverflowError):
         return False
+
+
+def _code_ran(run: dict) -> bool:
+    """The program itself ran (a verdict on the code), not a sandbox or permission failure."""
+    return not run.get("declined") and not (run.get("error") and not run.get("stderr"))
+
+
+def _ran_clean(run: dict) -> bool:
+    return run.get("exit_code") == 0 and not run.get("error")
+
+
+def _signature(run: dict) -> str:
+    if _ran_clean(run):
+        return ""
+    return tajriba.signature(str(run.get("stderr") or run.get("error") or ""))
 
 
 def _run_facts(run: dict) -> dict:

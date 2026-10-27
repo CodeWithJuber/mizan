@@ -135,7 +135,9 @@ def correction(findings: list[dict], language: str) -> str:
 
 
 def _reviewable(metadata: dict) -> bool:
-    usage = metadata.get("usage") if isinstance(metadata.get("usage"), dict) else {}
+    usage = metadata.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
     if metadata.get("muhasaba") or usage.get("orchestrator") == "mizan":
         return False
     status = metadata.get("completion_status") or usage.get("completion_status")

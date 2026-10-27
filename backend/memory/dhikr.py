@@ -149,6 +149,8 @@ class Memory:
     tags: list[str] = field(default_factory=list)
     embeddings: list[float] | None = None
     related_ids: list[str] = field(default_factory=list)
+    source: str = ""  # Daftar provenance: manual | import | knowledge:<title> | chat:<session>
+    expires: str = ""  # ISO time after which the memory is forgotten ("" = never)
 
     def decay(self, hours_elapsed: float) -> float:
         """
@@ -423,6 +425,14 @@ class DhikrMemorySystem:
                 updated_at TEXT NOT NULL
             )
         """)
+        # Daftar: provenance columns, added in place to older databases.
+        existing = {row[1] for row in c.execute("PRAGMA table_info(memories)").fetchall()}
+        for column in ("source", "created", "last_used", "expires"):
+            if column not in existing:
+                c.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT DEFAULT ''")
+        existing = {row[1] for row in c.execute("PRAGMA table_info(chat_preferences)").fetchall()}
+        if "session_id" not in existing:
+            c.execute("ALTER TABLE chat_preferences ADD COLUMN session_id TEXT DEFAULT ''")
         # Performance indexes
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
@@ -440,6 +450,9 @@ class DhikrMemorySystem:
         importance: float = 0.5,
         agent_id: str = "",
         tags: list[str] | None = None,
+        *,
+        source: str = "",
+        expires: str = "",
     ) -> str:
         """
         Store a new memory — dual pathway:
@@ -457,6 +470,8 @@ class DhikrMemorySystem:
             importance=importance,
             agent_id=agent_id,
             tags=tags or [],
+            source=source,
+            expires=expires,
         )
 
         # ── Masalik: Encode into neural pathways ──
@@ -524,8 +539,8 @@ class DhikrMemorySystem:
         conn = self._get_conn()
         c = conn.cursor()
 
-        sql = "SELECT * FROM memories WHERE 1=1"
-        params: list = []
+        sql = "SELECT * FROM memories WHERE (expires IS NULL OR expires = '' OR expires > ?)"
+        params: list = [datetime.now(UTC).isoformat()]
 
         if memory_type:
             sql += " AND memory_type = ?"
@@ -576,9 +591,20 @@ class DhikrMemorySystem:
         if query and memories:
             memories = rank_memories(query, memories)[:limit]
 
-        # Update access count for recalled memories
+        # Update access count for recalled memories; Daftar shows when each was last used.
         for mem in memories:
             mem.access_count += 1
+        if memories:
+            used = datetime.now(UTC).isoformat()
+            conn = self._get_conn()
+            try:
+                conn.executemany(
+                    "UPDATE memories SET access_count = ?, last_used = ? WHERE id = ?",
+                    [(mem.access_count, used, mem.id) for mem in memories],
+                )
+                conn.commit()
+            finally:
+                self._release_conn(conn)
 
         return memories
 
@@ -644,11 +670,16 @@ class DhikrMemorySystem:
         except (TypeError, ValueError):
             content_str = str(memory.content)
 
+        previous = c.execute(
+            "SELECT created, source, last_used, expires FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        created = (previous[0] if previous and previous[0] else "") or datetime.now(UTC).isoformat()
         c.execute(
             """
             INSERT OR REPLACE INTO memories
-            (id, content, memory_type, importance, recency, access_count, agent_id, tags, related_ids)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, content, memory_type, importance, recency, access_count, agent_id, tags,
+             related_ids, source, created, last_used, expires)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 memory.id,
@@ -660,6 +691,10 @@ class DhikrMemorySystem:
                 memory.agent_id,
                 json.dumps(memory.tags),
                 json.dumps(memory.related_ids),
+                memory.source or (previous[1] if previous else ""),
+                created,
+                previous[2] if previous else "",
+                memory.expires or (previous[3] if previous else ""),
             ),
         )
         conn.commit()
@@ -1090,13 +1125,17 @@ class DhikrMemorySystem:
         if len(value) > CHAT_PREFERENCE_LIMITS[key]:
             raise ValueError(f"Preference exceeds {CHAT_PREFERENCE_LIMITS[key]} characters")
         updated_at = datetime.now(UTC).isoformat()
+        from workspace.context import current_chat_session
+
+        session_id = current_chat_session() or ""
         conn = self._get_conn()
         try:
             conn.execute(
-                "INSERT INTO chat_preferences (owner_id, key, value, updated_at) "
-                "VALUES (?, ?, ?, ?) ON CONFLICT(owner_id, key) DO UPDATE SET "
-                "value = excluded.value, updated_at = excluded.updated_at",
-                (owner_id, key, value, updated_at),
+                "INSERT INTO chat_preferences (owner_id, key, value, updated_at, session_id) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id, key) DO UPDATE SET "
+                "value = excluded.value, updated_at = excluded.updated_at, "
+                "session_id = excluded.session_id",
+                (owner_id, key, value, updated_at, session_id),
             )
             conn.commit()
         finally:

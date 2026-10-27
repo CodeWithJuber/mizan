@@ -1,6 +1,8 @@
 /**
  * What MIZAN learned from its own verified work: which agent it gives each
- * kind of work to, and the wording it now understands without the model.
+ * kind of work to, the wording it now understands without the model, the
+ * programs and repair lessons it keeps, and (for admins) the instruction
+ * versions and models it chose for code work.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -26,11 +28,34 @@ interface Programs {
   items: { request: string; language: string; runs: number; reliability: number }[];
 }
 
+interface Lessons {
+  lessons: number;
+  items: { kind: string; signature: string; usefulness: number }[];
+}
+
+interface HarnessRow {
+  task: string;
+  incumbent: string;
+  incumbent_success: number;
+  incumbent_trials: number;
+  failures_since_renewal: number;
+  challenger?: { id: string; success: number; trials: number; p_better: number };
+}
+
+interface Harness {
+  evolution: boolean;
+  instructions: HarnessRow[];
+  models: string[];
+  routing: { task: string; model: string; success: number; evidence: number }[];
+}
+
 export default function TadbirLearning({ api }: { api: ApiClient }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState<WorkRow[]>([]);
   const [wording, setWording] = useState<Wording | null>(null);
   const [programs, setPrograms] = useState<Programs | null>(null);
+  const [lessons, setLessons] = useState<Lessons | null>(null);
+  const [harness, setHarness] = useState<Harness | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -40,15 +65,35 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       setRows(workRows((data.routing as RoutingRow[]) ?? []));
       setWording((data.wording as Wording) ?? null);
       setPrograms((await api.get("/tadbir/programs")) as unknown as Programs);
+      setLessons((await api.get("/tadbir/lessons")) as unknown as Lessons);
       setError("");
     } catch {
       setError("MIZAN's learning could not be loaded");
+    }
+    try {
+      // Admins only; everyone else simply does not see this card.
+      setHarness((await api.get("/tadbir/harness")) as unknown as Harness);
+    } catch {
+      setHarness(null);
     }
   }, [api]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const run = async (action: () => Promise<unknown>, done: string, failed: string) => {
+    setBusy(true);
+    try {
+      await action();
+      addToast({ type: "success", title: done });
+      await load();
+    } catch {
+      addToast({ type: "error", title: failed });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const forget = async () => {
     setBusy(true);
@@ -183,6 +228,111 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           Forget my programs
         </button>
       </div>
+
+      <div className="card">
+        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+          Lessons from repairs · تجربة
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          When a program failed in the sandbox and a repair then verified, MIZAN keeps the error (without your
+          names or values) and the change that fixed it. Similar work later is written with that lesson in view.
+          Lessons that stop helping are dropped.
+        </p>
+        {lessons && lessons.items.length > 0 ? (
+          <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
+            {lessons.items.map((item, index) => (
+              <li key={index} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-900 dark:text-gray-100">
+                  {item.signature}
+                </span>
+                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                  {percent(item.usefulness)} useful
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-gray-400 dark:text-gray-500 mb-3">No lessons yet</div>
+        )}
+        <button
+          className="btn-secondary btn-sm"
+          disabled={busy || !lessons?.lessons}
+          onClick={() =>
+            run(() => api.del("/tadbir/lessons"), "MIZAN forgot its repair lessons", "Could not forget the lessons")
+          }
+        >
+          Forget my lessons
+        </button>
+      </div>
+
+      {harness && (
+        <div className="card">
+          <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+            Instructions MIZAN renewed · تجديد
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            After repeated failures the model rewrites one of MIZAN&apos;s code instructions. The new version gets
+            part of the work and replaces the old one only when MIZAN&apos;s checks show it is better (95%), or is
+            retired. Shared by all users; only error kinds are stored.
+            {!harness.evolution && " Renewal is off (System settings)."}
+          </p>
+          <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
+            {harness.instructions.map((row) => (
+              <li key={row.task} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="font-mono text-xs text-gray-900 dark:text-gray-100 min-w-[10rem]">{row.task}</span>
+                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                  {row.incumbent} ·{" "}
+                  {row.incumbent_trials > 0
+                    ? `${percent(row.incumbent_success)} verified over ${row.incumbent_trials}`
+                    : "no results yet"}
+                </span>
+                {row.challenger ? (
+                  <span className="text-micro font-mono text-mizan-gold">
+                    trying {row.challenger.id}: {percent(row.challenger.success)} over {row.challenger.trials} ·
+                    P(better) {percent(row.challenger.p_better)}
+                  </span>
+                ) : (
+                  <span className="text-micro text-gray-400 dark:text-gray-500">
+                    {row.failures_since_renewal} failures since renewal
+                  </span>
+                )}
+                <span className="flex-1" />
+                {(row.incumbent !== "base" || row.challenger) && (
+                  <button
+                    className="btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => api.del(`/tadbir/harness/${row.task}`),
+                        "Back to MIZAN's built-in instruction",
+                        "Could not reset the instruction",
+                      )
+                    }
+                  >
+                    Reset
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {harness.models.length > 0 && (
+            <>
+              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+                Models for code work · وزن
+              </div>
+              <ul className="text-micro font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
+                {harness.routing
+                  .filter((row) => row.evidence > 0)
+                  .map((row) => (
+                    <li key={`${row.task}-${row.model}`}>
+                      {row.task} · {row.model}: {percent(row.success)} verified
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,9 @@ interface AgentSkill {
   files: string[];
   diagnostics: string[];
   enabled: boolean;
+  /** Amanah holds a skill whose instructions try to override the AI until you trust it. */
+  held?: boolean;
+  amanah?: string[];
 }
 
 const SCOPE_BADGE: Record<string, string> = { bundled: "badge-gold", user: "badge-success", project: "badge-info" };
@@ -62,6 +65,16 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
       setSkills((list) => list.map((s) => s.name === skill.name ? { ...s, enabled: !s.enabled } : s));
     } catch (error) {
       addToast({ type: "error", title: "Update failed", description: (error as Error).message });
+    }
+  };
+
+  const trust = async (skill: AgentSkill) => {
+    try {
+      await api.post(`/agent-skills/${encodeURIComponent(skill.name)}/trust`, {});
+      setSkills((list) => list.map((s) => s.name === skill.name ? { ...s, held: false } : s));
+      addToast({ type: "success", title: `${skill.name} is available to the agent` });
+    } catch (error) {
+      addToast({ type: "error", title: "Could not trust the skill", description: (error as Error).message });
     }
   };
 
@@ -187,11 +200,19 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
                   <span className={SCOPE_BADGE[skill.scope] ?? "badge-info"}>{skill.scope}</span>
                   {skill.license && <span className="badge-info">{skill.license}</span>}
                   {skill.files.length > 0 && <span className="badge-info">{skill.files.length} files</span>}
+                  {skill.held && <span className="badge-warning">held</span>}
                 </div>
               </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-zinc-400 line-clamp-4">{skill.description}</p>
             {skill.diagnostics.length > 0 && <p className="text-xs text-amber-600">⚠ {skill.diagnostics.join("; ")}</p>}
+            {skill.held && (
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2 text-xs text-amber-800 dark:text-amber-300">
+                <p>Amanah: this skill contains instructions aimed at overriding the AI, so the agent cannot use it until you check it. A later change holds it again.</p>
+                {skill.amanah?.map((excerpt) => <p key={excerpt} className="mt-0.5 font-mono break-all">“{excerpt}”</p>)}
+                <button className="btn-secondary btn-sm mt-1" onClick={() => trust(skill)}>Trust as it is now</button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 pt-1">
               <button className="btn-secondary btn-sm inline-flex items-center gap-1" onClick={() => view(skill)}><BookOpen className="w-3.5 h-3.5" /> View</button>
               <button className="btn-ghost btn-sm" onClick={() => toggle(skill)}>{skill.enabled ? "Disable" : "Enable"}</button>

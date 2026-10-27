@@ -22,6 +22,7 @@ export const WORK_LABELS: Record<string, string> = {
   build_project: "Build a project",
   build_and_run: "Write and run a program",
   qiyas: "Infer a rule from examples",
+  silsila: "Find a sequence's rule",
   run_code: "Run code",
   compute: "Calculate",
   web_search: "Search the web",

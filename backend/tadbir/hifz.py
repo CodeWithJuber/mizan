@@ -57,7 +57,7 @@ def _save(store: Any, user_id: str, items: list[dict]) -> None:
 
 
 def _same(item: dict, words: list[str], language: str) -> bool:
-    return item["tokens"] == words and item["language"] == language
+    return bool(item["tokens"] == words and item["language"] == language)
 
 
 def recall(store: Any, user_id: str, message: str, language: str) -> dict | None:

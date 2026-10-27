@@ -53,7 +53,8 @@ def scratch_project(store: WorkspaceStore) -> str:
     for item in store.list():
         if item.get("name") == SCRATCH_PROJECT:
             return str(item["id"])
-    return str(store.create(SCRATCH_PROJECT)["id"])
+    # Running code from a chat must never fail because the user has many projects.
+    return str(store.create(SCRATCH_PROJECT, reserved=True)["id"])
 
 
 def allows_user_web_tool(tool_name: str, registry, *, native_tools: dict | None = None) -> bool:

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -33,7 +34,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import HTTPConnection
@@ -369,6 +370,27 @@ async def lifespan(app: FastAPI):
 
     self_review_task = asyncio.create_task(self_review())
 
+    async def watch_for_users() -> None:
+        # Muraqabah: each user's watchers, judged against salah and attention.
+        from automation import muraqabah
+
+        await asyncio.sleep(30)
+        while True:
+            if os.getenv("MIZAN_MURAQABAH", "on").lower() not in {"off", "0", "false", "no"}:
+                try:
+                    await muraqabah.tick(
+                        _muraqabah_store(),
+                        datetime.now(UTC),
+                        run_task=_watcher_task,
+                        deliver=_watcher_deliver,
+                        read_page=_watcher_page,
+                    )
+                except Exception as exc:
+                    logger.warning("Muraqabah pass failed: %s", exc)
+            await asyncio.sleep(60)
+
+    watch_task = asyncio.create_task(watch_for_users())
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -384,6 +406,7 @@ async def lifespan(app: FastAPI):
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
     self_review_task.cancel()
+    watch_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -712,6 +735,19 @@ class MemoryStore(BaseModel):
     memory_type: str = Field(default="semantic", pattern=r"^(episodic|semantic|procedural)$")
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     tags: list[str] = []
+    expires: str = Field(default="", max_length=40)
+
+
+class DaftarEdit(BaseModel):
+    content: str | None = Field(None, min_length=1, max_length=50000)
+    tags: list[str] | None = None
+    expires: str | None = Field(None, max_length=40)
+
+
+class DaftarForget(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=500)
+    topic: str = Field(default="", max_length=200)
+    confirm: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -1203,19 +1239,30 @@ def agent_settings_lock(agent):
     return agent._execution_lock
 
 
+_private_memories: dict[str, DhikrMemorySystem] = {}
+
+
+def _private_memory(user: TokenPayload) -> DhikrMemorySystem:
+    """This user's own memory database, shared by all their agents."""
+    import hashlib
+
+    directory = (
+        Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
+        / "private"
+        / hashlib.sha256(user.user_id.encode()).hexdigest()
+    )
+    key = str(directory)
+    if key not in _private_memories:
+        directory.mkdir(parents=True, exist_ok=True)
+        _private_memories[key] = DhikrMemorySystem(db_path=str(directory / "memory.db"))
+    return _private_memories[key]
+
+
 def _private_agent(user: TokenPayload, template):
     """This user's own instance of an agent, with private memory and learning."""
     key = (user.user_id, template.id)
     if key not in _user_agents:
-        import hashlib
-
-        directory = (
-            Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
-            / "private"
-            / hashlib.sha256(user.user_id.encode()).hexdigest()
-        )
-        directory.mkdir(parents=True, exist_ok=True)
-        private_memory = DhikrMemorySystem(db_path=str(directory / "memory.db"))
+        private_memory = _private_memory(user)
         instance = create_agent(
             template.role,
             name=template.name,
@@ -2367,9 +2414,34 @@ async def get_plan(plan_id: str):
 # === MEMORY ===
 
 
+async def _own_agent(user: TokenPayload):
+    """The agent whose memory and learning belong to this user, if agents are running."""
+    template = _tadbir_coordinator()
+    return None if template is None else await chat_agent_for(user, template)
+
+
+async def _own_memory(user: TokenPayload) -> DhikrMemorySystem:
+    """This user's notes: admins share the main store, everyone else has their own."""
+    agent = await _own_agent(user)
+    if agent is not None:
+        return cast(DhikrMemorySystem, agent.memory)
+    return memory if user.has_role("admin") else _private_memory(user)
+
+
+def _expiry(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(422, "expires must be an ISO date or time") from None
+    return (moment if moment.tzinfo else moment.replace(tzinfo=UTC)).isoformat()
+
+
 @app.post("/api/memory/query")
-async def query_memory(req: MemoryQuery):
-    memories = await memory.recall(req.query, req.memory_type, req.agent_id, req.limit)
+async def query_memory(req: MemoryQuery, user: TokenPayload = Depends(require_auth)):
+    own = await _own_memory(user)
+    memories = await own.recall(req.query, req.memory_type, req.agent_id, req.limit)
     return {
         "query": req.query,
         "results": [
@@ -2389,20 +2461,32 @@ async def query_memory(req: MemoryQuery):
 
 
 @app.post("/api/memory/store")
-async def store_memory(req: MemoryStore):
-    mem_id = await memory.remember(req.content, req.memory_type, req.importance, tags=req.tags)
+async def store_memory(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
+    """Save a note to this user's own memory, which their agents recall."""
+    own = await _own_memory(user)
+    mem_id = await own.remember(
+        req.content,
+        req.memory_type,
+        req.importance,
+        tags=req.tags,
+        source="manual",
+        expires=_expiry(req.expires),
+    )
     return {"id": mem_id, "stored": True}
 
 
 @app.post("/api/memory/consolidate")
-async def consolidate_memory():
-    result = await memory.consolidate()
+async def consolidate_memory(user: TokenPayload = Depends(require_auth)):
+    result = await (await _own_memory(user)).consolidate()
     return result
 
 
 @app.get("/api/memory/list")
-async def list_memories(memory_type: str | None = None, limit: int = 30):
-    """List recent memories without search filtering."""
+async def list_memories(
+    memory_type: str | None = None, limit: int = 30, user: TokenPayload = Depends(require_auth)
+):
+    """List this user's recent memories without search filtering."""
+    memory = await _own_memory(user)
     conn = memory._get_conn()
     c = conn.cursor()
     sql = "SELECT * FROM memories WHERE 1=1"
@@ -2435,6 +2519,375 @@ async def list_memories(memory_type: str | None = None, limit: int = 30):
             }
         )
     return {"results": results, "total": len(results)}
+
+
+# === DAFTAR (دفتر): everything MIZAN keeps about you, with provenance ===
+
+
+@app.get("/api/daftar")
+async def daftar_ledger(
+    query: str = Query("", max_length=200),
+    kind: str = Query("", pattern=r"^(|note|preference|summary|learned)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    from memory import daftar
+
+    agent = await _own_agent(user)
+    return await daftar.ledger(
+        notes_store=await _own_memory(user),
+        memory=memory,
+        adaptive=getattr(agent, "adaptive", None),
+        owner_id=user.user_id,
+        query=query,
+        kind=kind,
+    )
+
+
+@app.post("/api/daftar")
+async def daftar_add(req: MemoryStore, user: TokenPayload = Depends(require_auth)):
+    """Save a note to remember; it goes to this user's own memory, which their agents recall."""
+    own = await _own_memory(user)
+    note = await own.remember(
+        req.content,
+        req.memory_type,
+        req.importance,
+        tags=req.tags,
+        source="manual",
+        expires=_expiry(req.expires),
+    )
+    return {"id": f"note:{note}"}
+
+
+@app.patch("/api/daftar/{entry_id}")
+async def daftar_edit(entry_id: str, req: DaftarEdit, user: TokenPayload = Depends(require_auth)):
+    from memory import daftar
+
+    kind, _, key = entry_id.partition(":")
+    if kind == "preference":
+        if req.content is None:
+            raise HTTPException(422, "A preference needs its new value")
+        try:
+            return await memory.set_chat_preference(user.user_id, key, req.content)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    if kind != "note":
+        raise HTTPException(422, "Only notes and preferences can be edited")
+    expires = None if req.expires is None else _expiry(req.expires)
+    notes_store = await _own_memory(user)
+    if not daftar.edit_note(notes_store, key, content=req.content, tags=req.tags, expires=expires):
+        raise HTTPException(404, "No such note")
+    return {"edited": entry_id}
+
+
+@app.post("/api/daftar/forget")
+async def daftar_forget(req: DaftarForget, user: TokenPayload = Depends(require_auth)):
+    """Forget chosen entries, or everything about a topic (first a preview, then confirm)."""
+    from memory import daftar
+
+    notes_store = await _own_memory(user)
+    ids = list(req.ids)
+    if req.topic.strip():
+        found = await daftar.ledger(
+            notes_store=notes_store,
+            memory=memory,
+            adaptive=None,
+            owner_id=user.user_id,
+            query=req.topic,
+        )
+        matches = [e for e in found["entries"] if e["kind"] in ("note", "preference")]
+        if not req.confirm:
+            return {"preview": matches}
+        ids += [entry["id"] for entry in matches]
+    if not ids:
+        return {"forgotten": {"note": 0, "preference": 0}}
+    return {
+        "forgotten": await daftar.forget(
+            notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=ids
+        )
+    }
+
+
+@app.get("/api/daftar/export")
+async def daftar_export(
+    format: str = Query("json", pattern=r"^(json|md)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    from memory import daftar
+
+    agent = await _own_agent(user)
+    found = await daftar.ledger(
+        notes_store=await _own_memory(user),
+        memory=memory,
+        adaptive=getattr(agent, "adaptive", None),
+        owner_id=user.user_id,
+    )
+    if format == "md":
+        return PlainTextResponse(
+            daftar.to_markdown(found["entries"], user.username),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="mizan-daftar.md"'},
+        )
+    return JSONResponse(
+        daftar.to_json(found["entries"]),
+        headers={"Content-Disposition": 'attachment; filename="mizan-daftar.json"'},
+    )
+
+
+@app.post("/api/daftar/import")
+async def daftar_import(data: dict, user: TokenPayload = Depends(require_auth)):
+    from memory import daftar
+
+    try:
+        return {
+            "imported": await daftar.import_entries(
+                notes_store=await _own_memory(user), memory=memory, owner_id=user.user_id, data=data
+            )
+        }
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+# === MURAQABAH (مراقبة): watchers that judge when to interrupt ===
+
+
+def _muraqabah_store():
+    from automation import muraqabah
+
+    return muraqabah.default_store()
+
+
+def _owner_token(owner_id: str) -> TokenPayload | None:
+    record = auth.get_user(owner_id)
+    if record is None:
+        return None
+    return TokenPayload(
+        user_id=record.id,
+        username=record.username,
+        roles=list(record.roles),
+        exp=time.time() + 600,
+        iat=time.time(),
+        jti="muraqabah",
+    )
+
+
+async def _watcher_task(owner_id: str, task: str) -> str:
+    """Run a watcher's task as its owner, through their own agent and its gates."""
+    user = _owner_token(owner_id)
+    template = _tadbir_coordinator()
+    if user is None or template is None:
+        return ""
+    from automation import muraqabah
+
+    agent = await chat_agent_for(user, template)
+    binding = bind_principal(user)
+    try:
+        with muraqabah.running_watcher():
+            result = await agent.execute(task, {"session_id": muraqabah_session(owner_id)})
+    finally:
+        reset_principal(binding)
+    return str(result.get("result") or "")
+
+
+async def _watcher_page(owner_id: str, url: str) -> str | None:
+    """A watched page's text, read through the web tool and Amanah, as the owner."""
+    user = _owner_token(owner_id)
+    template = _tadbir_coordinator()
+    if user is None or template is None:
+        return None
+    agent = await chat_agent_for(user, template)
+    binding = bind_principal(user)
+    try:
+        from tadbir import amanah
+
+        page = await agent._execute_tool_safe("web_browse", {"url": url})
+    finally:
+        reset_principal(binding)
+    if not isinstance(page, dict) or page.get("error"):
+        return None
+    cleaned, _found = amanah.guard_value(page, "web_browse")
+    return str(cleaned.get("content") or "")[:20000]
+
+
+def muraqabah_session(owner_id: str) -> str:
+    from automation import muraqabah
+
+    return str(muraqabah.session_id(owner_id))
+
+
+async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
+    session = muraqabah_session(owner_id)
+    await memory.authorize_session(session, owner_id, create=True)
+    await memory.save_message(
+        session,
+        "assistant",
+        text,
+        metadata={"muraqabah": True, "status": "complete", **metadata},
+    )
+
+
+class PlaceRequest(BaseModel):
+    city: str = Field(default="", max_length=120)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    tz: str = Field(default="", max_length=64)
+    method: str = Field(default="", max_length=40)
+    hanafi: bool | None = None
+    budget: int | None = Field(default=None, ge=0, le=50)
+    digest: str = Field(default="", pattern=r"^(|[0-2]?\d:[0-5]\d)$")
+    quiet: bool | None = None
+
+
+class WatcherRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    trigger: dict
+    task: str = Field(..., min_length=1, max_length=1000)
+    priority: str = Field(default="judge", pattern=r"^(judge|always)$")
+
+
+class WatcherUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=120)
+    trigger: dict | None = None
+    task: str | None = Field(None, min_length=1, max_length=1000)
+    priority: str | None = Field(None, pattern=r"^(judge|always)$")
+    enabled: bool | None = None
+
+
+class NoticeFeedback(BaseModel):
+    useful: bool
+
+
+@app.get("/api/muraqabah")
+async def muraqabah_overview(user: TokenPayload = Depends(require_auth)):
+    """Your watchers, your place, today's prayer times and quiet windows, and attention used."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    place = store.place(user.user_id)
+    now = datetime.now(UTC)
+    today = None
+    if place is not None:
+        day = now.astimezone(place.zone).date()
+        times = muraqabah.prayer_times(place, day)
+        today = {
+            "date": day.isoformat(),
+            "times": {name: moment.strftime("%H:%M") for name, moment in times.items()},
+            "quiet": [
+                {"prayer": name, "from": start.strftime("%H:%M"), "to": end.strftime("%H:%M")}
+                for name, start, end in muraqabah.quiet_windows(place, day)
+            ],
+            "quiet_now": muraqabah.quiet_until(place, now) is not None,
+        }
+    return {
+        "place": place.to_dict() if place else None,
+        "today": today,
+        "watchers": store.watchers(user.user_id),
+        "delivered_today": store.delivered_today(user.user_id, place, now),
+        "budget": place.budget if place else muraqabah.DEFAULT_BUDGET,
+        "attention": {
+            kind: dict(zip(("useful", "not_now"), store.posterior(user.user_id, kind), strict=True))
+            for kind in muraqabah.TRIGGERS
+        },
+        "session_id": muraqabah_session(user.user_id),
+        "methods": muraqabah.METHODS,
+    }
+
+
+@app.put("/api/muraqabah/place")
+async def muraqabah_place(req: PlaceRequest, user: TokenPayload = Depends(require_auth)):
+    """Your place (for prayer times), calculation method, Asr school and attention settings."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    current = store.place(user.user_id)
+    if req.city.strip():
+        place = await muraqabah.find_place(req.city)
+        if place is None:
+            raise HTTPException(404, "MIZAN could not find that city; enter its coordinates")
+    elif req.lat is not None and req.lon is not None:
+        place = muraqabah.Place("Custom place", req.lat, req.lon, req.tz or "UTC")
+    elif current is not None:
+        place = current
+    else:
+        raise HTTPException(422, "Give a city, or coordinates and a time zone")
+    if current is not None and place is not current:
+        # A new place keeps the user's own settings.
+        place.budget, place.digest, place.quiet = current.budget, current.digest, current.quiet
+    if req.method:
+        if req.method not in muraqabah.METHODS:
+            raise HTTPException(422, "Unknown calculation method")
+        place.method = req.method
+    for name in ("hanafi", "budget", "quiet"):
+        if getattr(req, name) is not None:
+            setattr(place, name, getattr(req, name))
+    if req.digest:
+        place.digest = req.digest
+    store.set_place(user.user_id, place)
+    for watcher in store.watchers(user.user_id):
+        store.update(user.user_id, watcher["id"], enabled=watcher["enabled"])  # re-time them
+    return place.to_dict()
+
+
+@app.post("/api/muraqabah/watchers")
+async def add_watcher(req: WatcherRequest, user: TokenPayload = Depends(require_auth)):
+    try:
+        return _muraqabah_store().add(user.user_id, req.title, req.trigger, req.task, req.priority)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.patch("/api/muraqabah/watchers/{watcher_id}")
+async def update_watcher(
+    watcher_id: str, req: WatcherUpdate, user: TokenPayload = Depends(require_auth)
+):
+    try:
+        updated = _muraqabah_store().update(
+            user.user_id, watcher_id, **req.model_dump(exclude_none=True)
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if updated is None:
+        raise HTTPException(404, "No such watcher")
+    return updated
+
+
+@app.delete("/api/muraqabah/watchers/{watcher_id}")
+async def delete_watcher(watcher_id: str, user: TokenPayload = Depends(require_auth)):
+    if not _muraqabah_store().remove(user.user_id, watcher_id):
+        raise HTTPException(404, "No such watcher")
+    return {"deleted": watcher_id}
+
+
+@app.post("/api/muraqabah/watchers/{watcher_id}/run")
+async def run_watcher(watcher_id: str, user: TokenPayload = Depends(require_auth)):
+    """Run a watcher now; its notice is judged like any other (salah, attention)."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    watcher = store.watcher(user.user_id, watcher_id)
+    if watcher is None:
+        raise HTTPException(404, "No such watcher")
+    now = datetime.now(UTC)
+    await muraqabah.fire(store, watcher, now, _watcher_task, _watcher_page)
+    counts = await muraqabah.deliver_waiting(store, now, _watcher_deliver)
+    return {"ran": watcher_id, **counts}
+
+
+@app.get("/api/muraqabah/notices")
+async def watcher_notices(
+    status: str = Query("", pattern=r"^(|pending|held|digest|delivered|opened|dismissed)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    return {"notices": _muraqabah_store().notices(user.user_id, status or None)}
+
+
+@app.post("/api/muraqabah/notices/{notice_id}/feedback")
+async def watcher_feedback(
+    notice_id: str, req: NoticeFeedback, user: TokenPayload = Depends(require_auth)
+):
+    """Useful or not now: this teaches MIZAN when to interrupt you."""
+    if not _muraqabah_store().feedback(user.user_id, notice_id, req.useful):
+        raise HTTPException(404, "No such notice")
+    return {"recorded": notice_id}
 
 
 # === PERCEPTION (Sam' + Basar - سَمْع + بَصَر) ===
@@ -3602,6 +4055,57 @@ async def forget_programs(user: TokenPayload = Depends(require_auth)):
     coordinator = await chat_agent_for(user, template)
     hifz.forget(coordinator.adaptive, user.user_id)
     return {"forgotten": True}
+
+
+@app.get("/api/tadbir/lessons")
+async def repair_lessons(user: TokenPayload = Depends(require_auth)):
+    """Lessons MIZAN kept from its own verified repairs of your code (Tajriba)."""
+    from tadbir import tajriba
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    return tajriba.summary(coordinator.adaptive, user.user_id)
+
+
+@app.delete("/api/tadbir/lessons")
+async def forget_repair_lessons(user: TokenPayload = Depends(require_auth)):
+    from tadbir import tajriba
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    tajriba.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
+@app.get("/api/tadbir/harness")
+async def harness_report(user: TokenPayload = Depends(require_auth)):
+    """Lisan's instruction versions (Tajdid) and the models chosen for code work (Wazn), admin."""
+    from tadbir import tajdid, wazn
+
+    _require_admin(user)
+    return {
+        "evolution": tajdid.enabled(),
+        "instructions": tajdid.report(),
+        "models": wazn.models(),
+        "readiness": wazn.readiness(),
+        "routing": wazn.report(),
+    }
+
+
+@app.delete("/api/tadbir/harness/{task}")
+async def reset_harness(task: str, user: TokenPayload = Depends(require_auth)):
+    """Return one kind of work to MIZAN's built-in instruction (admin)."""
+    from tadbir import tajdid
+
+    _require_admin(user)
+    if task not in tajdid.CONTRACTS:
+        raise HTTPException(404, "Unknown kind of work")
+    tajdid.reset(task)
+    return {"reset": task}
 
 
 # === DEBUG MODE (Muqabala: the base model alone vs MIZAN) ===
