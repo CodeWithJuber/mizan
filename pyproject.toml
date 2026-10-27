@@ -54,6 +54,7 @@ dependencies = [
     "mcp>=2.3.0,<3",
     "hijridate>=2.6.0,<3",
     "tzdata>=2026.5",
+    "jsonschema>=4.26.0,<5",
 ]
 
 [project.optional-dependencies]

@@ -358,6 +358,17 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
 _execution_provider: ContextVar[tuple | None] = ContextVar("mizan_execution_provider", default=None)
 _execution_stack: ContextVar[tuple[int, ...]] = ContextVar("mizan_execution_stack", default=())
 _evaluation_only: ContextVar[bool] = ContextVar("mizan_evaluation_only", default=False)
+# Tadbir's default mode: MIZAN performs every action itself, so a request it
+# hands to the conversation loop is answered in words, with no tools at all.
+_language_only: ContextVar[bool] = ContextVar("mizan_language_only", default=False)
+_LANGUAGE_ONLY_NOTE = (
+    "\n\nIn this conversation you are MIZAN's language faculty and have no tools: MIZAN's own "
+    "architecture performs every action (running code, searching, building or editing projects, "
+    "Quran and hadith text, connectors). Never say you ran, searched, opened, saved or changed "
+    "anything. When the user wants an action, answer what you can in words and say in one line "
+    'how to ask for it, for example "run this code", "search the web for …", "build a … '
+    'app" or "use my <connector> to …".'
+)
 
 
 class BaseAgent:
@@ -563,7 +574,7 @@ class BaseAgent:
 
     def get_tool_schemas(self) -> list[dict]:
         """Get tool schemas only when the selected model supports them."""
-        if _evaluation_only.get():
+        if _evaluation_only.get() or _language_only.get():
             return []
         if getattr(getattr(self, "ai_client", None), "supports_tools", True) is False:
             return []
@@ -1098,6 +1109,10 @@ class BaseAgent:
             ),
         )
         tool_schemas = tool_catalog.schemas()
+        catalog: ToolCatalog | None = tool_catalog
+        if _language_only.get():
+            # MIZAN performs the actions: not even the discovery tool is offered.
+            tool_schemas, catalog = [], None
 
         # QalbProcessor — compute cardiac oscillation state → LLM params
         qalb_proc_output = self.qalb_processor.process(
@@ -1168,7 +1183,7 @@ class BaseAgent:
         if self.ai_client:
             try:
                 async for chunk in self._agentic_loop(
-                    system_prompt, messages, tool_schemas, stream, task, tool_catalog=tool_catalog
+                    system_prompt, messages, tool_schemas, stream, task, tool_catalog=catalog
                 ):
                     yield chunk
             except Exception:
@@ -2027,6 +2042,8 @@ class BaseAgent:
         """
         if _evaluation_only.get():
             return {"error": "Tools are disabled for read-only council evaluation"}
+        if _language_only.get():
+            return {"error": "MIZAN performs actions itself; the language faculty has no tools"}
         if not self._chat_tool_allowed(tool_name):
             return {"error": "Tool is not permitted in this user's selected workspace context"}
 
@@ -2352,7 +2369,9 @@ class BaseAgent:
         )
 
         capability_card = ""
-        if getattr(self.ai_client, "supports_tools", True) is not False:
+        if _language_only.get():
+            capability_card = _LANGUAGE_ONLY_NOTE
+        elif getattr(self.ai_client, "supports_tools", True) is not False:
             try:
                 capability_card = _capability_card(
                     {str(item.get("name", "")) for item in self.get_tool_schemas()}
@@ -2364,7 +2383,7 @@ class BaseAgent:
 
 Role: {self.role}{tone_guidance}{ruh_note}{faculty_note}
 
-You have access to tools. Use them when needed to complete tasks.{capability_card}
+{"Answer in words." if _language_only.get() else "You have access to tools. Use them when needed to complete tasks."}{capability_card}
 
 Core Principles:
 - Ihsan (إحسان): Always strive for excellence
@@ -2599,6 +2618,7 @@ Match the requested depth and self-correct errors."""
             from workspace.context import bind_chat_session, reset_chat_session
 
             session_binding = bind_chat_session((context or {}).get("session_id"))
+            language_binding = _language_only.set(False)
             try:
                 result = await self._execute_impl(
                     task, context, stream_callback, tool_callback, thinking_callback
@@ -2684,6 +2704,7 @@ Match the requested depth and self-correct errors."""
                 if self.state in {"acting", "thinking"}:
                     self.state = "resting"
                 reset_chat_session(session_binding)
+                _language_only.reset(language_binding)
                 _execution_stack.reset(stack_binding)
                 _execution_provider.reset(binding)
 
@@ -2840,6 +2861,15 @@ Match the requested depth and self-correct errors."""
                 self.total_duration_ms += handled["duration_ms"]
                 self.success_count += 1
                 return cast(dict, handled)
+
+        if not _evaluation_only.get():
+            from tadbir import full_orchestration
+
+            if full_orchestration():
+                # MIZAN did not recognise an action here: the model answers in
+                # words with the full conversation, and gets no tools. execute()
+                # restores the flag when this run ends.
+                _language_only.set(True)
 
         try:
             full_response = ""

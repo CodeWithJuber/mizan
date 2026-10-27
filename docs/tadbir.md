@@ -55,6 +55,13 @@ and before the model-driven loop.
 | web_search | "latest … search karo" | Lisan answers only from the numbered results. MIZAN adds the source list itself. |
 | web_read | URL + "padho / summarize" | as for web_search, with one page |
 | recall | "yaad hai maine kya bataya tha?" | Lisan may word the recalled memories, checked by Furqan |
+| edit_project | "Button ka color red karo", "add a dark mode toggle" (in a selected project) | Lisan writes the changed files. MIZAN picks the files it reads (BM25), saves with `expected_sha256` so a newer version is never overwritten, and checks the changes: local references, CSS, JSON, `node --check` and `py_compile` in the sandbox, and `unittest` when the project has tests. It repairs at most twice and shows a diff. A build request in a project that already has files becomes an edit. |
+| use_tool | anything else Lisan maps to an action: a connector, a skill, memory | MIZAN chooses the tool from the user's permitted tools (BM25 × the tool's reliability posterior). Shell, raw files, raw HTTP and host Python are never chosen. Lisan fills the arguments; MIZAN validates them against the tool's JSON Schema with `jsonschema`, allows one retry, and runs the tool through the agent's gate. Lisan may word the result (Furqan). The answer is `evidence_observed`, not verified. |
+
+**Lisan plans, MIZAN validates.** When Fahm does not place a request, or
+places only part of a message, Lisan maps the wording into one to four steps of
+MIZAN's action schema. MIZAN validates each step (invalid ones are dropped) and
+runs them under one plan, each by its own recipe and agent.
 
 **Compound requests.** A message made of two to four independent requests
 ("Bukhari 1 aur Surah Ikhlas dikhao", "2+2 kitna hai aur aaj ki date kya hai")
@@ -127,15 +134,17 @@ immediately.
 
 | Mode | Behaviour |
 |------|-----------|
-| `mizan` (default) | Tadbir handles what it understands. Anything else goes to the general agent loop, which still has the capability and execution guards. |
-| `strict` | Everything goes through MIZAN. Requests without a recipe are answered by Lisan in words, and the model gets no tools. |
+| `mizan` (default) | MIZAN performs every action, and **the model never controls a tool**. A request with no recipe or plan is answered in words through the full chat pipeline (memory, persona, history, streaming), with zero tools offered, not even tool discovery. `strict` is accepted as the former name. |
+| `hybrid` | Tadbir handles what it understands. Anything else goes to the model-driven agent loop, which keeps the capability and execution guards. This was the default before. |
 | `llm` | Tadbir is off. The model drives the agent loop as before. |
 
 ## Limits
 
-- **Recognisers.** They are rule based. A request they do not recognise falls
-  back to the agent loop rather than being forced into a recipe. Add a recipe
-  or recogniser to widen MIZAN's own coverage.
+- **Recognisers.** They are rule based. A request they do not place goes to
+  Lisan's step mapping, which MIZAN validates. Anything still unplaced is
+  answered in words in `mizan` mode, or by the agent loop in `hybrid` mode.
+  It is never forced into a recipe. Add a recipe or recogniser to widen
+  MIZAN's own coverage, and learned wording widens it automatically.
 - **Furqan.** It checks that wording stays inside the facts: numbers,
   citations, links and action claims. It does not prove the entailment of
   every sentence.

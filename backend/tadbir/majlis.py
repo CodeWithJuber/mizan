@@ -31,6 +31,8 @@ ROLE_FOR = {
     "waqt": "khalifah",
     "recall": "khalifah",
     "capabilities": "khalifah",
+    "edit_project": "katib",
+    "use_tool": "khalifah",
 }
 ROLE_NAMES = {
     "katib": "code",
@@ -47,6 +49,7 @@ NEEDS = {
     "web_search": "web_search",
     "web_read": "web_browse",
     "recall": "recall_memory",
+    "edit_project": "workspace_write",
 }
 # Prior pseudo-counts (successes, failures): strong for the specialist, good
 # for Khalifah (which can do every kind of work), weak for the rest.

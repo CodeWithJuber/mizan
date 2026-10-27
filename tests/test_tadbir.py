@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import calc, fahm, hadith, majlis, project, quran, taallum, waqt
+from tadbir import amal, calc, fahm, hadith, majlis, project, quran, taallum, waqt
 from tadbir.express import furqan
 
 
@@ -367,15 +367,24 @@ async def test_search_answer_keeps_only_supported_citations(agent, monkeypatch):
 
 
 async def test_modes_route_unknown_requests(agent, monkeypatch):
+    # mizan (default): the model answers in words and is given no tools at all.
     agent.ai_client = ScriptedProvider(["Recursion is a function calling itself."])
     result = await agent.execute("Explain recursion simply")
-    assert "orchestrator" not in result.get("usage", {})
-    assert agent.ai_client.requests[0].get("tools")  # the general agent loop
-    monkeypatch.setenv("MIZAN_ORCHESTRATION", "strict")
+    assert result["result"] == "Recursion is a function calling itself."
+    assert not agent.ai_client.requests[0].get("tools")
+    assert "no tools" in agent.ai_client.requests[0]["system"]
+    # Tadbir still runs tools itself afterwards: the flag ends with the run.
+    assert agent.get_tool_schemas()
+    # hybrid: what MIZAN does not recognise goes to the model-driven loop.
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "hybrid")
     agent.ai_client = ScriptedProvider(["It calls itself on a smaller input."])
-    strict = await agent.execute("Explain recursion simply")
-    assert strict["usage"]["orchestrator"] == "mizan"
-    assert not agent.ai_client.requests[0].get("tools")  # language only, no tool control
+    await agent.execute("Explain recursion simply")
+    assert agent.ai_client.requests[0].get("tools")
+    # strict is the former name of mizan.
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "strict")
+    agent.ai_client = ScriptedProvider(["Words only."])
+    await agent.execute("Explain recursion simply")
+    assert not agent.ai_client.requests[0].get("tools")
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
     agent.ai_client = ScriptedProvider(["4"])
     legacy = await agent.execute("2+2?")
@@ -1052,3 +1061,168 @@ async def test_learning_api_shows_routing_and_forgets_wording(monkeypatch, tmp_p
     assert any(r["agent"] == "Katib" and r["specialist"] for r in view["routing"])
     assert (await main.forget_tadbir_wording(alice))["forgotten"]
     assert (await main.tadbir_learning(alice))["wording"]["examples"] == 0
+
+
+# ── Amal: any other action, with MIZAN choosing the tool ─────────────────
+
+ISSUES_TOOL = {
+    "name": "mcp__github__list_issues",
+    "description": "List the open issues of a GitHub repository",
+    "input_schema": {
+        "type": "object",
+        "properties": {"repo": {"type": "string", "minLength": 1}},
+        "required": ["repo"],
+        "additionalProperties": False,
+    },
+}
+
+
+async def test_mizan_picks_the_tool_and_validates_lisans_arguments(agent, monkeypatch):
+    shell = {"name": "bash", "description": "list issues of a github repository via shell"}
+    monkeypatch.setattr(agent, "get_tool_schemas", lambda: [shell, ISSUES_TOOL])
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"steps":[{"intent":"use_tool","need":"list GitHub issues","text":"..."}]}',
+            "{}",  # misses the required repo: MIZAN rejects it
+            '{"repo": "mizan"}',
+            "There are two open issues: Login bug and Slow chat.",
+        ]
+    )
+    fake = tools(
+        agent,
+        monkeypatch,
+        mcp__github__list_issues={"issues": [{"title": "Login bug"}, {"title": "Slow chat"}]},
+    )
+    result = await agent.execute("Mere mizan repo ke open issues kaun se hain?")
+    assert fake.calls == [("mcp__github__list_issues", {"repo": "mizan"})]  # never the shell
+    assert "rejected" in agent.ai_client.requests[2]["system"]
+    assert result["result"].startswith("There are two open issues")
+    assert result["completion_status"] == "evidence_observed"  # ran, not verified
+    assert not any(r.get("tools") for r in agent.ai_client.requests)
+
+
+def test_tool_arguments_are_checked_against_the_schema():
+    schema = ISSUES_TOOL["input_schema"]
+    assert amal.problems({"repo": "mizan"}, schema) == []
+    assert amal.problems({}, schema) and amal.problems({"repo": 5, "x": 1}, schema)
+    assert amal.problems("repo", schema) == ["the arguments must be a JSON object"]
+    assert amal.problems({"anything": 1}, {"type": "nonsense-type"}) == []  # malformed schema
+    assert amal.restrict({"repo": "m", "name": "x"}, schema) == {"repo": "m"}
+    assert amal.restrict({"name": "x"}, {"type": "object", "properties": {}}) == {}
+
+
+async def test_lisan_plans_several_steps_and_mizan_runs_each(agent, monkeypatch):
+    async def fetch(reference, language):
+        return {
+            "reference": reference.label, "collection": "Sahih al-Bukhari",
+            "collection_arabic": "صحيح البخاري", "sahih_collection": True, "section": "",
+            "book": 1, "in_book": 1, "arabic": "إِنَّمَا الأَعْمَالُ بِالنِّيَّاتِ",
+            "translation": "Actions are by intentions.", "translation_language": "English",
+            "clipped": False, "grades": [], "narrations": [], "link": "", "source": hadith.SOURCE,
+        }  # fmt: skip
+
+    monkeypatch.setattr(hadith, "fetch", fetch)
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"steps":[{"intent":"compute","expression":"12*12","text":"twelve squared"},'
+            '{"intent":"hadith","collection":"bukhari","number":1,"text":"the first hadith"},'
+            '{"intent":"delete_everything"}]}'
+        ]
+    )
+    result = await agent.execute("Twelve squared kitna, phir Bukhari ki hadith 1 bhi dikhana")
+    assert result["orchestration"]["intent"] == "compound"
+    assert result["orchestration"]["entities"]["understood_by"] == "lisan_plan"
+    assert "**144**" in result["result"] and "بِالنِّيَّاتِ" in result["result"]
+    assert len(agent.ai_client.requests) == 1  # one mapping call; MIZAN did the rest
+
+
+# ── Editing the selected project ─────────────────────────────────────────
+
+PAGE = "<html><head><link rel='stylesheet' href='style.css'></head><body><button id='go'>Go</button><script src='app.js'></script></body></html>\n"
+
+
+def project_tools(agent, monkeypatch, runs):
+    files = {"index.html": PAGE, "app.js": "document.getElementById('go').onclick = () => 1;\n", "style.css": "button { color: blue; }\n"}  # fmt: skip
+    calls = []
+
+    async def fake(name, params):
+        calls.append((name, deepcopy(params)))
+        if name == "workspace_glob":
+            return {"files": [{"path": p, "size": len(c)} for p, c in files.items()], "total": 3}
+        if name == "workspace_read":
+            return {
+                "path": params["path"],
+                "content": files[params["path"]],
+                "sha256": "sha-" + params["path"],
+            }
+        if name == "workspace_write":
+            files[params["path"]] = params["content"]
+            return {"path": params["path"], "sha256": "new-" + params["path"]}
+        if name == "workspace_run":
+            return runs.pop(0)
+        return {"id": "c1"}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", fake)
+    monkeypatch.setattr("workspace.context.bound_workspace_id", lambda: "w9")
+    names = [
+        "workspace_glob",
+        "workspace_read",
+        "workspace_write",
+        "workspace_run",
+        "workspace_checkpoint",
+    ]
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {}} for n in names],
+    )
+    return files, calls
+
+
+async def test_mizan_edits_the_selected_project_checks_and_repairs(agent, monkeypatch):
+    ok = {"stdout": "", "stderr": "", "exit_code": 0}
+    broken = {"stdout": "", "stderr": "SyntaxError: Unexpected token", "exit_code": 1}
+    files, calls = project_tools(agent, monkeypatch, [broken, ok])
+    agent.ai_client = ScriptedProvider(
+        [
+            "```style.css\nbutton { color: red; }\n```\n```app.js\ndocument.getElementById('go').onclick = () => {;\n```",
+            "```app.js\ndocument.getElementById('go').onclick = () => 2;\n```",
+        ]
+    )
+    understood = fahm.understand("Button ka color red karo")
+    assert understood.intent == "edit_project"
+    result = await agent.execute("Button ka color red karo")
+    assert files["style.css"] == "button { color: red; }\n" and "=> 2" in files["app.js"]
+    writes = [params for name, params in calls if name == "workspace_write"]
+    assert writes[0]["expected_sha256"] == "sha-style.css"  # never overwrites a newer file
+    assert writes[-1]["expected_sha256"] == "new-app.js"  # the repair follows the first write
+    assert (
+        "workspace_run",
+        {"command": "node --check app.js", "language": "shell", "timeout_s": 60},
+    ) in calls
+    assert result["completion_status"] == "verified_by_mizan"
+    assert (
+        "-button { color: blue; }" in result["result"]
+        and "+button { color: red; }" in result["result"]
+    )
+    assert "SyntaxError" in agent.ai_client.requests[1]["messages"][0]["content"]
+
+
+async def test_a_build_request_in_a_used_project_becomes_an_edit(agent, monkeypatch):
+    files, calls = project_tools(agent, monkeypatch, [])
+    agent.ai_client = ScriptedProvider(["```about.html\n<p>About</p>\n```"])
+    result = await agent.execute("Ek about page banao")
+    assert files["about.html"] == "<p>About</p>\n"
+    assert not any(name == "workspace_create" for name, _ in calls)
+    assert "about.html" in result["result"]
+
+
+def test_only_safe_project_paths_are_written():
+    assert project.editable("src/app.js") and not project.editable("../etc/passwd")
+    assert not project.editable("node_modules/x.js") and not project.editable(".env")
+    reply = "```app.js\nok\n```\n```src/new.css\na{}\n```\n```../evil.js\nx\n```"
+    assert set(project.extract_files(reply, {"app.js"}, new_files=True)) == {
+        "app.js",
+        "src/new.css",
+    }
+    assert set(project.extract_files(reply, {"app.js"})) == {"app.js"}

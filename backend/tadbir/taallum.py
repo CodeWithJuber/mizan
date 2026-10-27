@@ -22,7 +22,7 @@ from typing import Any
 
 from core.adaptive import BetaEstimator, bm25_scores, tokenize
 
-LEARNABLE = {"build_and_run", "web_search", "build_project"}
+LEARNABLE = {"build_and_run", "web_search", "build_project", "use_tool", "edit_project"}
 MAX_EXAMPLES = 200
 MIN_OVERLAP = 0.6  # share of the example's content words the new message must contain
 # Function words carry no intent; they are left out when comparing wording.
@@ -76,6 +76,10 @@ def template(understanding: Any) -> dict | None:
         return {"intent": intent}
     if intent == "build_project":
         return {"intent": intent, "kind": entities.get("kind", "web")}
+    if intent == "use_tool":
+        return {"intent": intent, "need": entities.get("need", "")}
+    if intent == "edit_project":
+        return {"intent": intent}
     return None
 
 
@@ -101,6 +105,8 @@ def recall(store: Any, user_id: str, message: str) -> tuple[dict, dict] | None:
         parsed["request"] = message
     elif parsed["intent"] == "web_search":
         parsed["query"] = message[:300]
+    elif parsed["intent"] == "edit_project":
+        parsed["request"] = message[:1500]
     return parsed, item
 
 

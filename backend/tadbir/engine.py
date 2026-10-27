@@ -9,18 +9,20 @@ or repairing a program, or wording an answer from verified facts; MIZAN
 checks that wording (Furqan) and falls back to its own templates. Quran and
 hadith text never pass through a language model.
 
-Modes (``MIZAN_ORCHESTRATION``): ``mizan`` (default) handles every request
-it understands and hands the rest to the general agent loop; ``strict`` also
-answers the rest itself through Lisan with no tool control by the model;
-``llm`` turns Tadbir off.
+Modes (``MIZAN_ORCHESTRATION``): ``mizan`` (default) performs every action
+itself and lets the model answer the rest in words, with no tools at all;
+``hybrid`` hands what MIZAN does not recognise to the model-driven agent
+loop; ``llm`` turns Tadbir off. ``strict`` is the former name of ``mizan``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import math
 import os
+import shlex
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -31,17 +33,23 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import calc, express, fahm, hadith, majlis, project, quran, taallum, waqt
+from . import amal, calc, express, fahm, hadith, majlis, project, quran, taallum, waqt
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
-MODES = ("mizan", "strict", "llm")
+MODES = ("mizan", "hybrid", "strict", "llm")
 MAX_REPAIRS = 2
 
 
 def orchestration_mode() -> str:
     value = os.getenv("MIZAN_ORCHESTRATION", "mizan").strip().lower()
+    value = "mizan" if value == "strict" else value  # strict is the former name
     return value if value in MODES else "mizan"
+
+
+def full_orchestration() -> bool:
+    """MIZAN performs every action; the model may only answer in words."""
+    return orchestration_mode() == "mizan"
 
 
 class Defer(Exception):  # noqa: N818 - control flow, not an error
@@ -54,6 +62,9 @@ class Outcome:
     verified: bool
     facts: dict[str, Any] = field(default_factory=dict)
     tool_backed: bool = True
+    # Whether the work itself succeeded, for routing evidence, when MIZAN can
+    # confirm that but not the result's meaning (a tool ran without error).
+    succeeded: bool | None = None
 
 
 class Plan:
@@ -115,22 +126,49 @@ class Tadbir:
                 {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
             )
         example: dict | None = None
+        if parts is None and self.lisan.available and fahm.partly_understood(task):
+            # Several requests and MIZAN's recognisers place only some: Lisan
+            # maps the whole message into steps, which MIZAN validates.
+            planned = await self._lisan_plan(task, understanding)
+            if len(planned) > 1:
+                parts = planned
+                understanding = fahm.Understanding(
+                    "compound",
+                    understanding.language,
+                    0.6,
+                    {
+                        "parts": [{"text": part, "intent": u.intent} for part, u in parts],
+                        "understood_by": "lisan_plan",
+                    },
+                )
         if parts is None and understanding.intent == "converse" and fahm.actionable(task):
             learned = self._learned_understanding(task, understanding)
             if learned is not None:
                 understanding, example = learned
             elif self.lisan.available:
-                # Lisan only translates the wording into MIZAN's intent schema;
-                # MIZAN validates every field before acting on it.
-                understanding = await self._lisan_understanding(task, understanding)
+                # Lisan only translates the wording into MIZAN's actions; MIZAN
+                # validates every step before acting on it.
+                planned = await self._lisan_plan(task, understanding)
+                if len(planned) == 1:
+                    understanding = planned[0][1]
+                elif planned:
+                    parts = planned
+                    understanding = fahm.Understanding(
+                        "compound",
+                        understanding.language,
+                        0.6,
+                        {
+                            "parts": [{"text": part, "intent": u.intent} for part, u in parts],
+                            "understood_by": "lisan_plan",
+                        },
+                    )
         handler = getattr(self, f"_{understanding.intent}", None)
         try:
             if parts is not None:
                 outcome = await self._compound(parts)
             elif understanding.intent == "converse" or handler is None:
-                if mode != "strict":
-                    return None
-                outcome = await self._converse(task, understanding)
+                # Words only: in "mizan" mode the agent answers with no tools.
+                return None
             else:
                 outcome = await self._delegate(task, understanding)
         except Defer:
@@ -177,7 +215,8 @@ class Tadbir:
         return runner
 
     def _credit(self, worker: Any, intent: str, outcome: Outcome, language: str) -> Outcome:
-        majlis.record(self.coordinator, worker, intent, outcome.verified)
+        worked = outcome.verified if outcome.succeeded is None else outcome.succeeded
+        majlis.record(self.coordinator, worker, intent, worked)
         role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
         self.workers.append(
             {"agent": worker.name, "role": role, "intent": intent, "verified": outcome.verified}
@@ -365,15 +404,22 @@ class Tadbir:
             return fallback, False
         return text, True
 
-    async def _lisan_understanding(
+    async def _lisan_plan(
         self, task: str, fallback: fahm.Understanding
-    ) -> fahm.Understanding:
+    ) -> list[tuple[str, fahm.Understanding]]:
+        """Lisan's steps that pass MIZAN's validation, with the words each covers."""
         try:
-            parsed = await self.lisan.parse_intent(task)
+            steps = await self.lisan.plan_steps(task)
         except LisanUnavailable:
-            return fallback
-        understood = fahm.validate_parsed(parsed, task, fallback.language)
-        return understood or fallback
+            return []
+        planned = []
+        for step in steps:
+            understood = fahm.validate_parsed(step, task, fallback.language)
+            if understood is None:
+                continue
+            words = str(step.get("text") or "").strip()[:500]
+            planned.append((words if len(steps) > 1 and words else task, understood))
+        return planned
 
     # ── recipes ──────────────────────────────────────────────────────────
 
@@ -413,9 +459,7 @@ class Tadbir:
         try:
             value = calc.evaluate(expression)
         except calc.CalcError as exc:
-            if orchestration_mode() != "strict":
-                raise Defer from exc
-            return Outcome(str(exc), False, {"expression": expression}, tool_backed=False)
+            raise Defer from exc
         await self._step()
         rendered = calc.render(value)
         text = f"`{shown}` = **{rendered}**\n\n_{phrase('computed', u.language)}_"
@@ -489,7 +533,7 @@ class Tadbir:
         )
         await self._step()
         try:
-            code = await self.lisan.write_code(task, language)
+            code = await self.lisan.write_code(str(u.entities.get("request") or task), language)
         except LisanUnavailable as exc:
             raise Defer from exc
         await self._step()
@@ -524,12 +568,16 @@ class Tadbir:
             raise Defer
         workspace_id = bound_workspace_id()
         if workspace_id:
-            # An existing project is edited, not overwritten: the agent loop does that.
+            # An existing project is changed, never overwritten.
             if not self._allowed("workspace_glob"):
                 raise Defer
             listing = await self._tool("workspace_glob", {"pattern": "**/*"})
-            if listing.get("error") or listing.get("total", 0):
+            if listing.get("error"):
                 raise Defer
+            if listing.get("total", 0):
+                return await self._edit_project(
+                    task, fahm.Understanding("edit_project", u.language, u.confidence, {})
+                )
         name = str(u.entities["name"])
         plan = [(spec.path, spec.purpose) for spec in blueprint.files]
         await self._begin(
@@ -614,6 +662,239 @@ class Tadbir:
             verified,
             {"workspace_id": workspace_id, "files": sorted(files), "repairs": rounds},
         )
+
+    async def _use_tool(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Any other action: MIZAN picks the tool and checks its arguments."""
+        need = str(u.entities.get("need") or task)
+        tools = amal.candidates(self.agent, self._chat_allowed)
+        tool = amal.choose(self.agent, tools, need, task)
+        if tool is None:
+            raise Defer
+        name = str(tool["name"])
+        await self._begin(
+            [
+                f"Choose the tool: {name} (MIZAN)",
+                "Fill in its arguments (Lisan)",
+                "Check them against the tool's schema (MIZAN)",
+                f"Run {name}",
+                "Reply",
+            ]
+        )
+        await self._step()
+        arguments: dict = {}
+        error = ""
+        for _attempt in range(2):
+            try:
+                arguments = amal.restrict(
+                    await self.lisan.fill_arguments(task, need, tool, error),
+                    tool.get("input_schema"),
+                )
+            except LisanUnavailable as exc:
+                return Outcome(phrase("tool_not_prepared", u.language, tool=name, reason=str(exc)), False, {}, tool_backed=False)  # fmt: skip
+            issues = amal.problems(arguments, tool.get("input_schema"))
+            if not issues:
+                break
+            error = "; ".join(issues)
+        else:
+            reason = error[:300]
+            return Outcome(phrase("tool_not_prepared", u.language, tool=name, reason=reason), False, {"tool": name}, tool_backed=False)  # fmt: skip
+        await self._step()
+        await self._step()
+        result = await self._tool(name, arguments)
+        failed = tool_result_failed(result)
+        await self._step()
+        if failed:
+            reason = str(result.get("error") or result.get("detail") or "")[:300]
+            text = phrase("tool_failed", u.language, tool=name, reason=reason)
+        else:
+            facts = amal.facts(name, arguments, result)
+            fallback = f"**{name}**\n{fence(facts['result'][:3000], 'json')}"
+            text, _phrased = await self._phrase_with_lisan(task, facts, u.language, fallback)
+        return Outcome(text, False, {"tool": name}, succeeded=not failed)
+
+    def _chat_allowed(self, name: str) -> bool:
+        try:
+            return bool(self.agent._chat_tool_allowed(name))
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _edit_project(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Change the selected project: MIZAN reads, saves, checks and repairs."""
+        from workspace.context import bound_workspace_id
+
+        needed = ("workspace_glob", "workspace_read", "workspace_write")
+        if not bound_workspace_id() or not self.lisan.available:
+            raise Defer
+        if not all(self._allowed(name) for name in needed):
+            raise Defer
+        request = str(u.entities.get("request") or task)
+        listing = await self._tool("workspace_glob", {"pattern": "**/*"})
+        files = [f for f in listing.get("files", []) if isinstance(f, dict)]
+        paths = [str(f.get("path", "")) for f in files]
+        chosen = project.relevant_files(files, request)
+        if listing.get("error") or not chosen:
+            raise Defer
+        await self._begin(
+            [
+                "Read the project's files (MIZAN)",
+                "Write the change (Lisan)",
+                "Save the changed files",
+                "Check the project; repair what fails (MIZAN)",
+                "Save a checkpoint and reply",
+            ]
+        )
+        originals: dict[str, str] = {}
+        shas: dict[str, str | None] = {}
+        for path in chosen:
+            document = await self._tool("workspace_read", {"path": path})
+            if isinstance(document.get("content"), str) and not document.get("error"):
+                originals[path] = document["content"]
+                shas[path] = document.get("sha256")
+        await self._step()
+        try:
+            reply = await self.lisan.edit_files(request, originals, paths, u.language)
+        except LisanUnavailable as exc:
+            return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
+        changes = {
+            path: content
+            for path, content in project.extract_files(reply, set(paths), new_files=True).items()
+            if content != originals.get(path)
+        }
+        if not changes:
+            return Outcome(phrase("edit_nothing", u.language), False, {}, tool_backed=False)
+        await self._step()
+        current = dict(originals)
+        for path, content in changes.items():
+            if error := await self._save_edit(path, content, shas):
+                return Outcome(phrase("project_failed", u.language, reason=error), False, {})
+            current[path] = content
+        await self._step()
+        everything = sorted(set(paths) | set(changes))
+        checks, problem = await self._check_edit(changes, current, everything)
+        rounds = 0
+        while problem and rounds < MAX_REPAIRS:
+            try:
+                reply = await self.lisan.fix_files(
+                    task, "project", {p: current[p] for p in changes}, problem
+                )
+            except LisanUnavailable:
+                break
+            fixed = project.extract_files(reply, set(changes))
+            if not fixed:
+                break
+            rounds += 1
+            for path, content in fixed.items():
+                if error := await self._save_edit(path, content, shas):
+                    return Outcome(phrase("project_failed", u.language, reason=error), False, {})
+                current[path] = changes[path] = content
+            checks, problem = await self._check_edit(changes, current, everything)
+        await self._step()
+        if self._allowed("workspace_checkpoint"):
+            await self._tool("workspace_checkpoint", {"message": f"MIZAN: {task[:60]}"})
+        verified = bool(checks) and all(ok is True for _label, ok, _detail in checks)
+        diff: list[str] = []
+        for path, content in changes.items():
+            diff += difflib.unified_diff(
+                originals.get(path, "").splitlines(),
+                content.splitlines(),
+                f"a/{path}" if path in originals else "/dev/null",
+                f"b/{path}",
+                lineterm="",
+            )
+        shown = "\n".join(diff[:120]) + ("\n…" if len(diff) > 120 else "")
+        lines = [
+            phrase("edit_done", u.language, count=len(changes)),
+            "",
+            f"**{phrase('edit_changes', u.language)}**",
+            fence(shown or "(no textual difference)", "diff"),
+            "",
+            f"**{phrase('project_checks', u.language)}**",
+        ]
+        for label, ok, detail in checks or [(phrase("edit_no_checks", u.language), None, "")]:
+            mark = "✓" if ok else "✗" if ok is False else "–"
+            note = (
+                f" ({phrase('check_not_run', u.language, reason=detail)})"
+                if ok is None and detail
+                else ""
+            )
+            lines.append(f"- {mark} {label}{note}")
+        if rounds:
+            lines += ["", f"_{phrase('project_repaired', u.language, count=rounds)}_"]
+        if problem and not verified:
+            lines += ["", fence(problem[-1500:], "text")]
+        return Outcome(
+            "\n".join(lines),
+            verified,
+            {"files": sorted(changes), "repairs": rounds},
+            succeeded=not problem,
+        )
+
+    async def _save_edit(self, path: str, content: str, shas: dict[str, str | None]) -> str | None:
+        params: dict = {"path": path, "content": content}
+        if shas.get(path):
+            params["expected_sha256"] = shas[path]  # never overwrite a newer version
+        saved = await self._tool("workspace_write", params)
+        if tool_result_failed(saved):
+            return str(saved.get("error") or saved.get("detail") or f"{path} could not be saved")
+        shas[path] = saved.get("sha256")
+        return None
+
+    async def _check_edit(
+        self, changes: dict[str, str], current: dict[str, str], everything: list[str]
+    ) -> tuple[list[tuple[str, bool | None, str]], str]:
+        """MIZAN's checks on the changed files, as (label, passed, detail); first problems."""
+        checks: list[tuple[str, bool | None, str]] = []
+        problems: list[str] = []
+        commands: list[tuple[str, str]] = []
+        known = set(everything)
+        for path, content in changes.items():
+            kind = path.rsplit(".", 1)[-1].lower()
+            if kind in {"html", "htm"}:
+                missing = sorted(project.local_references(content) - known)
+                checks.append((phrase("check_refs", "en", path=path), not missing, ""))
+                if missing:
+                    problems.append(f"{path} loads files that do not exist: {', '.join(missing)}")
+            elif kind == "css":
+                balanced = project.css_balanced(content)
+                checks.append((phrase("check_css_file", "en", path=path), balanced, ""))
+                if not balanced:
+                    problems.append(f"{path} has unbalanced braces")
+            elif kind == "json":
+                try:
+                    json.loads(content)
+                    checks.append((phrase("check_json", "en", path=path), True, ""))
+                except ValueError as exc:
+                    checks.append((phrase("check_json", "en", path=path), False, ""))
+                    problems.append(f"{path} is not valid JSON: {exc}")
+            elif kind in {"js", "mjs", "cjs"}:
+                commands.append((path, f"node --check {shlex.quote(path)}"))
+            elif kind == "py":
+                commands.append((path, f"python -m py_compile {shlex.quote(path)}"))
+        if any(p.endswith(".py") for p in changes) and any(
+            p.split("/")[-1].startswith("test_") and p.endswith(".py") for p in known
+        ):
+            commands.append(("tests", "python -m unittest -q"))
+        for subject, command in commands[:6]:
+            label = (
+                phrase("check_tests", "en")
+                if subject == "tests"
+                else phrase("check_syntax", "en", path=subject)
+            )
+            if not self._allowed("workspace_run"):
+                checks.append((label, None, "the sandbox is not available in this chat"))
+                continue
+            run = await self._tool(
+                "workspace_run", {"command": command, "language": "shell", "timeout_s": 60}
+            )
+            if run.get("error"):
+                checks.append((label, None, str(run["error"])[:200]))
+                continue
+            passed = run.get("exit_code") == 0
+            checks.append((label, passed, ""))
+            if not passed:
+                output = (str(run.get("stdout", "")) + str(run.get("stderr", ""))).strip()
+                problems.append(f"`{command}` failed:\n{output[-2000:]}")
+        return checks, "\n\n".join(problems)
 
     async def _save(self, workspace_id: str, path: str, content: str) -> str | None:
         saved = await self._tool(
@@ -977,14 +1258,6 @@ class Tadbir:
             task, {"memories": memories[:6000]}, u.language, fallback
         )
         return Outcome(text, True, {"memories": True})
-
-    async def _converse(self, task: str, u: fahm.Understanding) -> Outcome:
-        await self._begin(["Answer in words (Lisan)"])
-        try:
-            text = await self.lisan.converse(task, u.language)
-        except LisanUnavailable as exc:
-            text = str(exc)
-        return Outcome(text, False, {}, tool_backed=False)
 
 
 def _matches(stdout: str, value: calc.Number) -> bool:

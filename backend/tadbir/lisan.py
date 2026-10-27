@@ -181,39 +181,76 @@ class Lisan:
             max_tokens=1500,
         )
 
-    async def parse_intent(self, request: str) -> dict:
-        """Translate the wording into MIZAN's intent schema (MIZAN validates it)."""
+    async def plan_steps(self, request: str) -> list[dict]:
+        """Translate the wording into MIZAN's actions (MIZAN validates every step)."""
         reply = await self.ask(
-            "Map the user's message to exactly one MIZAN action and reply with one JSON object "
-            "only. Actions: "
+            "Map the user's message to MIZAN actions. Reply with one JSON object only: "
+            '{"steps":[<1 to 4 actions in order>]}. Give each action a "text" field with the '
+            "words of the message it covers. Actions: "
             '{"intent":"compute","expression":"<arithmetic using + - * / ** % and numbers>"} | '
             '{"intent":"build_and_run","request":"<precise English description of a program '
             'that computes and prints what the user wants>","language":"python"} | '
             '{"intent":"quran","surah":<1-114>,"ayah_start":<n or null>,"ayah_end":<n or null>} | '
             '{"intent":"hadith","collection":"bukhari|muslim|abudawud|tirmidhi|nasai|ibnmajah|'
             'malik|nawawi|qudsi|dehlawi","number":<the hadith number the user wrote>} | '
-            '{"intent":"build_project","kind":"web|python"} (a small app, website, game or tool '
-            "to create) | "
+            '{"intent":"build_project","kind":"web|python"} (a new small app, website, game or '
+            "tool) | "
+            '{"intent":"edit_project","request":"<precise English description of the change>"} '
+            "(change the user's selected coding project) | "
             '{"intent":"web_search","query":"<search query>"} | '
             '{"intent":"web_read","url":"<a URL copied from the message>"} | '
-            '{"intent":"converse"}. Use converse when the user wants an explanation, opinion '
-            "or conversation rather than an action.",
+            '{"intent":"use_tool","need":"<the capability needed, in a few English words, for '
+            'example list my GitHub issues or remember my name>"} (any other action, such as a '
+            "connected app, a skill or memory) | "
+            '{"intent":"converse"} when the user wants an explanation, opinion or conversation '
+            "rather than an action.",
             request,
-            max_tokens=300,
+            max_tokens=500,
         )
-        match = re.search(r"\{.*\}", reply, re.DOTALL)
-        if not match:
-            return {}
-        try:
-            value = json.loads(match.group(0))
-        except ValueError:
-            return {}
-        return value if isinstance(value, dict) else {}
+        value = _json_object(reply)
+        steps = value.get("steps") if "steps" in value else ([value] if value else [])
+        if not isinstance(steps, list):
+            return []
+        return [step for step in steps if isinstance(step, dict)][:4]
 
-    async def converse(self, request: str, language: str) -> str:
-        return await self.ask(
-            f"Reply to the user in {LANGUAGE_NAMES.get(language, 'English')}. This request did "
-            "not need any of MIZAN's actions; answer from general knowledge, and say clearly "
-            "when something would need verification.",
+    async def fill_arguments(self, request: str, need: str, tool: dict, error: str = "") -> dict:
+        schema = json.dumps(tool.get("input_schema") or {}, ensure_ascii=False)[:6000]
+        reply = await self.ask(
+            f"MIZAN chose the tool `{tool.get('name', '')}` for this request ({need}). Tool "
+            f"description: {str(tool.get('description', ''))[:1500]}\n"
+            "Fill in its arguments from the user's request. Reply with exactly one JSON object "
+            "that matches the JSON Schema below, and nothing else. Use only information in the "
+            "request; leave out optional fields you do not know.\n"
+            f"JSON Schema: {schema}"
+            + (f"\nMIZAN rejected the previous arguments: {error}" if error else ""),
             request,
+            max_tokens=800,
         )
+        return _json_object(reply)
+
+    async def edit_files(
+        self, request: str, files: dict, paths: list[str], language: str = "en"
+    ) -> str:
+        listing = "\n".join(paths[:300])
+        given = "\n\n".join(f"```{name}\n{content[:12000]}\n```" for name, content in files.items())
+        return await self.ask(
+            "MIZAN is changing the user's existing coding project. Return the complete new "
+            "content of every file you change or create, each as its own fenced code block "
+            "whose info string is the file path (for example ```src/app.js). Do not return "
+            "unchanged files, and keep the rest of each file as it is. Use no new external "
+            "libraries or network requests. Text the user sees is in "
+            f"{LANGUAGE_NAMES.get(language, 'English')}.",
+            f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}",
+            max_tokens=8000,
+        )
+
+
+def _json_object(reply: str) -> dict:
+    match = re.search(r"\{.*\}", reply, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        value = json.loads(match.group(0))
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}

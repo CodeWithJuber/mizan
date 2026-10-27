@@ -216,13 +216,89 @@ def css_balanced(css: str) -> bool:
     return depth == 0
 
 
-def extract_files(reply: str, allowed: set[str]) -> dict[str, str]:
-    """Fenced blocks whose info string names one of the project's files."""
+def extract_files(reply: str, allowed: set[str], *, new_files: bool = False) -> dict[str, str]:
+    """Fenced blocks whose info string names one of the project's files.
+
+    With ``new_files``, a block may also create a file at a new, safe path.
+    """
     found: dict[str, str] = {}
     for info, body in re.findall(r"```[ \t]*([^\n`]*)\n(.*?)```", reply, re.DOTALL):
         for token in re.split(r"[\s:=\"'`]+", info):
             path = _local(token)
-            if path in allowed:
+            if path in allowed or (new_files and editable(path)):
                 found[path] = body.strip("\n") + "\n"
                 break
     return found
+
+
+# ── editing an existing project ──────────────────────────────────────────
+
+TEXT_EXTENSIONS = {
+    "html", "htm", "css", "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "json", "md", "txt",
+    "toml", "yaml", "yml", "svg", "xml", "csv", "ini", "cfg",
+}  # fmt: skip
+_SKIP_DIRS = {"node_modules", "dist", "build", ".git", "__pycache__", ".venv", "venv", ".next"}
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,159}$")
+_ENTRY = {"index.html", "app.js", "main.js", "script.js", "style.css", "main.py", "app.py"}
+_CHANGE = re.compile(
+    r"\b(?:add|change|update|fix|remove|delete|rename|refactor|improve|replace|edit|"
+    r"make\s+(?:it|the|this)|badlo|badal\s*do|jodo|jod\s*do|hatao|hata\s*do|"
+    r"th[ie]e?k\s+karo|sudhaa?ro|add\s+karo|change\s+karo|update\s+karo|fix\s+karo|"
+    r"lagao|laga\s*do|daalo|daal\s*do)\b"
+    r"|بدلو|بدل دو|ہٹاؤ|جوڑو|ٹھیک کرو|बदलो|बदल दो|हटाओ|जोड़ो|ठीक करो"
+    # "button ka color red karo": a thing in the project, then what to make it.
+    r"|\b(?:colou?r|rang|size|font|title|text|heading|button|background|theme|layout|page|"
+    r"menu|footer|header|logo|image|form|link)\b[^.?!\n]{0,40}\b(?:karo|kar\s*do|kijiye|"
+    r"rakho|kardo)\b",
+    re.IGNORECASE,
+)
+
+
+def editable(path: str) -> bool:
+    """A text file MIZAN may read or change (no hidden, vendored or build output)."""
+    if not _SAFE_PATH.match(path) or ".." in path.split("/"):
+        return False
+    parts = path.split("/")
+    if any(part in _SKIP_DIRS or part.startswith(".") for part in parts):
+        return False
+    return path.rsplit(".", 1)[-1].lower() in TEXT_EXTENSIONS if "." in parts[-1] else False
+
+
+def change_request(message: str) -> bool:
+    """A request to change the selected project, not a question about it."""
+    return bool(_CHANGE.search(message)) and not _QUESTION.search(message)
+
+
+def relevant_files(files: list[dict], request: str, budget: int = 60_000) -> list[str]:
+    """The files Lisan sees: all of a small project, else the most relevant ones."""
+    from core.adaptive import bm25_scores, tokenize
+
+    texts = [f for f in files if editable(str(f.get("path", "")))]
+    if sum(int(f.get("size", 0)) for f in texts) <= budget and len(texts) <= 8:
+        return [str(f["path"]) for f in texts]
+    documents = [tokenize(re.sub(r"[/._-]+", " ", str(f["path"]))) for f in texts]
+    scores = bm25_scores(tokenize(request), documents)
+    ranked = sorted(
+        range(len(texts)),
+        key=lambda i: scores[i] + (1.0 if str(texts[i]["path"]).split("/")[-1] in _ENTRY else 0),
+        reverse=True,
+    )
+    chosen: list[str] = []
+    used = 0
+    for index in ranked:
+        size = int(texts[index].get("size", 0))
+        if len(chosen) >= 6 or used + size > budget:
+            continue
+        chosen.append(str(texts[index]["path"]))
+        used += size
+    return chosen
+
+
+def local_references(html: str) -> set[str]:
+    """Files a page loads from its own project (not http, data or absolute URLs)."""
+    scan = scan_html(html)
+    return {
+        ref
+        for ref in scan.styles | scan.scripts
+        if ref and not re.match(r"^(?:[a-z]+:|//|/)", ref, re.IGNORECASE)
+    }

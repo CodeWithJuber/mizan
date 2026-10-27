@@ -63,10 +63,11 @@ _BOOL = ("true", "false")
 SETTINGS: tuple[Setting, ...] = (
     # ── Orchestration ──
     Setting("MIZAN_ORCHESTRATION", "Model", "Who directs the work", "choice",
-            "mizan: MIZAN's own architecture (Tadbir) plans, runs tools and verifies what it "
-            "understands, the rest goes to the agent loop; strict: MIZAN handles everything and "
-            "the language model only writes words; llm: the model drives the agent loop.",
-            "mizan", ("mizan", "strict", "llm")),
+            "mizan: MIZAN's own architecture (Tadbir) plans, runs every tool and verifies; the "
+            "language model only writes words and code and never controls a tool. hybrid: what "
+            "MIZAN does not recognise goes to the model-driven agent loop. llm: the model "
+            "drives the agent loop. strict is the former name of mizan.",
+            "mizan", ("mizan", "hybrid", "strict", "llm")),
     # ── Model ──
     Setting("LLM_PROVIDER", "Model", "Provider", "choice",
             "auto picks Anthropic, then OpenRouter, then OpenAI from the configured keys.",

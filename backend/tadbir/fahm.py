@@ -45,6 +45,16 @@ class Understanding:
         }
 
 
+def _selected_project() -> str | None:
+    """The coding project this chat is bound to, if any."""
+    try:
+        from workspace.context import bound_workspace_id
+    except ImportError:  # pragma: no cover - the workspace package always ships
+        return None
+    selected = bound_workspace_id()
+    return str(selected) if selected else None
+
+
 def detect_language(text: str) -> str:
     arabic = re.findall(r"[؀-ۿ]", text)
     devanagari = re.findall(r"[ऀ-ॿ]", text)
@@ -187,6 +197,9 @@ def understand(text: str) -> Understanding:
     if build is not None:
         return Understanding("build_project", language, 0.8, build)
 
+    if _selected_project() and project.change_request(message):
+        return Understanding("edit_project", language, 0.75, {"request": message})
+
     if _RECALL.search(message):
         return Understanding("recall", language, 0.8, {"query": message})
 
@@ -213,14 +226,34 @@ _CLAUSE = re.compile(
 )
 
 
+def _clauses(text: str) -> list[str]:
+    message = text.strip()
+    if len(message) > 1000 or "```" in message or _URL.search(message):
+        return []
+    parts = [part.strip(" ,.?!؟") for part in _CLAUSE.split(message)]
+    parts = [part for part in parts if part]
+    return parts if 2 <= len(parts) <= 4 else []
+
+
+def partly_understood(text: str) -> bool:
+    """Several requests, some of which MIZAN's recognisers cannot place on their own."""
+    understood = [understand(part) for part in _clauses(text)]
+    known = [u for u in understood if u.intent not in {"converse", "capabilities"}]
+    return (
+        bool(known)
+        and len(known) < len(understood)
+        and any(
+            u.intent == "converse" and actionable(part)
+            for part, u in zip(_clauses(text), understood, strict=True)
+        )
+    )
+
+
 def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
     """Two to four independent requests in one message, every one of them a recipe."""
     message = text.strip()
-    if len(message) > 1000 or "```" in message or _URL.search(message):
-        return None
-    parts = [part.strip(" ,.?!؟") for part in _CLAUSE.split(message)]
-    parts = [part for part in parts if part]
-    if not 2 <= len(parts) <= 4:
+    parts = _clauses(message)
+    if not parts:
         return None
     understood = [(part, understand(part)) for part in parts]
     if any(u.intent in {"converse", "capabilities"} for _part, u in understood):
@@ -235,7 +268,9 @@ _ACTION_CUES = re.compile(
     r"\d|https?://|\b(?:python|code|program|script|run|execute|calculate|compute|sum|total|"
     r"search|find|latest|news|quran|qur'an|surah|ayah|ayat|verse|fibonacci|prime|factorial|"
     r"kitna|kitne|nikalo|dhundo|khojo|chalao|hadith|hadees|hadis|bukhari|tirmidhi|nawawi|"
-    r"app|website|game|banao|bana|build|create|date|tarikh|hijri|eid)\b"
+    r"app|website|game|banao|bana|build|create|date|tarikh|hijri|eid|show|list|get|fetch|send|"
+    r"remember|save|open|check|dikhao|bhejo|rakho|repo|repos|issues?|email|mail|calendar|"
+    r"event|file|files|note|notes|tasks?|reminder|connector|skill)\b"
     r"|سورة|سورہ|آیت|آية|حديث|حدیث|सूरह|आयत|हदीस",
     re.IGNORECASE,
 )
@@ -298,6 +333,16 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         if kind not in project.BLUEPRINTS or project.out_of_scope(message):
             return None
         entities.update(kind=kind, name=project.project_name(message))
+    elif intent == "use_tool":
+        need = str(parsed.get("need", "")).strip()[:200]
+        if len(need) < 3:
+            return None
+        entities.update(need=need, request=message)
+    elif intent == "edit_project":
+        change = str(parsed.get("request", "")).strip()[:1500]
+        if not _selected_project() or len(change) < 4:
+            return None
+        entities["request"] = f"{message}\n\n(Change: {change})"
     elif intent == "web_search":
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:
