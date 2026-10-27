@@ -128,6 +128,9 @@ async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
         "error": None,
         "usage": build_usage_block({"response": response, "latency_ms": round(latency, 1)}),
         "latency_ms": round(latency, 1),
+        # A reasoning model can spend the whole output limit before it answers.
+        "stop_reason": getattr(response, "stop_reason", None),
+        "max_tokens": max_tokens,
         "system": BASE_SYSTEM,
         "model_calls": 1,
         "tool_calls": 0,

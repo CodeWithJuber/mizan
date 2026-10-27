@@ -69,6 +69,9 @@ def test_verified_support_is_sahih_and_claims_skip_code_and_notes():
     assert len(quoted) == 1 and quoted[0]["kind"] == "quote" and quoted[0]["grade"] == "sahih"
     summary = isnad.summary(isnad.ledger("Words alone are said here. Nothing backs them up."))
     assert summary["counts"]["daif"] == 2 and summary["supported"] == 0.0
+    # A lead-in introduces a list and states nothing itself.
+    units = isnad.claims("Thodi detail:\n- Titan ka diameter lagbhag 5,150 km hai.")
+    assert [unit["text"] for unit in units] == ["Titan ka diameter lagbhag 5,150 km hai."]
 
 
 async def test_mizans_own_work_is_sahih_and_reaches_the_usage_block(agent):

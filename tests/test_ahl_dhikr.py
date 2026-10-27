@@ -390,3 +390,45 @@ def test_religious_questions_and_answers_are_told_by_evidence():
         "Why is patience praised?", "Allah is with the patient (Quran 2:153)."
     )
     assert ahl_dhikr.cites_scripture("Actions are by intentions (Sahih al-Bukhari 1).")
+
+
+TAFSIR = (
+    "Included verse by verse commentary with tafsir for those looking to learn "
+    "about this ayah in detail."
+)
+
+
+async def test_a_verdict_kept_before_the_relevance_gate_is_not_knowledge(store, monkeypatch):
+    """Production: an old ilm entry pairing a claim with a tafsir page's
+    sentence was shown as "the source says otherwise" under a Saturn answer."""
+    monkeypatch.setattr(ahl_dhikr, "nli", always_contradicts)
+    ahl_dhikr._save(
+        store,
+        "u1",
+        [
+            {
+                "claim": "Allah does not burden a soul beyond its capacity, says 2:286.",
+                "verdict": "contradicted",
+                "says": TAFSIR,
+                "title": "Surah Baqarah Ayat 286 (2:286 Quran) With Tafsir - My Islam",
+                "url": "https://myislam.org/surah-baqarah/ayat-286/",
+                "source": "web",
+            }
+        ],
+    )
+    assert ahl_dhikr.known(store, "u1") == []
+    assert ahl_dhikr.evidence_for(store, "u1", "Saturn ka sabse bada chand kaunsa hai?") == []
+    findings, _ = await ahl_dhikr.consult(
+        "Saturn ka sabse bada chand kaunsa hai?",
+        daif("Thodi detail:", "Saturn ka sabse bada chand Titan hai."),
+        store=store,
+        user_id="u1",
+        language="hi",
+        answer="Saturn ka sabse bada chand Titan hai.",
+    )
+    # Two words relate nothing a source could contradict; the rest found nothing.
+    assert [finding.claim for finding in findings] == ["Saturn ka sabse bada chand Titan hai."]
+    assert findings[0].verdict == "unknown"
+    # The stale entry is dropped from the store when it is next written.
+    ahl_dhikr.keep(store, "u1", QUESTION, [])
+    assert ahl_dhikr._load(store, "u1") == []

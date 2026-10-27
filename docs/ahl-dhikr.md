@@ -71,6 +71,10 @@ refusal.
    So a page that shares only common words with the claim ("the", "largest")
    is never read against it, however the NLI model would read the pair. The
    best three kept sentences go on.
+
+   Only propositions are judged: a claim needs at least three words, the same
+   unit a source sentence needs, and a lead-in ending in ":" ("Thodi
+   detail:") is not a claim at all (Isnad skips it).
 2. A multilingual **NLI model** reads each kept sentence against the claim.
    - Model: `MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli`, MIT licence,
      covering English, Arabic, Hindi, Urdu and more.
@@ -107,6 +111,12 @@ Without the NLI model, every claim stays unknown and nothing is guessed.
   that bear on the question are given to it as **"SETTLED BY MIZAN FROM
   SOURCES"**, so the answer starts from evidence rather than from the model's
   memory.
+- **Only what is about its claim.** A kept entry whose sentence is not about
+  its own claim (kept before the relevance gate existed) is not used and is
+  dropped from the store when it is next written. Lisan is given a settled
+  sentence only when it is about the question too. On 27 October a Saturn
+  answer showed an old entry about a tafsir page as "the source says
+  otherwise"; that cannot happen again.
 - **Private.** Each user's `ilm` is their own.
 - **Erased with the chat.** Deleting a chat (Mahw) drops what that chat's
   requests taught.

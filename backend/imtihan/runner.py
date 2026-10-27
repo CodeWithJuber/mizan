@@ -349,12 +349,15 @@ def cancel(run_id: str) -> bool:
 
 
 async def runs() -> list[dict]:
+    # A finished run is listed from memory until it is saved, as ``get`` reads it.
     live = [
         {**_summary(run), "progress": run.get("progress")}
         for run in _JOBS.values()
-        if run["status"] == "running"
+        if run["status"] == "running" or not run.get("saved")
     ]
-    return live + await asyncio.to_thread(_list)
+    shown = {run["id"] for run in live}
+    stored = [run for run in await asyncio.to_thread(_list) if run["id"] not in shown]
+    return sorted(live + stored, key=lambda run: -(run.get("created_at") or 0))
 
 
 async def get(run_id: str) -> dict | None:

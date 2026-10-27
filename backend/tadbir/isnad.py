@@ -76,6 +76,8 @@ def claims(text: str) -> list[dict]:
         line = re.sub(r"^(?:[#>*\-]+|\d+[.)])\s*", "", line).replace("**", "").strip()
         if re.fullmatch(r"\[[^\]]+\]\([^)]+\)", line):
             continue  # a source-list entry
+        if line.endswith(":"):
+            continue  # a lead-in introduces what follows and states nothing itself
         for sentence in _SENTENCE.split(line):
             sentence = sentence.strip()
             if len(sentence) >= 12 or _NUMBER.search(sentence):

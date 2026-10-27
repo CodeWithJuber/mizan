@@ -392,19 +392,29 @@ def _save(store: Any, user_id: str, items: list[dict]) -> None:
         pass
 
 
+def _settled(item: dict) -> bool:
+    """A kept verdict whose sentence is about its claim. Verdicts kept before
+    the relevance gate existed may pair a claim with an unrelated sentence;
+    those are not knowledge and are dropped."""
+    return bool(item.get("says") and item.get("url")) and about(
+        str(item.get("claim", "")), str(item["says"])
+    )
+
+
 def known(store: Any, user_id: str) -> list[Passage]:
     """Every sentence a source settled for this user before."""
     return [
         Passage(item["says"], item["title"], item["url"], "ilm", item.get("checked", ""))
         for item in _load(store, user_id)
-        if item.get("says") and item.get("url")
+        if _settled(item)
     ]
 
 
 def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> int:
     """Keep what an outside source settled, tied to the question that asked it."""
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    items = _load(store, user_id)
+    stored = _load(store, user_id)
+    items = [item for item in stored if _settled(item)]
     seen = {(item.get("claim"), item.get("url")) for item in items}
     added = 0
     for finding in findings:
@@ -428,7 +438,7 @@ def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> in
             }
         )
         added += 1
-    if added:
+    if added or len(items) < len(stored):
         _save(store, user_id, items)
     return added
 
@@ -442,9 +452,9 @@ def evidence_for(store: Any, user_id: str, question: str, limit: int = 4) -> lis
     ranked = sorted(range(len(passages)), key=lambda i: -scores[i])
     return [
         {"says": passages[i].text, "source": passages[i].title, "url": passages[i].url}
-        for i in ranked[:limit]
-        if scores[i] > 0
-    ]
+        for i in ranked
+        if scores[i] > 0 and about(question, passages[i].text)
+    ][:limit]
 
 
 # ── which outside source to ask first (learned) ──────────────────────────
@@ -524,10 +534,14 @@ async def consult(
     outside sources in their learned order, until each claim is settled; and
     which sources answered at all. A religious question or answer is asked of
     MIZAN's own ilm only."""
+    # A claim is held to the same unit as a source sentence (``sentences``):
+    # two words relate nothing a source could support or contradict.
     claims = [
         unit["text"]
         for unit in ledger
-        if unit.get("grade") == "daif" and unit.get("kind", "sentence") == "sentence"
+        if unit.get("grade") == "daif"
+        and unit.get("kind", "sentence") == "sentence"
+        and len(tokenize(unit["text"])) >= 3
     ]
     if not claims:
         return [], []
