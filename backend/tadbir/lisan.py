@@ -13,10 +13,13 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 from typing import Any
 
 from providers import effective_limits, provider_retry_delay
+
+from . import trace
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -61,6 +64,15 @@ class Lisan:
         return provider is not None and getattr(provider, "provider_name", "") != "mizan-owned"
 
     async def ask(self, system: str, user: str, max_tokens: int = 1500) -> str:
+        if not trace.active():
+            return await self._ask(system, user, max_tokens)
+        purpose = sys._getframe(1).f_code.co_name  # the Lisan task that asked
+        with trace.span("chat", f"lisan.{purpose}", system=system, user=user) as record:
+            reply = await self._ask(system, user, max_tokens)
+            record["attributes"]["reply"] = reply
+            return reply
+
+    async def _ask(self, system: str, user: str, max_tokens: int) -> str:
         if not self.available:
             raise LisanUnavailable("No language model is configured")
         provider = self.agent.ai_client

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from . import trace
+
 PHRASES: dict[str, dict[str, str]] = {
     "computed": {
         "en": "Calculated exactly by MIZAN.",
@@ -563,4 +565,5 @@ def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
         problems.append("Lisan claimed an action")
     if not text.strip():
         problems.append("empty text")
+    trace.event("verify", "furqan", accepted=not problems, problems=problems)
     return problems

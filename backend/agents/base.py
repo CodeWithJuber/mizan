@@ -1766,6 +1766,9 @@ class BaseAgent:
             if not hasattr(self, "_llm_calls"):
                 self._llm_calls = []
             self._llm_calls.append(self._last_llm_call)
+            from tadbir import trace
+
+            trace.model_call(llm_response, latency_ms)
         except Exception:
             pass
 
@@ -2863,13 +2866,18 @@ Match the requested depth and self-correct errors."""
                 return cast(dict, handled)
 
         if not _evaluation_only.get():
-            from tadbir import full_orchestration
+            from tadbir import full_orchestration, trace
 
             if full_orchestration():
                 # MIZAN did not recognise an action here: the model answers in
                 # words with the full conversation, and gets no tools. execute()
                 # restores the flag when this run ends.
                 _language_only.set(True)
+            trace.event(
+                "plan",
+                "language_model_answers",
+                tools_for_model="none" if full_orchestration() else "all permitted",
+            )
 
         try:
             full_response = ""

@@ -33,7 +33,7 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import amal, calc, express, fahm, hadith, majlis, project, quran, taallum, waqt
+from . import amal, calc, express, fahm, hadith, majlis, project, quran, taallum, trace, waqt
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -163,6 +163,14 @@ class Tadbir:
                         },
                     )
         handler = getattr(self, f"_{understanding.intent}", None)
+        trace.event(
+            "understand",
+            understanding.intent,
+            language=understanding.language,
+            confidence=understanding.confidence,
+            entities=understanding.entities,
+            by=understanding.entities.get("understood_by", "fahm"),
+        )
         try:
             if parts is not None:
                 outcome = await self._compound(parts)
@@ -176,6 +184,14 @@ class Tadbir:
         self._learn(task, understanding, example, outcome)
         if self.plan is not None:
             await self.plan.finish()
+        trace.event(
+            "plan",
+            "result",
+            steps=[item["content"] for item in self.plan.items] if self.plan else [],
+            verified=outcome.verified,
+            tool_backed=outcome.tool_backed,
+            facts=outcome.facts,
+        )
         if stream_callback:
             await stream_callback(outcome.text)
         status = (
@@ -216,7 +232,10 @@ class Tadbir:
 
     def _credit(self, worker: Any, intent: str, outcome: Outcome, language: str) -> Outcome:
         worked = outcome.verified if outcome.succeeded is None else outcome.succeeded
-        majlis.record(self.coordinator, worker, intent, worked)
+        estimate = majlis.record(self.coordinator, worker, intent, worked)
+        trace.event(
+            "learn", "majlis", agent=worker.name, intent=intent, worked=worked, estimate=estimate
+        )
         role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
         self.workers.append(
             {"agent": worker.name, "role": role, "intent": intent, "verified": outcome.verified}
@@ -229,16 +248,18 @@ class Tadbir:
     async def _delegate(self, task: str, u: fahm.Understanding) -> Outcome:
         """One request: MIZAN chooses the agent, which runs MIZAN's recipe."""
         worker = majlis.choose(self.coordinator, u.intent)
-        if worker is self.agent:
-            outcome = await getattr(self, f"_{u.intent}")(task, u)
-        else:
-            runner = self._runner(worker)
-            role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
-            runner._assignment = f"MIZAN gives this to {worker.name} ({role} agent)"
-            try:
-                outcome = await getattr(runner, f"_{u.intent}")(task, u)
-            finally:
-                self.plan = runner.plan
+        role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
+        with trace.span("invoke_agent", worker.name, role=role, intent=u.intent) as record:
+            if worker is self.agent:
+                outcome = await getattr(self, f"_{u.intent}")(task, u)
+            else:
+                runner = self._runner(worker)
+                runner._assignment = f"MIZAN gives this to {worker.name} ({role} agent)"
+                try:
+                    outcome = await getattr(runner, f"_{u.intent}")(task, u)
+                finally:
+                    self.plan = runner.plan
+            record["attributes"]["verified"] = outcome.verified
         return self._credit(worker, u.intent, outcome, u.language)
 
     # ── Ta'allum: learning from verified work ────────────────────────────
@@ -267,8 +288,10 @@ class Tadbir:
         source = u.entities.get("understood_by")
         if source == "lisan":
             taallum.learn(store, user, task, u, outcome.verified)
+            trace.event("learn", "taallum", kept=outcome.verified, intent=u.intent)
         elif source == "mizan_learned" and example is not None:
             taallum.reweigh(store, user, example, outcome.verified)
+            trace.event("learn", "taallum", reused=True, worked=outcome.verified)
 
     # ── shared actions ───────────────────────────────────────────────────
 
@@ -305,10 +328,12 @@ class Tadbir:
                 await plan.mark(index, "in_progress")
                 runner = self._runner(worker)
                 runner._nested = True
-                try:
-                    outcome = await getattr(runner, f"_{u.intent}")(part, u)
-                except Defer:
-                    outcome = None
+                with trace.span("invoke_agent", worker.name, intent=u.intent, part=part) as record:
+                    try:
+                        outcome = await getattr(runner, f"_{u.intent}")(part, u)
+                    except Defer:
+                        outcome = None
+                    record["attributes"]["done"] = outcome is not None
                 results[index] = outcome
                 await plan.mark(index, "completed")
 
@@ -335,7 +360,11 @@ class Tadbir:
         if self._stream:
             await self._stream("", chunk_type="tool_use", tool_name=name)
         started = time.perf_counter()
-        result = await self.agent._execute_tool_safe(name, params)
+        with trace.span("execute_tool", name, input=params, agent=self.agent.name) as record:
+            result = await self.agent._execute_tool_safe(name, params)
+            if trace.active():
+                record["attributes"]["ok"] = not tool_result_failed(result)
+                record["attributes"]["result"] = summarize(result, 4000)
         self.coordinator._add_execution_time("tool_ms", started)
         await emit(
             "tool_result",
@@ -365,10 +394,17 @@ class Tadbir:
         started = time.perf_counter()
         data: dict = {}
         error: str | None = None
-        try:
-            data = await fetch()
-        except (quran.QuranUnavailable, hadith.HadithUnavailable, hadith.HadithNotFound) as exc:
-            error = str(exc)
+        with trace.span("execute_tool", name, reference=reference, source=True) as record:
+            try:
+                data = await fetch()
+            except (
+                quran.QuranUnavailable,
+                hadith.HadithUnavailable,
+                hadith.HadithNotFound,
+            ) as exc:
+                error = str(exc)
+            record["attributes"]["ok"] = error is None
+            record["attributes"]["result"] = error or summary(data)
         await emit(
             "tool_result",
             {
@@ -668,6 +704,13 @@ class Tadbir:
         need = str(u.entities.get("need") or task)
         tools = amal.candidates(self.agent, self._chat_allowed)
         tool = amal.choose(self.agent, tools, need, task)
+        trace.event(
+            "plan",
+            "amal.choose",
+            need=need,
+            candidates=len(tools),
+            chosen=tool["name"] if tool else None,
+        )
         if tool is None:
             raise Defer
         name = str(tool["name"])
@@ -692,6 +735,7 @@ class Tadbir:
             except LisanUnavailable as exc:
                 return Outcome(phrase("tool_not_prepared", u.language, tool=name, reason=str(exc)), False, {}, tool_backed=False)  # fmt: skip
             issues = amal.problems(arguments, tool.get("input_schema"))
+            trace.event("verify", "schema", tool=name, accepted=not issues, problems=issues)
             if not issues:
                 break
             error = "; ".join(issues)

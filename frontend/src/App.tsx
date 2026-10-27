@@ -50,6 +50,7 @@ import {
   type AgentActivity, type PermissionMode,
 } from "./utils/agentActivity";
 import ComparePanel from "./components/ComparePanel";
+import DebugCompare from "./components/DebugCompare";
 import {
   exportMarkdown,
   exportText,
@@ -433,6 +434,31 @@ function AppInner() {
   );
 
   const api = useApi();
+  // Debug mode: compare one message with the base model alone (Muqabala).
+  const [debugAllowed, setDebugAllowed] = useState(false);
+  const [debugOn, setDebugOn] = useState(() => {
+    try {
+      return localStorage.getItem("mizan_debug_mode") === "on";
+    } catch {
+      return false;
+    }
+  });
+  const [debugPrompt, setDebugPrompt] = useState<string | undefined>();
+  useEffect(() => {
+    api
+      .get("/debug/status")
+      .then((data) => setDebugAllowed(Boolean(data.enabled)))
+      .catch(() => setDebugAllowed(false));
+  }, [api]);
+  const toggleDebug = () => {
+    const next = !debugOn;
+    setDebugOn(next);
+    try {
+      localStorage.setItem("mizan_debug_mode", next ? "on" : "off");
+    } catch {
+      // A per-browser convenience only.
+    }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2326,6 +2352,16 @@ function AppInner() {
           desc: "Blind model comparison",
           icon: <Icons.Brain />,
         },
+        ...(debugAllowed
+          ? [
+              {
+                id: "debug",
+                label: "Debug",
+                desc: "Base model vs MIZAN",
+                icon: <Icons.Search />,
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -2966,6 +3002,22 @@ function AppInner() {
                         agents={agents}
                         onNavigateTab={setActiveTab}
                       />
+                      {debugAllowed && debugOn && msg.role === "user" && msg.content.trim() && (
+                        <div className="chat-message-row">
+                          <div className="chat-message-container flex justify-end">
+                            <button
+                              type="button"
+                              className="text-xs text-amber-600 dark:text-amber-400 underline"
+                              onClick={() => {
+                                setDebugPrompt(msg.content);
+                                setActiveTab("debug");
+                              }}
+                            >
+                              Compare with the base model
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
 
@@ -3175,6 +3227,19 @@ function AppInner() {
                     onChange={setPermissionMode}
                     disabled={streaming}
                   />
+                  {debugAllowed && (
+                    <div className="max-w-3xl mx-auto mt-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={toggleDebug}
+                        aria-pressed={debugOn}
+                        className={debugOn ? "text-amber-600 dark:text-amber-400" : "text-gray-500"}
+                        title="Show a compare action under your messages: the base model alone vs MIZAN"
+                      >
+                        Debug {debugOn ? "on" : "off"}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {attachedFiles.length > 0 && (
                   <ChatAttachments
@@ -3878,6 +3943,26 @@ function AppInner() {
         return <ScannerPage api={api} addTerminalLine={addTerminalLine} />;
       case "compare":
         return <ComparePanel />;
+      case "debug":
+        return (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+              <div>
+                <h2 className="page-title">Debug: base model vs MIZAN</h2>
+                <p className="page-description">
+                  The same message to the model alone and to MIZAN, with every step MIZAN took
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <DebugCompare
+                api={api}
+                initialPrompt={debugPrompt}
+                onPromptUsed={() => setDebugPrompt(undefined)}
+              />
+            </div>
+          </div>
+        );
       case "majlis":
         return <MajlisPage api={api} addTerminalLine={addTerminalLine} />;
       case "plugins":

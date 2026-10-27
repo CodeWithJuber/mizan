@@ -138,6 +138,14 @@ immediately.
 | `hybrid` | Tadbir handles what it understands. Anything else goes to the model-driven agent loop, which keeps the capability and execution guards. This was the default before. |
 | `llm` | Tadbir is off. The model drives the agent loop as before. |
 
+## Seeing what MIZAN adds
+
+The debug mode ([debug-mode.md](debug-mode.md)) sends one message to the base
+model alone and to MIZAN. It shows every step MIZAN took: Fahm, Majlis,
+tools, Lisan's prompts and replies, Furqan and learning. It also flags what
+the base model got wrong: numbers no fact supports, unbacked action claims,
+and misquoted Quran or hadith text.
+
 ## Limits
 
 - **Recognisers.** They are rule based. A request they do not place goes to

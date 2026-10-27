@@ -3523,6 +3523,116 @@ async def forget_tadbir_wording(user: TokenPayload = Depends(require_auth)):
     return {"forgotten": True}
 
 
+# === DEBUG MODE (Muqabala: the base model alone vs MIZAN) ===
+
+
+class DebugCompareRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=20000)
+    agent_id: str | None = Field(None, max_length=100)
+    # An existing chat whose earlier turns both arms receive; nothing is saved to it.
+    session_id: str | None = Field(None, min_length=1, max_length=100)
+    workspace_id: str | None = Field(None, min_length=1, max_length=100)
+    timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_+\-/]+$")
+    # auto: MIZAN runs the tools it chooses (sandboxed code, project edits); plan: read-only.
+    permission_mode: str = Field("auto", pattern=r"^(auto|plan)$")
+
+
+def _debug_access(user: TokenPayload) -> None:
+    from tadbir import muqabala
+
+    if not muqabala.allowed(user.has_role("admin")):
+        raise HTTPException(403, "Debug mode is not enabled for this account")
+
+
+@app.get("/api/debug/status")
+async def debug_status(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    return {"enabled": muqabala.allowed(user.has_role("admin")), "access": muqabala.access()}
+
+
+@app.post("/api/debug/compare")
+async def debug_compare(req: DebugCompareRequest, user: TokenPayload = Depends(require_auth)):
+    """One message to the base model alone and to MIZAN, with MIZAN's full trace and checks."""
+    from security.approvals import ApprovalContext, bind_approvals
+    from tadbir import muqabala
+    from tadbir.waqt import bind_timezone
+
+    _debug_access(user)
+    workspace_context: Any = None
+    if req.workspace_id:
+        try:
+            from workspace import context as selected_workspace_context
+        except ImportError as exc:
+            raise HTTPException(503, "Coding workspaces are not available") from exc
+        workspace_context = selected_workspace_context
+        workspace_context.authorize_owned_workspace(req.workspace_id, user.user_id)
+    agent_id = req.agent_id or next(iter(active_agents), None)
+    if agent_id not in active_agents:
+        raise HTTPException(503, "No agents available")
+    agent = await chat_agent_for(user, active_agents[agent_id])
+    history: list[dict] = []
+    if req.session_id:
+        await authorize_session(req.session_id, user)
+        stored = await memory.get_messages(req.session_id, limit=50)
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in stored
+            if m["role"] in {"user", "assistant"} and str(m["content"]).strip()
+        ]
+    context = {
+        "history": history,
+        "user_preferences": await memory.get_chat_preferences(user.user_id),
+        **({"workspace_id": req.workspace_id} if req.workspace_id else {}),
+    }
+    approvals = ApprovalContext(user.user_id, f"debug-{uuid.uuid4().hex}", req.permission_mode)
+    workspace_binding = (
+        workspace_context.bind_workspace(req.workspace_id) if workspace_context else None
+    )
+    try:
+        with bind_approvals(approvals), bind_timezone(req.timezone):
+            run = await muqabala.compare(agent, req.prompt, context, history)
+    finally:
+        if workspace_context and workspace_binding is not None:
+            workspace_context.reset_workspace(workspace_binding)
+    run["permission_mode"] = req.permission_mode
+    try:
+        await muqabala.save(user.user_id, run)
+    except Exception:  # noqa: BLE001 - the comparison is still returned
+        logger.warning("Debug comparison could not be saved")
+    return run
+
+
+@app.get("/api/debug/runs")
+async def debug_runs(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    return {"runs": await muqabala.runs(user.user_id)}
+
+
+@app.get("/api/debug/runs/{run_id}")
+async def debug_run(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    if len(run_id) != 32 or not all(char in "0123456789abcdef" for char in run_id):
+        raise HTTPException(400, "Invalid run id")
+    run = await muqabala.get(user.user_id, run_id)
+    if run is None:
+        raise HTTPException(404, "Comparison not found")
+    return run
+
+
+@app.delete("/api/debug/runs")
+async def clear_debug_runs(user: TokenPayload = Depends(require_auth)):
+    from tadbir import muqabala
+
+    _debug_access(user)
+    await muqabala.clear(user.user_id)
+    return {"cleared": True}
+
+
 # === AUTOMATION (Qadr) ===
 
 
