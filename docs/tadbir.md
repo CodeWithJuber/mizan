@@ -63,6 +63,54 @@ recipe. The parts then run under one plan, and the answer is verified only if
 every part is. A message whose conjunction joins one request ("app banao …
 aur result dikhaye") stays whole.
 
+## Majlis: MIZAN's agents share the work
+
+`majlis.py`. MIZAN, not the language model, decides which agent does each part
+of a request:
+
+- **Candidates.** Every running agent that holds the needed tool, and that the
+  user's permissions allow.
+- **Choice.** Thompson sampling over a Beta posterior per (agent, kind of work),
+  using `core/adaptive`. The prior favours the role made for the work:
+  - Katib: code and projects
+  - Mundhir: search
+  - Mubashir: reading pages
+  - Khalifah: Quran, hadith, dates and memory
+
+  Exploration is rare, under one choice in five, and is measured by a test.
+- **Running.** The chosen agent runs MIZAN's recipe through its own tool gate,
+  so its Izn policy applies. Receipts and metrics go to the chat's agent.
+- **Compound requests.** Each part goes to its own agent. Different agents run
+  side by side; one agent runs its parts in order.
+- **Credit.** The plan names the agent ("MIZAN gives this to Katib (code
+  agent)"), and the reply says who did the work. The agent's task and success
+  counts grow, and its Nafs evolves.
+- **Learning.** Each verified or failed result updates that agent's posterior.
+  An agent whose work keeps failing MIZAN's checks stops getting it.
+
+## Ta'allum: learning from verified work
+
+`taallum.py`. When Lisan maps wording that Fahm did not recognise, and MIZAN
+verifies the result, MIZAN keeps the wording for that user:
+
+- **Reuse.** A later message close to a kept wording is mapped by MIZAN
+  itself, with no Lisan call. Closeness is BM25 over content words, plus 60%
+  of the kept example's words. MIZAN's validation still runs on every reuse.
+- **Questions are excluded.** "…ka matlab samjhao" never reuses a learned
+  request.
+- **Unlearning.** Each example has a Beta posterior and is dropped when reuse
+  stops verifying.
+- **Scope.** Only write-and-run, web search and project builds are learned,
+  because their details can be rebuilt from the new message.
+
+Nothing here trains model weights or exports chats. Training the own model
+still needs an approved bundle (`docs/own-learning-cycle.md`); its watcher
+already trains automatically once a bundle is approved.
+
+`GET /api/tadbir/learning` returns the routing estimates and your learned
+wording count. `DELETE /api/tadbir/learning/wording` forgets your wording.
+Both appear in **Majlis → Learning**.
+
 Results carry `completion_status`:
 
 - `verified_by_mizan`: exit code checked, cross-check passed, citations supported, or authentic text quoted

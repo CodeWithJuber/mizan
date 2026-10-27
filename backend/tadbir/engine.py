@@ -17,6 +17,7 @@ answers the rest itself through Lisan with no tool control by the model;
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -30,7 +31,7 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import calc, express, fahm, hadith, project, quran, waqt
+from . import calc, express, fahm, hadith, majlis, project, quran, taallum, waqt
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -76,14 +77,25 @@ class Plan:
         self.current = len(self.items)
         await emit("todo", {"todos": deepcopy(self.items)})
 
+    async def mark(self, index: int, status: str) -> None:
+        """One step's status, for steps that agents run side by side."""
+        self.items[index]["status"] = status
+        await emit("todo", {"todos": deepcopy(self.items)})
+
 
 class Tadbir:
-    def __init__(self, agent: Any):
+    def __init__(self, agent: Any, *, lisan: Lisan | None = None, coordinator: Any = None):
+        # ``agent`` does the work through its own tool gate; ``coordinator`` is
+        # the agent the user is talking to, whose chat receipts and metrics
+        # record everything. Lisan is MIZAN's one language faculty.
         self.agent = agent
-        self.lisan = Lisan(agent)
+        self.coordinator = coordinator or agent
+        self.lisan = lisan or Lisan(self.coordinator)
         self.plan: Plan | None = None
+        self.workers: list[dict] = []
         self._stream = None
         self._nested = False
+        self._assignment: str | None = None
 
     # ── entry point ──────────────────────────────────────────────────────
 
@@ -102,10 +114,15 @@ class Tadbir:
                 min(u.confidence for _part, u in parts),
                 {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
             )
-        elif understanding.intent == "converse" and self.lisan.available and fahm.actionable(task):
-            # Lisan only translates the wording into MIZAN's intent schema;
-            # MIZAN validates every field before acting on it.
-            understanding = await self._lisan_understanding(task, understanding)
+        example: dict | None = None
+        if parts is None and understanding.intent == "converse" and fahm.actionable(task):
+            learned = self._learned_understanding(task, understanding)
+            if learned is not None:
+                understanding, example = learned
+            elif self.lisan.available:
+                # Lisan only translates the wording into MIZAN's intent schema;
+                # MIZAN validates every field before acting on it.
+                understanding = await self._lisan_understanding(task, understanding)
         handler = getattr(self, f"_{understanding.intent}", None)
         try:
             if parts is not None:
@@ -115,9 +132,10 @@ class Tadbir:
                     return None
                 outcome = await self._converse(task, understanding)
             else:
-                outcome = await handler(task, understanding)
+                outcome = await self._delegate(task, understanding)
         except Defer:
             return None
+        self._learn(task, understanding, example, outcome)
         if self.plan is not None:
             await self.plan.finish()
         if stream_callback:
@@ -147,44 +165,128 @@ class Tadbir:
                 "plan": deepcopy(self.plan.items) if self.plan else [],
                 "verified": outcome.verified,
                 "language_model_calls": self.lisan.calls,
+                "agents": self.workers,
             },
         }
+
+    # ── Majlis: the agent that fits does the work ────────────────────────
+
+    def _runner(self, worker: Any) -> Tadbir:
+        runner = Tadbir(worker, lisan=self.lisan, coordinator=self.coordinator)
+        runner._stream = self._stream
+        return runner
+
+    def _credit(self, worker: Any, intent: str, outcome: Outcome, language: str) -> Outcome:
+        majlis.record(self.coordinator, worker, intent, outcome.verified)
+        role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
+        self.workers.append(
+            {"agent": worker.name, "role": role, "intent": intent, "verified": outcome.verified}
+        )
+        if worker is not self.coordinator:
+            note = phrase("done_by_agent", language, name=worker.name, role=role)
+            outcome.text = f"{outcome.text}\n\n_{note}_"
+        return outcome
+
+    async def _delegate(self, task: str, u: fahm.Understanding) -> Outcome:
+        """One request: MIZAN chooses the agent, which runs MIZAN's recipe."""
+        worker = majlis.choose(self.coordinator, u.intent)
+        if worker is self.agent:
+            outcome = await getattr(self, f"_{u.intent}")(task, u)
+        else:
+            runner = self._runner(worker)
+            role = majlis.ROLE_NAMES.get(getattr(worker, "role", ""), "general")
+            runner._assignment = f"MIZAN gives this to {worker.name} ({role} agent)"
+            try:
+                outcome = await getattr(runner, f"_{u.intent}")(task, u)
+            finally:
+                self.plan = runner.plan
+        return self._credit(worker, u.intent, outcome, u.language)
+
+    # ── Ta'allum: learning from verified work ────────────────────────────
+
+    def _learned_understanding(
+        self, task: str, fallback: fahm.Understanding
+    ) -> tuple[fahm.Understanding, dict] | None:
+        from security.auth import current_user_id
+
+        found = taallum.recall(self.coordinator.adaptive, current_user_id() or "", task)
+        if found is None:
+            return None
+        parsed, example = found
+        understood = fahm.validate_parsed(parsed, task, fallback.language)
+        if understood is None:
+            return None
+        understood.entities["understood_by"] = "mizan_learned"
+        return understood, example
+
+    def _learn(
+        self, task: str, u: fahm.Understanding, example: dict | None, outcome: Outcome
+    ) -> None:
+        from security.auth import current_user_id
+
+        store, user = self.coordinator.adaptive, current_user_id() or ""
+        source = u.entities.get("understood_by")
+        if source == "lisan":
+            taallum.learn(store, user, task, u, outcome.verified)
+        elif source == "mizan_learned" and example is not None:
+            taallum.reweigh(store, user, example, outcome.verified)
 
     # ── shared actions ───────────────────────────────────────────────────
 
     async def _begin(self, steps: list[str]) -> None:
         if self._nested:
             return  # a part of a compound request: the compound plan is shown
+        if self._assignment:
+            steps = [self._assignment, *steps]
         self.plan = Plan(steps)
         await self.plan.advance()
+        if self._assignment:
+            await self.plan.advance()
 
     async def _step(self) -> None:
         if self.plan is not None and not self._nested:
             await self.plan.advance()
 
     async def _compound(self, parts: list[tuple[str, fahm.Understanding]]) -> Outcome:
-        """Several independent requests: one plan, each part by its own recipe."""
-        self.plan = Plan([f"{part[:70]} ({u.intent})" for part, u in parts])
-        await self.plan.advance()
+        """Several independent requests: each part to its agent, agents side by side."""
+        assigned = [(part, u, majlis.choose(self.coordinator, u.intent)) for part, u in parts]
+        self.plan = Plan(
+            [f"{worker.name}: {part[:70]} ({u.intent})" for part, u, worker in assigned]
+        )
+        plan = self.plan
+        results: list[Outcome | None] = [None] * len(assigned)
+        groups: dict[str, list[int]] = {}
+        for index, (_part, _u, worker) in enumerate(assigned):
+            groups.setdefault(str(worker.id), []).append(index)
+
+        async def run(indices: list[int]) -> None:
+            # One agent does its parts in order; different agents work in parallel.
+            for index in indices:
+                part, u, worker = assigned[index]
+                await plan.mark(index, "in_progress")
+                runner = self._runner(worker)
+                runner._nested = True
+                try:
+                    outcome = await getattr(runner, f"_{u.intent}")(part, u)
+                except Defer:
+                    outcome = None
+                results[index] = outcome
+                await plan.mark(index, "completed")
+
+        await asyncio.gather(*(run(indices) for indices in groups.values()))
+        if all(outcome is None for outcome in results):
+            raise Defer  # nothing done: the agent loop takes the whole request
         texts: list[str] = []
         facts: list[dict] = []
         verified = True
-        self._nested = True
-        try:
-            for index, (part, u) in enumerate(parts):
-                if index:
-                    await self.plan.advance()
-                try:
-                    outcome = await getattr(self, f"_{u.intent}")(part, u)
-                except Defer:
-                    if not texts:
-                        raise  # nothing done yet: the agent loop takes the whole request
-                    outcome = Outcome(phrase("part_not_done", u.language, part=part), False, {})
-                texts.append(outcome.text)
-                facts.append(outcome.facts)
-                verified = verified and outcome.verified
-        finally:
-            self._nested = False
+        for (part, u, worker), outcome in zip(assigned, results, strict=True):
+            if outcome is None:
+                outcome = Outcome(phrase("part_not_done", u.language, part=part), False, {})
+            else:
+                outcome = self._credit(worker, u.intent, outcome, u.language)
+            texts.append(outcome.text)
+            facts.append(outcome.facts)
+            verified = verified and outcome.verified
         return Outcome("\n\n---\n\n".join(texts), verified, {"parts": facts})
 
     async def _tool(self, name: str, params: dict) -> dict:
@@ -195,7 +297,7 @@ class Tadbir:
             await self._stream("", chunk_type="tool_use", tool_name=name)
         started = time.perf_counter()
         result = await self.agent._execute_tool_safe(name, params)
-        self.agent._add_execution_time("tool_ms", started)
+        self.coordinator._add_execution_time("tool_ms", started)
         await emit(
             "tool_result",
             {
@@ -206,7 +308,7 @@ class Tadbir:
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
-        self.agent._last_tool_results.append({"name": name, "result": result})
+        self.coordinator._last_tool_results.append({"name": name, "result": result})
         return result if isinstance(result, dict) else {"result": result}
 
     async def _from_source(

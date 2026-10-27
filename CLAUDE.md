@@ -39,7 +39,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 - `backend/api/main.py` — FastAPI app, ~80 REST routes + WebSocket (single large module, ~3.5k lines)
 - `backend/api/commands.py` — Slash/command handlers used by chat
 - `backend/agents/base.py` — `BaseAgent`: agentic **ReAct loop**, tool dispatch, Nafs evolution, self-healing
-- `backend/tadbir/` — **Tadbir**: MIZAN's own orchestration (Fahm understanding → plan → tools via `_execute_tool_safe` → verify → express); the LLM is only **Lisan**, the language faculty (`docs/tadbir.md`). Runs first in `_execute_impl`; `MIZAN_ORCHESTRATION` = mizan (default) | strict | llm
+- `backend/tadbir/` — **Tadbir**: MIZAN's own orchestration (Fahm understanding → plan → tools via `_execute_tool_safe` → verify → express); the LLM is only **Lisan**, the language faculty (`docs/tadbir.md`). Runs first in `_execute_impl`; `MIZAN_ORCHESTRATION` = mizan (default) | strict | llm. `majlis.py` gives each part to the best agent (Thompson sampling over Beta posteriors per agent+intent, parallel across agents); `taallum.py` learns verified wording per user so Lisan is not asked again (`/api/tadbir/learning`, Majlis → Learning)
 - `backend/providers.py` — LLM provider abstraction (Anthropic/OpenRouter/OpenAI/Ollama auto-routing)
 - `backend/providers_ruh.py` — `RuhModelProvider` adapter for the local Ruh model
 - `backend/reasoning/context_engine.py` — unlimited conversations: model-sized history + persisted running summary (`session_summaries`)

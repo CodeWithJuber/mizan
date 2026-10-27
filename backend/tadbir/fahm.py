@@ -199,7 +199,7 @@ def understand(text: str) -> Understanding:
             flags=re.I,
         )
         query = re.sub(r"\s+", " ", query).strip(" ?.!,:")
-        if len(query) >= 3:
+        if len(query) >= 2:  # "latest AI news" leaves "AI"
             return Understanding("web_search", language, 0.75, {"query": message.strip()[:300]})
 
     return Understanding("converse", language, 0.0)

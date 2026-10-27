@@ -344,6 +344,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान का हिजरी कैलेंडर 1343–1500 हिजरी (1924–2077 ई.) तक है।",
         "ar": "يغطي تقويم ميزان الهجري الأعوام 1343–1500 هـ (1924–2077 م).",
     },
+    "done_by_agent": {
+        "en": "Done by {name}, MIZAN's {role} agent.",
+        "hi-latn": "Yeh kaam MIZAN ke {role} agent {name} ne kiya.",
+        "ur": "یہ کام میزان کے {role} ایجنٹ {name} نے کیا۔",
+        "hi": "यह काम मीज़ान के {role} एजेंट {name} ने किया।",
+        "ar": "أنجز هذا {name}، وكيل {role} في ميزان.",
+    },
     "part_not_done": {
         "en": "MIZAN could not do this part itself: {part}. Ask it on its own.",
         "hi-latn": "Yeh hissa MIZAN khud nahi kar saka: {part}. Ise alag se poochiye.",

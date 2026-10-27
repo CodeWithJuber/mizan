@@ -10,7 +10,7 @@ from agents.events import bind_event_sink
 from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
-from tadbir import calc, fahm, hadith, project, quran, waqt
+from tadbir import calc, fahm, hadith, majlis, project, quran, taallum, waqt
 from tadbir.express import furqan
 
 
@@ -840,3 +840,215 @@ def test_lisan_may_map_project_wording_but_not_other_stacks():
     assert understood is not None and understood.entities["kind"] == "web"
     assert fahm.validate_parsed(parsed, "mujhe React mein dashboard chahiye", "en") is None
     assert fahm.validate_parsed({"intent": "build_project", "kind": "rust"}, "a tool", "en") is None
+
+
+# ── Majlis: MIZAN's agents share the work ────────────────────────────────
+
+
+def council(monkeypatch, tmp_path, **results):
+    """Khalifah coordinating Katib and Mundhir, each with its own tool gate."""
+    import random
+
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "mizan")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
+    # Exploit only, so tests are deterministic; exploration is tested on its own.
+    monkeypatch.setattr(
+        majlis,
+        "thompson_choice",
+        lambda options, posteriors, rng=None: max(options, key=lambda k: posteriors[k].mean),
+    )
+    names = ["workspace_run", "web_search", "web_browse", "recall_memory", "workspace_write"]
+    agents = {}
+    for kind, name in (("super", "Khalifah"), ("code", "Katib"), ("research", "Mundhir")):
+        created = create_agent(kind, name=name, izn=IznPermission())
+        created.ai_client = ScriptedProvider()
+        monkeypatch.setattr(
+            created,
+            "get_tool_schemas",
+            lambda: [
+                {"name": n, "description": "", "input_schema": {"type": "object"}} for n in names
+            ],
+        )
+        monkeypatch.setattr(created, "_chat_tool_allowed", lambda name: True)
+        fake = FakeTools({key: deepcopy(value) for key, value in results.items()})
+        monkeypatch.setattr(created, "_execute_tool_safe", fake)
+        created.fake = fake
+        agents[created.id] = created
+    for created in agents.values():
+        created._agent_registry = agents
+    by_name = {a.name: a for a in agents.values()}
+    random.seed(0)
+    return by_name
+
+
+async def test_mizan_gives_code_work_to_katib(monkeypatch, tmp_path):
+    team = council(
+        monkeypatch, tmp_path, workspace_run={"stdout": "1267650600228229401496703205376\n",
+                                              "stderr": "", "exit_code": 0}
+    )  # fmt: skip
+    khalifah, katib = team["Khalifah"], team["Katib"]
+    result = await khalifah.execute("Python me 2**100 calculate karke run karo")
+    assert [name for name, _ in katib.fake.calls] == ["workspace_run"]
+    assert khalifah.fake.calls == []
+    assert result["orchestration"]["agents"][0]["agent"] == "Katib"
+    assert "Katib" in result["result"] and result["completion_status"] == "verified_by_mizan"
+    assert result["orchestration"]["plan"][0]["content"].startswith("MIZAN gives this to Katib")
+    assert katib.total_tasks == 1 and katib.success_count == 1
+
+
+async def test_hadith_stays_with_khalifah_and_research_goes_to_mundhir(monkeypatch, tmp_path):
+    team = council(monkeypatch, tmp_path)
+    assert majlis.choose(team["Khalifah"], "hadith") is team["Khalifah"]
+    assert majlis.choose(team["Khalifah"], "web_search") is team["Mundhir"]
+    assert majlis.choose(team["Khalifah"], "build_project") is team["Katib"]
+
+
+async def test_routing_learns_from_evidence(monkeypatch, tmp_path):
+    team = council(monkeypatch, tmp_path)
+    khalifah, katib = team["Khalifah"], team["Katib"]
+    for _ in range(40):
+        majlis.record(khalifah, katib, "run_code", False)
+    # Katib's code work kept failing MIZAN's checks: the work moves on.
+    assert majlis.choose(khalifah, "run_code") is not katib
+    rows = {(r["agent"], r["intent"]): r for r in majlis.report(khalifah)}
+    assert rows[("Katib", "run_code")]["evidence"] > 0
+
+
+def test_exploration_is_rare_but_real():
+    import random
+
+    class Member:
+        def __init__(self, name, role):
+            self.id, self.name, self.role = name, name, role
+            self._agent_registry = None
+
+        def get_tool_schemas(self):
+            return [{"name": "workspace_run"}]
+
+        def _chat_tool_allowed(self, name):
+            return True
+
+    katib, khalifah = Member("katib", "katib"), Member("khalifah", "khalifah")
+    khalifah._agent_registry = {"katib": katib, "khalifah": khalifah}
+    rng = random.Random(7)
+    picks = [majlis.choose(khalifah, "run_code", rng).name for _ in range(400)]
+    assert 0.8 < picks.count("katib") / 400 < 1.0
+
+
+async def test_compound_parts_run_on_different_agents_in_parallel(monkeypatch, tmp_path):
+    import asyncio
+
+    team = council(monkeypatch, tmp_path)
+    khalifah, mundhir = team["Khalifah"], team["Mundhir"]
+    hadith_started = asyncio.Event()
+
+    async def search(name, params):
+        # Finishes only once Khalifah's part has started: needs real parallelism.
+        await asyncio.wait_for(hadith_started.wait(), 2)
+        return {"results": [{"title": "AI", "url": "https://a.example/", "snippet": "News."}]}
+
+    async def fetch(reference, language):
+        hadith_started.set()
+        return {
+            "reference": reference.label, "collection": "Sahih al-Bukhari",
+            "collection_arabic": "صحيح البخاري", "sahih_collection": True, "section": "",
+            "book": 1, "in_book": 1, "arabic": "إِنَّمَا الأَعْمَالُ بِالنِّيَّاتِ",
+            "translation": "Actions are by intentions.", "translation_language": "English",
+            "clipped": False, "grades": [], "narrations": [], "link": "", "source": hadith.SOURCE,
+        }  # fmt: skip
+
+    monkeypatch.setattr(mundhir, "_execute_tool_safe", search)
+    monkeypatch.setattr(hadith, "fetch", fetch)
+    result = await khalifah.execute("latest AI news search karo aur Bukhari 1 dikhao")
+    assert result["orchestration"]["intent"] == "compound"
+    workers = {w["intent"]: w["agent"] for w in result["orchestration"]["agents"]}
+    assert workers == {"web_search": "Mundhir", "hadith": "Khalifah"}
+    assert "بِالنِّيَّاتِ" in result["result"] and "https://a.example/" in result["result"]
+    labels = [item["content"] for item in result["orchestration"]["plan"]]
+    assert labels[0].startswith("Mundhir:") and labels[1].startswith("Khalifah:")
+
+
+# ── Ta'allum: learning wording from verified work ────────────────────────
+
+
+async def test_verified_wording_is_learned_and_reused_without_asking_lisan(agent, monkeypatch):
+    fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"intent":"build_and_run","request":"print the 50th Fibonacci number",'
+            '"language":"python"}',
+            fib,
+            fib,
+        ]
+    )
+    tools(
+        agent, monkeypatch, workspace_run={"stdout": "12586269025\n", "stderr": "", "exit_code": 0}
+    )
+    first = await agent.execute("Fibonacci series ka 50th number kya hai?")
+    assert first["orchestration"]["entities"]["understood_by"] == "lisan"
+    second = await agent.execute("Fibonacci series ka 60th number kya hai?")
+    assert second["orchestration"]["entities"]["understood_by"] == "mizan_learned"
+    assert second["orchestration"]["language_model_calls"] == 1  # code only, no mapping call
+    assert len(agent.ai_client.requests) == 3
+    assert taallum.summary(agent.adaptive, "")["by_intent"] == {"build_and_run": 1}
+
+
+async def test_unverified_or_reworded_questions_are_not_learned(agent, monkeypatch):
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"intent":"build_and_run","request":"print primes","language":"python"}',
+            "```python\nprint(1/0)\n```",
+            "```python\nprint(1/0)\n```",
+            "```python\nprint(1/0)\n```",
+        ]
+    )
+    failed = {"stdout": "", "stderr": "ZeroDivisionError", "exit_code": 1}
+    tools(agent, monkeypatch, workspace_run=[failed, failed, failed])
+    result = await agent.execute("Pehle 10 prime numbers nikalo program se")
+    assert result["task_verified"] is False
+    assert taallum.summary(agent.adaptive, "")["examples"] == 0
+
+
+def test_learned_wording_never_crosses_into_a_question():
+    from core.adaptive import AdaptiveStateStore
+
+    store = AdaptiveStateStore(None)
+    learned = fahm.Understanding(
+        "build_and_run", "hi-latn", 0.6, {"code_language": "python", "understood_by": "lisan"}
+    )
+    taallum.learn(store, "u1", "Fibonacci series ka 50th number nikalo", learned, True)
+    assert taallum.recall(store, "u1", "Fibonacci series ka 70th number nikalo") is not None
+    assert taallum.recall(store, "u1", "Fibonacci series ka matlab samjhao") is None
+    assert taallum.recall(store, "u2", "Fibonacci series ka 70th number nikalo") is None
+    for _ in range(10):
+        kept = taallum._load(store, "u1")
+        if not kept:
+            break
+        taallum.reweigh(store, "u1", kept[0], False)
+    assert taallum.summary(store, "u1")["examples"] == 0  # stopped working: dropped
+
+
+async def test_learning_api_shows_routing_and_forgets_wording(monkeypatch, tmp_path):
+    from fastapi import HTTPException
+
+    from security.auth import TokenPayload
+
+    team = council(monkeypatch, tmp_path)
+    monkeypatch.setenv("MIZAN_OWNED_DB", str(tmp_path / "owned.sqlite3"))
+    import api.main as main
+
+    alice = TokenPayload("alice", "alice", ["user"], 9999999999, 0, "t")
+    monkeypatch.setattr(main, "active_agents", {})
+    with pytest.raises(HTTPException):
+        await main.tadbir_learning(alice)
+    monkeypatch.setattr(main, "active_agents", {a.id: a for a in team.values()})
+    khalifah = team["Khalifah"]
+    learned = fahm.Understanding("web_search", "en", 0.6, {"understood_by": "lisan"})
+    taallum.learn(khalifah.adaptive, "alice", "cricket score batao abhi", learned, True)
+    view = await main.tadbir_learning(alice)
+    assert view["wording"]["examples"] == 1
+    assert any(r["agent"] == "Katib" and r["specialist"] for r in view["routing"])
+    assert (await main.forget_tadbir_wording(alice))["forgotten"]
+    assert (await main.tadbir_learning(alice))["wording"]["examples"] == 0

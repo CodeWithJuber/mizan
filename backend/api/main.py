@@ -3487,6 +3487,42 @@ async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(g
     return result
 
 
+# === TADBIR LEARNING (Majlis routing, Ta'allum wording) ===
+
+
+def _tadbir_coordinator():
+    for agent in active_agents.values():
+        if getattr(agent, "role", "") == "khalifah":
+            return agent
+    return next(iter(active_agents.values()), None)
+
+
+@app.get("/api/tadbir/learning")
+async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
+    """What MIZAN learned from its own verified work: who does which work, and your wording."""
+    from tadbir import majlis, taallum
+
+    coordinator = _tadbir_coordinator()
+    if coordinator is None:
+        raise HTTPException(503, "No agents are running")
+    return {
+        "routing": majlis.report(coordinator),
+        "wording": taallum.summary(coordinator.adaptive, user.user_id),
+    }
+
+
+@app.delete("/api/tadbir/learning/wording")
+async def forget_tadbir_wording(user: TokenPayload = Depends(require_auth)):
+    """Forget the wording MIZAN learned from this user's requests."""
+    from tadbir import taallum
+
+    coordinator = _tadbir_coordinator()
+    if coordinator is None:
+        raise HTTPException(503, "No agents are running")
+    taallum.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
 # === AUTOMATION (Qadr) ===
 
 
