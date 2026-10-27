@@ -23,6 +23,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Any
 
 from . import amanah, calc, hadith, lughah, project, qasd, qiyas, quran, silsila, waqt
@@ -557,12 +558,44 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
         unbuilt += mass
         mappable += sum(p for intent, p in members if intent not in _WORDS_ONLY)
     conversation = next((mass for family, mass, _m in families if family == "converse"), 0.0)
+    # The root or wazn of an Arabic word: answered from the Quranic Arabic
+    # Corpus (Sarf), the analyzer /api/v1/root-analyze uses, never from the
+    # model. A yes/no facet learned from seeds; asked only when no request
+    # above was decisive.
+    targets = sarf_targets(message)
+    if targets and qasd.facet("sarf", message):
+        return Understanding(
+            "sarf", language, qasd.facet_model("sarf").posterior(message)["yes"], {"words": targets}
+        )
     return Understanding(
         "converse",
         language,
         0.0,
         {"posterior": dict(ranked[:3]), "mappable": mappable, "conversation": conversation},
     )
+
+
+@cache
+def _sarf_frame() -> frozenset[str]:
+    """The Arabic words of the question's own frame (ما، جذر، كلمة، وزن), learned
+    from the seeds: those that appear in more than one of them."""
+    from . import sarf
+
+    counts: dict[str, int] = {}
+    for text, label in qasd.facet_examples("sarf"):
+        if label == "yes":
+            for word in {sarf.fold(w) for w in sarf.words(text)}:
+                counts[word] = counts.get(word, 0) + 1
+    return frozenset(word for word, count in counts.items() if count > 1)
+
+
+def sarf_targets(message: str) -> list[str]:
+    """The Arabic words a root question asks about (at most six)."""
+    from . import sarf
+
+    found = sarf.words(message)
+    asked = [word for word in found if sarf.fold(word) not in _sarf_frame()]
+    return (asked or found[-1:])[:6]
 
 
 # Families of recipes: intents that are kinds of one request.

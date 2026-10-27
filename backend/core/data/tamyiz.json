@@ -124,5 +124,19 @@
   "examples": 124.0,
   "labels": 2,
   "vocabulary": 4009
+ },
+ "qasd.sarf": {
+  "sha256": "ba226afd44001124bf773e9a812c0b6b6ae460748612786dd2d2847b92d07e6e",
+  "alpha": 0.1,
+  "weights": [
+   0.0010000011106676412,
+   0.059093617516134185,
+   1.4388420479471384
+  ],
+  "loo_loss": 0.1944874330672336,
+  "loo_accuracy": 0.9090909090909091,
+  "examples": 44.0,
+  "labels": 2,
+  "vocabulary": 1418
  }
 }

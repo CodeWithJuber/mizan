@@ -33,6 +33,9 @@ export default function ReliabilityPage() {
         <header className="space-y-2">
           <a href="/" className="text-sm text-amber-700 dark:text-amber-400">
             ميزان MIZAN
+          </a>{" "}
+          <a href="/api/docs" className="text-sm text-amber-700 dark:text-amber-400 ml-3">
+            API docs
           </a>
           <h1 className="text-2xl font-semibold">How reliable is MIZAN?</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">

@@ -12,6 +12,19 @@ export interface HeldAction {
   id: string;
   tool: string;
   reason?: string;
+  /** The parameters as shown on a card (maybe cut short), when the action came with a chat reply. */
+  shown?: string;
+  complete?: boolean;
+  /** The exact parameters, when read from the held-actions list. */
+  params?: unknown;
+  /** SHA-256 of the parameters; an approval is bound to it. */
+  params_sha256?: string;
+}
+
+/** Every parameter as text, or null when only part of them is known here. */
+function everything(item: HeldAction): string | null {
+  if (item.params !== undefined) return JSON.stringify(item.params, null, 1);
+  return item.complete && item.shown ? item.shown : null;
 }
 
 type Decision = "allow" | "deny";
@@ -19,6 +32,21 @@ type State = "waiting" | "working" | "done" | "denied" | "gone";
 
 function HeldActionRow({ item }: { item: HeldAction }) {
   const [state, setState] = useState<State>("waiting");
+  const [full, setFull] = useState<string | null>(() => everything(item));
+
+  // Allow is offered only once every parameter can be read here.
+  const loadAll = async () => {
+    try {
+      const response = await authFetch(`${config.API_URL}/chat/held`);
+      if (!response.ok) return;
+      const data = (await response.json()) as { held?: HeldAction[] };
+      const found = data.held?.find((held) => held.id === item.id);
+      if (found) setFull(everything(found));
+      else setState("gone");
+    } catch {
+      /* stays as it was; Deny still works */
+    }
+  };
 
   const decide = async (decision: Decision) => {
     setState("working");
@@ -26,7 +54,9 @@ function HeldActionRow({ item }: { item: HeldAction }) {
       const response = await authFetch(`${config.API_URL}/chat/held/${item.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(
+          item.params_sha256 ? { decision, params_sha256: item.params_sha256 } : { decision }
+        ),
       });
       if (!response.ok) {
         setState("gone");
@@ -38,6 +68,7 @@ function HeldActionRow({ item }: { item: HeldAction }) {
     }
   };
 
+  const preview = full ?? item.shown;
   return (
     <li className="flex flex-wrap items-center gap-2 py-1.5">
       <code className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800">
@@ -49,12 +80,18 @@ function HeldActionRow({ item }: { item: HeldAction }) {
       <span className="ml-auto flex items-center gap-2">
         {state === "waiting" && (
           <>
-            <button
-              className="btn-gold btn-sm min-h-[36px]"
-              onClick={() => decide("allow")}
-            >
-              Allow once
-            </button>
+            {full !== null ? (
+              <button
+                className="btn-gold btn-sm min-h-[36px]"
+                onClick={() => decide("allow")}
+              >
+                Allow once
+              </button>
+            ) : (
+              <button className="btn-secondary btn-sm min-h-[36px]" onClick={loadAll}>
+                Read all parameters
+              </button>
+            )}
             <button
               className="btn-secondary btn-sm min-h-[36px]"
               onClick={() => decide("deny")}
@@ -74,6 +111,20 @@ function HeldActionRow({ item }: { item: HeldAction }) {
           <span className="text-2xs text-gray-500">Already decided or expired</span>
         )}
       </span>
+      {preview && (
+        <details className="w-full" open={full !== null && full.length < 400}>
+          <summary className="text-2xs text-gray-500 dark:text-gray-400 cursor-pointer">
+            What it will do
+            {item.params_sha256 && (
+              <span className="font-mono"> · fingerprint {item.params_sha256.slice(0, 12)}</span>
+            )}
+          </summary>
+          <pre className="mt-1 text-2xs whitespace-pre-wrap break-all rounded bg-gray-50 dark:bg-zinc-900 p-2 max-h-64 overflow-auto">
+            {preview}
+            {full === null && "\n… (cut short)"}
+          </pre>
+        </details>
+      )}
     </li>
   );
 }

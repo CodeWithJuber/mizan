@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "MIZAN (ميزان) - Agentic Personal AI",
-  "description": "Production-ready agentic AI with Quranic Cognitive Architecture",
+  "description": "MIZAN's API. Sign in with POST /api/auth/login and send `Authorization: Bearer <token>` (or `X-API-Key`). Who may call each route: docs/api-reference.md. Measured reliability: /api/public/reliability.",
   "version": "3.3.0"
  },
  "paths": {
@@ -80,6 +80,163 @@
      }
     },
     "x-mizan-access": "public"
+   }
+  },
+  "/api/auth/me": {
+   "get": {
+    "summary": "Auth Me",
+    "description": "Who this credential belongs to, its roles, and when the token expires.",
+    "operationId": "auth_me_api_auth_me_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "summary": "Logout",
+    "description": "End this token now (it stays revoked across restarts); with\n``everywhere``, every token the account was given before now.",
+    "operationId": "logout_api_auth_logout_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/LogoutRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Req"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
    }
   },
   "/api/auth/api-key": {
@@ -180,9 +337,42 @@
   "/api/agents": {
    "get": {
     "summary": "List Agents",
-    "description": "List all agents with their Nafs profile",
+    "description": "List all agents with their Nafs profile; ``detail=false`` gives each in a\nfew fields, and ``limit``/``offset`` page through them.",
     "operationId": "list_agents_api_agents_get",
     "parameters": [
+     {
+      "name": "detail",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": true,
+       "title": "Detail"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 200,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     },
      {
       "name": "authorization",
       "in": "header",
@@ -4139,6 +4329,420 @@
     ]
    }
   },
+  "/api/bab/email": {
+   "get": {
+    "summary": "Email Status",
+    "description": "Whether MIZAN reads its own mailbox, its address, and whether your address is linked.",
+    "operationId": "email_status_api_bab_email_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/bab/email/link": {
+   "post": {
+    "summary": "Email Link",
+    "description": "A one-time code (10 minutes): mail \"link <code>\" to MIZAN from your own address.",
+    "operationId": "email_link_api_bab_email_link_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "delete": {
+    "summary": "Email Unlink",
+    "operationId": "email_unlink_api_bab_email_link_delete",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/bab/whatsapp": {
+   "get": {
+    "summary": "Whatsapp Status",
+    "description": "Whether MIZAN is on WhatsApp, your linked number, and what Meta's terms\nallow for it: assistant (compelled markets) or ancillary (notices only).",
+    "operationId": "whatsapp_status_api_bab_whatsapp_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/bab/whatsapp/link": {
+   "post": {
+    "summary": "Whatsapp Link",
+    "description": "A one-time code (10 minutes): send \"link <code>\" to MIZAN's WhatsApp number.",
+    "operationId": "whatsapp_link_api_bab_whatsapp_link_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "delete": {
+    "summary": "Whatsapp Unlink",
+    "operationId": "whatsapp_unlink_api_bab_whatsapp_link_delete",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/muraqabah": {
    "get": {
     "summary": "Muraqabah Overview",
@@ -6529,14 +7133,36 @@
   "/api/status": {
    "get": {
     "summary": "System Status",
-    "description": "Full system status - Mizan dashboard",
+    "description": "Full system status - Mizan dashboard; ``detail=false`` lists each agent\nin a few fields.",
     "operationId": "system_status_api_status_get",
+    "parameters": [
+     {
+      "name": "detail",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": true,
+       "title": "Detail"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
        }
       }
      }
@@ -8904,6 +9530,40 @@
       "apiKey": []
      }
     ]
+   }
+  },
+  "/api/public/whatsapp": {
+   "get": {
+    "summary": "Whatsapp Verify",
+    "description": "Meta's webhook subscription check (hub.mode, hub.verify_token, hub.challenge).",
+    "operationId": "whatsapp_verify_api_public_whatsapp_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
+   },
+   "post": {
+    "summary": "Whatsapp Webhook",
+    "description": "Meta's webhook: accepted only when signed with the app secret.",
+    "operationId": "whatsapp_webhook_api_public_whatsapp_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
    }
   },
   "/api/public/reliability": {
@@ -19353,6 +20013,18 @@
       "type": "string",
       "pattern": "^(allow|deny)$",
       "title": "Decision"
+     },
+     "params_sha256": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[0-9a-f]{12,64}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params Sha256"
      }
     },
     "type": "object",
@@ -19559,6 +20231,17 @@
      "password"
     ],
     "title": "LoginRequest"
+   },
+   "LogoutRequest": {
+    "properties": {
+     "everywhere": {
+      "type": "boolean",
+      "title": "Everywhere",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "LogoutRequest"
    },
    "LookupResponse": {
     "properties": {
@@ -21118,13 +21801,22 @@
       "type": "array",
       "maxItems": 4,
       "title": "Images"
+     },
+     "thinking": {
+      "type": "boolean",
+      "title": "Thinking",
+      "default": false
+     },
+     "stateless": {
+      "type": "boolean",
+      "title": "Stateless",
+      "default": false
      }
     },
     "type": "object",
     "required": [
      "session_id",
-     "content",
-     "request_id"
+     "content"
     ],
     "title": "StreamChatMessage"
    },

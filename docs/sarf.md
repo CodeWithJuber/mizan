@@ -2,8 +2,8 @@
 
 Sarf (صرف, morphology) reads an Arabic word's root, pattern (wazn), part of
 speech and meaning from the **Quranic Arabic Corpus**. It never guesses by rule.
-`POST /api/v1/root-analyze` uses it, so the API gives the same answer as the
-corpus.
+`POST /api/v1/root-analyze` and the chat both use it, so they always give the
+same answer.
 
 The live benchmark of 27 October 2026 found the old analyzer, a rule-based
 prefix stripper, dropping the first radical: كتب → تب, كاتب → اتب, مكتوب → مكت.
@@ -47,6 +47,32 @@ Every answer names its source: *Quranic Arabic Corpus (corpus.quran.com), GPL*.
      (مكتبة → ك-ت-ب, مَفْعَلَة, noun).
 3. **A root's meaning** is the corpus's own glosses of its most frequent words,
    for example ك-ت-ب: "the book; a book; the scripture".
+
+## In the chat
+
+A question about a word's root, wazn or part of speech is answered from the
+same analyzer, never from the model. Examples:
+- "كاتب ka root kya hai?"
+- "ما جذر كلمة يستغفرون؟"
+- "What is the wazn of استغفر?"
+
+How MIZAN recognises such a question:
+- **The question.** Qasd's yes/no facet `sarf` (seeds in five languages)
+  decides it. It is asked only when no other request in the message is
+  decisive, so "قل هو الله أحد" stays a Quran quote.
+- **The words asked about.** These are the Arabic words that are not part of
+  the question's own frame. The frame is ما، جذر، كلمة and the like: the Arabic
+  words that appear in more than one of the seeds.
+
+The answer gives, for each word:
+- root, wazn and part of speech, with the word's own gloss;
+- what the root means in the Quran, and how many of its words there are;
+- the other readings the Quran has, with their shares;
+- a note when the word is not in the Quran, so the reading is the corpus's
+  most probable one.
+
+It ends naming the corpus. Isnad grades it sahih ("read by MIZAN from the
+Quranic Arabic Corpus").
 
 ## The API
 

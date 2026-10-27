@@ -53,6 +53,7 @@ from . import (
     qasd,
     qiyas,
     quran,
+    sarf,
     shahid,
     silsila,
     taallum,
@@ -707,6 +708,66 @@ class Tadbir:
             )
         text += f"\n\n_{phrase('computed', u.language)}_"
         return Outcome(text, True, {"expression": expression, "value": rendered})
+
+    async def _sarf(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Root, wazn, part of speech and meaning of Arabic words, read from the
+        Quranic Arabic Corpus: the analyzer /api/v1/root-analyze uses."""
+        await self._begin(
+            ["Understand the question (Fahm)", "Read the Quranic Arabic Corpus (MIZAN)", "Reply"]
+        )
+        try:
+            corpus = await sarf.corpus()
+        except sarf.Unavailable as exc:
+            return Outcome(phrase("sarf_unavailable", u.language, reason=str(exc)), False, {})
+        await self._step()
+        lines: list[str] = []
+        found = []
+        for word in u.entities.get("words") or []:
+            item = sarf.analyze_word(corpus, word)
+            found.append(item)
+            if not item.get("root"):
+                lines.append(phrase("sarf_no_root", u.language, word=word, pos=item.get("pos", "")))
+                continue
+            lines.append(
+                phrase(
+                    "sarf_word",
+                    u.language,
+                    word=word,
+                    root=item["root_letters"],
+                    pattern=item.get("pattern") or "—",
+                    pos=item.get("pos", ""),
+                )
+                + (f" · “{item['gloss']}”" if item.get("gloss") else "")
+            )
+            if item.get("meaning"):
+                lines.append(
+                    phrase(
+                        "sarf_meaning",
+                        u.language,
+                        meaning=item["meaning"],
+                        count=item.get("root_occurrences", 0),
+                    )
+                )
+            for other in item.get("alternatives") or []:
+                lines.append(
+                    phrase(
+                        "sarf_also",
+                        u.language,
+                        pattern=other.get("pattern") or "—",
+                        pos=other.get("pos", ""),
+                        share=round(100 * float(other.get("share") or 0)),
+                    )
+                )
+            if item.get("source") == "inferred":
+                lines.append(phrase("sarf_inferred", u.language))
+        lines.append(f"\n_{phrase('sarf_source', u.language)}_")
+        facts = {
+            "words": [
+                {key: item.get(key) for key in ("surface", "root_letters", "pattern", "pos")}
+                for item in found
+            ]
+        }
+        return Outcome("\n".join(lines), True, facts)
 
     async def _run(self, code: str, language: str) -> dict:
         return await self._tool(

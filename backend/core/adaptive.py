@@ -349,6 +349,10 @@ class AdaptiveStateStore:
         return json.loads(row[0]) if row else None
 
     def put(self, key: str, value: dict) -> None:
+        from memory import stateless
+
+        if stateless.active():
+            return  # an evaluation run learns nothing (memory/stateless.py)
         self._memory[key] = value
         if not self.db_path:
             return

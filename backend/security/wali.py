@@ -149,6 +149,19 @@ class RateLimiter:
 
         return False
 
+    def peek(self, key: str) -> float:
+        """The tokens this key has now, without spending one."""
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            return float(self.burst)
+        elapsed = time.time() - bucket["last_refill"]
+        return float(min(self.burst, bucket["tokens"] + elapsed * (self.per_minute / 60.0)))
+
+    def wait_seconds(self, key: str) -> int:
+        """Seconds until this key has a token again (0 when it has one)."""
+        missing = 1 - self.peek(key)
+        return 0 if missing <= 0 else max(1, int(missing * 60 / self.per_minute + 0.999))
+
     def cleanup(self, max_age_seconds: int = 3600):
         """Remove stale entries"""
         now = time.time()

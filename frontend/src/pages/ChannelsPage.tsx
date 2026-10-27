@@ -14,7 +14,9 @@ import type {
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
+import { EmailLink } from "../components/EmailLink";
 import { TelegramLink } from "../components/TelegramLink";
+import { WhatsAppLink } from "../components/WhatsAppLink";
 import { NotificationsCard } from "../components/NotificationsCard";
 
 const CHANNEL_TYPES: Record<
@@ -41,6 +43,17 @@ const CHANNEL_TYPES: Record<
       text: "text-sky-500",
       bg: "bg-sky-500/10",
       border: "border-sky-500/30",
+    },
+  },
+  email: {
+    name: "Email",
+    arabic: "بريد",
+    color: "#b45309",
+    icon: "✉️",
+    tw: {
+      text: "text-amber-600",
+      bg: "bg-amber-500/10",
+      border: "border-amber-500/30",
     },
   },
   discord: {
@@ -276,6 +289,8 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
         <div className="mb-4 grid gap-3 lg:grid-cols-2">
           <NotificationsCard api={api} />
           <TelegramLink api={api} />
+          <EmailLink api={api} />
+          <WhatsAppLink api={api} />
         </div>
         <div className="card-grid">
           {Object.entries(CHANNEL_TYPES).map(([type, info]) => {

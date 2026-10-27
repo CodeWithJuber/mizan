@@ -2,7 +2,7 @@
 
 Debug mode sends one message to two places and shows the answers side by side:
 
-- **Base model**: the same provider and model MIZAN uses. It gets one plain system prompt ("You are a helpful assistant."), no tools and no memory.
+- **Base model**: the same provider and model MIZAN uses. It gets one plain system prompt ("You are a helpful assistant."), no tools and no memory, and an output limit of 4096 tokens. A reasoning model can spend that whole limit thinking; its arm then says "No answer: the model reached its 4096-token output limit" (`stop_reason: max_tokens`) instead of a bare "No answer". On production on 27 October this happened for the sequence `13, 26, 64, 118, 274, ?, …`: 62 s and 4,160 tokens, no answer, while MIZAN answered 376 in 0.5 s with no model call.
 - **MIZAN**: the agent, run the way a chat runs it, with a trace bound so every step is recorded.
 
 MIZAN then checks both answers against what it established itself.
@@ -76,3 +76,12 @@ When no trace is bound, recording does nothing. Ordinary chats pay nothing for i
 - `session_id` gives both arms that chat's earlier turns. Nothing is saved to the chat.
 - `permission_mode`: with `auto`, MIZAN runs the tools it chooses, such as sandboxed code and project edits. `plan` is read-only.
 - **Storage:** comparisons are kept per user in `$MIZAN_DATA_DIR/private/<user hash>/debug_runs.db`. Long text is trimmed to 6,000 characters. They are never saved to chat history and never become training data.
+
+## Comparisons change nothing
+
+A comparison is an evaluation, so it is stateless (`memory/stateless.py`):
+- MIZAN's arm recalls none of your other chats;
+- it learns nothing from the run (no learned wording, routing or programs);
+- it never becomes a training candidate.
+
+The same holds for a chat sent with `stateless: true`.

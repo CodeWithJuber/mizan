@@ -37,8 +37,9 @@ POLL_SECONDS = 50
 
 # (owner, session, text) -> (reply, held actions [{id, tool, reason}])
 RunTurn = Callable[[str, str, str], Awaitable[tuple[str, list[dict]]]]
-# (owner, held id, "allow" | "deny") -> a line for the user
-Decide = Callable[[str, str, str], Awaitable[str]]
+# (owner, held id, allow | deny, start of the SHA-256 of the parameters shown)
+# -> a line for the user
+Decide = Callable[[str, str, str, str | None], Awaitable[str]]
 # (owner, session, audio, mime) -> the words heard; ValueError carries a line for the user
 Hear = Callable[[str, str, bytes, str], Awaitable[str]]
 MAX_VOICE_BYTES = 2 * 1024 * 1024
@@ -64,23 +65,33 @@ def chunks(text: str, size: int = MAX_TEXT) -> list[str]:
     return parts
 
 
-def held_buttons(held: list[dict]) -> dict | None:
-    if not held:
-        return None
-    rows = [
-        [
-            {
-                "text": f"Allow once: {item['tool']}"[:60],
-                "callback_data": f"held:{item['id']}:allow",
-            },
-            {"text": "Deny", "callback_data": f"held:{item['id']}:deny"},
-        ]
-        for item in held[:5]
-    ]
-    return {"inline_keyboard": rows}
+FINGERPRINT = 12  # hex characters of the parameters' SHA-256 an Allow button carries
 
 
-_HELD = re.compile(r"^held:([0-9a-f]{32}):(allow|deny)$")
+def held_card(item: dict) -> tuple[str, dict]:
+    """One held action as its owner decides on it: the tool, why, the exact
+    parameters and their fingerprint. Allow is offered only when every
+    parameter fits on the card, and it is bound to that fingerprint, so a
+    press allows exactly what was shown."""
+    digest = str(item.get("params_sha256") or "")
+    lines = [f"MIZAN wants to run: {item['tool']}"]
+    if item.get("reason"):
+        lines.append(f"Why: {item['reason']}")
+    if item.get("shown"):
+        lines.append(str(item["shown"]))
+    deny = {"text": "Deny", "callback_data": f"held:{item['id']}:deny"}
+    if item.get("complete") and len(digest) >= FINGERPRINT:
+        lines.append(f"Fingerprint: {digest[:FINGERPRINT]}")
+        allow = {
+            "text": f"Allow once: {item['tool']}"[:60],
+            "callback_data": f"held:{item['id']}:allow:{digest[:FINGERPRINT]}",
+        }
+        return "\n".join(lines), {"inline_keyboard": [[allow, deny]]}
+    lines.append("Too long to show here in full: open Held actions in MIZAN to read and allow it.")
+    return "\n".join(lines), {"inline_keyboard": [[deny]]}
+
+
+_HELD = re.compile(rf"^held:([0-9a-f]{{32}}):(allow|deny)(?::([0-9a-f]{{{FINGERPRINT}}}))?$")
 
 
 class TelegramBot:
@@ -203,7 +214,14 @@ class TelegramBot:
         async with lock, self._gate:
             await self._typing(chat_id)
             reply, held = await self.run_turn(owner, link["session_id"], text)
-        await self.send(chat_id, reply, held_buttons(held))
+        await self.send(chat_id, reply)
+        await self.send_held(chat_id, held)
+
+    async def send_held(self, chat_id: Any, held: list[dict]) -> None:
+        """Each held action on its own card with its own buttons."""
+        for item in held[:5]:
+            text, buttons = held_card(item)
+            await self.send(chat_id, text, buttons)
 
     async def _heard(self, owner: str, session: str, voice: dict) -> str:
         """Download a voice note (sizes checked before and while reading) and hear it."""
@@ -235,7 +253,12 @@ class TelegramBot:
         link = self.store.link(CHANNEL, sender)
         answer = "That button is not yours."
         if match and link is not None:
-            answer = await self.decide(link["owner_id"], match.group(1), match.group(2))
+            held_id, decision, seen = match.groups()
+            if decision == "allow" and seen is None:
+                # A button from before cards carried a fingerprint: allow only what was shown.
+                answer = "Open Held actions in MIZAN to read and allow this one."
+            else:
+                answer = await self.decide(link["owner_id"], held_id, decision, seen)
         await self.call("answerCallbackQuery", callback_query_id=query.get("id"), text=answer[:180])
         message = query.get("message") or {}
         if link is not None and message.get("chat", {}).get("id") is not None:

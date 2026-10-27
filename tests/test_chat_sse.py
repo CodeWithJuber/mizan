@@ -337,7 +337,7 @@ async def test_status_for_post_never_received_does_not_claim_session(api):
 
 def test_unicode_completion_usage_and_no_websocket_leaks(api):
     main, client, tokens, users, memory, agent, manager = api
-    body = message(model_override="ruh-remote")
+    body = message(model_override="ruh-remote", thinking=True)
     response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -1206,3 +1206,44 @@ def test_chat_memory_summary_counts_only_authenticated_owners(api):
     assert response.json()["owned_sessions"] == 1
     assert "private content" not in response.text
     assert client.get("/api/chat/memory/summary").status_code == 401
+
+
+def test_a_message_without_request_id_gets_one_made_and_returned(api):
+    # The live benchmark (27 Oct): a client that sent no request_id got 422.
+    _, client, tokens, _, _, _, _ = api
+    body = message()
+    del body["request_id"]
+    response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+    assert response.status_code == 200
+    made = {event["request_id"] for event in frames(response.text)}
+    assert len(made) == 1 and uuid.UUID(made.pop())
+
+
+def test_the_default_stream_carries_the_answer_not_the_agents_telemetry(api):
+    # The live benchmark (27 Oct): "Lawwama voice dominant (confidence: 46%)"
+    # and similar scores were in every stream. They are sent only when asked for.
+    _, client, tokens, _, _, _, _ = api
+    response = client.post("/api/chat/stream", json=message(), headers=headers(tokens["alice"]))
+    events = frames(response.text)
+    assert not [event for event in events if event["type"] == "thinking"]
+    final = events[-1]
+    assert final["type"] == "chat_complete" and final["response"]
+    assert "cognitive" not in final and "thinking_trace" not in final
+
+
+def test_a_stateless_message_recalls_nothing_and_says_so(api, monkeypatch):
+    main, client, tokens, _, memory, _, _ = api
+    from memory import stateless
+
+    calls = []
+
+    async def recall(user_id, task, exclude_session=None):
+        calls.append(stateless.active())
+        return [{"session_id": "other", "content": "a private note", "created_at": ""}]
+
+    monkeypatch.setattr(memory, "recall_conversations", recall)
+    response = client.post(
+        "/api/chat/stream", json=message(stateless=True), headers=headers(tokens["alice"])
+    )
+    assert response.status_code == 200
+    assert calls == []  # never asked for the user's other chats

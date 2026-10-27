@@ -2955,12 +2955,23 @@ Match the requested depth and self-correct errors."""
                     for item in recalled[:5]
                     if isinstance(item, dict)
                 ]
+            from memory import stateless
+
+            # What this run kept: an evaluation run recalls, learns and captures
+            # nothing (memory/stateless.py).
+            result["usage"]["memory"] = {
+                "stateless": stateless.active(),
+                "recalled": len(recalled) if result.get("orchestrator") != "mizan" else 0,
+                "learning": not stateless.active(),
+                "training": stateless.trains(),
+            }
             # Capture successful chat pairs in the authenticated user's own
             # candidate store. Capture is not review, training or promotion.
             if (
                 result.get("success")
                 and result.get("capture_eligible", False)
                 and (context or {}).get("session_id")
+                and stateless.trains()
             ):
                 from security.auth import current_user_id
 

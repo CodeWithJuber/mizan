@@ -25,6 +25,13 @@ When a call ends, MIZAN records what it cost:
 
 Each settled call also updates the model's learned input ratio and output size.
 
+## Fixed-price actions
+
+A paid action that is not a model call, such as a WhatsApp template message
+([Bab](bab.md)), goes through `charge_fee`: it is sent only when the owner's
+daily and monthly limits (with what is in flight) leave room for its price,
+and it is recorded in the same ledger (`source: fee`).
+
 ## Prices
 
 `backend/api/prices.py` holds the list prices, in this order:

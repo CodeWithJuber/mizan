@@ -128,6 +128,9 @@ async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
         "error": None,
         "usage": build_usage_block({"response": response, "latency_ms": round(latency, 1)}),
         "latency_ms": round(latency, 1),
+        # A reasoning model can spend the whole output limit before it answers.
+        "stop_reason": getattr(response, "stop_reason", None),
+        "max_tokens": max_tokens,
         "system": BASE_SYSTEM,
         "model_calls": 1,
         "tool_calls": 0,
@@ -356,11 +359,16 @@ def checks(prompt: str, base: dict, mizan: dict) -> dict:
 
 
 async def compare(agent: Any, prompt: str, context: dict, history: list[dict]) -> dict:
-    """Both arms at once; the base arm never shares MIZAN's trace or usage."""
-    # Created before MIZAN's trace is bound, so the base arm records nothing there.
-    base_task = asyncio.create_task(base_arm(agent, prompt, history))
-    mizan = await mizan_arm(agent, prompt, context)
-    base = await base_task
+    """Both arms at once; the base arm never shares MIZAN's trace or usage.
+    A comparison is an evaluation: MIZAN learns nothing from it and recalls no
+    other chat (memory/stateless.py)."""
+    from memory import stateless
+
+    with stateless.bind():
+        # Created before MIZAN's trace is bound, so the base arm records nothing there.
+        base_task = asyncio.create_task(base_arm(agent, prompt, history))
+        mizan = await mizan_arm(agent, prompt, context)
+        base = await base_task
     return {
         "id": uuid.uuid4().hex,
         "created_at": time.time(),

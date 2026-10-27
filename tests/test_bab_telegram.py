@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from gateway.store import BabStore
-from gateway.telegram import TelegramBot, chunks, held_buttons
+from gateway.telegram import TelegramBot, chunks, held_card
 
 
 class FakeTelegram:
@@ -46,10 +46,19 @@ def make_bot(store, fake, turns=None, decisions=None):
 
     async def run_turn(owner, session, text):
         turns.append((owner, session, text))
-        return f"answer to {text[:20]}", [{"id": "a" * 32, "tool": "bash"}]
+        return f"answer to {text[:20]}", [
+            {
+                "id": "a" * 32,
+                "tool": "bash",
+                "reason": "the watcher asked to clean up",
+                "shown": '{\n "command": "rm -rf ~/Downloads/*"\n}',
+                "complete": True,
+                "params_sha256": "c" * 64,
+            }
+        ]
 
-    async def decide(owner, held_id, decision):
-        decisions.append((owner, held_id, decision))
+    async def decide(owner, held_id, decision, seen):
+        decisions.append((owner, held_id, decision, seen))
         return "Allowed: bash ran once."
 
     return TelegramBot("test-token", store, run_turn, decide, transport=httpx.MockTransport(fake))
@@ -112,10 +121,13 @@ async def test_a_linked_message_runs_a_turn_and_shows_held_actions(store):
         and session.startswith("telegram-")
         and text == "Clean my downloads folder"
     )
-    reply = fake.sent()[-1]
-    assert reply["text"].startswith("answer to")
-    buttons = reply["reply_markup"]["inline_keyboard"][0]
-    assert buttons[0]["callback_data"] == f"held:{'a' * 32}:allow"
+    reply, card = fake.sent()[-2:]
+    assert reply["text"].startswith("answer to") and "reply_markup" not in reply
+    # The card shows exactly what would run, and Allow is bound to its fingerprint.
+    assert "rm -rf ~/Downloads/*" in card["text"] and "Fingerprint: cccccccccccc" in card["text"]
+    buttons = card["reply_markup"]["inline_keyboard"][0]
+    assert buttons[0]["callback_data"] == f"held:{'a' * 32}:allow:{'c' * 12}"
+    assert buttons[1]["callback_data"] == f"held:{'a' * 32}:deny"
     assert ("sendChatAction", {"chat_id": 42, "action": "typing"}) in fake.calls
 
 
@@ -138,12 +150,12 @@ async def test_only_the_linked_owner_can_press_a_held_button(store):
         "callback_query": {
             "id": "cb1",
             "from": {"id": 42},
-            "data": f"held:{'b' * 32}:allow",
+            "data": f"held:{'b' * 32}:allow:{'d' * 12}",
             "message": {"chat": {"id": 42}},
         }
     }
     await bot.handle(press)
-    assert decisions == [("owner-1", "b" * 32, "allow")]
+    assert decisions == [("owner-1", "b" * 32, "allow", "d" * 12)]
     stranger = json.loads(json.dumps(press))
     stranger["callback_query"]["from"]["id"] = 99
     await bot.handle(stranger)
@@ -183,7 +195,31 @@ def test_long_replies_are_split_at_boundaries():
     parts = chunks(text, 4000)
     assert all(len(part) <= 4000 for part in parts) and len(parts) > 1
     assert " ".join(parts).replace("  ", " ") == text
-    assert held_buttons([]) is None
+    # Parameters too long for a card: no Allow from the chat app, only Deny.
+    text, buttons = held_card(
+        {"id": "e" * 32, "tool": "workspace_write", "shown": "x" * 1500, "complete": False}
+    )
+    assert "open Held actions in MIZAN" in text
+    assert [b["text"] for b in buttons["inline_keyboard"][0]] == ["Deny"]
+
+
+async def test_an_allow_button_without_a_fingerprint_allows_nothing(store):
+    fake, decisions = FakeTelegram(), []
+    bot = make_bot(store, fake, decisions=decisions)
+    store.redeem(store.new_code("owner-1", "telegram"), "telegram", "42", "42")
+    await bot.handle(
+        {
+            "callback_query": {
+                "id": "cb2",
+                "from": {"id": 42},
+                "data": f"held:{'b' * 32}:allow",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+    assert decisions == []
+    answers = [body["text"] for method, body in fake.calls if method == "answerCallbackQuery"]
+    assert "Open Held actions in MIZAN" in answers[-1]
 
 
 async def test_a_telegram_turn_is_the_web_chat_turn_with_held_actions(tmp_path, monkeypatch):

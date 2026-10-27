@@ -200,7 +200,11 @@ async def run_suite(
                 await maybe
 
     approvals = ApprovalContext(owner, f"imtihan-{uuid.uuid4().hex}", "auto")
-    with bind_approvals(approvals), bind_timezone("UTC"):
+    from memory import stateless
+
+    # A test must not teach MIZAN its own answers, recall the owner's chats, or
+    # become training data (memory/stateless.py).
+    with bind_approvals(approvals), bind_timezone("UTC"), stateless.bind():
         await asyncio.gather(
             *(one(number, attempt, task) for number, (attempt, task) in enumerate(jobs))
         )
@@ -345,12 +349,15 @@ def cancel(run_id: str) -> bool:
 
 
 async def runs() -> list[dict]:
+    # A finished run is listed from memory until it is saved, as ``get`` reads it.
     live = [
         {**_summary(run), "progress": run.get("progress")}
         for run in _JOBS.values()
-        if run["status"] == "running"
+        if run["status"] == "running" or not run.get("saved")
     ]
-    return live + await asyncio.to_thread(_list)
+    shown = {run["id"] for run in live}
+    stored = [run for run in await asyncio.to_thread(_list) if run["id"] not in shown]
+    return sorted(live + stored, key=lambda run: -(run.get("created_at") or 0))
 
 
 async def get(run_id: str) -> dict | None:

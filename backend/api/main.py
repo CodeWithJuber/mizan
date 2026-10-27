@@ -9,13 +9,14 @@ Secured with Wali Guardian, Izn Permissions, and Input Validation
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
 import sys
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,10 +34,13 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -106,7 +110,7 @@ from security.auth import (
 )
 from security.izn import IznPermission
 from security.validation import InputValidator
-from security.wali import SecurityConfig, WaliGuardian
+from security.wali import RateLimiter, SecurityConfig, WaliGuardian
 from skills.registry import SkillRegistry
 from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue, QueuedTask
@@ -414,6 +418,42 @@ async def lifespan(app: FastAPI):
         )
         telegram_task = asyncio.create_task(_telegram_bot.run(telegram_stop))
 
+    # Bab: email, when MIZAN's own mailbox is configured (IMAP polling + SMTP).
+    mail_task = None
+    if os.getenv("MIZAN_EMAIL", "on").lower() not in {"off", "0", "false", "no"}:
+        from gateway import mail as bab_mail
+
+        mail_config = bab_mail.MailConfig.from_env()
+        if mail_config is not None:
+            global _mail_bot
+            from gateway import store as bab_mail_store
+
+            _mail_bot = bab_mail.MailBot(
+                mail_config,
+                bab_mail_store.store(),
+                functools.partial(_bab_turn, channel="email"),
+            )
+            mail_task = asyncio.create_task(_mail_bot.run(telegram_stop))
+
+    # Bab: WhatsApp (official Cloud API, webhook), when Meta's credentials are set.
+    from gateway import whatsapp as bab_whatsapp
+
+    whatsapp_config = bab_whatsapp.WhatsAppConfig.from_env()
+    if whatsapp_config is not None and os.getenv("MIZAN_WHATSAPP", "on").lower() not in {
+        "off",
+        "0",
+        "false",
+        "no",
+    }:
+        global _whatsapp_bot
+        from gateway import store as bab_whatsapp_store
+
+        _whatsapp_bot = bab_whatsapp.WhatsAppBot(
+            whatsapp_config,
+            bab_whatsapp_store.store(),
+            functools.partial(_bab_turn, channel="whatsapp"),
+        )
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -432,8 +472,12 @@ async def lifespan(app: FastAPI):
     self_review_task.cancel()
     watch_task.cancel()
     sakk_task.cancel()
+    telegram_stop.set()
+    if mail_task is not None:
+        mail_task.cancel()
+    if _whatsapp_bot is not None:
+        await _whatsapp_bot.close()
     if telegram_task is not None and _telegram_bot is not None:
-        telegram_stop.set()
         telegram_task.cancel()
         await _telegram_bot.close()
     await learning_service.stop()
@@ -487,6 +531,8 @@ _PUBLIC_API = {
     "/api/v1/root-analyze",
     "/api/v1/tokenize",
     "/api/v1/q28-features",
+    "/api/openapi.json",
+    "/api/docs",
     # Authorization servers redirect the browser here; the single-use OAuth
     # state (not a session) identifies the waiting connector.
     "/api/connectors/oauth/callback",
@@ -565,10 +611,19 @@ async def enforce_api_access(request: HTTPConnection):
 
 app = FastAPI(
     title="MIZAN (ميزان) - Agentic Personal AI",
-    description="Production-ready agentic AI with Quranic Cognitive Architecture",
+    description=(
+        "MIZAN's API. Sign in with POST /api/auth/login and send "
+        "`Authorization: Bearer <token>` (or `X-API-Key`). Who may call each route: "
+        "docs/api-reference.md. Measured reliability: /api/public/reliability."
+    ),
     version=__version__,
     lifespan=lifespan,
     dependencies=[Depends(enforce_api_access)],
+    # Under /api/, where the proxy sends requests to the backend (the site's own
+    # /docs is the web app).
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url=None,
 )
 
 # ===== SECURITY INITIALIZATION =====
@@ -582,9 +637,33 @@ auth = MizanAuth(
 izn = IznPermission()
 validator = InputValidator(max_input_length=security_config.max_input_length)
 
+
+class _OriginBoundCORS(CORSMiddleware):
+    """Starlette sends Access-Control-Allow-Credentials on every response that
+    has an Origin header, matched or not; it is sent here only together with
+    a matched, echoed origin."""
+
+    async def simple_response(self, scope, receive, send, request_headers) -> None:
+        origin = request_headers.get("origin", "")
+        if self.is_allowed_origin(origin):
+            await super().simple_response(scope, receive, send, request_headers)
+            return
+
+        async def without_credentials(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != b"access-control-allow-credentials"
+                ]
+            await send(message)
+
+        await super().simple_response(scope, receive, without_credentials, request_headers)
+
+
 # CORS - configurable, not wildcard
 app.add_middleware(
-    CORSMiddleware,
+    _OriginBoundCORS,
     allow_origins=security_config.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "PUT"],
@@ -615,6 +694,29 @@ task_queue = MizanTaskQueue(db_path=os.getenv("QUEUE_DB_PATH", "/data/mizan_queu
 task_worker: TaskWorker | None = None
 
 
+# ===== AUTHENTICATION BEFORE THE BODY =====
+
+
+@app.middleware("http")
+async def credentials_first(request: Request, call_next):
+    """A request with no valid credential is answered 401 before its body is
+    read, so a malformed body from an unknown caller is never parsed (route
+    dependencies run only after the body). Roles are still checked by
+    ``enforce_api_access``."""
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or not path.startswith("/api/")
+        or path in _PUBLIC_API
+        or path.startswith(_PUBLIC_API_PREFIXES + _OPEN_API_PREFIXES)
+        or auth.extract_token(
+            request.headers.get("authorization"), request.headers.get("x-api-key")
+        )
+    ):
+        return await call_next(request)
+    return JSONResponse(status_code=401, content=error_body(401, "Authentication required"))
+
+
 # ===== SECURITY HEADERS MIDDLEWARE =====
 
 
@@ -641,9 +743,11 @@ async def security_headers_middleware(request: Request, call_next):
     # Strict transport security (HTTPS only)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
-    # Content Security Policy
+    # Content Security Policy (the API's docs page loads Swagger UI from jsDelivr)
+    cdn = " https://cdn.jsdelivr.net" if request.url.path == "/api/docs" else ""
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        f"default-src 'self'; script-src 'self' 'unsafe-inline'{cdn}; "
+        f"style-src 'self' 'unsafe-inline'{cdn}; img-src 'self' data:{cdn and ' https://fastapi.tiangolo.com'}"
     )
 
     # Referrer policy
@@ -658,19 +762,58 @@ async def security_headers_middleware(request: Request, call_next):
 # ===== GLOBAL EXCEPTION HANDLER =====
 
 
+# One error shape on every route: FastAPI's `detail` (what clients already
+# read) and a stable `error` object: a machine code, the status, a sentence.
+_ERROR_CODES = {
+    400: "bad_request",
+    401: "unauthenticated",
+    403: "forbidden",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    413: "too_large",
+    422: "invalid_request",
+    429: "rate_limited",
+    500: "internal",
+    502: "upstream_failed",
+    503: "unavailable",
+}
+
+
+def error_body(status: int, detail: Any) -> dict:
+    message = detail if isinstance(detail, str) else "The request is not valid"
+    return {
+        "detail": detail,
+        "error": {
+            "code": _ERROR_CODES.get(status, "error" if status >= 400 else "ok"),
+            "status": status,
+            "message": message,
+        },
+    }
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_body(exc.status_code, exc.detail),
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content=error_body(422, jsonable_encoder(exc.errors())))
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - never expose stack traces"""
     import traceback
 
     logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc) if os.getenv("DEBUG") else "An unexpected error occurred",
-        },
-    )
+    detail = str(exc) if os.getenv("DEBUG") else "An unexpected error occurred"
+    return JSONResponse(status_code=500, content=error_body(500, detail))
 
 
 # ===== AUTH DEPENDENCY =====
@@ -746,15 +889,24 @@ class ImageIn(BaseModel):
 
 
 class StreamChatMessage(ChatMessage):
-    # Required rather than auto-generated: one browser action keeps one UUID
-    # through ambiguous network failures and never creates a second model call.
-    request_id: uuid.UUID
+    # One UUID per user action: a client that resends it after an ambiguous
+    # network failure never creates a second model call. A client that omits
+    # it gets one made here (sent back in every event), and its retries are
+    # new requests.
+    request_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     workspace_id: str | None = Field(None, min_length=1, max_length=100)
     # Izn for interactive chats: auto | auto_edits | ask | plan. Omitted keeps
     # the legacy behaviour (no prompts) for older clients.
     permission_mode: str | None = Field(None, pattern=r"^(auto|auto_edits|ask|plan)$")
     # Images the user attached (Basar): shown to the model with this message.
     images: list[ImageIn] = Field(default_factory=list, max_length=4)
+    # The agents' internal telemetry ("thinking" events, cognitive scores) is
+    # sent only when asked for (the web app's thinking panel); by default the
+    # stream carries the answer, its status and its receipts.
+    thinking: bool = False
+    # An evaluation: no recall of other chats, nothing learned, nothing captured
+    # as a training candidate (memory/stateless.py). Reported in usage.memory.
+    stateless: bool = False
 
 
 class IntegrationCreate(BaseModel):
@@ -894,15 +1046,46 @@ manager = ConnectionManager(max_connections=security_config.ws_max_connections)
 # ===== AUTH ROUTES =====
 
 
+# Failed sign-ins, counted per client and per account name: five a minute,
+# then 429 with Retry-After (a forwarded client address can be forged, the
+# account name cannot be spread). A successful sign-in costs nothing.
+_login_failures = RateLimiter(per_minute=5, burst=5)
+# Chat messages per signed-in user (each message may start model work).
+_chat_messages = RateLimiter(per_minute=30, burst=10)
+
+
+def _rate_headers(limiter: RateLimiter, key: str) -> dict[str, str]:
+    remaining = max(0, int(limiter.peek(key)))
+    headers = {"RateLimit-Limit": str(limiter.per_minute), "RateLimit-Remaining": str(remaining)}
+    wait = limiter.wait_seconds(key)
+    if wait:
+        headers["Retry-After"] = str(wait)
+        headers["RateLimit-Reset"] = str(wait)
+    return headers
+
+
 @app.post("/api/auth/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     """Authenticate and get JWT token"""
+    client = request.client.host if request.client else "unknown"
+    keys = (f"ip:{client}", f"user:{req.username.casefold()}")
+    for key in keys:
+        if _login_failures.peek(key) < 1:
+            raise HTTPException(
+                429,
+                "Too many failed sign-ins; try again later",
+                headers=_rate_headers(_login_failures, key),
+            )
     user = auth.authenticate(req.username, req.password)
     if not user:
+        for key in keys:
+            _login_failures.check(key)
         wali.audit.log("login_failed", {"username": req.username}, severity="warning")
         # Add delay on failed login to prevent brute force attacks
         await asyncio.sleep(1)
-        raise HTTPException(401, "Invalid credentials")
+        raise HTTPException(
+            401, "Invalid credentials", headers=_rate_headers(_login_failures, keys[1])
+        )
 
     token = auth.create_token(user)
     wali.audit.log("login_success", {"username": req.username, "user_id": user.id})
@@ -921,6 +1104,44 @@ async def register(req: LoginRequest):
     token = auth.create_token(user)
     wali.audit.log("user_registered", {"username": req.username, "user_id": user.id})
     return {"token": token, "user_id": user.id, "username": user.username}
+
+
+@app.get("/api/auth/me")
+async def auth_me(user: TokenPayload = Depends(require_auth)):
+    """Who this credential belongs to, its roles, and when the token expires."""
+    from datetime import UTC, datetime
+
+    def moment(value: float) -> str:
+        return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds")
+
+    api_key = user.jti.startswith("apikey_")
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "roles": user.roles,
+        "credential": "api_key" if api_key else "token",
+        "issued_at": None if api_key else moment(user.iat),
+        "expires_at": None if api_key else moment(user.exp),
+    }
+
+
+class LogoutRequest(BaseModel):
+    # Also end every other token this account was given before now.
+    everywhere: bool = False
+
+
+@app.post("/api/auth/logout")
+async def logout(req: LogoutRequest | None = None, user: TokenPayload = Depends(require_auth)):
+    """End this token now (it stays revoked across restarts); with
+    ``everywhere``, every token the account was given before now."""
+    if user.jti.startswith("apikey_"):
+        raise HTTPException(400, "An API key is not a session: remove the key instead")
+    auth.revoke_token(user.jti, user.exp)
+    everywhere = bool(req and req.everywhere)
+    if everywhere:
+        auth.revoke_all(user.user_id)
+    wali.audit.log("logout", {"user_id": user.user_id, "everywhere": everywhere})
+    return {"logged_out": True, "everywhere": everywhere}
 
 
 @app.post("/api/auth/api-key")
@@ -949,11 +1170,25 @@ async def root():
 # === AGENTS ===
 
 
+_AGENT_SUMMARY = ("id", "name", "role", "state", "nafs_level", "current_task", "model", "load")
+
+
+def _agent_summary(found: dict) -> dict:
+    """An agent in a few fields (the full profile is several kilobytes)."""
+    return {key: found.get(key) for key in _AGENT_SUMMARY if key in found}
+
+
 @app.get("/api/agents")
-async def list_agents(user: TokenPayload = Depends(require_auth)):
-    """List all agents with their Nafs profile"""
+async def list_agents(
+    user: TokenPayload = Depends(require_auth),
+    detail: bool = True,
+    limit: int = Query(200, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List all agents with their Nafs profile; ``detail=false`` gives each in a
+    few fields, and ``limit``/``offset`` page through them."""
     agents_data = []
-    for agent in active_agents.values():
+    for agent in list(active_agents.values())[offset : offset + limit]:
         if user.has_role("admin"):
             d = agent.to_dict()
             d["load"] = balancer.load_weights.get(agent.id, 0)
@@ -962,8 +1197,8 @@ async def list_agents(user: TokenPayload = Depends(require_auth)):
             d = private.to_dict()
             d["id"] = agent.id
             d.pop("system_prompt", None)
-        agents_data.append(d)
-    return {"agents": agents_data, "total": len(agents_data)}
+        agents_data.append(d if detail else _agent_summary(d))
+    return {"agents": agents_data, "total": len(active_agents), "offset": offset}
 
 
 @app.post("/api/agents")
@@ -1405,7 +1640,9 @@ async def chat_context(
     # Chat routes have already appended the current input for persistence.
     # Pass prior turns once; BaseAgent appends the current task itself.
     preferences = await memory.get_chat_preferences(user.user_id)
-    recall_off = any(
+    from memory import stateless
+
+    recall_off = stateless.active() or any(
         item["key"] == "cross_chat_recall" and str(item["value"]).strip().lower() == "off"
         for item in preferences
     )
@@ -1686,6 +1923,12 @@ async def stream_chat(
     outcome; read owned chat history instead.
     """
     request_started = asyncio.get_running_loop().time()
+    if not _chat_messages.check(f"user:{user.user_id}"):
+        raise HTTPException(
+            429,
+            "Too many messages; wait a moment",
+            headers=_rate_headers(_chat_messages, f"user:{user.user_id}"),
+        )
     await authorize_session(req.session_id, user, create=True)
     workspace_context: Any = None
     if req.workspace_id:
@@ -1867,9 +2110,14 @@ async def stream_chat(
             thinking_stream.add_step(
                 trace.request_id, ThinkingPhase(phase), content, confidence, metadata
             )
-            await deliver(
-                "thinking", phase=phase, content=content, confidence=confidence, metadata=metadata
-            )
+            if req.thinking:
+                await deliver(
+                    "thinking",
+                    phase=phase,
+                    content=content,
+                    confidence=confidence,
+                    metadata=metadata,
+                )
 
         async def save_assistant(content: str, metadata: dict):
             nonlocal persistence_failed
@@ -2039,11 +2287,15 @@ async def stream_chat(
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:
-                        context = await chat_context(
-                            user, req.session_id, session, agent, req.content, req.workspace_id
-                        )
+                        from memory import stateless
+
+                        with stateless.bind(req.stateless):
+                            context = await chat_context(
+                                user, req.session_id, session, agent, req.content, req.workspace_id
+                            )
                         await phase_cb("queued")
                         with (
+                            stateless.bind(req.stateless),
                             bind_event_sink(activity_sink),
                             bind_approvals(approval_context),
                             bind_timezone(req.timezone),
@@ -2140,24 +2392,30 @@ async def stream_chat(
                 **chat_completion_receipt(result),
                 agent=agent.name if agent else None,
                 success=True,
-                cognitive={
-                    k: result[k]
-                    for k in (
-                        "nafs_level",
-                        "nafs_name",
-                        "ruh_energy",
-                        "qalb",
-                        "yaqin",
-                        "mizan_label",
-                        "cognitive_method",
-                        "lubb",
-                        "lawwama",
-                        "metrics_kind",
-                        "metric_provenance",
-                    )
-                    if result.get(k) is not None
-                },
-                thinking_trace=completed_trace.to_dict() if completed_trace else None,
+                **(
+                    {
+                        "cognitive": {
+                            k: result[k]
+                            for k in (
+                                "nafs_level",
+                                "nafs_name",
+                                "ruh_energy",
+                                "qalb",
+                                "yaqin",
+                                "mizan_label",
+                                "cognitive_method",
+                                "lubb",
+                                "lawwama",
+                                "metrics_kind",
+                                "metric_provenance",
+                            )
+                            if result.get(k) is not None
+                        },
+                        "thinking_trace": completed_trace.to_dict() if completed_trace else None,
+                    }
+                    if req.thinking
+                    else {}
+                ),
             )
         except asyncio.CancelledError:
             if lease.stop_requested:
@@ -2555,6 +2813,9 @@ async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
 
 class HeldDecision(BaseModel):
     decision: str = Field(..., pattern=r"^(allow|deny)$")
+    # The SHA-256 (or its first 12+ characters) of the parameters you were
+    # shown; given, the decision applies only to exactly those parameters.
+    params_sha256: str | None = Field(None, pattern=r"^[0-9a-f]{12,64}$")
 
 
 @app.get("/api/chat/held")
@@ -2571,22 +2832,30 @@ async def decide_held_action(
 ):
     """Allow or deny one held action. Allowed, it runs exactly once, as it was
     held, through your own agent and its gates; the result is posted to the chat."""
-    outcome = await _decide_held(user, held_id, body.decision)
+    outcome = await _decide_held(user, held_id, body.decision, seen=body.params_sha256)
     if outcome is None:
-        raise HTTPException(404, "No action is waiting for you with that id")
+        raise HTTPException(404, "No action is waiting for you with that id and those parameters")
     return outcome
 
 
-async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict | None:
+async def _decide_held(
+    user: TokenPayload,
+    held_id: str,
+    decision: str,
+    *,
+    seen: str | None = None,
+    via: str = "web",
+) -> dict | None:
     """Claim one held action for its owner and, if allowed, run it once.
-    None when nothing is waiting for this owner under that id."""
+    None when nothing is waiting for this owner under that id (or, with
+    ``seen``, not with the parameters the owner was shown)."""
     import re
 
     from security.approvals import ApprovalContext, bind_approvals, held_store, params_digest
 
     store = held_store()
     item = (
-        store.claim(user.user_id, held_id, decision)
+        store.claim(user.user_id, held_id, decision, via=via, seen=seen)
         if re.fullmatch(r"[0-9a-f]{32}", held_id)
         else None
     )
@@ -2597,7 +2866,14 @@ async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict 
     sakk.record(
         user.user_id,
         "held_decision",
-        {"held": held_id, "tool": item["tool"], "decision": decision},
+        {
+            "held": held_id,
+            "tool": item["tool"],
+            "decision": decision,
+            # The receipt names exactly what was decided on.
+            "params_sha256": item["params_sha256"],
+            "via": via,
+        },
         f"{item['tool']} · {'allowed' if decision == 'allow' else 'denied'} by you",
     )
     session = item["session_id"]
@@ -3163,12 +3439,17 @@ async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
 # === BAB (باب): the user's own MIZAN from outside apps (Telegram) ===
 
 _telegram_bot = None  # gateway.telegram.TelegramBot while the poller runs
+_mail_bot = None  # gateway.mail.MailBot while MIZAN's mailbox is read
+_whatsapp_bot = None  # gateway.whatsapp.WhatsAppBot when Meta's credentials are set
 
 
-async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, list[dict]]:
+async def _bab_turn(
+    owner_id: str, session_id: str, text: str, channel: str = "telegram"
+) -> tuple[str, list[dict]]:
     """One message from a linked outside account: the same turn as the web
     chat, as its owner, saved to their chat. Actions that need a person are
-    held and come back as buttons."""
+    held and come back as buttons (Telegram) or a pointer to MIZAN (email)."""
+    from memory import stateless
     from security import approvals
     from security.approvals import collecting_held
     from tadbir import waqt
@@ -3178,7 +3459,7 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
     if user is None or template is None:
         return "MIZAN cannot answer right now: no agent is running.", []
     await memory.authorize_session(session_id, owner_id, create=True)
-    await memory.save_message(session_id, "user", text, metadata={"channel": "telegram"})
+    await memory.save_message(session_id, "user", text, metadata={"channel": channel})
     agent = await chat_agent_for(user, template)
     session = active_sessions.setdefault(session_id, {"history": []})
     binding = bind_principal(user)
@@ -3188,8 +3469,10 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
         zone = _remembered_zone(owner_id)
         with (
             waqt.bind_timezone(zone),
-            approvals.unattended(owner_id, session_id, "telegram"),
+            approvals.unattended(owner_id, session_id, channel),
             collecting_held() as found,
+            # Meta's terms s.4.7: WhatsApp data never trains or improves a model.
+            stateless.no_training(channel) if channel == "whatsapp" else nullcontext(),
         ):
             result = await agent.execute(text, context)
             held = list(found)
@@ -3199,12 +3482,12 @@ async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, lis
         reply = str(result.get("result") or "").strip() or "—"
         metadata: dict = {
             "status": "complete",
-            "channel": "telegram",
+            "channel": channel,
             "usage": result.get("usage", {}),
         }
     else:
         failure = chat_failure_payload(result)
-        reply, metadata = failure["message"], {"status": "error", "channel": "telegram", **failure}
+        reply, metadata = failure["message"], {"status": "error", "channel": channel, **failure}
     if held:
         metadata["held"] = held
     await memory.save_message(session_id, "assistant", reply, metadata=metadata)
@@ -3227,16 +3510,16 @@ def _remembered_zone(owner_id: str) -> str | None:
         return None
 
 
-async def _bab_decide(owner_id: str, held_id: str, decision: str) -> str:
+async def _bab_decide(owner_id: str, held_id: str, decision: str, seen: str | None) -> str:
     user = _owner_token(owner_id)
     if user is None:
         return "Your MIZAN account is not available."
     try:
-        outcome = await _decide_held(user, held_id, decision)
+        outcome = await _decide_held(user, held_id, decision, seen=seen, via="telegram")
     except HTTPException as exc:
         return str(exc.detail)
     if outcome is None:
-        return "Already decided, or it expired."
+        return "Already decided, expired, or changed since you were shown it."
     if outcome["status"] == "denied":
         return "Denied: it will not run."
     result = outcome.get("result") or {}
@@ -3246,8 +3529,8 @@ async def _bab_decide(owner_id: str, held_id: str, decision: str) -> str:
 
 
 async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
-    """Send a notice to the owner's devices (Web Push) and linked Telegram,
-    with buttons for held actions there."""
+    """Send a notice to the owner's devices (Web Push), linked Telegram (with
+    buttons for held actions there) and linked WhatsApp."""
     from gateway import push
     from gateway import store as bab_store
 
@@ -3268,16 +3551,20 @@ async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
         logger.warning("Push notice not sent: %s", exc)
+    if _whatsapp_bot is not None:
+        try:
+            await _whatsapp_bot.notify(owner_id, text)
+        except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
+            logger.warning("WhatsApp notice not sent: %s", exc)
     bot = _telegram_bot
     if bot is None or not bot.running:
         return
-    from gateway.telegram import held_buttons
-
     link = bab_store.store().link_for_owner("telegram", owner_id)
     if link is None:
         return
     try:
-        await bot.send(link["chat_id"], text, held_buttons(metadata.get("held") or []))
+        await bot.send(link["chat_id"], text)
+        await bot.send_held(link["chat_id"], metadata.get("held") or [])
     except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
         logger.warning("Telegram notice not sent: %s", exc)
 
@@ -3489,6 +3776,97 @@ async def telegram_unlink(user: TokenPayload = Depends(require_auth)):
     from gateway import store as bab_store
 
     return {"unlinked": bab_store.store().unlink("telegram", user.user_id)}
+
+
+@app.get("/api/bab/email")
+async def email_status(user: TokenPayload = Depends(require_auth)):
+    """Whether MIZAN reads its own mailbox, its address, and whether your address is linked."""
+    from gateway import store as bab_store
+
+    bot = _mail_bot
+    link = bab_store.store().link_for_owner("email", user.user_id)
+    return {
+        "available": bool(bot is not None and bot.running),
+        "address": bot.config.address if bot is not None else "",
+        "linked": link is not None,
+        "linked_address": link["external_id"] if link else None,
+        "linked_at": link["linked"] if link else None,
+        "error": getattr(bot, "error", "") if bot is not None else "",
+    }
+
+
+@app.post("/api/bab/email/link")
+async def email_link(user: TokenPayload = Depends(require_auth)):
+    """A one-time code (10 minutes): mail "link <code>" to MIZAN from your own address."""
+    from gateway import store as bab_store
+    from gateway.store import CODE_TTL
+
+    bot = _mail_bot
+    if bot is None or not bot.running:
+        raise HTTPException(503, "MIZAN is not reading a mailbox")
+    code = bab_store.store().new_code(user.user_id, "email")
+    return {
+        "code": code,
+        "address": bot.config.address,
+        "subject": f"link {code}",
+        "expires_in": int(CODE_TTL.total_seconds()),
+    }
+
+
+@app.delete("/api/bab/email/link")
+async def email_unlink(user: TokenPayload = Depends(require_auth)):
+    from gateway import store as bab_store
+
+    return {"unlinked": bab_store.store().unlink("email", user.user_id)}
+
+
+@app.get("/api/bab/whatsapp")
+async def whatsapp_status(user: TokenPayload = Depends(require_auth)):
+    """Whether MIZAN is on WhatsApp, your linked number, and what Meta's terms
+    allow for it: assistant (compelled markets) or ancillary (notices only)."""
+    from gateway import store as bab_store
+    from gateway import whatsapp
+
+    bot = _whatsapp_bot
+    link = bab_store.store().link_for_owner("whatsapp", user.user_id)
+    number = str(link["external_id"]) if link else ""
+    return {
+        "available": bot is not None,
+        "number": os.getenv("MIZAN_WHATSAPP_NUMBER", ""),
+        "linked": link is not None,
+        "linked_number": number or None,
+        "region": whatsapp.region(number) if number else None,
+        "mode": whatsapp.mode(number) if number else None,
+        "error": getattr(bot, "error", "") if bot is not None else "",
+    }
+
+
+@app.post("/api/bab/whatsapp/link")
+async def whatsapp_link(user: TokenPayload = Depends(require_auth)):
+    """A one-time code (10 minutes): send "link <code>" to MIZAN's WhatsApp number."""
+    import urllib.parse
+
+    from gateway import store as bab_store
+    from gateway.store import CODE_TTL
+
+    if _whatsapp_bot is None:
+        raise HTTPException(503, "MIZAN is not on WhatsApp")
+    code = bab_store.store().new_code(user.user_id, "whatsapp")
+    number = "".join(ch for ch in os.getenv("MIZAN_WHATSAPP_NUMBER", "") if ch.isdigit())
+    text = f"link {code}"
+    return {
+        "code": code,
+        "text": text,
+        "url": f"https://wa.me/{number}?text={urllib.parse.quote(text)}" if number else None,
+        "expires_in": int(CODE_TTL.total_seconds()),
+    }
+
+
+@app.delete("/api/bab/whatsapp/link")
+async def whatsapp_unlink(user: TokenPayload = Depends(require_auth)):
+    from gateway import store as bab_store
+
+    return {"unlinked": bab_store.store().unlink("whatsapp", user.user_id)}
 
 
 class PlaceRequest(BaseModel):
@@ -4314,16 +4692,13 @@ async def list_permissions(user: TokenPayload = Depends(require_auth)):
 
 
 @app.get("/api/status")
-async def system_status():
-    """Full system status - Mizan dashboard"""
+async def system_status(detail: bool = True):
+    """Full system status - Mizan dashboard; ``detail=false`` lists each agent
+    in a few fields."""
     agent_stats = []
     for agent in active_agents.values():
-        agent_stats.append(
-            {
-                **agent.to_dict(),
-                "load": balancer.load_weights.get(agent.id, 0),
-            }
-        )
+        found = {**agent.to_dict(), "load": balancer.load_weights.get(agent.id, 0)}
+        agent_stats.append(found if detail else _agent_summary(found))
 
     task_history = await memory.get_task_history(limit=10)
 
@@ -4346,7 +4721,7 @@ async def system_status():
         "provider": get_provider_status(),
         "security": {
             "auth_enabled": True,
-            "rate_limiting": False,
+            "rate_limiting": True,
             "wali_active": True,
             "izn_active": True,
         },
@@ -4699,12 +5074,14 @@ async def update_settings(
 
 _CHANNEL_TOKENS = {
     "telegram": "TELEGRAM_BOT_TOKEN",
+    "email": "MIZAN_EMAIL_PASSWORD",
     "discord": "DISCORD_BOT_TOKEN",
     "whatsapp": "WHATSAPP_TOKEN",
     "slack": "SLACK_APP_TOKEN",
 }
 _CHANNEL_NAMES = {
     "telegram": "Telegram",
+    "email": "Email",
     "discord": "Discord",
     "whatsapp": "WhatsApp",
     "slack": "Slack",
@@ -4714,8 +5091,9 @@ _CHANNEL_NAMES = {
 def _channel_state(name: str) -> dict:
     """What a channel really is: MIZAN reports only what it runs.
 
-    Web chat is always on. No external channel adapter runs yet, so none is
-    reported as connected, whatever token is saved."""
+    Web chat is always on. Telegram and email are connected only while their
+    poller runs; the others are never reported as connected, whatever token
+    is saved."""
     if name == "webchat":
         return {
             "id": "webchat",
@@ -4739,6 +5117,32 @@ def _channel_state(name: str) -> dict:
             "startable": False,
             "has_token": True,
             "detail": "Running. Each user links their own Telegram account under Link Telegram.",
+        }
+    if name == "whatsapp" and _whatsapp_bot is not None:
+        return {
+            "id": name,
+            "type": name,
+            "name": _CHANNEL_NAMES[name],
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "has_token": True,
+            "detail": (
+                "Official Cloud API. Each user links their number under Link WhatsApp; "
+                "it chats only where Meta's terms allow (EEA, Brazil, Türkiye) and sends "
+                "notices elsewhere."
+            ),
+        }
+    if name == "email" and _mail_bot is not None and _mail_bot.running:
+        return {
+            "id": name,
+            "type": name,
+            "name": _CHANNEL_NAMES[name],
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "has_token": True,
+            "detail": "Reading MIZAN's mailbox. Each user links their own address under Link email.",
         }
     return {
         "id": name,
@@ -5157,8 +5561,55 @@ async def imtihan_unpublish(run_id: str, user: TokenPayload = Depends(require_au
 
 def _open_rate_limit(request: Request) -> None:
     client = request.client.host if request.client else "unknown"
-    if not wali.check_rate_limit(f"public:{client}")["allowed"]:
-        raise HTTPException(429, "Too many requests; try again in a minute")
+    found = wali.check_rate_limit(f"public:{client}")
+    if not found["allowed"]:
+        raise HTTPException(
+            429,
+            "Too many requests; try again in a minute",
+            headers={
+                "Retry-After": str(found["retry_after"]),
+                "RateLimit-Limit": str(found["limit"]),
+                "RateLimit-Remaining": "0",
+            },
+        )
+
+
+@app.get("/api/public/whatsapp")
+async def whatsapp_verify(request: Request):
+    """Meta's webhook subscription check (hub.mode, hub.verify_token, hub.challenge)."""
+    from gateway import whatsapp
+
+    _open_rate_limit(request)
+    bot = _whatsapp_bot
+    answer = (
+        whatsapp.challenge(dict(request.query_params), bot.config.verify_token) if bot else None
+    )
+    if answer is None:
+        raise HTTPException(403, "Verification failed")
+    return Response(content=answer, media_type="text/plain")
+
+
+@app.post("/api/public/whatsapp")
+async def whatsapp_webhook(request: Request):
+    """Meta's webhook: accepted only when signed with the app secret."""
+    from gateway import whatsapp
+
+    bot = _whatsapp_bot
+    if bot is None:
+        raise HTTPException(404, "MIZAN is not on WhatsApp")
+    if int(request.headers.get("content-length") or 0) > 1_000_000:
+        raise HTTPException(413, "Too large")
+    body = await request.body()
+    if len(body) > 1_000_000 or not whatsapp.signed(
+        body, request.headers.get("x-hub-signature-256", ""), bot.config.app_secret
+    ):
+        _open_rate_limit(request)  # unsigned callers are limited; Meta is not
+        raise HTTPException(401, "Not signed by Meta")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "Not JSON") from None
+    return {"accepted": bot.accept(payload) if isinstance(payload, dict) else 0}
 
 
 @app.get("/api/public/reliability")

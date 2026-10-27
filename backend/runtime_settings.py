@@ -17,6 +17,7 @@ server's ``.env``; resetting it restores the server's own value.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -247,10 +248,54 @@ SETTINGS: tuple[Setting, ...] = (
     # ── Channels ──
     Setting("TELEGRAM_BOT_TOKEN", "Channels", "Telegram bot token", "secret", "",
             apply="restart"),
+    Setting("MIZAN_EMAIL_ADDRESS", "Channels", "Email: MIZAN's address", "text",
+            "MIZAN's own mailbox. People mail it from their linked address and get the "
+            "answer back by mail.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_USERNAME", "Channels", "Email: sign-in name", "text",
+            "Empty means the address itself.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_PASSWORD", "Channels", "Email: password", "secret",
+            "An app password for the mailbox (never your main password).", "",
+            apply="restart"),
+    Setting("MIZAN_EMAIL_IMAP_HOST", "Channels", "Email: IMAP server", "text",
+            "For example imap.gmail.com (TLS, port 993).", "", apply="restart"),
+    Setting("MIZAN_EMAIL_IMAP_PORT", "Channels", "Email: IMAP port", "int", "", "993",
+            minimum=1, maximum=65535, apply="restart"),
+    Setting("MIZAN_EMAIL_SMTP_HOST", "Channels", "Email: SMTP server", "text",
+            "For example smtp.gmail.com.", "", apply="restart"),
+    Setting("MIZAN_EMAIL_SMTP_PORT", "Channels", "Email: SMTP port", "int",
+            "465 (TLS) or 587 (STARTTLS).", "465", minimum=1, maximum=65535,
+            apply="restart"),
+    Setting("MIZAN_EMAIL_AUTHSERV", "Channels", "Email: receiving server's name", "text",
+            "The name your mail server writes first in Authentication-Results (Gmail: "
+            "mx.google.com). Mail is answered only when that header says dmarc=pass for the "
+            "sender's domain.", "", apply="restart"),
     Setting("DISCORD_BOT_TOKEN", "Channels", "Discord bot token", "secret", "",
             apply="restart"),
     Setting("SLACK_APP_TOKEN", "Channels", "Slack app token", "secret", "", apply="restart"),
-    Setting("WHATSAPP_TOKEN", "Channels", "WhatsApp token", "secret", "", apply="restart"),
+    Setting("WHATSAPP_TOKEN", "Channels", "WhatsApp: access token", "secret",
+            "A permanent System User token for the WhatsApp Cloud API (Meta Business).", "",
+            apply="restart"),
+    Setting("MIZAN_WHATSAPP_PHONE_ID", "Channels", "WhatsApp: phone number ID", "text",
+            "From WhatsApp Manager → API setup.", "", apply="restart"),
+    Setting("MIZAN_WHATSAPP_NUMBER", "Channels", "WhatsApp: MIZAN's number", "text",
+            "Shown to people linking, with country code (e.g. +39 …).", ""),
+    Setting("MIZAN_WHATSAPP_APP_SECRET", "Channels", "WhatsApp: app secret", "secret",
+            "Webhook events are accepted only when signed with it.", "", apply="restart"),
+    Setting("MIZAN_WHATSAPP_VERIFY_TOKEN", "Channels", "WhatsApp: webhook verify token",
+            "secret", "Any random string; enter the same in Meta's webhook settings for "
+            "<public URL>/api/public/whatsapp.", "", apply="restart"),
+    Setting("MIZAN_WHATSAPP_GRAPH_VERSION", "Channels", "WhatsApp: Graph API version",
+            "text", "", "v24.0", apply="restart"),
+    Setting("MIZAN_WHATSAPP_TEMPLATE", "Channels", "WhatsApp: notice template", "text",
+            "An approved template with one body variable, for notices sent outside the "
+            "24-hour window. Empty: such notices go only to the app and Telegram.", "",
+            apply="restart"),
+    Setting("MIZAN_WHATSAPP_TEMPLATE_LANGUAGE", "Channels", "WhatsApp: template language",
+            "text", "", "en", apply="restart"),
+    Setting("MIZAN_WHATSAPP_TEMPLATE_USD", "Channels", "WhatsApp: template price (USD)",
+            "float", "What Meta charges you per template; each is admitted by the owner's "
+            "spending limits before it is sent. Empty: no templates are sent.", "",
+            minimum=0, apply="restart"),
     Setting("MIZAN_STT", "Channels", "Voice input (Sama')", "choice",
             "on lets people speak to MIZAN (the composer microphone and Telegram voice notes). "
             "Speech is turned into text on this server; the audio is kept nowhere.", "on",
@@ -423,7 +468,28 @@ def update(changes: dict[str, Any], actor: str) -> Change:
                         result.model_changed = True
         _write(saved)
     result.restart_required = restart_pending()
+    if result.applied:
+        _receipt(result.applied, actor)
     return result
+
+
+def _receipt(keys: list[str], actor: str) -> None:
+    """A Sakk receipt for every change: which settings, by whom, and an HMAC
+    of their new values (never the values). Channel tokens and allowlists are
+    changed only here, from an administrator's signed-in request; no agent
+    tool reaches this function."""
+    try:
+        from security import sakk
+
+        values = {key: os.environ.get(key) for key in keys}
+        sakk.record(
+            "system",
+            "setting",
+            {"keys": keys, "by": actor, "values": sakk.store().mac("system", values)},
+            f"settings · {', '.join(keys)}"[:120],
+        )
+    except Exception:  # noqa: BLE001 - the change is saved; the receipt is best effort
+        logging.getLogger("mizan.settings").warning("Settings change receipt not written")
 
 
 def restart_pending() -> list[str]:

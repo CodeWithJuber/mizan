@@ -41,6 +41,8 @@ interface Arm {
   verified?: boolean;
   completion_status?: string;
   system?: string;
+  stop_reason?: string | null;
+  max_tokens?: number;
 }
 
 export interface Run {
@@ -154,7 +156,11 @@ function ArmCard({ title, subtitle, arm, badges, quoteChanges, isnad }: {
         ) : arm.text ? (
           <Markdown content={arm.text} />
         ) : (
-          <div className="text-gray-500">No answer</div>
+          <div className="text-gray-500">
+            {arm.stop_reason === "max_tokens"
+              ? `No answer: the model reached its ${arm.max_tokens ?? ""}-token output limit before writing one (reasoning counts toward it)`
+              : "No answer"}
+          </div>
         )}
       </div>
       <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-200 dark:border-zinc-800 pt-2">

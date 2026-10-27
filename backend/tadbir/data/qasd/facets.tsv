@@ -570,3 +570,48 @@ ruling	yes	Kya bina wuzu Quran chhoo sakte hain?
 ruling	yes	Is it permissible to eat food with gelatin?
 ruling	yes	کیا سفر میں نماز قصر کرنا ضروری ہے؟
 ruling	yes	هل يجوز الجمع بين الصلاتين في السفر؟
+# sarf: the user asks for the root, pattern (wazn) or part of speech of an Arabic word; MIZAN reads it from the Quranic Arabic Corpus.
+sarf	yes	What is the root of كاتب?
+sarf	yes	What is the root of the word مكتوب?
+sarf	yes	Give me the root and pattern of مدرسة
+sarf	yes	What is the wazn of استغفر?
+sarf	yes	Analyze the morphology of يستغفرون
+sarf	yes	Which root does the word المسلمون come from?
+sarf	yes	Root and pattern of the Arabic word رحمة
+sarf	yes	Is يوم a noun or a verb?
+sarf	yes	What part of speech is كاتب in Arabic?
+sarf	yes	كاتب ka root kya hai?
+sarf	yes	مكتوب ka wazn batao
+sarf	yes	مدرسة kis root se bana hai?
+sarf	yes	يوم ism hai ya fel?
+sarf	yes	Is lafz ka maadda batao: علم
+sarf	yes	كاتب کا مادہ کیا ہے؟
+sarf	yes	مكتوب کا وزن بتائیں
+sarf	yes	لفظ رحمة کس مادے سے ہے؟
+sarf	yes	كاتب का रूट क्या है?
+sarf	yes	مكتوب शब्द का वज़न बताओ
+sarf	yes	ما جذر كلمة كاتب؟
+sarf	yes	ما وزن كلمة مكتوب؟
+sarf	yes	ما أصل كلمة مدرسة؟
+sarf	yes	هل كلمة يوم اسم أم فعل؟
+sarf	yes	ما جذر ووزن كلمة استغفار؟
+sarf	no	قل هو الله أحد
+sarf	no	Surah Ikhlas ki pehli ayat batao
+sarf	no	Quote ayah 2:255 in Arabic
+sarf	no	Translate السلام عليكم to English
+sarf	no	What does the Quran say about الصبر?
+sarf	no	ما معنى الصبر في القرآن؟
+sarf	no	اكتب لي قصيدة عن المطر
+sarf	no	كم الساعة الآن؟
+sarf	no	ما هو أكبر أقمار زحل؟
+sarf	no	Bukhari 1 dikhao
+sarf	no	Is the hadith اطلبوا العلم ولو في الصين authentic?
+sarf	no	يوم الجمعة ki namaz kab hai?
+sarf	no	Write my name محمد in a nice font
+sarf	no	Assalamualaikum
+sarf	no	السلام عليكم
+sarf	no	hello
+sarf	no	Thanks!
+sarf	no	READY
+sarf	no	What is 17*23?
+sarf	no	Write a Python function that removes duplicates from a list
