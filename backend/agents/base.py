@@ -3433,6 +3433,8 @@ Match the requested depth and self-correct errors."""
                         "provider_status": getattr(e, "status_code", None),
                     }
                     if provider_retry_delay(e, 0) is not None
+                    else {"error_code": "provider_credit", "provider_status": 402}
+                    if getattr(e, "status_code", None) == 402
                     else {}
                 ),
                 "answer_delivered": False,
