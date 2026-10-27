@@ -166,6 +166,29 @@ def _sdk_request_options(timeout_type) -> dict[str, Any]:
     }
 
 
+def _admit(model: str, max_tokens: int, request: Any, **options: Any):
+    """Admit one paid call against the current user's budget (Iqtisad)."""
+    from api import iqtisad
+
+    return iqtisad.admit(model, max_tokens, request, **options)
+
+
+def _close_ticket(ticket: Any, exc: BaseException) -> None:
+    """An explicit HTTP error was rejected before running, so nothing is
+    charged; anything else (a timeout, a dropped stream) may have run upstream
+    and is charged at its bound."""
+    if getattr(exc, "status_code", None) is not None:
+        ticket.release()
+    else:
+        ticket.settle(None)
+
+
+def _anthropic_cache_write() -> float:
+    from api.iqtisad import CACHE_WRITE
+
+    return CACHE_WRITE if _env_flag("MIZAN_ANTHROPIC_PROMPT_CACHE", True) else 1.0
+
+
 # ───── Normalized Response Types ─────
 
 
@@ -500,22 +523,41 @@ class AnthropicProvider(BaseLLMProvider):
         # API version 2026-10-21 rejects sampling parameters.
         import anthropic
 
-        kwargs = self._request(model, max_tokens, system, messages, tools, streaming=False)
+        ticket = _admit(
+            model,
+            max_tokens,
+            (system, messages, tools),
+            cache_write=_anthropic_cache_write(),
+        )
+        kwargs = self._request(model, ticket.max_tokens, system, messages, tools, streaming=False)
         try:
-            response = self._messages_api(kwargs).create(**kwargs)
-        except anthropic.BadRequestError as exc:
-            # Rejected before any output: replay without thinking once.
-            if not _is_thinking_binding_error(exc):
-                raise
-            kwargs["messages"] = _strip_thinking(kwargs["messages"])
-            response = self._messages_api(kwargs).create(**kwargs)
+            try:
+                response = self._messages_api(kwargs).create(**kwargs)
+            except anthropic.BadRequestError as exc:
+                # Rejected before any output: replay without thinking once.
+                if not _is_thinking_binding_error(exc):
+                    raise
+                kwargs["messages"] = _strip_thinking(kwargs["messages"])
+                response = self._messages_api(kwargs).create(**kwargs)
+        except Exception as exc:
+            _close_ticket(ticket, exc)
+            raise
+        reported = getattr(response, "usage", None)
+        ticket.settle(
+            _anthropic_usage(reported) if reported is not None else None,
+            getattr(response, "model", None) or model,
+        )
         return _anthropic_response(response)
 
     def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
         kwargs = self._request(model, max_tokens, system, messages, tools, streaming=True)
-        return _AnthropicStreamWrapper(
+        wrapper = _AnthropicStreamWrapper(
             lambda request: self._messages_api(request).stream(**request), kwargs
         )
+        wrapper.admit = lambda: _admit(
+            model, max_tokens, (system, messages, tools), cache_write=_anthropic_cache_write()
+        )
+        return wrapper
 
 
 # ───── OpenAI-Compatible Provider (OpenAI + OpenRouter) ─────
@@ -721,9 +763,24 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         if temperature is not None:
             kwargs["temperature"] = temperature
 
-        kwargs.update(_answer_reasoning_options(self.provider_name, model, max_tokens))
-        response = self._client.chat.completions.create(
-            **_adapt_openai_request(self.provider_name, kwargs)
+        ticket = _admit(
+            model,
+            max_tokens,
+            (system, messages, tools),
+            fallbacks=self._fallbacks(model, tools),
+        )
+        kwargs["max_tokens"] = ticket.max_tokens
+        kwargs.update(_answer_reasoning_options(self.provider_name, model, ticket.max_tokens))
+        try:
+            response = self._client.chat.completions.create(
+                **_adapt_openai_request(self.provider_name, kwargs)
+            )
+        except Exception as exc:
+            _close_ticket(ticket, exc)
+            raise
+        ticket.settle(
+            _openai_usage(getattr(response, "usage", None)),
+            getattr(response, "model", None) or model,
         )
         choice = response.choices[0]
         message = choice.message
@@ -787,17 +844,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         elif choice.finish_reason == "stop":
             stop_reason = "end_turn"
 
-        usage = {}
-        if response.usage is not None:
-            raw = (
-                response.usage.model_dump()
-                if hasattr(response.usage, "model_dump")
-                else vars(response.usage)
-            )
-            usage = {key: value for key, value in raw.items() if value is not None}
-            for native, normalized in (("prompt_tokens", "input"), ("completion_tokens", "output")):
-                if native in usage:
-                    usage[normalized] = usage[native]
+        usage = _openai_usage(getattr(response, "usage", None))
         _reasoning_usage(usage, _has_reasoning(message))
         return LLMResponse(
             content=blocks,
@@ -807,7 +854,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         )
 
     def stream(self, model, max_tokens, system, messages, tools=None, temperature=None):
-        return _OpenAIStreamWrapper(
+        wrapper = _OpenAIStreamWrapper(
             self._client,
             model,
             max_tokens,
@@ -817,6 +864,28 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             request_options=_answer_reasoning_options(self.provider_name, model, max_tokens),
             provider_name=self.provider_name,
         )
+        wrapper.admit = lambda: _admit(
+            model, max_tokens, (system, messages, tools), fallbacks=self._fallbacks(model, tools)
+        )
+        return wrapper
+
+    def _fallbacks(self, model: str, tools: list[dict] | None) -> list[str]:
+        """Models OpenRouter may serve this request with (each may be billed)."""
+        if self.provider_name != "openrouter":
+            return []
+        return openrouter_fallback_models(model, bool(tools))
+
+
+def _openai_usage(reported: Any) -> dict:
+    """A chat-completions usage record with MIZAN's normalized keys added."""
+    if reported is None:
+        return {}
+    raw = reported.model_dump() if hasattr(reported, "model_dump") else dict(vars(reported))
+    usage = {key: value for key, value in raw.items() if value is not None}
+    for native, normalized in (("prompt_tokens", "input"), ("completion_tokens", "output")):
+        if native in usage:
+            usage[normalized] = usage[native]
+    return usage
 
 
 class _BufferedStreamWrapper:
@@ -862,14 +931,30 @@ class _AnthropicStreamWrapper:
             open_stream = lambda _request: manager  # noqa: E731
         self._open_stream = open_stream
         self._request = request or {}
-        self.manager = None
-        self.stream = None
+        self.manager: Any = None
+        self.stream: Any = None
         self._progress_callback: Callable[[], None] | None = None
+        # Set by a metered provider: admits the call when the stream opens.
+        self.admit: Callable[[], Any] | None = None
+        self._ticket: Any = None
+        self._streamed = 0
 
     def set_progress_callback(self, callback: Callable[[], None]) -> None:
         self._progress_callback = callback
 
     def __enter__(self):
+        if self.admit is not None:
+            self._ticket = self.admit()
+            self._request = {**self._request, "max_tokens": self._ticket.max_tokens}
+        try:
+            self._open()
+        except Exception as exc:
+            if self._ticket is not None:
+                _close_ticket(self._ticket, exc)
+            raise
+        return self
+
+    def _open(self) -> None:
         import anthropic
 
         self.manager = self._open_stream(self._request)
@@ -885,10 +970,27 @@ class _AnthropicStreamWrapper:
             }
             self.manager = self._open_stream(self._request)
             self.stream = self.manager.__enter__()
-        return self
 
     def __exit__(self, *args):
-        return self.manager.__exit__(*args)
+        try:
+            return self.manager.__exit__(*args)
+        finally:
+            if self._ticket is not None:
+                self._settle()
+
+    def _settle(self) -> None:
+        """Charge what the stream cost: its final usage, or what it reported
+        before it ended plus a bound for the rest."""
+        try:
+            snapshot = getattr(self.stream, "current_message_snapshot", None)
+            usage = getattr(snapshot, "usage", None)
+            reported = _anthropic_usage(usage) if usage is not None else {}
+            if not getattr(snapshot, "stop_reason", None):
+                reported.pop("output", None)  # the final count never arrived
+            model = getattr(snapshot, "model", None) or self._request.get("model")
+        except Exception:  # noqa: BLE001 - e.g. no message ever started
+            reported, model = {}, self._request.get("model")
+        self._ticket.settle(reported, model, streamed_bytes=self._streamed)
 
     @property
     def text_stream(self):
@@ -904,6 +1006,7 @@ class _AnthropicStreamWrapper:
             thinking = kind in {"thinking_delta", "signature_delta"}
             if (text or arguments or thinking) and self._progress_callback:
                 self._progress_callback()
+            self._streamed += len((text or arguments or "").encode("utf-8"))
             if text:
                 yield text
 
@@ -948,11 +1051,31 @@ class _OpenAIStreamWrapper:
         self._request_options = request_options or {}
         self._reasoning_observed = False
         self._progress_callback: Callable[[], None] | None = None
+        # Set by a metered provider: admits the call when the stream opens.
+        self.admit: Callable[[], Any] | None = None
+        self._ticket: Any = None
+        self._arguments = 0
 
     def set_progress_callback(self, callback: Callable[[], None]) -> None:
         self._progress_callback = callback
 
     def __enter__(self):
+        if self.admit is not None:
+            self._ticket = self.admit()
+            if self._ticket.max_tokens < self._max_tokens:
+                self._max_tokens = self._ticket.max_tokens
+                self._request_options = _answer_reasoning_options(
+                    self._provider_name, self._model, self._max_tokens
+                )
+        try:
+            self._open()
+        except Exception as exc:
+            if self._ticket is not None:
+                _close_ticket(self._ticket, exc)
+            raise
+        return self
+
+    def _open(self) -> None:
         kwargs = dict(
             model=self._model,
             max_tokens=self._max_tokens,
@@ -968,12 +1091,20 @@ class _OpenAIStreamWrapper:
         self._stream = self._client.chat.completions.create(
             **_adapt_openai_request(self._provider_name, kwargs)
         )
-        return self
 
     def __exit__(self, *args):
-        close = getattr(self._stream, "close", None)
-        if close:
-            close()
+        try:
+            close = getattr(self._stream, "close", None)
+            if close:
+                close()
+        finally:
+            if self._ticket is not None:
+                usage = {k: v for k, v in self._usage.items() if k in {"input", "output", "cost"}}
+                self._ticket.settle(
+                    usage,
+                    self._observed_model or self._model,
+                    streamed_bytes=len(self._text.encode("utf-8")) + self._arguments,
+                )
         return False
 
     @property
@@ -1022,6 +1153,7 @@ class _OpenAIStreamWrapper:
                         self._progress_callback()
                     call["name"] += getattr(function, "name", None) or ""
                     call["arguments"] += getattr(function, "arguments", None) or ""
+                    self._arguments += len((getattr(function, "arguments", None) or "").encode())
         self._stream_exhausted = True
         if not self._finish:
             raise RuntimeError("Provider stream ended without a completion record")
@@ -1572,6 +1704,9 @@ async def refresh_model_limits() -> int:
             await client.close()
         except Exception as exc:
             logger.info("Anthropic model limits unavailable: %s", exc)
+    from api import prices
+
+    live_prices: dict[str, tuple[Any, Any]] = {}
     try:
         async with httpx.AsyncClient(timeout=15) as http:
             response = await http.get("https://openrouter.ai/api/v1/models")
@@ -1590,7 +1725,10 @@ async def refresh_model_limits() -> int:
                             "tools": "tools" in (entry.get("supported_parameters") or []),
                             "context": int(entry.get("context_length") or 0),
                         }
+                        pricing = entry.get("pricing") or {}
+                        live_prices[model_id] = (pricing.get("prompt"), pricing.get("completion"))
                     refreshed += 1
+                prices.record_live(live_prices)
     except Exception as exc:
         logger.info("OpenRouter model limits unavailable: %s", exc)
     return refreshed

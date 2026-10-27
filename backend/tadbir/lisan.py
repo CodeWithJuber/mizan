@@ -17,6 +17,7 @@ import sys
 import time
 from typing import Any
 
+from api.iqtisad import BudgetExhausted
 from providers import effective_limits, provider_retry_delay
 
 from . import amanah, tajdid, trace, wazn
@@ -183,6 +184,9 @@ class Lisan:
                 break
             except TimeoutError:
                 raise LisanUnavailable("The language model did not answer in time") from None
+            except BudgetExhausted as exc:
+                # MIZAN's own work goes on without the language faculty.
+                raise LisanUnavailable(str(exc)) from exc
             except Exception as exc:  # noqa: BLE001 - provider errors vary
                 delay = provider_retry_delay(exc, attempt)
                 if delay is None or attempt:

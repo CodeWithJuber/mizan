@@ -42,6 +42,7 @@ from agents.provider_limits import (
 )
 from agents.shura_council import ShuraCouncil
 from agents.tool_catalog import DISCOVER_TOOL, ToolCatalog, schema_snapshot
+from api.iqtisad import BudgetExhausted
 
 # al-Insan faculty modules — discernment, restraint, wisdom
 from core.adaptive import AdaptiveStateStore
@@ -3387,7 +3388,9 @@ Match the requested depth and self-correct errors."""
                 if isinstance(e, (OutputBudgetExceeded, ProviderDeadlineExceeded))
                 else "failed",
                 **(
-                    {"error_code": "provider_timeout", "provider_timeout_phase": e.phase}
+                    {"error_code": "budget_exhausted", "budget": e.public()}
+                    if isinstance(e, BudgetExhausted)
+                    else {"error_code": "provider_timeout", "provider_timeout_phase": e.phase}
                     if isinstance(e, ProviderDeadlineExceeded)
                     else {"error_code": "output_budget_exhausted"}
                     if isinstance(e, OutputBudgetExceeded)
@@ -3519,6 +3522,8 @@ Match the requested depth and self-correct errors."""
             return "output_budget_exhausted"
         if isinstance(error, ProviderRefusal):
             return "model_refused"
+        if isinstance(error, BudgetExhausted):
+            return "budget_exhausted"
         if "No response model is configured" in error_str:
             return "provider_unavailable"
         if "Connection" in error_str or "connect" in error_str.lower():
@@ -3553,6 +3558,11 @@ Match the requested depth and self-correct errors."""
             "model_refused": {
                 "description": "The model declined the request",
                 "fix": "Rephrase the request or choose another model",
+                "retryable": False,
+            },
+            "budget_exhausted": {
+                "description": "The user's model spending limit is reached",
+                "fix": "Wait for the budget to renew or raise the limit",
                 "retryable": False,
             },
             "output_budget_exhausted": {
