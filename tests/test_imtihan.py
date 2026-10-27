@@ -312,3 +312,33 @@ def test_mizan_searches_only_for_current_or_outside_information():
     assert fahm.validate_parsed(
         {"intent": "web_search", "query": "cricket score"}, current, "hi-latn"
     )
+
+
+async def test_a_finished_run_is_readable_before_it_is_saved(monkeypatch):
+    saving = asyncio.Event()
+    release = asyncio.Event()
+
+    def slow_save(run):
+        saving.set()
+
+    async def suite(*args, **kwargs):
+        return {"tasks": [], "results": [], "attempts": [], "report": {}}
+
+    monkeypatch.setattr(runner, "run_suite", suite)
+
+    async def to_thread(func, *args):
+        if func is runner._save:
+            slow_save(*args)
+            await release.wait()
+            return None
+        return func(*args)
+
+    monkeypatch.setattr(runner.asyncio, "to_thread", to_thread)
+    started = runner.start(
+        type("A", (), {"ai_model": "m"})(), owner="u", blocks=["exactness"], repeats=1
+    )
+    await saving.wait()
+    detail = await runner.get(started["id"])  # finished, not yet saved
+    assert detail is not None and detail["status"] == "complete" and "saved" not in detail
+    release.set()
+    await runner._JOBS[started["id"]]["task"]

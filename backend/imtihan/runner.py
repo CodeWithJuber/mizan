@@ -284,6 +284,7 @@ def start(agent: Any, *, owner: str, blocks: list[str] | None, repeats: int) -> 
         finally:
             try:
                 await asyncio.to_thread(_save, run)
+                run["saved"] = True
             except Exception:  # noqa: BLE001
                 logger.warning("Imtihan run could not be saved")
 
@@ -293,7 +294,7 @@ def start(agent: Any, *, owner: str, blocks: list[str] | None, repeats: int) -> 
 
 
 def public(run: dict) -> dict:
-    return {key: value for key, value in run.items() if key != "task"}
+    return {key: value for key, value in run.items() if key not in {"task", "saved"}}
 
 
 def cancel(run_id: str) -> bool:
@@ -315,6 +316,8 @@ async def runs() -> list[dict]:
 
 async def get(run_id: str) -> dict | None:
     run = _JOBS.get(run_id)
-    if run is not None and run["status"] == "running":
+    # A finished run is read from memory until it is saved, so it is never missing
+    # between the two.
+    if run is not None and (run["status"] == "running" or not run.get("saved")):
         return public(run)
     return await asyncio.to_thread(_load, run_id)
