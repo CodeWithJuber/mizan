@@ -64,6 +64,27 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "{terms} के बाद अगला संख्या **{value}** है।",
         "ar": "العدد التالي بعد {terms} هو **{value}**.",
     },
+    "silsila_missing": {
+        "en": "The missing number in {terms} is **{value}**.",
+        "hi-latn": "{terms} me ghayab number **{value}** hai.",
+        "ur": "{terms} میں غائب عدد **{value}** ہے۔",
+        "hi": "{terms} में ग़ायब संख्या **{value}** है।",
+        "ar": "العدد الناقص في {terms} هو **{value}**.",
+    },
+    "silsila_missing_several": {
+        "en": "More than one rule reproduces all {total} known terms of {terms}, and they give different missing numbers:",
+        "hi-latn": "{terms} ke sabhi {total} maloom terms ko ek se zyada rule sahi banate hain, aur unke ghayab number alag hain:",
+        "ur": "{terms} کے تمام {total} معلوم اعداد کو ایک سے زیادہ قاعدے درست بناتے ہیں، اور ان کے غائب اعداد مختلف ہیں:",
+        "hi": "{terms} के सभी {total} ज्ञात पदों को एक से अधिक नियम सही बनाते हैं, और उनकी ग़ायब संख्याएँ अलग हैं:",
+        "ar": "أكثر من قاعدة تُعيد الحدود المعلومة الـ{total} كلها في {terms}، وتعطي أعدادًا ناقصة مختلفة:",
+    },
+    "silsila_missing_none": {
+        "en": "MIZAN found no rule that reproduces all {total} known terms of {terms}. It tried polynomials in n and in the n-th prime, and the OEIS has no sequence with these terms at these places. So it gives no number rather than a guess. If you know where the sequence comes from, tell MIZAN and it will check that rule on every term.",
+        "hi-latn": "MIZAN ko {terms} ke sabhi {total} maloom terms ko sahi banane wala koi rule nahi mila. Usne n aur n-th prime ke polynomial aazmaye, aur OEIS me in jagahon par in terms wali koi sequence nahi hai. Isliye andaza lagane ke bajaye koi number nahi diya. Agar aapko sequence ka source maloom hai to bataiye, MIZAN us rule ko har term par jaanchega.",
+        "ur": "میزان کو {terms} کے تمام {total} معلوم اعداد درست بنانے والا کوئی قاعدہ نہیں ملا۔ اس نے n اور n-ویں مفرد عدد کے کثیر رقمی آزمائے، اور OEIS میں ان جگہوں پر ان اعداد والی کوئی ترتیب نہیں۔ اس لیے اندازے کی بجائے کوئی عدد نہیں دیا۔ اگر آپ کو ماخذ معلوم ہو تو بتائیں، میزان وہ قاعدہ ہر عدد پر جانچے گا۔",
+        "hi": "मीज़ान को {terms} के सभी {total} ज्ञात पदों को सही बनाने वाला कोई नियम नहीं मिला। उसने n और n-वें अभाज्य के बहुपद आज़माए, और OEIS में इन स्थानों पर इन पदों वाला कोई अनुक्रम नहीं है। इसलिए अनुमान के बजाय कोई संख्या नहीं दी। यदि आपको स्रोत पता हो तो बताइए, मीज़ान वह नियम हर पद पर जाँचेगा।",
+        "ar": "لم يجد ميزان قاعدةً تُعيد الحدود المعلومة الـ{total} كلها في {terms}. جرّب كثيرات حدود في n وفي العدد الأولي رقم n، ولا يحوي OEIS متتالية بهذه الحدود في هذه المواضع. لذلك لا يعطي عددًا بدل التخمين. إن عرفت مصدر المتتالية فأخبر ميزان ليتحقّق من قاعدتها على كل حد.",
+    },
     "silsila_several": {
         "en": "More than one rule reproduces all {total} terms of {terms}, and they give different next numbers:",
         "hi-latn": "{terms} ke sabhi {total} terms ko ek se zyada rule sahi banate hain, aur unke agle number alag hain:",

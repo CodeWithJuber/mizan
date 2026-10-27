@@ -405,6 +405,17 @@ def _web_read(_intent: str, message: str, language: str) -> Understanding | None
     return Understanding("web_read", language, 0.0, {"url": url[0].rstrip(").,;"), "urls": urls})
 
 
+def _sequence(message: str) -> dict | None:
+    """The terms a sequence question gives: with one missing inside it, the
+    known terms at their positions; otherwise the run of numbers."""
+    missing = silsila.with_gap(message)
+    if missing is not None:
+        seq, positions, gap = missing
+        return {"sequence": seq, "positions": positions, "gap": gap}
+    found = silsila._run_of_numbers(message)
+    return None if found is None else {"sequence": found}
+
+
 def _simple(intent: str, entities: dict | None = None):
     def build(_intent: str, message: str, language: str) -> Understanding | None:
         return Understanding(intent, language, 0.0, dict(entities or {}))
@@ -436,10 +447,7 @@ _BUILDERS = {
     "qiyas": _with(
         "qiyas", lambda m: (lambda p: None if p is None else {"puzzle": p})(qiyas.parse(m))
     ),
-    "silsila": _with(
-        "silsila",
-        lambda m: (lambda s: None if s is None else {"sequence": s})(silsila._run_of_numbers(m)),
-    ),
+    "silsila": _with("silsila", lambda m: _sequence(m)),
     # "Karo koshish": about a sequence asked earlier; Tadbir takes it from the chat.
     "silsila_follow": _with(
         "silsila_follow",
@@ -448,6 +456,9 @@ _BUILDERS = {
         ),
     ),
     "run_code": _run_code,
+    # "?", "Jawab nahi aaya": the request before this one went unanswered;
+    # Tadbir takes it from the chat.
+    "again_follow": _simple("again_follow"),
     # "Run this code": a program shown earlier in the chat; Tadbir takes it from there.
     "run_follow": _with("run_follow", lambda m: None if _fenced_code(m) else {}),
     "run_file": _in_project,
@@ -485,9 +496,15 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
     # that goes on as conversation, where Lisan may map the wording). Within the
     # chosen family, the most probable intent MIZAN can build is the plan.
     unbuilt = 0.0
+    before = _families(sorted(qasd.prior(overlay=overlay).items(), key=lambda item: -item[1]))
+    baseline = {family: mass for family, mass, _members in before}
     for family, mass, members in _families(ranked):
         if family == "converse" or unbuilt > mass:
             break
+        if mass <= baseline.get(family, 0.0):
+            # The words did not make this kind of request any more likely than
+            # it was before reading them ("?"): no evidence to act on.
+            continue
         if family in FIXED_ANSWERS and mass <= 0.5:
             # A fixed answer reads nothing in the message, so it answers the
             # question only when that kind of question is more probable than
@@ -552,7 +569,14 @@ def _clauses(text: str) -> list[str]:
     return parts if 2 <= len(parts) <= 4 else []
 
 
-_WORDS_ONLY = {"converse", "capabilities", "silsila_follow", "search_bare", "run_follow"}
+_WORDS_ONLY = {
+    "converse",
+    "capabilities",
+    "silsila_follow",
+    "search_bare",
+    "run_follow",
+    "again_follow",
+}
 
 
 def _decisive_action(text: str) -> str | None:
@@ -644,7 +668,9 @@ def actionable(text: str) -> bool:
     if len(text) > 2000:
         return False
     found: dict[str, float] = qasd.posterior(text, project=bool(_selected_project()))
-    return found.get("converse", 0.0) < 0.5
+    # Kinds of request answered in words (a follow-up, "?") are not actions to map.
+    acting = sum(p for intent, p in found.items() if intent not in _WORDS_ONLY)
+    return acting > 0.5
 
 
 def validate_parsed(parsed: dict, message: str, language: str) -> Understanding | None:
@@ -707,10 +733,10 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
             return None
         entities["request"] = f"{message}\n\n(Change: {change})"
     elif intent == "silsila":
-        sequence = silsila._run_of_numbers(message)
+        sequence = _sequence(message)
         if sequence is None:
             return None  # only terms the user actually wrote
-        entities["sequence"] = sequence
+        entities.update(sequence)
     elif intent == "web_search":
         query = str(parsed.get("query", "")).strip()[:300]
         if len(query) < 3:

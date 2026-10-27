@@ -82,6 +82,39 @@ def _run_of_numbers(text: str) -> list[int] | None:
     return best
 
 
+_TERM = r"(?:-?\d+|\?|_)"
+_GAP = {"?", "_"}
+
+
+def with_gap(text: str) -> tuple[list[int], list[int], int] | None:
+    """A sequence with one term missing inside it, written ``?`` or ``_``
+    ("13, 26, 64, 118, 274, ?, 628"): its known terms, their positions (from 1)
+    and the position of the missing term. A ``?`` at the end asks for the next
+    term, which :func:`_run_of_numbers` reads."""
+    best: tuple[list[int], list[int], int] | None = None
+    size = 0
+    for run in re.finditer(rf"{_TERM}(?:\s*[,;]?\s*{_TERM})+", text or ""):
+        tokens = re.findall(r"-?\d+|\?|_", run.group(0))
+        gaps = [index for index, token in enumerate(tokens) if token in _GAP]
+        if len(gaps) != 1 or not 0 < gaps[0] < len(tokens) - 1 or len(tokens) > MAX_TERMS:
+            continue
+        known = [(index + 1, int(token)) for index, token in enumerate(tokens) if token not in _GAP]
+        if len(known) < MIN_TERMS or any(abs(value) > 10**30 for _n, value in known):
+            continue
+        if len(tokens) > size:
+            size = len(tokens)
+            best = ([value for _n, value in known], [n for n, _v in known], gaps[0] + 1)
+    return best
+
+
+def shown(seq: list[int], positions: list[int] | None = None, gap: int | None = None) -> str:
+    """The terms as the user wrote them, with ``?`` where one is missing."""
+    if not gap or not positions:
+        return ", ".join(str(value) for value in seq)
+    by_position = dict(zip(positions, seq, strict=True))
+    return ", ".join("?" if n == gap else str(by_position[n]) for n in range(1, max(positions) + 1))
+
+
 def follow_up(text: str) -> bool:
     """A message about an earlier sequence that does not restate it."""
     from . import qasd
@@ -222,6 +255,25 @@ def _coef(value: Fraction) -> str:
     return f"{value}·"
 
 
+def missing_rules(seq: list[int], positions: list[int], gap: int) -> list[Rule]:
+    """Rules for a sequence with a term missing inside it: fitted on the known
+    terms at their own positions and checked on every one of them, terms after
+    the gap included; ``Rule.next`` is the missing term."""
+    rules = _polynomial(positions, seq, "polynomial in n", "n", gap)
+    primes = _primes(max([*positions, gap]))
+    rules += _polynomial(
+        [primes[n - 1] for n in positions],
+        seq,
+        "polynomial in the n-th prime p",
+        "p",
+        primes[gap - 1],
+    )
+    best: dict[int, Rule] = {}
+    for rule in sorted(rules, key=lambda r: r.parameters):
+        best.setdefault(rule.next, rule)
+    return list(best.values())
+
+
 def own_rules(seq: list[int]) -> list[Rule]:
     """Rules MIZAN finds itself, each reproducing every term."""
     n = len(seq)
@@ -261,6 +313,39 @@ async def oeis(seq: list[int], timeout: float = 10.0) -> list[dict]:
                         "id": f"A{int(entry.get('number', 0)):06d}",
                         "name": str(entry.get("name", ""))[:200],
                         "next": data[start + len(seq)],
+                    }
+                )
+                break
+    return matches[:3]
+
+
+async def oeis_missing(
+    seq: list[int], positions: list[int], gap: int, timeout: float = 10.0
+) -> list[dict]:
+    """OEIS sequences that hold every known term at its position, with the missing one."""
+    before = [value for value, n in zip(seq, positions, strict=True) if n < gap]
+    after = [value for value, n in zip(seq, positions, strict=True) if n > gap]
+    query = ",".join(str(v) for v in (before if len(before) >= len(after) else after))
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(
+                "https://oeis.org/search", params={"q": query, "fmt": "json"}
+            )
+            response.raise_for_status()
+            found = response.json()
+    except (httpx.HTTPError, ValueError):
+        return []
+    matches = []
+    width = max([*positions, gap])
+    for entry in (found if isinstance(found, list) else [])[:10]:
+        data = [int(v) for v in str(entry.get("data", "")).split(",") if v.strip("-").isdigit()]
+        for start in range(len(data) - width + 1):
+            if all(data[start + n - 1] == value for value, n in zip(seq, positions, strict=True)):
+                matches.append(
+                    {
+                        "id": f"A{int(entry.get('number', 0)):06d}",
+                        "name": str(entry.get("name", ""))[:200],
+                        "next": data[start + gap - 1],
                     }
                 )
                 break

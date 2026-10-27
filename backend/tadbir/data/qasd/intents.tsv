@@ -952,3 +952,54 @@ quran_search	Ya ayyuhal lazina amanu kutiba alaikumus siyam
 quran_search	Rabbi zidni ilma
 quran_search	Allahu nurus samawati wal ard
 quran_search	Wa tuizzu man tashau wa tuzillu man tashau
+converse	A sequence is defined by x0 = 1 and x(n+1) = x(n) + 1/x(n). Prove whether it converges and find the limit of x(n)/sqrt(n)
+converse	Prove that the sequence a_n = (1 + 1/n)^n converges to e
+converse	Does the series of 1/n^2 converge? Prove it
+converse	Show that the sequence defined by a1 = 2, a(n+1) = sqrt(2 + a(n)) is bounded and monotone, and find its limit
+converse	Find the limit of n*sin(1/n) as n goes to infinity
+converse	Prove or disprove: every bounded sequence of real numbers has a convergent subsequence
+converse	What is the asymptotic growth rate of the Fibonacci sequence? Prove it
+converse	Find the exact rate of growth of the length of the look-and-say sequence
+converse	Let x(n+1) = x(n)/2 + 1/x(n) with x0 = 1. Show that the sequence converges to sqrt(2)
+converse	Is the harmonic series convergent or divergent, and why?
+converse	Compute the limit of the ratio of consecutive Fibonacci numbers and justify it
+converse	Prove that the sequence 1/n tends to zero using the epsilon definition
+converse	Evaluate the limit of (3n^2 + 1)/(n^2 - 5) as n tends to infinity
+converse	Determine whether the recursively defined sequence a(n+1) = a(n)^2 - 2, a0 = 3 is bounded
+converse	Explain why the sequence (-1)^n does not converge
+converse	Sequence x(n+1) = x(n) + 1/x(n) ka limit kya hoga, proof ke saath samjhao
+converse	Is sequence ka convergence prove karo: a(n) = n/(n+1)
+converse	Yeh series converge karti hai ya diverge, sabit karo: sum of 1/sqrt(n)
+converse	Limit nikalo jab n infinity ki taraf jaye: (2n+3)/(5n-1)
+converse	ثابت کریں کہ ترتیب 1/n صفر کی طرف جاتی ہے
+converse	क्या यह श्रेणी अभिसारी है? 1/n^2 का योग, प्रमाण दीजिए
+converse	أثبت أن المتتالية 1/n تتقارب إلى الصفر
+again_follow	?
+again_follow	??
+again_follow	???
+again_follow	Answer?
+again_follow	Jawab?
+again_follow	Jawab kahan hai?
+again_follow	Jawab nahi aaya
+again_follow	Kuch nahi aaya
+again_follow	Khaali jawab aaya
+again_follow	Tumne jawab nahi diya
+again_follow	Answer nahi aaya, phir se do
+again_follow	Reply kyun nahi kiya?
+again_follow	You did not answer
+again_follow	Where is the answer?
+again_follow	No reply?
+again_follow	The answer is empty
+again_follow	Nothing came back, answer again
+again_follow	Please answer my question
+again_follow	Answer my previous question
+again_follow	Pichhle sawaal ka jawab do
+again_follow	Upar wale sawaal ka jawab do
+again_follow	جواب نہیں آیا
+again_follow	جواب کہاں ہے؟
+again_follow	میرے سوال کا جواب دو
+again_follow	जवाब नहीं आया
+again_follow	जवाब कहाँ है?
+again_follow	मेरे सवाल का जवाब दो
+again_follow	أين الجواب؟
+again_follow	لم يصل الرد

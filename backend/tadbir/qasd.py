@@ -120,6 +120,13 @@ def ranked(
     return sorted(found.items(), key=lambda item: -item[1])
 
 
+def prior(project: bool = False, overlay: Overlay | None = None) -> dict[str, float]:
+    """What the model believes before reading any words: the posterior of a
+    message that carries no evidence at all."""
+    found: dict[str, float] = model().posterior_of({}, overlay)
+    return found
+
+
 def prefers(message: str, first: str, second: str, project: bool = False) -> bool:
     """The model finds ``first`` more probable than ``second`` for this message."""
     found = posterior(message, project)
