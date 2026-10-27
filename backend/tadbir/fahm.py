@@ -332,7 +332,14 @@ def understand(text: str) -> Understanding:
     explain = bool(_EXPLAIN.search(message))
     reference = quran.parse_reference(message)
     if reference is not None:
-        return Understanding("quran", language, 0.95, {"reference": reference, "explain": explain})
+        # "What did the people say in 2:71?": a question about what the ayah says.
+        questioned = bool(_ASKS.search(message)) and not explain and len(words) > 4
+        return Understanding(
+            "quran",
+            language,
+            0.95,
+            {"reference": reference, "explain": explain, "question": questioned},
+        )
 
     narration = hadith.parse_reference(message)
     if narration is not None:
@@ -387,6 +394,10 @@ def understand(text: str) -> Understanding:
                 "compute", language, 0.9 if dominant else 0.8, {"expression": expression}
             )
 
+    hub = hub_request(message)
+    if hub is not None:
+        return Understanding("hf_hub", language, 0.85, hub)
+
     # Only a link in the user's own words is read; a link inside pasted text or
     # a Markdown image is material (and may be a way to send data out).
     own = _own_words(message)
@@ -433,6 +444,41 @@ def understand(text: str) -> Understanding:
             return Understanding("web_search", language, 0.75, {"query": message.strip()[:300]})
 
     return Understanding("converse", language, 0.0)
+
+
+_HUB_WORD = re.compile(r"\b(?:hugging\s*face|huggingface|hf)\b", re.IGNORECASE)
+_HUB_LIST = re.compile(
+    r"\b(?:list|show|dikhao|dikha\s*do|batao|kaun\s+se|kya\s+kya|which|what|mere|my|apne)\b",
+    re.IGNORECASE,
+)
+_HUB_IMPORT = re.compile(
+    r"\b(?:import|download|le\s*aao|lao|laao|utha\w*|daal\w*|copy|bring|fetch|project\s+me)\b",
+    re.IGNORECASE,
+)
+
+
+def hub_request(message: str) -> dict | None:
+    """A request about Hugging Face: list an account, inspect a repository, import a file."""
+    from knowledge import hf_hub
+
+    own = _own_words(message)
+    link = hf_hub.parse_link(own)
+    kinds = [kind for kind in ("datasets", "models", "spaces")
+             if re.search(kind[:-1], message, re.IGNORECASE)] or ["datasets", "models"]  # fmt: skip
+    if re.search(r"\btrain", message, re.IGNORECASE) and "models" not in kinds:
+        kinds.append("models")  # "datasets / training": the trained models too
+    if link is None:
+        if _HUB_WORD.search(own) and _HUB_LIST.search(own) and len(own.split()) <= 25:
+            return {"action": "repos", "owner": "", "kinds": kinds}
+        return None
+    if "owner" in link:
+        return {"action": "repos", "owner": link["owner"], "kinds": kinds}
+    named = [name for name in named_files(own) if "." in name]
+    path = link.get("path") or (named[0] if named and _HUB_IMPORT.search(own) else None)
+    entities = {"repo": link["repo"], "kind": link["kind"], "revision": link["revision"]}
+    if path:
+        return {"action": "import", "path": path, **entities}
+    return {"action": "files", **entities}
 
 
 _NO_TOPIC = re.compile(

@@ -131,6 +131,12 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("OPENAI_API_KEY", "API keys", "OpenAI API key", "secret", "", apply="provider"),
     Setting("MIZAN_BASE_API_KEY", "API keys", "Hybrid base model API key", "secret",
             "Key for the OpenAI-compatible base model endpoint.", apply="restart"),
+    Setting("HF_TOKEN", "API keys", "Hugging Face token", "secret",
+            "Lets MIZAN list and import your datasets and models from Hugging Face, private "
+            "ones included, for admins only. MIZAN only reads with it; a read-only token is "
+            "enough."),
+    Setting("ARC_API_KEY", "API keys", "ARC-AGI-3 API key", "secret",
+            "Lets MIZAN's explorer play the official ARC-AGI-3 games (AGI Test)."),
     # ── Chat limits ──
     Setting("MIZAN_CHAT_MAX_STEPS", "Chat limits", "Tool steps per answer", "int",
             "Tool rounds per run before a progress report.", "100", (), 1, 1000),

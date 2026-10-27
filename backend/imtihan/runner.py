@@ -17,7 +17,7 @@ from security.approvals import ApprovalContext, bind_approvals
 from tadbir import hadith, muqabala, quran, trace
 from tadbir.waqt import bind_timezone
 
-from . import agentic, report, scorers
+from . import agentic, locked_eval, report, scorers
 from .games import play as games
 
 logger = logging.getLogger("mizan.imtihan")
@@ -36,10 +36,12 @@ def load_tasks(blocks: list[str] | None = None) -> list[dict]:
                 tasks.append(json.loads(line))
     tasks += agentic.load()
     tasks += [dict(task) for task in games.TASKS]
+    tasks += locked_eval.tasks()
     order = [
         "exactness", "scripture", "abstention", "honesty", "injection", "knowledge",
         "consistency", "multilingual", "learning", "safety", "code", "arc",
         "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail", "games",
+        "locked_eval",
     ]  # fmt: skip
     tasks.sort(key=lambda task: order.index(task["block"]) if task["block"] in order else 99)
     if blocks:
@@ -73,7 +75,14 @@ async def authentic_text(spec: dict) -> str | None:
         return None
 
 
-def _arm_row(task: dict, attempt: int, arm: str, data: dict, authentic: str | None) -> dict:
+def _arm_row(
+    task: dict,
+    attempt: int,
+    arm: str,
+    data: dict,
+    authentic: str | None,
+    executed: bool | None = None,
+) -> dict:
     usage = data.get("usage") or {}
     row: dict[str, Any] = {
         "task_id": task["id"],
@@ -90,7 +99,7 @@ def _arm_row(task: dict, attempt: int, arm: str, data: dict, authentic: str | No
     if data.get("error") and not data.get("text"):
         row.update({"pass": False, "error": str(data["error"])[:300], "detail": "no answer"})
         return row
-    scored = scorers.score(task["score"], data.get("text", ""), authentic)
+    scored = scorers.score(task["score"], data.get("text", ""), authentic, executed)
     row.update(
         {
             "pass": bool(scored["pass"]),
@@ -108,7 +117,16 @@ async def run_task(agent: Any, task: dict, attempt: int, authentic: str | None) 
     context = {"history": history}
     with trace.bind_faults(task.get("fault")):
         compared = await muqabala.compare(agent, task["prompt"], context, history)
-    rows = [_arm_row(task, attempt, arm, compared[arm], authentic) for arm in report.ARMS]
+    executed: dict[str, bool] = {}
+    if task["score"].get("kind") == "locked" and task["score"].get("task") == "coding":
+        for arm in report.ARMS:  # the code is checked by running it, not by reading it
+            executed[arm] = await locked_eval.passes_tests(
+                str(compared[arm].get("text") or ""), str(task["score"].get("tests") or "")
+            )
+    rows = [
+        _arm_row(task, attempt, arm, compared[arm], authentic, executed.get(arm))
+        for arm in report.ARMS
+    ]
     for row in rows:
         graded = (compared.get("checks", {}).get("isnad") or {}).get(row["arm"]) or {}
         row["supported"] = graded.get("supported")
