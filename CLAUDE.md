@@ -85,7 +85,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 - `backend/connectors/` — MCP connectors (official `mcp` SDK): per-user store, encrypted secrets, OAuth, SSRF `net_guard`, registry browse; tools exposed as `mcp__<server>__<tool>` (`docs/connectors.md`)
 - `backend/agent_skills/` — Agent Skills (SKILL.md): loader (project > user > bundled), `activate_skill`/`read_skill_file`, GitHub/zip installer, bundled `library/` (`docs/agent-skills.md`)
 - `backend/agents/events.py` — live activity events (`tool_start`, `tool_result`, `todo`, `approval_*`, `skill`) bound per chat stream; `session_state.py` keeps the per-chat plan
-- `backend/gateway/` — External channels: `bab` (entry), `router`, `channels/`
+- `backend/gateway/` — **Bab**: Telegram (`telegram.py`, Bot API long polling via httpx, no webhook; `TELEGRAM_BOT_TOKEN`, `MIZAN_TELEGRAM`) and links (`store.py`, `bab.db`: one-time 128-bit codes stored as SHA-256, 10 min, single use). Private chats from linked accounts only; each message is the web chat's turn (`_bab_turn` in `api/main.py`) under deferred approvals, held actions come back as inline buttons (`_decide_held`); forwarded text is fenced as data; watcher notices also go to Telegram (`docs/bab.md`)
 - `backend/skills/` — Capability system: `base`, `registry`, `builtin/`
 - `backend/router/` — `intelligent_router`: provider/model selection
 - `backend/task_queue/` — Async background work: `task_queue`, `worker`, `priorities`

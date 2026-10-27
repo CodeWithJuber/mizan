@@ -391,6 +391,24 @@ async def lifespan(app: FastAPI):
 
     watch_task = asyncio.create_task(watch_for_users())
 
+    # Bab: the Telegram bot, when a token is set (long polling, no webhook).
+    telegram_stop = asyncio.Event()
+    telegram_task = None
+    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("MIZAN_TELEGRAM", "on").lower() not in {
+        "off",
+        "0",
+        "false",
+        "no",
+    }:
+        global _telegram_bot
+        from gateway import store as bab_store
+        from gateway.telegram import TelegramBot
+
+        _telegram_bot = TelegramBot(
+            os.environ["TELEGRAM_BOT_TOKEN"], bab_store.store(), _bab_turn, _bab_decide
+        )
+        telegram_task = asyncio.create_task(_telegram_bot.run(telegram_stop))
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -407,6 +425,10 @@ async def lifespan(app: FastAPI):
         memory_maintenance_task.cancel()
     self_review_task.cancel()
     watch_task.cancel()
+    if telegram_task is not None and _telegram_bot is not None:
+        telegram_stop.set()
+        telegram_task.cancel()
+        await _telegram_bot.close()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -2435,22 +2457,31 @@ async def decide_held_action(
 ):
     """Allow or deny one held action. Allowed, it runs exactly once, as it was
     held, through your own agent and its gates; the result is posted to the chat."""
+    outcome = await _decide_held(user, held_id, body.decision)
+    if outcome is None:
+        raise HTTPException(404, "No action is waiting for you with that id")
+    return outcome
+
+
+async def _decide_held(user: TokenPayload, held_id: str, decision: str) -> dict | None:
+    """Claim one held action for its owner and, if allowed, run it once.
+    None when nothing is waiting for this owner under that id."""
     import re
 
     from security.approvals import ApprovalContext, bind_approvals, held_store, params_digest
 
     store = held_store()
     item = (
-        store.claim(user.user_id, held_id, body.decision)
+        store.claim(user.user_id, held_id, decision)
         if re.fullmatch(r"[0-9a-f]{32}", held_id)
         else None
     )
     if item is None:
-        raise HTTPException(404, "No action is waiting for you with that id")
+        return None
     session = item["session_id"]
     if session.startswith("unattended:"):
         session = muraqabah_session(user.user_id)
-    if body.decision == "deny":
+    if decision == "deny":
         store.finish(held_id, {"declined": True})
         return {"held_id": held_id, "status": "denied"}
     template = _tadbir_coordinator()
@@ -2483,7 +2514,7 @@ async def decide_held_action(
         f"**You allowed: {item['tool']}**\n\n```json\n{shown}\n```",
         metadata={"held_result": held_id, "status": "complete"},
     )
-    return {"held_id": held_id, "status": "done", "result": outcome}
+    return {"held_id": held_id, "status": "done", "tool": item["tool"], "result": outcome}
 
 
 @app.get("/api/chat/{session_id}")
@@ -3004,6 +3035,151 @@ async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
         text,
         metadata={"muraqabah": True, "status": "complete", **metadata},
     )
+    await _bab_notify(owner_id, text, metadata)
+
+
+# === BAB (باب): the user's own MIZAN from outside apps (Telegram) ===
+
+_telegram_bot = None  # gateway.telegram.TelegramBot while the poller runs
+
+
+async def _bab_turn(owner_id: str, session_id: str, text: str) -> tuple[str, list[dict]]:
+    """One message from a linked outside account: the same turn as the web
+    chat, as its owner, saved to their chat. Actions that need a person are
+    held and come back as buttons."""
+    from security import approvals
+    from security.approvals import collecting_held
+    from tadbir import waqt
+
+    user = _owner_token(owner_id)
+    template = _tadbir_coordinator()
+    if user is None or template is None:
+        return "MIZAN cannot answer right now: no agent is running.", []
+    await memory.authorize_session(session_id, owner_id, create=True)
+    await memory.save_message(session_id, "user", text, metadata={"channel": "telegram"})
+    agent = await chat_agent_for(user, template)
+    session = active_sessions.setdefault(session_id, {"history": []})
+    binding = bind_principal(user)
+    held: list[dict] = []
+    try:
+        context = await chat_context(user, session_id, session, agent, text)
+        zone = _remembered_zone(owner_id)
+        with (
+            waqt.bind_timezone(zone),
+            approvals.unattended(owner_id, session_id, "telegram"),
+            collecting_held() as found,
+        ):
+            result = await agent.execute(text, context)
+            held = list(found)
+    finally:
+        reset_principal(binding)
+    if result.get("success", True):
+        reply = str(result.get("result") or "").strip() or "—"
+        metadata: dict = {
+            "status": "complete",
+            "channel": "telegram",
+            "usage": result.get("usage", {}),
+        }
+    else:
+        failure = chat_failure_payload(result)
+        reply, metadata = failure["message"], {"status": "error", "channel": "telegram", **failure}
+    if held:
+        metadata["held"] = held
+    await memory.save_message(session_id, "assistant", reply, metadata=metadata)
+    return reply, held
+
+
+def _remembered_zone(owner_id: str) -> str | None:
+    """The user's timezone as MIZAN last saw it (chat or prayer place)."""
+    try:
+        from api import iqtisad
+
+        store = iqtisad.ledger()
+        remembered = store.zone(owner_id) if store is not None else None
+        if remembered:
+            return str(remembered)
+        place = _muraqabah_store().place(owner_id)
+        zone = getattr(place, "tz", None)
+        return str(zone) if zone else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _bab_decide(owner_id: str, held_id: str, decision: str) -> str:
+    user = _owner_token(owner_id)
+    if user is None:
+        return "Your MIZAN account is not available."
+    try:
+        outcome = await _decide_held(user, held_id, decision)
+    except HTTPException as exc:
+        return str(exc.detail)
+    if outcome is None:
+        return "Already decided, or it expired."
+    if outcome["status"] == "denied":
+        return "Denied: it will not run."
+    result = outcome.get("result") or {}
+    if isinstance(result, dict) and result.get("error"):
+        return f"Allowed, but {outcome['tool']} failed: {str(result['error'])[:300]}"
+    return f"Allowed: {outcome['tool']} ran once. The result is in your MIZAN chat."
+
+
+async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
+    """Send a notice to the owner's linked Telegram, with buttons for held actions."""
+    bot = _telegram_bot
+    if bot is None or not bot.running:
+        return
+    from gateway import store as bab_store
+    from gateway.telegram import held_buttons
+
+    link = bab_store.store().link_for_owner("telegram", owner_id)
+    if link is None:
+        return
+    try:
+        await bot.send(link["chat_id"], text, held_buttons(metadata.get("held") or []))
+    except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
+        logger.warning("Telegram notice not sent: %s", exc)
+
+
+@app.get("/api/bab/telegram")
+async def telegram_status(user: TokenPayload = Depends(require_auth)):
+    """Whether MIZAN runs a Telegram bot, and whether your account is linked."""
+    from gateway import store as bab_store
+
+    bot = _telegram_bot
+    link = bab_store.store().link_for_owner("telegram", user.user_id)
+    username = ""
+    if bot is not None and bot.running:
+        try:
+            username = str((await bot.me()).get("username", ""))
+        except Exception:  # noqa: BLE001
+            username = ""
+    return {
+        "available": bool(bot is not None and bot.running),
+        "bot": username,
+        "linked": link is not None,
+        "linked_at": link["linked"] if link else None,
+        "error": getattr(bot, "error", "") if bot is not None else "",
+    }
+
+
+@app.post("/api/bab/telegram/link")
+async def telegram_link(user: TokenPayload = Depends(require_auth)):
+    """A one-time link (10 minutes) that ties a Telegram account to you."""
+    from gateway import store as bab_store
+    from gateway.store import CODE_TTL
+
+    bot = _telegram_bot
+    if bot is None or not bot.running:
+        raise HTTPException(503, "MIZAN is not running a Telegram bot")
+    code = bab_store.store().new_code(user.user_id, "telegram")
+    return {"url": await bot.link_url(code), "expires_in": int(CODE_TTL.total_seconds())}
+
+
+@app.delete("/api/bab/telegram/link")
+async def telegram_unlink(user: TokenPayload = Depends(require_auth)):
+    from gateway import store as bab_store
+
+    return {"unlinked": bab_store.store().unlink("telegram", user.user_id)}
 
 
 class PlaceRequest(BaseModel):
@@ -4233,6 +4409,17 @@ def _channel_state(name: str) -> dict:
             "messages_processed": 0,
         }
     has_token = bool(os.getenv(_CHANNEL_TOKENS[name]))
+    if name == "telegram" and _telegram_bot is not None and _telegram_bot.running:
+        return {
+            "id": name,
+            "type": name,
+            "name": _CHANNEL_NAMES[name],
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "has_token": True,
+            "detail": "Running. Each user links their own Telegram account under Link Telegram.",
+        }
     return {
         "id": name,
         "type": name,
