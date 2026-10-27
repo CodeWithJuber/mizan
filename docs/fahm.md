@@ -110,7 +110,7 @@ Qasd reads three kinds of evidence:
 - the context (`c:` tokens)
 
 It returns a posterior over 24 recipes and `converse`. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 684 requests in five languages
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 696 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -157,9 +157,9 @@ that never saw it.
 | Model | Classes | Examples | Held-out accuracy |
 |---|---|---|---|
 | Lughah | 7 | 6246 (1500 sampled for the fit) | 99.2% |
-| Qasd, exact intent | 25 | 1299 (684 seeds, two contexts) | 75.4% |
-| Qasd, family (what MIZAN acts on) | 16 | same | 80.0% |
-| Qasd, act vs answer in words | 2 | same | 86.4% |
+| Qasd, exact intent | 25 | 1323 (696 seeds, two contexts) | 76.0% |
+| Qasd, family (what MIZAN acts on) | 16 | same | 80.1% |
+| Qasd, act vs answer in words | 2 | same | 86.8% |
 | Facet `current` | 2 | 104 | 86.5% |
 | Facet `harder` | 2 | 31 | 90.3% |
 

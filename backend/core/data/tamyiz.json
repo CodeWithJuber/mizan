@@ -14,18 +14,18 @@
   "vocabulary": 78995
  },
  "qasd": {
-  "sha256": "eee1b5c417b8e1d523fbc3e84d325899c6aa864cb635b292ff15a61de5484e74",
+  "sha256": "a43996be9bf512edfa194b1e0bc9d0edd30d92c8a1e1b328201849acf3f461fe",
   "alpha": 0.01,
   "weights": [
-   1.0361765415442965,
-   0.030094465225069627,
-   0.6383042268038124
+   1.0450902461187421,
+   0.030286580733994144,
+   0.6634853430119793
   ],
-  "loo_loss": 0.8304276324087048,
-  "loo_accuracy": 0.7536566589684373,
-  "examples": 1299.0,
+  "loo_loss": 0.8208844932706355,
+  "loo_accuracy": 0.7603930461073318,
+  "examples": 1323.0,
   "labels": 25,
-  "vocabulary": 8781
+  "vocabulary": 9266
  },
  "qasd.current": {
   "sha256": "9cea30e1aabce83f1beb909b6ee5657890b7e4e7d18aa40f45b0f063f7d7f939",
