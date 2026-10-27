@@ -55,6 +55,20 @@
   "labels": 2,
   "vocabulary": 2915
  },
+ "qasd.deen": {
+  "sha256": "990b3c87b0db5d78085a26ddeab6f41edfad9fabf1e06d95094a9aa94761611d",
+  "alpha": 0.03,
+  "weights": [
+   0.0010000011106676412,
+   0.05083699644380573,
+   1.3981854460720213
+  ],
+  "loo_loss": 0.276121295613508,
+  "loo_accuracy": 0.8690476190476191,
+  "examples": 84.0,
+  "labels": 2,
+  "vocabulary": 3266
+ },
  "qasd.fact": {
   "sha256": "a0481afa989ffbca57181bc32675f60e0afd840358a89b49493172b82cb8f771",
   "alpha": 1.0,

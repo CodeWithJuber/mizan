@@ -290,3 +290,88 @@ ruling	yes	کیا سالگرہ منانا جائز ہے؟
 ruling	yes	क्या बैंक से लोन लेना जायज़ है?
 ruling	yes	هل يجوز الاحتفال بعيد الميلاد؟
 ruling	yes	هل التأمين حلال أم حرام؟
+# deen: the question is about the Quran, a hadith, Islamic belief or worship, or a word of the Quran; MIZAN answers it from its own sources, never from Wikipedia or a web search.
+deen	yes	Is the hadith "seek knowledge even in China" authentic?
+deen	yes	Is this hadith sahih: whoever reads this dua once will enter Jannah?
+deen	yes	Is "the ink of the scholar is holier than the blood of the martyr" a real hadith?
+deen	yes	Did the Prophet ﷺ say that cleanliness is half of faith?
+deen	yes	Which hadith talks about actions being judged by intentions?
+deen	yes	Who narrated the hadith of Jibril?
+deen	yes	Quote the hadith about the best of you being those who learn the Quran
+deen	yes	Which verse of the Quran talks about the splitting of the moon?
+deen	yes	Is there a verse that says paradise lies under the feet of mothers?
+deen	yes	What does the word ard mean in the Quran?
+deen	yes	What are the different meanings of yawm in the Quran?
+deen	yes	Explain Ayat al-Kursi
+deen	yes	What is the tafsir of Surah al-Ikhlas?
+deen	yes	What does the Quran say about patience?
+deen	yes	What does Allah say about orphans in the Quran?
+deen	yes	Where in the Quran is Maryam mentioned?
+deen	yes	What are the names of Allah mentioned at the end of Surah al-Hashr?
+deen	yes	What is the root of the Arabic word kitab?
+deen	yes	What is tawakkul according to the Quran and Sunnah?
+deen	yes	What are the six pillars of iman?
+deen	yes	Kya yeh hadith sahih hai: ilm hasil karo chahe China jana pade?
+deen	yes	Kya Nabi ﷺ ne farmaya tha ki safai aadha iman hai?
+deen	yes	Bukhari mein niyat wali hadith kaunsi hai?
+deen	yes	Quran mein sabr ke baare mein kya aaya hai?
+deen	yes	Ayat al-Kursi ka matlab samjhao
+deen	yes	Surah Ikhlas ki tafseer batao
+deen	yes	Quran mein ard lafz ka kya matlab hai?
+deen	yes	Allah ke 99 naam kaunse hain?
+deen	yes	کیا یہ حدیث صحیح ہے: علم حاصل کرو چاہے چین جانا پڑے؟
+deen	yes	قرآن میں صبر کے بارے میں کیا آیا ہے؟
+deen	yes	آیت الکرسی کا مطلب سمجھائیں
+deen	yes	سورہ اخلاص کی تفسیر بتائیں
+deen	yes	क्या यह हदीस सही है: इल्म हासिल करो चाहे चीन जाना पड़े?
+deen	yes	क़ुरआन में सब्र के बारे में क्या आया है?
+deen	yes	आयतुल कुर्सी का मतलब समझाओ
+deen	yes	هل حديث اطلبوا العلم ولو في الصين صحيح؟
+deen	yes	ما معنى كلمة الأرض في القرآن؟
+deen	yes	ما تفسير سورة الإخلاص؟
+deen	yes	ماذا يقول القرآن عن الصبر؟
+deen	yes	ما جذر كلمة كاتب؟
+deen	yes	من روى حديث جبريل؟
+deen	yes	ما معاني كلمة يوم في القرآن؟
+deen	no	What is the largest moon of Saturn?
+deen	no	When was the Ottoman Empire founded?
+deen	no	When did the Abbasid caliphate end?
+deen	no	Who built the Taj Mahal and when?
+deen	no	How tall is the Burj Khalifa?
+deen	no	What is the capital of Indonesia?
+deen	no	What is the population of Pakistan?
+deen	no	What is the GDP of Saudi Arabia?
+deen	no	How tall is Mount Everest?
+deen	no	Who discovered penicillin?
+deen	no	What is the speed of light?
+deen	no	Which is the longest river in Africa?
+deen	no	How many bones are there in the human body?
+deen	no	When is the next solar eclipse?
+deen	no	Saturn ka sabse bada chand kaun sa hai?
+deen	no	Taj Mahal kisne banwaya tha?
+deen	no	Pakistan ki aabadi kitni hai?
+deen	no	Dubai mein aaj mausam kaisa hai?
+deen	no	زحل کا سب سے بڑا چاند کون سا ہے؟
+deen	no	تاج محل کس نے بنوایا؟
+deen	no	शनि का सबसे बड़ा चंद्रमा कौन सा है?
+deen	no	ताजमहल किसने बनवाया?
+deen	no	ما هو أكبر أقمار زحل؟
+deen	no	متى تأسست الدولة العثمانية؟
+deen	no	كم عدد سكان مصر؟
+deen	no	Salaam, how are you?
+deen	no	Assalamualaikum bhai, kaise ho?
+deen	no	Thank you so much
+deen	no	Tell me a joke
+deen	no	Write a poem about the rain
+deen	no	Help me write an email to my boss
+deen	no	Fix the bug in my function
+deen	no	Summarise this paragraph for me
+deen	no	Translate this into Urdu: good morning
+deen	no	Give me a name for my cat
+deen	no	Explain recursion to a child
+deen	no	Kya yeh code sahi hai?
+deen	no	Mujhe ek shayari likh do
+deen	no	آپ کیسے ہیں؟
+deen	no	मुझे एक कविता लिख दो
+deen	no	كيف حالك؟
+deen	no	اكتب لي قصيدة

@@ -229,3 +229,12 @@ def test_compare_endpoint(agent, monkeypatch, tmp_path):
         headers={"Authorization": f"Bearer {member}"},
     )
     assert denied.status_code == 403
+
+
+def test_arabic_terms_in_an_explanation_are_not_read_as_a_quote():
+    source = "> إِنَّ رَبَّكُمُ ٱللَّهُ ٱلَّذِى خَلَقَ ٱلسَّمَٰوَٰتِ وَٱلْأَرْضَ فِى سِتَّةِ أَيَّامٍۢ"
+    answer = "Here يوم means a stage, not 24 hours; in يوم القيامة it is the Day of Judgement."
+    assert muqabala.quote_check(answer, source)["status"] == "missing"
+    # A passage given as the ayah is still read, however different.
+    wrong = muqabala.quote_check("إن ربكم الله الذي خلق الأرض في يومين", source)
+    assert wrong["status"] == "differs"

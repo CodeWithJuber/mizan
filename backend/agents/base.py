@@ -1866,6 +1866,7 @@ class BaseAgent:
                 user_id=current_user_id() or "",
                 language=language,
                 web=web,
+                answer=text,
             )
         except Exception:  # noqa: BLE001 - asking never loses the answer
             logger.debug("Ahl al-Dhikr skipped", exc_info=True)

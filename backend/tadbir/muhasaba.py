@@ -72,41 +72,58 @@ def _agrees(claimed: str, value: calc.Number) -> bool:
     )
 
 
+def _cited_lines(text: str) -> list[tuple[Any, list[int]]]:
+    """Each reference the text gives, with the Arabic lines that follow it.
+
+    A reference names a number, so a verse's own words are never read as one;
+    each Arabic line belongs to the reference given most recently above it, or
+    on the same line."""
+    groups: list[tuple[Any, list[int]]] = []
+    for index, line in enumerate(text.splitlines()):
+        found = quran.parse_reference(line) or hadith.parse_reference(line)
+        if found is not None:
+            groups.append((found, []))
+        if muqabala.fold_arabic(line) and groups:
+            groups[-1][1].append(index)
+    return [(reference, lines) for reference, lines in groups if lines]
+
+
 async def scripture(text: str) -> list[dict]:
-    """Quoted Quran or hadith text that differs from MIZAN's source."""
+    """Quoted Quran or hadith text that differs from MIZAN's source, each
+    checked against the reference it is given under (not the answer's first)."""
     if len(muqabala.fold_arabic(text)) < 4:
         return []
-    try:
-        reference = quran.parse_reference(text)
-        if reference is not None:
-            data = await quran.fetch(reference, "en")
-            source = "\n".join(ayah["arabic"] for ayah in data.get("ayahs", []))
+    lines = text.splitlines()
+    findings: list[dict] = []
+    for reference, indexes in _cited_lines(text)[:4]:
+        try:
+            if isinstance(reference, quran.Reference):
+                data = await quran.fetch(reference, "en")
+                source = "\n".join(ayah["arabic"] for ayah in data.get("ayahs", []))
+            else:
+                data = await hadith.fetch(reference, "en")
+                source = str(data.get("arabic") or "")
             label = data.get("reference", "")
-        else:
-            narration = hadith.parse_reference(text)
-            if narration is None:
-                return []
-            data = await hadith.fetch(narration, "en")
-            source = str(data.get("arabic") or "")
-            label = data.get("reference", "")
-    except Exception as exc:  # noqa: BLE001 - an unreachable source proves nothing
-        logger.debug("Muhasaba could not read the source: %s", exc)
-        return []
-    if not source:
-        return []
-    quoted = "\n".join(f"> {line}" for line in source.splitlines() if line.strip())
-    check = muqabala.quote_check(text, quoted)
-    if check["status"] not in {"differs", "close"}:
-        return []
-    return [
-        {
-            "kind": "quote",
-            "reference": label,
-            "source": source[:3000],
-            "status": check["status"],
-            "changed": check.get("changed", []),
-        }  # fmt: skip
-    ]
+        except Exception as exc:  # noqa: BLE001 - an unreachable source proves nothing
+            logger.debug("Muhasaba could not read the source: %s", exc)
+            continue
+        if not source:
+            continue
+        quoted = "\n".join(f"> {line}" for line in source.splitlines() if line.strip())
+        check = muqabala.quote_check("\n".join(lines[i] for i in indexes), quoted)
+        if check["status"] not in {"differs", "close"}:
+            continue
+        findings.append(
+            {
+                "kind": "quote",
+                "reference": label,
+                "source": source[:3000],
+                "status": check["status"],
+                "changed": check.get("changed", []),
+                "lines": indexes,
+            }  # fmt: skip
+        )
+    return findings
 
 
 async def review(text: str) -> list[dict]:

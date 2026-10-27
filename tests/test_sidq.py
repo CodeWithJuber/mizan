@@ -2,9 +2,10 @@
 
 import pytest
 
-from tadbir import isnad, sidq
+from tadbir import isnad, muhasaba, sidq
 
 REAL_DEAD_LINKS = sidq.dead_links  # the tests below replace it with an offline stand-in
+REAL_SCRIPTURE = muhasaba.scripture
 
 
 @pytest.fixture(autouse=True)
@@ -153,3 +154,64 @@ async def test_every_redirect_hop_is_checked_and_a_private_one_is_not_followed(m
     dead = await REAL_DEAD_LINKS(["https://a.example/x", "https://b.example/y"])
     assert dead == ["https://b.example/y"]  # moved, then gone
     assert "internal.example" not in asked  # the private hop was never opened
+
+
+SOURCES = {
+    (112, 1): "قُلْ هُوَ اللَّهُ أَحَدٌ",
+    (2, 255): "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ",
+}
+
+
+@pytest.fixture
+def mushaf(monkeypatch):
+    """MIZAN's Quran source, offline; the real quote check reads it."""
+    from tadbir import muhasaba, quran
+
+    async def fetch(reference, language):
+        arabic = SOURCES[(reference.surah, reference.start)]
+        return {
+            "reference": f"Quran {reference.surah}:{reference.start}",
+            "ayahs": [{"arabic": arabic}],
+        }
+
+    monkeypatch.setattr(quran, "fetch", fetch)
+    monkeypatch.setattr(muhasaba, "scripture", REAL_SCRIPTURE)
+
+
+ANSWER = (
+    "Surah 112:1:\nقل هو الله احد\nThat is tawhid.\n\n"
+    "Surah 2:255:\nالله لا اله الا هو الحي القيوم\nThat is Ayat al-Kursi."
+)
+
+
+async def test_each_quote_is_checked_against_the_reference_it_is_given_under(mushaf):
+    from tadbir import muhasaba
+
+    # Two right quotes under two references: nothing to correct (it used to be
+    # checked against the first reference only, and flagged).
+    assert await muhasaba.scripture(ANSWER) == []
+    text, report = await sidq.gate(ANSWER)
+    assert text == ANSWER and report.get("passed") is True
+
+
+async def test_arabic_words_in_an_explanation_are_not_a_misquote(mushaf):
+    from tadbir import muhasaba
+
+    answer = (
+        "In Surah 2:255 the word القيوم means the One who sustains all, and the "
+        "phrase لا تأخذه سنة says He never tires."
+    )
+    assert await muhasaba.scripture(answer) == []
+
+
+async def test_every_altered_quote_is_replaced_by_its_own_source(mushaf, monkeypatch):
+    monkeypatch.setenv("MIZAN_TRUTH_GATE", "strict")
+    altered = ANSWER.replace("قل هو الله احد", "قل هو الله واحد").replace(
+        "الحي القيوم", "الرحمن الرحيم"
+    )
+    text, report = await sidq.gate(altered)
+    assert f"> {SOURCES[(112, 1)]}" in text and f"> {SOURCES[(2, 255)]}" in text
+    assert "واحد" not in text and "الرحمن" not in text
+    assert text.index(SOURCES[(112, 1)]) < text.index("That is tawhid.")
+    assert text.index(SOURCES[(2, 255)]) < text.index("That is Ayat al-Kursi.")
+    assert len(report["corrected"]) == 2
