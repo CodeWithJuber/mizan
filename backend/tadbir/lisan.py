@@ -354,6 +354,11 @@ class Lisan:
             "(change the user's selected coding project) | "
             '{"intent":"web_search","query":"<search query>"} | '
             '{"intent":"web_read","url":"<a URL copied from the message>"} | '
+            '{"intent":"watch","when":{"kind":"daily","time":"HH:MM"} or {"kind":"prayer",'
+            '"prayer":"fajr|dhuhr|asr|maghrib|isha","offset":<minutes, negative for before>} or '
+            '{"kind":"hijri","days":[<days of the Hijri month>],"time":"HH:MM"},"task":"<what to '
+            'do each time, as a request>","title":"<a short name>"} (a standing request: do '
+            "something every day, around a prayer, or on Hijri dates) | "
             '{"intent":"use_tool","need":"<the capability needed, in a few English words, for '
             'example list my GitHub issues or remember my name>"} (any other action, such as a '
             "connected app, a skill or memory) | "

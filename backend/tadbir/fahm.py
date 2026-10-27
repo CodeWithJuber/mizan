@@ -153,6 +153,105 @@ _EXPLAIN = re.compile(
 )
 
 
+_WATCH_CUE = re.compile(
+    r"\b(?:bhej(?:o|na|iye|en|a\s+karo)|send|remind|yaad\s+dila(?:o|na|iye|ya\s+karo)|"
+    r"bata(?:o|na|iye|ya\s+karo)|notify|alert|message\s+karo)\b",
+    re.IGNORECASE,
+)
+_PRAYER_NAMES = {
+    "fajr": "fajr", "fajar": "fajr", "zuhr": "dhuhr", "zohar": "dhuhr", "zuhar": "dhuhr",
+    "dhuhr": "dhuhr", "duhr": "dhuhr", "asr": "asr", "asar": "asr", "maghrib": "maghrib",
+    "magrib": "maghrib", "isha": "isha", "esha": "isha", "ishaa": "isha",
+}  # fmt: skip
+_PRAYER = r"(fajr|fajar|zuhr|zohar|zuhar|dhuhr|duhr|asr|asar|maghrib|magrib|isha|esha|ishaa)"
+_MINUTES = r"(?:\d{1,3}\s*(?:min|mins|minute|minutes|mint|minat)\s*)?"
+_RELATIVE = re.compile(
+    _PRAYER
+    + r"(?:\s+(?:ki\s+)?(?:namaz|namaaz|salah|salat|prayer))?\s*(?:ke|ki|se)?\s*"
+    + _MINUTES
+    + r"(baad|bad|after|pehle|before)|\b"
+    + _MINUTES
+    + r"(after|before)\s+"
+    + _PRAYER,
+    re.IGNORECASE,
+)
+_SALAH_WORD = "(" + _PRAYER[1:-1] + "|sehri|sahri|suhoor|iftar|iftari)"
+_SALAH_TIME = re.compile(
+    r"(?:" + _PRAYER + r"|namaz|namaaz|nam[aā]z|prayer|salah|salat|sehri|sahri|suhoor|iftar|iftari)"
+    r"\s*(?:ka|ki|ke|of)?\s*(?:time|times|timing|timings|waqt|waqat|auqat|kab)\b"
+    r"|\b(?:prayer|namaz|salah)\s+times?\b|\bwhen\s+is\s+" + _PRAYER,
+    re.IGNORECASE,
+)
+_EVENING = re.compile(r"\b(?:shaam|sham|evening|raat|night)\b", re.IGNORECASE)
+_FILLER = re.compile(r"^(?:mujhe|mujhko|me|please|plz|zara|ek|aur)\b\s*", re.IGNORECASE)
+_EVERY = re.compile(
+    r"\b(?:har\s+(?:roz|din|subah|shaam|sham|raat)|every\s+(?:day|morning|evening|night)|"
+    r"daily|rozana|roz)\b",
+    re.IGNORECASE,
+)
+_CLOCK = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|baje)\b", re.IGNORECASE)
+_OFFSET = re.compile(r"\b(\d{1,3})\s*(?:min|mins|minute|minutes|mint|minat)\b", re.IGNORECASE)
+_AYAH_WORD = re.compile(r"\b(?:ayat|ayah|aayat|verse)\b|آیت|آية|आयत", re.IGNORECASE)
+_REMINDER = re.compile(
+    r"\bremind\s+me\s+(?:to|about|of)\s+(.+)|(?:^|\s)(.+?)\s+(?:ka|ki|ke)?\s*yaad\s+dila",
+    re.IGNORECASE,
+)
+
+
+def watch_request(message: str) -> dict | None:
+    """A standing request ("every day after Fajr, send me an ayah"), or None."""
+    if not _WATCH_CUE.search(message):
+        return None
+    relative = _RELATIVE.search(message)
+    clock = _CLOCK.search(message)
+    trigger: dict | None = None
+    if relative:
+        name = (relative.group(1) or relative.group(4) or "").lower()
+        direction = (relative.group(2) or relative.group(3) or "").lower()
+        before = direction in {"pehle", "before"}
+        offset = _OFFSET.search(message)
+        minutes = int(offset.group(1)) if offset else (30 if before else 20)
+        trigger = {"kind": "prayer", "prayer": _PRAYER_NAMES[name],
+                   "offset": -minutes if before else minutes}  # fmt: skip
+    elif clock and _EVERY.search(message):
+        hour, minute = int(clock.group(1)), int(clock.group(2) or 0)
+        meridiem = clock.group(3).lower().replace(".", "")
+        if (meridiem == "pm" or (meridiem == "baje" and _EVENING.search(message))) and hour < 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+        if hour > 23 or minute > 59:
+            return None
+        trigger = {"kind": "daily", "time": f"{hour:02d}:{minute:02d}"}
+    if trigger is None:
+        return None
+    if _AYAH_WORD.search(message) and quran.parse_reference(message) is None:
+        return {"trigger": trigger, "task": "ayah_of_the_day", "title": "Ayah of the day"}
+    reminder = _REMINDER.search(message)
+    if reminder:
+        what = _bare((reminder.group(1) or reminder.group(2) or "").strip(" .!?"))
+        if what:
+            return {
+                "trigger": trigger,
+                "task": f"remind:{what[:300]}",
+                "title": f"Reminder: {what[:60]}",
+            }
+    what = _bare(_WATCH_CUE.sub(" ", message))
+    if not what:
+        return None
+    # Anything else is a request MIZAN runs each time, in the user's own words.
+    return {"trigger": trigger, "task": what[:300], "title": what[:60]}
+
+
+def _bare(text: str) -> str:
+    """The thing asked for, without its schedule and filler words."""
+    text = _RELATIVE.sub(" ", _CLOCK.sub(" ", _EVERY.sub(" ", _OFFSET.sub(" ", text))))
+    text = re.sub(r"\s+", " ", text).strip(" ,.!?")
+    for _ in range(3):
+        text = _FILLER.sub("", text).strip(" ,.!?")
+    return text
+
+
 def understand(text: str) -> Understanding:
     message = text.strip()
     language = detect_language(message)
@@ -160,6 +259,17 @@ def understand(text: str) -> Understanding:
 
     if _CAPABILITY.search(message) and len(words) <= 25:
         return Understanding("capabilities", language, 0.9)
+
+    standing = watch_request(message)
+    if standing is not None:
+        return Understanding("watch", language, 0.9, standing)
+
+    salah = _SALAH_TIME.search(message)
+    if salah and len(words) <= 20:
+        named = next((m.lower() for m in re.findall(_SALAH_WORD, message, re.IGNORECASE) if m), "")
+        prayer = {"sehri": "fajr", "sahri": "fajr", "suhoor": "fajr", "iftar": "maghrib",
+                  "iftari": "maghrib"}.get(named, _PRAYER_NAMES.get(named))  # fmt: skip
+        return Understanding("salah", language, 0.9, {"prayer": prayer})
 
     explain = bool(_EXPLAIN.search(message))
     reference = quran.parse_reference(message)
@@ -389,6 +499,19 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         if not (_SEARCH.search(message) or _CURRENT.search(message)):
             return None  # general knowledge: answered in words, not by searching
         entities["query"] = query
+    elif intent == "watch":
+        from automation import muraqabah
+
+        try:
+            trigger = muraqabah.validate_trigger(dict(parsed.get("when") or {}))
+        except (ValueError, TypeError):
+            return None
+        job = str(parsed.get("task", "")).strip()
+        if not job or watch_request(job) is not None or len(job) > 500:
+            return None  # the task is what to do each time, never another schedule
+        entities["trigger"] = trigger
+        entities["task"] = job
+        entities["title"] = str(parsed.get("title") or job)[:80]
     elif intent == "web_read":
         url = str(parsed.get("url", "")).strip()
         # Only a link the user actually wrote, never one the model invented or

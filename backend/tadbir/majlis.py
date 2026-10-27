@@ -31,6 +31,8 @@ ROLE_FOR = {
     "quran": "khalifah",
     "hadith": "khalifah",
     "waqt": "khalifah",
+    "salah": "khalifah",
+    "watch": "khalifah",
     "recall": "khalifah",
     "capabilities": "khalifah",
     "edit_project": "katib",

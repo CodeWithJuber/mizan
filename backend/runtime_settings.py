@@ -78,6 +78,10 @@ SETTINGS: tuple[Setting, ...] = (
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "
             "that chat. Users can stop it with the chat preference muhasaba: off.",
             "on", ("on", "off")),
+    Setting("MIZAN_MURAQABAH", "Model", "Watchers (Muraqabah)", "choice",
+            "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
+            "when a page changes), quiet during salah, within a daily attention budget.",
+            "on", ("on", "off")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "

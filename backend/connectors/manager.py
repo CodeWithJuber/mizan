@@ -232,7 +232,8 @@ def trust_tool(user_id: str, server_id: str, name: str) -> dict | None:
             pins = {**(server.get("pins") or {}), name: tool["fingerprint"]}
     if not found:
         return None
-    return store.update_server(user_id, server_id, tools=tools, pins=pins)
+    updated: dict | None = store.update_server(user_id, server_id, tools=tools, pins=pins)
+    return updated
 
 
 class Connection:

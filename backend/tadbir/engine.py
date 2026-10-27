@@ -28,6 +28,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from agents.events import emit, summarize
@@ -1487,6 +1488,83 @@ class Tadbir:
             )
             lines.append(f"\n_{note}_")
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
+
+    async def _watch(self, task: str, u: fahm.Understanding) -> Outcome:
+        """A standing request: MIZAN saves a watcher (Muraqabah) and says when it runs."""
+        from automation import muraqabah
+        from security.auth import current_user_id
+
+        owner = current_user_id()
+        if not owner or muraqabah.inside_watcher():
+            raise Defer  # a watcher's own task never creates watchers
+        await self._begin(["Understand the standing request (MIZAN)", "Save the watcher", "Reply"])
+        store = muraqabah.default_store()
+        trigger = u.entities["trigger"]
+        if store.place(owner) is None:
+            place = muraqabah.city_in(task)
+            if place is not None:
+                store.set_place(owner, place)
+            elif trigger["kind"] == "prayer":
+                return Outcome(phrase("watch_need_place", u.language), False, {}, tool_backed=False)
+        try:
+            watcher = store.add(owner, u.entities["title"], trigger, u.entities["task"])
+        except ValueError as exc:
+            reason = str(exc)
+            return Outcome(phrase("watch_failed", u.language, reason=reason), False, {}, tool_backed=False)  # fmt: skip
+        await self._step()
+        place = store.place(owner)
+        due = watcher.get("next_due")
+        upcoming = (
+            datetime.fromisoformat(due).astimezone(place.zone if place else UTC).strftime("%a %d %b, %H:%M")
+            if due
+            else "—"
+        )  # fmt: skip
+        text = phrase("watch_created", u.language, title=watcher["title"], when=watcher["when"], next=upcoming)  # fmt: skip
+        return Outcome(text, True, {"watcher": watcher["id"], "when": watcher["when"]}, tool_backed=False)  # fmt: skip
+
+    async def _salah(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Prayer times computed by MIZAN for the user's place (or a city named in the message)."""
+        from automation import muraqabah
+        from security.auth import current_user_id
+
+        owner = current_user_id()
+        place = muraqabah.city_in(task)
+        if place is None and owner:
+            place = muraqabah.default_store().place(owner)
+        if place is None:
+            return Outcome(phrase("salah_need_place", u.language), False, {}, tool_backed=False)
+        await self._begin(["Compute the prayer times for your place (MIZAN)", "Reply"])
+        now = datetime.now(UTC)
+        day = now.astimezone(place.zone).date()
+        times = muraqabah.prayer_times(place, day)
+        asked = u.entities.get("prayer")
+        upcoming = next((name for name in muraqabah.PRAYERS if times[name] > now), None)
+        lines = [
+            phrase(
+                "salah_header", u.language, place=place.label, date=waqt.gregorian_text(day),
+                hijri=waqt.hijri_text(waqt.to_hijri(day)),
+            ),
+            "",
+        ]  # fmt: skip
+        for name in ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"):
+            label = (
+                name.title() if not (name == "dhuhr" and day.weekday() == 4) else "Dhuhr (Jumu'ah)"
+            )
+            row = f"{label}: {times[name]:%H:%M}"
+            if name == asked:
+                row = f"**{row}**"
+            lines.append(f"- {row}" + (" ←" if name == upcoming else ""))
+        lines += [
+            "",
+            "_"
+            + phrase(
+                "salah_method", u.language, method=place.method.replace("_", " ").title(),
+                asr="Hanafi" if place.hanafi else "Shafi'i",
+            )
+            + "_",
+        ]  # fmt: skip
+        facts = {"place": place.label, "times": {k: f"{v:%H:%M}" for k, v in times.items()}}
+        return Outcome("\n".join(lines), True, facts, tool_backed=False)
 
     async def _waqt(self, task: str, u: fahm.Understanding) -> Outcome:
         request: waqt.WaqtRequest = u.entities["request"]

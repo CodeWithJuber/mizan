@@ -33,7 +33,8 @@ def _now() -> str:
 def _rows(store: Any, sql: str, params: tuple = ()) -> list[tuple]:
     conn = store._get_conn()
     try:
-        return conn.execute(sql, params).fetchall()
+        rows: list[tuple] = conn.execute(sql, params).fetchall()
+        return rows
     finally:
         store._release_conn(conn)
 
@@ -43,7 +44,7 @@ def _write(store: Any, sql: str, params: tuple = ()) -> int:
     try:
         cursor = conn.execute(sql, params)
         conn.commit()
-        return cursor.rowcount
+        return int(cursor.rowcount)
     finally:
         store._release_conn(conn)
 

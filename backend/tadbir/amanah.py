@@ -280,7 +280,7 @@ _PASTED = (
 
 def pasted(text: str) -> list[str]:
     """Parts of a user's message that quote outside text (quotes, fences, labelled blocks)."""
-    regions = []
+    regions: list[str] = []
     for pattern in _PASTED:
         regions.extend(match.group(1) for match in pattern.finditer(text or ""))
     return regions

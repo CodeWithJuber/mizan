@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -369,6 +370,27 @@ async def lifespan(app: FastAPI):
 
     self_review_task = asyncio.create_task(self_review())
 
+    async def watch_for_users() -> None:
+        # Muraqabah: each user's watchers, judged against salah and attention.
+        from automation import muraqabah
+
+        await asyncio.sleep(30)
+        while True:
+            if os.getenv("MIZAN_MURAQABAH", "on").lower() not in {"off", "0", "false", "no"}:
+                try:
+                    await muraqabah.tick(
+                        _muraqabah_store(),
+                        datetime.now(UTC),
+                        run_task=_watcher_task,
+                        deliver=_watcher_deliver,
+                        read_page=_watcher_page,
+                    )
+                except Exception as exc:
+                    logger.warning("Muraqabah pass failed: %s", exc)
+            await asyncio.sleep(60)
+
+    watch_task = asyncio.create_task(watch_for_users())
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -384,6 +406,7 @@ async def lifespan(app: FastAPI):
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
     self_review_task.cancel()
+    watch_task.cancel()
     await learning_service.stop()
     if task_worker:
         await task_worker.stop()
@@ -2622,6 +2645,249 @@ async def daftar_import(data: dict, user: TokenPayload = Depends(require_auth)):
         }
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# === MURAQABAH (مراقبة): watchers that judge when to interrupt ===
+
+
+def _muraqabah_store():
+    from automation import muraqabah
+
+    return muraqabah.default_store()
+
+
+def _owner_token(owner_id: str) -> TokenPayload | None:
+    record = auth.get_user(owner_id)
+    if record is None:
+        return None
+    return TokenPayload(
+        user_id=record.id,
+        username=record.username,
+        roles=list(record.roles),
+        exp=time.time() + 600,
+        iat=time.time(),
+        jti="muraqabah",
+    )
+
+
+async def _watcher_task(owner_id: str, task: str) -> str:
+    """Run a watcher's task as its owner, through their own agent and its gates."""
+    user = _owner_token(owner_id)
+    template = _tadbir_coordinator()
+    if user is None or template is None:
+        return ""
+    from automation import muraqabah
+
+    agent = await chat_agent_for(user, template)
+    binding = bind_principal(user)
+    try:
+        with muraqabah.running_watcher():
+            result = await agent.execute(task, {"session_id": muraqabah_session(owner_id)})
+    finally:
+        reset_principal(binding)
+    return str(result.get("result") or "")
+
+
+async def _watcher_page(owner_id: str, url: str) -> str | None:
+    """A watched page's text, read through the web tool and Amanah, as the owner."""
+    user = _owner_token(owner_id)
+    template = _tadbir_coordinator()
+    if user is None or template is None:
+        return None
+    agent = await chat_agent_for(user, template)
+    binding = bind_principal(user)
+    try:
+        from tadbir import amanah
+
+        page = await agent._execute_tool_safe("web_browse", {"url": url})
+    finally:
+        reset_principal(binding)
+    if not isinstance(page, dict) or page.get("error"):
+        return None
+    cleaned, _found = amanah.guard_value(page, "web_browse")
+    return str(cleaned.get("content") or "")[:20000]
+
+
+def muraqabah_session(owner_id: str) -> str:
+    from automation import muraqabah
+
+    return str(muraqabah.session_id(owner_id))
+
+
+async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
+    session = muraqabah_session(owner_id)
+    await memory.authorize_session(session, owner_id, create=True)
+    await memory.save_message(
+        session,
+        "assistant",
+        text,
+        metadata={"muraqabah": True, "status": "complete", **metadata},
+    )
+
+
+class PlaceRequest(BaseModel):
+    city: str = Field(default="", max_length=120)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    tz: str = Field(default="", max_length=64)
+    method: str = Field(default="", max_length=40)
+    hanafi: bool | None = None
+    budget: int | None = Field(default=None, ge=0, le=50)
+    digest: str = Field(default="", pattern=r"^(|[0-2]?\d:[0-5]\d)$")
+    quiet: bool | None = None
+
+
+class WatcherRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    trigger: dict
+    task: str = Field(..., min_length=1, max_length=1000)
+    priority: str = Field(default="judge", pattern=r"^(judge|always)$")
+
+
+class WatcherUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=120)
+    trigger: dict | None = None
+    task: str | None = Field(None, min_length=1, max_length=1000)
+    priority: str | None = Field(None, pattern=r"^(judge|always)$")
+    enabled: bool | None = None
+
+
+class NoticeFeedback(BaseModel):
+    useful: bool
+
+
+@app.get("/api/muraqabah")
+async def muraqabah_overview(user: TokenPayload = Depends(require_auth)):
+    """Your watchers, your place, today's prayer times and quiet windows, and attention used."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    place = store.place(user.user_id)
+    now = datetime.now(UTC)
+    today = None
+    if place is not None:
+        day = now.astimezone(place.zone).date()
+        times = muraqabah.prayer_times(place, day)
+        today = {
+            "date": day.isoformat(),
+            "times": {name: moment.strftime("%H:%M") for name, moment in times.items()},
+            "quiet": [
+                {"prayer": name, "from": start.strftime("%H:%M"), "to": end.strftime("%H:%M")}
+                for name, start, end in muraqabah.quiet_windows(place, day)
+            ],
+            "quiet_now": muraqabah.quiet_until(place, now) is not None,
+        }
+    return {
+        "place": place.to_dict() if place else None,
+        "today": today,
+        "watchers": store.watchers(user.user_id),
+        "delivered_today": store.delivered_today(user.user_id, place, now),
+        "budget": place.budget if place else muraqabah.DEFAULT_BUDGET,
+        "attention": {
+            kind: dict(zip(("useful", "not_now"), store.posterior(user.user_id, kind), strict=True))
+            for kind in muraqabah.TRIGGERS
+        },
+        "session_id": muraqabah_session(user.user_id),
+        "methods": muraqabah.METHODS,
+    }
+
+
+@app.put("/api/muraqabah/place")
+async def muraqabah_place(req: PlaceRequest, user: TokenPayload = Depends(require_auth)):
+    """Your place (for prayer times), calculation method, Asr school and attention settings."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    current = store.place(user.user_id)
+    if req.city.strip():
+        place = await muraqabah.find_place(req.city)
+        if place is None:
+            raise HTTPException(404, "MIZAN could not find that city; enter its coordinates")
+    elif req.lat is not None and req.lon is not None:
+        place = muraqabah.Place("Custom place", req.lat, req.lon, req.tz or "UTC")
+    elif current is not None:
+        place = current
+    else:
+        raise HTTPException(422, "Give a city, or coordinates and a time zone")
+    if current is not None and place is not current:
+        # A new place keeps the user's own settings.
+        place.budget, place.digest, place.quiet = current.budget, current.digest, current.quiet
+    if req.method:
+        if req.method not in muraqabah.METHODS:
+            raise HTTPException(422, "Unknown calculation method")
+        place.method = req.method
+    for name in ("hanafi", "budget", "quiet"):
+        if getattr(req, name) is not None:
+            setattr(place, name, getattr(req, name))
+    if req.digest:
+        place.digest = req.digest
+    store.set_place(user.user_id, place)
+    for watcher in store.watchers(user.user_id):
+        store.update(user.user_id, watcher["id"], enabled=watcher["enabled"])  # re-time them
+    return place.to_dict()
+
+
+@app.post("/api/muraqabah/watchers")
+async def add_watcher(req: WatcherRequest, user: TokenPayload = Depends(require_auth)):
+    try:
+        return _muraqabah_store().add(user.user_id, req.title, req.trigger, req.task, req.priority)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.patch("/api/muraqabah/watchers/{watcher_id}")
+async def update_watcher(
+    watcher_id: str, req: WatcherUpdate, user: TokenPayload = Depends(require_auth)
+):
+    try:
+        updated = _muraqabah_store().update(
+            user.user_id, watcher_id, **req.model_dump(exclude_none=True)
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if updated is None:
+        raise HTTPException(404, "No such watcher")
+    return updated
+
+
+@app.delete("/api/muraqabah/watchers/{watcher_id}")
+async def delete_watcher(watcher_id: str, user: TokenPayload = Depends(require_auth)):
+    if not _muraqabah_store().remove(user.user_id, watcher_id):
+        raise HTTPException(404, "No such watcher")
+    return {"deleted": watcher_id}
+
+
+@app.post("/api/muraqabah/watchers/{watcher_id}/run")
+async def run_watcher(watcher_id: str, user: TokenPayload = Depends(require_auth)):
+    """Run a watcher now; its notice is judged like any other (salah, attention)."""
+    from automation import muraqabah
+
+    store = _muraqabah_store()
+    watcher = store.watcher(user.user_id, watcher_id)
+    if watcher is None:
+        raise HTTPException(404, "No such watcher")
+    now = datetime.now(UTC)
+    await muraqabah.fire(store, watcher, now, _watcher_task, _watcher_page)
+    counts = await muraqabah.deliver_waiting(store, now, _watcher_deliver)
+    return {"ran": watcher_id, **counts}
+
+
+@app.get("/api/muraqabah/notices")
+async def watcher_notices(
+    status: str = Query("", pattern=r"^(|pending|held|digest|delivered|opened|dismissed)$"),
+    user: TokenPayload = Depends(require_auth),
+):
+    return {"notices": _muraqabah_store().notices(user.user_id, status or None)}
+
+
+@app.post("/api/muraqabah/notices/{notice_id}/feedback")
+async def watcher_feedback(
+    notice_id: str, req: NoticeFeedback, user: TokenPayload = Depends(require_auth)
+):
+    """Useful or not now: this teaches MIZAN when to interrupt you."""
+    if not _muraqabah_store().feedback(user.user_id, notice_id, req.useful):
+        raise HTTPException(404, "No such notice")
+    return {"recorded": notice_id}
 
 
 # === PERCEPTION (Sam' + Basar - سَمْع + بَصَر) ===

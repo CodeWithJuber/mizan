@@ -204,6 +204,7 @@ const SecurityPage = lazy(() => import("./pages/SecurityPage"));
 const AutomationPage = lazy(() => import("./pages/AutomationPage"));
 const NotebookPage = lazy(() => import("./pages/NotebookPage"));
 const ScannerPage = lazy(() => import("./pages/ScannerPage"));
+const WatchersPage = lazy(() => import("./pages/WatchersPage"));
 const MajlisPage = lazy(() => import("./pages/MajlisPage"));
 const PluginsPage = lazy(() => import("./pages/PluginsPage"));
 const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
@@ -2312,6 +2313,12 @@ function AppInner() {
           icon: <Icons.Memory />,
         },
         {
+          id: "watchers",
+          label: "Watchers",
+          desc: "Reminders, quiet during salah",
+          icon: <Icons.Clock />,
+        },
+        {
           id: "knowledge",
           label: "Knowledge",
           desc: "Feed URLs, PDFs, YouTube",
@@ -3946,6 +3953,8 @@ function AppInner() {
         return <NotebookPage api={api} addTerminalLine={addTerminalLine} />;
       case "scanner":
         return <ScannerPage api={api} addTerminalLine={addTerminalLine} />;
+      case "watchers":
+        return <WatchersPage api={api} />;
       case "compare":
         return <ComparePanel />;
       case "debug":
