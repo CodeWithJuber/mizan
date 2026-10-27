@@ -2249,6 +2249,30 @@ class Tadbir:
             provenance="evidence",
         )
 
+    async def _remember(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Keep what the user asked MIZAN to remember, in their own words, as a
+        note tied to this chat (deleting the chat forgets it too)."""
+        from security.approvals import current_approvals
+        from workspace.context import current_chat_session
+
+        approvals = current_approvals()
+        store = getattr(self.agent, "memory", None)
+        if store is None or (approvals is not None and approvals.deferred):
+            raise Defer  # no store, or a watcher's task: nobody asked in person
+        session = current_chat_session()
+        await self._begin(["Save to your notes", "Reply"])
+        note = u.entities["note"]
+        memory_id = await store.remember(
+            note,
+            memory_type="semantic",
+            importance=0.8,
+            tags=["remembered"],
+            source=f"chat:{session}" if session else "chat",
+        )
+        await self._step()
+        trace.event("learn", "daftar", note=memory_id)
+        return Outcome(phrase("remembered", u.language), True, {"note": memory_id})
+
     async def _recall(self, task: str, u: fahm.Understanding) -> Outcome:
         if not self._allowed("recall_memory"):
             raise Defer

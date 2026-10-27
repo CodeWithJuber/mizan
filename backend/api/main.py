@@ -1363,14 +1363,21 @@ async def chat_context(
 ):
     # Chat routes have already appended the current input for persistence.
     # Pass prior turns once; BaseAgent appends the current task itself.
+    preferences = await memory.get_chat_preferences(user.user_id)
+    recall_off = any(
+        item["key"] == "cross_chat_recall" and str(item["value"]).strip().lower() == "off"
+        for item in preferences
+    )
     return {
         "session_id": session_id,
         **({"workspace_id": workspace_id} if workspace_id else {}),
         "history": await chat_history(session_id, session, agent, task),
-        "conversation_memory": await memory.recall_conversations(
-            user.user_id, task, exclude_session=session_id
-        ),
-        "user_preferences": await memory.get_chat_preferences(user.user_id),
+        # Your own words from other chats; shown under the answer when used,
+        # and off when you set the preference cross_chat_recall: off.
+        "conversation_memory": []
+        if recall_off
+        else await memory.recall_conversations(user.user_id, task, exclude_session=session_id),
+        "user_preferences": preferences,
     }
 
 

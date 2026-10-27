@@ -50,6 +50,8 @@ CHAT_PREFERENCE_LIMITS = {
     "custom_instructions": 2000,
     # "off" stops MIZAN's nightly self-review (Muhasaba) from posting corrections.
     "muhasaba": 8,
+    # "off" stops MIZAN from bringing your words from other chats into a reply.
+    "cross_chat_recall": 8,
 }
 
 

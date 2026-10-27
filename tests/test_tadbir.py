@@ -1268,3 +1268,97 @@ def test_only_safe_project_paths_are_written():
         "src/new.css",
     }
     assert set(project.extract_files(reply, {"app.js"})) == {"app.js"}
+
+
+# ── Remember: the user's own words, kept as a note tied to the chat ─────
+
+
+def _notes(agent, source):
+    import sqlite3
+
+    with sqlite3.connect(agent.memory.db_path) as conn:
+        return conn.execute("SELECT content FROM memories WHERE source = ?", (source,)).fetchall()
+
+
+@pytest.fixture
+def with_memory(agent, tmp_path):
+    from memory.dhikr import DhikrMemorySystem
+
+    agent.memory = DhikrMemorySystem(str(tmp_path / "notes.db"))
+    return agent
+
+
+async def test_remember_keeps_the_users_own_words_tied_to_the_chat(with_memory, monkeypatch):
+    agent = with_memory
+    fake = tools(agent, monkeypatch)
+    text = "Yaad rakhna meri beti ka naam Maryam hai"
+    result = await agent.execute(text, context={"session_id": "chat-7"})
+    assert result["success"] and result.get("orchestrator") == "mizan"
+    assert _notes(agent, "chat:chat-7") == [(text,)]
+    assert fake.calls == []  # MIZAN keeps it itself: no tool, no model
+    assert "Daftar" in result["result"]
+
+
+async def test_a_watcher_task_never_saves_a_note(with_memory, monkeypatch):
+    from security import approvals
+
+    agent = with_memory
+    tools(agent, monkeypatch)
+    with approvals.unattended("owner", "watch-1", "watcher"):
+        await agent.execute("Remember that my son is allergic to milk", context={})
+    assert _notes(agent, "chat") == []
+
+
+async def test_an_answer_says_which_words_from_other_chats_it_used(agent, monkeypatch):
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
+    agent.ai_client = ScriptedProvider(["Maryam's first day — may Allah make it easy."])
+    recalled = [
+        {
+            "message_id": "m1",
+            "session_id": "chat-old",
+            "created_at": "2026-10-20T08:00:00Z",
+            "content": "My daughter Maryam starts school next week",
+            "source": "prior_user_statement",
+        }
+    ]
+    result = await agent.execute(
+        "How should I prepare her for it?",
+        context={"session_id": "chat-new", "conversation_memory": recalled},
+    )
+    assert result["usage"]["recalled"] == [
+        {
+            "session_id": "chat-old",
+            "created_at": "2026-10-20T08:00:00Z",
+            "content": "My daughter Maryam starts school next week",
+        }
+    ]
+    without = await _plain_answer(agent)
+    assert "recalled" not in without["usage"]
+
+
+async def _plain_answer(agent):
+    agent.ai_client = ScriptedProvider(["Wa alaikum assalam."])
+    return await agent.execute("Assalamu alaikum", context={"session_id": "chat-new"})
+
+
+async def test_cross_chat_recall_can_be_turned_off(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "chat.db"))
+    monkeypatch.setenv("MIZAN_OWNED_DB", str(tmp_path / "owned.sqlite3"))
+    import api.main as main
+    from memory.dhikr import DhikrMemorySystem
+
+    chat = DhikrMemorySystem(str(tmp_path / "chat.db"))
+    monkeypatch.setattr(main, "memory", chat)
+    monkeypatch.setattr(main, "chat_history", AsyncMock(return_value=[]))
+    user = SimpleNamespace(user_id="u-1")
+    await chat.authorize_session("old", "u-1", create=True)
+    await chat.save_message("old", "user", "My daughter Maryam starts school next week")
+
+    on = await main.chat_context(user, "new", {}, None, "Maryam school")
+    assert on["conversation_memory"]
+    await chat.set_chat_preference("u-1", "cross_chat_recall", "off")
+    off = await main.chat_context(user, "new", {}, None, "Maryam school")
+    assert off["conversation_memory"] == []

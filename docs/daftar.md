@@ -6,7 +6,7 @@ Personal agents remember things about their users. Few let the user see all of i
 
 | Kind | What it is | Where it comes from | You can |
 |---|---|---|---|
-| **Note** | Something to remember | You added it, imported it, or a knowledge source | Edit, set an expiry, forget |
+| **Note** | Something to remember | You added it, imported it, a knowledge source, or you said "remember that …" in a chat (kept in your own words, tied to that chat) | Edit, set an expiry, forget |
 | **Preference** | How MIZAN should answer (language, greeting, custom instructions, self-review) | The chat you set it in | Edit, forget |
 | **Chat summary** | MIZAN's running summary of a long chat | That chat | Read (it follows the chat) |
 | **Learned** | Phrasings, verified programs and repair lessons from your verified work | Your verified requests | Manage in **Majlis → Learning** |
@@ -18,6 +18,10 @@ Every entry shows:
 - for notes, when it will be forgotten
 
 "Last used" is written whenever MIZAN recalls the note for an answer.
+
+## Your words from other chats
+
+When the model answers, it may be shown up to five things you wrote in your other chats, as your statements and not as facts. The answer then says so under it: **Used 2 lines from other chats**, which opens to the lines and their dates. MIZAN's own recipes (Quran, hadith, calculations, programs) do not use them. To stop this, set the chat preference `cross_chat_recall: off`. Deleting a chat removes its words from what can be recalled ([Mahw](mahw.md)).
 
 ## Privacy
 
