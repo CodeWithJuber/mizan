@@ -10,6 +10,7 @@ import type { ApiClient } from "../types";
 import { config } from "../config";
 import { authFetch } from "../utils/authFetch";
 import { useToast } from "./Toast";
+import { checkLine, isReceipt } from "../utils/mahw.ts";
 import { KINDS, expiryIn, isLedger, provenance, type DaftarEntry, type EntryKind, type Ledger } from "../utils/daftar.ts";
 
 const KIND_BADGE: Record<EntryKind, { label: string; style: string }> = {
@@ -48,8 +49,14 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
   const act = async (action: () => Promise<unknown>, done: string) => {
     setBusy(true);
     try {
-      await action();
-      addToast({ type: "success", title: done });
+      const result = await action();
+      // Forgetting notes returns Mahw's receipt: what was removed and checked.
+      const receipt = (result as { receipt?: unknown } | undefined)?.receipt;
+      addToast(
+        isReceipt(receipt)
+          ? { type: receipt.traces ? "warning" : "success", title: done, description: checkLine(receipt) }
+          : { type: "success", title: done },
+      );
       await load();
     } catch (error) {
       addToast({ type: "error", title: "That did not work", description: (error as Error).message });
@@ -86,9 +93,10 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
 
   const forgetTopic = () =>
     act(async () => {
-      await api.post("/daftar/forget", { topic: topic.trim(), confirm: true });
+      const result = await api.post("/daftar/forget", { topic: topic.trim(), confirm: true });
       setPreview(null);
       setTopic("");
+      return result;
     }, `Forgot everything about "${topic.trim()}"`);
 
   const download = async (format: "md" | "json") => {
