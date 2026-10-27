@@ -16,6 +16,7 @@ import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
 import { EmailLink } from "../components/EmailLink";
 import { TelegramLink } from "../components/TelegramLink";
+import { WhatsAppLink } from "../components/WhatsAppLink";
 import { NotificationsCard } from "../components/NotificationsCard";
 
 const CHANNEL_TYPES: Record<
@@ -289,6 +290,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
           <NotificationsCard api={api} />
           <TelegramLink api={api} />
           <EmailLink api={api} />
+          <WhatsAppLink api={api} />
         </div>
         <div className="card-grid">
           {Object.entries(CHANNEL_TYPES).map(([type, info]) => {

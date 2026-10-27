@@ -1,4 +1,4 @@
-# Bab (باب): your own MIZAN from Telegram, by email and on your devices
+# Bab (باب): your own MIZAN from Telegram, WhatsApp, email and on your devices
 
 When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It uses long polling over the Bot API (`httpx`), so no public webhook is needed. Each user links their own Telegram account. The code is in `backend/gateway/telegram.py` and `backend/gateway/store.py`.
 
@@ -38,6 +38,10 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
 | `POST /api/bab/telegram/link` | A one-time link for your account |
 | `DELETE /api/bab/telegram/link` | Unlink your account |
 
+| `GET /api/bab/whatsapp` | Whether MIZAN is on WhatsApp, your linked number, its country and mode |
+| `POST /api/bab/whatsapp/link` | A one-time code and a `wa.me` link with `link <code>` ready to send |
+| `DELETE /api/bab/whatsapp/link` | Unlink your number |
+| `GET`/`POST /api/public/whatsapp` | Meta's webhook (verify token; events signed with the app secret) |
 | `GET /api/bab/email` | Whether MIZAN reads its mailbox, its address, and your linked address |
 | `POST /api/bab/email/link` | A one-time code: mail `link <code>` to MIZAN from your own address |
 | `DELETE /api/bab/email/link` | Unlink your address |
@@ -96,3 +100,43 @@ MIZAN is installable as an app (`manifest.webmanifest`, icons). It sends standar
 | `POST /api/bab/push/subscription` | Turn notifications on for this device |
 | `DELETE /api/bab/push/subscription?endpoint=` | Turn them off |
 | `POST /api/bab/push/test` | Send yourself a test notice |
+
+## WhatsApp
+
+MIZAN uses the **official WhatsApp Cloud API** (`backend/gateway/whatsapp.py`),
+never an unofficial client, and only as Meta's terms allow.
+
+- **Why it is policy-aware:** section 4.7 of the Meta Terms for WhatsApp
+  Business Platform (23 Sep 2026) prohibits AI providers whose AI is the
+  primary functionality. Regulators compelled exceptions, which Meta's own AI
+  Providers pricing page lists: the EEA (European Commission interim
+  measures, 9 Jun 2026), Brazil (CADE, 4 Mar 2026) and Türkiye (Competition
+  Board, 5 Jun 2026). So MIZAN decides per linked number, from its country
+  (`phonenumbers`, Apache-2.0):
+  - **assistant** (EEA, Brazil, Türkiye): you chat with your own MIZAN there,
+    the same turn as the web chat;
+  - **ancillary** (everywhere else): MIZAN never chats there. A message gets
+    one fixed answer pointing to the app and Telegram; your notices still
+    come.
+- **Notices:** watcher notices go to your linked number as text inside
+  Meta's 24-hour window after your last message. Outside it only an approved
+  template may be sent, which Meta charges for: MIZAN sends one only when the
+  administrator set `MIZAN_WHATSAPP_TEMPLATE` and its price, and only when
+  your spending limits leave room for it (Iqtisad `charge_fee`, recorded as
+  `whatsapp:template`).
+- **Never training data:** words that came through WhatsApp are never
+  captured for training (s.4.7 forbids using platform data to train or
+  improve models; `stateless.no_training`, reported as `usage.memory.training:
+  false`). They are still remembered in your chat like any other.
+- **Who it answers:** only events signed by Meta (`X-Hub-Signature-256`, HMAC
+  of the body with the app secret) for MIZAN's own phone number ID, and only
+  linked numbers. Meta's redeliveries are answered once. Forwarded text is
+  fenced as data. Links in replies are never previewed.
+- **Actions** are never allowed from WhatsApp: the reply points to Held
+  actions in MIZAN.
+- **Turning it on (administrator):** in Meta's developer console make a
+  WhatsApp Business app, then in System settings → Channels set the access
+  token (a permanent System User token), phone number ID, MIZAN's number,
+  app secret and a webhook verify token; in Meta's webhook settings use
+  `<public URL>/api/public/whatsapp` with the same verify token and subscribe
+  to `messages`. The Graph API version is a setting (default `v24.0`).

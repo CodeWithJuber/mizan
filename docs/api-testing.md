@@ -164,6 +164,7 @@ curl $MIZAN/api/debug/compare -H "Authorization: Bearer $TOKEN" -H 'Content-Type
 | `GET /api/health` | Status and version |
 | `GET /api/public/reliability` | The published AGI-test scorecard |
 | `GET /api/public/sakk` | The daily signed root of every receipt chain, with the public key |
+| `GET`/`POST /api/public/whatsapp` | Meta's WhatsApp webhook; events must be signed with the app secret ([Bab](bab.md)) |
 
 ## The client script
 

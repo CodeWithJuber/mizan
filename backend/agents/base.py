@@ -2963,6 +2963,7 @@ Match the requested depth and self-correct errors."""
                 "stateless": stateless.active(),
                 "recalled": len(recalled) if result.get("orchestrator") != "mizan" else 0,
                 "learning": not stateless.active(),
+                "training": stateless.trains(),
             }
             # Capture successful chat pairs in the authenticated user's own
             # candidate store. Capture is not review, training or promotion.
@@ -2970,7 +2971,7 @@ Match the requested depth and self-correct errors."""
                 result.get("success")
                 and result.get("capture_eligible", False)
                 and (context or {}).get("session_id")
-                and not stateless.active()
+                and stateless.trains()
             ):
                 from security.auth import current_user_id
 

@@ -16,7 +16,7 @@ import os
 import sys
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -435,6 +435,25 @@ async def lifespan(app: FastAPI):
             )
             mail_task = asyncio.create_task(_mail_bot.run(telegram_stop))
 
+    # Bab: WhatsApp (official Cloud API, webhook), when Meta's credentials are set.
+    from gateway import whatsapp as bab_whatsapp
+
+    whatsapp_config = bab_whatsapp.WhatsAppConfig.from_env()
+    if whatsapp_config is not None and os.getenv("MIZAN_WHATSAPP", "on").lower() not in {
+        "off",
+        "0",
+        "false",
+        "no",
+    }:
+        global _whatsapp_bot
+        from gateway import store as bab_whatsapp_store
+
+        _whatsapp_bot = bab_whatsapp.WhatsAppBot(
+            whatsapp_config,
+            bab_whatsapp_store.store(),
+            functools.partial(_bab_turn, channel="whatsapp"),
+        )
+
     from connectors.manager import manager as connector_manager
 
     connector_manager.start()
@@ -456,6 +475,8 @@ async def lifespan(app: FastAPI):
     telegram_stop.set()
     if mail_task is not None:
         mail_task.cancel()
+    if _whatsapp_bot is not None:
+        await _whatsapp_bot.close()
     if telegram_task is not None and _telegram_bot is not None:
         telegram_task.cancel()
         await _telegram_bot.close()
@@ -3419,6 +3440,7 @@ async def _watcher_deliver(owner_id: str, text: str, metadata: dict) -> None:
 
 _telegram_bot = None  # gateway.telegram.TelegramBot while the poller runs
 _mail_bot = None  # gateway.mail.MailBot while MIZAN's mailbox is read
+_whatsapp_bot = None  # gateway.whatsapp.WhatsAppBot when Meta's credentials are set
 
 
 async def _bab_turn(
@@ -3427,6 +3449,7 @@ async def _bab_turn(
     """One message from a linked outside account: the same turn as the web
     chat, as its owner, saved to their chat. Actions that need a person are
     held and come back as buttons (Telegram) or a pointer to MIZAN (email)."""
+    from memory import stateless
     from security import approvals
     from security.approvals import collecting_held
     from tadbir import waqt
@@ -3448,6 +3471,8 @@ async def _bab_turn(
             waqt.bind_timezone(zone),
             approvals.unattended(owner_id, session_id, channel),
             collecting_held() as found,
+            # Meta's terms s.4.7: WhatsApp data never trains or improves a model.
+            stateless.no_training(channel) if channel == "whatsapp" else nullcontext(),
         ):
             result = await agent.execute(text, context)
             held = list(found)
@@ -3504,8 +3529,8 @@ async def _bab_decide(owner_id: str, held_id: str, decision: str, seen: str | No
 
 
 async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
-    """Send a notice to the owner's devices (Web Push) and linked Telegram,
-    with buttons for held actions there."""
+    """Send a notice to the owner's devices (Web Push), linked Telegram (with
+    buttons for held actions there) and linked WhatsApp."""
     from gateway import push
     from gateway import store as bab_store
 
@@ -3526,6 +3551,11 @@ async def _bab_notify(owner_id: str, text: str, metadata: dict) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
         logger.warning("Push notice not sent: %s", exc)
+    if _whatsapp_bot is not None:
+        try:
+            await _whatsapp_bot.notify(owner_id, text)
+        except Exception as exc:  # noqa: BLE001 - the notice is still in the MIZAN chat
+            logger.warning("WhatsApp notice not sent: %s", exc)
     bot = _telegram_bot
     if bot is None or not bot.running:
         return
@@ -3788,6 +3818,55 @@ async def email_unlink(user: TokenPayload = Depends(require_auth)):
     from gateway import store as bab_store
 
     return {"unlinked": bab_store.store().unlink("email", user.user_id)}
+
+
+@app.get("/api/bab/whatsapp")
+async def whatsapp_status(user: TokenPayload = Depends(require_auth)):
+    """Whether MIZAN is on WhatsApp, your linked number, and what Meta's terms
+    allow for it: assistant (compelled markets) or ancillary (notices only)."""
+    from gateway import store as bab_store
+    from gateway import whatsapp
+
+    bot = _whatsapp_bot
+    link = bab_store.store().link_for_owner("whatsapp", user.user_id)
+    number = str(link["external_id"]) if link else ""
+    return {
+        "available": bot is not None,
+        "number": os.getenv("MIZAN_WHATSAPP_NUMBER", ""),
+        "linked": link is not None,
+        "linked_number": number or None,
+        "region": whatsapp.region(number) if number else None,
+        "mode": whatsapp.mode(number) if number else None,
+        "error": getattr(bot, "error", "") if bot is not None else "",
+    }
+
+
+@app.post("/api/bab/whatsapp/link")
+async def whatsapp_link(user: TokenPayload = Depends(require_auth)):
+    """A one-time code (10 minutes): send "link <code>" to MIZAN's WhatsApp number."""
+    import urllib.parse
+
+    from gateway import store as bab_store
+    from gateway.store import CODE_TTL
+
+    if _whatsapp_bot is None:
+        raise HTTPException(503, "MIZAN is not on WhatsApp")
+    code = bab_store.store().new_code(user.user_id, "whatsapp")
+    number = "".join(ch for ch in os.getenv("MIZAN_WHATSAPP_NUMBER", "") if ch.isdigit())
+    text = f"link {code}"
+    return {
+        "code": code,
+        "text": text,
+        "url": f"https://wa.me/{number}?text={urllib.parse.quote(text)}" if number else None,
+        "expires_in": int(CODE_TTL.total_seconds()),
+    }
+
+
+@app.delete("/api/bab/whatsapp/link")
+async def whatsapp_unlink(user: TokenPayload = Depends(require_auth)):
+    from gateway import store as bab_store
+
+    return {"unlinked": bab_store.store().unlink("whatsapp", user.user_id)}
 
 
 class PlaceRequest(BaseModel):
@@ -5039,6 +5118,21 @@ def _channel_state(name: str) -> dict:
             "has_token": True,
             "detail": "Running. Each user links their own Telegram account under Link Telegram.",
         }
+    if name == "whatsapp" and _whatsapp_bot is not None:
+        return {
+            "id": name,
+            "type": name,
+            "name": _CHANNEL_NAMES[name],
+            "status": "connected",
+            "running": True,
+            "startable": False,
+            "has_token": True,
+            "detail": (
+                "Official Cloud API. Each user links their number under Link WhatsApp; "
+                "it chats only where Meta's terms allow (EEA, Brazil, Türkiye) and sends "
+                "notices elsewhere."
+            ),
+        }
     if name == "email" and _mail_bot is not None and _mail_bot.running:
         return {
             "id": name,
@@ -5478,6 +5572,44 @@ def _open_rate_limit(request: Request) -> None:
                 "RateLimit-Remaining": "0",
             },
         )
+
+
+@app.get("/api/public/whatsapp")
+async def whatsapp_verify(request: Request):
+    """Meta's webhook subscription check (hub.mode, hub.verify_token, hub.challenge)."""
+    from gateway import whatsapp
+
+    _open_rate_limit(request)
+    bot = _whatsapp_bot
+    answer = (
+        whatsapp.challenge(dict(request.query_params), bot.config.verify_token) if bot else None
+    )
+    if answer is None:
+        raise HTTPException(403, "Verification failed")
+    return Response(content=answer, media_type="text/plain")
+
+
+@app.post("/api/public/whatsapp")
+async def whatsapp_webhook(request: Request):
+    """Meta's webhook: accepted only when signed with the app secret."""
+    from gateway import whatsapp
+
+    bot = _whatsapp_bot
+    if bot is None:
+        raise HTTPException(404, "MIZAN is not on WhatsApp")
+    if int(request.headers.get("content-length") or 0) > 1_000_000:
+        raise HTTPException(413, "Too large")
+    body = await request.body()
+    if len(body) > 1_000_000 or not whatsapp.signed(
+        body, request.headers.get("x-hub-signature-256", ""), bot.config.app_secret
+    ):
+        _open_rate_limit(request)  # unsigned callers are limited; Meta is not
+        raise HTTPException(401, "Not signed by Meta")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "Not JSON") from None
+    return {"accepted": bot.accept(payload) if isinstance(payload, dict) else 0}
 
 
 @app.get("/api/public/reliability")

@@ -4536,6 +4536,213 @@
     ]
    }
   },
+  "/api/bab/whatsapp": {
+   "get": {
+    "summary": "Whatsapp Status",
+    "description": "Whether MIZAN is on WhatsApp, your linked number, and what Meta's terms\nallow for it: assistant (compelled markets) or ancillary (notices only).",
+    "operationId": "whatsapp_status_api_bab_whatsapp_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/bab/whatsapp/link": {
+   "post": {
+    "summary": "Whatsapp Link",
+    "description": "A one-time code (10 minutes): send \"link <code>\" to MIZAN's WhatsApp number.",
+    "operationId": "whatsapp_link_api_bab_whatsapp_link_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "delete": {
+    "summary": "Whatsapp Unlink",
+    "operationId": "whatsapp_unlink_api_bab_whatsapp_link_delete",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/muraqabah": {
    "get": {
     "summary": "Muraqabah Overview",
@@ -9323,6 +9530,40 @@
       "apiKey": []
      }
     ]
+   }
+  },
+  "/api/public/whatsapp": {
+   "get": {
+    "summary": "Whatsapp Verify",
+    "description": "Meta's webhook subscription check (hub.mode, hub.verify_token, hub.challenge).",
+    "operationId": "whatsapp_verify_api_public_whatsapp_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
+   },
+   "post": {
+    "summary": "Whatsapp Webhook",
+    "description": "Meta's webhook: accepted only when signed with the app secret.",
+    "operationId": "whatsapp_webhook_api_public_whatsapp_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
    }
   },
   "/api/public/reliability": {

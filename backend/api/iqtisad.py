@@ -596,6 +596,33 @@ def admit(
     return ticket
 
 
+def charge_fee(owner: str, usd: float, what: str, *, admin: bool = False) -> None:
+    """Admit and record one fixed-price paid action (a WhatsApp template), or
+    raise ``BudgetExhausted``: like a model call, it is paid for only when the
+    owner's limits leave room for it."""
+    cost = max(0.0, float(usd))
+    limits = effective_limits(owner, admin=admin)
+    day, month, renews = periods(owner)
+    store = ledger()
+    if store is None:
+        if any(value is not None for value in limits.values()):
+            period = "day" if limits["day"] is not None else "month"
+            raise BudgetExhausted(
+                period, limits[period], 0.0, renews[period], reason="unavailable", model=what
+            )
+        return
+    with _INFLIGHT_LOCK:
+        inflight = _INFLIGHT.get(owner, 0.0)
+    for period, column in (("day", day), ("month", month)):
+        limit = limits[period]
+        if limit is None:
+            continue
+        spent = store.spent(owner, period, column)
+        if spent + inflight + cost > limit:
+            raise BudgetExhausted(period, limit, spent, renews[period], model=what)
+    store.record(owner, day, month, what, (0, 0), cost, "fee")
+
+
 # ── reports ──────────────────────────────────────────────────────────────
 
 
