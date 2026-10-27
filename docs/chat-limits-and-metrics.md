@@ -114,6 +114,31 @@ A conversation is not limited by the model's context window:
   at `MIZAN_CHAT_TOOL_RESULT_CHARS` with valid JSON.
 - **History in the UI.** `GET /api/chat/{session_id}?limit=50&before=<id>`
   pages older messages; the chat view offers "Load earlier messages".
+- **Small models.** A provider that serves a fixed window declares it (the
+  MiniMind/hybrid worker: 2,048 tokens with 256 output). Its declaration wins
+  over the model table. History budgets reserve room for the output and the
+  system prompt, windows ≤ 8K use halved budgets (small tokenizers count more
+  tokens), and every request is fitted before it is sent: the oldest turns go
+  first, the running summary last, then the output cap shrinks.
+
+## Provider failures
+
+An upstream failure does not end the reply when it can be recovered safely:
+
+- **Gateway fallbacks.** OpenRouter requests carry a `models` list, so the
+  gateway itself retries the next model inside the same request.
+  `MIZAN_OPENROUTER_FALLBACKS=auto` (default) adds up to two *free*
+  tool-capable models for a free primary, preferring the same vendor and the
+  largest context, so a failover never changes the cost; a paid primary gets
+  none. Set `none`, or a comma-separated list of model IDs.
+- **Explicit rejections are retried.** HTTP 429, 500, 502, 503 or 529 means
+  the provider answered with an error, so nothing was generated or billed.
+  The same request is sent again up to twice (1.5s, 3s; 429 honours
+  `Retry-After`, at most 20s), only while no answer text has been shown.
+- **Ambiguous failures are never replayed.** Timeouts, dropped connections
+  and 504s may still be running upstream; they end the reply as before.
+- When retries and fallbacks are exhausted the reply ends with
+  `provider_unavailable` instead of the generic `agent_failed`.
 
 ## Request language and available tools
 

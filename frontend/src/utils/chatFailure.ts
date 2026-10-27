@@ -9,12 +9,14 @@ export function messageUsage(event: Record<string, unknown>): MessageUsageMeta |
   const statuses = new Set([
     "abstained", "unverified_answer", "evidence_observed", "incomplete",
     "human_review_required", "reviewed_memory", "missing_receipt", "empty_response",
-    "tool_request", "failed",
+    "tool_request", "failed", "verified_by_mizan",
   ]);
   if (typeof event.completion_status === "string" && statuses.has(event.completion_status))
     usage.completion_status = event.completion_status as MessageUsageMeta["completion_status"];
   if (typeof event.answer_delivered === "boolean") usage.answer_delivered = event.answer_delivered;
   if (typeof event.task_verified === "boolean") usage.task_verified = event.task_verified;
+  if (event.orchestrator === "mizan" || (record(event.usage) && event.usage.orchestrator === "mizan"))
+    usage.orchestrator = "mizan";
   if (typeof event.finish_reason === "string") usage.finish_reason = event.finish_reason;
   if (typeof event.code === "string") usage.error_code = event.code;
   return Object.keys(usage).length ? usage : undefined;

@@ -50,6 +50,11 @@ dependencies = [
     "click>=8.5.0,<9",
     "rich>=15.0.0,<16",
     "Pillow>=13.0.0,<14",
+    "pyyaml>=6.0.3,<7",
+    "mcp>=2.3.0,<3",
+    "hijridate>=2.6.0,<3",
+    "tzdata>=2026.5",
+    "jsonschema>=4.26.0,<5",
 ]
 
 [project.optional-dependencies]

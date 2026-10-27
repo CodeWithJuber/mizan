@@ -1,0 +1,136 @@
+/**
+ * What MIZAN learned from its own verified work: which agent it gives each
+ * kind of work to, and the wording it now understands without the model.
+ */
+
+import { useCallback, useEffect, useState } from "react";
+import type { ApiClient } from "../types";
+import { useToast } from "./Toast";
+import {
+  learnedCount,
+  percent,
+  workRows,
+  WORK_LABELS,
+  type RoutingRow,
+  type WorkRow,
+} from "../utils/tadbirLearning.ts";
+
+interface Wording {
+  examples: number;
+  by_intent: Record<string, number>;
+}
+
+export default function TadbirLearning({ api }: { api: ApiClient }) {
+  const { addToast } = useToast();
+  const [rows, setRows] = useState<WorkRow[]>([]);
+  const [wording, setWording] = useState<Wording | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.get("/tadbir/learning");
+      setRows(workRows((data.routing as RoutingRow[]) ?? []));
+      setWording((data.wording as Wording) ?? null);
+      setError("");
+    } catch {
+      setError("MIZAN's learning could not be loaded");
+    }
+  }, [api]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const forget = async () => {
+    setBusy(true);
+    try {
+      await api.del("/tadbir/learning/wording");
+      addToast({ type: "success", title: "MIZAN forgot the wording it learned from you" });
+      await load();
+    } catch {
+      addToast({ type: "error", title: "Could not forget the learned wording" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && <div className="text-sm text-red-500">{error}</div>}
+
+      <div className="card">
+        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+          Who does which work · مَن يعمل ماذا
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          MIZAN gives each part of a request to an agent and runs independent parts side by side.
+          Every result it verifies, or fails to verify, moves these estimates.
+        </p>
+        {rows.length === 0 && (
+          <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No agents yet</div>
+        )}
+        <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
+          {rows.map((row) => (
+            <li key={row.intent} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 min-w-[10rem]">
+                {row.label}
+              </span>
+              <span className="text-sm text-mizan-gold font-semibold">{row.leader}</span>
+              <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                {percent(row.estimate)} expected to verify
+              </span>
+              <span className="text-micro text-gray-400 dark:text-gray-500">
+                {row.evidence > 0 ? learnedCount(row.evidence) : "prior only"}
+              </span>
+              {row.others.length > 0 && (
+                <span className="text-micro text-gray-400 dark:text-gray-500 basis-full">
+                  Also able: {row.others.map((o) => `${o.agent} ${percent(o.estimate)}`).join(" · ")}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="card">
+        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+          Wording MIZAN learned from you · تعلّم
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          When the language model maps an unusual request and MIZAN verifies the result, MIZAN keeps that
+          wording. Similar requests are then understood without the model. This stays private to your account.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-gray-900 dark:text-gray-100">
+            {wording ? `${wording.examples} learned` : "—"}
+          </span>
+          {wording &&
+            Object.entries(wording.by_intent).map(([intent, count]) => (
+              <span
+                key={intent}
+                className="text-micro font-mono px-1.5 py-0.5 rounded bg-mizan-gold/10 text-mizan-gold"
+              >
+                {WORK_LABELS[intent] ?? intent}: {count}
+              </span>
+            ))}
+          <span className="flex-1" />
+          <button className="btn-secondary btn-sm" onClick={load}>
+            Refresh
+          </button>
+          <button
+            className="btn-secondary btn-sm"
+            onClick={forget}
+            disabled={busy || !wording?.examples}
+          >
+            Forget my wording
+          </button>
+        </div>
+        <p className="text-micro text-gray-400 dark:text-gray-500 mt-3">
+          This is MIZAN's own understanding, not model training. Training the own model's weights still needs an
+          approved data bundle (Ruh Model → Own learning).
+        </p>
+      </div>
+    </div>
+  );
+}

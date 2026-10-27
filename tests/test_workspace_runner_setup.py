@@ -120,7 +120,7 @@ def test_override_exposes_only_the_dedicated_socket_and_content_pinned_images():
     assert runner["read_only"] and runner["cap_drop"] == ["ALL"]
     assert runner["security_opt"] == ["no-new-privileges:true"]
     assert runner["environment"]["MIZAN_WORKSPACE_RUNTIME_IMAGE"] == IMAGE
-    assert runner["pids_limit"] == runner["deploy"]["resources"]["limits"]["pids"] == 128
+    assert runner["pids_limit"] == runner["deploy"]["resources"]["limits"]["pids"] == 512
     with pytest.raises(setup.SetupError, match="content IDs"):
         setup.workspace_override(
             1002, 1002, "t" * 64, runtime_image="runtime:latest", runner_image=RUNNER_IMAGE
@@ -162,9 +162,9 @@ def test_live_control_service_must_apply_the_matching_pid_limit(monkeypatch):
             "Privileged": False,
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges"],
-            "Memory": 192 * 1024**2,
+            "Memory": 384 * 1024**2,
             "NanoCpus": 500000000,
-            "PidsLimit": 128,
+            "PidsLimit": 512,
         },
         "Mounts": [
             {

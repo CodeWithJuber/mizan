@@ -10,7 +10,8 @@ from fastapi import HTTPException
 
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
-from workspace.context import artifact_session, selected_workspace
+from workspace import session_client
+from workspace.context import artifact_session, bound_workspace_id, selected_workspace
 from workspace.execution import run_project
 from workspace.store import WorkspaceStore
 
@@ -43,6 +44,42 @@ def allows_user_workspace_tool(
     )
 
 
+_WEB_METHODS = {"web_browse": "browse", "web_search": "search"}
+SCRATCH_PROJECT = "Scratch"
+
+
+def scratch_project(store: WorkspaceStore) -> str:
+    """The user's private Scratch project, for running code from a plain chat."""
+    for item in store.list():
+        if item.get("name") == SCRATCH_PROJECT:
+            return str(item["id"])
+    return str(store.create(SCRATCH_PROJECT)["id"])
+
+
+def allows_user_web_tool(tool_name: str, registry, *, native_tools: dict | None = None) -> bool:
+    """Allow the shipped, address-checked web tools for every signed-in user.
+
+    Only WebBrowseSkill's own bound methods qualify; a plugin or native tool
+    using the same name never inherits this exception.
+    """
+    method_name = _WEB_METHODS.get(tool_name)
+    if registry is None or method_name is None or tool_name in (native_tools or {}):
+        return False
+    from skills.builtin.web_browse import WebBrowseSkill
+
+    skill = registry.get_skill("web_browse")
+    if type(skill) is not WebBrowseSkill:
+        return False
+    trusted = skill.get_tools().get(tool_name)
+    actual = registry.get_all_tools().get(tool_name)
+    return (
+        trusted is not None
+        and actual is trusted
+        and getattr(actual, "__self__", None) is skill
+        and getattr(actual, "__func__", None) is getattr(WebBrowseSkill, method_name)
+    )
+
+
 class CodingWorkspaceSkill(SkillBase):
     manifest = SkillManifest(
         name="coding_workspace",
@@ -61,7 +98,11 @@ class CodingWorkspaceSkill(SkillBase):
                 "tree",
                 "read",
                 "write",
+                "edit",
+                "glob",
+                "grep",
                 "run",
+                "sandbox",
                 "git",
                 "checkpoint",
                 "diff",
@@ -101,8 +142,63 @@ class CodingWorkspaceSkill(SkillBase):
     async def tree(self, workspace_id: str | None = None) -> dict:
         return cast(dict, self.store().tree(selected_workspace(workspace_id)))
 
-    async def read(self, workspace_id: str | None = None, path: str = "") -> dict:
-        return cast(dict, self.store().read(selected_workspace(workspace_id), path))
+    async def read(
+        self,
+        workspace_id: str | None = None,
+        path: str = "",
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        store = self.store()
+        if offset is None and limit is None:
+            return cast(dict, store.read(selected_workspace(workspace_id), path))
+        return cast(
+            dict,
+            store.read_lines(selected_workspace(workspace_id), path, offset or 1, limit or 2000),
+        )
+
+    async def edit(
+        self,
+        workspace_id: str | None = None,
+        path: str = "",
+        old_string: str = "",
+        new_string: str = "",
+        replace_all: bool = False,
+        expected_sha256: str | None = None,
+    ) -> dict:
+        return cast(
+            dict,
+            self.store(edit=True).edit(
+                selected_workspace(workspace_id),
+                path,
+                old_string,
+                new_string,
+                bool(replace_all),
+                expected_sha256,
+            ),
+        )
+
+    async def glob(self, workspace_id: str | None = None, pattern: str = "**/*") -> dict:
+        return cast(dict, self.store().glob(selected_workspace(workspace_id), pattern))
+
+    async def grep(
+        self,
+        workspace_id: str | None = None,
+        pattern: str = "",
+        path_glob: str | None = None,
+        ignore_case: bool = False,
+        max_matches: int = 100,
+    ) -> dict:
+        return cast(
+            dict,
+            self.store().grep(
+                selected_workspace(workspace_id),
+                pattern,
+                path_glob,
+                bool(ignore_case),
+                max_matches,
+            ),
+        )
 
     async def write(
         self,
@@ -125,16 +221,62 @@ class CodingWorkspaceSkill(SkillBase):
         language: str = "shell",
         timeout_s: int = 30,
     ) -> dict:
+        store = self.store(edit=True)
+        if workspace_id or bound_workspace_id():
+            project = selected_workspace(workspace_id)
+        else:
+            # A plain chat has no project: run in the user's own Scratch project.
+            project = scratch_project(store)
+        user_id = current_user_id() or ""
+        if await session_client.running(user_id, project):
+            # The project's live session keeps installed packages and services.
+            return cast(
+                dict,
+                await session_client.execute(
+                    user_id, project, command, language, max(1, min(int(timeout_s), 900))
+                ),
+            )
         return cast(
             dict,
-            await run_project(
-                self.store(edit=True),
-                selected_workspace(workspace_id),
-                command,
-                language,
-                timeout_s,
-            ),
+            await run_project(store, project, command, language, min(int(timeout_s), 120)),
         )
+
+    async def sandbox(
+        self,
+        workspace_id: str | None = None,
+        action: str = "status",
+        port: int = 5173,
+        command: str = "",
+        mode: str = "base",
+    ) -> dict:
+        """Manage the project's server sandbox session and its dev servers."""
+        self.store(edit=action not in {"status", "logs"})
+        project = selected_workspace(workspace_id)
+        user_id = current_user_id() or ""
+        if action == "status":
+            return cast(dict, await session_client.status(user_id, project))
+        if action == "start":
+            return cast(dict, await session_client.start(user_id, project))
+        if action == "stop":
+            return cast(dict, await session_client.stop(user_id, project))
+        if not 1024 <= int(port) <= 65535:
+            raise HTTPException(422, "port must be between 1024 and 65535")
+        if action == "serve":
+            if not command.strip():
+                raise HTTPException(422, "command is required to serve")
+            result: dict = await session_client.start_service(
+                user_id, project, int(port), command, "root" if mode == "root" else "base"
+            )
+            result["note"] = (
+                "The preview opens in the Coding workspace Preview panel (Server tab). "
+                "Check workspace_sandbox action=logs if it does not load."
+            )
+            return result
+        if action == "stop_service":
+            return cast(dict, await session_client.stop_service(user_id, project, int(port)))
+        if action == "logs":
+            return cast(dict, await session_client.service_logs(user_id, project, int(port)))
+        raise HTTPException(422, "Unknown sandbox action")
 
     async def checkpoint(
         self, workspace_id: str | None = None, message: str = "Agent checkpoint"
@@ -218,9 +360,49 @@ class CodingWorkspaceSkill(SkillBase):
             ("tree", "Inspect project files before modifying them.", project, ["workspace_id"]),
             (
                 "read",
-                "Read a project file and its hash for safe subsequent edits.",
-                {**project, "path": string},
+                "Read a project file and its hash for safe subsequent edits. With offset/limit "
+                "it returns numbered lines (1-based) of large files.",
+                {
+                    **project,
+                    "path": string,
+                    "offset": {"type": "integer", "minimum": 1},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 2000},
+                },
                 ["workspace_id", "path"],
+            ),
+            (
+                "edit",
+                "Change a file by replacing exact text: old_string must match the file exactly "
+                "(copy it from workspace_read) and be unique unless replace_all is true. Prefer "
+                "this over rewriting whole files. Returns a unified diff.",
+                {
+                    **project,
+                    "path": string,
+                    "old_string": string,
+                    "new_string": string,
+                    "replace_all": {"type": "boolean"},
+                    "expected_sha256": string,
+                },
+                ["workspace_id", "path", "old_string", "new_string"],
+            ),
+            (
+                "glob",
+                "Find project files by glob pattern, e.g. **/*.py or src/**/*.tsx.",
+                {**project, "pattern": string},
+                ["workspace_id", "pattern"],
+            ),
+            (
+                "grep",
+                "Search project text files with a regular expression; returns path, line "
+                "number and text. Narrow with path_glob.",
+                {
+                    **project,
+                    "pattern": string,
+                    "path_glob": string,
+                    "ignore_case": {"type": "boolean"},
+                    "max_matches": {"type": "integer", "minimum": 1, "maximum": 300},
+                },
+                ["workspace_id", "pattern"],
             ),
             (
                 "write",
@@ -230,14 +412,41 @@ class CodingWorkspaceSkill(SkillBase):
             ),
             (
                 "run",
-                "Run Python, JavaScript or shell in an isolated project sandbox without network or host secrets. Returns real output and saves generated files. Never claim success when unavailable.",
+                "Run Python, JavaScript or shell in an isolated project sandbox without host "
+                "secrets; for Python pass the code as command with language python. Without a "
+                "selected project it runs in the user's private Scratch project. With a running sandbox session (workspace_sandbox start) commands run "
+                "there: installed packages persist and allowlisted package registries are "
+                "reachable (npm, PyPI, GitHub), timeout up to 900 s. Otherwise a fresh offline "
+                "container runs it (timeout up to 120 s). Returns real output and saves "
+                "generated files. Never claim success when unavailable.",
                 {
                     **project,
                     "command": string,
                     "language": {"type": "string", "enum": ["shell", "python", "javascript"]},
-                    "timeout_s": {"type": "integer", "minimum": 1, "maximum": 120},
+                    "timeout_s": {"type": "integer", "minimum": 1, "maximum": 900},
                 },
                 ["workspace_id", "command"],
+            ),
+            (
+                "sandbox",
+                "Server sandbox session for this project: start/stop/status; serve runs a "
+                "dev server on a port and returns its preview URL (mode base: the server is "
+                "told its base path via $MIZAN_PREVIEW_PREFIX/<port>/, e.g. "
+                "`npx vite --host 127.0.0.1 --port $PORT --base $MIZAN_PREVIEW_PREFIX/$PORT/`; "
+                "mode root strips that prefix for simple servers such as "
+                "`python3 -m http.server $PORT --bind 127.0.0.1`); logs shows its output; "
+                "stop_service ends it. Servers must listen on 127.0.0.1:$PORT.",
+                {
+                    **project,
+                    "action": {
+                        "type": "string",
+                        "enum": ["status", "start", "stop", "serve", "stop_service", "logs"],
+                    },
+                    "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                    "command": string,
+                    "mode": {"type": "string", "enum": ["base", "root"]},
+                },
+                ["action"],
             ),
             (
                 "checkpoint",

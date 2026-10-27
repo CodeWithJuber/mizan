@@ -403,9 +403,10 @@ def workspace_override(
                 ],
                 "tmpfs": ["/tmp:size=16m,noexec,nosuid,nodev"],
                 "networks": ["mizan-net"],
-                "pids_limit": 128,
+                # Sessions keep docker exec relays (previews, terminals, MCP stdio) open.
+                "pids_limit": 512,
                 "logging": {"driver": "local", "options": {"max-size": "10m", "max-file": "3"}},
-                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "192M", "pids": 128}}},
+                "deploy": {"resources": {"limits": {"cpus": "0.5", "memory": "384M", "pids": 512}}},
             },
         }
     }
@@ -1129,9 +1130,9 @@ class Installer:
             "Runner must not expose host ports/devices",
         )
         require(
-            host.get("Memory") == 192 * 1024**2
+            host.get("Memory") == 384 * 1024**2
             and host.get("NanoCpus") == 500000000
-            and host.get("PidsLimit") == 128,
+            and host.get("PidsLimit") == 512,
             "Runner control-service resource limits are missing",
         )
         mounts = [mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"]

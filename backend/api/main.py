@@ -40,6 +40,9 @@ from starlette.requests import HTTPConnection
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# Administrator-saved settings reach the environment before any module reads it.
+import runtime_settings
+import runtime_settings_bootstrap  # noqa: F401
 from _version import __version__
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
@@ -346,11 +349,16 @@ async def lifespan(app: FastAPI):
         else None
     )
 
+    from connectors.manager import manager as connector_manager
+
+    connector_manager.start()
+
     logger.info("MIZAN ready - Bismillah!")
 
     yield  # App is running
 
     # Shutdown
+    await connector_manager.shutdown()
     if model_limits_task is not None:
         model_limits_task.cancel()
     if memory_maintenance_task is not None:
@@ -406,7 +414,13 @@ _PUBLIC_API = {
     "/api/v1/root-analyze",
     "/api/v1/tokenize",
     "/api/v1/q28-features",
+    # Authorization servers redirect the browser here; the single-use OAuth
+    # state (not a session) identifies the waiting connector.
+    "/api/connectors/oauth/callback",
 }
+# Dev-server previews: the capability in the path is the credential, and every
+# response carries a CSP sandbox (opaque origin), so no session is involved.
+_PUBLIC_API_PREFIXES = ("/api/workspaces/preview/",)
 _ADMIN_PREFIXES = (
     "/api/status",
     "/api/integrations",
@@ -444,7 +458,7 @@ async def enforce_api_access(request: HTTPConnection):
     if request.scope["type"] == "websocket":
         yield
         return
-    if request.url.path in _PUBLIC_API:
+    if request.url.path in _PUBLIC_API or request.url.path.startswith(_PUBLIC_API_PREFIXES):
         yield
         return
     principal = await require_auth(
@@ -531,6 +545,12 @@ task_worker: TaskWorker | None = None
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses"""
     response = await call_next(request)
+
+    if request.url.path.startswith(_PUBLIC_API_PREFIXES):
+        # Previews are framed by Mizan itself and keep their own sandbox policy.
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     # Prevent clickjacking attacks
     response.headers["X-Frame-Options"] = "DENY"
@@ -638,6 +658,8 @@ class ChatMessage(BaseModel):
     content: str = Field(..., min_length=1, max_length=50000)
     agent_id: str | None = None
     model_override: str | None = Field(None, max_length=200)
+    # The browser's IANA timezone, for dates MIZAN states itself (Tadbir Waqt).
+    timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z0-9_+\-/]+$")
 
 
 class StreamChatMessage(ChatMessage):
@@ -645,6 +667,9 @@ class StreamChatMessage(ChatMessage):
     # through ambiguous network failures and never creates a second model call.
     request_id: uuid.UUID
     workspace_id: str | None = Field(None, min_length=1, max_length=100)
+    # Izn for interactive chats: auto | auto_edits | ask | plan. Omitted keeps
+    # the legacy behaviour (no prompts) for older clients.
+    permission_mode: str | None = Field(None, pattern=r"^(auto|auto_edits|ask|plan)$")
 
 
 class IntegrationCreate(BaseModel):
@@ -1224,13 +1249,16 @@ def choose_agent_for_task(task: str) -> str:
 
 async def chat_history(session_id: str, session: dict, agent, task: str) -> list[dict]:
     """Model-sized history: running summary of old turns + recent turns that fit."""
-    from providers import model_limits
+    from providers import effective_limits
     from reasoning.context_engine import ContextEngine, agent_summarizer
 
     try:
-        window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+        window, _ = effective_limits(
+            getattr(agent, "ai_client", None), getattr(agent, "ai_model", "") or ""
+        )
+        reserve = agent._history_reserve(window) if hasattr(agent, "_history_reserve") else 0
         history: list[dict] = await ContextEngine(memory).history_for(
-            session_id, window, agent_summarizer(agent), current=task
+            session_id, window, agent_summarizer(agent), current=task, reserved_tokens=reserve
         )
         return history
     except Exception as exc:  # noqa: BLE001 - history assembly must never stop a chat
@@ -1302,6 +1330,7 @@ def chat_failure_payload(result: dict) -> dict:
         "provider_timeout": "The response model exceeded its wait limit. No automatic retry was made; upstream completion is unconfirmed.",
         "chat_run_timeout": "This chat reached its run time limit. No automatic retry was made; check saved history before sending more work.",
         "model_refused": "The model declined this request. Rephrase it or choose another model.",
+        "provider_unavailable": "The model provider returned an error and stayed unavailable after automatic retries and fallback models. Try again in a moment or choose another model.",
     }
     code = result.get("error_code")
     if not isinstance(code, str) or code not in public_errors:
@@ -1649,14 +1678,35 @@ async def stream_chat(
                 phase="context_preparation",
                 elapsed_ms=lease.public()["elapsed_ms"],
             )
-            cmd_result = await handle_command(
-                req.content,
-                agent=agent,
-                session_id=req.session_id,
-                sessions=active_sessions,
-                memory=memory,
-                active_agents=active_agents,
-            )
+            # "/skill-name request" activates one of the user's Agent Skills
+            # for this chat instead of being treated as a built-in command.
+            task_content = req.content
+            skill_command = None
+            if agent is not None and req.content.startswith("/"):
+                from agent_skills.tools import resolve_slash_skill
+
+                skill_command = resolve_slash_skill(req.content, user.user_id, req.workspace_id)
+            if skill_command:
+                from agent_skills.tools import activate
+                from workspace.context import bind_chat_session, reset_chat_session
+
+                skill_name, rest = skill_command
+                session_token = bind_chat_session(req.session_id)
+                try:
+                    activate(skill_name)
+                finally:
+                    reset_chat_session(session_token)
+                task_content = rest or f"Use the {skill_name} skill for this chat."
+                cmd_result = {"is_command": False}
+            else:
+                cmd_result = await handle_command(
+                    req.content,
+                    agent=agent,
+                    session_id=req.session_id,
+                    sessions=active_sessions,
+                    memory=memory,
+                    active_agents=active_agents,
+                )
             if cmd_result.get("is_command"):
                 result = {"success": True, "result": cmd_result["response"], "usage": {}}
             else:
@@ -1677,6 +1727,19 @@ async def stream_chat(
                         elapsed_ms=lease.public()["elapsed_ms"],
                     )
 
+                from agents.events import bind_event_sink
+                from security.approvals import ApprovalContext, bind_approvals
+                from tadbir.waqt import bind_timezone
+
+                async def activity_sink(kind: str, payload: dict):
+                    # Structured tool/todo/approval frames for this run only.
+                    await deliver(kind, **payload)
+
+                approval_context = (
+                    ApprovalContext(user.user_id, req.session_id, req.permission_mode)
+                    if req.permission_mode
+                    else None
+                )
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:
@@ -1684,14 +1747,19 @@ async def stream_chat(
                             user, req.session_id, session, agent, req.content, req.workspace_id
                         )
                         await phase_cb("queued")
-                        result = await agent.execute(
-                            req.content,
-                            context,
-                            stream_callback=stream_cb,
-                            thinking_callback=thinking_cb,
-                            model_override=req.model_override,
-                            phase_callback=phase_cb,
-                        )
+                        with (
+                            bind_event_sink(activity_sink),
+                            bind_approvals(approval_context),
+                            bind_timezone(req.timezone),
+                        ):
+                            result = await agent.execute(
+                                task_content,
+                                context,
+                                stream_callback=stream_cb,
+                                thinking_callback=thinking_cb,
+                                model_override=req.model_override,
+                                phase_callback=phase_cb,
+                            )
                 except TimeoutError:
                     if not run_deadline.expired():
                         raise
@@ -2003,14 +2071,17 @@ async def chat(
                 }
             )
 
+        from tadbir.waqt import bind_timezone
+
         try:
-            result = await agent.execute(
-                req.content,
-                await chat_context(user, req.session_id, session, agent, req.content),
-                stream_callback=stream_cb,
-                thinking_callback=thinking_cb,
-                model_override=req.model_override,
-            )
+            with bind_timezone(req.timezone):
+                result = await agent.execute(
+                    req.content,
+                    await chat_context(user, req.session_id, session, agent, req.content),
+                    stream_callback=stream_cb,
+                    thinking_callback=thinking_cb,
+                    model_override=req.model_override,
+                )
         except Exception:
             logger.exception("Legacy chat execution failed for message %s", message_id)
             thinking_stream.complete(message_id)
@@ -2136,6 +2207,35 @@ async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_
         return {"deleted": await memory.delete_chat_preference(user.user_id, key)}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+class ApprovalDecision(BaseModel):
+    decision: str = Field(..., pattern=r"^(allow|deny|always)$")
+
+
+@app.post("/api/chat/approvals/{approval_id}")
+async def resolve_chat_approval(
+    approval_id: str,
+    body: ApprovalDecision,
+    user: TokenPayload = Depends(require_auth),
+):
+    """Answer a pending tool approval of one of the caller's own live chats."""
+    import re
+
+    from security.approvals import broker
+
+    if not re.fullmatch(r"[0-9a-f]{32}", approval_id) or not broker.resolve(
+        user.user_id, approval_id, body.decision
+    ):
+        raise HTTPException(404, "No pending approval with that id")
+    return {"approval_id": approval_id, "decision": body.decision}
+
+
+@app.get("/api/chat/approvals")
+async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
+    from security.approvals import broker
+
+    return {"pending": broker.pending_for(user.user_id)}
 
 
 @app.get("/api/chat/{session_id}")
@@ -2609,20 +2709,24 @@ async def switch_provider(
     provider = create_provider(provider=req.provider, model=req.model)
     if not provider:
         raise HTTPException(400, f"Cannot initialize provider '{req.provider}'. Check API key.")
+    return await _switch_all_agents(provider, req.model, req.provider)
 
-    req.provider = getattr(provider, "provider_name", req.provider)
-    req.model = normalize_model_for_provider(req.model, req.provider)
+
+async def _switch_all_agents(provider: Any, model: str, requested: str = "") -> dict:
+    """Give every agent this provider/model and remember it across restarts."""
+    provider_name = str(getattr(provider, "provider_name", requested) or requested)
+    model = normalize_model_for_provider(model, provider_name)
 
     # Update all active agents
     switched = 0
     for agent in active_agents.values():
         async with agent_settings_lock(agent):
             agent.ai_client = provider
-            agent.ai_model = req.model
+            agent.ai_model = model
             agent._config_revision = getattr(agent, "_config_revision", 0) + 1
             if hasattr(agent, "config"):
                 had_override = agent.config.pop("provider_override", None) is not None
-                agent.config["model"] = req.model
+                agent.config["model"] = model
                 if had_override:
                     await memory.save_agent_profile(
                         {
@@ -2636,28 +2740,91 @@ async def switch_provider(
                     )
         switched += 1
 
-    set_active_state(req.provider, req.model)
+    set_active_state(provider_name, model)
 
     # Persist to DB so choice survives restart
-    await memory.set_preference("active_provider", req.provider)
-    await memory.set_preference("active_model", req.model)
+    await memory.set_preference("active_provider", provider_name)
+    await memory.set_preference("active_model", model)
 
     await manager.broadcast(
         {
             "type": "provider_switched",
-            "provider": req.provider,
-            "model": req.model,
+            "provider": provider_name,
+            "model": model,
             "agents_updated": switched,
         }
     )
 
-    wali.audit.log("provider_switched", {"provider": req.provider, "model": req.model})
-    await event_bus.emit("provider.switched", {"provider": req.provider, "model": req.model})
+    wali.audit.log("provider_switched", {"provider": provider_name, "model": model})
+    await event_bus.emit("provider.switched", {"provider": provider_name, "model": model})
     return {
-        "provider": req.provider,
-        "model": req.model,
+        "provider": provider_name,
+        "model": model,
         "agents_updated": switched,
     }
+
+
+# === ADMIN RUNTIME SETTINGS ===
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    # A value of null resets that setting to the server's own environment value.
+    values: dict[str, Any] = Field(default_factory=dict, max_length=80)
+
+
+async def _apply_provider_settings(model_changed: bool) -> str:
+    """Rebuild the active model after a provider, model or API key change."""
+    if model_changed:
+        name = os.getenv("LLM_PROVIDER", "auto").strip().lower()
+        model = os.getenv("DEFAULT_MODEL", "").strip()
+    else:
+        status = get_provider_status()
+        name, model = str(status.get("active") or ""), str(status.get("default_model") or "")
+    provider = create_provider(provider=None if name in {"", "auto"} else name, model=model or None)
+    if provider is None:
+        raise HTTPException(
+            400, "No model provider can start with these settings; check the API key"
+        )
+    model = model or get_default_model(provider.provider_name)
+    result = await _switch_all_agents(provider, model)
+    return f"Agents now use {result['provider']} / {result['model']}."
+
+
+@app.get("/api/settings/runtime")
+async def runtime_settings_view(user: TokenPayload = Depends(require_auth)):
+    """Every operator setting with its current value (secrets are never returned)."""
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+    return runtime_settings.public_view()
+
+
+@app.put("/api/settings/runtime")
+async def runtime_settings_update(
+    req: RuntimeSettingsUpdate, user: TokenPayload = Depends(require_auth)
+):
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+    try:
+        change = runtime_settings.update(req.values, user.username or user.user_id)
+    except KeyError as exc:
+        raise HTTPException(422, f"Unknown setting: {exc.args[0]}") from None
+    except ValueError as exc:
+        try:
+            errors = json.loads(str(exc))
+        except ValueError:
+            errors = {"_": str(exc)}
+        raise HTTPException(422, {"message": "Some values are invalid", "errors": errors}) from None
+    notes: list[str] = []
+    if change.provider_changed:
+        try:
+            notes.append(await _apply_provider_settings(change.model_changed))
+        except HTTPException as exc:
+            notes.append(f"Saved, but the model could not start yet: {exc.detail}")
+    if change.restart_required:
+        notes.append("Restart the backend to apply: " + ", ".join(change.restart_required))
+    wali.audit.log("runtime_settings_updated", {"keys": change.applied, "by": user.user_id})
+    view = runtime_settings.public_view()
+    return {**view, "applied": change.applied, "notes": notes}
 
 
 # === OWN ARCHITECTURE AND EXPLICIT TEACHER SUPPORT ===
@@ -3208,69 +3375,41 @@ async def update_settings(
     req: SettingsUpdate, user: TokenPayload | None = Depends(get_current_user)
 ):
     """Update a setting (API key, config value, etc.)"""
+    actor = user.user_id if user else "admin"
+    token_map = {
+        "telegram": "TELEGRAM_BOT_TOKEN",
+        "discord": "DISCORD_BOT_TOKEN",
+        "whatsapp": "WHATSAPP_TOKEN",
+        "slack": "SLACK_APP_TOKEN",
+    }
     if req.section == "provider" and req.provider and req.api_key:
         env_key = f"{req.provider.upper()}_API_KEY"
-        # Store in vault if available
+        if env_key not in runtime_settings.BY_KEY:
+            raise HTTPException(400, f"Unknown provider: {req.provider}")
+        # Saved encrypted in the data volume, so it survives redeploys.
         try:
-            from security.vault import SecretVault
-
-            vault = SecretVault()
-            vault.store(env_key, req.api_key)
-        except Exception:
-            pass
-        # Also set in environment for immediate use
-        os.environ[env_key] = req.api_key
-
-        # Write to .env file for persistence
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        lines = []
-        found = False
-        if env_path.exists():
-            lines = env_path.read_text().splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith(f"{env_key}="):
-                    lines[i] = f"{env_key}={req.api_key}"
-                    found = True
-                    break
-        if not found:
-            lines.append(f"{env_key}={req.api_key}")
-        env_path.write_text("\n".join(lines) + "\n")
-
+            change = runtime_settings.update({env_key: req.api_key}, actor)
+        except ValueError:
+            raise HTTPException(422, "Invalid API key value") from None
+        if change.provider_changed:
+            try:
+                await _apply_provider_settings(False)
+            except HTTPException:
+                pass
         wali.audit.log(
             "settings_updated",
-            {
-                "section": "provider",
-                "provider": req.provider,
-                "field": "api_key",
-            },
+            {"section": "provider", "provider": req.provider, "field": "api_key"},
         )
         return {"status": "saved", "message": f"API key for {req.provider} saved"}
 
     elif req.section == "channel" and req.provider and req.api_key:
-        token_map = {
-            "telegram": "TELEGRAM_BOT_TOKEN",
-            "discord": "DISCORD_BOT_TOKEN",
-            "whatsapp": "WHATSAPP_TOKEN",
-            "slack": "SLACK_APP_TOKEN",
-        }
-        env_key = token_map.get(req.provider, f"{req.provider.upper()}_TOKEN")
-        os.environ[env_key] = req.api_key
-
-        # Persist to .env
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        lines = []
-        found = False
-        if env_path.exists():
-            lines = env_path.read_text().splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith(f"{env_key}="):
-                    lines[i] = f"{env_key}={req.api_key}"
-                    found = True
-                    break
-        if not found:
-            lines.append(f"{env_key}={req.api_key}")
-        env_path.write_text("\n".join(lines) + "\n")
-
+        env_key = token_map.get(req.provider, "")
+        if not env_key:
+            raise HTTPException(400, f"Unknown channel: {req.provider}")
+        try:
+            runtime_settings.update({env_key: req.api_key}, actor)
+        except ValueError:
+            raise HTTPException(422, "Invalid token value") from None
         return {"status": "saved", "message": f"Token for {req.provider} saved"}
 
     raise HTTPException(400, "Invalid settings update request")
@@ -3346,6 +3485,42 @@ async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(g
     """Multi-agent Shura consultation"""
     result = await shura.consult(req.question, req.context, list(active_agents.keys()))
     return result
+
+
+# === TADBIR LEARNING (Majlis routing, Ta'allum wording) ===
+
+
+def _tadbir_coordinator():
+    for agent in active_agents.values():
+        if getattr(agent, "role", "") == "khalifah":
+            return agent
+    return next(iter(active_agents.values()), None)
+
+
+@app.get("/api/tadbir/learning")
+async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
+    """What MIZAN learned from its own verified work: who does which work, and your wording."""
+    from tadbir import majlis, taallum
+
+    coordinator = _tadbir_coordinator()
+    if coordinator is None:
+        raise HTTPException(503, "No agents are running")
+    return {
+        "routing": majlis.report(coordinator),
+        "wording": taallum.summary(coordinator.adaptive, user.user_id),
+    }
+
+
+@app.delete("/api/tadbir/learning/wording")
+async def forget_tadbir_wording(user: TokenPayload = Depends(require_auth)):
+    """Forget the wording MIZAN learned from this user's requests."""
+    from tadbir import taallum
+
+    coordinator = _tadbir_coordinator()
+    if coordinator is None:
+        raise HTTPException(503, "No agents are running")
+    taallum.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
 
 
 # === AUTOMATION (Qadr) ===
@@ -4869,13 +5044,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
+                    from tadbir.waqt import bind_timezone
+
+                    zone = data.get("timezone")
                     try:
-                        result = await agent.execute(
-                            content,
-                            await chat_context(user, session_id, session, agent, content),
-                            stream_callback=ws_stream,
-                            thinking_callback=ws_thinking,
-                        )
+                        with bind_timezone(
+                            zone if isinstance(zone, str) and len(zone) <= 64 else None
+                        ):
+                            result = await agent.execute(
+                                content,
+                                await chat_context(user, session_id, session, agent, content),
+                                stream_callback=ws_stream,
+                                thinking_callback=ws_thinking,
+                            )
                     except asyncio.CancelledError:
                         await memory.save_message(
                             session_id,
@@ -5153,8 +5334,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
 # Imported after shared dependencies to keep deferred auth imports cycle safe.
 from api import (  # noqa: E402
+    agent_skills,
     artifacts,
     coding_workspace,
+    connectors,
     modes,
     qwen3,
     ruh_dialect,
@@ -5165,10 +5348,21 @@ from api import (  # noqa: E402
     ruh_screening,
     ruh_tajwid,
     sandbox,
+    workspace_sessions,
 )
 
-for feature in (artifacts, modes, sandbox, coding_workspace):
+# Session routes first: the public preview path must win over /{workspace_id}/...
+for feature in (
+    artifacts,
+    modes,
+    sandbox,
+    workspace_sessions,
+    coding_workspace,
+    agent_skills,
+    connectors,
+):
     app.include_router(feature.router)
+app.include_router(workspace_sessions.ws_router)
 
 for feature in (
     ruh_reader,

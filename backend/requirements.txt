@@ -13,6 +13,7 @@ python-multipart>=0.0.32,<0.1
 anthropic>=2.3.0,<3
 openai>=3.38.0,<4
 httpx>=0.28.1,<0.29
+mcp>=2.3.0,<3  # Model Context Protocol connectors (official SDK)
 
 # Database & Async
 aiosqlite>=0.22.1,<0.23
@@ -20,6 +21,7 @@ aiofiles>=25.1.0,<26
 
 # Configuration
 python-dotenv>=1.2.4,<2
+pyyaml>=6.0.3,<7  # Agent Skills (SKILL.md frontmatter)
 
 # Security
 PyJWT>=2.15.1,<3
@@ -28,6 +30,9 @@ cryptography>=50.0.2,<51
 
 # Automation
 croniter>=6.2.4,<7
+hijridate>=2.6.0,<3  # Umm al-Qura Hijri calendar (Tadbir dates)
+tzdata>=2026.5  # IANA timezones for zoneinfo in slim images
+jsonschema>=4.26.0,<5  # MIZAN validates tool arguments (Tadbir Amal)
 
 # CLI
 click>=8.5.0,<9

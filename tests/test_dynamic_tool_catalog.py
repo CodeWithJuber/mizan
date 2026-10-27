@@ -551,3 +551,66 @@ async def test_streamed_json_matches_final_response_despite_heuristic_warning(ru
     assert result["lawwama"]["suggested_repair_level"] > 0
     assert result["lawwama"]["repair_level"] == 0
     assert result["lawwama"]["response_rewritten"] is False
+
+
+async def test_false_tool_denial_is_retracted_and_retried_through_discovery(runtime):
+    agent, _, skill = runtime
+    provider = ScriptedProvider(
+        [
+            answer("Nahi bhai, mere paas code execution ya internet ke tools nahi hain."),
+            call(DISCOVER_TOOL, {"names": ["orbit_render"]}),
+            call("orbit_render", {"value": "ran"}),
+            answer("Done: rendered it."),
+        ]
+    )
+    agent.ai_client = provider
+    result = await agent.execute("Hai tumhare paas tools? Isko render karo")
+    assert result["success"]
+    assert skill.calls == ["ran"]
+    assert result["result"] == "Done: rendered it."
+    assert "nahi hain" not in result["result"]
+    assert "You DO have working tools" in json.dumps(provider.requests[1]["messages"])
+
+
+async def test_denial_guard_runs_once_and_ordinary_answers_are_untouched(runtime):
+    agent, _, _ = runtime
+    provider = ScriptedProvider(
+        [answer("I cannot browse the internet."), answer("I cannot browse the internet.")]
+    )
+    agent.ai_client = provider
+    result = await agent.execute("Search the news")
+    assert len(provider.requests) == 2
+    assert result["result"] == "I cannot browse the internet."
+    provider.responses.append(answer("4"))
+    await agent.execute("2+2?")
+    assert len(provider.requests) == 3
+
+
+def test_system_prompt_lists_real_capabilities(runtime):
+    import asyncio
+
+    from skills.builtin.coding_workspace import CodingWorkspaceSkill
+
+    agent, registry, _ = runtime
+    registry.register(CodingWorkspaceSkill())
+    agent.ai_client = ScriptedProvider([])
+    prompt = asyncio.run(agent._build_system_prompt())
+    assert "run Python, JavaScript and shell code" in prompt
+    assert "call mizan_discover_tools" in prompt
+
+
+async def test_claimed_execution_without_a_tool_is_retracted(runtime):
+    agent, _, skill = runtime
+    provider = ScriptedProvider(
+        [
+            answer("Result: 42. यह कोड सफलतापूर्वक चलाया गया है।"),
+            call(DISCOVER_TOOL, {"names": ["orbit_render"]}),
+            call("orbit_render", {"value": "real"}),
+            answer("The tool returned 42."),
+        ]
+    )
+    agent.ai_client = provider
+    result = await agent.execute("Isko run karke result batao")
+    assert skill.calls == ["real"]
+    assert result["result"] == "The tool returned 42."
+    assert "No tool ran in this answer" in json.dumps(provider.requests[1]["messages"])

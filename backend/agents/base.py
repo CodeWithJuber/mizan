@@ -32,6 +32,8 @@ from typing import Any, cast
 
 import httpx
 
+from agents.events import emit as emit_event
+from agents.events import summarize as summarize_event
 from agents.execution_contract import completion_metadata, prepare_tool_call, tool_result_failed
 from agents.perpetual_rotation import PerpetualRotation
 from agents.provider_limits import (
@@ -82,20 +84,31 @@ from providers import (
     assistant_turn_content,
     configured_provider_name,
     create_provider,
+    effective_limits,
     get_default_model,
-    model_limits,
     normalize_model_for_provider,
+    provider_retry_delay,
 )
 from qca.cognitive_methods import CognitiveMethod, IjmaEngine, select_method
 from qca.engine import QCAEngine
 from qca.yaqin_engine import YaqinEngine
-from reasoning.context_engine import ContextBudget, fit_recent, message_text, message_tokens
+from reasoning.context_engine import (
+    SMALL_WINDOW,
+    SMALL_WINDOW_SCALE,
+    SUMMARY_HEADER,
+    ContextBudget,
+    estimate_tokens,
+    fit_recent,
+    message_text,
+    message_tokens,
+)
 from response_policy import (
     CURRENT_REQUEST_END,
     CURRENT_REQUEST_START,
     RESPONSE_POLICY,
     reply_defaults,
 )
+from security.approvals import current_approvals, request_approval, tool_category
 from security.auth import current_user_id, request_has_role
 from security.izn import PermissionLevel
 from security.validation import (
@@ -121,6 +134,14 @@ _MAX_OUTPUT_TOKENS = 128_000
 _DEFAULT_MAX_STEPS = 100
 # A tool call cut off by the output limit is re-requested at most this often.
 _MAX_TOOL_CUTOFF_RETRIES = 2
+# Re-sends after an explicit provider error response (429/5xx), never after a
+# timeout or dropped connection.
+_MAX_PROVIDER_RETRIES = 2
+_PLAN_MODE_NOTE = (
+    "[PLAN MODE — investigate with read-only tools, then reply with a concrete, numbered "
+    "plan (files, changes, commands, risks). Do not modify files or run commands; the user "
+    "will approve the plan first.]"
+)
 _TOOL_CUTOFF_PROMPT = (
     "[System: your previous tool call was cut off by the output length limit before its "
     "arguments were complete, so it was NOT executed. Issue it again. If its input is large "
@@ -163,6 +184,99 @@ def _continuation_repeats(previous: str, new: str, n: int = 8) -> bool:
     grams = [tuple(new_words[i : i + n]) for i in range(len(new_words) - n + 1)]
     overlap = sum(1 for gram in grams if gram in seen) / len(grams)
     return overlap > 0.8
+
+
+# A weak model may claim it has no tools without trying any. One corrective
+# turn per run points it at discovery instead of delivering a false denial.
+_CAPABILITY_DENIAL = re.compile(
+    r"(?:\bi\s+(?:do\s+not|don't|cannot|can't|am\s+(?:not\s+able|unable)\s+to)\s+"
+    r"(?:have\s+)?(?:any\s+)?(?:direct\s+)?(?:access\s+to\s+)?"
+    r"(?:tools?|the\s+internet|internet|browse|execute|run\s+(?:code|python|commands?)|download))"
+    r"|\bno\s+(?:tool|code\s+execution|execution|internet|browsing)s?\s+"
+    r"(?:or\s+\w+\s+)?(?:access|capabilit)"
+    r"|\b(?:only|just)\s+a\s+text(?:[- ](?:only|based))?\s+(?:ai|model|assistant)"
+    r"|\b(?:sirf|bas)\s+ek\s+text\b"
+    r"|\b(?:tools?|execution|internet|salahiyat|access)\b[^.\n]{0,40}\b(?:nahi|nahin)\s+(?:hai|hain|he)\b"
+    r"|\b(?:run|execute|chala|download)\w*\b[^.\n]{0,30}\b(?:nahi|nahin)\s+(?:kar\s+)?(?:sakta|sakti|sakte)\b",
+    re.IGNORECASE,
+)
+# Claims that something was executed, which need a tool receipt in the run.
+_EXECUTION_CLAIM = re.compile(
+    r"\b(?:i\s+(?:ran|executed|have\s+run|have\s+executed)|"
+    r"(?:code|script|command|program)\s+(?:ran|was\s+(?:run|executed)|executed)\s*(?:successfully)?|"
+    r"(?:ran|executed)\s+(?:it|the\s+code|the\s+script)\s+successfully|"
+    r"execution\s+(?:output|result)\s*:)"
+    r"|\bsuccessfully\s+(?:ran|run|executed)\b|\brun\s+(?:hua|हुआ)"
+    r"|(?:सफलतापूर्वक)\s*(?:run|चल|execute)"
+    r"|\b(?:run|execute|chala)\w*\s+(?:kiya\s+gaya|kar\s+diya|kar\s+liya|ho\s+gaya|kiya\s+hai)\b"
+    r"|(?:chalaya\s+gaya|chala\s+diya)"
+    r"|(?:चलाया\s+गया|चला\s+दिया|निष्पादित\s+किया)",
+    re.IGNORECASE,
+)
+# A request to run code: an answer without any tool receipt cannot satisfy it.
+_EXECUTION_REQUEST = re.compile(
+    r"(?=.*\b(?:python|code|script|program|javascript|node|shell|bash|command|cmd)\b|.*\*\*|.*print\()"
+    r".*(?:\b(?:run|execute|exec|chala\w*|compile)\b|चला)",
+    re.IGNORECASE | re.DOTALL,
+)
+_RETRACT_MARKER = "\n[Retract]\n"
+_CAPABILITY_NUDGE = (
+    "[System: You DO have working tools in MIZAN. Do not tell the user you cannot run code, "
+    "browse, download or use tools. Call mizan_discover_tools with a short English query for "
+    'the needed action (for example "run python code", "search the web", "download a '
+    'file") and then call the tool it loads; answer from the real result. If a tool is '
+    "unavailable or fails, report that exact result instead.]"
+)
+
+
+_EXECUTION_NUDGE = (
+    "[System: No tool ran in this answer, so nothing was executed. Do not say code was run. "
+    "To run it, call workspace_run (create a project with workspace_create first if none is "
+    "selected; use mizan_discover_tools if those tools are not loaded) and report the real "
+    "output. Otherwise answer without claiming execution.]"
+)
+
+
+def _denies_capability(text: str) -> bool:
+    return bool(text) and bool(_CAPABILITY_DENIAL.search(text[:4000]))
+
+
+def _claims_unreceipted_execution(text: str) -> bool:
+    return bool(text) and bool(_EXECUTION_CLAIM.search(text[:4000]))
+
+
+def _asks_to_execute(task: str) -> bool:
+    return bool(task) and bool(_EXECUTION_REQUEST.match(task[:2000]))
+
+
+def _capability_card(names: set[str]) -> str:
+    """What this agent can actually do, from its permitted tool names."""
+    lines = []
+    if {"workspace_run", "workspace_create"} & names:
+        lines.append(
+            "- run Python, JavaScript and shell code in an isolated project sandbox "
+            "(workspace_create, workspace_write, workspace_run; a sandbox session via "
+            "workspace_sandbox also installs packages and serves apps)"
+        )
+    if {"workspace_read", "workspace_edit", "workspace_grep"} & names:
+        lines.append("- read, edit and search project files")
+    if {"web_search", "web_browse", "http_get"} & names:
+        lines.append("- search the web and read pages (web_search, web_browse)")
+    if {"recall_memory", "query_knowledge"} & names:
+        lines.append("- recall memory and saved knowledge")
+    if any(name.startswith("mcp__") for name in names):
+        lines.append("- use the user's connected apps (mcp__* connector tools)")
+    if "activate_skill" in names:
+        lines.append("- follow installed Agent Skills (activate_skill)")
+    if not lines:
+        return ""
+    return (
+        "\nThrough tools you can:\n" + "\n".join(lines) + "\nOnly some tool definitions are "
+        "loaded at a time. When a request needs an action whose tool is not loaded, call "
+        "mizan_discover_tools with a short English query first. Never say you cannot run code, "
+        "browse or download before trying; if a tool fails or is unavailable, report the "
+        "actual result."
+    )
 
 
 _CONTINUE_PROMPT = (
@@ -244,6 +358,17 @@ def _native_sense_bits(text: str, lemmas: list[str]) -> list[str]:
 _execution_provider: ContextVar[tuple | None] = ContextVar("mizan_execution_provider", default=None)
 _execution_stack: ContextVar[tuple[int, ...]] = ContextVar("mizan_execution_stack", default=())
 _evaluation_only: ContextVar[bool] = ContextVar("mizan_evaluation_only", default=False)
+# Tadbir's default mode: MIZAN performs every action itself, so a request it
+# hands to the conversation loop is answered in words, with no tools at all.
+_language_only: ContextVar[bool] = ContextVar("mizan_language_only", default=False)
+_LANGUAGE_ONLY_NOTE = (
+    "\n\nIn this conversation you are MIZAN's language faculty and have no tools: MIZAN's own "
+    "architecture performs every action (running code, searching, building or editing projects, "
+    "Quran and hadith text, connectors). Never say you ran, searched, opened, saved or changed "
+    "anything. When the user wants an action, answer what you can in words and say in one line "
+    'how to ask for it, for example "run this code", "search the web for …", "build a … '
+    'app" or "use my <connector> to …".'
+)
 
 
 class BaseAgent:
@@ -438,6 +563,9 @@ class BaseAgent:
             "recall_memory": self._tool_recall_memory,
             "delegate_task": self._tool_delegate_task,
             "query_knowledge": self._tool_query_knowledge,
+            "todo_write": self._tool_todo_write,
+            "activate_skill": self._tool_activate_skill,
+            "read_skill_file": self._tool_read_skill_file,
         }
         # Phase 2 (mizan.nlp, IP-2): native sense tool -- registered only when
         # the flag is on, so flag-off behavior stays bit-for-bit identical.
@@ -446,7 +574,7 @@ class BaseAgent:
 
     def get_tool_schemas(self) -> list[dict]:
         """Get tool schemas only when the selected model supports them."""
-        if _evaluation_only.get():
+        if _evaluation_only.get() or _language_only.get():
             return []
         if getattr(getattr(self, "ai_client", None), "supports_tools", True) is False:
             return []
@@ -592,6 +720,36 @@ class BaseAgent:
                 },
             },
             {
+                "name": "todo_write",
+                "description": (
+                    "Write your plan for this chat as a todo list and keep it current: send "
+                    "the whole list each time, mark exactly one item in_progress while working "
+                    "on it and completed as soon as it is done. Use it for tasks with 3+ steps; "
+                    "the user sees the list live."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "todos": {
+                            "type": "array",
+                            "maxItems": 50,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "content": {"type": "string", "maxLength": 500},
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["pending", "in_progress", "completed"],
+                                    },
+                                },
+                                "required": ["content", "status"],
+                            },
+                        }
+                    },
+                    "required": ["todos"],
+                },
+            },
+            {
                 "name": "compact_context",
                 "description": "Compact conversation context by summarizing older messages to stay within context window limits. Use when conversation is getting long.",
                 "input_schema": {
@@ -701,7 +859,7 @@ class BaseAgent:
         # Source precedence and within-registry winners must match dispatch:
         # own tools, then skills, then plugins. Never pair one owner's schema
         # with a different owner's handler after a name collision.
-        sources = [(schemas + self.TOOL_SCHEMAS, self.tools)]
+        sources = [(schemas + self._agent_skill_schemas() + self.TOOL_SCHEMAS, self.tools)]
         for registry in (self.skill_registry, self.plugin_manager):
             if registry:
                 try:
@@ -711,6 +869,26 @@ class BaseAgent:
                         sources.append((source_schemas, source_handlers))
                 except Exception:
                     logger.warning("Optional tool metadata unavailable during capability selection")
+        # The user's own MCP connectors (mcp__<server>__<tool>) are a source of
+        # their own; the prefix is reserved so no other source can claim it.
+        sources = [
+            (
+                [s for s in source_schemas if not str(s.get("name", "")).startswith("mcp__")],
+                {n: h for n, h in handlers.items() if not n.startswith("mcp__")},
+            )
+            for source_schemas, handlers in sources
+        ]
+        connector_schemas = self._connector_schemas()
+        if connector_schemas:
+            sources.append(
+                (
+                    connector_schemas,
+                    {
+                        schema["name"]: self._connector_handler(schema["name"])
+                        for schema in connector_schemas
+                    },
+                )
+            )
         policy = self.izn.get_policy(self.id, self.role) if self.izn else None
         visible: dict[str, dict] = {}
         claimed: set[str] = set()
@@ -750,11 +928,46 @@ class BaseAgent:
                     )
                 ):
                     visible[name] = snapshot
+        approvals = current_approvals()
+        if approvals is not None and approvals.mode == "plan":
+            # Plan mode offers observation only; changes are proposed, not made.
+            visible = {
+                name: schema
+                for name, schema in visible.items()
+                if tool_category(name, self._read_only_hint(name)) == "read"
+            }
         return list(visible.values())
+
+    @staticmethod
+    def _connector_schemas() -> list[dict]:
+        try:
+            from connectors.tools import user_tool_schemas
+
+            return cast(list[dict], user_tool_schemas(current_user_id() or ""))
+        except Exception:  # noqa: BLE001 - a broken connector file must not block chat
+            logger.warning("Connector tools unavailable", exc_info=True)
+            return []
+
+    @staticmethod
+    def _connector_handler(name: str):
+        async def call_connector(**arguments):
+            from connectors.tools import call
+
+            return await call(current_user_id() or "", name, arguments)
+
+        return call_connector
+
+    @staticmethod
+    def _read_only_hint(tool_name: str) -> bool:
+        if not tool_name.startswith("mcp__"):
+            return False
+        from connectors.tools import read_only_hint
+
+        return bool(read_only_hint(current_user_id() or "", tool_name))
 
     def _chat_tool_allowed(self, tool_name: str) -> bool:
         """Selected-project chats expose only owner-scoped tools with trusted handlers."""
-        from skills.builtin.coding_workspace import allows_user_workspace_tool
+        from skills.builtin.coding_workspace import allows_user_web_tool, allows_user_workspace_tool
         from workspace.context import bound_workspace_id
 
         selected = bound_workspace_id()
@@ -764,7 +977,17 @@ class BaseAgent:
             return True
         if allows_user_workspace_tool(tool_name, self.skill_registry, native_tools=self.tools):
             return True
+        if allows_user_web_tool(tool_name, self.skill_registry, native_tools=self.tools):
+            return True
+        if tool_name.startswith("mcp__"):
+            # Only the signed-in user's own connector tools, never another source.
+            from connectors.tools import is_user_tool
+
+            return bool(is_user_tool(current_user_id() or "", tool_name))
         safe_native = {
+            "todo_write": BaseAgent._tool_todo_write,
+            "activate_skill": BaseAgent._tool_activate_skill,
+            "read_skill_file": BaseAgent._tool_read_skill_file,
             "recall_memory": BaseAgent._tool_recall_memory,
             "query_knowledge": BaseAgent._tool_query_knowledge,
             "disambiguate_sense": BaseAgent._tool_disambiguate_sense,
@@ -870,13 +1093,26 @@ class BaseAgent:
         tool_catalog = ToolCatalog(
             tool_schemas,
             task,
+            # activate_skill carries the skill catalog in its description, so
+            # the ranking offers it when a request matches a skill.
             context_names={s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
             if bound_workspace_id()
             else set(),
-            max_tools=self._bounded_generation_config("tool_schema_limit", 8, 2, 32),
-            max_bytes=self._bounded_generation_config("tool_schema_bytes", 12_288, 4096, 65_536),
+            # A coding project needs its read/edit/search/run tools together.
+            max_tools=max(
+                self._bounded_generation_config("tool_schema_limit", 8, 2, 32),
+                16 if bound_workspace_id() else 0,
+            ),
+            max_bytes=max(
+                self._bounded_generation_config("tool_schema_bytes", 12_288, 4096, 65_536),
+                32_768 if bound_workspace_id() else 0,
+            ),
         )
         tool_schemas = tool_catalog.schemas()
+        catalog: ToolCatalog | None = tool_catalog
+        if _language_only.get():
+            # MIZAN performs the actions: not even the discovery tool is offered.
+            tool_schemas, catalog = [], None
 
         # QalbProcessor — compute cardiac oscillation state → LLM params
         qalb_proc_output = self.qalb_processor.process(
@@ -947,7 +1183,7 @@ class BaseAgent:
         if self.ai_client:
             try:
                 async for chunk in self._agentic_loop(
-                    system_prompt, messages, tool_schemas, stream, task, tool_catalog=tool_catalog
+                    system_prompt, messages, tool_schemas, stream, task, tool_catalog=catalog
                 ):
                     yield chunk
             except Exception:
@@ -993,7 +1229,7 @@ class BaseAgent:
         """
         if getattr(self.ai_client, "provider_name", "") == "anthropic":
             return
-        window, _ = model_limits(self.ai_model or "")
+        window, _ = self._model_limits()
         budget = int(window * 0.6)
         total = sum(message_tokens(m) for m in messages)
         if total <= budget:
@@ -1016,6 +1252,8 @@ class BaseAgent:
                     isinstance(block, dict)
                     and block.get("type") == "tool_result"
                     and len(content) > 600
+                    # Skill instructions are durable guidance, never excerpted.
+                    and "<skill_content" not in content
                 ):
                     block = {
                         **block,
@@ -1053,8 +1291,8 @@ class BaseAgent:
         Without a setting the model's own output cap is used (up to 16k per
         call); length-limited answers then continue in the loop.
         """
-        _context, cap = model_limits(getattr(self, "ai_model", "") or "")
-        model_cap = max(256, min(int(cap), _MAX_OUTPUT_TOKENS))
+        _context, cap = self._model_limits()
+        model_cap = max(1, min(int(cap), _MAX_OUTPUT_TOKENS))
         default = min(model_cap, _DEFAULT_OUTPUT_TOKENS)
         configured = getattr(self, "config", {}).get(
             "max_output_tokens", os.getenv("MIZAN_CHAT_MAX_OUTPUT_TOKENS", "")
@@ -1068,7 +1306,65 @@ class BaseAgent:
         except (TypeError, ValueError, OverflowError):
             logger.warning("Invalid chat output token budget; using %d", default)
             value = default
-        return max(256, min(value, model_cap))
+        return max(min(256, model_cap), min(value, model_cap))
+
+    def _model_limits(self) -> tuple[int, int]:
+        """(context, max_output) of the provider/model actually serving this agent."""
+        context, max_output = effective_limits(
+            getattr(self, "ai_client", None), getattr(self, "ai_model", "") or ""
+        )
+        return int(context), int(max_output)
+
+    def _history_reserve(self, window: int) -> int:
+        """Room a request needs besides history: output plus system/context blocks."""
+        return self._output_token_budget() + window // 4
+
+    def _fit_request_to_window(
+        self, system: str, messages: list[dict], tools: list[dict], max_tokens: int
+    ) -> int:
+        """Make one request fit the serving window; returns the max_tokens to send.
+
+        The oldest history turns (before the current request) are dropped first,
+        the running summary last; then the output cap shrinks to the room left.
+        In-run tool turns are never dropped, so tool pairs stay valid.
+        """
+        window, _cap = self._model_limits()
+        scale = SMALL_WINDOW_SCALE if window <= SMALL_WINDOW else 1.0
+        margin = max(32, window // 32)
+        fixed = estimate_tokens(system)
+        if tools:
+            fixed += estimate_tokens(json.dumps(tools, ensure_ascii=False))
+        costs = [message_tokens(message) for message in messages]
+        total = int((fixed + sum(costs)) * scale)
+        if total + max_tokens + margin <= window:
+            return max_tokens
+        current = next(
+            (
+                index
+                for index in range(len(messages) - 1, -1, -1)
+                if isinstance(messages[index].get("content"), str)
+                and CURRENT_REQUEST_START in messages[index]["content"]
+            ),
+            None,
+        )
+        dropped = 0
+        while current is not None and current > 0 and total + max_tokens + margin > window:
+            first = messages[0].get("content")
+            # Keep the running summary while other old turns can go.
+            index = (
+                1
+                if (current > 1 and isinstance(first, str) and first.startswith(SUMMARY_HEADER))
+                else 0
+            )
+            if not isinstance(messages[index].get("content"), str):
+                break
+            messages.pop(index)
+            total -= int(costs.pop(index) * scale)
+            current -= 1
+            dropped += 1
+        if dropped:
+            logger.info("[SIYAQ] Dropped %d oldest turns to fit a %d-token window", dropped, window)
+        return max(64, min(max_tokens, window - total - margin))
 
     @staticmethod
     def _require_answer_progress(response) -> None:
@@ -1127,6 +1423,8 @@ class BaseAgent:
             "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
         )
         tool_cutoffs = 0
+        capability_nudged = False
+        provider_retries = 0
         output_boost = 1
         wrapping_up = False
         turn = 0  # tool rounds completed
@@ -1143,8 +1441,8 @@ class BaseAgent:
                 messages.append({"role": "user", "content": _WRAP_UP_PROMPT})
             # Tone can vary; the configured economic/output limit does not.
             qalb_params = getattr(self, "_qalb_params", {})
-            _context, model_cap = model_limits(self.ai_model or "")
-            max_tokens = min(self._output_token_budget() * output_boost, max(256, int(model_cap)))
+            _context, model_cap = self._model_limits()
+            max_tokens = min(self._output_token_budget() * output_boost, max(1, int(model_cap)))
             temperature = qalb_params.get("temperature", 0.5)
             # Continuing a visible answer is text-only. Completed actions must
             # not be repeated because a model reissues a tool call mid-answer.
@@ -1152,6 +1450,9 @@ class BaseAgent:
             request_tools = [] if continuations or wrapping_up else available_tools
             offered_names = {schema["name"] for schema in request_tools}
             self._compact_run_messages(messages)
+            max_tokens = self._fit_request_to_window(
+                system_prompt, messages, request_tools, max_tokens
+            )
 
             # A failed stream may already have been accepted and billed. Never
             # turn an ambiguous failure into another POST. Providers without
@@ -1204,6 +1505,28 @@ class BaseAgent:
                     "[FIKR] Tool call cut off by max_tokens — re-requesting (%d)", tool_cutoffs
                 )
                 continue
+            except Exception as provider_error:
+                # An explicit 429/5xx response proves nothing was generated, so
+                # the same request may be sent again. Anything ambiguous, or a
+                # call that already produced visible text, is never replayed.
+                delay = provider_retry_delay(provider_error, provider_retries)
+                if (
+                    delay is None
+                    or provider_retries >= _MAX_PROVIDER_RETRIES
+                    or accumulated_text != text_before_call
+                ):
+                    raise
+                provider_retries += 1
+                model_calls -= 1
+                logger.warning(
+                    "[FIKR] Provider rejected the request (HTTP %s); retry %d/%d in %.1fs",
+                    getattr(provider_error, "status_code", "?"),
+                    provider_retries,
+                    _MAX_PROVIDER_RETRIES,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
 
             # Collect text output and tool calls from this turn. In streaming
             # mode the text was already yielded live above.
@@ -1226,7 +1549,7 @@ class BaseAgent:
                 self._tool_invocation_started = True
                 tool_started = time.perf_counter()
 
-                async def dispatch(block, offered=frozenset(offered_names)):
+                async def run_block(block, offered):
                     if tool_catalog is not None:
                         if block.name not in offered:
                             return {
@@ -1236,13 +1559,35 @@ class BaseAgent:
                             return tool_catalog.discover(block.input)
                     return await self._execute_tool_safe(block.name, block.input)
 
+                async def dispatch(block, offered=frozenset(offered_names)):
+                    call_id = getattr(block, "id", "") or uuid.uuid4().hex
+                    await emit_event(
+                        "tool_start", {"call_id": call_id, "name": block.name, "input": block.input}
+                    )
+                    started = time.perf_counter()
+                    result = await run_block(block, offered)
+                    receipt = {
+                        "call_id": call_id,
+                        "name": block.name,
+                        "ok": not tool_result_failed(result),
+                        "summary": summarize_event(result),
+                        "duration_ms": round((time.perf_counter() - started) * 1000),
+                    }
+                    if isinstance(result, dict) and isinstance(result.get("diff"), str):
+                        receipt["diff"] = result["diff"]
+                        receipt["path"] = result.get("path")
+                    await emit_event("tool_result", receipt)
+                    return result
+
+                approvals = current_approvals()
                 try:
-                    if any(
+                    if (approvals is not None and approvals.mode != "auto") or any(
                         b.name.startswith("workspace_") or b.name == DISCOVER_TOOL
                         for b in tool_blocks
                     ):
                         # A model can emit write/run/publish together. Preserve
-                        # order for project mutations instead of racing the files.
+                        # order for project mutations instead of racing the files;
+                        # approval prompts are likewise asked one at a time.
                         tool_results_raw = [await dispatch(b) for b in tool_blocks]
                     else:
                         tool_results_raw = await asyncio.gather(*(dispatch(b) for b in tool_blocks))
@@ -1335,6 +1680,33 @@ class BaseAgent:
                 continue
 
             truncated = response.stop_reason == "max_tokens"
+
+            if (
+                not capability_nudged
+                and tool_count == 0
+                and not text_before_call
+                and not truncated
+                and tool_catalog is not None
+                and tool_catalog.schemas()
+                and (
+                    _denies_capability(new_text)
+                    or _claims_unreceipted_execution(new_text)
+                    or _asks_to_execute(original_task)
+                )
+            ):
+                # Retract a false "I have no tools" or "I ran it" answer and retry once.
+                capability_nudged = True
+                denial = _denies_capability(new_text)
+                logger.info(
+                    "[FIKR] %s without a tool; nudging once", "denial" if denial else "claim"
+                )
+                messages.append({"role": "assistant", "content": assistant_turn_content(response)})
+                messages.append(
+                    {"role": "user", "content": _CAPABILITY_NUDGE if denial else _EXECUTION_NUDGE}
+                )
+                accumulated_text = ""
+                yield _RETRACT_MARKER
+                continue
 
             # Furqan: Validate final output before delivery
             if accumulated_text:
@@ -1670,6 +2042,8 @@ class BaseAgent:
         """
         if _evaluation_only.get():
             return {"error": "Tools are disabled for read-only council evaluation"}
+        if _language_only.get():
+            return {"error": "MIZAN performs actions itself; the language faculty has no tools"}
         if not self._chat_tool_allowed(tool_name):
             return {"error": "Tool is not permitted in this user's selected workspace context"}
 
@@ -1691,11 +2065,39 @@ class BaseAgent:
 
         # Check Izn permissions
         perm = self._check_tool_permission(tool_name, params)
-        if not perm["allowed"]:
+        approvals = current_approvals()
+        izn_asks = bool(
+            not perm["allowed"] and perm.get("requires_approval") and approvals is not None
+        )
+        if not perm["allowed"] and not izn_asks:
             logger.warning(
                 f"[WALI] Tool blocked: {tool_name} for agent {self.name}: {perm['reason']}"
             )
             return {"error": f"Permission denied: {perm['reason']}"}
+        # Izn in an interactive chat: plan mode refuses changes; other modes
+        # ask the user (through the live chat) before acting.
+        if approvals is not None:
+            read_only = self._read_only_hint(tool_name)
+            if approvals.blocks(tool_name, read_only):
+                return {
+                    "error": "Plan mode is read-only: describe this step in the plan instead",
+                    "plan_mode": True,
+                }
+            if izn_asks or approvals.needs_approval(tool_name, read_only):
+                decision = await request_approval(
+                    approvals,
+                    tool_name,
+                    params,
+                    reason=perm.get("reason", "") if izn_asks else "",
+                )
+                if decision == "deny":
+                    return {"error": "The user declined this action", "declined": True}
+
+        # 0. The user's own MCP connectors (reserved prefix)
+        if tool_name.startswith("mcp__"):
+            from connectors.tools import call
+
+            return await call(current_user_id() or "", tool_name, params)
 
         # 1. Agent's own built-in tools
         if tool_name in self.tools:
@@ -1966,11 +2368,22 @@ class BaseAgent:
             "[END AGENT STATE]"
         )
 
+        capability_card = ""
+        if _language_only.get():
+            capability_card = _LANGUAGE_ONLY_NOTE
+        elif getattr(self.ai_client, "supports_tools", True) is not False:
+            try:
+                capability_card = _capability_card(
+                    {str(item.get("name", "")) for item in self.get_tool_schemas()}
+                )
+            except Exception:  # noqa: BLE001 - the card is advisory
+                capability_card = ""
+
         base_prompt = f"""You are {self.name}, a specialized AI agent in the MIZAN (ميزان) system.
 
 Role: {self.role}{tone_guidance}{ruh_note}{faculty_note}
 
-You have access to tools. Use them when needed to complete tasks.
+{"Answer in words." if _language_only.get() else "You have access to tools. Use them when needed to complete tasks."}{capability_card}
 
 Core Principles:
 - Ihsan (إحسان): Always strive for excellence
@@ -2051,8 +2464,8 @@ Match the requested depth and self-correct errors."""
         if context and context.get("history"):
             # Chat routes send a model-sized history (running summary + recent
             # turns). Other callers are bounded here by the same token budget.
-            window, _ = model_limits(getattr(self, "ai_model", "") or "")
-            budget = ContextBudget.for_window(window)
+            window, _ = self._model_limits()
+            budget = ContextBudget.for_window(window, self._history_reserve(window))
             history = fit_recent(
                 [
                     h
@@ -2097,6 +2510,15 @@ Match the requested depth and self-correct errors."""
         runtime_state = getattr(self, "_runtime_state_note", "")
         if runtime_state:
             context_blocks.append(runtime_state)
+        todos = self._session_todo_block((context or {}).get("session_id"))
+        if todos:
+            context_blocks.append(todos)
+        skills = self._active_skills_block((context or {}).get("session_id"))
+        if skills:
+            context_blocks.append(skills)
+        approvals = current_approvals()
+        if approvals is not None and approvals.mode == "plan":
+            context_blocks.append(_PLAN_MODE_NOTE)
         preferences = reply_defaults(task, (context or {}).get("user_preferences", []))
         if preferences:
             context_blocks.append(
@@ -2112,6 +2534,29 @@ Match the requested depth and self-correct errors."""
         )
 
         return messages
+
+    @staticmethod
+    def _active_skills_block(session_id: str | None) -> str:
+        """Skills activated earlier in this chat keep guiding later turns."""
+        try:
+            from agent_skills.tools import active_block
+            from workspace.context import bound_workspace_id
+
+            return str(active_block(current_user_id() or "", bound_workspace_id(), session_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("Active skills unavailable", exc_info=True)
+            return ""
+
+    @staticmethod
+    def _session_todo_block(session_id: str | None) -> str:
+        """The chat's saved todo list, so a multi-turn plan survives between turns."""
+        from agents import session_state
+
+        user_id = current_user_id() or ""
+        if not user_id or not session_id:
+            return ""
+        todos = session_state.load(user_id, session_id).get("todos") or []
+        return session_state.todo_block(todos) if isinstance(todos, list) else ""
 
     def _run_cognitive_method(self, method: CognitiveMethod, task: str, context: dict | None):
         """
@@ -2173,6 +2618,7 @@ Match the requested depth and self-correct errors."""
             from workspace.context import bind_chat_session, reset_chat_session
 
             session_binding = bind_chat_session((context or {}).get("session_id"))
+            language_binding = _language_only.set(False)
             try:
                 result = await self._execute_impl(
                     task, context, stream_callback, tool_callback, thinking_callback
@@ -2180,7 +2626,12 @@ Match the requested depth and self-correct errors."""
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
-                for key in ("completion_status", "task_verified", "answer_delivered"):
+                for key in (
+                    "completion_status",
+                    "task_verified",
+                    "answer_delivered",
+                    "orchestrator",
+                ):
                     if key in result:
                         result["usage"][key] = result[key]
                 # Capture successful chat pairs in the authenticated user's own
@@ -2253,6 +2704,7 @@ Match the requested depth and self-correct errors."""
                 if self.state in {"acting", "thinking"}:
                     self.state = "resting"
                 reset_chat_session(session_binding)
+                _language_only.reset(language_binding)
                 _execution_stack.reset(stack_binding)
                 _execution_provider.reset(binding)
 
@@ -2395,11 +2847,39 @@ Match the requested depth and self-correct errors."""
         except Exception as hik_err:
             logger.debug("[HIKMAH] advise skipped: %s", hik_err)
 
+        # Tadbir: MIZAN's own architecture handles what it understands (plan,
+        # tools, verification); the language model is only its language faculty.
+        if not _evaluation_only.get():
+            from tadbir import Tadbir
+
+            try:
+                handled = await Tadbir(self).handle(task, stream_callback)
+            except Exception:
+                logger.exception("[TADBIR] orchestration failed; using the agent loop")
+                handled = None
+            if handled is not None:
+                self.total_duration_ms += handled["duration_ms"]
+                self.success_count += 1
+                return cast(dict, handled)
+
+        if not _evaluation_only.get():
+            from tadbir import full_orchestration
+
+            if full_orchestration():
+                # MIZAN did not recognise an action here: the model answers in
+                # words with the full conversation, and gets no tools. execute()
+                # restores the flag when this run ends.
+                _language_only.set(True)
+
         try:
             full_response = ""
             async for chunk in self.think(
                 task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
             ):
+                if chunk == _RETRACT_MARKER:
+                    # The loop withdrew a false capability denial before retrying.
+                    full_response = ""
+                    continue
                 # Check if this is a tool_use marker from _agentic_loop
                 if chunk.startswith("\n[Tool:"):
                     # Extract tool name and send tool_use event
@@ -2733,6 +3213,9 @@ Match the requested depth and self-correct errors."""
                         stream=bool(stream_callback),
                         qalb_reading=qalb_reading,
                     ):
+                        if chunk == _RETRACT_MARKER:
+                            corrected_response = ""
+                            continue
                         # Tool markers are UI events, not user-facing text — filter
                         # them exactly like the main path does.
                         if chunk.startswith("\n[Tool:"):
@@ -2808,6 +3291,11 @@ Match the requested depth and self-correct errors."""
                     if isinstance(e, OutputBudgetExceeded)
                     else {"error_code": "model_refused", "refusal_category": e.category}
                     if isinstance(e, ProviderRefusal)
+                    else {
+                        "error_code": "provider_unavailable",
+                        "provider_status": getattr(e, "status_code", None),
+                    }
+                    if provider_retry_delay(e, 0) is not None
                     else {}
                 ),
                 "answer_delivered": False,
@@ -3505,6 +3993,49 @@ class {class_name}(SkillBase):
     _DEFAULT_CONTEXT_WINDOW = 200_000  # tokens (Claude-class model)
     _COMPACT_THRESHOLD = 0.80  # 80% of context window triggers compaction
     _PRESERVE_RECENT = 10  # keep last N messages intact
+
+    @staticmethod
+    def _agent_skill_schemas() -> list[dict]:
+        """activate_skill/read_skill_file for this user's skills (none when there are none)."""
+        try:
+            from agent_skills.tools import tool_schemas
+            from workspace.context import bound_workspace_id
+
+            return cast(list[dict], tool_schemas(current_user_id() or "", bound_workspace_id()))
+        except Exception:  # noqa: BLE001 - a broken skill folder must not block chat
+            logger.warning("Agent skills unavailable", exc_info=True)
+            return []
+
+    async def _tool_activate_skill(self, name: str = "") -> dict:
+        """Load a skill's SKILL.md instructions (kept for the rest of this chat)."""
+        from agent_skills.tools import activate
+
+        result = cast(dict, activate(name))
+        if "skill" in result:
+            await emit_event("skill", {"name": result["skill"], "scope": result["scope"]})
+        return result
+
+    async def _tool_read_skill_file(self, name: str = "", path: str = "") -> dict:
+        from agent_skills.tools import read_file
+
+        return cast(dict, read_file(name, path))
+
+    async def _tool_todo_write(self, todos: list | None = None) -> dict:
+        """Replace this chat's todo list; the UI shows it live and later turns see it."""
+        from agents import session_state
+        from agents.events import emit
+        from workspace.context import current_chat_session
+
+        try:
+            items = session_state.normalize_todos(todos or [])
+        except ValueError as exc:
+            return {"error": str(exc)}
+        user_id, session_id = current_user_id() or "", current_chat_session() or ""
+        if user_id and session_id:
+            session_state.update(user_id, session_id, "todos", items)
+        await emit("todo", {"todos": items})
+        done = sum(item["status"] == "completed" for item in items)
+        return {"todos": len(items), "completed": done, "saved": bool(user_id and session_id)}
 
     async def _tool_compact_context(self, conversation_history: list[dict] | None = None) -> str:
         """

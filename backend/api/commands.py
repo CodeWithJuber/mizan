@@ -106,10 +106,12 @@ async def cmd_compact(session_id=None, memory=None, agent=None, **kwargs):
     """Fold the whole session into its persisted running summary."""
     if not session_id or memory is None or not hasattr(memory, "get_session_summary"):
         return "No active session to compact."
-    from providers import model_limits
+    from providers import effective_limits
     from reasoning.context_engine import ContextEngine, agent_summarizer, estimate_tokens
 
-    window, _ = model_limits(getattr(agent, "ai_model", "") or "")
+    window, _ = effective_limits(
+        getattr(agent, "ai_client", None), getattr(agent, "ai_model", "") or ""
+    )
     summary = await ContextEngine(memory).compact_now(
         session_id, agent_summarizer(agent) if agent is not None else None, window
     )

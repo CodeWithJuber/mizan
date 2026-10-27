@@ -164,6 +164,7 @@ export function usageMetrics(meta?: MessageUsageMeta): {
   if (!meta) return { parts: [], explanations: [] };
   const parts: string[] = [];
   const explanations: string[] = [];
+  if (meta.orchestrator === "mizan") parts.push("Done by MIZAN");
   if (meta.model) parts.push(meta.model);
   const statuses: Record<string, string> = {
     abstained: "Abstained",
@@ -172,6 +173,7 @@ export function usageMetrics(meta?: MessageUsageMeta): {
     reviewed_memory: "Reviewed memory replay",
     evidence_observed: "Tool results observed",
     unverified_answer: "Answer not verified",
+    verified_by_mizan: "Verified by MIZAN",
     missing_receipt: "Completion not confirmed",
     empty_response: "Empty response",
     tool_request: "Tool requested",

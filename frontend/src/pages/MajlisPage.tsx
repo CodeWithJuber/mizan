@@ -14,6 +14,7 @@ import type {
   KnowledgeItem,
 } from "../types";
 import { useToast } from "../components/Toast";
+import TadbirLearning from "../components/TadbirLearning";
 
 const NAFS_STYLES: Record<
   string,
@@ -86,6 +87,8 @@ const TAB_SUBTITLES: Record<string, string> = {
     "Halaqahs are study circles — small groups of agents discussing one topic.",
   knowledge: "Notes and lessons agents have shared with the circle.",
   leaderboard: "Agents ranked by ★ reputation from peer ratings.",
+  learning:
+    "What MIZAN learned from its own verified work: who does which work, and your wording.",
 };
 
 interface LeaderboardAgent {
@@ -360,6 +363,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
           { id: "halaqahs", label: "Halaqahs" },
           { id: "knowledge", label: "Knowledge" },
           { id: "leaderboard", label: "Leaderboard" },
+          { id: "learning", label: "Learning" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -378,6 +382,8 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
       </div>
 
       <div className="page-body">
+        {activeTab === "learning" && <TadbirLearning api={api} />}
+
         {activeTab === "agents" && (
           <>
             <div className="flex gap-2 mb-3">

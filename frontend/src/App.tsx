@@ -43,6 +43,12 @@ import { useChatRecovery } from "./hooks/useChatRecovery.ts";
 import { ChatRunStatus } from "./components/ChatRunStatus.tsx";
 import { chatFailureFields, messageUsage, restoredMessageFields } from "./utils/chatFailure.ts";
 import ModeSwitcher, { type AgentMode } from "./components/ModeSwitcher";
+import AgentActivityView, { type ApprovalDecision } from "./components/AgentActivity";
+import PermissionModeSwitch, { loadPermissionMode } from "./components/PermissionModeSwitch";
+import {
+  ACTIVITY_EVENTS, emptyActivity, hasActivity, reduceActivity,
+  type AgentActivity, type PermissionMode,
+} from "./utils/agentActivity";
 import ComparePanel from "./components/ComparePanel";
 import {
   exportMarkdown,
@@ -83,6 +89,7 @@ import { SkeletonCard } from "./components/Skeleton";
 // Session hardening + token streaming helpers live in small modules so
 // App.tsx diffs stay mergeable across the parallel workstreams.
 import { StreamBuffer } from "./utils/streaming";
+import { timeZoneField } from "./utils/timezone.ts";
 import {
   fetchChatHistoryWithRetry,
   hydrateCachedMessages,
@@ -190,6 +197,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 const ChannelsPage = lazy(() => import("./pages/ChannelsPage"));
 const PerceptionPage = lazy(() => import("./pages/PerceptionPage"));
 const SkillsPage = lazy(() => import("./pages/SkillsPage"));
+const ConnectorsPage = lazy(() => import("./pages/ConnectorsPage"));
 const SecurityPage = lazy(() => import("./pages/SecurityPage"));
 const AutomationPage = lazy(() => import("./pages/AutomationPage"));
 const NotebookPage = lazy(() => import("./pages/NotebookPage"));
@@ -323,6 +331,29 @@ function AppInner() {
   );
   const [typingIndicator, setTypingIndicator] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
+  // Live tool calls, plan and approval prompts of the current reply.
+  const [activity, setActivity] = useState<AgentActivity>(emptyActivity);
+  const activityRef = useRef<AgentActivity>(emptyActivity());
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(loadPermissionMode);
+  const applyActivity = useCallback((event: Record<string, unknown>) => {
+    const next = reduceActivity(activityRef.current, event);
+    if (next !== activityRef.current) {
+      activityRef.current = next;
+      setActivity(next);
+    }
+  }, []);
+  const resetActivity = useCallback(() => {
+    activityRef.current = emptyActivity();
+    setActivity(activityRef.current);
+  }, []);
+  const decideApproval = useCallback(async (approvalId: string, decision: ApprovalDecision) => {
+    const response = await authFetch(`${config.API_URL}/chat/approvals/${approvalId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision }),
+    });
+    if (!response.ok) applyActivity({ type: "approval_resolved", approval_id: approvalId, decision: "expired" });
+  }, [applyActivity]);
   const [thinkingTraces, setThinkingTraces] = useState<
     Record<string, ThinkingTrace>
   >({});
@@ -755,6 +786,7 @@ function AppInner() {
     persistActiveDraft();
     recovery.reset();
     setRunProgress({ startedAt: Date.now() });
+    resetActivity();
     streamingRef.current = true;
     setStreaming(true);
     setTypingIndicator(true);
@@ -772,6 +804,8 @@ function AppInner() {
             content: CONTINUE_PROMPT,
             agent_id: selectedAgent?.id,
             request_id: requestId,
+            permission_mode: permissionMode,
+            ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
           }),
         }),
@@ -899,6 +933,7 @@ function AppInner() {
             ts: new Date().toLocaleTimeString(),
             cognitive: data.cognitive as CognitiveMetadata | undefined,
             thinkingMessageId: messageId,
+            activity: hasActivity(activityRef.current) ? activityRef.current : undefined,
             requestId: typeof data.request_id === "string" ? data.request_id : undefined,
             messageId: typeof data.message_id === "string" ? data.message_id : undefined,
             meta: usageMeta,
@@ -1002,6 +1037,16 @@ function AppInner() {
           });
           break;
         }
+        case "tool_start":
+        case "tool_result":
+        case "todo":
+        case "approval_request":
+        case "approval_resolved":
+        case "skill":
+          if (ACTIVITY_EVENTS.has(data.type as string)) applyActivity(data);
+          if (data.type === "tool_start") setToolStatus(`Agent is using ${data.name as string}...`);
+          if (data.type === "approval_request") setToolStatus("Waiting for your approval…");
+          break;
         case "tool_use":
           setToolStatus(`Agent is using ${data.tool_name as string}...`);
           addTerminalLine(`Tool: ${data.tool_name as string}`, "info");
@@ -2039,6 +2084,7 @@ function AppInner() {
     persistActiveDraft();
     recovery.reset();
     setRunProgress({ startedAt: Date.now() });
+    resetActivity();
     try {
       await runChatRequest({
         request: () => authFetch(`${config.API_URL}/chat/stream`, {
@@ -2053,6 +2099,8 @@ function AppInner() {
             content,
             agent_id: selectedAgent?.id,
             request_id: requestId,
+            permission_mode: permissionMode,
+            ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
             ...(chatModelOverride ? { model_override: chatModelOverride } : {}),
           }),
@@ -2253,6 +2301,12 @@ function AppInner() {
           label: "Skills",
           desc: "AI abilities",
           icon: <Icons.Skill />,
+        },
+        {
+          id: "connectors",
+          label: "Connectors",
+          desc: "MCP servers & apps",
+          icon: <Icons.Plugin />,
         },
         {
           id: "plugins",
@@ -2899,6 +2953,13 @@ function AppInner() {
                             </div>
                           </div>
                         )}
+                      {msg.role === "assistant" && hasActivity(msg.activity) && (
+                        <div className="chat-message-row">
+                          <div className="chat-message-container">
+                            <AgentActivityView activity={msg.activity!} compact />
+                          </div>
+                        </div>
+                      )}
                       <ChatMessageBubble
                         msg={msg}
                         selectedAgent={selectedAgent}
@@ -2941,6 +3002,15 @@ function AppInner() {
                             <TypingIndicator />
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live agent activity: tool steps, plan, approvals */}
+                  {streaming && hasActivity(activity) && (
+                    <div className="chat-message-row">
+                      <div className="chat-message-container">
+                        <AgentActivityView activity={activity} onDecision={decideApproval} />
                       </div>
                     </div>
                   )}
@@ -3098,6 +3168,11 @@ function AppInner() {
                     confirmed={deepResearchConfirmed}
                     onModeChange={setAgentMode}
                     onConfirmedChange={setDeepResearchConfirmed}
+                    disabled={streaming}
+                  />
+                  <PermissionModeSwitch
+                    mode={permissionMode}
+                    onChange={setPermissionMode}
                     disabled={streaming}
                   />
                 </div>
@@ -3791,6 +3866,8 @@ function AppInner() {
         return <PerceptionPage api={api} addTerminalLine={addTerminalLine} />;
       case "skills":
         return <SkillsPage api={api} addTerminalLine={addTerminalLine} />;
+      case "connectors":
+        return <ConnectorsPage api={api} addTerminalLine={addTerminalLine} />;
       case "security":
         return <SecurityPage api={api} addTerminalLine={addTerminalLine} />;
       case "automation":
