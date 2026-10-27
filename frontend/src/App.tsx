@@ -37,6 +37,8 @@ import { QueueDashboard } from "./components/QueueDashboard";
 import { config } from "./config";
 import { useApi } from "./hooks/useApi";
 import { ChatAttachments } from "./components/ChatAttachments";
+import { VoiceInput } from "./components/VoiceInput";
+import { withHeard } from "./utils/voice.ts";
 import { authFetch } from "./utils/authFetch";
 import { runChatRequest } from "./utils/chatRequest.ts";
 import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "./utils/chatRecovery.ts";
@@ -3482,6 +3484,14 @@ function AppInner() {
 
                   {/* Right action buttons */}
                   <div className="flex items-center gap-0.5 shrink-0 self-end">
+                    <VoiceInput
+                      sessionId={sessionId}
+                      disabled={streaming}
+                      onHeard={(words) => {
+                        setInput((prev) => withHeard(prev, words));
+                        chatTextareaRef.current?.focus();
+                      }}
+                    />
                     {/* Commands button */}
                     <button
                       className="chat-input-btn"

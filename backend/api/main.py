@@ -405,7 +405,11 @@ async def lifespan(app: FastAPI):
         from gateway.telegram import TelegramBot
 
         _telegram_bot = TelegramBot(
-            os.environ["TELEGRAM_BOT_TOKEN"], bab_store.store(), _bab_turn, _bab_decide
+            os.environ["TELEGRAM_BOT_TOKEN"],
+            bab_store.store(),
+            _bab_turn,
+            _bab_decide,
+            hear=_bab_hear,
         )
         telegram_task = asyncio.create_task(_telegram_bot.run(telegram_stop))
 
@@ -3223,6 +3227,108 @@ async def push_test(user: TokenPayload = Depends(require_auth)):
         preview=True,
         tag="test",
     )
+
+
+# === VOICE INPUT (Sama' - سمع) ===
+
+
+async def _earlier_words(session_id: str, user: TokenPayload) -> list[str]:
+    """The user's own recent messages in this chat, for the hearing prior."""
+    if not session_id or await memory.session_owner(session_id) is None:
+        return []
+    await authorize_session(session_id, user)
+    messages = await memory.get_messages(session_id, limit=24)
+    return [str(m["content"]) for m in messages if m.get("role") == "user"][-12:]
+
+
+def _voice_left(user: TokenPayload) -> float | None:
+    from gateway import store as bab_store
+    from perception import sama
+
+    return None if user.has_role("admin") else sama.left_today(bab_store.store(), user.user_id)
+
+
+@app.get("/api/voice")
+async def transcribe_status(user: TokenPayload = Depends(require_auth)):
+    """Whether this server can turn speech into text, and today's allowance left."""
+    from perception import sama
+
+    left = _voice_left(user)
+    return {
+        "available": sama.available(),
+        "seconds_left": None if left is None else round(left),
+        "max_seconds": sama.MAX_SECONDS,
+        "max_bytes": sama.MAX_BYTES,
+    }
+
+
+@app.post("/api/voice/transcribe")
+async def transcribe(request: Request, user: TokenPayload = Depends(require_auth)):
+    """A short voice recording as text for the composer (Sama'). The audio is
+    heard on this server and kept nowhere; the person reads the words and sends them."""
+    from gateway import store as bab_store
+    from perception import sama
+
+    if not sama.available():
+        raise HTTPException(503, "Voice input is not installed on this server")
+    if int(request.headers.get("content-length") or 0) > sama.MAX_BYTES + 65_536:
+        raise HTTPException(413, "The recording is over 2 MB; send a shorter one")
+    if not wali.check_rate_limit(f"stt:{user.user_id}")["allowed"]:
+        raise HTTPException(429, "Too many recordings at once; wait a moment")
+    left = _voice_left(user)
+    if left is not None and left <= 0:
+        raise HTTPException(
+            429, "Today's voice allowance is used up; type instead, or try tomorrow"
+        )
+    form = await request.form()
+    file = form.get("file")
+    if not isinstance(file, StarletteUploadFile):
+        raise HTTPException(400, "Send the recording as the 'file' field")
+    audio = await file.read(sama.MAX_BYTES + 1)
+    earlier = await _earlier_words(str(form.get("session_id") or "")[:100], user)
+    try:
+        heard = await sama.hear(
+            audio,
+            file.content_type or "",
+            owner=user.user_id,
+            store=bab_store.store(),
+            earlier=earlier,
+            limited=left is not None,
+        )
+    except sama.HearingError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    left = _voice_left(user)
+    return {
+        "text": heard.text,
+        "language": heard.language,
+        "seconds": round(heard.seconds, 1),
+        "seconds_left": None if left is None else round(left),
+    }
+
+
+async def _bab_hear(owner_id: str, session_id: str, audio: bytes, mime: str) -> str:
+    """A Telegram voice note, heard like a recording from the web composer."""
+    from gateway import store as bab_store
+    from perception import sama
+
+    user = _owner_token(owner_id)
+    if user is None:
+        raise ValueError("MIZAN cannot hear right now.")
+    if not sama.available():
+        raise ValueError("This MIZAN reads text messages only; voice input is not installed.")
+    try:
+        earlier = await _earlier_words(session_id, user)
+        heard = await sama.hear(
+            audio,
+            mime,
+            owner=owner_id,
+            store=bab_store.store(),
+            earlier=earlier,
+            limited=not user.has_role("admin"),
+        )
+    except sama.HearingError as exc:
+        raise ValueError(str(exc)) from exc
+    return str(heard.text)
 
 
 @app.get("/api/bab/telegram")

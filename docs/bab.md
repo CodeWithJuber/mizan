@@ -21,6 +21,7 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
   - a group, another bot, or an account that is not linked never reaches MIZAN;
   - an unlinked account is told how to link.
 - **The turn:** each message runs the same turn as the web chat: your own agent, your gates, Tadbir, Iqtisad. The chat is saved to MIZAN, where it shows in History. `/new` starts a new chat.
+- **Voice notes:** heard on MIZAN's own server ([Sama'](sama.md)), shown back as "Heard: …" and then answered like text. A forwarded voice note is fenced as data like forwarded text.
 - **Forwarded text:** treated as quoted data inside a fence, never as your request (the same rule as pasted text, [Amanah](amanah.md)).
 - **Actions:** no one can answer an approval prompt in the middle of a run, so actions that need a person are **held** (the same as for watchers, [agentic coding](agentic-coding.md)). They come back as **Allow once / Deny** buttons under the reply. A button works only for the account linked to that action's owner, and only once.
 - **Watchers:** Muraqabah notices are posted to MIZAN and also sent to your Telegram, with buttons for anything held.

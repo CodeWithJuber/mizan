@@ -15,6 +15,7 @@ import { Markdown } from "./Markdown";
 import type { Components } from "react-markdown";
 import { useToast } from "./Toast";
 import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
+import { speakable } from "../utils/voice.ts";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 import { MessageMeta } from "./MessageMeta";
 import { HeldActions } from "./HeldActions";
@@ -748,7 +749,24 @@ export function ChatMessageBubble({
 }: ChatMessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const { addToast } = useToast();
+  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
+  const speak = () => {
+    const voice = window.speechSynthesis;
+    voice.cancel();
+    if (speaking) {
+      setSpeaking(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(
+      convertCopyFormat(speakable(msg.content), "plain"),
+    );
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    voice.speak(utterance);
+    setSpeaking(true);
+  };
   const cta = (
     msg as ChatMessageType & { cta?: { label: string; tab: string } }
   ).cta;
@@ -948,6 +966,21 @@ export function ChatMessageBubble({
                   </>
                 )}
               </div>
+              {canSpeak && msg.content.trim() && (
+                <button
+                  onClick={speak}
+                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  title={speaking ? "Stop reading aloud" : "Read aloud (Quran text is not read by the voice)"}
+                  aria-label={speaking ? "Stop reading aloud" : "Read aloud"}
+                  aria-pressed={speaking}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 ${speaking ? "text-amber-500" : ""}`}>
+                    <path d="M10.5 3.75a.75.75 0 00-1.264-.546L5.203 7H3.167a.75.75 0 00-.7.48A6.985 6.985 0 002 10c0 .887.165 1.737.468 2.52.111.29.39.48.7.48h2.035l4.033 3.796a.75.75 0 001.264-.546V3.75z" />
+                    <path d="M15.95 5.05a.75.75 0 00-1.06 1.061 5.5 5.5 0 010 7.778.75.75 0 001.06 1.06 7 7 0 000-9.899z" />
+                    <path d="M13.829 7.172a.75.75 0 00-1.061 1.06 2.5 2.5 0 010 3.536.75.75 0 001.06 1.06 4 4 0 000-5.656z" />
+                  </svg>
+                </button>
+              )}
               <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">
                 {msg.ts}
               </span>
