@@ -133,6 +133,31 @@ class Lisan:
         )
         return extract_code(reply)
 
+    async def propose_rule(self, examples: str) -> str:
+        reply = await self.ask(
+            "Each example turns an input grid into an output grid; numbers are colours 0-9. "
+            "Find the one rule that explains every example. Write a Python function "
+            "`transform(grid)` that takes the input grid (a list of rows of ints) and returns "
+            "the output grid. Begin the function with a comment stating the rule in one "
+            "sentence. Standard library only, no printing. MIZAN will run it on every example "
+            "and accept it only if it reproduces all of them. Reply with exactly one fenced "
+            "code block.",
+            examples,
+            max_tokens=4000,
+        )
+        return extract_code(reply)
+
+    async def revise_rule(self, examples: str, program: str, wrong: str) -> str:
+        reply = await self.ask(
+            "MIZAN ran this `transform` on every example and it did not reproduce all of them. "
+            "Find a rule that explains every example and return the corrected complete "
+            "function, beginning with a one-sentence comment stating the rule. Standard "
+            "library only. Reply with exactly one fenced code block.",
+            f"{examples}\n\nProgram:\n```python\n{program}\n```\n\nWhat MIZAN found:\n{wrong}",
+            max_tokens=4000,
+        )
+        return extract_code(reply)
+
     async def write_file(
         self,
         request: str,

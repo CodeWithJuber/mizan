@@ -3633,6 +3633,86 @@ async def clear_debug_runs(user: TokenPayload = Depends(require_auth)):
     return {"cleared": True}
 
 
+# === IMTIHAN (AGI test: the base model alone vs MIZAN, scored by rule) ===
+
+
+class ImtihanRunRequest(BaseModel):
+    blocks: list[str] | None = Field(None, max_length=20)
+    repeats: int = Field(1, ge=1, le=3)
+    agent_id: str | None = Field(None, max_length=100)
+
+
+def _require_admin(user: TokenPayload) -> None:
+    if not user.has_role("admin"):
+        raise HTTPException(403, "Administrator role required")
+
+
+@app.get("/api/imtihan/tasks")
+async def imtihan_tasks(user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    return {
+        "blocks": runner.catalog(),
+        "tasks": [
+            {
+                "id": task["id"],
+                "block": task["block"],
+                "prompt": task["prompt"][:400],
+                "source": task.get("source"),
+            }
+            for task in runner.load_tasks()
+        ],
+    }
+
+
+@app.post("/api/imtihan/run")
+async def imtihan_run(req: ImtihanRunRequest, user: TokenPayload = Depends(require_auth)):
+    """Start the AGI test in the background: every task to the base model and to MIZAN."""
+    from imtihan import runner
+
+    _require_admin(user)
+    known = {entry["block"] for entry in runner.catalog()}
+    if req.blocks and not set(req.blocks) <= known:
+        raise HTTPException(400, f"Unknown blocks: {sorted(set(req.blocks) - known)}")
+    agent = active_agents.get(req.agent_id) if req.agent_id else _tadbir_coordinator()
+    if agent is None:
+        raise HTTPException(503, "No agents available")
+    try:
+        return runner.start(agent, owner=user.user_id, blocks=req.blocks, repeats=req.repeats)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/api/imtihan/runs")
+async def imtihan_runs(user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    return {"runs": await runner.runs()}
+
+
+@app.get("/api/imtihan/runs/{run_id}")
+async def imtihan_run_detail(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    run = await runner.get(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    return run
+
+
+@app.post("/api/imtihan/runs/{run_id}/cancel")
+async def imtihan_cancel(run_id: str, user: TokenPayload = Depends(require_auth)):
+    from imtihan import runner
+
+    _require_admin(user)
+    if not runner.cancel(run_id):
+        raise HTTPException(404, "No running test with that id")
+    return {"cancelled": True}
+
+
 # === AUTOMATION (Qadr) ===
 
 

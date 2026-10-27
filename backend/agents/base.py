@@ -1772,6 +1772,22 @@ class BaseAgent:
         except Exception:
             pass
 
+    def _isnad(self, text: Any) -> dict | None:
+        """Every claim of a model-written answer, graded by the tool evidence this run holds."""
+        if not isinstance(text, str) or not text.strip():
+            return None
+        try:
+            from agents.events import summarize
+            from tadbir import isnad
+
+            receipts = getattr(self, "_last_tool_results", []) or []
+            evidence = "\n".join(summarize(r.get("result"), 20000) for r in receipts)
+            graded = isnad.ledger(text, evidence=evidence)
+            return isnad.summary(graded) if graded else None
+        except Exception:  # noqa: BLE001 - grading never affects the answer
+            logger.debug("Isnad grading skipped", exc_info=True)
+            return None
+
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
         timings = getattr(self, "_execution_timings", None)
@@ -2629,11 +2645,16 @@ Match the requested depth and self-correct errors."""
                 from api.usage import build_usage_summary
 
                 result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+                if result.get("success", True) and "isnad" not in result:
+                    graded = self._isnad(result.get("result"))
+                    if graded:
+                        result["isnad"] = graded
                 for key in (
                     "completion_status",
                     "task_verified",
                     "answer_delivered",
                     "orchestrator",
+                    "isnad",
                 ):
                     if key in result:
                         result["usage"][key] = result[key]

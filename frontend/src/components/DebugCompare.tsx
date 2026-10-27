@@ -5,7 +5,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ApiClient } from "../types";
+import IsnadView from "./IsnadView";
 import { Markdown } from "./Markdown";
+import type { IsnadSummary } from "../utils/isnad.ts";
 import {
   armBadges,
   diffRows,
@@ -41,7 +43,7 @@ interface Arm {
   system?: string;
 }
 
-interface Run {
+export interface Run {
   id: string;
   prompt: string;
   model: string | null;
@@ -112,12 +114,13 @@ function QuoteChanges({ changes }: { changes: { source: string; given: string }[
   );
 }
 
-function ArmCard({ title, subtitle, arm, badges, quoteChanges }: {
+function ArmCard({ title, subtitle, arm, badges, quoteChanges, isnad }: {
   title: string;
   subtitle: string;
   arm: Arm;
   badges: Badge[];
   quoteChanges?: { source: string; given: string }[];
+  isnad?: IsnadSummary;
 }) {
   const stats = [
     arm.usage?.model ?? null,
@@ -144,6 +147,7 @@ function ArmCard({ title, subtitle, arm, badges, quoteChanges }: {
       </div>
       <Badges badges={badges} />
       {quoteChanges && quoteChanges.length > 0 && <QuoteChanges changes={quoteChanges} />}
+      {isnad && <IsnadView isnad={isnad} compact />}
       <div className="text-sm min-w-0 break-words">
         {arm.error ? (
           <div className="text-red-500">{arm.error}</div>
@@ -211,6 +215,77 @@ function SpanRow({ span, depth }: { span: TraceSpan; depth: number }) {
   );
 }
 
+export function CompareView({ run }: { run: Run }) {
+  const [view, setView] = useState<"trace" | "diff">("trace");
+  const tree = spanTree(run.mizan.spans ?? []);
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <ArmCard
+          title="Base model"
+          subtitle={`${run.model ?? "model"} alone: plain prompt, no tools, no memory`}
+          arm={run.base}
+          badges={armBadges(run.checks, "base")}
+          quoteChanges={run.checks.quote?.changed}
+          isnad={run.checks.isnad?.base}
+        />
+        <ArmCard
+          title="MIZAN"
+          subtitle={`Understood as ${run.checks.intent}; the model is only its language faculty`}
+          arm={run.mizan}
+          badges={armBadges(run.checks, "mizan")}
+          isnad={run.checks.isnad?.mizan}
+        />
+      </div>
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          {(["trace", "diff"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={`text-sm px-3 py-1 rounded-full border whitespace-nowrap ${view === key ? "border-amber-500 text-amber-600 dark:text-amber-400" : "border-gray-200 dark:border-zinc-700 text-gray-500"}`}
+            >
+              {key === "trace" ? `Steps (${tree.length})` : "Difference"}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-gray-500">
+            Similarity {Math.round(run.checks.similarity * 100)}%
+          </span>
+        </div>
+        {view === "trace" ? (
+          <div className="overflow-x-auto">
+            {tree.length ? (
+              tree.map(({ span, depth }) => <SpanRow key={span.id} span={span} depth={depth} />)
+            ) : (
+              <div className="text-sm text-gray-500">No steps recorded</div>
+            )}
+          </div>
+        ) : (
+          <pre className="text-xs overflow-x-auto">
+            {diffRows(run.checks.diff).map((row, index) => (
+              <div
+                key={index}
+                className={
+                  row.kind === "add"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : row.kind === "del"
+                      ? "text-red-600 dark:text-red-400"
+                      : row.kind === "hunk"
+                        ? "text-sky-600 dark:text-sky-400"
+                        : "text-gray-500"
+                }
+              >
+                {row.text}
+              </div>
+            ))}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DebugCompare({
   api,
   initialPrompt,
@@ -227,8 +302,6 @@ export default function DebugCompare({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [view, setView] = useState<"trace" | "diff">("trace");
-
   const loadHistory = useCallback(async () => {
     try {
       const data = await api.get("/debug/runs");
@@ -296,7 +369,6 @@ export default function DebugCompare({
     );
   }
 
-  const tree = run ? spanTree(run.mizan.spans ?? []) : [];
   return (
     <div className="space-y-4">
       <div className="card p-4 space-y-3">
@@ -336,70 +408,7 @@ export default function DebugCompare({
         {error && <div className="text-sm text-red-500">{error}</div>}
       </div>
 
-      {run && (
-        <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <ArmCard
-              title="Base model"
-              subtitle={`${run.model ?? "model"} alone: plain prompt, no tools, no memory`}
-              arm={run.base}
-              badges={armBadges(run.checks, "base")}
-              quoteChanges={run.checks.quote?.changed}
-            />
-            <ArmCard
-              title="MIZAN"
-              subtitle={`Understood as ${run.checks.intent}; the model is only its language faculty`}
-              arm={run.mizan}
-              badges={armBadges(run.checks, "mizan")}
-            />
-          </div>
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              {(["trace", "diff"] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setView(key)}
-                  className={`text-sm px-3 py-1 rounded-full border whitespace-nowrap ${view === key ? "border-amber-500 text-amber-600 dark:text-amber-400" : "border-gray-200 dark:border-zinc-700 text-gray-500"}`}
-                >
-                  {key === "trace" ? `Steps (${tree.length})` : "Difference"}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-gray-500">
-                Similarity {Math.round(run.checks.similarity * 100)}%
-              </span>
-            </div>
-            {view === "trace" ? (
-              <div className="overflow-x-auto">
-                {tree.length ? (
-                  tree.map(({ span, depth }) => <SpanRow key={span.id} span={span} depth={depth} />)
-                ) : (
-                  <div className="text-sm text-gray-500">No steps recorded</div>
-                )}
-              </div>
-            ) : (
-              <pre className="text-xs overflow-x-auto">
-                {diffRows(run.checks.diff).map((row, index) => (
-                  <div
-                    key={index}
-                    className={
-                      row.kind === "add"
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : row.kind === "del"
-                          ? "text-red-600 dark:text-red-400"
-                          : row.kind === "hunk"
-                            ? "text-sky-600 dark:text-sky-400"
-                            : "text-gray-500"
-                    }
-                  >
-                    {row.text}
-                  </div>
-                ))}
-              </pre>
-            )}
-          </div>
-        </>
-      )}
+      {run && <CompareView run={run} />}
 
       {history.length > 0 && (
         <div className="card p-4">

@@ -3,6 +3,8 @@
  * Core type definitions for the Quranic AGI System
  */
 
+import type { IsnadSummary } from "./utils/isnad.ts";
+
 // ===== API Types =====
 
 export interface ApiClient {
@@ -227,6 +229,8 @@ export interface MessageUsageMeta {
     | "verified_by_mizan";
   /** "mizan" when MIZAN's own orchestration (Tadbir) produced the answer. */
   orchestrator?: "mizan";
+  /** What supports each claim of the answer (Isnad). */
+  isnad?: IsnadSummary;
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

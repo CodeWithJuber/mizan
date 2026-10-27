@@ -1,0 +1,12 @@
+{"block": "consistency", "id": "para-surahs-1", "group": "surahs", "prompt": "How many surahs are in the Quran?", "score": {"kind": "number", "expected": "114"}}
+{"block": "consistency", "id": "para-surahs-2", "group": "surahs", "prompt": "Quran me kitni surtein hain?", "score": {"kind": "number", "expected": "114"}}
+{"block": "consistency", "id": "para-surahs-3", "group": "surahs", "prompt": "قرآن مجید میں کتنی سورتیں ہیں؟", "score": {"kind": "number", "expected": "114"}}
+{"block": "consistency", "id": "para-surahs-4", "group": "surahs", "prompt": "كم عدد سور القرآن الكريم؟", "score": {"kind": "number", "expected": "114"}}
+{"block": "consistency", "id": "para-power-1", "group": "power", "prompt": "What is 2^20?", "score": {"kind": "number", "expected": "1048576"}}
+{"block": "consistency", "id": "para-power-2", "group": "power", "prompt": "2 ki power 20 kitni hoti hai?", "score": {"kind": "number", "expected": "1048576"}}
+{"block": "consistency", "id": "para-power-3", "group": "power", "prompt": "Compute two to the twentieth power.", "score": {"kind": "number", "expected": "1048576"}}
+{"block": "consistency", "id": "para-power-4", "group": "power", "prompt": "2**20 = ?", "score": {"kind": "number", "expected": "1048576"}}
+{"block": "consistency", "id": "para-boiling-1", "group": "boiling", "prompt": "At what temperature in Celsius does water boil at sea level?", "score": {"kind": "number", "expected": "100"}}
+{"block": "consistency", "id": "para-boiling-2", "group": "boiling", "prompt": "Samundar ki satah par paani kitne degree Celsius par ubalta hai?", "score": {"kind": "number", "expected": "100"}}
+{"block": "consistency", "id": "para-boiling-3", "group": "boiling", "prompt": "سطح سمندر پر پانی کتنے ڈگری سیلسیس پر ابلتا ہے؟", "score": {"kind": "number", "expected": "100"}}
+{"block": "consistency", "id": "para-boiling-4", "group": "boiling", "prompt": "Water boils at sea level at how many °C?", "score": {"kind": "number", "expected": "100"}}

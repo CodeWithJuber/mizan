@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calc, hadith, project, quran, waqt
+from . import calc, hadith, project, qiyas, quran, waqt
 
 _HINGLISH = {
     "hai", "hain", "karo", "kro", "kya", "kyu", "kyun", "mein", "nahi", "nahin", "nhi",
@@ -41,7 +41,7 @@ class Understanding:
             "intent": self.intent,
             "language": self.language,
             "confidence": round(self.confidence, 2),
-            "entities": {k: v for k, v in self.entities.items() if k != "code"},
+            "entities": {k: v for k, v in self.entities.items() if k not in {"code", "puzzle"}},
         }
 
 
@@ -148,6 +148,10 @@ def understand(text: str) -> Understanding:
     when = waqt.parse(message)
     if when is not None and len(words) <= 25:
         return Understanding("waqt", language, 0.9, {"request": when})
+
+    puzzle = qiyas.parse(message)
+    if puzzle is not None:
+        return Understanding("qiyas", language, 0.9, {"puzzle": puzzle})
 
     fenced = _fenced_code(message)
     asks_run = bool(re.search(_RUN, message, re.IGNORECASE))

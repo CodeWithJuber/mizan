@@ -1,0 +1,6 @@
+{"block": "exactness", "id": "exact-1", "prompt": "What is 2**127 - 1?", "score": {"kind": "number", "expected": "170141183460469231731687303715884105727"}}
+{"block": "exactness", "id": "exact-2", "prompt": "25! kitna hota hai?", "score": {"kind": "number", "expected": "15511210043330985984000000"}}
+{"block": "exactness", "id": "exact-3", "prompt": "What is 17% of 2350?", "score": {"kind": "number", "expected": "399.5"}}
+{"block": "exactness", "id": "exact-4", "prompt": "What is 1/7 + 1/3 as a fraction?", "score": {"kind": "contains", "all": ["10/21"]}}
+{"block": "exactness", "id": "exact-5", "prompt": "What is the Hijri date on 2026-03-20?", "score": {"kind": "contains", "all": ["1447"], "any": ["shawwal", "شوال"], "number": "1"}}
+{"block": "exactness", "id": "exact-6", "prompt": "1 Ramadan 1447 ko Gregorian date kya hogi?", "score": {"kind": "contains", "all": ["2026"], "any": ["18 feb", "february 18", "feb 18", "2026-02-18", "18 february", "18/02/2026"]}}

@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import ImtihanPanel from "../components/ImtihanPanel";
 import type { ApiClient } from "../types";
 import { useToast } from "../components/Toast";
 
@@ -55,7 +56,7 @@ interface VersionInfo {
 export default function DeveloperPage({ api }: { api: ApiClient }) {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<
-    "system" | "plugins" | "events" | "hooks" | "guide"
+    "system" | "agi" | "plugins" | "events" | "hooks" | "guide"
   >("system");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [events, setEvents] = useState<Record<string, string>>({});
@@ -156,6 +157,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
 
   const tabs = [
     { id: "system" as const, label: "System" },
+    { id: "agi" as const, label: "AGI Test" },
     { id: "plugins" as const, label: "Plugins" },
     { id: "events" as const, label: "Events" },
     { id: "hooks" as const, label: "Hooks" },
@@ -191,6 +193,8 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
       </div>
 
       <div className="page-body">
+        {activeTab === "agi" && <ImtihanPanel api={api} />}
+
         {/* System Tab */}
         {activeTab === "system" && (
           <div className="space-y-5">

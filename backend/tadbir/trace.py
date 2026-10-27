@@ -103,6 +103,28 @@ def event(op: str, name: str, **attributes: Any) -> None:
         _add(trace, op, name, attributes)
 
 
+_faults: ContextVar[dict[str, dict] | None] = ContextVar("mizan_tool_faults", default=None)
+
+
+@contextmanager
+def bind_faults(faults: dict[str, dict] | None) -> Iterator[None]:
+    """Make named tools fail for this run only (the AGI test checks honesty under faults)."""
+    token = _faults.set(faults or None)
+    try:
+        yield
+    finally:
+        _faults.reset(token)
+
+
+def injected_fault(tool: str) -> dict | None:
+    """The failure result a bound fault gives for ``tool``, if any."""
+    faults = _faults.get()
+    if not faults or tool not in faults:
+        return None
+    reason = str(faults[tool].get("error") or "injected fault: the tool is unavailable")
+    return {"error": reason, "exit_code": None, "injected_fault": True}
+
+
 def model_call(response: Any, latency_ms: float) -> None:
     """One observed model call: the model the provider reported and its usage."""
     trace = _trace.get()

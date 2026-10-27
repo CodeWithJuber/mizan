@@ -28,7 +28,7 @@ from typing import Any
 
 from agents.events import bind_event_sink, bounded
 
-from . import trace
+from . import isnad, trace
 from .express import _ACTION_CLAIM, _NUMBER
 
 BASE_SYSTEM = "You are a helpful assistant."
@@ -166,6 +166,7 @@ async def mizan_arm(agent: Any, prompt: str, context: dict) -> dict:
         "orchestration": bounded(result.get("orchestration", {})),
         "completion_status": result.get("completion_status"),
         "verified": bool(result.get("task_verified")),
+        "isnad": result.get("isnad"),
         # Observed provider calls; a Lisan span wraps the provider call it made.
         "model_calls": sum(
             1 for span in spans if span["op"] == "chat" and not span["name"].startswith("lisan.")
@@ -303,6 +304,13 @@ def checks(prompt: str, base: dict, mizan: dict) -> dict:
             }
         if intent in {"quran", "hadith"} and fold_arabic(mizan_text):
             report["quote"] = quote_check(base_text, mizan_text)
+    # Isnad for both answers: the base model's claims weighed against MIZAN's evidence.
+    report["isnad"] = {
+        "base": isnad.summary(
+            isnad.ledger(base_text, evidence=_facts_text(spans, prompt) if grounded else "")
+        ),
+        "mizan": mizan.get("isnad") or isnad.summary(isnad.ledger(mizan_text)),
+    }
     report["similarity"] = round(
         difflib.SequenceMatcher(None, base_text, mizan_text, autojunk=False).ratio(), 3
     )

@@ -22,6 +22,7 @@ from core.adaptive import BetaEstimator, thompson_choice
 ROLE_FOR = {
     "run_code": "katib",
     "build_and_run": "katib",
+    "qiyas": "katib",
     "build_project": "katib",
     "compute": "katib",
     "web_search": "mundhir",
@@ -45,6 +46,7 @@ ROLE_NAMES = {
 NEEDS = {
     "run_code": "workspace_run",
     "build_and_run": "workspace_run",
+    "qiyas": "workspace_run",
     "build_project": "workspace_write",
     "web_search": "web_search",
     "web_read": "web_browse",

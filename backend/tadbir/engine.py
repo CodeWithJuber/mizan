@@ -33,7 +33,21 @@ from typing import Any
 from agents.events import emit, summarize
 from agents.execution_contract import tool_result_failed
 
-from . import amal, calc, express, fahm, hadith, majlis, project, quran, taallum, trace, waqt
+from . import (
+    amal,
+    calc,
+    express,
+    fahm,
+    hadith,
+    isnad,
+    majlis,
+    project,
+    qiyas,
+    quran,
+    taallum,
+    trace,
+    waqt,
+)
 from .express import fence, furqan, phrase
 from .lisan import Lisan, LisanUnavailable
 
@@ -65,6 +79,11 @@ class Outcome:
     # Whether the work itself succeeded, for routing evidence, when MIZAN can
     # confirm that but not the result's meaning (a tool ran without error).
     succeeded: bool | None = None
+    # "evidence" when Lisan worded the answer from evidence MIZAN gathered:
+    # each claim is then graded against it (Isnad). Otherwise a verified
+    # outcome is MIZAN's own established work.
+    provenance: str | None = None
+    isnad: list[dict] = field(default_factory=list)
 
 
 class Plan:
@@ -168,7 +187,7 @@ class Tadbir:
             understanding.intent,
             language=understanding.language,
             confidence=understanding.confidence,
-            entities=understanding.entities,
+            entities=understanding.to_dict()["entities"],
             by=understanding.entities.get("understood_by", "fahm"),
         )
         try:
@@ -212,6 +231,7 @@ class Tadbir:
             "task_verified": outcome.verified,
             "capture_eligible": False,
             "orchestrator": "mizan",
+            **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
             "orchestration": {
                 "by": "mizan",
                 "mode": mode,
@@ -243,7 +263,28 @@ class Tadbir:
         if worker is not self.coordinator:
             note = phrase("done_by_agent", language, name=worker.name, role=role)
             outcome.text = f"{outcome.text}\n\n_{note}_"
+        outcome.isnad = self._isnad(outcome, intent)
         return outcome
+
+    def _isnad(self, outcome: Outcome, intent: str) -> list[dict]:
+        """Every claim of this outcome, graded by what supports it."""
+        established = outcome.verified and outcome.provenance != "evidence"
+        evidence = ""
+        if not established:
+            receipts = getattr(self.coordinator, "_last_tool_results", []) or []
+            evidence = "\n".join(
+                [json.dumps(outcome.facts, ensure_ascii=False, default=str)]
+                + [summarize(receipt.get("result"), 20000) for receipt in receipts]
+            )
+        sources = outcome.facts.get("sources")
+        return isnad.ledger(
+            outcome.text,
+            established=established,
+            basis=isnad.BASIS.get(intent, "MIZAN verified it"),
+            evidence=evidence,
+            verified=outcome.verified,
+            max_citation=sources if isinstance(sources, int) else 0,
+        )
 
     async def _delegate(self, task: str, u: fahm.Understanding) -> Outcome:
         """One request: MIZAN chooses the agent, which runs MIZAN's recipe."""
@@ -351,7 +392,8 @@ class Tadbir:
             texts.append(outcome.text)
             facts.append(outcome.facts)
             verified = verified and outcome.verified
-        return Outcome("\n\n---\n\n".join(texts), verified, {"parts": facts})
+        ledger = [claim for outcome in results if outcome is not None for claim in outcome.isnad]
+        return Outcome("\n\n---\n\n".join(texts), verified, {"parts": facts}, isnad=ledger)
 
     async def _tool(self, name: str, params: dict) -> dict:
         """Run one tool through the agent's full safety gate, visibly."""
@@ -361,7 +403,7 @@ class Tadbir:
             await self._stream("", chunk_type="tool_use", tool_name=name)
         started = time.perf_counter()
         with trace.span("execute_tool", name, input=params, agent=self.agent.name) as record:
-            result = await self.agent._execute_tool_safe(name, params)
+            result = trace.injected_fault(name) or await self.agent._execute_tool_safe(name, params)
             if trace.active():
                 record["attributes"]["ok"] = not tool_result_failed(result)
                 record["attributes"]["result"] = summarize(result, 4000)
@@ -579,6 +621,8 @@ class Tadbir:
         while (run.get("exit_code") != 0 or run.get("error")) and tries <= MAX_REPAIRS:
             if run.get("declined") or "not permitted" in str(run.get("error", "")):
                 break
+            if run.get("error") and not run.get("stderr"):
+                break  # the sandbox itself failed; rewriting the code cannot help
             error = str(run.get("stderr") or run.get("error") or run.get("stdout", ""))
             try:
                 code = await self.lisan.fix_code(task, language, code, error)
@@ -594,6 +638,67 @@ class Tadbir:
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
         return Outcome("\n\n".join(parts), verified, {"run": _run_facts(run), "attempts": tries})
+
+    async def _qiyas(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Infer the rule from the examples; accept it only if it reproduces every one."""
+        if not self._allowed("workspace_run") or not self.lisan.available:
+            raise Defer
+        puzzle = u.entities["puzzle"]
+        examples = qiyas.describe(puzzle)
+        total = len(puzzle["train"])
+        await self._begin(
+            [
+                "Read the worked examples (MIZAN)",
+                "Propose the rule as a program (Lisan)",
+                f"Test the rule on all {total} examples in the sandbox (MIZAN)",
+                "Revise the rule from the examples it got wrong",
+                "Reply",
+            ]
+        )
+        await self._step()
+        try:
+            program = await self.lisan.propose_rule(examples)
+        except LisanUnavailable as exc:
+            raise Defer from exc
+        await self._step()
+        best: tuple[int, str, dict | None] = (-1, program, None)
+        attempts = 0
+        for attempts in range(1, MAX_REPAIRS + 2):  # noqa: B007 - attempts is reported
+            run = await self._run(qiyas.harness(program, puzzle), "python")
+            report = qiyas.read(str(run.get("stdout", "")))
+            fitted = qiyas.passed(report, puzzle)
+            trace.event("verify", "qiyas", examples=total, reproduced=fitted, attempt=attempts)
+            if fitted > best[0]:
+                best = (fitted, program, report)
+            if fitted == total or run.get("declined") or attempts > MAX_REPAIRS:
+                break
+            wrong = qiyas.failures(report, puzzle, str(run.get("stderr") or run.get("error", "")))
+            try:
+                program = await self.lisan.revise_rule(examples, program, wrong)
+            except LisanUnavailable:
+                break
+        await self._step()
+        fitted, program, report = best
+        outputs = qiyas.test_outputs(report)
+        proven = fitted == total and outputs is not None
+        if proven:
+            head = phrase("qiyas_proven", u.language, total=total)
+        elif outputs is not None:
+            head = phrase("qiyas_unproven", u.language, fitted=max(0, fitted), total=total)
+        else:
+            head = phrase("qiyas_no_rule", u.language, total=total)
+        # The rule's program first and the answer last, as puzzle answers are read.
+        parts = [head, f"**{phrase('code', u.language)}**\n{fence(program, 'python')}"]
+        for index, grid in enumerate(outputs or [], 1):
+            label = phrase("qiyas_answer", u.language, n=index)
+            parts.append(f"**{label}**\n{fence(qiyas.render(grid), 'json')}")
+        facts = {
+            "examples": total,
+            "reproduced": max(0, fitted),
+            "attempts": attempts,
+            "test_outputs": outputs,
+        }
+        return Outcome("\n\n".join(parts), proven, facts, succeeded=proven)
 
     async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
         from workspace.context import bound_workspace_id
@@ -754,7 +859,7 @@ class Tadbir:
             facts = amal.facts(name, arguments, result)
             fallback = f"**{name}**\n{fence(facts['result'][:3000], 'json')}"
             text, _phrased = await self._phrase_with_lisan(task, facts, u.language, fallback)
-        return Outcome(text, False, {"tool": name}, succeeded=not failed)
+        return Outcome(text, False, {"tool": name}, succeeded=not failed, provenance="evidence")
 
     def _chat_allowed(self, name: str) -> bool:
         try:
@@ -1284,7 +1389,12 @@ class Tadbir:
                         for index, s in enumerate(sources, start=1)
                     )
                 )
-        return Outcome(f"{answer}\n\n{source_block}", verified, {"sources": len(sources)})
+        return Outcome(
+            f"{answer}\n\n{source_block}",
+            verified,
+            {"sources": len(sources)},
+            provenance="evidence",
+        )
 
     async def _recall(self, task: str, u: fahm.Understanding) -> Outcome:
         if not self._allowed("recall_memory"):
@@ -1301,7 +1411,7 @@ class Tadbir:
         text, _phrased = await self._phrase_with_lisan(
             task, {"memories": memories[:6000]}, u.language, fallback
         )
-        return Outcome(text, True, {"memories": True})
+        return Outcome(text, True, {"memories": True}, provenance="evidence")
 
 
 def _matches(stdout: str, value: calc.Number) -> bool:

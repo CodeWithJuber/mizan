@@ -1,5 +1,7 @@
 /** Shapes a debug comparison (base model vs MIZAN) and MIZAN's trace for display. */
 
+import type { IsnadSummary } from "./isnad.ts";
+
 export interface TraceSpan {
   id: string;
   parent: string | null;
@@ -31,6 +33,7 @@ export interface CompareChecks {
     words: number;
     changed?: { source: string; given: string }[];
   };
+  isnad?: { base: IsnadSummary; mizan: IsnadSummary };
   similarity: number;
   diff: string[];
 }
