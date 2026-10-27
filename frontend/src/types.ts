@@ -245,6 +245,8 @@ export interface MessageUsageMeta {
   amanah?: AmanahSummary;
   /** What the Truth Gate (Sidq) corrected, removed or marked before the answer was shown. */
   sidq?: SidqReport | { mode: string; passed: true };
+  /** Your own words from other chats that the model was shown for this answer. */
+  recalled?: { session_id: string; created_at: string; content: string }[];
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

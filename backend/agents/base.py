@@ -2719,6 +2719,19 @@ Match the requested depth and self-correct errors."""
                 ):
                     if key in result:
                         result["usage"][key] = result[key]
+                # The user's words from other chats the model was shown, so the
+                # answer says what it drew on (MIZAN's own recipes do not use them).
+                recalled = (context or {}).get("conversation_memory") or []
+                if recalled and result.get("orchestrator") != "mizan":
+                    result["usage"]["recalled"] = [
+                        {
+                            "session_id": str(item.get("session_id", "")),
+                            "created_at": str(item.get("created_at", "")),
+                            "content": str(item.get("content", ""))[:200],
+                        }
+                        for item in recalled[:5]
+                        if isinstance(item, dict)
+                    ]
                 # Capture successful chat pairs in the authenticated user's own
                 # candidate store. Capture is not review, training or promotion.
                 if (

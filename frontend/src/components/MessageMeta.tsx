@@ -3,6 +3,7 @@ import type { MessageUsageMeta } from "../types";
 import { amanahHeadline, isAmanah, kindLabels } from "../utils/amanah.ts";
 import { isIsnad } from "../utils/isnad.ts";
 import { isSidq, sidqHeadline, sidqLines } from "../utils/sidq.ts";
+import { recalledHeadline, recalledLines } from "../utils/recalled.ts";
 import IsnadView from "./IsnadView";
 import { fmtCost, fmtTokens, usageMetrics } from "../utils/responseMetrics.ts";
 export { fmtCost, fmtLatency, fmtTokens } from "../utils/responseMetrics.ts";
@@ -26,7 +27,9 @@ interface MessageMetaProps {
  */
 export function MessageMeta({ meta }: MessageMetaProps) {
   const [open, setOpen] = useState(false);
-  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah) && !isSidq(meta?.sidq)) return null;
+  const recalled = recalledLines(meta?.recalled);
+  if (!hasDisplayableMeta(meta) && !isAmanah(meta?.amanah) && !isSidq(meta?.sidq) && !recalled.length)
+    return null;
   const m = meta as MessageUsageMeta;
 
   const { parts, explanations } = usageMetrics(m);
@@ -65,6 +68,25 @@ export function MessageMeta({ meta }: MessageMetaProps) {
         </button>
       )}
       {isIsnad(m.isnad) && <IsnadView isnad={m.isnad} />}
+      {recalled.length > 0 && (
+        <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <summary className="cursor-pointer select-none inline-flex items-center gap-1">
+            <span aria-hidden="true">↺</span>
+            <span>{recalledHeadline(recalled)}</span>
+          </summary>
+          <p className="mt-1 leading-relaxed">
+            The model was shown these words you wrote in other chats, as your statements, not as facts. Turn this
+            off with the chat preference cross_chat_recall: off, or delete a chat to forget it.
+          </p>
+          <ul className="mt-1 space-y-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+            {recalled.map((line) => (
+              <li key={`${line.session_id}-${line.created_at}`} className="wrap-break-word">
+                <span className="font-mono">{line.created_at.slice(0, 10)}</span> “{line.content}”
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {isSidq(m.sidq) && (
         <details className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
           <summary className="cursor-pointer select-none inline-flex items-center gap-1">

@@ -759,6 +759,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "आपकी सहेजी याददाश्त से:",
         "ar": "من ذاكرتك المحفوظة:",
     },
+    "remembered": {
+        "en": "I'll remember that. It is saved in your notes as you said it; you can see or forget it in your Daftar.",
+        "hi-latn": "Main yeh yaad rakhunga. Aapke alfaaz jaise the waise notes mein save hain; Daftar mein dekh ya bhula sakte hain.",
+        "ur": "میں یہ یاد رکھوں گا۔ آپ کے الفاظ جیسے تھے ویسے نوٹس میں محفوظ ہیں؛ دفتر میں دیکھ یا بھلا سکتے ہیں۔",
+        "hi": "मैं यह याद रखूँगा। आपके शब्द जैसे थे वैसे नोट्स में सहेजे गए हैं; दफ़्तर में देख या भुला सकते हैं।",
+        "ar": "سأتذكر ذلك. حُفظ في ملاحظاتك كما قلته؛ يمكنك رؤيته أو نسيانه في دفترك.",
+    },
     "capabilities": {
         "en": "Yes. MIZAN works through its own tools, and they are real:",
         "hi-latn": "Haan. MIZAN apne asli tools se kaam karta hai:",

@@ -445,6 +445,8 @@ _BUILDERS = {
     ),
     "build_project": _with("build_project", project.blueprint),
     "recall": _with("recall", lambda m: {"query": m}),
+    # "Yaad rakhna ki ...": the user's own words are kept as they are.
+    "remember": _with("remember", lambda m: {"note": m.strip()[:2000]} if m.strip() else None),
     "web_search": _with("web_search", lambda m: {"query": m.strip()[:300]}),
     # "Dhundo pahle": a search with no topic of its own; Tadbir takes the topic from the chat.
     "search_bare": _simple("search_bare"),

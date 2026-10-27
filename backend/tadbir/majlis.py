@@ -34,6 +34,7 @@ ROLE_FOR = {
     "salah": "khalifah",
     "watch": "khalifah",
     "recall": "khalifah",
+    "remember": "khalifah",
     "capabilities": "khalifah",
     "edit_project": "katib",
     "project_task": "katib",

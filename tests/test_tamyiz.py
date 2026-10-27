@@ -156,6 +156,11 @@ def test_names_and_quotations_do_not_decide_the_language():
         ("Pehle 10 prime numbers nikalo program se", "build_and_run"),
         ("Mere liye ek chhota sa notes app bana do", "build_project"),
         ("Help me write a Python script that Ui", "build_and_run"),
+        ("Remember that my mother likes jasmine tea", "remember"),
+        ("Yaad rakhna main Lucknow mein kaam karta hoon", "remember"),
+        ("याद रखना मेरा जन्मदिन 5 मई को है", "remember"),
+        ("Do you remember where I work?", "recall"),
+        ("I remember my grandfather reciting Surah Yaseen", "converse"),
     ],
 )
 def test_the_intent_is_the_most_probable_buildable_recipe(text, intent):

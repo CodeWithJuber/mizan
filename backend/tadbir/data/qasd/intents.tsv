@@ -726,3 +726,132 @@ build_and_run	Write a script that reads surah numbers and ayah counts from a CSV
 build_and_run	Write a function that checks whether a Quran reference like Surah 2, Ayah 300 is valid, with tests
 build_and_run	Python function likho jo surah aur ayah number se quran.com ka link banaye
 build_and_run	Make a program that lists how many ayahs Surah 2 and Surah 3 have
+remember	Remember that I pray Fajr at the masjid on weekdays
+remember	Please remember my daughter's name is Maryam
+remember	Keep in mind that I am allergic to peanuts
+remember	Note that my mother lives in Hyderabad
+remember	Don't forget that I prefer short answers in Urdu
+remember	Remember this: my office starts at 9:30
+remember	Save this for later: the plumber's name is Rashid
+remember	Make a note that my car insurance renews in March
+remember	For future reference, I work night shifts
+remember	Remember I am vegetarian
+remember	Please keep in mind I am learning Arabic
+remember	Remember that my son's exam is on the 14th
+remember	Yaad rakhna ki meri beti ka naam Maryam hai
+remember	Yaad rakho main shakahari hoon
+remember	Note kar lo meri ammi Hyderabad mein rehti hain
+remember	Yaad rakhna mujhe peanuts se allergy hai
+remember	Isko yaad rakh lena, mera office 9:30 baje shuru hota hai
+remember	Mere baare mein yaad rakho ki main Arabic seekh raha hoon
+remember	Bhoolna mat ki mujhe chhote jawab pasand hain
+remember	Note kar lo mere bete ka exam 14 tareekh ko hai
+remember	یاد رکھنا کہ میری بیٹی کا نام مریم ہے
+remember	یاد رکھو میں سبزی خور ہوں
+remember	نوٹ کر لو میری امی حیدرآباد میں رہتی ہیں
+remember	یہ یاد رکھنا کہ مجھے مونگ پھلی سے الرجی ہے
+remember	بھولنا مت کہ مجھے مختصر جواب پسند ہیں
+remember	याद रखना कि मेरी बेटी का नाम मरियम है
+remember	याद रखो मैं शाकाहारी हूँ
+remember	नोट कर लो मेरी अम्मी हैदराबाद में रहती हैं
+remember	यह याद रखना कि मुझे मूंगफली से एलर्जी है
+remember	भूलना मत कि मुझे छोटे जवाब पसंद हैं
+remember	تذكر أن اسم ابنتي مريم
+remember	تذكّر أنني نباتي
+remember	احفظ أن والدتي تسكن في حيدر آباد
+remember	لا تنس أنني أفضل الإجابات القصيرة
+remember	سجّل ملاحظة: موعد امتحان ابني يوم ١٤
+recall	Do you remember what my daughter's name is?
+recall	What did I ask you to remember?
+recall	Kya yaad hai maine apni ammi ke baare mein kya bataya tha?
+recall	تمہیں یاد ہے میں نے کیا نوٹ کروایا تھا؟
+recall	क्या याद है मैंने क्या नोट करवाया था?
+recall	هل تتذكر ما طلبت منك أن تحفظه؟
+recall	What did I tell you about my allergies?
+converse	I remember when we used to pray Taraweeh together as children
+converse	How can I remember the 99 names of Allah better?
+converse	Mujhe yaad nahi aa raha ki maine chaabi kahan rakhi
+converse	Tips to remember Quran verses faster?
+converse	Do you remember things between chats?
+converse	What is the best way to memorize a surah?
+remember	Remember that my husband's birthday is on 3 June
+remember	Remember that I live in Pune
+remember	Remember that my favourite colour is green
+remember	Remember that I teach maths at a school
+remember	Remember that my wife likes cardamom chai
+remember	Remember my blood group is O positive
+remember	Remember that I have two brothers, Yusuf and Ilyas
+remember	Please remember I fast on Mondays
+remember	Please remember that my landlord is Mr. Qureshi
+remember	Please note that I wake up for Tahajjud at 4
+remember	Please note my passport expires next year
+remember	Note that I don't eat beef
+remember	Note: my WiFi password is on the fridge
+remember	Keep in mind that my father is diabetic
+remember	Keep in mind I am studying for the CA exam
+remember	I want you to remember that I moved to Dubai
+remember	Can you remember that my niece is called Aisha?
+remember	Could you remember that I prefer Hanafi rulings?
+remember	Store this in your memory: my gym days are Tuesday and Friday
+remember	Save to memory that my doctor is Dr. Farooqui
+remember	Add to your notes that I am left-handed
+remember	Remember for next time that I like answers with sources
+remember	Yaad rakhna meri biwi ko elaichi wali chai pasand hai
+remember	Yaad rakhna main Pune mein rehta hoon
+remember	Yaad rakh lo mera blood group O positive hai
+remember	Yaad rakhna mere do bhai hain, Yusuf aur Ilyas
+remember	Ye baat yaad rakhna ki mere abbu ko sugar hai
+remember	Note karlo main Dubai shift ho gaya hoon
+remember	Note kar lena mera passport agle saal expire hoga
+remember	Mere liye yaad rakhna ki main Hanafi fiqh follow karta hoon
+remember	Isko apni memory mein save kar lo, mera gym Tuesday aur Friday ko hai
+remember	Yaad rakhna main subah 4 baje Tahajjud ke liye uthta hoon
+remember	Hamesha yaad rakhna mujhe jawab ke saath source chahiye
+recall	What do you remember about me?
+recall	Do you remember where I live?
+recall	Do you remember my blood group?
+recall	What did I tell you about my wife?
+recall	What have I told you about my family?
+recall	Tell me what you know about me
+recall	What did I say about my job last time?
+recall	Do you still remember my brothers' names?
+recall	Tumhe yaad hai main kahan rehta hoon?
+recall	Mere baare mein tumhe kya yaad hai?
+recall	Maine apni biwi ke baare mein kya bataya tha?
+recall	Bataao maine apne bhaiyon ke naam kya bataye the
+recall	Kya tumhe yaad hai mera blood group kya hai?
+recall	Pichli chat mein maine apne kaam ke baare mein kya kaha tha?
+converse	Do you remember the story of Prophet Yusuf?
+converse	Remember to always be grateful to Allah
+converse	Note that this is just my opinion, but I think the plan is good
+converse	Please keep in mind I am new to programming, how do loops work?
+converse	Yaad rakhna bahut mushkil hai, koi tareeqa batao
+converse	Why do we forget things so quickly?
+remember	تذكر أنني أسكن في الرياض
+remember	تذكر أن عيد ميلاد زوجتي في مارس
+remember	تذكّر أن والدي مريض بالسكري
+remember	احفظ عندك أنني أدرس الهندسة
+remember	تذكر أنني لا آكل اللحم
+recall	هل تتذكر أين أسكن؟
+recall	ماذا قلت لك عن عائلتي؟
+recall	Do you remember what my job is?
+recall	Do you remember when my son's exam is?
+recall	Do you remember which city I moved to?
+recall	Can you recall what I said about my health?
+silsila_follow	Aur koshish karo
+silsila_follow	Koshish jaari rakho
+silsila_follow	Himmat mat haaro, dhundo
+silsila_follow	Haar kyun maan rahe ho, try karo
+silsila_follow	Give it another try
+silsila_follow	Don't quit, keep going
+run_file	[project] Run `server.py` and tell me what it prints
+run_file	[project] run.py chalao aur output batao
+run_file	[project] Execute `app.js` and tell me what it logs
+run_file	[project] What does main.py print when I run it?
+run_file	[project] index.js chala ke batao kya aata hai
+compute	What is 2/5 + 1/4 as a fraction?
+compute	3/8 aur 1/6 ka jod fraction mein batao
+compute	Simplify 12/18
+compute	1/4 aur 2/3 jodne par kya milega?
+compute	What is 5/6 minus 1/4?
+compute	Add 2/9 and 4/15 and give the exact fraction
