@@ -61,6 +61,39 @@ class BrowserAgent(BaseAgent):
             }
         )
 
+    # ── Public pages only (no host, private network or metadata address) ──
+
+    @staticmethod
+    async def _blocked(url: str) -> dict | None:
+        from connectors.net_guard import BlockedDestination, check_url
+
+        try:
+            await check_url(url)
+        except BlockedDestination as exc:
+            return {"error": f"Refused: {exc}", "url": url}
+        return None
+
+    @staticmethod
+    async def _guarded_page(browser):
+        """A page whose every request (redirects, scripts, frames) goes to a public host."""
+        from connectors.net_guard import BlockedDestination, check_url
+
+        page = await browser.new_page()
+
+        async def guard(route, request):
+            if request.url.startswith(("data:", "blob:", "about:")):
+                await route.continue_()
+                return
+            try:
+                await check_url(request.url)
+            except BlockedDestination:
+                await route.abort("blockedbyclient")
+                return
+            await route.continue_()
+
+        await page.route("**/*", guard)
+        return page
+
     # ── Shared httpx helper ──
 
     async def _httpx_fetch(self, url: str) -> dict:
@@ -90,7 +123,12 @@ class BrowserAgent(BaseAgent):
                     if stripped:
                         self.text.append(stripped)
 
-        async with _httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        from connectors.net_guard import check_url, request_hook
+
+        await check_url(url)
+        async with _httpx.AsyncClient(
+            timeout=30, follow_redirects=True, event_hooks={"request": [request_hook]}
+        ) as client:
             headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
             response = await client.get(url, headers=headers)
 
@@ -120,6 +158,8 @@ class BrowserAgent(BaseAgent):
         Navigate to a URL. Uses Playwright when available for full JS
         rendering; falls back to httpx for basic HTML fetching.
         """
+        if refused := await self._blocked(url):
+            return refused
         # Try Playwright first
         if self._check_playwright():
             try:
@@ -127,7 +167,7 @@ class BrowserAgent(BaseAgent):
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page()
+                    page = await self._guarded_page(browser)
                     await page.goto(url, timeout=30000)
                     if wait_for:
                         await page.wait_for_selector(wait_for, timeout=10000)
@@ -206,6 +246,8 @@ class BrowserAgent(BaseAgent):
 
     async def _tool_extract_content(self, url: str, selector: str | None = None) -> dict:
         """Extract specific content from a URL"""
+        if refused := await self._blocked(url):
+            return refused
         # Try Playwright if a CSS selector is given
         if selector and self._check_playwright():
             try:
@@ -213,7 +255,7 @@ class BrowserAgent(BaseAgent):
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page()
+                    page = await self._guarded_page(browser)
                     await page.goto(url, timeout=30000)
                     elements = await page.query_selector_all(selector)
                     texts = []
@@ -245,9 +287,12 @@ class BrowserAgent(BaseAgent):
 
         Tries (in order):
           1. Playwright (best quality, full JS rendering)
-          2. System Chromium/Chrome in headless mode
-          3. httpx fallback (returns HTML text instead of image)
+          2. httpx fallback (returns HTML text instead of image)
+
+        Never through a shell: a URL is not a command.
         """
+        if refused := await self._blocked(url):
+            return refused
         # 1. Try Playwright
         if self._check_playwright():
             try:
@@ -256,7 +301,8 @@ class BrowserAgent(BaseAgent):
                 screenshot_path = f"/tmp/screenshot_{os.getpid()}.png"
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page(viewport={"width": 1280, "height": 720})
+                    page = await self._guarded_page(browser)
+                    await page.set_viewport_size({"width": 1280, "height": 720})
                     await page.goto(url, timeout=30000)
                     await page.screenshot(path=screenshot_path, full_page=False)
                     await browser.close()
@@ -270,28 +316,6 @@ class BrowserAgent(BaseAgent):
                     }
             except Exception:
                 pass  # Fall through
-
-        # 2. Try system Chrome/Chromium
-        try:
-            result = await self._tool_bash(
-                "which chromium-browser || which google-chrome || which chromium || echo 'not_found'",
-                timeout=5,
-            )
-            browser = result.get("stdout", "").strip()
-            if browser and "not_found" not in browser:
-                screenshot_path = f"/tmp/screenshot_{os.getpid()}.png"
-                cmd = f"{browser.splitlines()[0]} --headless --screenshot={screenshot_path} --window-size=1280,720 {url}"
-                await self._tool_bash(cmd, timeout=30)
-
-                if os.path.exists(screenshot_path):
-                    return {
-                        "success": True,
-                        "path": screenshot_path,
-                        "url": url,
-                        "backend": "chromium",
-                    }
-        except Exception:
-            pass  # Fall through
 
         # 3. httpx fallback — return page text instead of image
         try:
@@ -324,13 +348,15 @@ class BrowserAgent(BaseAgent):
         Click an element on a page. Requires Playwright for real interaction;
         provides a graceful fallback with guidance when unavailable.
         """
+        if refused := await self._blocked(url):
+            return refused
         if self._check_playwright():
             try:
                 from playwright.async_api import async_playwright
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page()
+                    page = await self._guarded_page(browser)
                     await page.goto(url, timeout=30000)
                     await page.click(selector, timeout=10000)
                     # Return page state after click
@@ -380,13 +406,15 @@ class BrowserAgent(BaseAgent):
         Fill form fields on a page. Requires Playwright for real interaction;
         provides a graceful fallback with guidance when unavailable.
         """
+        if refused := await self._blocked(url):
+            return refused
         if self._check_playwright():
             try:
                 from playwright.async_api import async_playwright
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page()
+                    page = await self._guarded_page(browser)
                     await page.goto(url, timeout=30000)
                     for selector, value in fields.items():
                         await page.fill(selector, str(value), timeout=5000)

@@ -28,11 +28,11 @@ function KeptImage({ sha, alt }: { sha: string; alt: string }) {
   return <img src={url} alt={alt} className="max-h-48 max-w-full rounded-lg object-contain" />;
 }
 
-/** The images a user attached to a message (Basar). */
-export function ChatImages({ images }: { images?: ChatImage[] }) {
+/** The images of a message: attached by the user (Basar), or made by MIZAN for an answer. */
+export function ChatImages({ images, align = "end" }: { images?: ChatImage[]; align?: "start" | "end" }) {
   if (!images?.length) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2 justify-end">
+    <div className={`mt-2 flex flex-wrap gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
       {images.map((image, index) =>
         image.url ? (
           <img

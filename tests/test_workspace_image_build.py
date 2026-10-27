@@ -53,7 +53,7 @@ def fake_docker(tmp_path):
     return invoke
 
 
-@pytest.mark.parametrize("image", ["workspace-runtime", "workspace-runner"])
+@pytest.mark.parametrize("image", ["workspace-runtime", "workspace-runner", "workspace-browser"])
 @pytest.mark.parametrize("mode", ["--load", "--push"])
 @pytest.mark.parametrize(
     "statuses,expected_registries",
@@ -92,10 +92,13 @@ def test_invalid_arguments_never_build_or_publish(fake_docker, image, mode):
 
 
 def test_attempt_deadline_is_fixed_and_all_workspace_ci_paths_use_helper():
-    assert "timeout --signal=TERM --kill-after=15s 3m" in SCRIPT.read_text()
+    script = SCRIPT.read_text()
+    assert 'timeout --signal=TERM --kill-after=15s "$limit"' in script
+    # A fixed deadline per image: the browser image also downloads Chromium.
+    assert "limit=3m\n" in script and '[[ "$1" == workspace-browser ]] && limit=10m' in script
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
     coding = (ROOT / ".github/workflows/coding-workspace.yml").read_text()
-    assert ci.count("bash scripts/build_workspace_image.sh") == 4
+    assert ci.count("bash scripts/build_workspace_image.sh") == 6
     assert coding.count("bash scripts/build_workspace_image.sh") == 2
     assert coding.count("- 'scripts/build_workspace_image.sh'") == 2
     assert coding.count("- 'tests/test_workspace_image_build.py'") == 2

@@ -40,6 +40,15 @@ MIZAN asks its sources in this order:
    - **A web search**, whose snippets are untrusted data: Amanah removes any
      instruction aimed at the AI.
 
+A question about the deen is **never** asked of the outside sources. MIZAN
+quotes the Quran and hadith from their own sources, and a ruling is a
+scholar's. A question counts as being about the deen when any of these holds:
+- Qasd's `deen` facet says so (the Quran, a hadith, belief, worship, a word of
+  the Quran). This is a yes/no model learned from seeds in five languages;
+  "When did the Ottoman Empire end?" is not about the deen;
+- the `ruling` facet says so;
+- the answer cites a Quran or hadith reference (`2:153`, `Sahih al-Bukhari 1`).
+
 The order of the outside sources is learned. Each source has a Beta posterior
 of settling a claim when asked, and each answer asks them in the order of a
 Thompson sample. MIZAN stops when every claim is settled or a 20-second budget
@@ -52,8 +61,16 @@ refusal.
 
 ## How a claim is judged
 
-1. The source's sentences are ranked by **BM25** against the claim, and the
-   best three are kept.
+1. The source's sentences are ranked by **BM25** against the claim. A
+   sentence is kept only if it is **about what the claim is about**:
+   - the claim's distinctive words are those whose information (inverse
+     document frequency over MIZAN's own corpora in seven languages) is above
+     the claim's mean;
+   - the sentence must contain more than half of that information.
+
+   So a page that shares only common words with the claim ("the", "largest")
+   is never read against it, however the NLI model would read the pair. The
+   best three kept sentences go on.
 2. A multilingual **NLI model** reads each kept sentence against the claim.
    - Model: `MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli`, MIT licence,
      covering English, Arabic, Hindi, Urdu and more.
@@ -71,9 +88,10 @@ refusal.
      The model's sentence is never silently rewritten;
    - **neither**: the claim stays unknown.
 
-If no claim could be settled, the answer ends with: *"MIZAN asked its sources
-and found none that confirms these claims; they are the language model's
-words, not established facts. Allahu a'lam."*
+Claims no source settled are reported under the answer ("Sources asked: 2 not
+found — the model's own words, Allahu a'lam"), not added to its text. A note
+inside the text broke answers asked for in an exact shape (one sentence,
+JSON), as the live benchmark of 27 October found.
 
 Without the NLI model, every claim stays unknown and nothing is guessed.
 

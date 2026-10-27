@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketDisconnect
 
+from . import browse
 from .sessions import (
     SessionError,
     Terminal,
@@ -222,7 +223,49 @@ async def health() -> dict:
         except (OSError, subprocess.TimeoutExpired):
             return False
 
-    return {"isolated": True, "available": await asyncio.to_thread(check)}
+    return {
+        "isolated": True,
+        "available": await asyncio.to_thread(check),
+        "browser": await browse.image_present(),
+    }
+
+
+# ── Shahid: one browsing job ───────────────────────────────────────────────
+
+_BROWSE_SLOTS = asyncio.Semaphore(1)
+_HOST = r"^\.?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$"
+
+
+class BrowseRequest(BaseModel):
+    origins: list[str] = Field(min_length=1, max_length=8)
+    steps: list[dict] = Field(min_length=1, max_length=12)
+    approved: list[str] = Field(default_factory=list, max_length=8)
+    timeout_s: int = Field(default=60, ge=5, le=180)
+    locale: str = Field(default="en-US", pattern=r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
+
+
+@app.post("/browse", dependencies=[Depends(require_runner_token)])
+async def run_browse(request: Request) -> dict:
+    """One browsing job (Shahid): the browser sandbox, then nothing of it is kept."""
+    import re
+
+    from .browse_agent import valid
+
+    try:
+        job = BrowseRequest.model_validate_json(await _body(request, 1024 * 1024)).model_dump()
+    except ValueError:
+        raise HTTPException(422, "Invalid browsing job") from None
+    if not all(re.fullmatch(_HOST, origin.lower()) for origin in job["origins"]):
+        raise HTTPException(422, "Origins are host names")
+    problem = valid(job)
+    if problem:
+        raise HTTPException(422, problem)
+    if _BROWSE_SLOTS.locked():
+        raise HTTPException(429, "The browser sandbox is busy")
+    async with _BROWSE_SLOTS:
+        with _session_errors():
+            timeout = job.pop("timeout_s")
+            return await browse.run(job, timeout)
 
 
 @app.post("/run", dependencies=[Depends(require_runner_token)])

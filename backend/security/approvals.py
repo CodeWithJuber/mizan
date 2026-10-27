@@ -60,6 +60,8 @@ READ_ONLY_TOOLS = frozenset(
         "list_files",
         "read_file",
         "http_get",
+        # Shahid with nothing approved: every request that would change a page is held.
+        "shahid_read",
     }
 )
 # Private, checkpointed project edits (auto in ``auto_edits`` mode).
@@ -73,6 +75,10 @@ EDIT_TOOLS = frozenset(
     }
 )
 
+
+# Send something to a site on the user's behalf (a form, an order): a person
+# decides each time, whatever the chat's mode, and never with no one to ask.
+ALWAYS_ASK_TOOLS = frozenset({"shahid_submit"})
 
 # Runs inside MIZAN's isolated sandbox (no host access, egress allowlist):
 # unattended runs may use it without a person present.
@@ -104,6 +110,8 @@ class ApprovalContext:
 
     def needs_approval(self, tool_name: str, read_only_hint: bool = False) -> bool:
         category = tool_category(tool_name, read_only_hint)
+        if tool_name in ALWAYS_ASK_TOOLS:
+            return True
         if category == "read" or tool_name in self.always:
             return False
         if self.deferred:

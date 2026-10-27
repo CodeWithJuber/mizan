@@ -6,7 +6,11 @@ only).
 
 The base URL is your server, for example `https://your-mizan.example`; every
 route below starts with `/api`. FastAPI's own `/docs` page is not served
-through the production proxy, so this page lists the routes.
+through the production proxy. This page explains the main routes;
+**every** route (268, with who may call it) is in
+[api-reference.md](api-reference.md), and [openapi.json](openapi.json) has
+them all with their request bodies: import it into Postman, Insomnia or
+Bruno, set the server URL, and use a Bearer token or `X-API-Key`.
 
 ## Sign in
 

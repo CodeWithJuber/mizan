@@ -218,15 +218,43 @@ def _quoted(text: str) -> str:
     return "\n".join(lines) if lines else text
 
 
+# A stretch of Arabic: words, spaces, Arabic digits and the ayah ornaments,
+# broken by anything else (Latin text, a colon, brackets).
+_ARABIC_SPAN = re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\s\u200c\u200d﴾﴿]*"
+)
+
+
+def quoted_runs(text: str, authentic: list[str]) -> list[tuple[str, str]]:
+    """The Arabic words of the answer that are attempts to give this text.
+
+    Each stretch of Arabic is judged on its own: it is a quote of the text when
+    most of its words are the text's, or when it is at least half as long as the
+    text (a passage given as the text, however different). Arabic terms used in
+    an explanation (يوم، يوم القيامة) are neither, so they are not checked
+    against the ayah as if they were quoting it."""
+    vocabulary = set(authentic)
+    found: list[tuple[str, str]] = []
+    for span in _ARABIC_SPAN.findall(text):
+        run = arabic_words(span)
+        shared = sum(1 for folded, _ in run if folded in vocabulary)
+        if run and (2 * shared > len(run) or 2 * len(run) >= len(authentic)):
+            found.extend(run)
+    return found
+
+
 def quote_check(base: str, mizan: str) -> dict:
     """How faithfully the base answer reproduces the source text MIZAN quoted.
 
     ``coverage`` is the share of the source's words the base answer gives in
     order; ``precision`` is the share of words in the passage it quoted that
     are the source's. A correct excerpt has high precision and lower coverage.
+    Only the answer's attempts to quote the text are read (``quoted_runs``).
     """
-    source_words, base_words = arabic_words(_quoted(mizan)), arabic_words(base)
+    source_words = arabic_words(_quoted(mizan))
     authentic = [folded for folded, _ in source_words]
+    base_words = quoted_runs(base, authentic)
     given = [folded for folded, _ in base_words]
     if not given or not authentic:
         return {"status": "missing", "coverage": 0.0, "precision": 0.0, "words": len(authentic)}

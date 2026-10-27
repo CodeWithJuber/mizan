@@ -371,12 +371,15 @@ def test_environment_budget_is_used_unless_agent_has_explicit_override(agent, mo
 
 
 async def test_queue_wait_and_failed_stream_attempt_are_measured_without_unlocking(agent):
+    # Runs of one agent never wait for one another: each works on its own copy.
     entered, release = threading.Event(), threading.Event()
     provider = ScriptedProvider([receipt("first"), receipt("second")])
     original_create = provider.create
+    calls: list[int] = []
 
     def blocking_create(**kwargs):
-        if not provider.requests:
+        calls.append(1)
+        if len(calls) == 1:
             entered.set()
             assert release.wait(2), "fixture release deadline exceeded"
         return original_create(**kwargs)
@@ -386,17 +389,17 @@ async def test_queue_wait_and_failed_stream_attempt_are_measured_without_unlocki
     first = asyncio.create_task(agent.execute("first"))
     try:
         assert await asyncio.to_thread(entered.wait, 1)
-        second = asyncio.create_task(agent.execute("second"))
-        await asyncio.sleep(0.03)
-        assert not second.done()
+        # The second run finishes while the first is still waiting on its model.
+        second = await asyncio.wait_for(agent.execute("second"), timeout=2)
+        assert not first.done()
         release.set()
-        results = await asyncio.wait_for(asyncio.gather(first, second), timeout=2)
+        results = [await asyncio.wait_for(first, timeout=2), second]
     finally:
         release.set()
         if not first.done():
             first.cancel()
     timing = results[1]["usage"]["timings"]
-    assert timing["queue_wait_ms"] >= 20
+    assert timing["queue_wait_ms"] < 20
     assert timing["provider_attempt_count"] == 1
     assert timing["total_ms"] >= timing["queue_wait_ms"] + timing["provider_ms"]
     assert timing["execution_ms"] == pytest.approx(

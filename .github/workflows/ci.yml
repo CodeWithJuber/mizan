@@ -165,11 +165,33 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
           pytest tests/test_coding_workspace.py tests/test_artifacts.py -q
 
+  browser:
+    name: Browser sandbox (Shahid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the browser sandbox image
+        run: bash scripts/build_workspace_image.sh workspace-browser mizan-workspace-browser:v1 --load
+      - name: A real browser follows Shahid's rules inside the hardened container
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges --user 65534:65534 --shm-size 256m
+          --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --env HOME=/tmp
+          mizan-workspace-browser:v1 python3 -I /browse_selftest.py
+      - name: The browse egress proxy starts in public mode
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges --env MIZAN_EGRESS_MODE=public
+          mizan-workspace-browser:v1 python3 -I -c
+          "import sys; sys.path.insert(0, '/'); import egress_proxy as e;
+          assert e.public_mode() and e.host_allowed('example.org', e.allowlist())"
+
   publish-production:
     name: Publish production images
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
-    needs: [build, docker, provenance]
+    needs: [build, docker, provenance, browser]
     permissions:
       contents: read
       packages: write
@@ -219,3 +241,9 @@ jobs:
         run: >-
           bash scripts/build_workspace_image.sh workspace-runner
           ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push
+      - name: Publish the browser sandbox (Shahid)
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-browser
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-browser:${{ github.sha }} --push

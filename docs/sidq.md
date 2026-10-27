@@ -12,6 +12,12 @@ No claim MIZAN can prove false reaches the user. Muhasaba reviews answers once a
 
 Answers MIZAN itself verified (computed, quoted from source, run and checked) skip the gate: they are already established.
 
+### How a quote is read
+
+- **Each quote under its own reference.** A reference names a number, so a verse's own words are never read as one. Each Arabic line belongs to the reference given most recently above it, or on the same line. An answer quoting 112:1 and then 2:255 has each passage checked against its own ayah, never both against the first. Up to four references are checked.
+- **Only attempts to quote.** Each stretch of Arabic is judged on its own. It counts as a quote when most of its words are the source's, or when it is at least half as long as the source (a passage given as the ayah, however different). Arabic terms used in an explanation ("here يوم means a stage") are not quotes, so a correct answer that discusses a word is not marked as a misquote.
+- **Every altered quote is replaced** by its own source text, the last one first, so one replacement never moves the lines of another.
+
 ## Settings
 
 `MIZAN_TRUTH_GATE` in System settings:

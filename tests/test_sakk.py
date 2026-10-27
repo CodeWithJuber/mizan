@@ -234,3 +234,19 @@ def test_public_routes_need_no_login_and_private_ones_do(tmp_path, monkeypatch, 
     assert export.json()["format"] == "mizan-sakk/1"
     assert client.get("/api/sakk/verify/all", headers=headers).status_code == 403
     assert client.post("/api/imtihan/runs/run-1/publish", headers=headers).status_code == 403
+
+
+def test_a_new_checkpoint_is_signed_when_a_chain_moves(tmp_path):
+    from security import sakk
+
+    store = sakk.Sakk(str(tmp_path / "moving.db"))
+    empty = store.sign_day("2026-10-27")
+    assert empty["leaves"] == 0
+    store.append("alice", "tool", {"tool": "web_search"}, "searched")
+    moved = store.sign_day("2026-10-27")  # the same day, but alice's chain moved
+    assert moved["leaves"] == 1 and moved["root"] != empty["root"]
+    assert store.sign_day("2026-10-27") == moved  # nothing moved: nothing new signed
+    assert [root["root"] for root in store.roots()] == [moved["root"], empty["root"]]
+    proof = store.proof("alice")
+    assert proof is not None and proof["root"] == moved["root"] and proof["leaf"]
+    assert sakk.verify_export(store.export("alice"))["ok"]

@@ -38,7 +38,10 @@ export function ahlHeadline(report: AhlReport): string {
     report.contradicted.length ? `${report.contradicted.length} contradicted` : "",
     report.unknown ? `${report.unknown} not found` : "",
   ].filter(Boolean);
-  return `Sources asked: ${parts.join(", ")}`;
+  const headline = `Sources asked: ${parts.join(", ")}`;
+  // No claim settled: the answer is the language model's own words.
+  const settled = report.supported.length + report.contradicted.length;
+  return settled ? headline : `${headline} — the model's own words, Allahu a'lam`;
 }
 
 /** Each settled claim with where it was settled. */

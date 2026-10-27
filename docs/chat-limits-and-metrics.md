@@ -102,6 +102,15 @@ Starlette's internal middleware handoff. A production QA request on 2026-10-26
 hit that inner deadline after approximately 75 seconds despite a healthy backend
 and a 300-second proxy timeout. Slow network writes remain bounded.
 
+Runs never wait for one another. `queue_wait_ms` used to hold whole minutes:
+every run of an agent took one lock, so a chat waited for the agent's other
+chats, its AGI test run and runs whose browser had gone away (the live
+benchmark of 27 October measured 72-191 s of queue for 29 ms of work). Each run
+now works on its own copy of the agent (`BaseAgent.execute`): the copy keeps the
+configuration it started with, a settings change waits only for the moment a
+copy is taken, and what the run adds to the agent's counters is added back when
+it ends. `queue_wait_ms` is now the time to take that copy.
+
 Cancellation receipts record a fixed reason, execution stage and elapsed request
 time. Provider attempt timings are included only when observed for that request;
 missing token counters stay missing. If saving a reply fails, the server emits a

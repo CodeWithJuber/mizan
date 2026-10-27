@@ -78,12 +78,12 @@ async def test_a_contradicted_claim_is_shown_with_what_the_source_says(store, so
         QUESTION, daif(claim), store=store, user_id="u1", language="en"
     )
     assert findings[0].verdict == "contradicted"
-    shown = ahl_dhikr.apply(f"{claim} It has a thin atmosphere.", findings, "en", asked=True)
+    shown = ahl_dhikr.apply(f"{claim} It has a thin atmosphere.", findings, "en")
     assert shown.index("says otherwise") > shown.index(claim)
     assert "https://en.wikipedia.org/wiki/Titan_(moon)" in shown and "Allahu a'lam" not in shown
 
 
-async def test_with_no_source_the_answer_says_it_is_the_models_word(store, sources):
+async def test_with_no_source_the_answer_is_reported_as_the_models_word(store, sources):
     findings, heard = await ahl_dhikr.consult(
         QUESTION,
         daif("Saturn's rings are mostly made of ice."),
@@ -92,9 +92,11 @@ async def test_with_no_source_the_answer_says_it_is_the_models_word(store, sourc
         language="en",
     )
     assert [finding.verdict for finding in findings] == ["unknown"]
-    assert "Allahu a'lam" in ahl_dhikr.apply(
-        "Saturn's rings are mostly made of ice.", findings, "en", asked=True
-    )
+    # Reported beside the answer (usage.ahl), never added to it, so an answer
+    # asked for in an exact shape keeps that shape.
+    text = "Saturn's rings are mostly made of ice."
+    assert ahl_dhikr.apply(text, findings, "en") == text
+    assert ahl_dhikr.report(findings, heard)["unknown"] == 1
     assert ahl_dhikr.known(store, "u1") == []  # nothing settled, nothing kept
 
 
@@ -274,7 +276,7 @@ async def test_an_unreachable_source_is_not_called_a_source_that_found_nothing(s
     )
     assert heard == [] and findings[0].verdict == "unknown"
     text = "The largest moon of Saturn is Titan."
-    assert ahl_dhikr.apply(text, findings, "en", asked=bool(heard)) == text
+    assert ahl_dhikr.apply(text, findings, "en") == text
 
 
 def test_an_answer_meant_for_a_program_is_never_changed():
@@ -288,7 +290,7 @@ def test_an_answer_meant_for_a_program_is_never_changed():
         '{"moon": "The largest moon of Saturn is Rhea."}',
         '```json\n{"moon": "Rhea"}\n```',
     ):
-        assert ahl_dhikr.apply(text, [finding], "en", asked=True) == text
+        assert ahl_dhikr.apply(text, [finding], "en") == text
 
 
 def test_a_request_for_json_about_a_quote_is_not_a_ruling_or_a_fact_question():
@@ -305,3 +307,86 @@ def test_findings_report_without_text_of_unknown_claims():
         "unknown": 1,
         "answered": [],
     }
+
+
+# The leak the live benchmark found (27 Oct 2026): pages that had nothing to do
+# with the answer were shown as "a source says otherwise".
+JUNK = [
+    Passage(
+        "Is that your mum I can hear in the background?",
+        "Danilo Restivo",
+        "https://en.wikipedia.org/wiki/Danilo_Restivo",
+        "wikipedia",
+    ),
+    Passage(
+        "The largest kono kono trend is from Ethiopian and Eritrean pop culture.",
+        "kono kono",
+        "https://www.tiktok.com/discover/kono-kono",
+        "wikipedia",
+    ),
+]
+
+
+async def always_contradicts(pairs):
+    """A reader that calls every pair a contradiction, as a misread would."""
+    return [{"entailment": 0.01, "neutral": 0.04, "contradiction": 0.95} for _ in pairs]
+
+
+async def test_a_page_unrelated_to_the_claim_is_never_shown_as_a_source(store, monkeypatch):
+    async def junk(question, language):
+        return JUNK
+
+    monkeypatch.setattr(ahl_dhikr, "nli", always_contradicts)
+    monkeypatch.setattr(ahl_dhikr, "wikipedia", junk)
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia"])
+    claims = ["The largest moon of Saturn is Titan.", "Titan has a thick nitrogen atmosphere."]
+    findings, heard = await ahl_dhikr.consult(
+        QUESTION, daif(*claims), store=store, user_id="u1", language="en"
+    )
+    assert [finding.verdict for finding in findings] == ["unknown", "unknown"]
+    shown = ahl_dhikr.apply(" ".join(claims), findings, "en")
+    assert "says otherwise" not in shown and "Restivo" not in shown and "kono" not in shown
+
+
+def test_a_source_sentence_must_be_about_what_the_claim_is_about():
+    assert ahl_dhikr.about("Saturn ka sabse bada chand Titan hai", TITAN)
+    assert not ahl_dhikr.about("The largest moon of Saturn is Titan.", JUNK[1].text)
+    assert not ahl_dhikr.about("This narration is not in Sahih al-Bukhari.", JUNK[0].text)
+
+
+async def test_a_question_about_the_deen_is_not_asked_of_wikipedia_or_the_web(
+    store, sources, monkeypatch
+):
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia", "web"])
+    asked_web = []
+
+    async def web(query):
+        asked_web.append(query)
+        return None
+
+    question = (
+        'Is this hadith authentic: "whoever reads this dua once will see the Prophet in a dream"?'
+    )
+    findings, heard = await ahl_dhikr.consult(
+        question,
+        daif("This narration is not found in any of the six books of hadith."),
+        store=store,
+        user_id="u1",
+        language="en",
+        web=web,
+    )
+    assert sources == [] and asked_web == [] and heard == []
+    assert [finding.verdict for finding in findings] == ["unknown"]
+
+
+def test_religious_questions_and_answers_are_told_by_evidence():
+    assert ahl_dhikr.religious("Is the hadith 'seek knowledge even in China' authentic?")
+    assert ahl_dhikr.religious("Quran mein ard lafz ka kya matlab hai?")
+    assert ahl_dhikr.religious("Is music haram?")  # a ruling
+    assert not ahl_dhikr.religious(QUESTION, TITAN)
+    assert not ahl_dhikr.religious("When did the Ottoman Empire end?")
+    # An answer that cites the Quran or a hadith is not checked against outside pages.
+    assert ahl_dhikr.religious(
+        "Why is patience praised?", "Allah is with the patient (Quran 2:153)."
+    )
+    assert ahl_dhikr.cites_scripture("Actions are by intentions (Sahih al-Bukhari 1).")

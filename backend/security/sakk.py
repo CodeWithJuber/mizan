@@ -145,6 +145,11 @@ class Sakk:
                     day TEXT PRIMARY KEY, root TEXT NOT NULL, leaves TEXT NOT NULL,
                     signature TEXT NOT NULL, at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    at TEXT PRIMARY KEY, day TEXT NOT NULL, root TEXT NOT NULL,
+                    leaves TEXT NOT NULL, signature TEXT NOT NULL);
+                INSERT OR IGNORE INTO checkpoints SELECT at, day, root, leaves, signature
+                    FROM roots;
                 """
             )
 
@@ -317,26 +322,29 @@ class Sakk:
         return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
     def sign_day(self, day: str | None = None) -> dict:
-        """Sign the Merkle root of every chain's latest receipt, once per UTC day."""
+        """Sign the Merkle root of every chain's latest receipt: at least once
+        per UTC day, and again whenever a chain has moved since the last
+        signed checkpoint, so the public root never lags the receipts."""
         day = day or datetime.now(UTC).date().isoformat()
-        with self._connect() as conn:
-            row = conn.execute("SELECT * FROM roots WHERE day = ?", (day,)).fetchone()
-        if row is not None:
-            return self._root(row)
         heads = self.heads()
+        listed = json.dumps([[o, s, h] for o, s, h in heads])
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM checkpoints ORDER BY at DESC LIMIT 1").fetchone()
+        if row is not None and row["day"] == day and row["leaves"] == listed:
+            return self._root(row)
         leaves = [head_leaf(owner, seq, head) for owner, seq, head in heads]
         root = merkle_root(leaves).hex()
         signature = self._signer().sign(root_message(day, root, len(leaves)))
         record = (
+            datetime.now(UTC).isoformat(timespec="microseconds"),
             day,
             root,
-            json.dumps([[o, s, h] for o, s, h in heads]),
+            listed,
             base64.urlsafe_b64encode(signature).decode().rstrip("="),
-            datetime.now(UTC).isoformat(timespec="seconds"),
         )
         with self._lock, self._connect() as conn:
-            conn.execute("INSERT OR IGNORE INTO roots VALUES (?,?,?,?,?)", record)
-            row = conn.execute("SELECT * FROM roots WHERE day = ?", (day,)).fetchone()
+            conn.execute("INSERT OR IGNORE INTO checkpoints VALUES (?,?,?,?,?)", record)
+            row = conn.execute("SELECT * FROM checkpoints WHERE at = ?", (record[0],)).fetchone()
         return self._root(row)
 
     @staticmethod
@@ -350,16 +358,17 @@ class Sakk:
         }
 
     def roots(self, limit: int = 30) -> list[dict]:
+        """The signed checkpoints, newest first."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM roots ORDER BY day DESC LIMIT ?", (limit,)
+                "SELECT * FROM checkpoints ORDER BY at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [self._root(row) for row in rows]
 
     def proof(self, owner: str) -> dict | None:
-        """Where the owner's chain sits in the latest signed root."""
+        """Where the owner's chain sits in the latest signed checkpoint."""
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM roots ORDER BY day DESC LIMIT 1").fetchone()
+            row = conn.execute("SELECT * FROM checkpoints ORDER BY at DESC LIMIT 1").fetchone()
         if row is None:
             return None
         heads = [tuple(item) for item in json.loads(row["leaves"])]

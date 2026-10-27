@@ -36,6 +36,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import threading
@@ -43,6 +44,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -208,8 +210,51 @@ def sentences(passages: Sequence[Passage]) -> list[Passage]:
     return found
 
 
+@lru_cache(maxsize=1)
+def _background() -> tuple[dict[str, int], int]:
+    """How many sentences of general language (Lughah's corpora, five
+    languages) each word appears in: common words carry little information."""
+    from . import lughah
+
+    counts: dict[str, int] = {}
+    sentences_read = 0
+    for label in lughah.LANGUAGES:
+        for line in (lughah.CORPUS / f"{label}.tsv").read_text(encoding="utf-8").splitlines():
+            words = set(tokenize(line.partition("\t")[2]))
+            if words:
+                sentences_read += 1
+                for word in words:
+                    counts[word] = counts.get(word, 0) + 1
+    return counts, sentences_read
+
+
+def information(word: str) -> float:
+    """A word's inverse document frequency in general language."""
+    counts, total = _background()
+    return math.log((total + 1) / (counts.get(word, 0) + 1))
+
+
+def about(claim: str, sentence: str) -> bool:
+    """The sentence speaks of what the claim speaks of.
+
+    The claim's distinctive words are those carrying more information than its
+    average word (names, numbers, terms: never "is", "the", "hai"). The sentence
+    is about the claim when it holds most (> ½) of their information. A sentence
+    that shares only common words with a claim is not evidence for or against
+    it, however an NLI model reads the pair (such models often call two
+    unrelated sentences a contradiction)."""
+    weights = {word: information(word) for word in set(tokenize(claim))}
+    if not weights:
+        return False
+    mean = sum(weights.values()) / len(weights)
+    distinctive = {word: weight for word, weight in weights.items() if weight > mean} or weights
+    present = set(tokenize(sentence))
+    covered = sum(weight for word, weight in distinctive.items() if word in present)
+    return 2 * covered > sum(distinctive.values())
+
+
 async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
-    """Each claim's verdict from the sentences of one source."""
+    """Each claim's verdict from the sentences of one source that are about it."""
     if not pool:
         return [Finding(claim, "unknown") for claim in claims]
     pairs: list[tuple[str, str]] = []
@@ -218,7 +263,8 @@ async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
     for index, claim in enumerate(claims):
         scores = bm25_scores(claim, texts)
         ranked = sorted(range(len(pool)), key=lambda i: -scores[i])
-        for position in [i for i in ranked if scores[i] > 0][:CANDIDATES]:
+        related = [i for i in ranked if scores[i] > 0 and about(claim, texts[i])]
+        for position in related[:CANDIDATES]:
             pairs.append((pool[position].text, claim))
             owners.append((index, pool[position]))
     readings = await nli(pairs)
@@ -445,6 +491,25 @@ def ruling(question: str) -> bool:
     return qasd.facet("ruling", question or "")
 
 
+def cites_scripture(text: str) -> bool:
+    """The text gives a Quran or hadith reference on one of its lines."""
+    from . import hadith, quran
+
+    return any(
+        quran.parse_reference(line) is not None or hadith.parse_reference(line) is not None
+        for line in (text or "").splitlines()[:200]
+        if line.strip()
+    )
+
+
+def religious(question: str, answer: str = "") -> bool:
+    """The question is about the deen (the Quran, a hadith, belief, a ruling),
+    or the answer cites the Quran or a hadith: its claims are not asked of
+    Wikipedia or a web search. MIZAN quotes the Quran and hadith from their own
+    sources, and a ruling is a scholar's."""
+    return qasd.facet("deen", question or "") or ruling(question) or cites_scripture(answer)
+
+
 async def consult(
     question: str,
     ledger: list[dict],
@@ -453,10 +518,12 @@ async def consult(
     user_id: str,
     language: str,
     web: Callable[[str], Awaitable[Any]] | None = None,
+    answer: str = "",
 ) -> tuple[list[Finding], list[str]]:
     """Every da'if claim's verdict, asking MIZAN's own ilm first and then its
     outside sources in their learned order, until each claim is settled; and
-    which sources answered at all."""
+    which sources answered at all. A religious question or answer is asked of
+    MIZAN's own ilm only."""
     claims = [
         unit["text"]
         for unit in ledger
@@ -480,7 +547,8 @@ async def consult(
 
     deadline = time.monotonic() + BUDGET_SECONDS
     await ask(known(store, user_id))
-    for source in order(store):
+    outside = [] if religious(question, answer) else order(store)
+    for source in outside:
         remaining = sum(1 for found in verdicts.values() if found.verdict == "unknown")
         if not remaining or time.monotonic() > deadline:
             break
@@ -516,9 +584,10 @@ def machine_readable(text: str) -> bool:
     return True
 
 
-def apply(text: str, findings: list[Finding], language: str, *, asked: bool) -> str:
-    """The answer with each contradiction shown next to its claim; a note when
-    the sources answered and none supported anything it says."""
+def apply(text: str, findings: list[Finding], language: str) -> str:
+    """The answer with each contradiction shown next to its claim. That no
+    source confirmed a claim is reported beside the answer (``usage.ahl``), not
+    added to it, so an answer asked for in an exact shape keeps that shape."""
     if machine_readable(text):
         return text
     shown = text
@@ -538,8 +607,6 @@ def apply(text: str, findings: list[Finding], language: str, *, asked: bool) -> 
             shown = f"{shown[:end]} _{note}_{shown[end:]}"
         else:
             shown = f"{shown}\n\n_{note}_"
-    if asked and findings and all(finding.verdict == "unknown" for finding in findings):
-        shown = f"{shown}\n\n_{phrase('ahl_none', language)}_"
     return shown
 
 

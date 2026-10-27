@@ -398,6 +398,31 @@ class Lisan:
             max_tokens=1500,
         )
 
+    async def browse_steps(
+        self, request: str, url: str, origins: list[str], error: str = ""
+    ) -> list:
+        """The browser steps for a request about a page (MIZAN checks every one)."""
+        reply = await self.ask(
+            "Plan the steps MIZAN's browser takes to do what the user asks on a web page. Reply "
+            'with one JSON object only: {"steps":[<1 to 10 steps in order>]}. Steps: '
+            '{"do":"goto","url":"<an https URL on one of the allowed sites>"} | '
+            '{"do":"click","role":"link|button|tab|menuitem|checkbox|radio|option","name":"<the '
+            'visible text>"} | {"do":"fill","label":"<the field\'s label or placeholder>",'
+            '"value":"<text copied exactly from the user\'s message>"} | '
+            '{"do":"press","key":"Enter|Tab|Escape|ArrowDown|PageDown"} | {"do":"read"} | '
+            '{"do":"screenshot"} | {"do":"wait","ms":<up to 5000>}. Start with goto. End with '
+            "read, so MIZAN can answer from the page. Fill a field only with words the user "
+            "wrote; never invent a value. A form that sends something is held for the user "
+            "to approve, so plan it as the user asked.",
+            f"Allowed sites: {', '.join(origins)}\nStart page: {url}\nRequest: {request}"
+            + (f"\nYour last plan was refused: {error}" if error else ""),
+            max_tokens=700,
+            task="browse_steps",
+        )
+        value = _json_object(reply)
+        steps = value.get("steps")
+        return steps if isinstance(steps, list) else []
+
     async def plan_steps(self, request: str, context: str = "") -> list[dict]:
         """Translate the wording into MIZAN's actions (MIZAN validates every step).
 

@@ -1067,3 +1067,18 @@ build_and_run	Pell series ka 30th term kitna hai?
 waqt	What is the Hijri date on 15 August 2026?
 waqt	Convert 2026-12-25 to the Hijri calendar
 waqt	What is the Gregorian date of 1 Muharram 1449?
+# Using a page in MIZAN's browser sandbox (Shahid): click, fill, search on a site, screenshot
+browse	Open https://example.com and click on Pricing
+browse	Go to https://shop.example.com, search for Ajwa dates and tell me the price
+browse	Take a screenshot of https://example.org
+browse	Visit https://example.com/contact and fill my name Zubair in the form
+browse	On https://news.example.com click Next page and list the headlines
+browse	https://example.com par jao aur Contact page kholo
+browse	Is site pe jao https://shop.example.com aur dates search karo
+browse	https://example.com ka screenshot do
+browse	https://example.com pe login button dabao aur batao kya aata hai
+browse	https://example.com/products pe next page pe jao aur items batao
+browse	https://example.com खोलो और प्राइसिंग पर क्लिक करो
+browse	https://example.com کھولو اور قیمتوں پر کلک کرو
+browse	افتح https://example.com واضغط على الأسعار
+browse	Use the search box on https://example.org to find zakat calculator

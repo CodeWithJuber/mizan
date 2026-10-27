@@ -23,6 +23,11 @@ const report: AhlReport = {
 check("recognised", isAhl(report));
 check("not a report", !isAhl(null) && !isAhl({ checked: 1 }));
 check("headline", ahlHeadline(report) === "Sources asked: 1 confirmed, 1 contradicted, 1 not found");
+check(
+  "nothing settled",
+  ahlHeadline({ checked: 2, supported: [], contradicted: [], unknown: 2 }) ===
+    "Sources asked: 2 not found — the model's own words, Allahu a'lam",
+);
 check("ruling only", ahlHeadline({ checked: 0, supported: [], contradicted: [], unknown: 0, ruling: true }).includes("scholar"));
 const lines = ahlLines(report);
 check("lines", lines.length === 2 && lines[0].text.startsWith("Confirmed: Titan") && lines[0].text.includes("Wikipedia"));

@@ -22,6 +22,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने सटीक हिसाब किया।",
         "ar": "حسبه ميزان بدقة.",
     },
+    "steps": {
+        "en": "Steps",
+        "hi-latn": "Steps",
+        "ur": "مراحل",
+        "hi": "चरण",
+        "ar": "الخطوات",
+    },
     "ran_ok": {
         "en": "Ran in MIZAN's isolated sandbox (exit code 0, {ms} ms).",
         "hi-latn": "MIZAN ke isolated sandbox mein chalaya gaya (exit code 0, {ms} ms).",
@@ -654,18 +661,6 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने स्रोत से पूछा, वह कुछ और कहता है: “{says}” ([{title}]({url}))",
         "ar": "سأل ميزان مصدرًا فقال غير ذلك: “{says}” ([{title}]({url}))",
     },
-    "ahl_none": {
-        "en": "MIZAN asked its sources and found none that confirms these claims; they are "
-        "the language model's words, not established facts. Allahu a'lam.",
-        "hi-latn": "MIZAN ne apne sources se poocha, in baaton ki tasdeeq kahin nahi mili; yeh "
-        "language model ke alfaaz hain, sabit shuda baat nahi. Allahu a'lam.",
-        "ur": "میزان نے اپنے ماخذ سے پوچھا، ان باتوں کی تصدیق کہیں نہیں ملی؛ یہ زبان کے ماڈل "
-        "کے الفاظ ہیں، ثابت شدہ بات نہیں۔ واللہ اعلم۔",
-        "hi": "मीज़ान ने अपने स्रोतों से पूछा, इन बातों की पुष्टि कहीं नहीं मिली; ये भाषा मॉडल के "
-        "शब्द हैं, सिद्ध तथ्य नहीं। अल्लाहु आलम।",
-        "ar": "سأل ميزان مصادره فلم يجد ما يؤكد هذه الأقوال؛ إنها كلمات النموذج اللغوي لا حقائق "
-        "ثابتة. والله أعلم.",
-    },
     "ahl_ruling": {
         "en": "This asks for a religious ruling. MIZAN does not give fatwa; ask a qualified "
         "scholar (ahl al-ilm) who can weigh your situation.",
@@ -818,6 +813,27 @@ PHRASES: dict[str, dict[str, str]] = {
         "ur": "میزان نے {files} نہیں لکھیں: آپ کی درخواست میں ان کا نام نہیں تھا، اور پڑھی گئی ایک فائل AI کو حکم دینے کی کوشش کر رہی تھی۔",
         "hi": "मीज़ान ने {files} नहीं लिखीं: आपके अनुरोध में इनका नाम नहीं था, और पढ़ी गई एक फ़ाइल AI को आदेश देने की कोशिश कर रही थी।",
         "ar": "لم يكتب ميزان {files}: لم يذكرها طلبك، وحاول ملف قرأه أن يوجّه الذكاء الاصطناعي.",
+    },
+    "browse_held": {
+        "en": "Nothing was sent to the site: it wanted to send {requests}, and that needs your Allow.",
+        "hi-latn": "Site ko kuch nahi bheja gaya: woh {requests} bhejna chahti thi, aur uske liye aapki ijazat chahiye.",
+        "ur": "سائٹ کو کچھ نہیں بھیجا گیا: وہ {requests} بھیجنا چاہتی تھی، اور اس کے لیے آپ کی اجازت چاہیے۔",
+        "hi": "साइट को कुछ नहीं भेजा गया: वह {requests} भेजना चाहती थी, और उसके लिए आपकी इजाज़त चाहिए।",
+        "ar": "لم يُرسَل شيء إلى الموقع: أراد إرسال {requests}، وهذا يحتاج إلى إذنك.",
+    },
+    "browse_witness": {
+        "en": "MIZAN's browser took {steps} steps on {pages} page(s); each step's address and fingerprints are in your signed receipts.",
+        "hi-latn": "MIZAN ke browser ne {pages} page par {steps} kadam liye; har kadam ka pata aur fingerprint aapki signed receipts mein hai.",
+        "ur": "میزان کے براؤزر نے {pages} صفحات پر {steps} قدم اٹھائے؛ ہر قدم کا پتا اور فنگرپرنٹ آپ کی دستخط شدہ رسیدوں میں ہے۔",
+        "hi": "मीज़ान के ब्राउज़र ने {pages} पेज पर {steps} क़दम लिए; हर क़दम का पता और फ़िंगरप्रिंट आपकी साइन की हुई रसीदों में है।",
+        "ar": "اتخذ متصفح ميزان {steps} خطوات في {pages} صفحة؛ عنوان كل خطوة وبصمتها في إيصالاتك الموقّعة.",
+    },
+    "browse_sent": {
+        "en": "It sent only what you allowed.",
+        "hi-latn": "Usne sirf wahi bheja jiski aapne ijazat di.",
+        "ur": "اس نے صرف وہی بھیجا جس کی آپ نے اجازت دی۔",
+        "hi": "उसने सिर्फ़ वही भेजा जिसकी आपने इजाज़त दी।",
+        "ar": "لم يرسل إلا ما أذنتَ به.",
     },
     "page_failed": {
         "en": "MIZAN could not read that page: {reason}",

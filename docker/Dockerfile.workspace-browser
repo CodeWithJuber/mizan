@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Shahid: the browser sandbox. One-shot jobs run /browse_agent.py; the browse
+# egress proxy runs /egress_proxy.py from this image in public mode.
+ARG BASE_REGISTRY=docker.io/library
+FROM ${BASE_REGISTRY}/python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PYTHONDONTWRITEBYTECODE=1
+# Debian package signatures remain verified; no application credentials enter this image.
+RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
+    if [ -f /run/proxy-ca.pem ]; then export PIP_CERT=/run/proxy-ca.pem; fi; \
+    pip install --no-cache-dir --only-binary=:all: 'playwright==1.64.1' \
+    && python -m playwright install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
+COPY --chmod=444 backend/workspace/browse_agent.py /browse_agent.py
+COPY --chmod=444 backend/workspace/browse_selftest.py /browse_selftest.py
+COPY --chmod=444 backend/workspace/egress_proxy.py /egress_proxy.py
+USER 65534:65534
+WORKDIR /tmp
+CMD ["python3", "-I", "/browse_agent.py"]

@@ -53,6 +53,7 @@ from . import (
     qasd,
     qiyas,
     quran,
+    shahid,
     silsila,
     taallum,
     tajdid,
@@ -70,7 +71,8 @@ MAX_REPAIRS = 2
 # Tools that read or run (no outside effect), safe to call again after a passing failure.
 _RETRYABLE = frozenset(
     {"workspace_run", "workspace_read", "workspace_glob", "workspace_grep", "web_browse",
-     "web_search", "web_read", "http_get", "hf_repos", "hf_files", "hf_preview", "hf_import"}
+     "web_search", "web_read", "http_get", "hf_repos", "hf_files", "hf_preview", "hf_import",
+     "shahid_read"}
 )  # fmt: skip
 _TRANSIENT = re.compile(
     r"\b(?:busy|try again|temporar\w*|unavailable|overloaded|rate.?limit\w*|too many requests|"
@@ -116,6 +118,8 @@ class Outcome:
     # outcome is MIZAN's own established work.
     provenance: str | None = None
     isnad: list[dict] = field(default_factory=list)
+    # Pictures MIZAN made for this answer (a browser screenshot), by kept id.
+    images: list[dict] = field(default_factory=list)
 
 
 class Plan:
@@ -333,6 +337,7 @@ class Tadbir:
             "capture_eligible": False,
             "orchestrator": "mizan",
             **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
+            **({"images": outcome.images} if outcome.images else {}),
             "orchestration": {
                 "by": "mizan",
                 "mode": mode,
@@ -693,7 +698,14 @@ class Tadbir:
             raise Defer from exc
         await self._step()
         rendered = calc.render(value)
-        text = f"`{shown}` = **{rendered}**\n\n_{phrase('computed', u.language)}_"
+        text = f"`{shown}` = **{rendered}**"
+        if u.entities.get("explain"):
+            # The working comes from MIZAN's own evaluation, never from the model.
+            working = calc.steps(expression)
+            text += f"\n\n**{phrase('steps', u.language)}**\n" + "\n".join(
+                f"{number}. {line}" for number, line in enumerate(working, 1)
+            )
+        text += f"\n\n_{phrase('computed', u.language)}_"
         return Outcome(text, True, {"expression": expression, "value": rendered})
 
     async def _run(self, code: str, language: str) -> dict:
@@ -2308,6 +2320,82 @@ class Tadbir:
             outcome.text = f"_{note}_\n\n{outcome.text}"
         return outcome
 
+    async def _browse(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Shahid: use the page in MIZAN's browser sandbox, show what was done, answer from it."""
+        if not self._allowed("shahid_read"):
+            raise Defer
+        await self._begin(
+            [
+                "Plan the browser steps (Lisan); MIZAN checks each one",
+                "Use the page in MIZAN's browser sandbox (Shahid)",
+                "Ask before sending anything to the site",
+                "Write the answer from the page (Lisan)",
+                "Reply with the page, a screenshot and the receipts",
+            ]
+        )
+        origins = list(u.entities["origins"])
+        url = str(u.entities["url"])
+        steps, problem = None, ""
+        for attempt in range(MAX_REPAIRS):
+            try:
+                proposed = await self.lisan.browse_steps(
+                    amanah.clean_message(task), url, origins, problem
+                )
+            except LisanUnavailable:
+                break
+            steps, problem = shahid.plan(proposed, origins, task)
+            trace.event("verify", "browse_plan", ok=steps is not None, attempt=attempt + 1)
+            if steps is not None:
+                break
+        if steps is None:
+            # Reading the page needs no plan: MIZAN goes there and reads it.
+            steps, problem = shahid.plan([{"do": "goto", "url": url}], origins, task)
+        await self._step()
+        page = await self._tool("shahid_read", {"origins": origins, "steps": steps})
+        await self._step()
+        if page.get("error"):
+            if "not installed" in str(page["error"]):
+                # No browser sandbox on this server yet: read the page instead.
+                return await self._web_read(task, u)
+            return Outcome(phrase("page_failed", u.language, reason=page["error"]), False, {})
+        sent = False
+        held = shahid.held_summary(page)
+        if held:
+            approved = [str(item["request"]) for item in held if item.get("request")]
+            submitted = await self._tool(
+                "shahid_submit", {"origins": origins, "steps": steps, "approved": approved}
+            )
+            if submitted.get("error"):
+                listing = "; ".join(str(item["request"]) for item in held)
+                note = phrase("browse_held", u.language, requests=listing)
+                outcome = await self._page_answer(task, page, u)
+                outcome.text = f"_{note}_\n\n{outcome.text}"
+                return _with_screenshot(outcome, page)
+            page, sent = submitted, True
+        await self._step()
+        outcome = await self._page_answer(task, page, u)
+        visited = [step.get("url") for step in page.get("steps") or [] if step.get("url")]
+        note = phrase(
+            "browse_witness",
+            u.language,
+            steps=len(page.get("steps") or []),
+            pages=len(dict.fromkeys(visited)),
+        )
+        if sent:
+            note += " " + phrase("browse_sent", u.language)
+        outcome.text = f"{outcome.text}\n\n_{note}_"
+        return _with_screenshot(outcome, page)
+
+    async def _page_answer(self, task: str, page: dict, u: fahm.Understanding) -> Outcome:
+        text = str(page.get("text", ""))
+        final = str(page.get("final_url") or u.entities.get("url") or "")
+        title = next(
+            (step.get("title") for step in reversed(page.get("steps") or []) if step.get("title")),
+            final,
+        )
+        sources = [{"title": title, "url": final, "text": _passages(text, task)}]
+        return await self._answer_from(task, sources, u)
+
     async def _compute_from_page(self, task: str, page: str) -> dict | None:
         """Lisan writes ``solve(page)``; MIZAN runs it on the page and checks what it returns."""
         if not self._allowed("workspace_run") or not self.lisan.available:
@@ -2588,6 +2676,13 @@ def _earlier_program(history: list[dict] | None) -> tuple[str, str] | None:
         if programs:
             return max(programs, key=lambda found: len(found[0]))
     return None
+
+
+def _with_screenshot(outcome: Outcome, page: dict) -> Outcome:
+    """The page as MIZAN's browser saw it, kept with the chat (Shahid)."""
+    if page.get("screenshot_sha"):
+        outcome.images = [{"sha": page["screenshot_sha"], "media_type": "image/png"}]
+    return outcome
 
 
 def _unanswered_request(history: list[dict] | None) -> str | None:

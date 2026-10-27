@@ -4,6 +4,10 @@ Sessions sit on an internal Docker network whose only way out is this proxy.
 It accepts ``CONNECT host:443`` for allowlisted package/code hosts, resolves the
 name itself and refuses any address that is not globally routable, so a
 session cannot reach the host, other containers or metadata services.
+
+With ``MIZAN_EGRESS_MODE=public`` (the browser sandbox, Shahid) any host is
+accepted, still only on port 443 and only when every address it resolves to is
+globally routable; which pages the browser may visit is decided inside it.
 """
 
 from __future__ import annotations
@@ -39,7 +43,13 @@ def allowlist(raw: str | None = None) -> tuple[set[str], tuple[str, ...]]:
     return exact, suffixes
 
 
+def public_mode() -> bool:
+    return os.getenv("MIZAN_EGRESS_MODE", "").strip().lower() == "public"
+
+
 def host_allowed(host: str, rules: tuple[set[str], tuple[str, ...]]) -> bool:
+    if public_mode():
+        return True
     host = host.lower().rstrip(".")
     exact, suffixes = rules
     return host in exact or any(host.endswith(suffix) for suffix in suffixes)

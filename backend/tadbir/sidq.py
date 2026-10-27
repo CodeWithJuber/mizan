@@ -65,10 +65,14 @@ async def gate(
         else:
             report["flagged"].append({"kind": "arithmetic", "detail": item})
 
-    for finding in await muhasaba.scripture(text):
+    # Last quote first, so replacing one never moves the lines of another.
+    quotes = await muhasaba.scripture(text)
+    for finding in sorted(quotes, key=lambda found: -min(found.get("lines") or [0])):
         detail = f"{finding['reference']}: the quoted text differs from MIZAN's source"
         if strict:
-            text = _replace_quote(text, finding["source"], finding["reference"], language)
+            text = _replace_quote(
+                text, finding["source"], finding["reference"], language, finding.get("lines")
+            )
             report["corrected"].append({"kind": "quote", "detail": detail})
         else:
             report["flagged"].append({"kind": "quote", "detail": detail})
@@ -119,11 +123,18 @@ def _fix_arithmetic(text: str, finding: dict) -> str:
     return pattern.sub(lambda m: f"{expression}{m.group(1)}{finding['correct']}", text, 1)
 
 
-def _replace_quote(text: str, source: str, reference: str, language: str) -> str:
-    """The first run of quoted Arabic lines becomes MIZAN's source text."""
+def _replace_quote(
+    text: str, source: str, reference: str, language: str, only: list[int] | None = None
+) -> str:
+    """The quoted Arabic lines (those given under this reference, when known)
+    become MIZAN's source text."""
     lines = text.splitlines()
     run: list[int] = []
     for index, line in enumerate(lines):
+        if only is not None and index not in only:
+            if run:
+                break
+            continue
         arabic = len(muqabala.fold_arabic(line))
         latin = len(re.findall(r"[A-Za-z]{2,}", line))
         if arabic >= 3 and arabic >= latin:

@@ -461,7 +461,7 @@ def test_explicit_preferences_are_attributed_once_and_override_old_context(agent
     assert "Context:" not in text
 
 
-async def test_council_waits_for_active_execution_and_cannot_use_tools(agent, monkeypatch):
+async def test_council_runs_beside_an_active_execution_and_cannot_use_tools(agent, monkeypatch):
     import asyncio
 
     agent.ai_client = ScriptedProvider([])
@@ -474,6 +474,7 @@ async def test_council_waits_for_active_execution_and_cannot_use_tools(agent, mo
         if task == "first":
             entered.set()
             await release.wait()
+            assert agent.get_tool_schemas()  # the council's read-only mode is its own
         else:
             assert agent.get_tool_schemas() == []
             result = await agent._execute_tool_safe("write_file", {"path": "should-not-exist"})
@@ -483,13 +484,11 @@ async def test_council_waits_for_active_execution_and_cannot_use_tools(agent, mo
     monkeypatch.setattr(agent, "_execute_impl", execute_impl)
     first = asyncio.create_task(agent.execute("first"))
     await entered.wait()
-    council = asyncio.create_task(agent.evaluate("the plan", {}))
-    await asyncio.sleep(0)
-    assert calls == ["first"]
+    # The council does not wait for the active run: each run has its own copy.
+    result = await asyncio.wait_for(agent.evaluate("the plan", {}), 1)
+    assert calls == ["first", "Evaluate: the plan"] and not first.done()
     release.set()
     await first
-    result = await council
-    assert calls == ["first", "Evaluate: the plan"]
     assert result["response"] == "Advice"
     assert result["task_verified"] is False
     assert agent.get_tool_schemas()  # Evaluation mode cannot leak to later requests.
