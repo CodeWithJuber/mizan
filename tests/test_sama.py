@@ -57,6 +57,7 @@ def heard_by(monkeypatch):
         (b"", "audio/webm", "empty"),
         (b"x" * (sama.MAX_BYTES + 1), "audio/webm", "over 2 MB"),
     ],
+    ids=["video", "text", "empty", "too-large"],  # a 2 MB value must not become a test name
 )
 def test_only_short_recordings_are_taken(audio, mime, message):
     with pytest.raises(sama.HearingError, match=message):
