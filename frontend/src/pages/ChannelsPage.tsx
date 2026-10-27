@@ -14,6 +14,7 @@ import type {
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
+import { TelegramLink } from "../components/TelegramLink";
 
 const CHANNEL_TYPES: Record<
   string,
@@ -271,6 +272,9 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
       )}
 
       <div className="flex-1 overflow-y-auto p-5">
+        <div className="mb-4">
+          <TelegramLink api={api} />
+        </div>
         <div className="card-grid">
           {Object.entries(CHANNEL_TYPES).map(([type, info]) => {
             const channel =
