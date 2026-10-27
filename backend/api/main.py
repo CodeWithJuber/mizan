@@ -3604,6 +3604,57 @@ async def forget_programs(user: TokenPayload = Depends(require_auth)):
     return {"forgotten": True}
 
 
+@app.get("/api/tadbir/lessons")
+async def repair_lessons(user: TokenPayload = Depends(require_auth)):
+    """Lessons MIZAN kept from its own verified repairs of your code (Tajriba)."""
+    from tadbir import tajriba
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    return tajriba.summary(coordinator.adaptive, user.user_id)
+
+
+@app.delete("/api/tadbir/lessons")
+async def forget_repair_lessons(user: TokenPayload = Depends(require_auth)):
+    from tadbir import tajriba
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    tajriba.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
+@app.get("/api/tadbir/harness")
+async def harness_report(user: TokenPayload = Depends(require_auth)):
+    """Lisan's instruction versions (Tajdid) and the models chosen for code work (Wazn), admin."""
+    from tadbir import tajdid, wazn
+
+    _require_admin(user)
+    return {
+        "evolution": tajdid.enabled(),
+        "instructions": tajdid.report(),
+        "models": wazn.models(),
+        "readiness": wazn.readiness(),
+        "routing": wazn.report(),
+    }
+
+
+@app.delete("/api/tadbir/harness/{task}")
+async def reset_harness(task: str, user: TokenPayload = Depends(require_auth)):
+    """Return one kind of work to MIZAN's built-in instruction (admin)."""
+    from tadbir import tajdid
+
+    _require_admin(user)
+    if task not in tajdid.CONTRACTS:
+        raise HTTPException(404, "Unknown kind of work")
+    tajdid.reset(task)
+    return {"reset": task}
+
+
 # === DEBUG MODE (Muqabala: the base model alone vs MIZAN) ===
 
 

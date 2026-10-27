@@ -8,6 +8,9 @@ MIZAN learns from its own verified work, automatically and per user. No chat tra
 | **Ta'allum** (`tadbir/taallum.py`) | Your wording for its actions | Lisan's mappings that MIZAN then verified | Understanding the same wording later with no model call |
 | **Hifz** (`tadbir/hifz.py`) | Programs it verified for you | Write-and-run results that ran cleanly | Re-running the same request (same words, same numbers) with no model call |
 | **Muhasaba** (`tadbir/muhasaba.py`) | Where the model's own words were wrong | A daily re-check of the answers MIZAN did not verify | Posting a correction in that chat |
+| **Tajriba** (`tadbir/tajriba.py`) | Which change fixed which kind of error | Sandbox failures that a repair then verified | Showing Lisan the most relevant verified lessons when it writes or repairs similar code |
+| **Tajdid** (`tadbir/tajdid.py`) | Better wording of Lisan's code instructions | Every verified or failed result of code work | Replacing an instruction only when the new version proves better |
+| **Wazn** (`tadbir/wazn.py`) | Which model is ready for which kind of work | The same verified outcomes, per model | Sending code work to the cheapest ready model, and a stronger one after a failure |
 
 ## Hifz: programs kept and re-checked
 
@@ -38,6 +41,62 @@ When it can prove a mistake, it posts a correction in that chat. The correction 
 - **User opt-out:** a user stops the corrections with the chat preference `muhasaba: off`.
 - **Run it now (admin):** `POST /api/tadbir/muhasaba?hours=24`.
 
+## Tajriba: lessons from verified repairs
+
+Terminal-RSI (arXiv:2610.22192) improves a model by rewriting failed attempts into verified ones and learning from them. HERD (arXiv:2610.31401) keeps the cases a skill misses in a bounded memory. MIZAN does both without changing any weights.
+
+When a program fails in the sandbox and a repair then verifies, MIZAN keeps a lesson for that user:
+
+- **the error signature:** the exception and its message, with names, paths and numbers replaced by `<name>` and `<n>`
+- **the change that fixed it:** the lines the verified repair changed, at most 30
+
+The next time Lisan writes code, MIZAN finds the most relevant lessons (BM25 over the signature and the request) and shows up to three. A repair is shown the lessons that match its error signature.
+
+Each lesson keeps a Beta posterior of how often the work it was shown for then verified:
+
+- Lessons whose usefulness falls below one half are dropped.
+- At most 60 are kept, the most recently used first.
+
+You can see and forget your lessons in **Majlis → Learning** (`GET/DELETE /api/tadbir/lessons`).
+
+## Tajdid: instructions renewed, kept only when proven better
+
+Lisan's instruction for each kind of code work is MIZAN's harness for the model: writing code, repairing it, and proposing or revising a grid or sequence rule. Following HERD and sequential incumbent replacement, the harness evolves under MIZAN's checks:
+
+1. **Credit.** The current instruction (the incumbent) keeps a Beta posterior of how often its work verified. MIZAN's own checks are the critic:
+   - the sandbox exit code
+   - every grid example reproduced
+   - every sequence term checked
+2. **Challenge.** After five failures, MIZAN asks Lisan to rewrite the instruction from the recorded error signatures. The rewrite becomes a challenger only if it:
+   - keeps the output contract, such as "fenced code block" or `transform(grid)`
+   - keeps the same `{placeholders}`
+   - stays within twice the original length
+3. **Trial.** The incumbent and the challenger share the work by Thompson sampling.
+4. **Decision.** After at least 12 trials:
+   - **P(challenger better) ≥ 0.95:** the challenger becomes the incumbent.
+   - **P(challenger better) ≤ 0.05:** the challenger is retired.
+
+**What never changes:** Lisan's base prompt, MIZAN's verification and every safety gate. Only the wording of the task instruction evolves.
+
+**Scope:** the state is shared by all users and stored in `$MIZAN_DATA_DIR/harness.db`. It holds instruction text and error signatures, never user text.
+
+**Admins:**
+- See every version, its success rate, the challenger's P(better) and the promotion history in **Majlis → Learning**.
+- Reset a kind of work to the built-in instruction there (`GET /api/tadbir/harness`, `DELETE /api/tadbir/harness/{task}`).
+- Switch renewal off with `MIZAN_HARNESS_EVOLUTION=off`.
+
+## Wazn: the cheapest ready model
+
+An admin may list candidate models for Lisan's code work, cheapest first, in `MIZAN_LISAN_MODELS`. MIZAN keeps a Beta posterior per kind of work and model, fed by the same verified outcomes.
+
+- **First call:** goes to the cheapest model whose sampled success reaches the readiness level (`MIZAN_LISAN_READINESS`, default 0.7).
+- **Each failed attempt at the same work:** moves one step to a stronger model instead of asking the same one again.
+- **No list:** Lisan uses the agent's model.
+
+## Safety omission (Furqan)
+
+A tool's result can carry a warning or an error, such as skipped files, a deprecation, a truncated result or a rate limit, even when the call succeeded. Furqan checks Lisan's wording of a tool result: if the wording drops such a warning, MIZAN uses its own wording, which shows the result in full.
+
 ## Every user has their own Majlis
 
 Each signed-in user gets a private instance of every agent: private memory, and learning that stays private. Those instances share one registry, so Majlis gives each part of a user's request to that user's specialist agents, not only the coordinator. **Majlis → Learning** shows each user what their own agents learned.
@@ -54,4 +113,11 @@ Once an approved bundle is in place, the autorun watcher trains, evaluates, and 
 
 **Hardware:** the 2 GB production backend cannot train. Train on a larger host.
 
-Nothing in Majlis, Ta'allum, Hifz or Muhasaba becomes training data. What they learn is MIZAN's own understanding.
+Nothing in Majlis, Ta'allum, Hifz, Muhasaba, Tajriba, Tajdid or Wazn becomes training data. What they learn is MIZAN's own understanding.
+
+Two research directions are deliberately not used for the own model:
+
+- **Distilling the model's own outputs into its weights** (teacher-free self-distillation).
+- **Training on machine-generated tasks** (Athanor-style curricula).
+
+Both would put machine-authored targets into training, which the CI-enforced data policy above forbids.

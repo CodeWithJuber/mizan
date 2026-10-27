@@ -312,9 +312,9 @@ def read(stdout: str) -> dict | None:
 
 
 def proven(report: dict | None, seq: list[int]) -> bool:
-    return (
-        bool(report) and report.get("checked") == len(seq) and isinstance(report.get("next"), int)
-    )
+    if not report:
+        return False
+    return report.get("checked") == len(seq) and isinstance(report.get("next"), int)
 
 
 def feedback(report: dict | None, stderr: str = "") -> str:

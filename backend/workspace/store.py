@@ -16,7 +16,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from fastapi import HTTPException
 
@@ -147,7 +147,9 @@ class WorkspaceStore:
             path.mkdir(mode=0o700)
             (path / "files").mkdir(mode=0o700)
             (path / "checkpoints").mkdir(mode=0o700)
-            result = {"id": workspace_id, "name": name, "created_at": now(), "updated_at": now()}
+            result: dict[str, Any] = {
+                "id": workspace_id, "name": name, "created_at": now(), "updated_at": now(),
+            }  # fmt: skip
             if reserved:
                 result["reserved"] = True
             self._atomic_json(path / "metadata.json", result)

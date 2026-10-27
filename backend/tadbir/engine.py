@@ -47,13 +47,17 @@ from . import (
     quran,
     silsila,
     taallum,
+    tajdid,
+    tajriba,
     trace,
     waqt,
+    wazn,
 )
-from .express import fence, furqan, phrase
-from .lisan import Lisan, LisanUnavailable
+from .express import cautions, fence, furqan, phrase
+from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable
 
 MODES = ("mizan", "hybrid", "strict", "llm")
+_RENEWALS: set[asyncio.Task] = set()  # instruction renewals running in the background
 MAX_REPAIRS = 2
 
 
@@ -281,6 +285,22 @@ class Tadbir:
         outcome.isnad = self._isnad(outcome, intent)
         return outcome
 
+    def _lisan_outcome(self, task: str, worked: bool, feedback: str = "") -> None:
+        """Credit the instruction version (Tajdid) and model (Wazn) with MIZAN's verdict."""
+        info = self.lisan.last.pop(task, None)
+        if info is None:
+            return
+        tajdid.record(task, info.get("variant", "base"), worked, feedback)
+        wazn.record(task, info.get("model"), worked)
+        trace.event(
+            "learn", "tajdid", task=task, variant=info.get("variant"), model=info.get("model"),
+            worked=worked,
+        )  # fmt: skip
+        if tajdid.wants_challenger(task) and task in INSTRUCTIONS:
+            renewal = asyncio.create_task(tajdid.evolve(task, INSTRUCTIONS[task], self.lisan))
+            _RENEWALS.add(renewal)
+            renewal.add_done_callback(_RENEWALS.discard)
+
     def _isnad(self, outcome: Outcome, intent: str) -> list[dict]:
         """Every claim of this outcome, graded by what supports it."""
         established = outcome.verified and outcome.provenance != "evidence"
@@ -493,7 +513,8 @@ class Tadbir:
             text = await self.lisan.express(request, facts, language)
         except LisanUnavailable:
             return fallback, False
-        if furqan(text, json.dumps(facts, ensure_ascii=False)):
+        warnings = cautions(facts.get("result"))
+        if furqan(text, json.dumps(facts, ensure_ascii=False), warnings=warnings):
             return fallback, False
         return text, True
 
@@ -633,27 +654,47 @@ class Tadbir:
             ]
         )
         await self._step()
+        request = str(u.entities.get("request") or task)
+        # Tajriba: verified lessons from earlier repairs of similar work.
+        lessons = tajriba.relevant(store, owner, "build_and_run", request)
         try:
-            code = await self.lisan.write_code(str(u.entities.get("request") or task), language)
+            code = await self.lisan.write_code(request, language, tajriba.render(lessons))
         except LisanUnavailable as exc:
             raise Defer from exc
         await self._step()
         tries = 1
         run = await self._run(code, language)
         await self._step()
+        first = _ran_clean(run)
+        if _code_ran(run):
+            self._lisan_outcome("write_code", first, _signature(run))
+            tajriba.credit(store, owner, lessons, first)
+        failing: tuple[str, str] | None = None
         while (run.get("exit_code") != 0 or run.get("error")) and tries <= MAX_REPAIRS:
             if run.get("declined") or "not permitted" in str(run.get("error", "")):
                 break
             if run.get("error") and not run.get("stderr"):
                 break  # the sandbox itself failed; rewriting the code cannot help
             error = str(run.get("stderr") or run.get("error") or run.get("stdout", ""))
+            failing = failing or (code, error)
+            known = tajriba.relevant(store, owner, "build_and_run", tajriba.signature(error))
             try:
-                code = await self.lisan.fix_code(task, language, code, error)
+                code = await self.lisan.fix_code(
+                    task, language, code, error, tajriba.render(known), attempt=tries
+                )
             except LisanUnavailable:
                 break
             tries += 1
             run = await self._run(code, language)
+            if _code_ran(run):
+                self._lisan_outcome("fix_code", _ran_clean(run), _signature(run))
+                tajriba.credit(store, owner, known, _ran_clean(run))
         verified = run.get("exit_code") == 0 and not run.get("error")
+        if verified and failing is not None:
+            # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
+            lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
+            if lesson:
+                trace.event("learn", "tajriba", signature=lesson["signature"])
         parts = [
             f"**{phrase('code', u.language)}**\n{fence(code, language)}",
             self._run_text(run, u.language),
@@ -726,13 +767,19 @@ class Tadbir:
             report = qiyas.read(str(run.get("stdout", "")))
             fitted = qiyas.passed(report, puzzle)
             trace.event("verify", "qiyas", examples=total, reproduced=fitted, attempt=attempts)
+            if _code_ran(run):
+                self._lisan_outcome(
+                    "propose_rule" if attempts == 1 else "revise_rule",
+                    fitted == total,
+                    _signature(run) or f"reproduced {max(0, fitted)} of {total} examples",
+                )
             if fitted > best[0]:
                 best = (fitted, program, report)
             if fitted == total or run.get("declined") or attempts > MAX_REPAIRS:
                 break
             wrong = qiyas.failures(report, puzzle, str(run.get("stderr") or run.get("error", "")))
             try:
-                program = await self.lisan.revise_rule(examples, program, wrong)
+                program = await self.lisan.revise_rule(examples, program, wrong, attempt=attempts)
             except LisanUnavailable:
                 break
         await self._step()
@@ -794,6 +841,12 @@ class Tadbir:
                 run = await self._run(silsila.harness(program, seq), "python")
                 report = silsila.read(str(run.get("stdout", "")))
                 trace.event("verify", "silsila.lisan", attempt=tries, report=report)
+                if _code_ran(run):
+                    self._lisan_outcome(
+                        "propose_sequence_rule" if tries == 1 else "revise_sequence_rule",
+                        silsila.proven(report, seq),
+                        _signature(run) or silsila.feedback(report).split("\n")[0],
+                    )
                 if silsila.proven(report, seq):
                     tested = (program, report or {})
                     break
@@ -803,7 +856,10 @@ class Tadbir:
                     break
                 try:
                     program = await self.lisan.revise_sequence_rule(
-                        seq, program, silsila.feedback(report, str(run.get("stderr", "")))
+                        seq,
+                        program,
+                        silsila.feedback(report, str(run.get("stderr", ""))),
+                        attempt=tries,
                     )
                 except LisanUnavailable:
                     break
@@ -1611,6 +1667,21 @@ def _matches(stdout: str, value: calc.Number) -> bool:
         return math.isclose(float(printed), float(value), rel_tol=1e-9, abs_tol=1e-12)
     except (ValueError, OverflowError):
         return False
+
+
+def _code_ran(run: dict) -> bool:
+    """The program itself ran (a verdict on the code), not a sandbox or permission failure."""
+    return not run.get("declined") and not (run.get("error") and not run.get("stderr"))
+
+
+def _ran_clean(run: dict) -> bool:
+    return run.get("exit_code") == 0 and not run.get("error")
+
+
+def _signature(run: dict) -> str:
+    if _ran_clean(run):
+        return ""
+    return tajriba.signature(str(run.get("stderr") or run.get("error") or ""))
 
 
 def _run_facts(run: dict) -> dict:

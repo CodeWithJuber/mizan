@@ -8,7 +8,9 @@ of actions that MIZAN's facts do not contain; the template is used instead.
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
 from . import trace
 
@@ -660,7 +662,66 @@ _ACTION_CLAIM = re.compile(
 )
 
 
-def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
+_CAUTION_KEY = re.compile(r"warn|error|stderr|caution|deprecat|alert", re.IGNORECASE)
+_CAUTION_LINE = re.compile(
+    r"\b(?:warning|deprecated|deprecation|caution|insecure|unsafe|expired|truncated|"
+    r"partial(?:ly)?|skipped|rate[ -]?limit(?:ed)?|quota)\b",
+    re.IGNORECASE,
+)
+_ACKNOWLEDGED = re.compile(
+    r"warn|error|caution|careful|deprecat|fail|insecure|unsafe|expire|truncat|partial|skipp|"
+    r"limit|quota|chetavani|dhyan|ehtiyat|khabardar|ghalti|galti|"
+    r"\u062a\u062d\u0630\u064a\u0631|\u062a\u0646\u0628\u064a\u0647|\u062e\u0637\u0623|"
+    r"\u0627\u062d\u062a\u06cc\u0627\u0637|\u062e\u0628\u0631\u062f\u0627\u0631|"
+    r"\u063a\u0644\u0637\u06cc|\u091a\u0947\u0924\u093e\u0935\u0928\u0940|"
+    r"\u0924\u094d\u0930\u0941\u091f\u093f|\u0938\u093e\u0935\u0927\u093e\u0928",
+    re.IGNORECASE,
+)
+
+
+def cautions(result: Any, limit: int = 4) -> list[str]:
+    """Warnings and errors a tool's result carries, which any wording of it must keep."""
+    found: list[str] = []
+
+    def walk(value: Any, depth: int = 0) -> None:
+        if depth > 6 or len(found) >= limit:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if _CAUTION_KEY.search(str(key)) and item not in (None, "", [], {}, False, 0):
+                    found.append(f"{key}: {item}"[:200])
+                else:
+                    walk(item, depth + 1)
+        elif isinstance(value, list):
+            for item in value[:50]:
+                walk(item, depth + 1)
+        elif isinstance(value, str):
+            stripped = value.strip()
+            if stripped[:1] in "{[":
+                try:
+                    walk(json.loads(stripped), depth + 1)
+                    return
+                except ValueError:
+                    pass
+            found.extend(
+                line.strip()[:200] for line in value.splitlines() if _CAUTION_LINE.search(line)
+            )
+
+    walk(result)
+    return list(dict.fromkeys(found))[:limit]
+
+
+def acknowledges(text: str, caution: str) -> bool:
+    """The wording mentions the caution: its kind, or its own distinctive words."""
+    if _ACKNOWLEDGED.search(text):
+        return True
+    words = {word.lower() for word in re.findall(r"[^\W\d_]{5,}", caution)}
+    return bool(words) and sum(word in text.lower() for word in words) * 3 >= len(words)
+
+
+def furqan(
+    text: str, facts_text: str, *, max_citation: int = 0, warnings: list[str] | None = None
+) -> list[str]:
     """Reasons the text is unsupported (empty when it may be delivered)."""
     problems = []
     support = facts_text.replace(",", "")
@@ -677,5 +738,10 @@ def furqan(text: str, facts_text: str, *, max_citation: int = 0) -> list[str]:
         problems.append("Lisan claimed an action")
     if not text.strip():
         problems.append("empty text")
+    # Safety omission: a warning or error in the tool's result may not be dropped.
+    for caution in warnings or []:
+        if not acknowledges(text, caution):
+            problems.append(f"the wording leaves out a warning: {caution[:80]}")
+            break
     trace.event("verify", "furqan", accepted=not problems, problems=problems)
     return problems

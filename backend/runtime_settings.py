@@ -78,6 +78,18 @@ SETTINGS: tuple[Setting, ...] = (
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "
             "that chat. Users can stop it with the chat preference muhasaba: off.",
             "on", ("on", "off")),
+    Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
+            "After repeated failures MIZAN asks the model to rewrite one of its code "
+            "instructions, tries the new version on part of the work, and keeps it only when "
+            "MIZAN's own checks show it is better.",
+            "on", ("on", "off")),
+    Setting("MIZAN_LISAN_MODELS", "Model", "Models for code work (Wazn)", "text",
+            "Optional comma-separated model IDs, cheapest first. MIZAN sends code work to the "
+            "cheapest model whose verified success is high enough and moves one step up after "
+            "each failed attempt. Empty uses the agent's model.", ""),
+    Setting("MIZAN_LISAN_READINESS", "Model", "Readiness for a cheaper model", "float",
+            "How often (0.05-0.99) a cheaper model's work must verify before MIZAN gives it "
+            "the work first.", "0.7", (), 0.05, 0.99),
     # ── Model ──
     Setting("LLM_PROVIDER", "Model", "Provider", "choice",
             "auto picks Anthropic, then OpenRouter, then OpenAI from the configured keys.",
