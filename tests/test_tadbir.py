@@ -281,6 +281,30 @@ async def test_the_working_is_shown_when_asked_and_comes_from_mizan(agent):
     assert "17 × 20" not in plain["result"]
 
 
+async def test_a_root_question_is_answered_from_the_corpus_not_the_model(agent, monkeypatch):
+    # The live benchmark (27 Oct): the chat's roots came from the model while the
+    # API gave wrong ones. Both now read the same corpus (Sarf).
+    from tadbir import fahm, sarf
+
+    corpus = sarf.build(
+        "1:1:1:1\tكَاتِبٌ\tN\tACT_PCPL|VF:1|ROOT:كتب|LEM:كاتِب|M|NOM\n"
+        "1:1:2:1\tكَتَبَ\tV\tPERF|VF:1|ROOT:كتب|LEM:كَتَبَ|3MS\n",
+        ["a scribe", "(he) wrote"],
+    )
+
+    async def ready():
+        return corpus
+
+    monkeypatch.setattr(sarf, "corpus", ready)
+    understood = fahm.understand("كاتب ka root kya hai?")
+    assert understood.intent == "sarf" and understood.entities["words"] == ["كاتب"]
+    assert fahm.understand("ما جذر كلمة كاتب؟").entities["words"] == ["كاتب"]
+    assert fahm.understand("قل هو الله أحد").intent != "sarf"
+    result = await agent.execute("كاتب ka root kya hai?")
+    assert "ك-ت-ب" in result["result"] and "فَاعِل" in result["result"]
+    assert result["task_verified"] and agent.ai_client.requests == []
+
+
 def test_steps_follow_the_order_of_evaluation_exactly():
     from tadbir import calc
 
