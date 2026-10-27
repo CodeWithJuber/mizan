@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { BACK_EVENT, RESTARTING_EVENT, STILL_DOWN_EVENT } from "../utils/restarting";
+
 interface ConnectionBannerProps {
   status: string;
   attempts: number;
@@ -13,8 +16,38 @@ export function ConnectionBanner({
   backendUp,
   onLogin,
 }: ConnectionBannerProps) {
-  if (status === "connected") return null;
-  if (status === "connecting" || (status === "reconnecting" && attempts < 5))
+  // A request met the proxy's page instead of MIZAN: it is restarting (a
+  // deploy) until its health check answers again.
+  const [restart, setRestart] = useState<"restarting" | "still-down" | null>(null);
+  useEffect(() => {
+    const restarting = () => setRestart("restarting");
+    const back = () => setRestart(null);
+    const stillDown = () => setRestart("still-down");
+    window.addEventListener(RESTARTING_EVENT, restarting);
+    window.addEventListener(BACK_EVENT, back);
+    window.addEventListener(STILL_DOWN_EVENT, stillDown);
+    return () => {
+      window.removeEventListener(RESTARTING_EVENT, restarting);
+      window.removeEventListener(BACK_EVENT, back);
+      window.removeEventListener(STILL_DOWN_EVENT, stillDown);
+    };
+  }, []);
+
+  if (restart === "restarting") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="bg-sky-50 dark:bg-sky-500/5 border-b border-sky-200 dark:border-sky-500/20 px-4 py-2.5 text-sm text-sky-800 dark:text-sky-300"
+      >
+        MIZAN is restarting after an update and reconnects by itself, usually within a minute.
+      </div>
+    );
+  }
+  // Probing found MIZAN still down after the restart allowance.
+  const down = backendUp === false || restart === "still-down";
+  if (status === "connected" && !down) return null;
+  if (!down && (status === "connecting" || (status === "reconnecting" && attempts < 5)))
     return null;
 
   // Login required: the WS handshake was rejected with 4401 (fail-closed
@@ -58,7 +91,7 @@ export function ConnectionBanner({
   // Real backend outage (the public /api/health probe failed). Only this
   // state may claim "cannot connect to backend" — lā taqfu: never assert
   // an outage we have not verified.
-  if (backendUp === false) {
+  if (down) {
     return (
       <div
         role="alert"

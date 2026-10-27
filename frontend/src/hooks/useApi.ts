@@ -7,6 +7,7 @@ import { useCallback, useMemo } from "react";
 import type { ApiClient } from "../types";
 import { config } from "../config";
 import { authFetch } from "../utils/authFetch";
+import { RESTART_MESSAGE, isRestarting } from "../utils/restarting";
 
 export class ApiError extends Error {
   status: number;
@@ -27,7 +28,7 @@ async function handleResponse(res: Response): Promise<Record<string, unknown>> {
     const msg =
       (typeof data.detail === "string" && data.detail) ||
       (typeof data.error === "string" && data.error) ||
-      `Request failed (${res.status})`;
+      (isRestarting(res) ? RESTART_MESSAGE : `Request failed (${res.status})`);
     throw new ApiError(res.status, msg);
   }
   return data;

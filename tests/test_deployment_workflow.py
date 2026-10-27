@@ -166,7 +166,15 @@ def test_public_auth_failure_restores_images_and_refreshes_proxy(tmp_path):
         for args in state["commands"]
         if args[:3] == ["exec", "mizan-nginx", "nginx"] and "reload" in args
     ]
-    assert len(reloads) == 2
+    # After the new containers start, after the health checks, after the rollback.
+    assert len(reloads) == 3
+    # The proxy points at the new containers before the health checks run, so
+    # the restart window ends when they start rather than when the checks end.
+    first_reload = state["commands"].index(reloads[0])
+    first_probe = next(
+        i for i, args in enumerate(state["commands"]) if args[:2] == ["exec", "mizan-backend"]
+    )
+    assert first_reload < first_probe
 
 
 @pytest.mark.parametrize("old,new,timeout", [(30, 120, 135), (180, 10, 195), (10, 180, 195)])

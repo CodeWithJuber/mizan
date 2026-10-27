@@ -1,5 +1,6 @@
 /** Authenticated chat uses fetch streams; a POST is never retried automatically. */
 import { failureEnvelope } from "./chatFailure.ts";
+import { isRestarting } from "./restarting.ts";
 export type ChatStreamEvent = Record<string, unknown> & { type: string };
 const MAX_FRAME_CHARS = 8 * 1024 * 1024;
 
@@ -74,6 +75,17 @@ export async function consumeChatStream(
         ...failure, type: "error",
         http_status: response.status,
         session_id: options.sessionId, request_id: options.requestId,
+      });
+      return;
+    }
+    if (isRestarting(response)) {
+      // The proxy answered for MIZAN, so the message may or may not have
+      // reached it; the chat history shows which once MIZAN is back.
+      options.onEvent({
+        type: "error", code: "server_restarting",
+        message: "MIZAN was restarting after an update when this was sent. Check this chat in a minute; " +
+          "if no answer has appeared, send it again.",
+        http_status: response.status, session_id: options.sessionId, request_id: options.requestId,
       });
       return;
     }

@@ -111,6 +111,10 @@ if ! "${compose[@]}" -f "$state_dir/current.yml" up -d --timeout "$stop_timeout"
   rollback
   exit 1
 fi
+# Nginx resolves its upstream names only when it loads, so until a reload it
+# keeps sending to the old containers' addresses (502). Reload now, while the
+# health checks run, so the restart window ends when the new containers start.
+refresh_proxy || true
 healthy=false
 health_deadline=$((SECONDS + 90))
 health_probe() {

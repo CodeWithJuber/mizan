@@ -767,11 +767,11 @@ PHRASES: dict[str, dict[str, str]] = {
         "ar": "سأتذكر ذلك. حُفظ في ملاحظاتك كما قلته؛ يمكنك رؤيته أو نسيانه في دفترك.",
     },
     "capabilities": {
-        "en": "Yes. MIZAN works through its own tools, and they are real:",
-        "hi-latn": "Haan. MIZAN apne asli tools se kaam karta hai:",
-        "ur": "جی ہاں۔ میزان اپنے حقیقی ٹولز سے کام کرتا ہے:",
-        "hi": "हाँ। मीज़ान अपने असली टूल्स से काम करता है:",
-        "ar": "نعم. يعمل ميزان بأدواته الحقيقية:",
+        "en": "MIZAN works through its own tools, and they are real:",
+        "hi-latn": "MIZAN apne asli tools se kaam karta hai:",
+        "ur": "میزان اپنے حقیقی ٹولز سے کام کرتا ہے:",
+        "hi": "मीज़ान अपने असली टूल्स से काम करता है:",
+        "ar": "يعمل ميزان بأدواته الحقيقية:",
     },
     "capabilities_tail": {
         "en": "Ask in any language; MIZAN plans and checks the work, and the language model only helps with wording and writing code.",

@@ -466,6 +466,13 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
     for family, mass, members in _families(ranked):
         if family == "converse" or unbuilt > mass:
             break
+        if family in FIXED_ANSWERS and mass <= 0.5:
+            # A fixed answer reads nothing in the message, so it answers the
+            # question only when that kind of question is more probable than
+            # every other reading together ("Tum pagal ho?" is not a question
+            # about tools even when it is the likeliest single reading).
+            unbuilt += mass
+            continue
         for intent, _probability in members:
             build = _BUILDERS.get(intent)
             built: Understanding | None = build(intent, message, language) if build else None
@@ -486,6 +493,8 @@ FAMILIES = {
     "make": ("build_project", "edit_project", "project_task"),
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
+# Recipes whose answer is the same whatever the message says.
+FIXED_ANSWERS = frozenset({"capabilities"})
 
 
 def _families(ranked: list[tuple[str, float]]) -> list[tuple[str, float, list[tuple[str, float]]]]:
