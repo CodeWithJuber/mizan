@@ -641,3 +641,204 @@ sarf	no	ما عاصمة اليابان؟
 sarf	no	كم تبعد مكة عن المدينة؟
 sarf	no	كيف حالك اليوم؟
 sarf	no	في أي درجة حرارة يتجمد الماء؟
+# form: the request asks its answer to take a form MIZAN can count or match (a number of sentences, words, bullets or paragraphs; JSON; a case; a script; a required first or last phrase; a word or character to use or avoid).
+form	yes	Describe Ramadan in exactly two sentences.
+form	yes	Write three sentences about honesty without using any commas.
+form	yes	Give me 5 bullet points on healthy eating.
+form	yes	Reply in under 30 words: what is gravity?
+form	yes	Answer in no more than 20 words, please.
+form	yes	List four fruits as a numbered list.
+form	yes	Return the result as JSON with the keys "name" and "age".
+form	yes	Give me a JSON object with the fields title and year for the book Sapiens.
+form	yes	Write your whole answer in lowercase.
+form	yes	Reply in capital letters only.
+form	yes	End your reply with the words "JazakAllah khair".
+form	yes	Start your answer with the word Bismillah.
+form	yes	Write two paragraphs about winter with a blank line between them.
+form	yes	Explain the water cycle in exactly 4 sentences.
+form	yes	Summarise this in one sentence.
+form	yes	Do not use the word "very" anywhere in your answer.
+form	yes	Write a short note about Jumuah that includes the word mosque.
+form	yes	Use at least 100 words to describe your city.
+form	yes	Give three tips, one per line, and nothing else.
+form	yes	Answer only in Urdu script, not Roman Urdu.
+form	yes	Write it in Devanagari script only.
+form	yes	Make it a bulleted list of exactly six items.
+form	yes	Keep it under 50 words and avoid the word "basically".
+form	yes	Format the answer as three numbered steps.
+form	yes	Teen jumlon mein batao sabr kya hai.
+form	yes	5 points mein list bana do, bullet ke saath.
+form	yes	20 shabdon se kam mein samjhao.
+form	yes	Jawab JSON format mein do, keys name aur city.
+form	yes	Sirf lowercase mein likho, capital letters nahi.
+form	yes	Do paragraph mein likho, beech mein khali line.
+form	yes	Ek hi jumle mein jawab do.
+form	yes	تین جملوں میں بتائیں کہ صبر کیا ہے۔
+form	yes	پانچ نکات کی فہرست بنائیں۔
+form	yes	بیس الفاظ سے کم میں جواب دیں۔
+form	yes	جواب صرف اردو رسم الخط میں لکھیں۔
+form	yes	तीन वाक्यों में बताइए कि धैर्य क्या है।
+form	yes	पाँच बिंदुओं की सूची बनाइए।
+form	yes	बीस शब्दों से कम में उत्तर दीजिए।
+form	yes	اكتب ثلاث جمل عن الصبر.
+form	yes	أجب في أقل من عشرين كلمة.
+form	yes	اكتب قائمة من خمس نقاط.
+form	yes	أعطني النتيجة بصيغة JSON بالمفتاحين name و age.
+# form: ordinary requests, and questions about counting or formats, ask for no form of the answer.
+form	no	What is patience in Islam?
+form	no	Explain the water cycle.
+form	no	Tell me about healthy eating.
+form	no	What is 25 times 4?
+form	no	Write a Python function that sorts a list.
+form	no	Hello, how are you?
+form	no	Thanks a lot!
+form	no	Who was the first caliph?
+form	no	How many ayahs are in Surah al-Mulk?
+form	no	Write a poem about the moon.
+form	no	Make it a bit shorter.
+form	no	Explain it like I'm five.
+form	no	Translate "good morning" into Arabic.
+form	no	What is JSON?
+form	no	What is a bullet point?
+form	no	How many words are in the Quran?
+form	no	Count the sentences in this paragraph for me.
+form	no	Write an email to my teacher asking for leave.
+form	no	Build me a web page for a bakery.
+form	no	Read https://example.com and tell me what it says.
+form	no	Remember that my son's name is Yusuf.
+form	no	Explain recursion in Hinglish.
+form	no	What does tawakkul mean?
+form	no	Fix the bug in my code.
+form	no	Is this hadith authentic?
+form	no	Summarise today's news.
+form	no	Sabr kya hai?
+form	no	Mujhe Ramadan ke baare mein batao.
+form	no	2 ki power 10 kitna hai?
+form	no	Kal ka mausam kaisa hoga?
+form	no	Quran ki pehli 5 ayat dikhao.
+form	no	Mera code theek kar do.
+form	no	صبر کیا ہے؟
+form	no	رمضان کے بارے میں بتائیں
+form	no	دو اور دو کتنے ہوتے ہیں؟
+form	no	धैर्य क्या है?
+form	no	रमज़ान के बारे में बताइए
+form	no	ما هو الصبر؟
+form	no	حدثني عن رمضان
+form	no	كم عدد سور القرآن؟
+form	no	READY
+form	no	ok
+form	yes	Answer with just one word.
+form	yes	Reply with only the number, nothing else.
+form	yes	Answer with the letter only.
+form	yes	Give a one-line summary of this.
+form	yes	Summarise the article below in two sentences.
+form	yes	Reply with yes or no only.
+form	yes	Write exactly 5 lines.
+form	yes	List the steps as a numbered list.
+form	yes	Use no more than 3 bullet points.
+form	yes	Write a three-line poem about rain, three lines exactly.
+form	yes	Give me the list as JSON.
+form	yes	Ek lafz mein jawab do.
+form	yes	Sirf number batao, aur kuch nahi.
+form	yes	Haan ya na mein jawab do.
+form	yes	صرف ایک لفظ میں جواب دیں۔
+form	yes	صرف نمبر بتائیں۔
+form	yes	केवल एक शब्द में उत्तर दें।
+form	yes	सिर्फ़ संख्या बताइए।
+form	yes	أجب بكلمة واحدة فقط.
+form	yes	اكتب الجواب في سطر واحد.
+form	no	Ali has 3 brothers and each brother has 2 sisters. How many sisters does Ali have?
+form	no	If a train leaves at 9 and arrives at 1, how long is the trip?
+form	no	Read this story and tell me who the hero is: Once a boy named Adam found a lost lamb and carried it home through the storm.
+form	no	Here is my CSV: name,score / Ali,9 / Sara,7. Who scored higher?
+form	no	What is the capital of Kenya?
+form	no	Who compiled Sahih al-Bukhari?
+form	no	Why is the sky blue?
+form	no	Which is heavier, a kilo of iron or a kilo of cotton?
+form	no	Tell me the story of Prophet Yusuf.
+form	no	How do I make chai?
+form	no	What happened at the Battle of Badr?
+form	no	Is it halal to eat crab?
+form	no	Can you explain quantum entanglement simply?
+form	no	What did I say earlier about my trip?
+form	no	I told you where I parked the car before. Where was it?
+form	no	Which of these numbers is prime: 21, 23, 25?
+form	no	Sara put her book on the shelf and left. Her brother moved it to the table. Where will Sara look for it?
+form	no	What happens if I mix baking soda and vinegar?
+form	no	How many legs does a spider have?
+form	no	Solve for x: 2x + 3 = 11
+form	no	Find the next number: 1, 4, 9, 16, ?
+form	no	What's the difference between hadith and sunnah?
+form	no	Explain the rules of chess.
+form	no	Log: 10:01 server started, 10:05 user login, 10:09 error 500. When did the error happen?
+form	no	Items: apple, banana, apple, cherry. Which fruit appears twice?
+form	no	At what temperature does iron melt?
+form	no	Who was the first person to climb Everest?
+form	no	Omar thanked his friend for the gift and smiled. How did Omar feel?
+form	no	The meeting moved from Monday to Wednesday. When is it now?
+form	no	What is the remainder when 100 is divided by 7?
+form	no	Paani kitne degree par ubalta hai?
+form	no	Pakistan ki capital kya hai?
+form	no	Aaj kaunsa din hai?
+form	no	Mere bete ka naam kya hai?
+form	no	Yeh code kyun fail ho raha hai?
+form	no	Agar main 5 ghante kaam karun aur 3 ghante aaram, toh kul kitne ghante hue?
+form	no	Ek kahani sunao jisme ek imaandar lakadhara ho.
+form	no	Hazrat Umar ke baare mein kuch batao.
+form	no	پاکستان کا دارالحکومت کون سا ہے؟
+form	no	آج موسم کیسا ہے؟
+form	no	میرے بیٹے کا نام کیا ہے؟
+form	no	मेरे बेटे का नाम क्या है?
+form	no	भारत की राजधानी क्या है?
+form	no	एक हफ़्ते में कितने दिन होते हैं?
+form	no	من هو أول الخلفاء الراشدين؟
+form	no	لماذا السماء زرقاء؟
+form	no	كم يوما في الأسبوع؟
+form	no	Write a Python script that renames my photos by date.
+form	no	Help me write a bash script to back up a folder.
+form	no	Make me a small script with a GUI window and a button.
+form	no	Write a JavaScript function to validate an email address.
+form	no	Create a Python program that reads a CSV and prints the totals.
+form	no	Ek Python script likh do jo files ko rename kare.
+form	no	Explain how a for loop works in Python.
+form	no	Show me how to parse JSON in Python.
+# ruling: questions about the world in any script are not requests for a ruling.
+ruling	no	زمین سورج کے گرد ایک چکر کتنے دن میں لگاتی ہے؟
+ruling	no	پانی کا کیمیائی فارمولا کیا ہے؟
+ruling	no	دنیا کا سب سے اونچا پہاڑ کون سا ہے؟
+ruling	no	روشنی کی رفتار کتنی ہے؟
+ruling	no	انسانی جسم میں کتنی ہڈیاں ہوتی ہیں؟
+ruling	no	لاہور سے کراچی کتنے کلومیٹر دور ہے؟
+ruling	no	چاند زمین سے کتنا دور ہے؟
+ruling	no	بارش کیسے بنتی ہے؟
+ruling	no	کمپیوٹر میں ریم کیا کام کرتی ہے؟
+ruling	no	چائے بنانے کا طریقہ بتائیں
+ruling	no	پانچ اور سات کا حاصل ضرب کیا ہے؟
+ruling	no	ہندوستان کی آبادی کتنی ہے؟
+ruling	no	पृथ्वी सूर्य का एक चक्कर कितने दिन में लगाती है?
+ruling	no	दुनिया का सबसे ऊँचा पहाड़ कौन सा है?
+ruling	no	मानव शरीर में कितनी हड्डियाँ होती हैं?
+ruling	no	चाय बनाने का तरीका बताइए
+ruling	no	रोशनी की गति कितनी है?
+ruling	no	كم يوما تستغرق الأرض للدوران حول الشمس؟
+ruling	no	ما هي الصيغة الكيميائية للماء؟
+ruling	no	ما هو أعلى جبل في العالم؟
+ruling	no	كم عظمة في جسم الإنسان؟
+ruling	no	كيف يتكون المطر؟
+ruling	no	كم تبعد القاهرة عن الإسكندرية؟
+ruling	no	How many bones are in the human body?
+ruling	no	At what temperature does water freeze?
+ruling	yes	کیا روزے میں انجکشن لگوانا جائز ہے؟
+ruling	yes	کیا تصویر بنانا حرام ہے؟
+ruling	yes	کیا سود پر قرض لینا جائز ہے؟
+ruling	yes	کیا عورت بغیر محرم کے سفر کر سکتی ہے؟
+ruling	yes	کیا ناخن پالش کے ساتھ وضو ہو جاتا ہے؟
+ruling	yes	کیا گانا سننا جائز ہے؟
+ruling	yes	क्या रोज़े में दवाई ले सकते हैं?
+ruling	yes	क्या म्यूज़िक सुनना हराम है?
+ruling	yes	क्या सूद पर लोन लेना जायज़ है?
+ruling	yes	क्या नेल पॉलिश के साथ वुज़ू होता है?
+ruling	yes	هل يجوز سماع الموسيقى؟
+ruling	yes	هل ينتقض الوضوء بلمس المرأة؟
+ruling	yes	هل يجوز تأخير صلاة العشاء إلى منتصف الليل؟
+ruling	yes	هل يجوز أخذ قرض بفائدة؟

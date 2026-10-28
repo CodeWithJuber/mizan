@@ -97,6 +97,20 @@
   "labels": 2,
   "vocabulary": 3042
  },
+ "qasd.form": {
+  "sha256": "3f402a2bf0f475bc2414dcb0607c11fbef5efa9e92f1504c670a3853b126b1b9",
+  "alpha": 1.0,
+  "weights": [
+   4.667930737931146,
+   0.12302782171499417,
+   0.0010000011106676412
+  ],
+  "loo_loss": 0.35472520718101425,
+  "loo_accuracy": 0.8679245283018868,
+  "examples": 159.0,
+  "labels": 2,
+  "vocabulary": 4511
+ },
  "qasd.harder": {
   "sha256": "de88e19c671435eacb6a27d6e5883564db0be72d77211243b1b1dbb507e98585",
   "alpha": 1.0,
@@ -112,18 +126,18 @@
   "vocabulary": 1659
  },
  "qasd.ruling": {
-  "sha256": "83d54200bd82e3315ee70e45cc128b3dceb04deda7ff8d3bc680d7c4244dc0b0",
+  "sha256": "9803aeffe1aa010bad5459f3d5c4bdfc61e235ca9a7d99cf438089c592e427d4",
   "alpha": 0.01,
   "weights": [
-   0.9768168108643106,
-   0.020408708257070668,
-   0.3420822513082444
+   2.1968967042928007,
+   0.033495205067147246,
+   0.2414062867624909
   ],
-  "loo_loss": 0.381201226716045,
-  "loo_accuracy": 0.8214285714285714,
-  "examples": 140.0,
+  "loo_loss": 0.3273987770017396,
+  "loo_accuracy": 0.8770949720670391,
+  "examples": 179.0,
   "labels": 2,
-  "vocabulary": 4302
+  "vocabulary": 5636
  },
  "qasd.sarf": {
   "sha256": "f8941e8832c0dd081caefe60a0c819ebe66d92e9206135a10f32d0451753ec6b",

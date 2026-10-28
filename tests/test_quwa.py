@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from imtihan import quwa, report, runner, scorers
+from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from tadbir import nazm
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -274,3 +275,86 @@ async def test_panel_api_is_admin_only(monkeypatch):
         ]
         removed = await client.delete("/api/imtihan/panel/p02", headers=headers)
         assert removed.json() == {"removed": 1}
+
+
+# ── Nazm in MIZAN's own answers ──────────────────────────────────────────
+
+
+class FormProvider(BaseLLMProvider):
+    """Answers each kind of request MIZAN makes: the checks Lisan reads, the first
+    answer (two commas, four sentences) and the rewrite."""
+
+    provider_name = "fixture"
+
+    def __init__(self, rewrite: str):
+        self.rewrite = rewrite
+        self.asked: list[str] = []
+
+    def create(self, **kwargs):
+        system = str(kwargs.get("system") or "")
+        if "checks of form" in system:
+            self.asked.append("form_checks")
+            text = (
+                '{"checks": [{"kind": "sentences", "exact": 3, "basis": "exactly three '
+                'sentences"}, {"kind": "no_char", "chars": ",", "basis": "without commas"}, '
+                '{"kind": "words", "max": 5, "basis": "in five words"}]}'
+            )
+        elif "MIZAN counted this answer" in system:
+            self.asked.append("conform")
+            text = self.rewrite
+        elif '"steps"' in system:
+            self.asked.append("map")
+            text = '{"steps":[{"intent":"converse"}]}'
+        else:
+            self.asked.append("answer")
+            text = "Sabr is patience, steady and calm. It holds the heart. It is rewarded. Truly."
+        return LLMResponse([ContentBlock(type="text", text=text)], model="fixture")
+
+
+@pytest.fixture
+def form_agent(monkeypatch, tmp_path):
+    from agents.specialized import create_agent
+    from security.izn import IznPermission
+
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "mizan")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
+    created = create_agent("general", izn=IznPermission())
+    created.ai_model = "fixture-model"
+    monkeypatch.setattr(created, "get_tool_schemas", lambda: [])
+    return created
+
+
+REQUEST = "Describe sabr in exactly three sentences, without commas."
+
+
+async def test_mizan_counts_the_form_and_streams_the_rewrite(form_agent):
+    form_agent.ai_client = FormProvider("Sabr is patience. It holds the heart. It is rewarded.")
+    chunks: list[str] = []
+
+    async def stream(chunk="", **kwargs):
+        if not kwargs:
+            chunks.append(chunk)
+
+    result = await form_agent.execute(REQUEST, stream_callback=stream)
+    assert result["result"] == "Sabr is patience. It holds the heart. It is rewarded."
+    # Only the checks resting on the request's own words were kept ("in five words" is not).
+    assert result["nazm"] == {"checks": 2, "failed": 0, "rewritten": True, "held": 2}
+    assert result["usage"]["nazm"]["rewritten"] is True
+    assert "".join(chunks) == result["result"]  # what streamed is what was kept
+    # The checks are read after the answer, only for an answer in words.
+    assert form_agent.ai_client.asked[-2:] == ["form_checks", "conform"]
+
+
+async def test_a_rewrite_that_brings_new_numbers_is_not_kept(form_agent):
+    form_agent.ai_client = FormProvider("Sabr is patience. It holds 70 hearts. It is rewarded.")
+    result = await form_agent.execute(REQUEST)
+    assert result["result"].startswith("Sabr is patience, steady and calm.")
+    assert result["nazm"]["rewritten"] is False and result["nazm"]["failed"] == 2
+
+
+async def test_a_request_with_no_form_asks_lisan_nothing_more(form_agent):
+    form_agent.ai_client = FormProvider("unused")
+    result = await form_agent.execute("What is patience in Islam?")
+    assert "nazm" not in result
+    assert "form_checks" not in form_agent.ai_client.asked
