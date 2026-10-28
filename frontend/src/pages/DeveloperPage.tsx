@@ -54,11 +54,13 @@ interface VersionInfo {
   can_check: boolean;
 }
 
-export default function DeveloperPage({ api }: { api: ApiClient }) {
+export type DeveloperTab = "system" | "agi" | "teach" | "plugins" | "events" | "hooks" | "guide";
+
+/** With `tab`, one section is shown inside Settings → Developer (no own header or tabs). */
+export default function DeveloperPage({ api, tab }: { api: ApiClient; tab?: DeveloperTab }) {
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<
-    "system" | "agi" | "teach" | "plugins" | "events" | "hooks" | "guide"
-  >("system");
+  const [ownTab, setActiveTab] = useState<DeveloperTab>("system");
+  const activeTab = tab ?? ownTab;
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [events, setEvents] = useState<Record<string, string>>({});
   const [eventHandlers, setEventHandlers] = useState<EventHandler[]>([]);
@@ -169,7 +171,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   return (
     <div className="page-wrapper">
       {/* Header */}
-      <div className="page-header">
+      {!tab && <div className="page-header">
         <div>
           <h2 className="page-title">Developer</h2>
           <p className="page-description">
@@ -177,22 +179,22 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             needed
           </p>
         </div>
-      </div>
+      </div>}
 
       {/* Tabs */}
-      <div className="tab-bar">
-        {tabs.map((tab) => (
+      {!tab && <div className="tab-bar">
+        {tabs.map((item) => (
           <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
-            aria-selected={activeTab === tab.id}
+            key={item.id}
+            className={`tab ${activeTab === item.id ? "active" : ""}`}
+            onClick={() => setActiveTab(item.id)}
+            aria-selected={activeTab === item.id}
             role="tab"
           >
-            {tab.label}
+            {item.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="page-body">
         {activeTab === "agi" && <ImtihanPanel api={api} />}

@@ -1,6 +1,5 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { installStaleBuildReload } from './utils/staleBuild'
 import { registerWorker } from './utils/push'
@@ -30,9 +29,7 @@ createRoot(document.getElementById('root')!).render(
         <PublicPage />
       </Suspense>
     ) : (
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <App />
     )}
   </StrictMode>
 )

@@ -10,6 +10,7 @@ import type { WorkspaceEntry } from "../utils/workspaceTree";
 import { previewSrc } from "../utils/sandboxCommands";
 import type { SandboxStatus } from "./workspace/SandboxPanel";
 import { confirmDialog } from "@/components/ui/confirm";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const CodeEditor = lazy(() => import("./workspace/CodeEditor"));
 const PreviewPane = lazy(() => import("./workspace/PreviewPane"));
@@ -328,11 +329,12 @@ export function CodingWorkspace({
   };
 
   return (
-    <section className="flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-950" aria-label="Coding workspace">
-      <div className="px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800 flex flex-wrap items-center gap-2">
+    <section className="flex-1 min-h-0 flex flex-col bg-background" aria-label="Code">
+      <div className="px-4 py-3 border-b flex flex-wrap items-center gap-2">
+        <SidebarTrigger className="-ml-1 md:hidden" />
         <div className="mr-auto min-w-0">
-          <h1 className="text-lg font-semibold">Coding workspace</h1>
-          <p className="text-xs text-gray-500">Edit, preview and run your project; the agent works in the same files.</p>
+          <h1 className="text-lg font-semibold tracking-tight">Code</h1>
+          <p className="text-xs text-muted-foreground">Edit, preview and run your project; MIZAN works in the same files.</p>
         </div>
         <select
           aria-label="Selected workspace"

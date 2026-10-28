@@ -1,144 +1,43 @@
-import {
-  memo,
-  useState,
-  useCallback,
-  isValidElement,
-  type ReactNode,
-} from "react";
-import ReactMarkdown from "react-markdown";
-import type { Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import rehypeHighlight from "rehype-highlight";
+/**
+ * Markdown for chat answers and panels, drawn by Streamdown: GFM, KaTeX math,
+ * Shiki-highlighted code with copy, unterminated markdown completed while it
+ * streams, links hardened, and each block's direction read from its own
+ * letters (an Arabic paragraph reads right to left).
+ */
+import { memo } from "react";
+import { Streamdown, type Components } from "streamdown";
+import { code } from "@streamdown/code";
+import { math } from "@streamdown/math";
 import "katex/dist/katex.min.css";
-import "highlight.js/styles/github-dark.min.css";
+import "streamdown/styles.css";
 
-/** Recursively extract plain text from React children (for copy button). */
-function extractText(node: ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (!node) return "";
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  if (isValidElement<{ children?: ReactNode }>(node)) {
-    return extractText(node.props.children);
-  }
-  return "";
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-gray-700/80 text-gray-300 hover:bg-gray-600 transition-colors cursor-pointer focus-ring z-10 backdrop-blur-sm"
-      aria-label="Copy code"
-    >
-      {copied ? (
-        <span className="flex items-center gap-1 text-green-400">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-            <path
-              fillRule="evenodd"
-              d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Copied
-        </span>
-      ) : (
-        <span className="flex items-center gap-1">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-            <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
-            <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
-          </svg>
-          Copy
-        </span>
-      )}
-    </button>
-  );
-}
+const plugins = { code, math };
 
 interface MarkdownProps {
   content: string;
-  /**
-   * MORPH-FEAT: optional react-markdown component overrides, merged UNDER
-   * the defaults below. Defaults win; overrides may only ADD element types
-   * not already customized (e.g. `p`).
-   */
+  /** Element overrides (e.g. `p` to make Arabic words tappable). */
   components?: Partial<Components>;
+  /** True while the text is still arriving. */
+  streaming?: boolean;
 }
 
-export const Markdown = memo(function Markdown({
-  content,
-  components: overrides,
-}: MarkdownProps) {
+export const Markdown = memo(function Markdown({ content, components, streaming = false }: MarkdownProps) {
   return (
     <div className="prose">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          rehypeKatex,
-          [rehypeHighlight, { detect: true, ignoreMissing: true }],
-        ]}
-        components={{
-          ...overrides,
-          code({ children, className }) {
-            const isBlock =
-              className?.startsWith("language-") ||
-              className?.startsWith("hljs");
-            const langMatch = className?.match(/language-(\w+)/);
-            const lang = langMatch ? langMatch[1] : "";
-            const plainText = extractText(children).replace(/\n$/, "");
-
-            if (isBlock) {
-              return (
-                <div className="code-block-wrapper group">
-                  <div className="code-block-header">
-                    {lang && <span className="code-lang">{lang}</span>}
-                    <CopyButton text={plainText} />
-                  </div>
-                  <pre>
-                    <code className={className}>{children}</code>
-                  </pre>
-                </div>
-              );
-            }
-
-            return <code className="inline-code">{children}</code>;
-          },
-          pre({ children }) {
-            return <>{children}</>;
-          },
-          table({ children }) {
-            return (
-              <div className="table-wrapper">
-                <table>{children}</table>
-              </div>
-            );
-          },
-          // Task list items get checkbox styling via GFM
-          input({ checked, ...props }) {
-            return (
-              <input
-                type="checkbox"
-                checked={checked}
-                readOnly
-                className="task-checkbox"
-                {...props}
-              />
-            );
-          },
-        }}
+      <Streamdown
+        mode={streaming ? "streaming" : "static"}
+        isAnimating={streaming}
+        parseIncompleteMarkdown={streaming}
+        dir="auto"
+        plugins={plugins}
+        shikiTheme={["github-light", "github-dark"]}
+        codeBlockMaxHeight={520}
+        components={components}
       >
         {content}
-      </ReactMarkdown>
+      </Streamdown>
     </div>
   );
 });
+
+export type { Components };

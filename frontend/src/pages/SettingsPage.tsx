@@ -49,7 +49,10 @@ interface SettingsData {
   version: string;
 }
 
-export default function SettingsPage({ api }: { api: ApiClient }) {
+export type SettingsSection = "system" | "spending" | "receipts" | "providers" | "channels" | "security" | "memory" | "vault";
+
+/** With `section`, one section is shown inside the Settings layout (no own header or menu). */
+export default function SettingsPage({ api, section }: { api: ApiClient; section?: SettingsSection }) {
   const { addToast } = useToast();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,9 +70,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   const [togglingChannel, setTogglingChannel] = useState<
     Record<string, boolean>
   >({});
-  const [activeSection, setActiveSection] = useState(
+  const [ownSection, setActiveSection] = useState(
     () => localStorage.getItem("mizan_settings_section") || "providers",
   );
+  const activeSection = section ?? ownSection;
   const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
@@ -274,7 +278,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
   return (
     <div className="page-wrapper">
-      <div className="page-header">
+      {!section && <div className="page-header">
         <div>
           <h2 className="page-title flex items-center gap-2">
             <svg
@@ -298,7 +302,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
             v{settings.version}
           </span>
         )}
-      </div>
+      </div>}
 
       {saveMessage && (
         <div
@@ -314,7 +318,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Section Tabs — horizontal scroll on mobile, sidebar on desktop */}
-        <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
+        {!section && <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
           {sections.map((s) => (
             <button
               key={s.id}
@@ -331,7 +335,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
               {s.label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* Section Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative z-10">
