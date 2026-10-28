@@ -1,0 +1,11 @@
+{"block": "perception", "id": "perc-letters", "prompt": "How many times does the letter r appear in the word 'strawberry'? Answer with the number.", "score": {"kind": "number", "expected": "3"}}
+{"block": "perception", "id": "perc-letters-ar", "prompt": "كم مرة يتكرر حرف اللام في كلمة «الله» كما تُكتب؟ أجب برقم.", "score": {"kind": "number", "expected": "2"}}
+{"block": "perception", "id": "perc-odd", "prompt": "Which of these strings is different from the others? 7f3a9c 7f3a9c 7f3a9c 7f3e9c 7f3a9c\nAnswer with its position, 1 to 5.", "score": {"kind": "number", "expected": "4"}}
+{"block": "perception", "id": "perc-table", "prompt": "name,city,age\nHamza,Karachi,34\nSana,Lahore,41\nOmar,Lahore,57\nRida,Multan,62\nAyaan,Lahore,29\n\nWho is the oldest person living in Lahore?", "score": {"kind": "contains", "all": ["omar"]}}
+{"block": "perception", "id": "perc-ascii", "prompt": "How many separate shapes made of # are in this picture? Characters that touch up, down, left or right belong to the same shape.\n\n##....#.\n##...###\n........\n.#..##..\n.#..##.#\n.#.....#", "score": {"kind": "number", "expected": "5"}}
+{"block": "perception", "id": "perc-segment", "prompt": "Write this as separate words: thequickbrownfoxjumps", "score": {"kind": "contains", "all": ["the quick brown fox jumps"]}}
+{"block": "perception", "id": "perc-reverse", "prompt": "Write the word MIZAN backwards, letter by letter.", "score": {"kind": "contains", "all": ["nazim"]}}
+{"block": "perception", "id": "perc-zeros", "prompt": "How many zeros are in the number 9070605040302010?", "score": {"kind": "number", "expected": "8"}}
+{"block": "perception", "id": "perc-grid", "prompt": "In this grid, what is the value in row 3, column 2 (rows and columns counted from 1, top-left first)?\n\n4 7 1 9\n2 8 5 3\n6 0 7 2\n9 4 3 8", "score": {"kind": "number", "expected": "0"}}
+{"block": "perception", "id": "perc-hinglish", "prompt": "'Kal subah 7 baje station pe milte hain, late mat hona.' Is message ke hisaab se kis waqt milna hai?", "score": {"kind": "number", "expected": "7"}}
+{"block": "perception", "id": "perc-order", "prompt": "Read: 'Aisha left Madinah after Zaid but before Hamza. Zaid left first.' Who left last?", "score": {"kind": "contains", "all": ["hamza"]}}
