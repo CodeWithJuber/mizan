@@ -31,6 +31,7 @@ ROLE_FOR = {
     "browse": "mubashir",
     "quran": "khalifah",
     "quran_search": "khalifah",
+    "quran_count": "khalifah",
     "hadith": "khalifah",
     "waqt": "khalifah",
     "salah": "khalifah",

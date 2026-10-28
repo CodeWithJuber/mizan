@@ -111,6 +111,8 @@ ARC puzzles go to MIZAN's Qiyas recipe (قياس, reasoning by analogy).
 
 This turns a guess into a hypothesis that is tested before it is used, which is the method of reasoning by analogy. An answer whose rule fits every example is marked verified. One that does not says how many examples its best rule fits.
 
+When Lisan gives no rule at all (a reasoning model can spend its whole output limit thinking), it is asked once more at low reasoning effort; if it still gives none, MIZAN answers that no rule was found. The puzzle is never handed on to the agent loop, which would spend a larger budget the same way: on 27 October six of eight ARC tasks ended as `output_budget_exhausted` that way.
+
 ## The report
 
 - **Pass rate per block** for each arm, with a 95% Wilson interval and MIZAN's difference in points.
@@ -121,7 +123,8 @@ This turns a guess into a hypothesis that is tested before it is used, which is 
 - **Calibration:** ECE and Brier on the TruthfulQA confidences.
 - **Paraphrase consistency:** groups answered right in every phrasing.
 - **Work done:** model calls, tokens, cost and tool calls per arm.
-- **Unscored attempts:** provider errors are reported separately and never counted as failures.
+- **Unscored attempts:** provider errors are reported separately and not counted in the pass rate. Next to it, `all_tasks` (per block and in the index) counts every task with an error as a failure, the operational view, and `errors` says how many there were.
+- **Same output limit:** the base arm gets the same per-call output limit as MIZAN's own agent loop (`MIZAN_CHAT_MAX_OUTPUT_TOKENS`, else the model's cap up to 16k), in debug comparisons and agentic tasks alike.
 
 Click a task to open both answers and MIZAN's step-by-step trace.
 

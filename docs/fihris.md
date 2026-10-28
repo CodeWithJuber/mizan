@@ -42,6 +42,8 @@ Every view then scores the ayahs by BM25. Its scores are standardised over all 6
 - **The person's question** is then answered from the ayah's own words, as for a question about a referenced ayah. Furqan checks that answer.
 - **Other ayahs** are named only when they are about as likely as chance among the matches: their softmax share of the standardised scores is at least 1/k. Weak hits are left out.
 - **When no ayah shares a word with the request,** MIZAN says so and quotes nothing. It does not quote ayahs from memory.
+- **When no ayah says it** (`Index.find` → `Found(matches, absent, nearest)`): a query's distinctive words are those carrying more information than its average word (P(topic | word) × the IDF of the views that read it). A distinctive Latin-script word that no view reads, and that a fitted letter model (`fihris_english`, leave-one-out, cached) reads as English, is unused by the Quran. When unused words hold most of the query's distinctive information (2 · Σ unused > Σ), MIZAN answers plainly that no ayah says this ("seven continents": no ayah names them), names those words, and gives the nearest ayah only for what it shares. A transliteration ("kausar", "munhtah") counts a repeated letter once, so it is never called unused.
+- **Counts** ("Quran mein kitni ayat hain?", "how many surahs") never search: the `quran_count` recipe reads MIZAN's surah index (114 surahs, 6,236 ayahs in the Hafs count; per surah for "Baqarah mein kitni ayat").
 
 A request that names a reference ("Surah Najm 14") goes to the reference recipe instead.
 

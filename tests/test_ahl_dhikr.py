@@ -78,9 +78,8 @@ async def test_a_contradicted_claim_is_shown_with_what_the_source_says(store, so
         QUESTION, daif(claim), store=store, user_id="u1", language="en"
     )
     assert findings[0].verdict == "contradicted"
-    shown = ahl_dhikr.apply(f"{claim} It has a thin atmosphere.", findings, "en")
-    assert shown.index("says otherwise") > shown.index(claim)
-    assert "https://en.wikipedia.org/wiki/Titan_(moon)" in shown and "Allahu a'lam" not in shown
+    (shown,) = ahl_dhikr.report(findings, heard)["contradicted"]
+    assert shown["says"] == TITAN and shown["url"].endswith("Titan_(moon)")
 
 
 async def test_with_no_source_the_answer_is_reported_as_the_models_word(store, sources):
@@ -94,8 +93,6 @@ async def test_with_no_source_the_answer_is_reported_as_the_models_word(store, s
     assert [finding.verdict for finding in findings] == ["unknown"]
     # Reported beside the answer (usage.ahl), never added to it, so an answer
     # asked for in an exact shape keeps that shape.
-    text = "Saturn's rings are mostly made of ice."
-    assert ahl_dhikr.apply(text, findings, "en") == text
     assert ahl_dhikr.report(findings, heard)["unknown"] == 1
     assert ahl_dhikr.known(store, "u1") == []  # nothing settled, nothing kept
 
@@ -221,7 +218,9 @@ def agent(monkeypatch, tmp_path):
 async def test_a_chat_answer_shows_what_its_sources_said(agent, sources):
     agent.ai_client = ScriptedProvider(["The largest moon of Saturn is Rhea."])
     result = await agent.execute(QUESTION)
-    assert "says otherwise" in result["result"]
+    # Shown under the answer, never inside it (a note broke tables, formulas,
+    # verses and required last words in the 27 October benchmark).
+    assert result["result"] == "The largest moon of Saturn is Rhea."
     assert result["usage"]["ahl"]["contradicted"][0]["title"] == "Titan (moon)"
     # The next answer is written with what was settled.
     agent.ai_client = ScriptedProvider(["The largest moon of Saturn is Titan."])
@@ -234,8 +233,10 @@ async def test_a_chat_answer_shows_what_its_sources_said(agent, sources):
 async def test_a_ruling_question_is_sent_to_a_scholar(agent, sources):
     agent.ai_client = ScriptedProvider(["Scholars differ on this question."])
     result = await agent.execute("Is it halal to invest in crypto?")
-    assert "ask a qualified scholar" in result["result"]
+    # The answer that streamed is the answer kept; the referral is shown under it.
+    assert result["result"] == "Scholars differ on this question."
     assert result["usage"]["ahl"]["ruling"] is True
+    assert "ask a qualified scholar" in result["usage"]["ahl"]["referral"]
 
 
 async def test_conversation_is_not_sent_to_sources(agent, sources):
@@ -275,22 +276,6 @@ async def test_an_unreachable_source_is_not_called_a_source_that_found_nothing(s
         language="en",
     )
     assert heard == [] and findings[0].verdict == "unknown"
-    text = "The largest moon of Saturn is Titan."
-    assert ahl_dhikr.apply(text, findings, "en") == text
-
-
-def test_an_answer_meant_for_a_program_is_never_changed():
-    finding = Finding(
-        "The largest moon of Saturn is Rhea.",
-        "contradicted",
-        0.9,
-        Passage(TITAN, "Titan (moon)", "https://en.wikipedia.org/wiki/Titan_(moon)", "wikipedia"),
-    )
-    for text in (
-        '{"moon": "The largest moon of Saturn is Rhea."}',
-        '```json\n{"moon": "Rhea"}\n```',
-    ):
-        assert ahl_dhikr.apply(text, [finding], "en") == text
 
 
 def test_a_request_for_json_about_a_quote_is_not_a_ruling_or_a_fact_question():
@@ -344,8 +329,6 @@ async def test_a_page_unrelated_to_the_claim_is_never_shown_as_a_source(store, m
         QUESTION, daif(*claims), store=store, user_id="u1", language="en"
     )
     assert [finding.verdict for finding in findings] == ["unknown", "unknown"]
-    shown = ahl_dhikr.apply(" ".join(claims), findings, "en")
-    assert "says otherwise" not in shown and "Restivo" not in shown and "kono" not in shown
 
 
 def test_a_source_sentence_must_be_about_what_the_claim_is_about():
@@ -432,3 +415,49 @@ async def test_a_verdict_kept_before_the_relevance_gate_is_not_knowledge(store, 
     # The stale entry is dropped from the store when it is next written.
     ahl_dhikr.keep(store, "u1", QUESTION, [])
     assert ahl_dhikr._load(store, "u1") == []
+
+
+async def one_way(pairs):
+    """A reader that calls (source, claim) a contradiction but (claim, source)
+    neutral: the misreading that showed an agreeing page as "says otherwise"."""
+    readings = []
+    for premise, _hypothesis in pairs:
+        forward = premise.startswith("Write 9.9")  # (source, claim)
+        readings.append(
+            {"entailment": 0.02, "neutral": 0.03, "contradiction": 0.95}
+            if forward
+            else {"entailment": 0.1, "neutral": 0.8, "contradiction": 0.1}
+        )
+    return readings
+
+
+async def test_a_contradiction_must_hold_both_ways_and_equations_are_computed(store, monkeypatch):
+    """Production, 27 Oct: "Which is larger, 9.11 or 9.9?" got "a source says
+    otherwise" pinned to "9.11 = 9 + 0.11" from a page that agreed."""
+    agreeing = [
+        Passage(
+            "Write 9.9 as 9.90: 9.90 is larger than 9.11, since 0.90 is bigger than 0.11.",
+            "Why AI thinks 9.11 is bigger",
+            "https://unrote.example/nine",
+            "web",
+        )
+    ]
+
+    async def page(question, language):
+        return agreeing
+
+    monkeypatch.setattr(ahl_dhikr, "nli", one_way)
+    monkeypatch.setattr(ahl_dhikr, "wikipedia", page)
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia"])
+    findings, _ = await ahl_dhikr.consult(
+        "Which is larger, 9.11 or 9.9?",
+        daif("9.9 is larger than 9.11 when written as 9.90.", "9.11 = 9 + 0.11"),
+        store=store,
+        user_id="u1",
+        language="en",
+    )
+    # The equation is not asked of any source; the one-way reading settles nothing.
+    assert [finding.claim for finding in findings] == [
+        "9.9 is larger than 9.11 when written as 9.90."
+    ]
+    assert findings[0].verdict == "unknown"

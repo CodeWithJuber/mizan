@@ -54,7 +54,7 @@ class CheckpointCreate(BaseModel):
 
 
 class ArtifactPublish(FilePath):
-    session_id: str = Field(min_length=1, max_length=100)
+    session_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     title: str | None = Field(default=None, min_length=1, max_length=200)
 
 

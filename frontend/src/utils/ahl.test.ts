@@ -17,7 +17,15 @@ const report: AhlReport = {
       source: "wikipedia",
     },
   ],
-  contradicted: [{ claim: "It was found in 1672.", verdict: "contradicted", title: "Titan (moon)", source: "ilm" }],
+  contradicted: [
+    {
+      claim: "It was found in 1672.",
+      verdict: "contradicted",
+      title: "Titan (moon)",
+      source: "ilm",
+      says: "Titan was discovered in 1655 by Christiaan Huygens.",
+    },
+  ],
   unknown: 1,
 };
 check("recognised", isAhl(report));
@@ -32,5 +40,6 @@ check("ruling only", ahlHeadline({ checked: 0, supported: [], contradicted: [], 
 const lines = ahlLines(report);
 check("lines", lines.length === 2 && lines[0].text.startsWith("Confirmed: Titan") && lines[0].text.includes("Wikipedia"));
 check("source label", lines[1].text.includes("settled before") && lines[1].url === undefined);
+check("the source's own sentence", lines[1].text.includes("says: “Titan was discovered in 1655"));
 
 console.log(`ahl: ${checks} checks passed`);

@@ -222,6 +222,55 @@ _ORDINAL_WORDS = {
 }  # fmt: skip
 
 
+# Words that put a count of ayahs at a surah's end ("last 3 ayat") rather
+# than its start ("first 5", "pehli 5 ayaat", "5 ayaat").
+_LAST_WORDS = {
+    "last", "final", "aakhri", "akhri", "aakhiri", "akhiri", "aakhir", "akhir",
+    "آخری", "آخر", "الأخيرة", "الاخيرة", "अंतिम", "आख़िरी", "आखिरी", "आख़री", "आखरी",
+}  # fmt: skip
+# The languages a translation can be asked in, by the names people write.
+TRANSLATION_ASKED = {
+    "ur": ("urdu", "اردو", "उर्दू"),
+    "hi": ("hindi", "ہندی", "हिंदी", "हिन्दी"),
+    "en": ("english", "angrezi", "انگریزی", "अंग्रेज़ी", "अंग्रेजी"),
+    "ar": ("arabic", "arbi", "arabi", "عربی", "عربي", "العربية", "अरबी"),
+}
+
+
+def requested_translation(text: str) -> str | None:
+    """The language the person names for the text ("Urdu tarjuma", "in Hindi"),
+    as a key of ``TRANSLATIONS``; "ar" when only Arabic is named (no
+    translation); None when none is named."""
+    found = {
+        language
+        for language, names in TRANSLATION_ASKED.items()
+        for word in re.findall(r"[^\W\d_]+", text.lower())
+        if word in names
+    }
+    other = sorted(found - {"ar"})
+    if other:
+        return other[0]
+    return "ar" if found else None
+
+
+def _counted(surah: int, count: int, text: str) -> Reference | None:
+    """A count of ayahs ("pehli 5 ayaat", "last 3 verses") as a range."""
+    total = SURAHS[surah - 1][2]
+    if not 1 <= count <= total:
+        return None
+    if any(word in _LAST_WORDS for word in re.findall(r"[^\W\d_]+", text.lower())):
+        return Reference(surah, total - count + 1, total)
+    return Reference(surah, 1, count)
+
+
+_COUNT = re.compile(r"(?<![\d:.])(\d{1,3})\s*" + _AYAH_WORD, re.IGNORECASE)
+
+
+def _is_count(text: str, end: int) -> bool:
+    """The number ending at ``end`` counts ayahs: an ayah word follows it."""
+    return bool(re.match(r"\s*" + _AYAH_WORD, text[end:], re.IGNORECASE))
+
+
 def ordinal_ayah(text: str) -> int | None:
     """An ayah given as an ordinal ("13th", "13vi", "terahvi"), next to an ayah word."""
     if not re.search(_AYAH_WORD, text, re.IGNORECASE):
@@ -263,8 +312,13 @@ def parse_reference(text: str) -> Reference | None:
         for size in range(min(3, len(words)), 0, -1):
             number = surah_number(" ".join(words[:size]))
             if number:
+                if named[2] and not named[3] and _is_count(text, named.end(2)):
+                    return _counted(number, int(named[2]), text)
                 if named[2]:
                     return _validated(number, int(named[2]), int(named[3] or named[2]))
+                counted = _COUNT.search(text)
+                if counted:
+                    return _counted(number, int(counted[1]), text)
                 ordinal = ordinal_ayah(text)
                 if ordinal is not None:
                     return _validated(number, ordinal, ordinal)
@@ -273,6 +327,8 @@ def parse_reference(text: str) -> Reference | None:
             return _validated(int(words[0]), None, None)
     numbered = re.search(_SURAH_WORD + r"\s+(\d{1,3})(?:\D+?(\d{1,3}))?", text, re.IGNORECASE)
     if numbered:
+        if numbered[2] and 1 <= int(numbered[1]) <= 114 and _is_count(text, numbered.end(2)):
+            return _counted(int(numbered[1]), int(numbered[2]), text)
         if numbered[2] and re.search(_AYAH_WORD, text, re.IGNORECASE):
             return _validated(int(numbered[1]), int(numbered[2]), int(numbered[2]))
         return _validated(int(numbered[1]), None, None)
@@ -316,13 +372,13 @@ async def fetch(reference: Reference, language: str) -> dict:
     end = min(end, start + MAX_AYAHS - 1)
     ayahs: list[dict] = []
     async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-        if reference.start is None:
-            urls = [f"{API}/surah/{reference.surah}/editions/{editions}?offset=0&limit={MAX_AYAHS}"]
-        else:
+        if reference.start is None or end > start:
             urls = [
-                f"{API}/ayah/{reference.surah}:{number}/editions/{editions}"
-                for number in range(start, end + 1)
+                f"{API}/surah/{reference.surah}/editions/{editions}"
+                f"?offset={start - 1}&limit={end - start + 1}"
             ]
+        else:
+            urls = [f"{API}/ayah/{reference.surah}:{start}/editions/{editions}"]
         for url in urls:
             try:
                 response = await client.get(url)
@@ -330,7 +386,7 @@ async def fetch(reference: Reference, language: str) -> dict:
                 data = response.json()["data"]
             except (httpx.HTTPError, KeyError, ValueError):
                 raise QuranUnavailable("The Quran text source is not reachable right now") from None
-            if reference.start is None:
+            if reference.start is None or end > start:
                 arabic, *rest = data
                 for index, item in enumerate(arabic["ayahs"]):
                     ayahs.append(

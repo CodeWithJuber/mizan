@@ -21,6 +21,7 @@ import os
 import re
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -31,6 +32,11 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger("mizan.providers")
+
+
+# A lower reasoning effort for one call, set by the agent when the model's
+# reasoning used the whole output limit and no answer text came back.
+REASONING_EFFORT: ContextVar[str | None] = ContextVar("mizan_reasoning_effort", default=None)
 
 
 def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -> dict:
@@ -44,6 +50,10 @@ def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -
     https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
     https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free
     """
+    lowered = REASONING_EFFORT.get()
+    if lowered and provider_name == "openrouter":
+        # OpenRouter's unified reasoning parameter; models without reasoning ignore it.
+        return {"extra_body": {"reasoning": {"effort": lowered}}}
     if provider_name != "openrouter" or model not in {
         "nvidia/nemotron-3.5-super-vl",
         "nvidia/nemotron-3.5-super-vl:free",
@@ -496,7 +506,7 @@ class AnthropicProvider(BaseLLMProvider):
             )
         effort = anthropic_effort(model)
         if effort:
-            kwargs["output_config"] = {"effort": effort}
+            kwargs["output_config"] = {"effort": REASONING_EFFORT.get() or effort}
         if _env_flag("MIZAN_ANTHROPIC_PROMPT_CACHE", True):
             kwargs["cache_control"] = {"type": "ephemeral"}
         betas: list[str] = []

@@ -13,6 +13,9 @@ shown, with the same proofs and no model call:
   exist loses its marker
 - **links MIZAN never found**: opened (public addresses only); a link that
   does not open is removed
+- **a hadith cited to the wrong book**: a quote given as Bukhari or Muslim that
+  none of their narrations says, while another of the six books does
+  (``hadith_index``), is reported with where it is
 
 ``MIZAN_TRUTH_GATE``: ``strict`` (default) corrects and removes, ``flag``
 keeps the text and marks each problem, ``off`` skips the gate. What the gate
@@ -26,7 +29,7 @@ import os
 import re
 from typing import Any
 
-from . import muhasaba, muqabala
+from . import hadith_index, muhasaba, muqabala
 from .express import phrase
 
 MODES = ("strict", "flag", "off")
@@ -77,6 +80,19 @@ async def gate(
         else:
             report["flagged"].append({"kind": "quote", "detail": detail})
 
+    # A hadith quoted under books whose narrations do not say it, while another
+    # of the six books does: reported with where it is (never rewritten).
+    for finding in await hadith_index.check(text):
+        cited = " and ".join(finding["cited"])
+        found = ", ".join(item["reference"] for item in finding["found"])
+        report["flagged"].append(
+            {
+                "kind": "hadith_source",
+                "detail": f"\u201c{finding['quote']}\u201d is found in {found}, not in {cited}",
+                "found": finding["found"],
+            }
+        )
+
     unchecked: list[str] = []
     for unit in ledger or []:
         if unit.get("grade") != "mawdu":
@@ -112,7 +128,9 @@ async def gate(
         return text, {"mode": current, "passed": True}
     note_key = "sidq_corrected" if report["corrected"] or report["removed"] else "sidq_flagged"
     count = len(report["corrected"]) + len(report["removed"]) + len(report["flagged"])
-    text = f"{text.rstrip()}\n\n_{phrase(note_key, language, count=count)}_"
+    # Shown under the answer (usage.sidq), never added to its text; a channel
+    # with no notes view puts it on its own line.
+    report["note"] = phrase(note_key, language, count=count)
     return text, report
 
 

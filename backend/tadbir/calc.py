@@ -123,6 +123,15 @@ def normalize(expression: str) -> str:
     text = re.sub(
         r"(\d+(?:\.\d+)?)\s*%\s*(?:of|ka|ki|ke|का|की|के)\s*(\d+(?:\.\d+)?)", r"(\1*\2/100)", text
     )
+    # Operators said in words: "2 ki power 10", "3 to the power of 4", "12 x 13".
+    text = re.sub(
+        r"(\d+(?:\.\d+)?)\s*(?:(?:ki|ka|ke|की|का|के|to\s+the|raised\s+to(?:\s+the)?)\s+)?"
+        r"(?:power|पावर)\s+(?:of\s+)?(\d+(?:\.\d+)?)",
+        r"\1**\2",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"(?<=\d)(?<!\b0)\s*[xX]\s*(?=\d)", "*", text)  # never 0x1f (hex)
     text = re.sub(r"(\d+)\s*!", r"factorial(\1)", text)
     text = re.sub(r"√\s*(\d+(?:\.\d+)?)", r"sqrt(\1)", text)
     return text
@@ -254,7 +263,8 @@ def find_expression(text: str) -> str | None:
         # An operation between operands, a factorial, a root or a function: a
         # bare (signed) number such as "-2290" is not a calculation.
         if not re.search(
-            r"[\d).]\s*(?:\*\*|[+\-*/%^×÷])\s*[\d(.√a-z]|\d\s*!|√|[a-z]+\(|%\s*of", candidate
+            r"[\d).]\s*(?:\*\*|[+\-*/%^×÷])\s*[\d(.√a-z]|\d\s*!|√|[a-z]+\(|%\s*of",
+            normalize(candidate),
         ):
             continue
         if re.fullmatch(r"\d{1,3}\s*:\s*\d{1,3}", candidate):

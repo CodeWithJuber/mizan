@@ -2,7 +2,7 @@
 
 Debug mode sends one message to two places and shows the answers side by side:
 
-- **Base model**: the same provider and model MIZAN uses. It gets one plain system prompt ("You are a helpful assistant."), no tools and no memory, and an output limit of 4096 tokens. A reasoning model can spend that whole limit thinking; its arm then says "No answer: the model reached its 4096-token output limit" (`stop_reason: max_tokens`) instead of a bare "No answer". On production on 27 October this happened for the sequence `13, 26, 64, 118, 274, ?, …`: 62 s and 4,160 tokens, no answer, while MIZAN answered 376 in 0.5 s with no model call.
+- **Base model**: the same provider and model MIZAN uses. It gets one plain system prompt ("You are a helpful assistant."), no tools and no memory, and the same per-call output limit as MIZAN's own agent loop (`MIZAN_CHAT_MAX_OUTPUT_TOKENS`, else the model's cap up to 16k; it was 4096 before 28 October). A reasoning model can spend that whole limit thinking; its arm then says "No answer: the model reached its output limit" (`stop_reason: max_tokens`) instead of a bare "No answer". On production on 27 October this happened for the sequence `13, 26, 64, 118, 274, ?, …`: 62 s and 4,160 tokens, no answer, while MIZAN answered 376 in 0.5 s with no model call.
 - **MIZAN**: the agent, run the way a chat runs it, with a trace bound so every step is recorded.
 
 MIZAN then checks both answers against what it established itself.

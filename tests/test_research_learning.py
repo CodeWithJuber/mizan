@@ -80,8 +80,9 @@ def test_an_error_signature_keeps_the_kind_and_drops_the_users_names_and_values(
 
 
 async def test_a_verified_repair_becomes_a_lesson_for_the_next_similar_work(agent, monkeypatch):
-    agent.ai_client = ScriptedProvider([WRONG, RIGHT, RIGHT])
-    sandbox(agent, monkeypatch, FAILED, PASSED, PASSED)
+    # Each verified program also has an independent check (Tathabbut): a reply and a run.
+    agent.ai_client = ScriptedProvider([WRONG, RIGHT, RIGHT, RIGHT, RIGHT])
+    sandbox(agent, monkeypatch, FAILED, PASSED, PASSED, PASSED, PASSED)
     first = await agent.execute(REQUEST)
     assert first["task_verified"]
     store = agent.adaptive
@@ -91,7 +92,7 @@ async def test_a_verified_repair_becomes_a_lesson_for_the_next_similar_work(agen
     # The next request of the same kind is written with the verified lesson in view.
     second = await agent.execute(REQUEST.replace("5", "6"))
     assert second["task_verified"]
-    prompt = agent.ai_client.requests[2]["messages"][0]["content"]
+    prompt = agent.ai_client.requests[3]["messages"][0]["content"]
     assert "Lessons MIZAN verified" in prompt and "+print([0, 1, 1, 2, 3])" in prompt
     # It worked, so the lesson's usefulness rose above its prior.
     assert tajriba.summary(store, "")["items"][0]["usefulness"] > 2 / 3
@@ -222,11 +223,14 @@ async def test_the_repair_is_asked_of_a_stronger_model(agent, monkeypatch):
     for _ in range(30):
         wazn.record("write_code", "small", True)
         wazn.record("fix_code", "small", True)
-    agent.ai_client = ScriptedProvider([WRONG, RIGHT])
-    sandbox(agent, monkeypatch, FAILED, PASSED)
+    agent.ai_client = ScriptedProvider([WRONG, RIGHT, RIGHT])
+    sandbox(agent, monkeypatch, FAILED, PASSED, PASSED)
     result = await agent.execute(REQUEST)
     assert result["task_verified"]
-    assert [request["model"] for request in agent.ai_client.requests] == ["small", "large"]
+    # The repair goes to the stronger model. (The third call is the independent
+    # check, whose model Wazn samples: no model has a record at checks yet.)
+    models = [request["model"] for request in agent.ai_client.requests]
+    assert models[:2] == ["small", "large"] and len(models) == 3
     rows = {(row["task"], row["model"]): row for row in wazn.report()}
     assert rows[("fix_code", "large")]["evidence"] > 0
 

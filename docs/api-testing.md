@@ -79,7 +79,7 @@ Server-Sent Events. Body:
 | `workspace_id` | no | A coding project to work in |
 | `images` | no | Up to 4 images, each `{"media_type": "image/png", "data": "<base64>"}`, at most 10 MB; see [Basar](basar.md) |
 | `thinking` | no | `true` adds the agents' internal telemetry: `thinking` events, and `cognitive` and `thinking_trace` in `chat_complete`. Without it the stream carries the answer, its status and its receipts |
-| `stateless` | no | `true` for an evaluation. MIZAN recalls nothing from your other chats, learns nothing from the run, and keeps nothing as a training candidate. The chat's own messages are still saved. Reported in `usage.memory`. The AGI test and debug comparisons are always stateless |
+| `stateless` | no | `true` for an evaluation or test session (the no-memory flag). MIZAN recalls nothing from your other chats, learns nothing from the run, keeps nothing as a training candidate and saves no note ("remember this" is answered as not kept). The chat's own messages are still saved, marked so that no later chat recalls them. Reported in `usage.memory`. The AGI test and debug comparisons are always stateless |
 
 ```bash
 curl -N $MIZAN/api/chat/stream -H "Authorization: Bearer $TOKEN" \
@@ -94,7 +94,13 @@ Events arrive in this order:
 - `thinking`: only when the request has `thinking: true`.
 - `chat_stream`: the answer, in its `chunk` field.
 - `chat_complete` or `error`. The closing event holds:
-  - `response`: the full answer;
+  - `response`: the full answer. It equals the `chat_stream` chunks joined,
+    with two exceptions: when the Truth Gate corrected or removed a claim
+    (`usage.sidq` lists each change), or when a tool's output carried an
+    instruction and its planted words were taken out of the answer
+    (`usage.amanah.removed_from_answer`). Notes
+    about the answer (what sources said, a ruling question's referral to a
+    scholar in `usage.ahl.referral`) are never added to the text;
   - `usage`: model, tokens and cost, plus `isnad` (each claim's grade), `sidq`
     (Truth Gate), `ahl` (what sources said), `amanah` (injections removed) and
     `orchestrator` (`mizan` when MIZAN did the work itself);

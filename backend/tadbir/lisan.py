@@ -19,7 +19,7 @@ from typing import Any
 
 from api.iqtisad import BudgetExhausted
 from perception import basar
-from providers import effective_limits, provider_retry_delay
+from providers import REASONING_EFFORT, effective_limits, provider_retry_delay
 
 from . import amanah, tajdid, trace, wazn
 
@@ -30,6 +30,18 @@ LANGUAGE_NAMES = {
     "hi": "Hindi (Devanagari)",
     "ar": "Arabic",
 }
+
+
+def language_name(language: str) -> str:
+    """The language's name for Lisan: a shipped one, one an administrator taught
+    (Ta'lim), or English."""
+    if language in LANGUAGE_NAMES:
+        return LANGUAGE_NAMES[language]
+    from . import talim
+
+    return talim.languages().get(language) or "English"
+
+
 _BASE = (
     "You are Lisan, the language faculty of MIZAN. MIZAN's own architecture plans, runs "
     "tools and verifies results; you only handle language. Never claim you ran, searched "
@@ -44,6 +56,14 @@ INSTRUCTIONS = {
         "isolated sandbox without network access and check the output. It must not read "
         "input, must print its results, and must use only the standard library. Reply "
         "with exactly one fenced code block and nothing else."
+    ),
+    "cross_check": (
+        "Write one complete {language} program that computes what the request asks by a "
+        "different method than the most direct one (a closed form, a brute force over the "
+        "definition, or another kind of loop). Read every bound, index and starting value "
+        "exactly as the request states it. Print only the final result, nothing else. It "
+        "must not read input and must use only the standard library. Reply with exactly "
+        "one fenced code block and nothing else."
     ),
     "fix_code": (
         "MIZAN ran this {language} program in its sandbox and it failed. Return the "
@@ -204,6 +224,16 @@ class Lisan:
             if getattr(block, "type", "") == "text"
         )
         if not text.strip():
+            stop = str(getattr(response, "stop_reason", "") or "")
+            if stop in ("max_tokens", "length") and REASONING_EFFORT.get() != "low":
+                # Reasoning used the whole output limit before any answer: ask
+                # once more at low effort rather than give up (or let the agent
+                # loop spend a larger budget the same way).
+                token = REASONING_EFFORT.set("low")
+                try:
+                    return await self._ask(system, user, max_tokens, model)
+                finally:
+                    REASONING_EFFORT.reset(token)
             raise LisanUnavailable("The language model returned no text")
         return text.strip()
 
@@ -216,6 +246,13 @@ class Lisan:
         reply = await self.ask(
             system, f"{request}\n\n{lessons}" if lessons else request, task="write_code"
         )
+        return extract_code(reply)
+
+    async def cross_check(self, request: str, language: str) -> str:
+        """A second program for the same request, written without seeing the
+        first, so the two derivations share no code (Tathabbut)."""
+        system = self._instruction("cross_check", INSTRUCTIONS["cross_check"], language=language)
+        reply = await self.ask(system, request, task="cross_check")
         return extract_code(reply)
 
     async def fix_code(
@@ -336,7 +373,7 @@ class Lisan:
             f"Write the complete file `{path}`. Use only these files and the platform itself: no "
             "frameworks, external libraries, CDNs or network requests. Keep names and ids "
             "consistent with the files already written. Text the user sees is in "
-            f"{LANGUAGE_NAMES.get(language, 'English')}; code and identifiers are in English. "
+            f"{language_name(language)}; code and identifiers are in English. "
             "Reply with exactly one fenced code block containing the whole file and nothing else.",
             f"User request:\n{request}" + (f"\n\nFiles already written:\n{done}" if done else ""),
             max_tokens=6000,
@@ -358,7 +395,7 @@ class Lisan:
 
     async def express(self, request: str, facts: dict, language: str) -> str:
         return await self.ask(
-            f"Write MIZAN's reply to the user in {LANGUAGE_NAMES.get(language, 'English')}. "
+            f"Write MIZAN's reply to the user in {language_name(language)}. "
             "Use ONLY the facts provided: no extra numbers, names, sources, links or claims. "
             "Be clear and concise.",
             f"User request:\n{request}\n\nFacts (JSON):\n"
@@ -390,7 +427,7 @@ class Lisan:
                 "the answer):\n" + json.dumps(computed, ensure_ascii=False)[:2000]
             )
         return await self.ask(
-            f"Answer the user's request in {LANGUAGE_NAMES.get(language, 'English')} using ONLY "
+            f"Answer the user's request in {language_name(language)} using ONLY "
             "the numbered sources. Cite each claim with its source number like [1]. Keep each "
             "figure's unit as the source states it (for example 'million'). If the sources do "
             "not answer it, say so. Do not add links or facts from elsewhere.",
@@ -509,7 +546,7 @@ class Lisan:
             "whose info string is the file path (for example ```src/app.js). Do not return "
             "unchanged files, and keep the rest of each file as it is. Use no new external "
             "libraries or network requests. Text the user sees is in "
-            f"{LANGUAGE_NAMES.get(language, 'English')}.",
+            f"{language_name(language)}.",
             f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}"
             + again,
             max_tokens=8000,

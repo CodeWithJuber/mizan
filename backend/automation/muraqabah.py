@@ -26,6 +26,7 @@ Two judgements decide when a notice reaches the user:
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -154,6 +155,44 @@ def city_in(text: str) -> Place | None:
     for name in sorted(CITIES, key=len, reverse=True):
         if f" {name} " in lowered:
             return known_city(name)
+    return None
+
+
+@functools.cache
+def _asking_words() -> frozenset[str]:
+    """Words people use to ask for things: those two or more of MIZAN's request
+    seeds use (a word only one seed uses is that seed's topic, as in Fihris).
+    What is left of a message is what it is about."""
+    from collections import Counter
+
+    from tadbir import qasd
+
+    counts = Counter(
+        word
+        for _label, text in qasd._rows("intents.tsv")
+        for word in set(re.findall(r"\w+", text.lower()))
+    )
+    return frozenset(word for word, count in counts.items() if count >= 2)
+
+
+async def place_named(text: str) -> Place | None:
+    """A city named in the text: MIZAN's own table, else each word that is not
+    a way of asking looked up by the geocoder, kept only when the place found
+    is named by that word ("Aaj Sharjah mein Maghrib": Sharjah city)."""
+    place = city_in(text)
+    if place is not None:
+        return place
+    asking = _asking_words()
+    candidates = [
+        word
+        for word in dict.fromkeys(re.findall(r"[^\W\d_]{3,}", text))
+        if word.lower() not in asking
+    ]
+    for word in candidates[:3]:
+        found = await find_place(word)
+        name = found.label.split(",")[0] if found is not None else ""
+        if found is not None and word.casefold() in re.findall(r"\w+", name.casefold()):
+            return found
     return None
 
 

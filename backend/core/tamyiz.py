@@ -244,6 +244,27 @@ class Tamyiz:
             )
         return self
 
+    def held_out_correct(self, examples: Sequence[tuple[str, ...]]) -> list[bool]:
+        """Whether each of these examples (all counted in this model) is
+        classified right by the model trained without it and the rest of its
+        group, at this model's fitted α and weights (exact leave-one-out)."""
+        rows = [(row[1], self.vector(row[0]), row[2] if len(row) > 2 else None) for row in examples]
+        groups: dict[object, tuple[dict[int, float], float]] = {}
+        for _label, vector, group in rows:
+            if group is not None:
+                summed, size = groups.get(group, ({}, 0.0))
+                for index, count in vector.items():
+                    summed[index] = summed.get(index, 0.0) + count
+                groups[group] = (summed, size + 1)
+        held_out = [
+            (label, vector, *(groups[group] if group is not None else (vector, 1.0)))
+            for label, vector, group in rows
+        ]
+        return [
+            max(_combine(parts, self.weights).items(), key=lambda item: item[1])[0] == truth
+            for truth, parts in _loo_parts(self, held_out, self.alpha)
+        ]
+
     def state(self) -> dict:
         return {
             "alpha": self.alpha,

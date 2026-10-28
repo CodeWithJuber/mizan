@@ -1,5 +1,7 @@
 """Fihris: MIZAN finds ayahs by their words, however they are spelled."""
 
+import dataclasses
+
 import pytest
 
 from agents.specialized import create_agent
@@ -150,12 +152,15 @@ async def test_mizan_quotes_the_found_ayah_from_the_source(monkeypatch, tmp_path
     agent = create_agent("general", izn=IznPermission())
     agent.ai_client = ScriptedProvider(["Al-Kawthar is what Allah granted the Prophet."])
 
-    async def search(query, limit=3):
-        return [
-            fihris.Match(108, 1, 13.6, ["kausar"]),
-            fihris.Match(67, 4, second, ["kausar"]),
-            fihris.Match(54, 50, 4.0, ["kausar"]),
-        ]
+    async def find(query, limit=3):
+        return fihris.Found(
+            [
+                fihris.Match(108, 1, 13.6, ["kausar"]),
+                fihris.Match(67, 4, second, ["kausar"]),
+                fihris.Match(54, 50, 4.0, ["kausar"]),
+            ],
+            [],
+        )
 
     async def fetch(reference, language):
         assert (reference.surah, reference.start, reference.end) == (108, 1, 1)
@@ -173,7 +178,7 @@ async def test_mizan_quotes_the_found_ayah_from_the_source(monkeypatch, tmp_path
             "source": "api.alquran.cloud (Tanzil Uthmani text)",
         }
 
-    monkeypatch.setattr(fihris, "search", search)
+    monkeypatch.setattr(fihris, "find", find)
     monkeypatch.setattr(quran, "fetch", fetch)
     result = await agent.execute("Quran me Kausar ka zikr")
     text = result["result"]
@@ -193,11 +198,58 @@ async def test_no_match_says_so_and_quotes_nothing(monkeypatch, tmp_path):
     agent = create_agent("general", izn=IznPermission())
     agent.ai_client = ScriptedProvider()
 
-    async def search(query, limit=3):
-        return []
+    async def find(query, limit=3):
+        return fihris.Found([], [])
 
-    monkeypatch.setattr(fihris, "search", search)
+    monkeypatch.setattr(fihris, "find", find)
     result = await agent.execute("Quran me Kausar ka zikr")
     # In the language asked in (Roman Hindi/Urdu here).
     assert "yaaddasht se nahi likhta" in result["result"]
+    assert agent.ai_client.requests == []
+
+
+class Letters:
+    """The letter model's reading of a word: English or a spelling (stubbed;
+    the real one is fitted on the 6236 ayahs' Saheeh and transliteration)."""
+
+    def posterior(self, word):
+        english = 0.95 if word in {"smartphones", "mentions", "quote"} else 0.05
+        return {"en": english, "latn": 1 - english}
+
+
+def test_words_no_ayah_uses_outweigh_the_best_match(index):
+    index = dataclasses.replace(index, english=Letters())
+    # "smartphones" is English and no translation uses it: no ayah says this,
+    # however the letters of the transliteration happen to meet it.
+    found = index.find("Which ayah mentions smartphones?")
+    assert found.matches == [] and found.absent == ["smartphones"]
+    assert found.nearest is not None
+    # A word some view uses is never unused; a spelling is mostly a spelling.
+    assert index.unused("elephant") == 0.0 and index.unused("kausar") < 0.5
+    assert index.find("Quran me Kausar ka zikr").matches[0].label == "108:1"
+    assert index.find("But quran has mentioned sidra tu munhtah").matches[0].label == "53:14"
+    # When the words the Quran uses carry most of the query, the ayah is found.
+    assert index.find("Quote the ayah that mentions the elephant").matches[0].label == "105:1"
+
+
+async def test_no_ayah_says_it_plainly_and_quotes_nothing(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "mizan")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
+    agent = create_agent("general", izn=IznPermission())
+    agent.ai_client = ScriptedProvider()
+
+    async def find(query, limit=3):
+        return fihris.Found([], ["continents"], fihris.Match(12, 46, 11.6, ["seven", "continents"]))
+
+    async def fetch(reference, language):
+        raise AssertionError("the nearest ayah is named, never quoted as the answer")
+
+    monkeypatch.setattr(fihris, "find", find)
+    monkeypatch.setattr(quran, "fetch", fetch)
+    result = await agent.execute("Quote the ayah where the Quran mentions the seven continents")
+    text = result["result"]
+    assert text.startswith("No ayah of the Quran says this.")
+    assert "“continents”" in text and "“seven”" in text and "Yusuf 12:46" in text
     assert agent.ai_client.requests == []

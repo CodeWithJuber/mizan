@@ -71,7 +71,9 @@ Workspace files (the user's own project) are scanned through the agent's normal 
 ## What the user sees
 
 - **In chat:** when an answer's run removed anything, a shield line appears under the message, for example "Amanah: ignored 2 instructions aimed at the AI in web browse". It expands to the kinds and short excerpts. MIZAN's own web answers also say so in the user's language.
-- **Data:** the run's record is `result["amanah"]` → `usage.amanah`, with `ignored`, `kinds`, `sources`, `hidden` and `examples`.
+- **Never in the answer:** each finding carries its *payload*, what the instruction wanted said: the words found only in the removed instruction (never in the rest of the text or the user's own words) that are planted (a code, a number of 3+ characters, a link, an address, a name inside a sentence) or the object of "say / reply with / include / append / tell the user", and more informative than an average word of general language. A sentence of the answer that carries one is removed (`amanah.scrub`); if every sentence does, only those words are replaced by `[removed]`. An instruction found only by the evidence model has no exact span, so only its asked-for words count. The model is not shown the instruction's words either: it is told that the pasted text holds one, and that MIZAN reports it.
+- **Streaming:** when the user's own message carries pasted text with an instruction, the answer is streamed once it is clean, so the streamed text is the kept text.
+- **Data:** the run's record is `result["amanah"]` → `usage.amanah`, with `ignored`, `kinds`, `sources`, `hidden`, `examples` and, when sentences were taken out of the answer, `removed_from_answer`.
 - **Debug mode:** shows the `verify/amanah` span with each finding.
 
 ## Measured

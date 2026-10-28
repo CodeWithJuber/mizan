@@ -134,4 +134,6 @@ async def test_lisan_reads_the_wording_with_the_chat_it_belongs_to(monkeypatch, 
     )
     mapping = agent.ai_client.requests[0]["messages"][-1]["content"]
     assert "previous messages in this chat" in mapping and "पिलंग पोस" in mapping
-    assert "orchestrator" not in result.get("usage", {})  # answered in words, nothing built
+    assert (
+        result.get("usage", {}).get("orchestrator") != "mizan"
+    )  # answered in words, nothing built

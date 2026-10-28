@@ -139,6 +139,45 @@ def _native_sense_advisory(query: str) -> str:
     return "[Native sense advisory: " + ", ".join(bits) + "]"
 
 
+def _about(query: str, rows: list) -> list:
+    """The stored statements that speak of what the query speaks of, best first.
+
+    The query's distinctive words are those the user's statements use that
+    carry more information than an average word of general language (Lughah's
+    corpora): never "what", "the", "hai". A statement is about the query when
+    it holds more than half of their information. Sharing only common words
+    with a request recalls nothing.
+    """
+    from core.adaptive import tokenize
+    from tadbir.ahl_dhikr import average_information, information
+
+    texts = [set(tokenize(row[2])) for row in rows]
+    used = set().union(*texts) if texts else set()
+    floor = average_information()
+    distinctive = {
+        word: information(word)
+        for word in set(tokenize(query))
+        if word in used and information(word) > floor
+    }
+    needed = sum(distinctive.values())
+    if needed <= 0:
+        return []
+    scored = []
+    for index, (row, text) in enumerate(zip(rows, texts, strict=True)):
+        held = sum(value for word, value in distinctive.items() if word in text)
+        if 2 * held > needed:
+            scored.append((held, -index, row))
+    return [row for _held, _order, row in sorted(scored, key=lambda item: item[:2], reverse=True)]
+
+
+def _stateless_message(metadata: str | None) -> bool:
+    """Whether a stored message was sent as ``stateless`` (kept, never recalled)."""
+    try:
+        return bool(json.loads(metadata or "{}").get("stateless"))
+    except (ValueError, AttributeError):
+        return False
+
+
 @dataclass
 class Memory:
     """Base memory unit"""
@@ -992,7 +1031,10 @@ class DhikrMemorySystem:
         """Recall bounded, attributed user statements from owned conversations.
 
         Assistant replies are not facts or training labels. Legacy sessions
-        without an owner are deliberately excluded, including for admins.
+        without an owner are deliberately excluded, including for admins. Only
+        real chats are recalled: messages sent as ``stateless`` (tests,
+        evaluations) never are, and neither is a message Amanah reads as an
+        instruction aimed at the AI, since in another chat it is outside text.
         """
         if not owner_id:
             return []
@@ -1000,7 +1042,7 @@ class DhikrMemorySystem:
         try:
             self._session_table(conn)
             rows = conn.execute(
-                """SELECT m.id, m.session_id, m.content, m.created_at
+                """SELECT m.id, m.session_id, m.content, m.created_at, m.metadata
                 FROM agent_messages m JOIN chat_sessions s ON s.session_id = m.session_id
                 WHERE s.owner_id = ? AND m.session_id != ? AND m.role = 'user'
                   AND m.content NOT LIKE '/%'
@@ -1009,20 +1051,16 @@ class DhikrMemorySystem:
             ).fetchall()
         finally:
             self._release_conn(conn)
-        terms = set(re.findall(r"\w{3,}", query.casefold()))
-        ranked = sorted(
-            enumerate(rows),
-            key=lambda item: (
-                len(terms & set(re.findall(r"\w{3,}", item[1][2].casefold()))),
-                -item[0],
-            ),
-            reverse=True,
-        )
-        # Include recent continuity as well as query matches. Bound the bytes
-        # and count so an old conversation cannot dominate the current task.
-        selected = list(rows[:2])
-        for _, row in ranked:
-            if row not in selected and terms & set(re.findall(r"\w{3,}", row[2].casefold())):
+        from tadbir import amanah
+
+        rows = [row for row in rows if not _stateless_message(row[4])]
+        candidates = _about(query, rows)
+        wanted = max(0, min(limit, 5))
+        selected: list = []
+        for row in candidates:
+            if len(selected) >= wanted:
+                break
+            if not amanah.scan(row[2], "recalled chat"):
                 selected.append(row)
         return [
             {
@@ -1032,7 +1070,7 @@ class DhikrMemorySystem:
                 "created_at": row[3],
                 "source": "prior_user_statement",
             }
-            for row in selected[: max(0, min(limit, 5))]
+            for row in selected
         ]
 
     async def conversation_counts(self, owner_id: str) -> dict:
@@ -1049,8 +1087,10 @@ class DhikrMemorySystem:
         finally:
             self._release_conn(conn)
 
-    async def list_sessions(self, limit: int = 20, owner_id: str | None = None) -> list[dict]:
-        """List recent chat sessions with metadata"""
+    async def list_sessions(
+        self, limit: int = 20, owner_id: str | None = None, offset: int = 0
+    ) -> list[dict]:
+        """List recent chat sessions with metadata, newest first (``offset`` pages)."""
         conn = self._get_conn()
         self._session_table(conn)
         c = conn.cursor()
@@ -1067,9 +1107,9 @@ class DhikrMemorySystem:
             WHERE (? IS NULL OR m.session_id IN (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
             GROUP BY m.session_id
             ORDER BY MAX(m.created_at) DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
         """,
-            (owner_id, owner_id, limit),
+            (owner_id, owner_id, limit, max(0, offset)),
         )
         rows = c.fetchall()
         self._release_conn(conn)

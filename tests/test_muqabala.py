@@ -81,7 +81,9 @@ async def test_a_wrong_base_answer_is_caught_by_mizans_exact_value(agent):
     base, mizan, checks = run["base"], run["mizan"], run["checks"]
     # The base arm: one plain call, no tools, no MIZAN system prompt.
     (request,) = agent.ai_client.requests
-    assert request["system"] == muqabala.BASE_SYSTEM and not request.get("tools")
+    # The plain prompt and the same clock MIZAN's arm reads, nothing else.
+    assert request["system"].startswith(muqabala.BASE_SYSTEM) and not request.get("tools")
+    assert "The current date and time is" in request["system"]
     assert base["usage"]["input_tokens"] == 12 and base["tool_calls"] == 0
     # MIZAN computed the value itself, with no model call.
     assert "1267650600228229401496703205376" in mizan["text"] and mizan["verified"]
@@ -144,9 +146,20 @@ async def test_the_trace_shows_every_tool_and_lisan_prompt(agent, monkeypatch):
         return {"stdout": "[0, 1, 1, 2, 3]\n", "stderr": "", "exit_code": 0}
 
     monkeypatch.setattr(agent, "_execute_tool_safe", run_tool)
-    agent.ai_client = ScriptedProvider(
-        ["```python\nprint([0, 1, 1, 2, 3])\n```", "I ran it: 0 1 1 2 3"]
-    )
+
+    class ByRequest(ScriptedProvider):
+        # The two arms run at once, so replies go by what is asked, not by order:
+        # MIZAN's Lisan is asked for a program, the base model for an answer.
+        def create(self, **kwargs):
+            asked = str(kwargs.get("system", "")) + str(kwargs.get("messages", ""))
+            self.replies = (
+                ["```python\nprint([0, 1, 1, 2, 3])\n```"]
+                if "```" in asked or "program" in str(kwargs.get("system", "")).lower()
+                else ["I ran it: 0 1 1 2 3"]
+            )
+            return super().create(**kwargs)
+
+    agent.ai_client = ByRequest()
     run = await muqabala.compare(
         agent, "Ek python program likho jo 5 fibonacci numbers print kare aur run karo", {}, []
     )
@@ -157,7 +170,9 @@ async def test_the_trace_shows_every_tool_and_lisan_prompt(agent, monkeypatch):
     assert "print(" in lisan[0]["attributes"]["reply"]
     tool = next(span for span in spans if span["op"] == "execute_tool")
     assert tool["name"] == "workspace_run" and tool["attributes"]["ok"] is True
-    assert run["mizan"]["tool_calls"] == 1 and calls == ["workspace_run"]
+    # The program and the independent check written without seeing it (Tathabbut).
+    assert run["mizan"]["tool_calls"] == 2 and calls == ["workspace_run", "workspace_run"]
+    assert [span["name"] for span in lisan] == ["lisan.write_code", "lisan.cross_check"]
     # The base model claimed it ran code; it has no tools, so no receipt backs it.
     assert run["checks"]["base"]["unbacked_action_claims"]
 

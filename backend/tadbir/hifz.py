@@ -82,8 +82,18 @@ def recall(store: Any, user_id: str, message: str, language: str) -> dict | None
     return item
 
 
-def keep(store: Any, user_id: str, message: str, language: str, code: str, output: str) -> None:
-    """Keep a program MIZAN verified for this request."""
+def keep(
+    store: Any,
+    user_id: str,
+    message: str,
+    language: str,
+    code: str,
+    output: str,
+    *,
+    checked: bool = False,
+) -> None:
+    """Keep a program MIZAN verified for this request. ``checked``: an
+    independent program agreed with its result (Tathabbut)."""
     words = content_words(message)
     if not 2 <= len(words) <= 60 or not code.strip():
         return
@@ -100,8 +110,24 @@ def keep(store: Any, user_id: str, message: str, language: str, code: str, outpu
             "kept": time.time(),
             "used": time.time(),
             "runs": 1,
+            "checked": checked,
         }
     )
+    _save(store, user_id, items)
+
+
+def mark_checked(store: Any, user_id: str, kept: dict) -> None:
+    """An independent program has since agreed with this kept program."""
+    items = _load(store, user_id)
+    for item in items:
+        if _same(item, kept["tokens"], kept["language"]):
+            item["checked"] = True
+    _save(store, user_id, items)
+
+
+def drop(store: Any, user_id: str, kept: dict) -> None:
+    """Forget one kept program: an independent program disagreed with it."""
+    items = [i for i in _load(store, user_id) if not _same(i, kept["tokens"], kept["language"])]
     _save(store, user_id, items)
 
 

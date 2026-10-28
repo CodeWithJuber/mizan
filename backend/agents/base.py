@@ -80,6 +80,7 @@ from memory.living_memory import LivingMemorySystem
 from nlp.arabic import arabic_tokens
 from providers import (
     DEFAULT_CLAUDE_MODEL,
+    REASONING_EFFORT,
     BaseLLMProvider,
     IncompleteToolCall,
     ProviderRefusal,
@@ -1421,6 +1422,7 @@ class BaseAgent:
             "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
         )
         tool_cutoffs = 0
+        self._lower_effort = False
         capability_nudged = False
         provider_retries = 0
         output_boost = 1
@@ -1669,7 +1671,16 @@ class BaseAgent:
             # No tool calls — the turn is final, unless the model was cut off
             # by max_tokens, in which case ask it to continue (bounded, so a
             # pathological model can't loop forever).
-            self._require_answer_progress(response)
+            try:
+                self._require_answer_progress(response)
+            except OutputBudgetExceeded:
+                # The reasoning used the whole output limit and no answer came:
+                # ask once more at low effort, then report it (never silence).
+                if self._lower_effort:
+                    raise
+                self._lower_effort = True
+                logger.info("[FIKR] No answer within the output limit; retrying at low effort")
+                continue
             new_text = accumulated_text[len(text_before_call) :]
             if (
                 response.stop_reason == "max_tokens"
@@ -1882,10 +1893,11 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - asking never loses the answer
             logger.debug("Ahl al-Dhikr skipped", exc_info=True)
             return
-        shown = ahl_dhikr.apply(text, findings, language)
-        if ruling and not ahl_dhikr.machine_readable(text):
-            shown = f"{shown}\n\n_{phrase('ahl_ruling', language)}_"
-        result["result"] = shown
+        # What the sources said, and a ruling question's referral to a scholar,
+        # are shown under the answer (usage.ahl), never inside it: a note in a
+        # table row, a formula, a verse or after a required last word broke
+        # answers in the 27 October benchmark, and the answer that streamed is
+        # the answer that is kept.
         if findings:
             result["isnad"] = isnad.summary(ahl_dhikr.regrade(ledger, findings))
             settled = sum(1 for finding in findings if finding.verdict != "unknown")
@@ -1894,6 +1906,8 @@ class BaseAgent:
                     "ahl_dhikr", {"detail": f"Sources settled {settled} claim(s) of this answer"}
                 )
         result["ahl"] = ahl_dhikr.report(findings, heard, ruling_question=ruling)
+        if ruling:
+            result["ahl"]["referral"] = phrase("ahl_ruling", language)
 
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
@@ -1916,6 +1930,7 @@ class BaseAgent:
         started = time.perf_counter()
         outcome = "failed"
         self._provider_attempt_started = True
+        lowered = REASONING_EFFORT.set("low") if getattr(self, "_lower_effort", False) else None
         try:
             deadline = asyncio.timeout(provider_limits().total)
             try:
@@ -1941,6 +1956,8 @@ class BaseAgent:
             outcome = "cancelled"
             raise
         finally:
+            if lowered is not None:
+                REASONING_EFFORT.reset(lowered)
             self._record_provider_attempt(started, "create", outcome)
 
     def _completion_metadata(self) -> dict:
@@ -2077,7 +2094,10 @@ class BaseAgent:
                 active_stream.clear()
             publish("done", final)
 
+        lowered = REASONING_EFFORT.set("low") if getattr(self, "_lower_effort", False) else None
         runner_context = copy_context()
+        if lowered is not None:
+            REASONING_EFFORT.reset(lowered)
         runner_future = loop.run_in_executor(None, runner_context.run, _runner)
         completed = False
         outcome = "failed"
@@ -2913,15 +2933,42 @@ Match the requested depth and self-correct errors."""
         language_binding = _language_only.set(False)
         from tadbir import amanah
 
+        # Pasted text that tries to instruct the AI is known before the model
+        # writes: its answer is then sent whole once it is clean, so the text
+        # that streamed is the text kept.
+        held_back = (
+            stream_callback is not None
+            and isinstance(task, str)
+            and bool(amanah.scan_message(task))
+        )
+        shown = stream_callback
+        if held_back:
+
+            async def shown(chunk: str = "", **kwargs: Any) -> None:
+                if kwargs:  # tool and status frames are not the answer
+                    await stream_callback(chunk, **kwargs)
+
         try:
             with amanah.bind() as taint_record:
                 result = await self._execute_impl(
-                    task, context, stream_callback, tool_callback, thinking_callback
+                    task, context, shown, tool_callback, thinking_callback
                 )
             from api.usage import build_usage_summary
 
-            if taint_record and "amanah" not in result:
+            removed = 0
+            if taint_record and isinstance(result.get("result"), str):
+                # Never the code, link or word an injected instruction wanted said.
+                result["result"], removed = amanah.scrub(
+                    result["result"], amanah.payload(taint_record)
+                )
+            if held_back and isinstance(result.get("result"), str) and result["result"]:
+                await stream_callback(result["result"])
+            if "amanah" not in result:
+                # Always reported, "ignored": 0 included: an absent key reads as
+                # "not checked", which is never the case.
                 result["amanah"] = amanah.summary(taint_record)
+            if removed:
+                result["amanah"]["removed_from_answer"] = removed
             result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
             if result.get("success", True) and "isnad" not in result:
                 graded = self._isnad(result.get("result"))
@@ -2930,6 +2977,7 @@ Match the requested depth and self-correct errors."""
             if result.get("success", True) and not result.get("task_verified"):
                 await self._truth_gate(result)
                 await self._ahl_dhikr(result, task)
+            result.setdefault("orchestrator", "language_model")
             for key in (
                 "completion_status",
                 "task_verified",
@@ -3710,7 +3758,12 @@ Match the requested depth and self-correct errors."""
         Quran 3:191: "Those who remember Allah and reflect on the creation..."
 
         Writes real patterns to both in-memory hikmah and persistent DB.
+        A stateless run (an evaluation or a test chat) learns nothing.
         """
+        from memory import stateless
+
+        if stateless.active():
+            return
         self.learning_iterations += 1
         task_type = self._classify_task(task)
 

@@ -430,3 +430,13 @@ async def test_the_judge_reads_numbers_written_as_words():
     task = {"judge": {"answer": {"numbers": [3]}}}
     verdict = await agentic.judge(task, Store({}), "p", "Three items need reordering.")
     assert verdict["pass"]
+
+
+def test_every_file_task_of_the_agi_test_is_understood_as_work_on_the_project(monkeypatch):
+    # The 27 October API benchmark: two of these read as conversation, so the
+    # model said it could not read the files and nothing was computed.
+    monkeypatch.setattr("workspace.context.bound_workspace_id", lambda: "w1")
+    tasks = [task for task in agentic.load() if task["block"] == "agent_tools"]
+    assert len(tasks) == 3
+    for task in tasks:
+        assert fahm.understand(task["instructions"]).intent == "project_task", task["id"]

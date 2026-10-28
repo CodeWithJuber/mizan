@@ -82,7 +82,9 @@ def tools(agent, monkeypatch, **results):
     "text,intent,language",
     [
         ("Hai tumhare paas tools?", "capabilities", "hi-latn"),
-        ("What can you do?", "capabilities", "en"),
+        # (A bare "What can you do?" sits at P ≈ ½ in the seeds: not decisive, so
+        # it is answered in words; no tool runs either way.)
+        ("What are you able to do?", "capabilities", "en"),
         ("2+2?", "compute", "en"),
         ("2+2 kitna hota hai?", "compute", "hi-latn"),
         ("What is 15% of 200?", "compute", "en"),
@@ -157,6 +159,29 @@ def test_calculator_refuses_unsafe_or_unbounded_input(expression):
         calc.evaluate(expression)
 
 
+@pytest.mark.parametrize(
+    "text,value",
+    [
+        ("2 ki power 10 kitni hoti hai?", 1024),
+        ("3 to the power of 4", 81),
+        ("12 x 13 kitna hai", 156),
+        ("What is 987654321 × 123456789?", 121932631112635269),
+    ],
+)
+def test_operators_said_in_words_are_read(text, value):
+    assert calc.evaluate(calc.find_expression(text)) == value
+
+
+def test_a_hex_literal_is_not_a_product():
+    assert calc.find_expression("0x1f") is None
+
+
+def test_one_question_is_not_split_into_prayer_time_lookups():
+    # "combine Zuhr and Asr" is one fiqh question, not "Zuhr" and "Asr prayers".
+    assert fahm.understand_parts("Can a traveller combine Zuhr and Asr prayers?") is None
+    assert fahm.understand("Can a traveller combine Zuhr and Asr prayers?").intent == "converse"
+
+
 def test_surah_index_matches_the_hafs_count():
     assert len(quran.SURAHS) == 114
     assert sum(count for _, _, count in quran.SURAHS) == quran.TOTAL_AYAHS == 6236
@@ -191,6 +216,78 @@ def test_reference_parsing(text, expected):
 def test_ordinal_ayahs(text, ayah):
     reference = quran.parse_reference(text)
     assert reference.start == reference.end == ayah
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # A count of ayahs is a range from the start, or from the end when asked.
+        ("Surah Yasin ki pehli 5 ayaat Arabic mein", (36, 1, 5)),
+        ("surah 36 ki pehli 5 ayaat", (36, 1, 5)),
+        ("first 3 verses of surah mulk", (67, 1, 3)),
+        ("Surah Baqarah ki last 3 ayat", (2, 284, 286)),
+        ("Surah Mulk ki aakhri 2 ayat Hindi mein", (67, 29, 30)),
+        # A number after an ayah word, or alone, is that ayah.
+        ("Surah Yasin 5", (36, 5, 5)),
+        ("Surah Yasin ayat 5", (36, 5, 5)),
+        ("Surah Yasin ki 5vi ayat", (36, 5, 5)),
+    ],
+)
+def test_counts_of_ayahs_are_ranges(text, expected):
+    reference = quran.parse_reference(text)
+    assert (reference.surah, reference.start, reference.end) == expected
+
+
+@pytest.mark.parametrize(
+    "text,edition",
+    [
+        ("Surah Fatiha Urdu tarjuma ke saath", "ur"),
+        ("Surah Mulk Hindi mein", "hi"),
+        ("Give the Arabic text of Quran 2:285", "ar"),
+        ("Surah Ikhlas ka Arabic aur Urdu tarjuma", "ur"),
+        ("Surah Ikhlas", None),
+    ],
+)
+def test_the_translation_the_person_names_is_used(text, edition):
+    assert quran.requested_translation(text) == edition
+
+
+async def test_a_named_translation_is_fetched(agent, monkeypatch):
+    seen = {}
+
+    async def fetch(reference, language):
+        seen["language"] = language
+        return {
+            "reference": reference.label,
+            "surah_arabic": "الفاتحة",
+            "ayahs": [{"number": 1, "arabic": "ayah-1", "translation": "urdu-1"}],
+            "translation": "Fateh Muhammad Jalandhry",
+            "source": "api.alquran.cloud (Tanzil Uthmani text)",
+            "shown": (1, 1),
+            "requested": 1,
+            "total": 7,
+        }
+
+    monkeypatch.setattr(quran, "fetch", fetch)
+    await agent.execute("Surah Fatiha 1 Urdu tarjuma ke saath")
+    assert seen["language"] == "ur"
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("How many ayat are in the whole Quran?", "**6236 ayahs**"),
+        ("Surah Al-Baqarah mein kitni ayat hain?", "**286 ayaat**"),
+    ],
+)
+async def test_counts_come_from_the_surah_index(agent, monkeypatch, text, expected):
+    async def fetch(reference, language):
+        raise AssertionError("a count is read from the surah index, not fetched")
+
+    monkeypatch.setattr(quran, "fetch", fetch)
+    result = await agent.execute(text)
+    assert expected in result["result"]
+    assert result["orchestration"]["intent"] == "quran_count"
 
 
 async def test_long_surahs_are_shown_in_parts(agent, monkeypatch):
@@ -392,7 +489,11 @@ async def test_a_wrong_sandbox_result_is_not_marked_verified(agent, monkeypatch)
 
 async def test_lisan_writes_code_and_mizan_repairs_failures(agent, monkeypatch):
     agent.ai_client = ScriptedProvider(
-        ["```python\nprint(fib(10)\n```", "```python\nprint([0, 1, 1, 2, 3])\n```"]
+        [
+            "```python\nprint(fib(10)\n```",
+            "```python\nprint([0, 1, 1, 2, 3])\n```",
+            "```python\nf = [0, 1]\nwhile len(f) < 5: f.append(f[-1] + f[-2])\nprint(f)\n```",
+        ]
     )
     fake = tools(
         agent,
@@ -400,14 +501,17 @@ async def test_lisan_writes_code_and_mizan_repairs_failures(agent, monkeypatch):
         workspace_run=[
             {"stdout": "", "stderr": "SyntaxError: '(' was never closed", "exit_code": 1},
             {"stdout": "[0, 1, 1, 2, 3]\n", "stderr": "", "exit_code": 0, "duration_ms": 30},
+            {"stdout": "[0, 1, 1, 2, 3]\n", "stderr": "", "exit_code": 0, "duration_ms": 20},
         ],
     )
     result = await agent.execute(
         "Ek python program likho jo 5 fibonacci numbers print kare aur run karo"
     )
-    assert [name for name, _ in fake.calls] == ["workspace_run", "workspace_run"]
+    assert [name for name, _ in fake.calls] == ["workspace_run"] * 3
     assert fake.calls[1][1]["command"] == "print([0, 1, 1, 2, 3])"
-    assert len(agent.ai_client.requests) == 2
+    # Code, its repair, and an independent program written without seeing it.
+    assert len(agent.ai_client.requests) == 3
+    assert "Program:" not in agent.ai_client.requests[2]["messages"][0]["content"]
     assert "tools" not in agent.ai_client.requests[0] or not agent.ai_client.requests[0].get(
         "tools"
     )
@@ -489,14 +593,16 @@ async def test_modes_route_unknown_requests(agent, monkeypatch):
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
     agent.ai_client = ScriptedProvider(["4"])
     legacy = await agent.execute("2+2?")
-    assert len(agent.ai_client.requests) == 1 and "orchestrator" not in legacy["usage"]
+    assert (
+        len(agent.ai_client.requests) == 1 and legacy["usage"]["orchestrator"] == "language_model"
+    )
 
 
 async def test_tools_mizan_may_not_use_are_left_to_the_agent_loop(agent, monkeypatch):
     monkeypatch.setattr(agent, "_chat_tool_allowed", lambda name: name != "workspace_run")
     agent.ai_client = ScriptedProvider(["I can't run code here."])
     result = await agent.execute("```python\nprint(1)\n```\nrun karo")
-    assert "orchestrator" not in result["usage"]
+    assert result["usage"]["orchestrator"] == "language_model"
 
 
 async def test_a_window_program_is_compiled_not_run(agent, monkeypatch):
@@ -517,14 +623,15 @@ async def test_a_window_program_is_compiled_not_run(agent, monkeypatch):
 
 async def test_mizan_understands_a_program_request_without_lisan(agent, monkeypatch):
     fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
-    agent.ai_client = ScriptedProvider([fib])
+    agent.ai_client = ScriptedProvider([fib, fib])
     fake = tools(
         agent, monkeypatch, workspace_run={"stdout": "12586269025\n", "stderr": "", "exit_code": 0}
     )
     result = await agent.execute("Fibonacci series ka 50th number kya hai?")
     assert result["orchestration"]["intent"] == "build_and_run"
     assert result["orchestration"]["entities"].get("understood_by") is None  # Fahm, alone
-    assert len(agent.ai_client.requests) == 1  # Lisan writes the code; nothing was mapped
+    # Lisan writes the code and an independent check; nothing was mapped.
+    assert len(agent.ai_client.requests) == 2
     assert fake.calls[0][0] == "workspace_run" and "12586269025" in result["result"]
 
 
@@ -561,7 +668,7 @@ def test_doubtful_lisan_mappings_are_rejected(parsed):
 async def test_rejected_mapping_falls_back_to_the_agent_loop(agent, unplaced_wording):
     agent.ai_client = ScriptedProvider(['{"intent":"converse"}', "Python is a language."])
     result = await agent.execute("Explain what Python code is used for")
-    assert "orchestrator" not in result["usage"]
+    assert result["usage"]["orchestrator"] == "language_model"
     assert result["result"] == "Python is a language."
 
 
@@ -844,7 +951,7 @@ async def test_an_existing_project_is_left_to_the_agent_loop(agent, monkeypatch)
     tools(agent, monkeypatch, workspace_glob={"files": [{"path": "index.html"}], "total": 1})
     agent.ai_client = ScriptedProvider(["I will edit your project."])
     result = await agent.execute("Build a todo app")
-    assert "orchestrator" not in result["usage"]
+    assert result["usage"]["orchestrator"] == "language_model"
 
 
 # ── Waqt: dates and the Hijri calendar ───────────────────────────────────
@@ -1039,7 +1146,8 @@ async def test_mizan_gives_code_work_to_katib(monkeypatch, tmp_path):
     assert [name for name, _ in katib.fake.calls] == ["workspace_run"]
     assert khalifah.fake.calls == []
     assert result["orchestration"]["agents"][0]["agent"] == "Katib"
-    assert "Katib" in result["result"] and result["completion_status"] == "verified_by_mizan"
+    # Who did it is metadata, never a footer in the answer.
+    assert "Katib" not in result["result"] and result["completion_status"] == "verified_by_mizan"
     assert result["orchestration"]["plan"][0]["content"].startswith("MIZAN gives this to Katib")
     assert katib.total_tasks == 1 and katib.success_count == 1
 
@@ -1129,6 +1237,8 @@ async def test_verified_wording_is_learned_and_reused_without_asking_lisan(
             '"language":"python"}',
             fib,
             fib,
+            fib,
+            fib,
         ]
     )
     tools(
@@ -1138,8 +1248,9 @@ async def test_verified_wording_is_learned_and_reused_without_asking_lisan(
     assert first["orchestration"]["entities"]["understood_by"] == "lisan"
     second = await agent.execute("Fibonacci series ka 60th number kya hai?")
     assert second["orchestration"]["entities"]["understood_by"] == "mizan_learned"
-    assert second["orchestration"]["language_model_calls"] == 1  # code only, no mapping call
-    assert len(agent.ai_client.requests) == 3
+    # The code and its independent check only, no mapping call.
+    assert second["orchestration"]["language_model_calls"] == 2
+    assert len(agent.ai_client.requests) == 5
     assert taallum.summary(agent.adaptive, "")["by_intent"] == {"build_and_run": 1}
 
 
@@ -1400,6 +1511,19 @@ async def test_remember_keeps_the_users_own_words_tied_to_the_chat(with_memory, 
     assert "Daftar" in result["result"]
 
 
+async def test_a_stateless_chat_saves_no_note_and_says_so(with_memory, monkeypatch):
+    from memory import stateless
+
+    agent = with_memory
+    tools(agent, monkeypatch)
+    with stateless.bind():
+        result = await agent.execute(
+            "Yaad rakhna meri beti ka naam Maryam hai", context={"session_id": "chat-8"}
+        )
+    assert _notes(agent, "chat:chat-8") == []
+    assert "stateless" in result["result"] and "Daftar" not in result["result"]
+
+
 async def test_a_watcher_task_never_saves_a_note(with_memory, monkeypatch):
     from security import approvals
 
@@ -1463,3 +1587,17 @@ async def test_cross_chat_recall_can_be_turned_off(tmp_path, monkeypatch):
     await chat.set_chat_preference("u-1", "cross_chat_recall", "off")
     off = await main.chat_context(user, "new", {}, None, "Maryam school")
     assert off["conversation_memory"] == []
+
+
+def test_the_agi_tests_paraphrases_reach_the_same_recipe():
+    # The 27 October API benchmark: surah counts in English and Arabic went to
+    # a verse search, and an Urdu question about boiling water to morphology.
+    surahs = [
+        "How many surahs are in the Quran?",
+        "Quran me kitni surtein hain?",
+        "قرآن مجید میں کتنی سورتیں ہیں؟",
+        "كم عدد سور القرآن الكريم؟",
+    ]
+    assert {fahm.understand(text).intent for text in surahs} == {"quran_count"}
+    assert fahm.understand("سطح سمندر پر پانی کتنے ڈگری سیلسیس پر ابلتا ہے؟").intent != "sarf"
+    assert fahm.understand("كاتب کا مادہ کیا ہے؟").intent == "sarf"

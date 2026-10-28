@@ -24,9 +24,10 @@ def offline(monkeypatch):
 async def test_wrong_arithmetic_is_corrected(monkeypatch):
     monkeypatch.setenv("MIZAN_TRUTH_GATE", "strict")
     text, report = await sidq.gate("So 12 * 12 = 154, which is the area.")
-    assert "12 * 12 = 144" in text and "154" not in text.split("_")[0]
+    assert "12 * 12 = 144" in text and "154" not in text
     assert report["corrected"][0]["kind"] == "arithmetic"
-    assert "Truth Gate" in text
+    # The note is shown under the answer, never added to its text.
+    assert "Truth Gate" in report["note"] and "Truth Gate" not in text
 
 
 async def test_flag_mode_keeps_the_text_and_marks_it(monkeypatch):

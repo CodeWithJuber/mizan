@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-280 routes in 60 areas.
+284 routes in 60 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -104,7 +104,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/chat/preferences` | user | Get chat preferences |
 | DELETE | `/api/chat/preferences/{key}` | user | Delete chat preference |
 | PUT | `/api/chat/preferences/{key}` | user | Set chat preference |
-| GET | `/api/chat/sessions/list` | user | List recent chat sessions from DB with metadata |
+| GET | `/api/chat/sessions/list` | user | The user's chats, newest first; ``limit``/``offset`` page through them and ``next_offset`` is where the next page starts (null at the end). |
 | POST | `/api/chat/stream` | user | One authenticated POST produces one SSE stream; it is never replayed. |
 | DELETE | `/api/chat/{session_id}` | user | Delete a chat and everything MIZAN derived from it (Mahw). The answer is a receipt: what was removed from each store, how many checks ran over what is left, and how many traces were found (none, when it worked). |
 | GET | `/api/chat/{session_id}` | user | Newest ``limit`` messages; pass ``before=<message id>`` to page further back. |
@@ -206,7 +206,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/api/health` | public | Health check endpoint for monitoring and Docker |
+| GET | `/api/health` | public | Health for monitoring and Docker: ``status`` for everyone; the version, uptime and each check only for a signed-in administrator. |
 
 ## hooks
 
@@ -480,6 +480,10 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/tadbir/muhasaba` | admin | Run MIZAN's self-review now (admin): re-check recent unverified answers. |
 | DELETE | `/api/tadbir/programs` | user | Forget programs |
 | GET | `/api/tadbir/programs` | user | The programs MIZAN verified for you and re-runs instead of asking the model (Hifz). |
+| GET | `/api/tadbir/talim` | admin | Ta'lim (admin): what MIZAN can be taught, and every batch so far. |
+| POST | `/api/tadbir/talim` | admin | Teach a batch of examples; kept only if it does not make MIZAN worse at what it already knew (leave-one-out before and after, paired bootstrap). |
+| POST | `/api/tadbir/talim/import` | admin | Teach from a Hugging Face dataset split (read through the dataset viewer). |
+| DELETE | `/api/tadbir/talim/{batch}` | admin | Talim undo |
 
 ## tasks
 

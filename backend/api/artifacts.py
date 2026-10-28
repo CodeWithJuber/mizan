@@ -360,7 +360,7 @@ class ArtifactKind(StrEnum):
 
 
 class ArtifactCreate(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=100)
+    session_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     title: str = Field(..., min_length=1, max_length=200)
     kind: ArtifactKind
     content: str = Field(..., min_length=1, max_length=500_000)

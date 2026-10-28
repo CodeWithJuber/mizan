@@ -59,6 +59,7 @@ from . import (
     taallum,
     tajdid,
     tajriba,
+    tathabbut,
     trace,
     waqt,
     wazn,
@@ -172,18 +173,19 @@ class Tadbir:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
-        parts = fahm.understand_parts(task)
-        understanding = fahm.understand(task, history=history, overlay=self._learned_intents())
+        # Reading the request is CPU work (naive Bayes over every clause): it runs
+        # off the event loop, so other chats and /api/health never wait for it.
+        overlay = self._learned_intents()
+        parts = await asyncio.to_thread(fahm.understand_parts, task)
+        understanding = await asyncio.to_thread(fahm.understand, task, history, overlay)
         if parts is None and understanding.intent == "again_follow":
             # "?", "Jawab nahi aaya": the request before this one got no answer,
             # so MIZAN takes it up again; with nothing unanswered it is words.
             unanswered = _unanswered_request(history)
             if unanswered:
                 task = unanswered
-                parts = fahm.understand_parts(task)
-                understanding = fahm.understand(
-                    task, history=history, overlay=self._learned_intents()
-                )
+                parts = await asyncio.to_thread(fahm.understand_parts, task)
+                understanding = await asyncio.to_thread(fahm.understand, task, history, overlay)
             else:
                 understanding = fahm.Understanding("converse", understanding.language, 0.0)
         if parts is None and understanding.intent in {"silsila_follow", "search_bare"}:
@@ -246,7 +248,11 @@ class Tadbir:
                 {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
             )
         example: dict | None = None
-        if parts is None and self.lisan.available and fahm.partly_understood(task, understanding):
+        if (
+            parts is None
+            and self.lisan.available
+            and await asyncio.to_thread(fahm.partly_understood, task, understanding)
+        ):
             # Several requests and MIZAN's recognisers place only some: Lisan
             # maps the whole message into steps, which MIZAN validates.
             planned = await self._lisan_plan(task, understanding, history)
@@ -367,9 +373,7 @@ class Tadbir:
         self.workers.append(
             {"agent": worker.name, "role": role, "intent": intent, "verified": outcome.verified}
         )
-        if worker is not self.coordinator:
-            note = phrase("done_by_agent", language, name=worker.name, role=role)
-            outcome.text = f"{outcome.text}\n\n_{note}_"
+        # Who did the work is metadata (orchestration.agents), never the answer's text.
         outcome.isnad = self._isnad(outcome, intent)
         return outcome
 
@@ -895,6 +899,13 @@ class Tadbir:
                 tajriba.credit(store, owner, known, _ran_clean(run))
         # A program that was only compiled is not verified: it never ran.
         verified = run.get("exit_code") == 0 and not run.get("error") and toolkit is None
+        checked: bool | None = None
+        other = ""
+        if verified:
+            # Running cleanly says the code works, not that it read the request
+            # right: an independent derivation must agree (Tathabbut).
+            checked, run, code, other = await self._tathabbut(request, task, language, code, run)
+            verified = checked is not False
         if verified and failing is not None:
             # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
             lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
@@ -908,10 +919,62 @@ class Tadbir:
             parts.append(phrase("gui_checked", u.language, toolkit=toolkit))
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
+        if checked is True:
+            parts.append(f"_{phrase('tathabbut_agreed', u.language)}_")
+        elif checked is False:
+            parts.append(f"_{phrase('tathabbut_disagrees', u.language, other=other)}_")
         if verified:
-            hifz.keep(store, owner, task, language, code, str(run.get("stdout", "")))
+            hifz.keep(
+                store,
+                owner,
+                task,
+                language,
+                code,
+                str(run.get("stdout", "")),
+                checked=bool(checked),
+            )
             trace.event("learn", "hifz", kept=True, language=language)
-        return Outcome("\n\n".join(parts), verified, {"run": _run_facts(run), "attempts": tries})
+        facts = {"run": _run_facts(run), "attempts": tries}
+        if checked is not None:
+            facts["cross_check"] = {"agreed": checked, "other": other}
+        return Outcome("\n\n".join(parts), verified, facts)
+
+    async def _tathabbut(
+        self, request: str, task: str, language: str, code: str, run: dict
+    ) -> tuple[bool | None, dict, str, str]:
+        """An independent program for the same request must print the numbers
+        this one printed (N-version programming). On disagreement the first
+        program is repaired once with what the second printed. Returns whether
+        they agreed (None: nothing to compare), the run and code kept, and what
+        the independent program printed."""
+        printed = str(run.get("stdout", ""))
+        if not tathabbut.applies(printed):
+            return None, run, code, ""
+        try:
+            second = await self.lisan.cross_check(request, language)
+        except LisanUnavailable:
+            return None, run, code, ""
+        check = await self._run(second, language) if second.strip() else {}
+        said = str(check.get("stdout", "")).strip()
+        agreed = tathabbut.agree(printed, said) if _ran_clean(check) else None
+        trace.event("verify", "tathabbut", agreed=agreed)
+        if agreed is not False:
+            return agreed, run, code, said[:200]
+        error = (
+            f"The program ran, but an independent program written for the same request "
+            f"printed:\n{said[:500]}\nwhile this one printed:\n{printed.strip()[:500]}\n"
+            "One of them misreads the request (a starting value, an index, an inclusive or "
+            "exclusive bound). Re-read the request and return the corrected program."
+        )
+        try:
+            fixed = await self.lisan.fix_code(task, language, code, error, attempt=1)
+        except LisanUnavailable:
+            return False, run, code, said[:200]
+        rerun, _toolkit = await self._run_or_check(fixed, language)
+        if _ran_clean(rerun) and tathabbut.agree(str(rerun.get("stdout", "")), said):
+            trace.event("verify", "tathabbut", agreed=True, repaired=True)
+            return True, rerun, fixed, said[:200]
+        return False, run, code, said[:200]
 
     async def _reuse_program(
         self, u: fahm.Understanding, kept: dict, store: Any, owner: str
@@ -934,6 +997,24 @@ class Tadbir:
             and not run.get("error")
             and hifz.matches(kept, str(run.get("stdout", "")))
         )
+        if worked and not kept.get("checked") and tathabbut.applies(str(run.get("stdout", ""))):
+            # Kept before Tathabbut: an independent program must agree once.
+            try:
+                second = await self.lisan.cross_check(" ".join(kept["tokens"]), language)
+            except LisanUnavailable:
+                second = ""
+            check = await self._run(second, language) if second.strip() else {}
+            agreed = (
+                tathabbut.agree(str(run.get("stdout", "")), str(check.get("stdout", "")))
+                if _ran_clean(check)
+                else None
+            )
+            trace.event("verify", "tathabbut", agreed=agreed, kept=True)
+            if agreed is False:
+                hifz.drop(store, owner, kept)
+                return None  # it answered another question: Lisan writes a new one
+            if agreed:
+                hifz.mark_checked(store, owner, kept)
         reliability = hifz.record(store, owner, kept, worked)
         trace.event("learn", "hifz", reused=True, worked=worked, reliability=reliability)
         if not worked:
@@ -964,8 +1045,14 @@ class Tadbir:
         await self._step()
         try:
             program = await self.lisan.propose_rule(examples)
-        except LisanUnavailable as exc:
-            raise Defer from exc
+        except LisanUnavailable:
+            # The model gave no rule (often its reasoning used the whole output
+            # limit). Handing the puzzle to the agent loop would spend a larger
+            # budget the same way: MIZAN says plainly that no rule was found.
+            await self._step()
+            return Outcome(
+                phrase("qiyas_no_rule", u.language, total=total), False, {"examples": total}
+            )
         await self._step()
         best: tuple[int, str, dict | None] = (-1, program, None)
         attempts = 0
@@ -1962,10 +2049,13 @@ class Tadbir:
             ]
         )
         await self._step()
+        # The translation the person names ("Urdu tarjuma", "Arabic mein"),
+        # else the one of the language they write in.
+        edition = quran.requested_translation(task) or u.language
         data, error = await self._from_source(
             "quran_text",
             reference.label,
-            lambda: quran.fetch(reference, u.language),
+            lambda: quran.fetch(reference, edition),
             lambda found: f"{len(found['ayahs'])} ayah(s)",
         )
         if error is not None:
@@ -2009,21 +2099,71 @@ class Tadbir:
                 lines += ["", f"**{phrase('quran_answer', u.language)}**", answer]
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
 
+    async def _quran_count(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Ayah counts from MIZAN's surah index (the Hafs count of 6236)."""
+        surah = u.entities.get("surah")
+        await self._begin(["Read the count from MIZAN's surah index", "Reply with the count"])
+        await self._step()
+        if surah:
+            name, arabic, count = quran.SURAHS[surah - 1]
+            text = phrase(
+                "quran_count_surah", u.language, name=name, arabic=arabic, number=surah, count=count
+            )
+            facts = {"surah": surah, "ayahs": count}
+        else:
+            text = phrase(
+                "quran_count_whole", u.language, surahs=len(quran.SURAHS), ayahs=quran.TOTAL_AYAHS
+            )
+            facts = {"surahs": len(quran.SURAHS), "ayahs": quran.TOTAL_AYAHS}
+        await self._step()
+        return Outcome(text, True, facts)
+
     async def _quran_search(self, task: str, u: fahm.Understanding) -> Outcome:
         """Ayahs found by their words in MIZAN's own index, then quoted verbatim
         from the source and the question answered from the ayah's words."""
 
         async def search() -> dict:
-            return {"matches": await fihris.search(u.entities.get("query") or task)}
+            found = await fihris.find(u.entities.get("query") or task)
+            return {"matches": found.matches, "absent": found.absent, "nearest": found.nearest}
+
+        def summary(data: dict) -> str:
+            if data["absent"]:
+                return "no ayah uses " + ", ".join(data["absent"])
+            return ", ".join(match.label for match in data["matches"]) or "no ayah"
 
         found, error = await self._from_source(
-            "quran_index",
-            (u.entities.get("query") or task)[:120],
-            search,
-            lambda data: ", ".join(match.label for match in data["matches"]) or "no ayah",
+            "quran_index", (u.entities.get("query") or task)[:120], search, summary
         )
         if error is not None:
             return Outcome(phrase("quran_unavailable", u.language, reason=error), False, {})
+        if found["absent"]:
+            # Established from MIZAN's own index of the whole Quran: no ayah
+            # uses these words in the Arabic, the transliteration or the
+            # translations. The nearest ayah is named for what it shares only.
+            nearest = found["nearest"]
+            shared = [word for word in nearest.words if word not in found["absent"]]
+            lines = [
+                phrase(
+                    "quran_search_absent",
+                    u.language,
+                    words=", ".join(f"“{word}”" for word in found["absent"]),
+                )
+            ]
+            if shared:
+                lines.append(
+                    phrase(
+                        "quran_search_nearest",
+                        u.language,
+                        shared=", ".join(f"“{word}”" for word in shared),
+                        reference=f"{quran.SURAHS[nearest.surah - 1][0]} {nearest.label}",
+                        words=", ".join(f"“{word}”" for word in found["absent"]),
+                    )
+                )
+            return Outcome(
+                "\n\n".join(lines),
+                True,
+                {"absent": found["absent"], "nearest": nearest.label, "shared": shared},
+            )
         matches = found["matches"]
         if not matches:
             return Outcome(phrase("quran_search_none", u.language), False, {})
@@ -2063,9 +2203,18 @@ class Tadbir:
             f"({ayah['number']}) {ayah['translation']}"
             for ayah in data["ayahs"]
             if ayah.get("translation")
-        ) or "\n".join(  # an Arabic question: the ayah's own Arabic is the source
-            f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
         )
+        if translation:
+            # The model reads the translation only; it is told the Arabic is
+            # already shown, so it never says the Arabic is not available.
+            translation = (
+                "(The Arabic text of these ayahs is shown to the person above this answer, "
+                "verbatim from the source.)\n" + translation
+            )
+        else:  # an Arabic question: the ayah's own Arabic is the source
+            translation = "\n".join(
+                f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
+            )
         if not translation or not self.lisan.available:
             return ""
         source = [
@@ -2199,7 +2348,7 @@ class Tadbir:
         from security.auth import current_user_id
 
         owner = current_user_id()
-        place = muraqabah.city_in(task)
+        place = await muraqabah.place_named(task)
         if place is None and owner:
             place = muraqabah.default_store().place(owner)
         if place is None:
@@ -2561,6 +2710,11 @@ class Tadbir:
         store = getattr(self.agent, "memory", None)
         if store is None or (approvals is not None and approvals.deferred):
             raise Defer  # no store, or a watcher's task: nobody asked in person
+        from memory import stateless
+
+        if stateless.active():
+            # A test chat keeps nothing: say so rather than claim it was saved.
+            return Outcome(phrase("not_remembered", u.language), True, {"note": None})
         session = current_chat_session()
         await self._begin(["Save to your notes", "Reply"])
         note = u.entities["note"]

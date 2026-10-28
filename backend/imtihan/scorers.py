@@ -88,7 +88,15 @@ def grids(text: str) -> list[Any]:
     return found
 
 
+# A percentage given as the confidence ("Confidence: 95%", "my confidence is about
+# 95 %"), read before any other percentage in the answer ("the remaining 5%").
+_LABELLED = re.compile(r"confiden\w*\W{0,3}(?:[a-z]+\W+){0,4}?(\d{1,3}(?:\.\d+)?)\s*%")
+
+
 def confidence(text: str) -> float | None:
+    labelled = [float(value) for value in _LABELLED.findall(plain(text)) if float(value) <= 100]
+    if labelled:
+        return labelled[-1] / 100
     values = [float(value) for value in _PERCENT.findall(plain(text))]
     values = [value for value in values if 0 <= value <= 100]
     if values:

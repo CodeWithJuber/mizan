@@ -131,6 +131,17 @@ async def lifespan(app: FastAPI):
     logger.info("MIZAN (ميزان) Starting...")
     logger.info("   'And the heaven He raised and imposed the balance' - 55:7")
 
+    try:
+        interrupted = ChatStreamLedger(
+            memory._get_conn, memory._release_conn
+        ).interrupt_unfinished()
+        if interrupted:
+            logger.info(
+                "Marked %d chat request(s) cut off by the restart as cancelled", interrupted
+            )
+    except Exception as exc:  # noqa: BLE001 - startup must not fail on a receipt table
+        logger.warning("Chat receipts could not be checked at startup: %s", exc)
+
     # Create default agents if none exist
     existing = await memory.get_all_agents()
     if not existing:
@@ -803,7 +814,13 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(status_code=422, content=error_body(422, jsonable_encoder(exc.errors())))
+    # Where and why, never the input itself: a 10 MB image must not come back
+    # as a 14 MB error, and a rejected value is not echoed to the caller.
+    errors = [
+        {key: value for key, value in error.items() if key not in ("input", "ctx", "url")}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content=error_body(422, jsonable_encoder(errors)))
 
 
 @app.exception_handler(Exception)
@@ -874,7 +891,7 @@ class TaskRequest(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=100)
+    session_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     content: str = Field(..., min_length=1, max_length=50000)
     agent_id: str | None = None
     model_override: str | None = Field(None, max_length=200)
@@ -1692,7 +1709,7 @@ class StopChatRequest(BaseModel):
 
 @app.post("/api/chat/{session_id}/stop")
 async def stop_chat(
-    session_id: str, req: StopChatRequest, user: TokenPayload = Depends(require_auth)
+    session_id: str, req: StopChatRequest | None = None, user: TokenPayload = Depends(require_auth)
 ):
     """Stop the user's active run in this chat (the Stop button). A dropped
     connection never does this: the run goes on and saves its answer."""
@@ -1706,7 +1723,11 @@ async def stop_chat(
         lease is None
         or lease.producer is None
         or lease.producer.done()
-        or (req.request_id is not None and str(req.request_id) != lease.request_id)
+        or (
+            req is not None
+            and req.request_id is not None
+            and str(req.request_id) != lease.request_id
+        )
     ):
         return {"stopped": False}
     lease.stop_requested = True
@@ -2211,6 +2232,8 @@ async def stream_chat(
                 metadata={
                     "request_id": request_id,
                     **({"images": [image.meta() for image in attached]} if attached else {}),
+                    # Never recalled in the user's other chats (Dhikr.recall_conversations).
+                    **({"stateless": True} if req.stateless else {}),
                 },
             )
             session["history"].append({"role": "user", "content": req.content})
@@ -2485,9 +2508,9 @@ async def stream_chat(
         lease.producer = producer
         producer.add_done_callback(release_finished_run)
         try:
+            # A reader that fell behind gets no more deltas, but the stream stays
+            # open (with heartbeats) for the final event (ChatEventChannel).
             while not producer.done() or not channel.queue.empty():
-                if channel.detached and channel.queue.empty():
-                    break  # a stalled reader: end this stream, the run goes on
                 try:
                     frame = await asyncio.wait_for(channel.queue.get(), timeout=HEARTBEAT_SECONDS)
                 except TimeoutError:
@@ -2578,6 +2601,21 @@ async def chat(
 
     agent = await chat_agent_for(user, active_agents[agent_id])
     message_id = str(uuid.uuid4())
+    run_key = (user.user_id if user else "", req.session_id)
+    running = _stream_runs.get(run_key)
+    if running is not None and not running.finished:
+        raise HTTPException(
+            409,
+            {
+                "code": "chat_stream_active",
+                "message": "A chat run is still active for this session.",
+                "session_id": req.session_id,
+                "active_request": running.public(),
+            },
+        )
+    lease = ChatRunLease(req.session_id, str(uuid.uuid4()), message_id)
+    lease.transport_finished = True  # no stream: the run alone decides when it ends
+    lease.update(status="running", phase="model")
 
     async def process_chat():
         # Send typing indicator before starting agent execution
@@ -2647,6 +2685,21 @@ async def chat(
                     thinking_callback=thinking_cb,
                     model_override=req.model_override,
                 )
+        except asyncio.CancelledError:
+            # Stopped (POST /api/chat/{id}/stop): what was written so far is kept.
+            thinking_stream.complete(message_id)
+            await memory.save_message(
+                req.session_id,
+                "assistant",
+                response,
+                agent_id,
+                metadata={"status": "stopped", "completion_status": "stopped", "partial": True},
+            )
+            await manager.broadcast(
+                {"type": "chat_stopped", "session_id": req.session_id, "message_id": message_id}
+            )
+            lease.update(status="cancelled", phase="delivery")
+            return
         except Exception:
             logger.exception("Legacy chat execution failed for message %s", message_id)
             thinking_stream.complete(message_id)
@@ -2736,15 +2789,41 @@ async def chat(
             }
         )
 
-    background_tasks.add_task(process_chat)
-    return {"message_id": message_id, "session_id": req.session_id, "status": "processing"}
+    async def run_chat() -> None:
+        try:
+            await process_chat()
+        finally:
+            if lease.status == "running":
+                lease.update(status="complete", phase="delivery")
+            if _stream_runs.get(run_key) is lease:
+                _stream_runs.pop(run_key, None)
+
+    lease.producer = asyncio.create_task(run_chat())
+    _stream_runs[run_key] = lease
+    return {
+        "message_id": message_id,
+        "session_id": req.session_id,
+        "request_id": lease.request_id,
+        "status": "processing",
+    }
 
 
 @app.get("/api/chat/sessions/list")
-async def list_sessions(user: TokenPayload = Depends(require_auth)):
-    """List recent chat sessions from DB with metadata"""
-    db_sessions = await memory.list_sessions(limit=20, owner_id=user.user_id)
-    return {"sessions": db_sessions}
+async def list_sessions(
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: TokenPayload = Depends(require_auth),
+):
+    """The user's chats, newest first; ``limit``/``offset`` page through them
+    and ``next_offset`` is where the next page starts (null at the end)."""
+    db_sessions = await memory.list_sessions(limit=limit + 1, owner_id=user.user_id, offset=offset)
+    more = len(db_sessions) > limit
+    return {
+        "sessions": db_sessions[:limit],
+        "limit": limit,
+        "offset": offset,
+        "next_offset": offset + limit if more else None,
+    }
 
 
 class ChatPreferenceValue(BaseModel):
@@ -3480,6 +3559,15 @@ async def _bab_turn(
         reset_principal(binding)
     if result.get("success", True):
         reply = str(result.get("result") or "").strip() or "—"
+        # A channel shows no notes under the answer: a ruling question's
+        # referral to a scholar goes in the message itself, on its own line.
+        usage = result.get("usage") or {}
+        for note in (
+            (usage.get("sidq") or {}).get("note"),
+            (usage.get("ahl") or {}).get("referral"),
+        ):
+            if note:
+                reply = f"{reply}\n\n_{note}_"
         metadata: dict = {
             "status": "complete",
             "channel": channel,
@@ -4798,8 +4886,12 @@ async def version_info():
 
 
 @app.get("/api/health")
-async def health_check():
-    """Health check endpoint for monitoring and Docker"""
+async def health_check(
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+):
+    """Health for monitoring and Docker: ``status`` for everyone; the version,
+    uptime and each check only for a signed-in administrator."""
     import time
 
     checks = {
@@ -4821,8 +4913,14 @@ async def health_check():
         pass
 
     all_healthy = all(checks.values())
+    status_code = 200 if all_healthy else 503
+    user = auth.extract_token(authorization, x_api_key)  # optional: health is public
+    if user is None or "admin" not in user.roles:
+        return JSONResponse(
+            status_code=status_code, content={"status": "ok" if all_healthy else "degraded"}
+        )
     return JSONResponse(
-        status_code=200 if all_healthy else 503,
+        status_code=status_code,
         content={
             "status": "ok" if all_healthy else "degraded",
             "version": __version__,
@@ -5262,6 +5360,113 @@ def _require_admin(user: TokenPayload) -> None:
         raise HTTPException(403, "Administrator role required")
 
 
+class TalimExample(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+    label: str = Field(..., min_length=1, max_length=40)
+
+
+class TalimBatch(BaseModel):
+    model: str = Field(..., max_length=60)
+    examples: list[TalimExample] = Field(..., min_length=1, max_length=5000)
+    source: str = Field("typed by an administrator", max_length=300)
+    licence: str = Field("", max_length=120)
+    language_name: str = Field("", max_length=60)
+
+
+class TalimImport(BaseModel):
+    model: str = Field(..., max_length=60)
+    dataset: str = Field(..., max_length=200)
+    config: str = Field("default", max_length=80)
+    split: str = Field("train", max_length=40)
+    revision: str = Field("", max_length=80)
+    text_column: str = Field("text", max_length=80)
+    label_column: str = Field("label", max_length=80)
+    # Dataset label -> MIZAN label; rows whose label is not in the map are left out.
+    label_map: dict[str, str] | None = None
+    limit: int = Field(1000, ge=1, le=5000)
+    licence: str = Field("", max_length=120)
+    language_name: str = Field("", max_length=60)
+
+
+@app.get("/api/tadbir/talim")
+async def talim_view(user: TokenPayload = Depends(require_auth)):
+    """Ta'lim (admin): what MIZAN can be taught, and every batch so far."""
+    from tadbir import talim
+
+    _require_admin(user)
+    return await asyncio.to_thread(
+        lambda: {
+            "enabled": talim.enabled(),
+            "models": talim.models(),
+            "languages": talim.languages(),
+            "batches": talim.batches(),
+        }
+    )
+
+
+@app.post("/api/tadbir/talim")
+async def talim_teach(req: TalimBatch, user: TokenPayload = Depends(require_auth)):
+    """Teach a batch of examples; kept only if it does not make MIZAN worse at
+    what it already knew (leave-one-out before and after, paired bootstrap)."""
+    from tadbir import talim
+
+    _require_admin(user)
+    try:
+        return await asyncio.to_thread(
+            talim.teach,
+            req.model,
+            [(item.text, item.label) for item in req.examples],
+            source=req.source,
+            licence=req.licence,
+            by=user.username or user.user_id,
+            language_name=req.language_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
+@app.post("/api/tadbir/talim/import")
+async def talim_import(req: TalimImport, user: TokenPayload = Depends(require_auth)):
+    """Teach from a Hugging Face dataset split (read through the dataset viewer)."""
+    from knowledge import hf_hub
+    from tadbir import talim
+
+    _require_admin(user)
+    try:
+        records = await hf_hub.rows(
+            req.dataset, req.config, req.split, limit=req.limit, revision=req.revision
+        )
+    except hf_hub.HubError as exc:
+        raise HTTPException(502, str(exc)) from None
+    examples = talim.from_rows(records, req.text_column, req.label_column, req.label_map)
+    if not examples:
+        raise HTTPException(422, "No rows with those columns and labels")
+    source = f"https://huggingface.co/datasets/{req.dataset} ({req.config}/{req.split}"
+    source += f"@{req.revision})" if req.revision else ")"
+    try:
+        return await asyncio.to_thread(
+            talim.teach,
+            req.model,
+            examples,
+            source=source,
+            licence=req.licence,
+            by=user.username or user.user_id,
+            language_name=req.language_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
+@app.delete("/api/tadbir/talim/{batch}")
+async def talim_undo(batch: str, user: TokenPayload = Depends(require_auth)):
+    from tadbir import talim
+
+    _require_admin(user)
+    if not await asyncio.to_thread(talim.undo, batch, user.username or user.user_id):
+        raise HTTPException(404, "No kept batch with that id")
+    return {"undone": batch}
+
+
 @app.post("/api/tadbir/muhasaba")
 async def run_muhasaba(hours: float = 24, user: TokenPayload = Depends(require_auth)):
     """Run MIZAN's self-review now (admin): re-check recent unverified answers."""
@@ -5396,7 +5601,8 @@ async def debug_compare(req: DebugCompareRequest, user: TokenPayload = Depends(r
     agent = await chat_agent_for(user, active_agents[agent_id])
     history: list[dict] = []
     if req.session_id:
-        await authorize_session(req.session_id, user)
+        # A new id starts an empty conversation of the caller's, as for a chat.
+        await authorize_session(req.session_id, user, create=True)
         stored = await memory.get_messages(req.session_id, limit=50)
         history = [
             {"role": m["role"], "content": m["content"]}

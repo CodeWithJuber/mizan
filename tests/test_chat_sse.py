@@ -1018,7 +1018,7 @@ def test_stream_restores_history_and_retrieves_owned_prior_sessions(api):
     main.active_sessions.clear()
     response = client.post(
         "/api/chat/stream",
-        json=message("restored", content="new task"),
+        json=message("restored", content="Explain recursion in Hinglish"),
         headers=headers(tokens["alice"]),
     )
     assert frames(response.text)[-1]["type"] == "chat_complete"
@@ -1026,6 +1026,14 @@ def test_stream_restores_history_and_retrieves_owned_prior_sessions(api):
     assert context["session_id"] == "restored"
     assert context["history"] == [{"role": "user", "content": "old turn"}]
     assert [m["content"] for m in context["conversation_memory"]] == ["Please use Hinglish"]
+    # A request that shares no distinctive word with earlier chats recalls none
+    # (the 27 October benchmark: five unrelated snippets for a simple request).
+    client.post(
+        "/api/chat/stream",
+        json=message("restored", content="new task"),
+        headers=headers(tokens["alice"]),
+    )
+    assert agent.calls[-1][1]["conversation_memory"] == []
 
 
 def test_learner_endpoint_reports_scoped_capture_instead_of_500(api, tmp_path, monkeypatch):
@@ -1247,3 +1255,87 @@ def test_a_stateless_message_recalls_nothing_and_says_so(api, monkeypatch):
     )
     assert response.status_code == 200
     assert calls == []  # never asked for the user's other chats
+
+
+# ── API hygiene from the 3.3.0 benchmark ─────────────────────────────────
+
+
+def test_stop_takes_an_empty_body(api):
+    main, client, tokens, users, memory, _, _ = api
+    asyncio.run(memory.authorize_session("quiet", users["alice"].id, create=True))
+    response = client.post("/api/chat/quiet/stop", headers=headers(tokens["alice"]))
+    assert response.status_code == 200 and response.json() == {"stopped": False}
+
+
+def test_a_rejected_body_is_not_echoed_back(api):
+    _, client, tokens, _, _, _, _ = api
+    secret = "my private words " * 3
+    response = client.post(
+        "/api/chat/stream",
+        json={"session_id": "s1", "content": "", "note": secret},
+        headers=headers(tokens["alice"]),
+    )
+    assert response.status_code == 422
+    body = response.text
+    assert '"input"' not in body and secret.strip() not in body
+
+
+def test_a_session_id_outside_the_safe_characters_is_refused(api):
+    _, client, tokens, _, _, _, _ = api
+    response = client.post(
+        "/api/chat/stream",
+        json=message("bad id/../x"),
+        headers=headers(tokens["alice"]),
+    )
+    assert response.status_code == 422
+
+
+def test_the_chat_list_pages(api):
+    _, client, tokens, users, memory, _, _ = api
+    for name in ("one", "two", "three"):
+        asyncio.run(memory.authorize_session(name, users["alice"].id, create=True))
+        asyncio.run(memory.save_message(name, "user", f"chat {name}"))
+    first = client.get(
+        "/api/chat/sessions/list", params={"limit": 2}, headers=headers(tokens["alice"])
+    ).json()
+    assert len(first["sessions"]) == 2 and first["next_offset"] == 2
+    rest = client.get(
+        "/api/chat/sessions/list",
+        params={"limit": 2, "offset": first["next_offset"]},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert len(rest["sessions"]) == 1 and rest["next_offset"] is None
+
+
+def test_public_health_says_only_whether_mizan_is_up(api):
+    _, client, tokens, _, _, _, _ = api
+    public = client.get("/api/health").json()
+    assert set(public) == {"status"}
+    # A signed-in user who is not an administrator sees no more.
+    assert set(client.get("/api/health", headers=headers(tokens["alice"])).json()) == {"status"}
+
+
+async def test_a_reader_that_fell_behind_still_gets_the_final_answer():
+    channel = ChatEventChannel(session_id="s", message_id="m", request_id="r")
+    await channel.emit("chat_stream", chunk="a")
+    channel.detach()
+    await channel.emit("chat_stream", chunk="b")  # dropped: the reader is behind
+    await channel.emit("chat_complete", response="ab")
+    frames_left = [channel.queue.get_nowait() for _ in range(channel.queue.qsize())]
+    assert len(frames_left) == 1 and "chat_complete" in frames_left[0]
+
+
+async def test_runs_cut_off_by_a_restart_read_as_cancelled(api):
+    _, client, tokens, users, memory, _, _ = api
+    body = message()
+    await memory.authorize_session("session-a", users["alice"].id, create=True)
+    ledger = ChatStreamLedger(memory._get_conn, memory._release_conn)
+    ledger.claim(users["alice"].id, body["request_id"], "session-a", "old-message", body)
+    ledger.update(users["alice"].id, body["request_id"], "running")
+    assert ledger.interrupt_unfinished() == 1  # what the app does at boot
+    state = client.get(
+        "/api/chat/session-a/run-state",
+        params={"request_id": body["request_id"]},
+        headers=headers(tokens["alice"]),
+    ).json()
+    assert state["state"] == "terminal" and state["request"]["status"] == "cancelled"

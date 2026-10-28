@@ -110,11 +110,11 @@ Qasd reads four kinds of evidence:
 - the context (`c:` tokens)
 - the chat so far, as the prior (below)
 
-It returns a posterior over 28 recipes and `converse`. `use_tool` is the
+It returns a posterior over 31 recipes and `converse` (among them `quran_count`: how many surahs or ayahs, answered from the surah index, never by a search). `use_tool` is the
 request for one of the user's connected tools (GitHub, calendar, email, Drive):
 it has no recipe of its own, so it goes to Lisan, which picks among the tools
 the user actually has, and MIZAN checks the arguments against the tool's schema. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 1059 requests in five languages
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 1178 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.

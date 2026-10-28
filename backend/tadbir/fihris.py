@@ -27,6 +27,14 @@ words "Quran", "me", "ka" and "zikr" are how the request is phrased, and
 are standardised over all 6236 ayahs (a view counts by how far its best ayahs
 stand out, whatever its scale) and summed, each view weighted by the share of
 the query's words it reads.
+
+**When no ayah says it.** A word that no view uses, and that reads as English
+rather than as a spelling of an Arabic, Urdu or Hindi word (a letter model of
+the Saheeh International words against the transliteration's and Roman Hindi
+words), is a word no ayah uses: "continents", "smartphones". When such words
+carry more of the query's distinctive information than the best ayah holds,
+the answer is that no ayah uses them, and the nearest ayah is named only as
+what it shares, never quoted as the answer.
 """
 
 from __future__ import annotations
@@ -44,6 +52,8 @@ from pathlib import Path
 
 import httpx
 
+from core.tamyiz import Tamyiz, char_ngrams
+
 from . import quran
 
 EDITIONS = {
@@ -56,6 +66,7 @@ EDITIONS = {
 # Which views read a word, by its script.
 SCRIPT_VIEWS = {"latin": ("en", "tr"), "arabic": ("ar", "ur"), "devanagari": ("hi",)}
 K1, B = 1.5, 0.75  # BM25's usual constants
+_RUNS = re.compile(r"(.)\1+")
 
 _MARKS = re.compile("[ؐ-ًؚ-ٰٟـۖ-ۭ﻿]")
 _FOLD = str.maketrans(
@@ -112,7 +123,11 @@ def grams(word: str) -> list[str]:
 
 
 def terms(view: str, word: str) -> list[str]:
-    return grams(word) if view in ("ar", "tr") else [word]
+    if view == "tr":
+        # Long vowels and doubled letters are written however the person
+        # hears them ("lillahi", "lillaahi"): a letter repeated counts once.
+        return grams(_RUNS.sub(r"\1", word))
+    return grams(word) if view == "ar" else [word]
 
 
 # ── index ────────────────────────────────────────────────────────────────
@@ -173,6 +188,7 @@ class Index:
     views: dict[str, View]
     asked: Counter  # request seeds that use each word
     seeds: int
+    english: Tamyiz | None = None  # P(English | a word's letters)
 
     def search(self, query: str, limit: int = 3) -> list[Match]:
         total = len(self.keys)
@@ -210,6 +226,57 @@ class Index:
             Match(*self.keys[doc], round(score + offset, 2), self._matched(doc, weighted, used))
             for doc, score in ranked
         ]
+
+    def find(self, query: str, limit: int = 3) -> Found:
+        """The best ayahs for the query; or, when most (> ½) of the query's
+        distinctive information is in words no ayah uses, those words and the
+        nearest ayah (named for what it shares, not as the answer)."""
+        matches = [match for match in self.search(query, limit) if match.words]
+        if not matches:
+            return Found([], [])
+        weights = self.distinctive(query)
+        unused = {word: weights[word] * self.unused(word) for word in weights}
+        if 2 * sum(unused.values()) > sum(weights.values()):
+            absent = sorted(unused, key=lambda word: -unused[word])
+            named = [word for word in absent if self.unused(word) > 0.5] or absent[:1]
+            return Found([], named, matches[0])
+        return Found(matches, [])
+
+    def distinctive(self, query: str) -> dict[str, float]:
+        """The query's distinctive words and the information each carries: how
+        much it is what the request is about (``topic``) times how rare it is in
+        the views that read it (a word no view uses is as rare as a word can
+        be). Distinctive are the words above the query's mean, as Ahl al-Dhikr
+        reads a claim, so "the", "ka" and "ayah" never decide."""
+        total = len(self.keys)
+        found: dict[str, float] = {}
+        for word in dict.fromkeys(words(query)):
+            shares = self.shares(word)
+            if not shares:
+                continue
+            rarity = sum(
+                share * _idf(total, self.views[name].words[word]) for name, share in shares.items()
+            )
+            found[word] = self.topic(word) * rarity
+        if not found:
+            return {}
+        mean = sum(found.values()) / len(found)
+        return {word: info for word, info in found.items() if info > mean} or found
+
+    def unused(self, word: str) -> float:
+        """P(no ayah uses the word): 0 for a word some view uses; for a Latin
+        word no view uses, the probability that it is English (Saheeh
+        International would use it) rather than the person's spelling of an
+        Arabic, Urdu or Hindi word ("munhtah", "aasani"), which the views read
+        only by its letters. Arabic-script and Devanagari words are never
+        called unused: their spellings vary by the letters joined to them."""
+        if _script(word) != "latin" or self.english is None:
+            return 0.0
+        if any(
+            self.views[name].words[word] for name in SCRIPT_VIEWS["latin"] if name in self.views
+        ):
+            return 0.0
+        return float(self.english.posterior(word).get("en", 0.0))
 
     def _matched(
         self, doc: int, weighted: dict[str, dict[str, float]], used: dict[str, set[str]]
@@ -257,6 +324,10 @@ class Index:
         return rate / (rate + asked)
 
 
+def _idf(total: int, used: int) -> float:
+    return math.log(1 + (total - used + 0.5) / (used + 0.5))
+
+
 @dataclass(frozen=True)
 class Match:
     surah: int
@@ -267,6 +338,13 @@ class Match:
     @property
     def label(self) -> str:
         return f"{self.surah}:{self.ayah}"
+
+
+@dataclass(frozen=True)
+class Found:
+    matches: list[Match]
+    absent: list[str]  # words no ayah uses, when they outweigh the best match
+    nearest: Match | None = None
 
 
 # ── loading ──────────────────────────────────────────────────────────────
@@ -291,7 +369,34 @@ def build(editions: dict[str, list[tuple[int, int, str]]]) -> Index:
             view.add(number, text, name)
         views[name] = view
     asked, seeds = _request_words()
-    return Index(keys, views, asked, seeds)
+    return Index(keys, views, asked, seeds, _english(views))
+
+
+def _letters(word: str) -> Counter[str]:
+    return Counter(char_ngrams(f"^{word}$", (2, 3, 4)))
+
+
+def _english(views: dict[str, View]) -> Tamyiz | None:
+    """A letter model of English words (Saheeh International's and Lughah's
+    English) against Latin spellings of other languages (the transliteration's
+    and Lughah's Roman Hindi), words in both left out; fitted by leave-one-out
+    and cached by the corpus's SHA-256."""
+    if "en" not in views or "tr" not in views:
+        return None
+    from core.tamyiz_cache import fitted
+
+    from . import lughah
+
+    def corpus(label: str) -> set[str]:
+        path = lughah.CORPUS / f"{label}.tsv"
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        return {word for line in lines for word in words(line.partition("\t")[2])}
+
+    english = set(views["en"].words) | corpus("en")
+    spelled = set(views["tr"].words) | corpus("hi-latn")
+    rows = [(word, "en") for word in sorted(english - spelled)]
+    rows += [(word, "latn") for word in sorted(spelled - english)]
+    return fitted("fihris_english", _letters, lambda: rows)
 
 
 def _rows(data: dict) -> list[tuple[int, int, str]]:
@@ -343,3 +448,8 @@ async def search(query: str, limit: int = 3) -> list[Match]:
     no ayah shares a word with it."""
     found = (await index()).search(query, limit)
     return [match for match in found if match.words]
+
+
+async def find(query: str, limit: int = 3) -> Found:
+    """``search``, or the words no ayah uses when they outweigh the best match."""
+    return (await index()).find(query, limit)

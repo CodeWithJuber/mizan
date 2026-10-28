@@ -84,19 +84,37 @@ def _text(raw: str) -> str:
 PROJECT_INTENTS = {"run_file", "project_task", "edit_project"}
 
 
-def examples() -> list[tuple[str, ...]]:
+def shaped(rows: Sequence[tuple[str, str]], group: str) -> list[tuple[str, ...]]:
+    """Examples as the model counts them: an intent that does not work on the
+    selected project is the same with or without one, so each of its examples
+    is counted in both contexts and held out together."""
     found: list[tuple[str, ...]] = []
-    for number, (label, text) in enumerate(_rows("intents.tsv")):
-        if label not in PROJECT_INTENTS and not text.startswith("[project] "):
-            group = f"seed:{number}"  # both contexts are held out together
-            found += [(_text(text), label, group), (compose(_text(text), True), label, group)]
+    for number, (raw, label) in enumerate(rows):
+        if label not in PROJECT_INTENTS and not raw.startswith("[project] "):
+            key = f"{group}:{number}"
+            found += [(_text(raw), label, key), (compose(_text(raw), True), label, key)]
         else:
-            found.append((_text(text), label))
+            found.append((_text(raw), label))
+    return found
+
+
+def examples() -> list[tuple[str, ...]]:
+    from . import talim
+
+    found = shaped([(text, label) for label, text in _rows("intents.tsv")], "seed")
+    taught: dict[str, list[tuple[str, str]]] = {}
+    for text, label, batch in talim.rows("qasd"):
+        taught.setdefault(batch, []).append((text, label))
+    for batch, rows in taught.items():
+        found += shaped(rows, batch)
     return found
 
 
 def facet_examples(facet: str) -> list[tuple[str, str]]:
-    return [(_text(text), label) for name, label, text in _rows("facets.tsv") if name == facet]
+    from . import talim
+
+    seeds = [(_text(text), label) for name, label, text in _rows("facets.tsv") if name == facet]
+    return seeds + [(_text(text), label) for text, label, _ in talim.rows(f"qasd.{facet}")]
 
 
 @cache

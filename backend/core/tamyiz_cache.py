@@ -73,6 +73,8 @@ def fitted(name: str, featurize: Callable, examples: Callable[[], list[tuple[str
 
 def refit_all() -> dict:
     """Refit every registered model from scratch and store the result with the code."""
+    # The shipped fit is of the shipped seeds only, never what one server was taught.
+    os.environ["MIZAN_TALIM"] = "off"
     from tadbir import amanah, lughah, qasd
 
     lughah.model()

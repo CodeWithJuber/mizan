@@ -27,6 +27,8 @@ MAX_QUEUED_EVENTS = 64
 MAX_FRAME_BYTES = 128 * 1024
 TEXT_CHUNK_CHARACTERS = 2048
 MAX_RESPONSE_CHARACTERS = 1_000_000
+# A stream always ends with one of these, even for a reader that fell behind.
+TERMINAL_EVENTS = frozenset({"chat_complete", "error"})
 
 
 class StreamDeliveryError(Exception):
@@ -216,6 +218,27 @@ class ChatStreamLedger:
         finally:
             self._release_connection(conn)
 
+    def interrupt_unfinished(self) -> int:
+        """At startup no run is live (one worker): every receipt still accepted
+        or running was cut off by the restart, so it is cancelled and reads as
+        terminal, never "running" forever."""
+        conn = self._get_connection()
+        try:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_stream_requests'"
+            ).fetchone()
+            if not exists:
+                return 0
+            cursor = conn.execute(
+                """UPDATE chat_stream_requests SET status = 'cancelled', updated_at = ?
+                   WHERE status IN ('accepted', 'running')""",
+                (datetime.now(UTC).isoformat(),),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+        finally:
+            self._release_connection(conn)
+
     def run_state(self, owner_id: str, session_id: str, request_id: str | None = None) -> dict:
         """Read a receipt without recreating, resuming or retrying its work."""
         conn = self._get_connection()
@@ -303,7 +326,7 @@ class ChatEventChannel:
     async def emit(self, kind: str, **data: Any) -> None:
         if self.closed:
             raise StreamDeliveryError("Chat reader disconnected")
-        if self.detached:
+        if self.detached and kind not in TERMINAL_EVENTS:
             return
         payload = {
             **data,
@@ -324,6 +347,14 @@ class ChatEventChannel:
             raise StreamDeliveryError("Chat event exceeds the delivery limit")
         self.sequence += 1
         frame = f"id: {self.sequence}\nevent: {kind}\ndata: {encoded}\n\n"
+        if self.detached:
+            # The reader fell behind: the deltas it missed are dropped and the
+            # ending is kept (it carries the whole answer), so the stream ends
+            # with its final event instead of breaking off.
+            while not self.queue.empty():
+                self.queue.get_nowait()
+            self.queue.put_nowait(frame)
+            return
         try:
             self.queue.put_nowait(frame)
             return
