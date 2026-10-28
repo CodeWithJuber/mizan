@@ -75,6 +75,7 @@ const CodingWorkspace = lazy(() =>
   })),
 );
 import { ToastProvider, useToast } from "./components/Toast";
+import { ConfirmHost } from "./components/ui/confirm";
 import { Icons } from "./components/Icons";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ConnectionBanner } from "./components/ConnectionBanner";
@@ -4325,6 +4326,7 @@ export default function App() {
   return (
     <ToastProvider>
       <AppInner />
+      <ConfirmHost />
     </ToastProvider>
   );
 }

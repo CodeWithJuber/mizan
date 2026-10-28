@@ -10,6 +10,7 @@ import type { ApiClient } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const RuntimeSettingsPanel = lazy(() => import("../components/RuntimeSettingsPanel"));
 const SpendingPanel = lazy(() => import("../components/SpendingPanel"));
@@ -226,7 +227,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
     const action = channel.connected ? "stop" : "start";
     if (
       channel.connected &&
-      !window.confirm(`Stop the ${channel.name} channel?`)
+      !(await confirmDialog({ title: `Stop the ${channel.name} channel?`, confirmLabel: "Stop" }))
     ) {
       return;
     }

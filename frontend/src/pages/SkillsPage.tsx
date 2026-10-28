@@ -8,6 +8,7 @@ import { PageProps, Skill } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import AgentSkillsPanel from "../components/AgentSkillsPanel";
+import { confirmDialog } from "@/components/ui/confirm";
 
 /** Readable names for agent-type slugs shown under "Best For". */
 const AGENT_TYPE_LABELS: Record<string, string> = {
@@ -212,7 +213,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
   };
 
   const uninstallSkill = async (skillName: string) => {
-    if (!window.confirm(`"${skillName}" skill remove kar dun?`)) return;
+    if (!(await confirmDialog({ title: `Remove the skill "${skillName}"?`, confirmLabel: "Remove", destructive: true }))) return;
     setPendingSkill(skillName);
     try {
       await api.post("/skills/uninstall", { name: skillName });

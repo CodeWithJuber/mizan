@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { PageProps, Notebook, NotebookCell, CellOutput } from "../types";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const CELL_BORDER_COLOR: Record<string, string> = {
   markdown: "border-l-blue-500",
@@ -155,9 +156,11 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
 
   const deleteNotebook = async (id: string, title: string) => {
     if (
-      !window.confirm(
-        `"${title}" notebook delete kar dun? Ye wapas nahi aayega.`,
-      )
+      !(await confirmDialog({
+        title: `Delete the notebook "${title}"?`,
+        description: "It cannot be restored.",
+        destructive: true,
+      }))
     )
       return;
     try {
@@ -402,10 +405,10 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         {showCreate && (
           <div
             className="modal-overlay"
-            onClick={() => {
+            onClick={async () => {
               if (
                 !newTitle.trim() ||
-                window.confirm("Notebook ka title likha tha — band kar dun?")
+                await confirmDialog({ title: "Discard the new notebook?", confirmLabel: "Discard" })
               ) {
                 setShowCreate(false);
               }

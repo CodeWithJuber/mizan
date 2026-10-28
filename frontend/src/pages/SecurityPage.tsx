@@ -10,6 +10,7 @@ import { SkeletonCard } from "../components/Skeleton";
 import { PasswordInput } from "../components/PasswordInput";
 import { useToast } from "../components/Toast";
 import { ApiError } from "../hooks/useApi";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface AuditEvent {
   timestamp: string;
@@ -150,8 +151,8 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
     setLoading(false);
   };
 
-  const logout = () => {
-    if (!window.confirm("Log out of Mizan?")) return;
+  const logout = async () => {
+    if (!(await confirmDialog({ title: "Log out of MIZAN?", confirmLabel: "Log out" }))) return;
     localStorage.removeItem("mizan_token");
     window.dispatchEvent(new CustomEvent("mizan:authchanged"));
     setToken("");

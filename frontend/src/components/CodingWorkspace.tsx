@@ -9,6 +9,7 @@ import { projectPreview, type ProjectPreview } from "../utils/workspacePreview";
 import type { WorkspaceEntry } from "../utils/workspaceTree";
 import { previewSrc } from "../utils/sandboxCommands";
 import type { SandboxStatus } from "./workspace/SandboxPanel";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const CodeEditor = lazy(() => import("./workspace/CodeEditor"));
 const PreviewPane = lazy(() => import("./workspace/PreviewPane"));
@@ -255,9 +256,10 @@ export function CodingWorkspace({
     });
   };
 
-  const closeTab = (target: string) => {
+  const closeTab = async (target: string) => {
     const buffer = buffers[target];
-    if (buffer && !buffer.image && buffer.content !== buffer.original && !window.confirm(`Discard unsaved changes in ${target}?`)) return;
+    if (buffer && !buffer.image && buffer.content !== buffer.original
+      && !(await confirmDialog({ title: `Discard unsaved changes in ${target}?`, confirmLabel: "Discard", destructive: true }))) return;
     setTabs((list) => {
       const next = list.filter((p) => p !== target);
       if (path === target) setPath(next[next.length - 1] ?? "");
@@ -337,8 +339,9 @@ export function CodingWorkspace({
           value={selectedId}
           disabled={Boolean(busy)}
           className={`${field} w-auto! max-w-full`}
-          onChange={(event) => {
-            if (!dirty || window.confirm("Discard unsaved file changes?")) onSelect(event.target.value);
+          onChange={async (event) => {
+            const next = event.target.value;
+            if (!dirty || await confirmDialog({ title: "Discard unsaved file changes?", confirmLabel: "Discard", destructive: true })) onSelect(next);
           }}
         >
           <option value="">Choose a workspace</option>

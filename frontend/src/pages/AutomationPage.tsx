@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { PageProps, ScheduledJob, Webhook } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const WEEKDAYS = [
   "Sunday",
@@ -185,7 +186,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   };
 
   const removeJob = async (jobId: string) => {
-    if (!window.confirm("Ye scheduled job delete kar dun?")) return;
+    if (!(await confirmDialog({ title: "Delete this scheduled job?", destructive: true }))) return;
     try {
       await api.del(`/automation/jobs/${jobId}`);
       addToast({ type: "success", title: "Job delete ho gaya" });
@@ -429,7 +430,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                   <button
                     className="btn-sm min-h-[44px] shrink-0 px-3 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                     onClick={async () => {
-                      if (!window.confirm(`Delete webhook "${wh.name}"?`))
+                      if (!(await confirmDialog({ title: `Delete webhook "${wh.name}"?`, destructive: true })))
                         return;
                       try {
                         await api.del(`/automation/webhooks/${wh.id}`);
@@ -461,12 +462,12 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       {showAddJob && (
         <div
           className="modal-overlay"
-          onClick={() => {
+          onClick={async () => {
             const dirty =
               newJob.name.trim() || newJob.task.trim() || newJob.agent_id;
             if (
               !dirty ||
-              window.confirm("Job ka form adhoora hai — band kar dun?")
+              await confirmDialog({ title: "Discard this unfinished job?", confirmLabel: "Discard" })
             ) {
               setShowAddJob(false);
             }
@@ -640,14 +641,14 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       {showAddWebhook && (
         <div
           className="modal-overlay"
-          onClick={() => {
+          onClick={async () => {
             const dirty =
               newWebhook.name.trim() ||
               newWebhook.task_template.trim() ||
               newWebhook.agent_id;
             if (
               !dirty ||
-              window.confirm("Webhook ka form adhoora hai — band kar dun?")
+              await confirmDialog({ title: "Discard this unfinished webhook?", confirmLabel: "Discard" })
             ) {
               setShowAddWebhook(false);
             }

@@ -5,6 +5,11 @@ import App from './App'
 import { installStaleBuildReload } from './utils/staleBuild'
 import { registerWorker } from './utils/push'
 import { inviteCode } from './utils/imtihan.ts'
+import '@fontsource-variable/dm-sans'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/amiri/400.css'
+import '@fontsource/amiri/700.css'
 import './index.css'
 
 installStaleBuildReload()

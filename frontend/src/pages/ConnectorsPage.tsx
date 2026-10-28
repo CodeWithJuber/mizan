@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { PageProps } from "../types";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface ConnectorTool {
   name: string;
@@ -187,7 +188,7 @@ export default function ConnectorsPage({ api }: PageProps) {
   };
 
   const remove = async (connector: Connector) => {
-    if (!window.confirm(`Remove ${connector.name}? Its saved credentials are deleted too.`)) return;
+    if (!(await confirmDialog({ title: `Remove ${connector.name}?`, description: "Its saved credentials are deleted too.", confirmLabel: "Remove", destructive: true }))) return;
     try {
       await api.del(`/connectors/${connector.id}`);
       setConnectors((list) => list.filter((item) => item.id !== connector.id));

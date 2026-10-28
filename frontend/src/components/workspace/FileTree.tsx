@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Trash2,
 } from "lucide-react";
 import { ancestors, buildTree, type TreeNode, type WorkspaceEntry } from "../../utils/workspaceTree";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface Props {
   entries: WorkspaceEntry[];
@@ -71,7 +72,7 @@ export default function FileTree({ entries, selected, disabled, onOpen, onCreate
                 type="button"
                 className="p-0.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950 text-rose-600"
                 aria-label={`Delete ${node.path}`}
-                onClick={() => { if (window.confirm(`Delete ${node.path}?`)) onDelete(node.path); }}
+                onClick={async () => { if (await confirmDialog({ title: `Delete ${node.path}?`, destructive: true })) onDelete(node.path); }}
               >
                 <Trash2 className="w-3 h-3" />
               </button>

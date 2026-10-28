@@ -9,6 +9,7 @@ import type { ApiClient } from "../types";
 import { useToast } from "./Toast";
 import { authFetch } from "../utils/authFetch";
 import { Markdown } from "./Markdown";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface AgentSkill {
   name: string;
@@ -79,7 +80,7 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
   };
 
   const remove = async (skill: AgentSkill) => {
-    if (!window.confirm(`Remove the skill ${skill.name}?`)) return;
+    if (!(await confirmDialog({ title: `Remove the skill ${skill.name}?`, confirmLabel: "Remove", destructive: true }))) return;
     try {
       await api.del(`/agent-skills/${encodeURIComponent(skill.name)}`);
       await load();

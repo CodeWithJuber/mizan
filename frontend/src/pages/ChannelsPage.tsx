@@ -18,6 +18,7 @@ import { EmailLink } from "../components/EmailLink";
 import { TelegramLink } from "../components/TelegramLink";
 import { WhatsAppLink } from "../components/WhatsAppLink";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const CHANNEL_TYPES: Record<
   string,
@@ -164,7 +165,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
       channel?.status === "connected" || integration?.enabled === true;
     const displayName = CHANNEL_TYPES[channelId]?.name || channelId;
 
-    if (isConnected && !window.confirm(`Stop the ${displayName} channel?`)) {
+    if (isConnected && !(await confirmDialog({ title: `Stop the ${displayName} channel?`, confirmLabel: "Stop" }))) {
       return;
     }
 

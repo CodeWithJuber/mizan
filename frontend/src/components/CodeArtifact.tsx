@@ -7,6 +7,7 @@ import {
 } from "@codesandbox/sandpack-react";
 import type { ArtifactPreviewProps } from "./ArtifactPreview";
 import { codeArtifactConfig } from "../utils/codeArtifact.ts";
+import { useTheme } from "../hooks/useTheme";
 
 export default function CodeArtifact({
   language,
@@ -19,9 +20,7 @@ export default function CodeArtifact({
     () => codeArtifactConfig(language, content, view),
     [language, content, view],
   );
-  const isDark =
-    typeof document !== "undefined" &&
-    document.documentElement.classList.contains("dark");
+  const { isDark } = useTheme();
 
   return (
     <div className="rounded-b-xl overflow-hidden border-t border-gray-200 dark:border-zinc-700">

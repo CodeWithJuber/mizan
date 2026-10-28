@@ -4,10 +4,12 @@ import {
   SandpackLayout, SandpackPreview, SandpackProvider,
 } from "@codesandbox/sandpack-react";
 import type { ProjectPreview } from "../../utils/workspacePreview";
+import { useTheme } from "../../hooks/useTheme";
 
 const PythonRunner = lazy(() => import("./PythonRunner"));
 
 export default function PreviewPane({ preview, revision }: { preview: ProjectPreview | null; revision: number }) {
+  const { isDark: dark } = useTheme();
   if (!preview) return <div className="p-4 text-sm text-gray-500">Loading preview…</div>;
   if (preview.kind === "none") return <div className="p-4 text-sm text-gray-500">{preview.reason}</div>;
   if (preview.kind === "python") {
@@ -17,7 +19,6 @@ export default function PreviewPane({ preview, revision }: { preview: ProjectPre
       </Suspense>
     );
   }
-  const dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
   return (
     <div className="h-full [&_.sp-wrapper]:h-full [&_.sp-layout]:h-full [&_.sp-stack]:h-full">
       <SandpackProvider
