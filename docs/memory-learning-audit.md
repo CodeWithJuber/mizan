@@ -1,5 +1,7 @@
 # Memory and learning audit
 
+> Dated record (October 2026, after PR #101). It describes the code as it was then; the current architecture is in [architecture.md](architecture.md) and its [diagrams](diagrams/README.md).
+
 The old quoted greeting is historical evidence. It does not establish that the
 same greeting was emitted after PR101. The audit found a current missing durable
 preference path and an unsafe legacy capture export contract independently of

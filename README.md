@@ -1,12 +1,10 @@
-> **25 October 2026 repair:** [Verified findings, setup and limitations](docs/review-2026-10-25.md) · [Runtime diagram](docs/architecture-2026-10-25.md) · [Data contracts](docs/data-contracts-2026-10-25.md). The private MiniMind SFT release is a separate checkpoint family from Ruh; integration tests are not semantic accuracy.
-
 <div align="center">
 
 # MIZAN
 
-### A personal AI agent framework with its own Qur'anic Arabic NLP
+### A self-hosted personal AI agent whose own architecture understands, acts and verifies; the language model only speaks
 
-**Python · FastAPI · LLM tool calling · persistent memory · extensible agents · native Arabic word-sense disambiguation**
+**Python · FastAPI · evidence-based understanding · verified tool use · receipts for every action · Quran and hadith quoted from source**
 
 [![CI](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeWithJuber/mizan/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pymizan.svg)](https://pypi.org/project/pymizan/)
@@ -14,31 +12,67 @@
 [![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](pyproject.toml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
-[Reviewer quick view](#reviewer-quick-view) · [Quickstart](#quickstart) · [mizan.nlp](#mizannlp--native-quranic-arabic-nlp) · [Architecture](#architecture) · [API](#api-surface) · [Docs](docs/) · [Contributing](#contributing)
+[Architecture](#architecture) · [Quickstart](#quickstart) · [Features](#features) · [Reviewer quick view](#reviewer-quick-view) · [API](#api-surface) · [Docs](#documentation) · [Contributing](#contributing)
 
 </div>
 
 ---
 
-> **Project status:** MIZAN is an open-source **beta research and engineering prototype**. It contains executable implementations of an agent loop, provider-normalized tool calling, local memory, APIs, plugins, tests and container packaging — **and its own native Qur'anic Arabic NLP module, `mizan.nlp`, which ships with a real trained artifact and is wired into the agent loop behind `MIZAN_NLP_NATIVE_WSD=1` (default off)**. This repository does **not** claim verified enterprise production use.
+> **Project status:** MIZAN is an open-source **beta** (version 3.3.0 in source). Every capability below is executable code in this repository with tests; a live deployment runs it, but no enterprise production use is claimed. Measured results are in [docs/imtihan.md](docs/imtihan.md); the limits are stated next to each claim.
 
-## Own architecture integration
+## Architecture
 
-New Compose setups use `mizan-owned`: reviewed local memory and the included
-own reply core handle inference, with explicit abstention when unavailable.
-OpenRouter is a separately requested teacher/support service. The full research
-bundle has a pinned importer and source index; its experiments are not silently
-promoted to verified knowledge. See [setup, research coverage and learning limits](docs/OWN_ARCHITECTURE_INTEGRATION.md).
+MIZAN directs, the language model speaks. A request is read by MIZAN's own understanding (**Fahm**), planned and carried out by its own orchestration (**Tadbir**), and every action passes one gate that checks permissions and writes a signed receipt. The language model (**Lisan**) is called only for language: writing a program, or wording an answer from facts MIZAN already holds. Quran and hadith text and computed results never come from the model.
 
-## mizan.nlp — native Qur'anic Arabic NLP, live
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/overview-dark.svg">
+  <img alt="MIZAN architecture: a request reaches Tadbir, which understands it with Fahm, runs every tool through one gate, asks the language model only for words or code, and sends unverified answers through answer checks before they stream back" src="docs/diagrams/overview.svg">
+</picture>
 
-![mizan.nlp disambiguating Qur'anic Arabic with confidences](.github/assets/mizan-nlp-demo.gif)
+What happens to one chat message ([`backend/agents/base.py`](backend/agents/base.py), [`backend/tadbir/engine.py`](backend/tadbir/engine.py)):
 
-_Real recording: the shipped 5.9 MB artifact disambiguating آية (sign 0.97 vs verse 0.03) and نفس (soul 0.995 vs self/life), then abstaining (`[]`) on an unknown lemma._
+1. `POST /api/chat/stream` is authenticated before its body is read, rate-limited, and bound to the chat's approval mode. Telegram, email and WhatsApp messages from linked accounts run the same turn (`_bab_turn`).
+2. `BaseAgent.execute` runs the request on its own copy of the agent. **Amanah** reads pasted text for instructions aimed at the AI and fences outside text as data.
+3. **Tadbir** asks **Fahm** what is meant. Language and intent are posteriors of fitted naive Bayes models (**Tamyiz**, **Lughah**, **Qasd**); the chat's earlier messages are the prior. There are no word lists or cue regexes.
+4. A recognised request is planned and executed by a MIZAN recipe: compute, run or write code, build a project, Quran, hadith, dates, web search and reading, memory, watchers, Hugging Face and more. Each tool call goes through `_execute_tool_safe` (Izn permissions, approvals, Hudud write limits) and leaves a **Sakk** receipt.
+5. Results are verified before they are said. **Tathabbut** checks a program against an independent one, and **Furqan** rejects wording that adds numbers or drops a warning.
+6. A request Fahm does not recognise is answered in words, with no tools. Unverified answers then pass **Sidq**, which corrects arithmetic, quotes and links, and **Isnad**, which grades each claim. **Ahl al-Dhikr** asks outside sources about factual claims and reports what it found under the answer.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/trust-layers-dark.svg">
+  <img alt="Layer stack: Amanah, Fahm, tool gate, Tathabbut and Furqan, Sidq and Isnad, Ahl al-Dhikr" src="docs/diagrams/trust-layers.svg">
+</picture>
+
+MIZAN learns only from what it verified, and changes no model weights. Learned state is kept per user and is erasable:
+
+- Qasd and Ta'allum learn how a user phrases requests.
+- Hifz keeps checked programs.
+- Tajriba keeps repair lessons.
+- Majlis, Tajdid and Wazn keep Beta posteriors over agents, instructions and models.
+- Tadhkir sets memory strength (FSRS).
+
+Stateless chats and evaluations write nothing. **Mahw** erases a chat everywhere, including what MIZAN learned from it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/learning-loop-dark.svg">
+  <img alt="Learning loop: understand, act, verify, keep, reuse, re-check around per-user learned state" src="docs/diagrams/learning-loop.svg">
+</picture>
+
+**Interactive diagrams.** Each one is drawn from the code: every box links to the source lines at a pinned commit. To view one, download the HTML file and open it in a browser. Sources and how to regenerate them are in [docs/diagrams](docs/diagrams/README.md).
+
+| Diagram | Shows |
+| --- | --- |
+| [`runtime.html`](docs/diagrams/runtime.html) | Runtime architecture |
+| [`chat-turn.html`](docs/diagrams/chat-turn.html) | One chat turn, write → run → check |
+| [`learning.html`](docs/diagrams/learning.html) | Learning from verified outcomes |
+| [`approval.html`](docs/diagrams/approval.html) | Approval lifecycle of a changing action |
+| [`imtihan.html`](docs/diagrams/imtihan.html) | The AGI test workflow |
+
+The full architecture write-up is [docs/architecture.md](docs/architecture.md).
 
 ## Quickstart
 
-Thirty seconds, released package (agent framework):
+Released package (PyPI `pymizan` 3.1.2; the source tree is 3.3.0):
 
 ```bash
 pip install pymizan
@@ -46,13 +80,109 @@ mizan setup     # configure a provider: Anthropic, OpenAI, OpenRouter or Ollama
 mizan chat
 ```
 
-`pip install pymizan` installs the PyPI release (3.0.0), which does **not** include `mizan.nlp` — the native module currently ships from source only:
+From source, with the web app (Docker Compose):
 
 ```bash
 git clone https://github.com/CodeWithJuber/mizan.git
 cd mizan
+cp .env.example .env    # set SECRET_KEY and one provider key
+docker compose up -d --build
+```
+
+Then open `http://localhost:3100` for the web app. The API is on `http://localhost:8000`, with OpenAPI at `/api/docs`. Full setup: [Run locally](#run-locally).
+
+## Features
+
+**Understanding and orchestration**
+- **Tadbir** ([docs/tadbir.md](docs/tadbir.md)): MIZAN plans, runs every tool and verifies. `MIZAN_ORCHESTRATION=mizan` (the default) means the model never controls a tool. **Majlis** gives each part to the best agent by Thompson sampling.
+- **Fahm by evidence** ([docs/fahm.md](docs/fahm.md)): weighted naive Bayes with leave-one-out-fitted smoothing, weights and a length exponent. The decision is MAP, with "converse" as one of the classes.
+- **Ta'lim** ([docs/talim.md](docs/talim.md)): administrators teach new intents or languages, typed or imported from Hugging Face. A batch is kept only when it makes no known example worse.
+
+**Truth and provenance**
+- **Quran and hadith from source** ([docs/fihris.md](docs/fihris.md), [docs/sarf.md](docs/sarf.md)):
+  - finds ayahs by their words;
+  - counts surahs and ayahs;
+  - analyses Arabic morphology from the Quranic Arabic Corpus;
+  - quotes hadith verbatim.
+- **Sidq, Isnad, Ahl al-Dhikr, Nazm** ([sidq](docs/sidq.md), [isnad](docs/isnad.md), [ahl-dhikr](docs/ahl-dhikr.md), [nazm](docs/nazm.md)): correct, grade, source and shape answers. Ruling questions are referred to a qualified scholar.
+- **Tathabbut, Hifz, Muhasaba** ([docs/automatic-learning.md](docs/automatic-learning.md)): independent cross-checks, reuse of checked programs, and a daily re-check of unverified answers.
+
+**Safety and trust**
+- **Approvals** ([docs/agentic-coding.md](docs/agentic-coding.md)): per-chat modes `auto`, `auto_edits`, `ask` and `plan`. Unattended runs hold their actions for the owner (see the [approval lifecycle](docs/diagrams/approval.html)).
+- **Amanah** ([docs/amanah.md](docs/amanah.md)): prompt-injection containment, learned from licensed datasets.
+- **Hudud** ([docs/hudud.md](docs/hudud.md)): a guard on what programs MIZAN runs may write.
+- **Sakk** ([docs/sakk.md](docs/sakk.md)): hash-chained receipts and Ed25519-signed checkpoints, with a public reliability page.
+- **Iqtisad** ([docs/iqtisad.md](docs/iqtisad.md)): hard per-user spending limits, admitted before each paid call.
+
+**Memory and the user's data**
+- **Daftar** ([docs/daftar.md](docs/daftar.md)): a ledger of what MIZAN keeps about a user, with provenance, export and import.
+- **Mahw** ([docs/mahw.md](docs/mahw.md)): true forget, with a receipt.
+- **Tadhkir** ([docs/quranic-algorithms.md](docs/quranic-algorithms.md)): FSRS memory strength.
+
+**Work**
+- **Agentic coding** ([docs/agentic-coding.md](docs/agentic-coding.md), [docs/coding-workspaces.md](docs/coding-workspaces.md)): project tools, sandboxed server sessions with previews and a terminal, and an in-browser IDE.
+- **Shahid** ([docs/shahid.md](docs/shahid.md)): a sandboxed browser on the user's own sites. Every step is a receipt; submissions need approval.
+- **Connectors** ([docs/connectors.md](docs/connectors.md)): MCP servers with pinned tool descriptions.
+- **Agent Skills** ([docs/agent-skills.md](docs/agent-skills.md)): `SKILL.md` skills.
+- **Hugging Face** ([docs/huggingface.md](docs/huggingface.md)): read on the server, never from the sandbox.
+
+**Channels and senses**
+- **Bab** ([docs/bab.md](docs/bab.md)): Telegram, email (DMARC-checked), WhatsApp Cloud API, Web Push.
+- **Muraqabah** ([docs/muraqabah.md](docs/muraqabah.md)): watchers. Notices are held during salah, using locally computed prayer times.
+- **Sama'** ([docs/sama.md](docs/sama.md)): speech to text on MIZAN's own server.
+- **Basar** ([docs/basar.md](docs/basar.md)): images in chat, re-encoded without EXIF.
+
+**Evaluation**
+- **Imtihan** ([docs/imtihan.md](docs/imtihan.md)): 194 tasks sent to the base model alone and to MIZAN, scored by rule, with Wilson intervals. It includes:
+  - agentic tasks;
+  - ARC-style games;
+  - a ten-faculty cognitive profile (Quwa) against a human panel.
+- **Debug mode** ([docs/debug-mode.md](docs/debug-mode.md)): one message to both arms, with a full trace.
+
+**Own models**
+- **mizan.nlp** ([docs/nlp.md](docs/nlp.md)): native Qur'anic Arabic word-sense disambiguation, flag-gated.
+- **Ruh** ([ruh_model/README.md](ruh_model/README.md), [docs/TRAINING.md](docs/TRAINING.md)): a root-space transformer, trained in a 4-stage curriculum.
+
+## Reviewer quick view
+
+This section separates what the repository demonstrates from what it does not.
+
+### What the code demonstrates
+
+| Area | Implementation | Evidence | Boundary |
+| --- | --- | --- | --- |
+| Own orchestration | Fahm understanding, Tadbir recipes, verification, Lisan for language only | [`backend/tadbir/`](backend/tadbir), [`tests/test_tadbir.py`](tests/test_tadbir.py) | A request Fahm does not recognise is answered in words with no tools; recognition is probabilistic, and its leave-one-out accuracy is in `backend/core/data/tamyiz.json` |
+| Tool gate | Every tool call through `_execute_tool_safe`: Izn, approvals, Hudud, Amanah taint, Sakk receipt | [`backend/agents/base.py`](backend/agents/base.py), [`backend/security/approvals.py`](backend/security/approvals.py), [`backend/security/sakk.py`](backend/security/sakk.py) | Application controls; code runs in a separate sandbox runner that the operator must deploy |
+| Truth checks | Sidq corrections, Isnad grades, Ahl al-Dhikr source checks with a multilingual NLI model | [`backend/tadbir/sidq.py`](backend/tadbir/sidq.py), [`backend/tadbir/isnad.py`](backend/tadbir/isnad.py), [`backend/tadbir/ahl_dhikr.py`](backend/tadbir/ahl_dhikr.py) | Checks what can be checked (arithmetic, quotes, links, sourced claims); model reasoning itself is graded, not proven |
+| Human approval | Allow/deny/always in the live chat; held actions for unattended runs, decided once against a SHA-256 fingerprint | [`backend/security/approvals.py`](backend/security/approvals.py), `/api/chat/approvals/{id}`, `/api/chat/held/{id}` | In-process futures: run one uvicorn worker |
+| Memory | SQLite memory (Dhikr), Daftar ledger, FSRS strength, Masalik pathways, knowledge graph; Chroma when `MIZAN_VECTOR_URL` is set | [`backend/memory/`](backend/memory) | Local and per-user; vector recall is optional |
+| Evaluation | Imtihan suite with base-vs-MIZAN arms, rule scorers, Wilson intervals, faculty profile, human panel | [`backend/imtihan/`](backend/imtihan), [`tests/test_imtihan.py`](tests/test_imtihan.py) | The human baseline exists only once panel members answer |
+| Providers | Anthropic, OpenAI, OpenRouter, Ollama, the local Ruh model | [`backend/providers.py`](backend/providers.py), [`backend/providers_ruh.py`](backend/providers_ruh.py) | Tests do not prove live calls to every provider |
+| mizan.nlp | 48 per-lemma scikit-learn classifiers, 5.9 MB artifact with a validated manifest | [`nlp/`](nlp), [`nlp/artifacts/default/manifest.json`](nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py) | Accuracy 0.8150, macro-F1 0.6380 on a whole-surah holdout (n=627); off unless `MIZAN_NLP_NATIVE_WSD=1` |
+
+### Test and build proof
+
+- CI runs lint, the type check, the tests and the package and Docker builds on every pull request ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The workflow badge is the current signal.
+- At commit `5cc11dc` (28 October 2026), `pytest --collect-only` collects **2,721** backend tests; the frontend has 41 test files (`npm test`). Counts are a dated snapshot.
+
+### Not included
+
+- No LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio: orchestration is MIZAN's own.
+- No Azure OpenAI or Azure AI Foundry provider.
+- No Discord or Slack adapter: the channels API reports them, but never as connected.
+- No claim of verified enterprise production use, SLOs or customer traffic.
+
+## mizan.nlp — native Qur'anic Arabic NLP
+
+![mizan.nlp disambiguating Qur'anic Arabic with confidences](.github/assets/mizan-nlp-demo.gif)
+
+_Real recording: the shipped 5.9 MB artifact disambiguating آية (sign 0.97 vs verse 0.03) and نفس (soul 0.995 vs self/life), then abstaining (`[]`) on an unknown lemma._
+
+`mizan.nlp` ([`nlp/`](nlp)) is a native word-sense disambiguation module for Qur'anic Arabic: 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2, frozen into a 5.9 MB joblib artifact with a validated manifest.
+
+```bash
 pip install -e ".[nlp]"
-PYTHONPATH=backend python -c "
+python -c "
 from nlp import disambiguate, is_ready
 print(is_ready())  # True once the packaged artifact validates
 for sense_id, conf in disambiguate('تِلْكَ آيَاتُ اللَّهِ نَتْلُوهَا عَلَيْكَ بِالْحَقِّ', 'آية'):
@@ -62,249 +192,31 @@ for sense_id, conf in disambiguate('تِلْكَ آيَاتُ اللَّهِ ن�
 "
 ```
 
-Full local setup (Docker, source install, provider configuration): [Run locally](#run-locally).
+- **Measured:** test accuracy 0.8150 against the merged 96-sense labels, macro-F1 0.6380, whole-surah holdout (n=627), preregistered before evaluation. All of it is in [`manifest.json`](nlp/artifacts/default/manifest.json).
+- **Fail-closed:** with no valid artifact it raises `ModelNotReadyError`; with an unknown lemma it returns `[]`, not a guess.
+- **Trust boundary:** the manifest (schema, files, SHA-256) is validated _before_ unpickling. Artifacts load only from the packaged directory or an operator-set `MIZAN_NLP_ARTIFACT`.
+- **Decisions on record:** [`nlp/artifacts/DECISIONS.md`](nlp/artifacts/DECISIONS.md).
 
-## Features
+Four integration points are wired behind `MIZAN_NLP_NATIVE_WSD=1` (default off; off leaves behaviour unchanged):
 
-- **Agentic loop** — bounded model → tool → result → model execution with permission gates (`BaseAgent`).
-- **Provider normalization** — Anthropic native `tool_use`, OpenAI-compatible function calling, and Ollama behind one interface.
-- **Persistent memory** — SQLite episodic/semantic/procedural memory (Dhikr), pathway graphs (Masalik), knowledge graph; Chroma adapter present but not on the default path.
-- **mizan.nlp — native Qur'anic Arabic word-sense disambiguation.** 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2 (test accuracy 0.8150 on merged 96-sense labels; macro-F1 0.6380). CPU-only, 5.9 MB, no LLM call. Unknown lemmas return `[]` — abstention, not a guess. Wired into the agent loop at four integration points behind `MIZAN_NLP_NATIVE_WSD=1` (default off); a sense is admitted only at confidence ≥ 0.8 with ≥ 0.2 margin over the runner-up. [Full documentation](docs/nlp.md).
-- **QALB-7 cognitive controls** — deterministic ethical/action gates (Fitrah), evidence tracking (Fu'ad), trace compression (Lubb), developmental capability gates; heuristic research modules, not validated cognition claims.
-- **Extensibility** — plugins, skills/tools, events, hooks, middleware, channel adapters (Telegram, Discord, Slack, WhatsApp).
-- **Operations** — FastAPI + WebSocket API, CLI (`mizan setup/chat/serve/status/doctor`), Docker Compose, self-healing doctor experiments.
-- **Ruh model training** — own small transformer trained in a 4-stage developmental curriculum (nutfah → alaqah → mudghah → khalq_akhar); a full GPU run completed 2026-09-29 with loss 5.2660 → 1.0827. [Retrain guide](docs/TRAINING.md).
-- **Web UI** — React/TypeScript chat interface (`frontend/`); mobile navigation drawer with hamburger menu, authenticated API calls on every endpoint.
+| # | Where | What the loop gets |
+| --- | --- | --- |
+| IP-1 | `think()` in `backend/agents/base.py` | `[NLP Senses: lemma→sense_id (conf)]` next to the QCA root line |
+| IP-2 | Tool `disambiguate_sense(text, lemma)` | JSON `[[sense_id, confidence]]` mid-loop, no LLM round-trip |
+| IP-3 | QCA Layer 4 in `backend/qca/engine.py` | `senses_identified` alongside `roots_identified` |
+| IP-4 | Recall in `backend/memory/dhikr.py`, `backend/memory/masalik.py` | An advisory sense note on the recall query |
 
-## Reviewer quick view
-
-MIZAN explores how a self-hostable personal assistant can combine LLM reasoning, tool execution, memory and custom cognitive-control modules in one Python application — plus a native, non-LLM Arabic NLP module of its own. This section separates what can be verified in the repository from experimental or absent capabilities.
-
-### What the code demonstrates
-
-| Area                  | Verifiable implementation                                                                                                                                 | Evidence                                                                                                                                                                                     | Boundary                                                                                                                                                                                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent loop            | Iterative model → tool → result → model execution with bounded turns                                                                                      | [`BaseAgent._agentic_loop`](backend/agents/base.py), [`BaseAgent._execute_tool_safe`](backend/agents/base.py)                                                                                | Implemented in source; no claim of external production operation                                                                                                                                                                                          |
-| Tool/function calling | JSON tool schemas, Anthropic `tool_use`, OpenAI-compatible function-call conversion and parsing                                                           | [`backend/agents/base.py`](backend/agents/base.py), [`backend/providers.py`](backend/providers.py)                                                                                           | Provider integration code exists; repository tests are not evidence of live calls to every provider                                                                                                                                                       |
-| Tools                 | HTTP, filesystem, Bash, Python execution, memory recall, delegation, skill and plugin tools                                                               | [`BaseAgent._register_base_tools`](backend/agents/base.py), [`backend/skills`](backend/skills)                                                                                               | Execution is gated by repository security checks; operators remain responsible for isolation and permissions                                                                                                                                              |
-| Memory                | SQLite-backed episodic/semantic/procedural storage and recall, plus graph and pathway experiments                                                         | [`backend/memory/dhikr.py`](backend/memory/dhikr.py), [`backend/memory/knowledge_graph.py`](backend/memory/knowledge_graph.py), [`backend/memory/masalik.py`](backend/memory/masalik.py)     | Default operation is local and prototype-scale                                                                                                                                                                                                            |
-| Knowledge ingestion   | URL, PDF and YouTube extraction with chunking and storage endpoints                                                                                       | [`backend/knowledge/ingest.py`](backend/knowledge/ingest.py), [`backend/api/main.py`](backend/api/main.py)                                                                                   | Ingestion and retrieval components exist; this is not presented as a production-grade RAG platform                                                                                                                                                        |
-| Agent coordination    | In-process registration, capability matching, message routing and task delegation                                                                         | [`backend/agents/federation.py`](backend/agents/federation.py), [`tests/test_agent_comprehensive.py`](tests/test_agent_comprehensive.py)                                                     | Implemented locally; not a distributed multi-agent runtime                                                                                                                                                                                                |
-| Guardrails            | Permission levels, tool validation, rate limits, SSRF/path/command checks and audit events                                                                | [`backend/security/izn.py`](backend/security/izn.py), [`backend/security/wali.py`](backend/security/wali.py), [`tests/test_security_comprehensive.py`](tests/test_security_comprehensive.py) | Deterministic application controls, not a complete enterprise security boundary                                                                                                                                                                           |
-| Python engineering    | Async FastAPI services, Pydantic configuration, provider adapters, task queue, SQLite and PyTorch experiments                                             | [`backend`](backend), [`ruh_model`](ruh_model), [`pyproject.toml`](pyproject.toml)                                                                                                           | Demonstrates implementation breadth; it does not establish deployment scale by itself                                                                                                                                                                     |
-| Delivery scaffolding  | Python-version CI matrix, linting, tests, package build and Docker image builds                                                                           | [CI workflow](.github/workflows/ci.yml), [`docker-compose.prod.yml`](docker-compose.prod.yml), [`docker/Dockerfile.backend.prod`](docker/Dockerfile.backend.prod)                            | Deployable scaffolding, not evidence of a live production service                                                                                                                                                                                         |
-| mizan.nlp             | Native Qur'anic Arabic word-sense disambiguation: 48 per-lemma sklearn LogisticRegression classifiers, shipped 5.9 MB joblib + manifest + sense inventory | [`backend/nlp/`](backend/nlp), [`backend/nlp/artifacts/default/manifest.json`](backend/nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py), [docs](docs/nlp.md)   | Test accuracy 0.8150, macro-F1 0.6380 on merged 96-sense labels, 12/88 rare senses at zero recall per training-track eval; labels carry a keyword-rule component; all four agent-loop integration points are wired behind `MIZAN_NLP_NATIVE_WSD=1` (default off) |
-
-### Test and build proof
-
-- CI is defined for Python 3.11, 3.12 and 3.13 in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
-- The [24 August 2026 CI run](https://github.com/CodeWithJuber/mizan/actions/runs/32774615854) completed the test, lint, package-build and Docker-build jobs; its test log reported **557 passed and 8 skipped** for that repository snapshot.
-- Unit and API coverage includes agent routing, memory, security, cognitive modules and application endpoints under [`tests/`](tests).
-- The package metadata explicitly classifies the project as **Beta** in [`pyproject.toml`](pyproject.toml).
-
-The test count above is a dated snapshot, not a promise that every future commit has the same count. The workflow badge is the current signal.
-
-### Maturity boundary
-
-| Status                   | Capability                                    | Precise boundary                                                                                                                                                                                                                                                                                                                   |
-| ------------------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Implemented              | Custom agent loop and tool calling            | The loop, schemas, provider translations, validation and tool-result continuation are executable source                                                                                                                                                                                                                            |
-| Implemented              | Persistent local memory                       | SQLite storage and retrieval paths are present and tested                                                                                                                                                                                                                                                                          |
-| Implemented              | In-process agent federation                   | Agents can be registered, selected by capability and delegated work inside the running process                                                                                                                                                                                                                                     |
-| Implemented              | FastAPI, WebSocket, CLI and plugin surfaces   | Application interfaces and extension points are present in source                                                                                                                                                                                                                                                                  |
-| Implemented              | Native Qur'anic Arabic WSD module             | `disambiguate(text, lemma)` runs against the shipped artifact (test acc 0.7592); fail-closed `ModelNotReadyError`, honest `[]` on unknown lemmas                                                                                                                                                                                   |
-| Implemented (flag-gated) | mizan.nlp agent-loop integration              | IP-1 (loop context) through IP-4 (memory recall) are wired in `backend/agents/base.py`, `backend/qca/engine.py`, `backend/memory/dhikr.py` and `backend/memory/masalik.py`, gated by `MIZAN_NLP_NATIVE_WSD=1` (default off); a sense is admitted only at confidence ≥ 0.8 with margin ≥ 0.2 over the runner-up                     |
-| Partial / experimental   | Chroma vector search                          | A [`VectorStore`](backend/memory/vector_store.py) client and Docker profile exist, but Chroma is not wired into the default memory construction path; the unified pyramid integration still needs async/configuration hardening and integration tests                                                                              |
-| Partial / experimental   | Human approval                                | [`Izn`](backend/security/izn.py) can classify actions as approval-required and retain pending requests; a complete approve/reject-and-resume API workflow is not yet implemented                                                                                                                                                   |
-| Partial / experimental   | Multi-agent council and parallel deliberation | Basic federation/delegation is implemented, but [`agents/shura_council.py`](backend/agents/shura_council.py) and [`core/parallel_agents.py`](backend/core/parallel_agents.py) contain placeholder or heuristic generation paths; [`core/architecture.py`](backend/core/architecture.py) marks consensus construction as simplified |
-| Partial / experimental   | Custom Ruh model                              | Transformer, tokenizer, loss and training code exist under [`ruh_model/`](ruh_model); a full 4-stage GPU curriculum run completed 2026-09-29 (training loss 5.2660 → 1.0827 over 50 epochs, [docs](docs/TRAINING.md)) — losses are training-set only, no external benchmark, and checkpoints are not shipped in the repo                                                                 |
-| Not included             | Named orchestration frameworks                | No LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio implementation is claimed                                                                                                                                                                                                                              |
-| Not included             | Azure AI                                      | No Azure OpenAI or Azure AI Foundry integration or deployment is claimed                                                                                                                                                                                                                                                           |
-| Not included             | Enterprise RPA/application suite              | No Salesforce, ServiceNow, SAP, Microsoft 365/Graph or RPA-platform implementation is claimed                                                                                                                                                                                                                                      |
-| Not evidenced            | Production use                                | The repository does not provide customer, traffic, SLO, production telemetry or verified live-deployment evidence                                                                                                                                                                                                                  |
-
-## mizan.nlp — native Qur'anic Arabic NLP
-
-Mizan ships its own NLP instead of renting every Arabic judgment from an
-LLM. `mizan.nlp` (`backend/nlp/`) is a native word-sense disambiguation
-module for Qur'anic Arabic: 48 per-lemma scikit-learn LogisticRegression
-classifiers trained on Q-CSMP v2, frozen into a 5.9 MB joblib artifact with
-a validated manifest.
-
-```python
-from nlp import disambiguate, is_ready
-
-if is_ready():
-    for sense_id, confidence in disambiguate(text, lemma):
-        ...  # e.g. ("qcsmp2:آيَة:sign", 0.9732)
-```
-
-What the code provides:
-
-- **Measured, not marketed** — test accuracy 0.8150 against the merged 96-sense labels,
-  macro-F1 0.6380 on merged labels, whole-surah holdout (n=627), preregistered before
-  evaluation. 12 of 88 rare senses sit at zero recall; the labels carry a
-  keyword-rule component. All of it is in
-  [`manifest.json`](backend/nlp/artifacts/default/manifest.json), including
-  the `FAIL` verdict on the miscalibrated frozen accuracy leg.
-- **Fail-closed** — no valid artifact → `ModelNotReadyError`; the loop must
-  fall back to the LLM path, never silently.
-- **Honest abstention** — unknown lemma → `[]`, not a low-confidence guess.
-- **Trust boundary** — manifest (schema + files + sha256) is validated
-  _before_ unpickling; artifacts load only from the packaged directory or
-  an operator-set `MIZAN_NLP_ARTIFACT`. Never remote paths.
-- **Not a neural model** — `DESIGN.md` §4 assumed safetensors; the shipped
-  reality is joblib, and the spec was revised on the record
-  ([`artifacts/DECISIONS.md`](backend/nlp/artifacts/DECISIONS.md)) rather
-  than rewritten away.
-
-How the agent uses it: all four integration points are wired, gated behind
-`MIZAN_NLP_NATIVE_WSD=1` (default off; off = today's behavior, bit-for-bit):
-
-| #    | Where                                                                      | What the loop gets                                                                 |
-| ---- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| IP-1 | `think()` in `backend/agents/base.py`                                      | `[NLP Senses: lemma→sense_id (conf)]` appended next to the heuristic QCA root line |
-| IP-2 | Native tool `disambiguate_sense(text, lemma)`                              | JSON `[[sense_id, confidence]]` mid-loop, no LLM round-trip                        |
-| IP-3 | QCA Layer 4 in `backend/qca/engine.py`                                     | Additive `senses_identified` key alongside `roots_identified`                      |
-| IP-4 | Memory recall in `backend/memory/dhikr.py` and `backend/memory/masalik.py` | Advisory native-sense note on the recall query, before spreading activation        |
-
-Admission is quantified in code: a sense is admitted only when top-1
-confidence ≥ 0.8 **and** the margin over the runner-up ≥ 0.2
-(`NLP_MIN_SENSE_CONFIDENCE`, `NLP_MIN_SENSE_MARGIN`). Anything weaker is
-silently skipped and the loop continues on heuristics + LLM — the native
-path proposes, the loop admits.
-
-Full documentation: [docs/nlp.md](docs/nlp.md).
-
-## Architecture
-
-An AI agent framework in Python: the agent loop reasons, calls tools,
-persists memory, and coordinates — with `mizan.nlp` as a native,
-non-LLM Arabic understanding module alongside the LLM path.
-
-```mermaid
-flowchart TD
-    UI["Web, CLI, channels"] --> API["FastAPI and WebSocket"]
-    API --> Agent["BaseAgent loop"]
-    Agent --> Providers["Anthropic, OpenAI-compatible, Ollama"]
-    Agent --> Tools["Built-in, skill and plugin tools"]
-    Agent --> Memory["SQLite memory"]
-    Agent --> Federation["In-process federation"]
-    Memory -.-> Chroma["Optional Chroma adapter"]
-```
-
-The dotted edge marks the incomplete default Chroma wiring described below.
-
-### mizan.nlp integration (propose / admit)
-
-The native module **proposes** sense candidates; the agent loop **admits**
-them — advisory signal only, never a write to memory or belief. All four
-edges are wired behind `MIZAN_NLP_NATIVE_WSD=1` (default off); the LLM path
-remains the fallback.
-
-```mermaid
-flowchart LR
-    subgraph Loop["BaseAgent loop"]
-        Think["think()"]
-        LLM["LLM path"]
-    end
-    subgraph NLP["mizan.nlp (native, CPU)"]
-        WSD["disambiguate(text, lemma)"]
-        Art["48 per-lemma LogisticRegression<br/>5.9 MB joblib + manifest"]
-    end
-    WSD --> Art
-    Think -- "IP-1: [NLP Senses] appended" --> WSD
-    WSD -- "candidates (sense_id, conf)<br/>advisory only" --> Think
-    Think -- "IP-2: disambiguate_sense tool" --> WSD
-    WSD -- "IP-3: senses_identified" --> QCA["QCA Layer 4"]
-    WSD -- "IP-4: recall-query lemmas" --> MEM["Dhikr / Masalik"]
-    Think --> LLM
-    WSD -- "ModelNotReadyError →" --> LLM
-```
-
-Flag `MIZAN_NLP_NATIVE_WSD=1` (default off; off = today's behavior,
-bit-for-bit) is consumed in `backend/agents/base.py`,
-`backend/qca/engine.py`, `backend/memory/dhikr.py` and
-`backend/memory/masalik.py`.
-
-### Agent execution path
-
-The central loop in [`backend/agents/base.py`](backend/agents/base.py) performs the following bounded sequence:
-
-1. Build provider-compatible tool schemas from built-in, skill and plugin tools.
-2. Ask the selected provider for the next response.
-3. Inspect structured tool requests.
-4. Validate tool input and pass the request through Fitrah and Izn permission gates.
-5. Execute the selected handler and append a tool-result message.
-6. Continue until the provider returns a final response or the configured turn limit is reached.
-
-[`backend/providers.py`](backend/providers.py) normalizes provider responses. Anthropic uses native `tool_use` blocks; the OpenAI-compatible adapter translates the same internal schemas to function tools and parses returned calls.
-
-### QALB-7 research modules
-
-QALB-7 is the project's organizing vocabulary for experimental cognitive controls. Module names describe code-level abstractions, not claims of human cognition or independently validated reasoning performance.
-
-| Module               | Purpose in this repository                                                  | Source                                                                         |
-| -------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Fitrah               | Deterministic ethical/action gate                                           | [`backend/core/fitrah.py`](backend/core/fitrah.py)                             |
-| Nafs Triad           | Competing heuristic perspectives on an approach                             | [`backend/core/nafs_triad.py`](backend/core/nafs_triad.py)                     |
-| Qalb Processor       | State-dependent model-parameter modulation                                  | [`backend/core/qalb_processor.py`](backend/core/qalb_processor.py)             |
-| Fu'ad                | Evidence and conviction tracking                                            | [`backend/core/fuad.py`](backend/core/fuad.py)                                 |
-| Lubb                 | Trace compression, coherence and bias checks                                | [`backend/core/lubb.py`](backend/core/lubb.py)                                 |
-| Developmental stages | Turn, tool and autonomy capability gates                                    | [`backend/core/developmental_stages.py`](backend/core/developmental_stages.py) |
-| Causal engine        | Observational, interventional and counterfactual data structures/heuristics | [`backend/reasoning/causal_engine.py`](backend/reasoning/causal_engine.py)     |
-
-Additional experiments include multimodal perception, recovery state machines, novelty-sensitive memory, imagination/creativity modules, dream-style consolidation and quaternary integrity checks. See [`backend/core`](backend/core), [`backend/perception`](backend/perception), [`backend/reasoning`](backend/reasoning) and [`backend/memory`](backend/memory).
-
-### Memory and retrieval
-
-| Component       | Current role                                                                 | Status                                                                    |
-| --------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Dhikr           | SQLite-backed episodic, semantic and procedural memory                       | Implemented and exercised by tests                                        |
-| Masalik         | Pathway graph with spreading activation                                      | Implemented experimental module                                           |
-| Knowledge graph | SQLite entity/relationship storage and search                                | Implemented experimental module                                           |
-| Living memory   | In-memory trace lifecycle and novelty heuristics, with optional vector hooks | Experimental                                                              |
-| VectorStore     | Async Chroma HTTP adapter for store/search/delete/count                      | Adapter implemented; not active in the default memory path                |
-| MemoryPyramid   | Intended merger across memory layers                                         | Experimental integration; requires further async and end-to-end hardening |
-
-Knowledge ingestion accepts web pages, PDFs and YouTube transcripts, applies overlapping chunking, and stores content through the memory APIs. A production RAG implementation would additionally require verified embedding generation, default vector wiring, retrieval/reranking evaluation, source-attribution behavior, versioned indexing and load/reliability testing.
-
-### Agent coordination
-
-[`backend/agents/federation.py`](backend/agents/federation.py) provides process-local agent discovery, capability matching, messaging and task delegation. [`backend/reasoning/planner.py`](backend/reasoning/planner.py) can ask an LLM for a JSON task decomposition and execute dependency-ready work.
-
-This is evidence of a custom coordination prototype. It is not presented as:
-
-- a distributed agent mesh;
-- orchestration built with LangGraph, LangChain, Semantic Kernel, AutoGen or CrewAI;
-- a validated council-consensus system; or
-- parallel LLM-agent execution at enterprise scale.
-
-### Security and approval controls
-
-The repository includes:
-
-- permission levels and per-tool checks in [`backend/security/izn.py`](backend/security/izn.py);
-- command, path, URL and input validation in [`backend/security/wali.py`](backend/security/wali.py) and [`backend/security/validation.py`](backend/security/validation.py);
-- SSRF-oriented URL controls, rate limits and in-memory audit events;
-- JWT/API-key application authentication in [`backend/security/auth.py`](backend/security/auth.py);
-- user and API-key persistence to `$MIZAN_DATA_DIR/users.json` (default `/data/mizan/users.json`), so registered accounts survive backend restarts;
-- recovery-state and health-check experiments in [`backend/core/tawbah.py`](backend/core/tawbah.py), [`backend/core/self_healing.py`](backend/core/self_healing.py) and [`backend/doctor.py`](backend/doctor.py).
-
-These are defense-in-depth application controls, not a substitute for container/VM isolation, least-privilege credentials, network policy, secrets management or an enterprise identity provider. Authentication, revocation and several coordination controls retain process-local state. Human approval is modeled, but blocked work cannot yet be approved/rejected and resumed through a complete supported API flow.
+A sense is admitted only when top-1 confidence ≥ 0.8 **and** its margin over the runner-up ≥ 0.2 (`NLP_MIN_SENSE_CONFIDENCE`, `NLP_MIN_SENSE_MARGIN`). Full documentation: [docs/nlp.md](docs/nlp.md).
 
 ## Run locally
 
 ### Requirements
 
 - Python 3.11 or newer
-- At least one of:
-  - an Anthropic API key;
-  - an OpenAI API key;
-  - an OpenRouter API key; or
-  - a reachable Ollama server for local inference
+- At least one of: an Anthropic, OpenAI or OpenRouter API key, or a reachable Ollama server
 - Node.js 24 LTS for frontend development
 - Docker and Docker Compose for the containerized path
+- For running code: the isolated workspace runner ([docs/runner-setup.md](docs/runner-setup.md)). Without it, MIZAN refuses to run code; it has no local shell fallback.
 
 ### Docker Compose
 
@@ -316,93 +228,61 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-With the checked-in development Compose file:
+With the development Compose file:
 
 - frontend: `http://localhost:3100`
 - API: `http://localhost:8000`
-- interactive API docs: `http://localhost:8000/docs`
+- API documentation: `http://localhost:8000/api/docs`, with `/api/openapi.json` alongside
 
 Optional profiles:
 
 ```bash
-# Include local Ollama service
-docker compose --profile ollama up -d --build
-
-# Start the optional Chroma service as well
-docker compose --profile ollama --profile vector up -d --build
+docker compose --profile ollama up -d --build                    # local Ollama service
+docker compose --profile ollama --profile vector up -d --build   # plus Chroma
 ```
 
-The profiles start the optional service containers. In the current `docker-compose.yml`, starting the Ollama profile does not itself select Ollama as the backend provider, and starting Chroma does not complete the default application-to-Chroma memory wiring. Review the provider and memory configuration before assuming either service is active in application requests.
+The profiles only start the containers:
 
-Common commands:
+- Ollama becomes the provider only when `.env` selects it.
+- Chroma is used for memory only when `MIZAN_VECTOR_URL` points at it (for example `http://chroma:8000`).
 
-| Task               | Command                        |
-| ------------------ | ------------------------------ |
-| Show service state | `docker compose ps`            |
-| Follow logs        | `docker compose logs -f`       |
-| Restart            | `docker compose restart`       |
-| Stop               | `docker compose down`          |
-| Rebuild            | `docker compose up -d --build` |
-
-`docker compose down -v` removes named volumes and their stored data. Use it only when a full local reset is intended.
+`docker compose down -v` removes named volumes and their data; use it only for a full reset.
 
 ### From source
 
 ```bash
 git clone https://github.com/CodeWithJuber/mizan.git
 cd mizan
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-# Edit .env, then:
-make serve
+make serve          # backend only, port 8000
+make setup && make dev   # backend + frontend
 ```
 
-On Windows PowerShell, activate the environment with:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-For backend and frontend development together:
-
-```bash
-make setup
-make dev
-```
-
-The package exposes the `mizan` command through [`pyproject.toml`](pyproject.toml):
-
-```bash
-mizan setup
-mizan chat
-mizan serve
-mizan status
-mizan doctor --check
-```
-
-For `mizan.nlp` from source, install the native extras instead: `pip install -e ".[nlp]"` (scikit-learn, joblib, numpy), then see [mizan.nlp](#mizannlp--native-quranic-arabic-nlp).
+The package exposes the `mizan` command: `mizan setup`, `mizan chat`, `mizan serve`, `mizan status`, `mizan doctor --check`, `mizan version`.
 
 ### Provider configuration
 
-Set one provider in `.env`. [`backend/providers.py`](backend/providers.py) is the authoritative implementation.
+Set one provider in `.env` ([`backend/providers.py`](backend/providers.py) is authoritative):
 
-| Provider path | Primary configuration | Notes                                |
-| ------------- | --------------------- | ------------------------------------ |
-| Anthropic     | `ANTHROPIC_API_KEY`   | Native Anthropic message/tool format |
-| OpenAI        | `OPENAI_API_KEY`      | OpenAI-compatible adapter            |
-| OpenRouter    | `OPENROUTER_API_KEY`  | OpenAI-compatible endpoint           |
-| Ollama        | `OLLAMA_URL`          | Local or operator-hosted server      |
+| Provider | Configuration | Notes |
+| --- | --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` | Used directly only when the key starts with `sk-ant-`; otherwise Claude models route through OpenRouter |
+| OpenAI | `OPENAI_API_KEY` | OpenAI-compatible adapter |
+| OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible endpoint |
+| Ollama | `OLLAMA_URL` | Local or operator-hosted server |
 
-Azure OpenAI and Azure AI Foundry are not current provider options.
+Two known CLI limits with Ollama:
 
-Known CLI boundary: `mizan setup` currently prompts for Anthropic and OpenRouter credentials, while OpenAI and Ollama settings must be edited in `.env`. `mizan chat` also checks a `has_any_provider` property that currently counts the three API-key providers but not Ollama. The Ollama adapter exists, but an Ollama-only CLI session should not be assumed to work until that preflight is corrected.
+- `mizan setup` prompts only for Anthropic and OpenRouter keys; other providers are set in `.env`.
+- `mizan chat` checks `has_any_provider`, which counts only the three API-key providers. An Ollama-only CLI session is therefore refused until that check is widened.
+
+Administrators can change most settings at runtime: Settings → System settings ([docs/admin-settings.md](docs/admin-settings.md)).
 
 ## Build a plugin
 
-Plugins can register tools, subscribe to events and add hooks without changing the central agent loop.
+Plugins register tools, subscribe to events and add hooks without changing the agent loop.
 
 ```text
 plugins/
@@ -410,22 +290,6 @@ plugins/
     ├── plugin.json
     └── main.py
 ```
-
-`plugins/my_plugin/plugin.json`:
-
-```json
-{
-  "name": "my_plugin",
-  "version": "1.0.0",
-  "description": "Example plugin",
-  "author": "Your Name",
-  "permissions": [],
-  "tags": ["example"],
-  "enabled": true
-}
-```
-
-`plugins/my_plugin/main.py`:
 
 ```python
 from core.plugins import PluginBase
@@ -448,103 +312,57 @@ class Plugin(PluginBase):
         )
         self.on_event("task.completed", self.on_task_done)
 
-    async def on_unload(self):
-        pass
-
     async def get_weather(self, city):
-        # Replace this deterministic example with a real, permissioned data source.
         return {"city": city, "temperature_c": 22, "condition": "example"}
 
     async def on_task_done(self, data):
         print(f"Task completed: {data}")
 ```
 
-The main extension surfaces are:
+Tools a plugin adds are still called only through the tool gate.
 
-| Surface            | Starting point                                                   |
-| ------------------ | ---------------------------------------------------------------- |
-| Plugins            | [`backend/core/plugins.py`](backend/core/plugins.py)             |
-| Skills/tools       | [`backend/skills`](backend/skills)                               |
-| Events             | [`backend/core/events.py`](backend/core/events.py)               |
-| Hooks              | [`backend/core/hooks.py`](backend/core/hooks.py)                 |
-| Middleware         | [`backend/core/middleware.py`](backend/core/middleware.py)       |
-| LLM providers      | [`backend/providers.py`](backend/providers.py)                   |
-| Channel adapters   | [`backend/gateway/channels`](backend/gateway/channels)           |
-| Specialized agents | [`backend/agents/specialized.py`](backend/agents/specialized.py) |
+Extension surfaces:
+
+| Surface | Starting point |
+| --- | --- |
+| Plugins | [`backend/core/plugins.py`](backend/core/plugins.py), examples in [`plugins/`](plugins) |
+| Skills / tools | [`backend/skills`](backend/skills) |
+| Agent Skills (`SKILL.md`) | [`backend/agent_skills`](backend/agent_skills) |
+| MCP connectors | [`backend/connectors`](backend/connectors) |
+| Events, hooks, middleware | [`backend/core/events.py`](backend/core/events.py), [`hooks.py`](backend/core/hooks.py), [`middleware.py`](backend/core/middleware.py) |
+| LLM providers | [`backend/providers.py`](backend/providers.py) |
+| Channels | [`backend/gateway/`](backend/gateway) |
 
 ## API surface
 
-Run the backend and open `http://localhost:8000/docs` for the generated OpenAPI interface. The route implementation in [`backend/api/main.py`](backend/api/main.py) is authoritative.
-
-Representative endpoints:
+Every route, with who may call it, is listed in [docs/api-reference.md](docs/api-reference.md) and [`docs/openapi.json`](docs/openapi.json). Both are generated by `scripts/api_reference.py`, and a test fails when a route is missing from them. To test without the web app, see [docs/api-testing.md](docs/api-testing.md) and the standard-library client [`scripts/mizan_client.py`](scripts/mizan_client.py).
 
 ```text
-# Authentication
-POST /api/auth/login
-POST /api/auth/register
-POST /api/auth/api-key
-
-# Agents, chat and tasks
-GET  /api/agents
-POST /api/agents
-POST /api/chat
-POST /api/tasks
-
-# Memory and knowledge
-POST /api/memory/query
-POST /api/memory/store
-POST /api/memory/consolidate
-POST /api/knowledge/ingest
-POST /api/knowledge/upload
-
-# Federation
-GET  /api/federation/status
-POST /api/federation/discover
-POST /api/federation/route
-
-# Providers and plugins
-GET  /api/providers
-POST /api/providers/switch
-GET  /api/plugins
-POST /api/plugins/{name}/load
-POST /api/plugins/{name}/unload
-
-# Automation and diagnostics
-POST /api/automation/jobs
-POST /api/automation/webhooks
-GET  /api/health
-GET  /api/doctor
-POST /api/doctor/fix
-
-# Realtime
+POST /api/auth/login              GET  /api/auth/me           POST /api/auth/logout
+POST /api/chat/stream             (SSE: status, todo, chat_stream, chat_complete)
+POST /api/chat/approvals/{id}     POST /api/chat/held/{id}    DELETE /api/chat/{id}  (Mahw)
+GET  /api/daftar                  GET  /api/sakk              GET  /api/sakk/verify
+POST /api/debug/compare           POST /api/imtihan/run       GET  /api/imtihan/panel
+POST /api/v1/root-analyze         GET  /api/public/reliability
 WS   /ws/{client_id}
 ```
 
-**Authentication:** every `/api/*` endpoint except `POST /api/auth/login`,
-`POST /api/auth/register`, `GET /`, `GET /api/health` and `GET /api/version`
-requires a JWT Bearer token (or API key). The web UI sends the token on all
-API calls. Users and API keys persist to `$MIZAN_DATA_DIR/users.json`
-(default `/data/mizan/users.json`), so accounts survive backend restarts.
+Authentication happens before routing:
 
-The Python API for native Arabic disambiguation (no HTTP involved):
-
-```python
-from nlp import disambiguate, is_ready, SenseCandidate, ModelNotReadyError
-```
-
-Channel adapters are present for Telegram, Discord, Slack and WhatsApp under [`backend/gateway/channels`](backend/gateway/channels). Linode REST and SSH skills are also present. Their existence demonstrates adapter implementation; it is not proof that each connector has been exercised against a live enterprise account.
+- A non-public `/api/*` request without a valid Bearer token or `X-API-Key` is answered 401 before its body is read.
+- Roles are then checked per route.
+- Errors share one envelope.
 
 ## Development
 
 ```bash
-make install-dev    # Editable install plus test/lint tools
-make test           # Pytest suite
-make test-cov       # Coverage report
-make lint           # Ruff checks
-make format         # Ruff formatting and safe fixes
-make typecheck      # Mypy
-make check          # Lint + typecheck + tests
-make build          # Build the Python package
+make install-dev    # editable install with dev tools
+make test           # pytest tests/
+make lint           # ruff check backend/ tests/
+make format         # ruff format + safe fixes
+make typecheck      # mypy backend/
+make check          # lint + typecheck + test
+make build          # build the Python package
 ```
 
 ### Project map
@@ -552,111 +370,95 @@ make build          # Build the Python package
 ```text
 mizan/
 ├── backend/
-│   ├── agents/              # Agent loop, specialized agents, federation and council experiments
-│   ├── api/main.py          # FastAPI routes and WebSocket entrypoint
-│   ├── automation/          # Cron jobs and webhook triggers
-│   ├── core/                # QALB-7 controls, plugins, events, hooks and recovery experiments
-│   ├── gateway/channels/    # Telegram, Discord, Slack and WhatsApp adapters
-│   ├── knowledge/          # URL/PDF/YouTube ingestion and chunking
-│   ├── memory/              # SQLite memory, graphs, pathways and optional vector adapter
-│   ├── nlp/                 # mizan.nlp: native Qur'anic Arabic word-sense disambiguation
-│   ├── reasoning/           # Planner, causal and iterative reasoning modules
-│   ├── security/            # Auth, permissions and validation
-│   ├── skills/              # Built-in and extensible tools
-│   ├── providers.py         # LLM-provider normalization and tool calls
-│   └── cli.py               # Command-line interface
-├── frontend/                # React/TypeScript user interface
-├── ruh_model/               # Experimental PyTorch language-model components
-├── plugins/                 # External plugin location
-├── tests/                   # Unit and API tests
-├── docs/                    # Additional documentation
-├── docker/                  # Development and production-oriented Dockerfiles
-├── docker-compose.yml       # Local full-stack composition
-├── docker-compose.prod.yml  # Production-oriented scaffolding
-└── pyproject.toml           # Package metadata and dependencies
+│   ├── tadbir/          # MIZAN's own orchestration: Fahm, Qasd, Lughah, recipes, Lisan, checks, learning
+│   ├── agents/          # BaseAgent (execute, tool gate, words-only answers), specialized agents
+│   ├── api/             # FastAPI app (main.py), Iqtisad, connectors, skills and workspace routers
+│   ├── core/            # Tamyiz, adaptive estimators, QALB-7 faculties, plugins, events, hooks
+│   ├── memory/          # Dhikr, Daftar, Tadhkir, Mahw, Masalik, knowledge graph, vector adapter
+│   ├── security/        # auth, Wali limits, Izn, approvals, Sakk receipts, vault
+│   ├── imtihan/         # AGI test: tasks, scorers, report, Quwa faculties, panel, scorecard
+│   ├── gateway/         # Bab: Telegram, email, WhatsApp, Web Push
+│   ├── workspace/       # sandbox runner client, sessions, browser (Shahid)
+│   ├── perception/      # Sama' (voice), Basar (images)
+│   ├── automation/      # Muraqabah watchers, Qadr scheduler, triggers
+│   ├── connectors/      # MCP connectors
+│   ├── agent_skills/    # SKILL.md loader and bundled skills
+│   ├── providers.py     # provider routing, Iqtisad admission
+│   └── cli.py           # mizan command
+├── nlp/                 # mizan.nlp: native Qur'anic Arabic word-sense disambiguation
+├── ruh_model/           # Ruh: root-space transformer (optional ml extra)
+├── frontend/            # React 19 + TypeScript + Vite web app (PWA)
+├── docs/                # documentation and diagrams (docs/diagrams)
+├── plugins/             # drop-in plugins
+├── scripts/             # API reference, client, evaluation and build scripts
+├── tests/               # pytest suite
+└── docker-compose*.yml  # local and production composition
 ```
 
 ## Deployment status
 
-The repository includes container, Nginx, health-check, install, update and deployment scripts. These make the prototype easier to run and evaluate; filenames containing `prod` describe intended configuration, not verified production operation.
+The repository includes:
 
-Before treating MIZAN as production-ready, the project would need, at minimum:
+- containers, Nginx, health checks and deploy workflows;
+- a production deployment, updated automatically after each merge to `main` (see [docs/deployment.md](docs/deployment.md)).
 
-- durable shared identity, API-key, revocation, rate-limit and coordination state;
-- a production queue/broker with explicit retry, backoff and dead-letter behavior;
-- completed Chroma/embedding integration and retrieval evaluation;
-- a closed-loop human approval and resume workflow;
-- secrets management and, where relevant, managed identity;
-- distributed tracing, metrics, alerting, SLOs and cost/latency monitoring;
-- adversarial, tool-safety, groundedness and regression evaluation;
-- concurrency, load, failure-recovery and backup/restore testing;
-- a documented release and rollback process; and
-- deployment evidence for the intended infrastructure.
+What it does not yet provide:
+
+- **One worker only:** approvals are in-process futures, so the backend runs as one uvicorn worker. Rate-limit state is per process.
+- **No production queue:** there is no broker with dead-letter handling.
+- **Limited observability:** there are no metrics or alerting beyond traces and receipts.
+- **Code runs elsewhere:** the code sandbox and browser need the separate runner host ([docs/runner-setup.md](docs/runner-setup.md)).
 
 ## Roadmap
 
-Near-term engineering gaps exposed by the current implementation:
-
-1. Graduate the mizan.nlp integration from flag-gated to default-on: re-measure the eval gate in CI (held-out accuracy ≥ manifest `eval_accuracy`) and decide on the record.
-2. Complete async Chroma wiring in the default memory path and add live integration tests.
-3. Add an embedding/index lifecycle, hybrid retrieval, reranking, citations and retrieval-quality evaluation.
-4. Implement approve/reject/resume APIs and durable human-in-the-loop state.
-5. Replace Shura and parallel-agent placeholder paths with tested provider-backed execution or narrow their public contract.
-6. Add retries, backoff, idempotency and dead-letter handling to background execution.
-7. Add LLM/RAG quality, safety, latency and cost regression suites.
-8. Add production observability and externalize process-local state before multi-worker deployment.
-9. Add cloud/framework integrations only when backed by executable code, tests and deployment evidence.
+1. **mizan.nlp:** move from flag-gated to default-on once the eval gate is re-measured in CI.
+2. **Retrieval:** add embedding and index lifecycle, hybrid retrieval, reranking and retrieval-quality evaluation.
+3. **Shura council:** replace the placeholder paths in the Shura council and parallel-agent experiments with tested execution, or narrow their contract.
+4. **Background work:** add retries, idempotency and dead-letter handling.
+5. **Workers and observability:** move process-local state out before running several workers, and add metrics.
+6. **Human baseline:** collect panel answers so every faculty in the AGI test has a human comparison.
 
 ## FAQ
 
 ### Is MIZAN production-ready?
+It is a beta that one deployment runs daily. See [Deployment status](#deployment-status) for what a wider production use would still need.
 
-No production-readiness claim is made. It is a containerized beta prototype with CI and application security controls. See [Deployment status](#deployment-status) for the work still required.
+### Does the language model call tools?
+Not in the default `mizan` mode. MIZAN chooses and runs every tool. The model writes code or words when a recipe asks, and answers in words, with no tools, when MIZAN recognises no action. `hybrid` and `llm` modes exist for comparison.
+
+### Where do Quran and hadith texts come from?
+From the sources MIZAN downloads once into `$MIZAN_DATA_DIR` (Quran text and translations, hadith collections, the Quranic Arabic Corpus). The model never generates them. Sidq replaces an altered quote with the source text.
 
 ### Does MIZAN implement RAG?
+It has ingestion, BM25 indexes (Fihris, the hadith index, Ahl al-Dhikr), memory recall, and Chroma vectors when configured. Retrieval quality is not yet evaluated end to end.
 
-It implements ingestion, chunking, persistent retrieval components and a Chroma adapter. The default vector path is not yet wired and evaluated end to end, so the project is described as a retrieval/memory prototype rather than production RAG.
+### Does it use LangGraph, LangChain, AutoGen or CrewAI?
+No. The orchestration is MIZAN's own.
 
-### Does the agent already use mizan.nlp?
+### Can it run without sending prompts to a cloud provider?
+Yes, with Ollama or the local Ruh model as the provider. Recognised requests often need no model call at all: for example, Quran lookups, arithmetic, and reuse of checked programs. Web search, Wikipedia and Hugging Face need the network.
 
-Yes — when the operator sets `MIZAN_NLP_NATIVE_WSD=1` (default off). All four integration points are wired: loop context injection (IP-1), a `disambiguate_sense` tool (IP-2), QCA Layer 4 `senses_identified` (IP-3), and advisory memory-recall notes (IP-4). A sense is admitted only at confidence ≥ 0.8 with margin ≥ 0.2 over the runner-up; otherwise the loop falls back to heuristics + LLM. See [docs/nlp.md](docs/nlp.md).
+### Where is data stored?
+In SQLite and files under `$MIZAN_DATA_DIR`, per user where it concerns them. Mahw erases a chat everywhere, with a receipt.
 
-### Is mizan.nlp a neural model or an LLM call?
+## Documentation
 
-Neither. It is 48 per-lemma scikit-learn LogisticRegression classifiers over character n-gram features — CPU-only, 5.9 MB, no network. Test accuracy 0.8150 on the merged 96-sense Q-CSMP v2 holdout; this ontology change is not a retraining gain.
-
-### Is MIZAN a multi-agent system?
-
-It has implemented in-process registration, capability routing and delegation. Council synthesis and parallel LLM deliberation remain experimental or simplified, and no distributed multi-agent operation is claimed.
-
-### Does it use LangGraph, LangChain, Semantic Kernel, AutoGen, CrewAI or Copilot Studio?
-
-No. The current orchestration loop and federation layer are custom Python implementations.
-
-### Does it support Azure OpenAI or Azure AI Foundry?
-
-Not currently. Supported provider paths are listed in [Provider configuration](#provider-configuration).
-
-### Can it run without sending prompts to a cloud model provider?
-
-The Ollama adapter supports an operator-hosted local model path. Some tools and ingestion sources may still use network services, so offline behavior depends on which capabilities are enabled.
-
-### Where is project data stored?
-
-The default application memory is SQLite at the configured `DB_PATH`; Docker mounts application data to a named volume. Operators should review provider, connector and tool behavior before using sensitive data.
+| Topic | Documents |
+| --- | --- |
+| Architecture | [architecture](docs/architecture.md), [diagrams](docs/diagrams/README.md), [tadbir](docs/tadbir.md), [fahm](docs/fahm.md), [adaptive mathematics](docs/adaptive-mathematics.md), [Quranic algorithms](docs/quranic-algorithms.md), [al-Insān human model](docs/quranic_human_model.md) |
+| Truth and learning | [sidq](docs/sidq.md), [isnad](docs/isnad.md), [ahl-dhikr](docs/ahl-dhikr.md), [nazm](docs/nazm.md), [automatic learning](docs/automatic-learning.md), [talim](docs/talim.md) |
+| Quran, hadith, Arabic | [fihris](docs/fihris.md), [sarf](docs/sarf.md), [nlp](docs/nlp.md) |
+| Safety and data | [amanah](docs/amanah.md), [hudud](docs/hudud.md), [sakk](docs/sakk.md), [iqtisad](docs/iqtisad.md), [daftar](docs/daftar.md), [mahw](docs/mahw.md) |
+| Work and channels | [agentic coding](docs/agentic-coding.md), [coding workspaces](docs/coding-workspaces.md), [shahid](docs/shahid.md), [connectors](docs/connectors.md), [agent skills](docs/agent-skills.md), [huggingface](docs/huggingface.md), [bab](docs/bab.md), [muraqabah](docs/muraqabah.md), [sama](docs/sama.md), [basar](docs/basar.md) |
+| Evaluation | [imtihan](docs/imtihan.md), [debug mode](docs/debug-mode.md), [chat limits and metrics](docs/chat-limits-and-metrics.md) |
+| Operating | [deployment](docs/deployment.md), [runner setup](docs/runner-setup.md), [admin settings](docs/admin-settings.md), [API reference](docs/api-reference.md), [API testing](docs/api-testing.md) |
+| Own models | [Ruh training](docs/TRAINING.md), [own architecture integration](docs/OWN_ARCHITECTURE_INTEGRATION.md), [Bayan release](docs/BAYAN_RELEASE.md) |
+| Dated records | [25 Oct 2026 review](docs/review-2026-10-25.md), [runtime diagram (25 Oct)](docs/architecture-2026-10-25.md), [data contracts](docs/data-contracts-2026-10-25.md), [production validation](docs/production-validation-2026-10-25.md) |
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Contributions that close a documented maturity gap should include tests and update the relevant boundary statement in this README.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). A change that alters behaviour updates the matching document under `docs/`. If it changes the architecture, it also updates the diagram sources in `docs/diagrams/`.
 
 ## License
 
-[Apache License 2.0](LICENSE).
-
----
-
-<div align="center">
-
-MIZAN is built as an inspectable research prototype: the code is the claim, and the boundaries are part of the documentation.
-
-</div>
+[Apache License 2.0](LICENSE). Diagrams are drawn with [Archify](https://github.com/tt-a1i/archify) (Apache-2.0) and the [diagram-design](https://github.com/cathrynlavery/diagram-design) method (MIT).

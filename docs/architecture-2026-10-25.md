@@ -1,5 +1,7 @@
 # Actual runtime and training boundaries
 
+> Dated record (25 October 2026). It describes the code as it was then; the current architecture is in [architecture.md](architecture.md) and its [diagrams](diagrams/README.md).
+
 ![Actual own Ruh generator](ruh-runtime-2026-10-25.svg)
 
 The arrows below describe implemented code paths, not claims about consciousness
