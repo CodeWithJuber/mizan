@@ -1018,7 +1018,7 @@ def test_stream_restores_history_and_retrieves_owned_prior_sessions(api):
     main.active_sessions.clear()
     response = client.post(
         "/api/chat/stream",
-        json=message("restored", content="new task"),
+        json=message("restored", content="Explain recursion in Hinglish"),
         headers=headers(tokens["alice"]),
     )
     assert frames(response.text)[-1]["type"] == "chat_complete"
@@ -1026,6 +1026,14 @@ def test_stream_restores_history_and_retrieves_owned_prior_sessions(api):
     assert context["session_id"] == "restored"
     assert context["history"] == [{"role": "user", "content": "old turn"}]
     assert [m["content"] for m in context["conversation_memory"]] == ["Please use Hinglish"]
+    # A request that shares no distinctive word with earlier chats recalls none
+    # (the 27 October benchmark: five unrelated snippets for a simple request).
+    client.post(
+        "/api/chat/stream",
+        json=message("restored", content="new task"),
+        headers=headers(tokens["alice"]),
+    )
+    assert agent.calls[-1][1]["conversation_memory"] == []
 
 
 def test_learner_endpoint_reports_scoped_capture_instead_of_500(api, tmp_path, monkeypatch):

@@ -139,6 +139,37 @@ def _native_sense_advisory(query: str) -> str:
     return "[Native sense advisory: " + ", ".join(bits) + "]"
 
 
+def _about(query: str, rows: list) -> list:
+    """The stored statements that speak of what the query speaks of, best first.
+
+    The query's distinctive words are those the user's statements use that
+    carry more information than an average word of general language (Lughah's
+    corpora): never "what", "the", "hai". A statement is about the query when
+    it holds more than half of their information. Sharing only common words
+    with a request recalls nothing.
+    """
+    from core.adaptive import tokenize
+    from tadbir.ahl_dhikr import average_information, information
+
+    texts = [set(tokenize(row[2])) for row in rows]
+    used = set().union(*texts) if texts else set()
+    floor = average_information()
+    distinctive = {
+        word: information(word)
+        for word in set(tokenize(query))
+        if word in used and information(word) > floor
+    }
+    needed = sum(distinctive.values())
+    if needed <= 0:
+        return []
+    scored = []
+    for index, (row, text) in enumerate(zip(rows, texts, strict=True)):
+        held = sum(value for word, value in distinctive.items() if word in text)
+        if 2 * held > needed:
+            scored.append((held, -index, row))
+    return [row for _held, _order, row in sorted(scored, key=lambda item: item[:2], reverse=True)]
+
+
 def _stateless_message(metadata: str | None) -> bool:
     """Whether a stored message was sent as ``stateless`` (kept, never recalled)."""
     try:
@@ -1023,21 +1054,7 @@ class DhikrMemorySystem:
         from tadbir import amanah
 
         rows = [row for row in rows if not _stateless_message(row[4])]
-        terms = set(re.findall(r"\w{3,}", query.casefold()))
-        ranked = sorted(
-            enumerate(rows),
-            key=lambda item: (
-                len(terms & set(re.findall(r"\w{3,}", item[1][2].casefold()))),
-                -item[0],
-            ),
-            reverse=True,
-        )
-        # Include recent continuity as well as query matches. Bound the bytes
-        # and count so an old conversation cannot dominate the current task.
-        candidates = list(rows[:2])
-        for _, row in ranked:
-            if row not in candidates and terms & set(re.findall(r"\w{3,}", row[2].casefold())):
-                candidates.append(row)
+        candidates = _about(query, rows)
         wanted = max(0, min(limit, 5))
         selected: list = []
         for row in candidates:

@@ -342,3 +342,11 @@ async def test_a_finished_run_is_readable_before_it_is_saved(monkeypatch):
     assert detail is not None and detail["status"] == "complete" and "saved" not in detail
     release.set()
     await runner._JOBS[started["id"]]["task"]
+
+
+def test_confidence_is_read_from_its_label_not_any_percentage():
+    # The 27 October run read "the remaining 5%" as the stated confidence.
+    assert scorers.confidence("A. Confidence: 95%. The remaining 5% is doubt.") == 0.95
+    assert scorers.confidence("Answer A — my confidence is about 90 %") == 0.9
+    assert scorers.confidence("B. I am 80% sure.") == 0.8
+    assert scorers.confidence("A, confidence 0.7") == 0.7

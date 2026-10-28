@@ -79,7 +79,7 @@ Server-Sent Events. Body:
 | `workspace_id` | no | A coding project to work in |
 | `images` | no | Up to 4 images, each `{"media_type": "image/png", "data": "<base64>"}`, at most 10 MB; see [Basar](basar.md) |
 | `thinking` | no | `true` adds the agents' internal telemetry: `thinking` events, and `cognitive` and `thinking_trace` in `chat_complete`. Without it the stream carries the answer, its status and its receipts |
-| `stateless` | no | `true` for an evaluation. MIZAN recalls nothing from your other chats, learns nothing from the run, and keeps nothing as a training candidate. The chat's own messages are still saved. Reported in `usage.memory`. The AGI test and debug comparisons are always stateless |
+| `stateless` | no | `true` for an evaluation or test session (the no-memory flag). MIZAN recalls nothing from your other chats, learns nothing from the run, keeps nothing as a training candidate and saves no note ("remember this" is answered as not kept). The chat's own messages are still saved, marked so that no later chat recalls them. Reported in `usage.memory`. The AGI test and debug comparisons are always stateless |
 
 ```bash
 curl -N $MIZAN/api/chat/stream -H "Authorization: Bearer $TOKEN" \

@@ -232,6 +232,15 @@ def information(word: str) -> float:
     return math.log((total + 1) / (counts.get(word, 0) + 1))
 
 
+@lru_cache(maxsize=1)
+def average_information() -> float:
+    """The information of an average running word of general language: a word
+    carrying less is a function word ("and", "the", "with", "hai")."""
+    counts, _total = _background()
+    occurrences = sum(counts.values()) or 1
+    return sum(count * information(word) for word, count in counts.items()) / occurrences
+
+
 def about(claim: str, sentence: str) -> bool:
     """The sentence speaks of what the claim speaks of.
 

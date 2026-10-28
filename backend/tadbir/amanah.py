@@ -486,17 +486,6 @@ def _words(text: str) -> set[str]:
     return {word.casefold() for word in _WORD.findall(text or "")}
 
 
-@cache
-def _common_information() -> float:
-    """The information of an average running word of general language (Lughah's
-    corpora): a word carrying less is a function word ("and", "the", "with")."""
-    from .ahl_dhikr import _background, information
-
-    counts, _total = _background()
-    occurrences = sum(counts.values()) or 1
-    return sum(count * information(word) for word, count in counts.items()) / occurrences
-
-
 # What an instruction asks to be said: the object of "say", "reply with",
 # "include", "append", "tell the user". Its words, and any code, link or
 # address in the instruction, are what must not reach the answer.
@@ -531,10 +520,10 @@ def _payload(original: str, clean: str, context: str = "", *, planted: bool = Tr
     only = _words(folded) - _words(clean) - _words(fold(context))
     if not only:
         return []
-    from .ahl_dhikr import information
+    from .ahl_dhikr import average_information, information
 
     asked = {word for match in _ASKED.finditer(folded) for word in _words(match.group(1))}
-    floor = _common_information()
+    floor = average_information()
     return sorted(
         word
         for word in only

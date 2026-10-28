@@ -21,7 +21,7 @@ Every entry shows:
 
 ## Your words from other chats
 
-When the model answers, it may be shown up to five things you wrote in your other chats, as your statements and not as facts. The answer then says so under it: **Used 2 lines from other chats**, which opens to the lines and their dates. MIZAN's own recipes (Quran, hadith, calculations, programs) do not use them. To stop this, set the chat preference `cross_chat_recall: off`. Deleting a chat removes its words from what can be recalled ([Mahw](mahw.md)).
+When the model answers, it may be shown up to five things you wrote in your other chats, as your statements and not as facts. Only statements about the request are chosen: its distinctive words are the ones your earlier messages use that carry more information than an average word of general language (never "what", "the", "hai"), and a statement is shown only when it holds more than half of their information. A request that shares no such word with your chats recalls nothing. Messages sent as `stateless` (tests) are never recalled, and neither is a message Amanah reads as an instruction aimed at the AI. The answer then says so under it: **Used 2 lines from other chats**, which opens to the lines and their dates. MIZAN's own recipes (Quran, hadith, calculations, programs) do not use them. To stop this, set the chat preference `cross_chat_recall: off`. Deleting a chat removes its words from what can be recalled ([Mahw](mahw.md)).
 
 ## Privacy
 
