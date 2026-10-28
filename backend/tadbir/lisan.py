@@ -552,6 +552,40 @@ class Lisan:
             max_tokens=8000,
         )
 
+    async def form_checks(self, request: str) -> list[dict]:
+        """The checks of form the request asks its answer to meet (Nazm), each with
+        the request's own words it rests on; MIZAN keeps only those (nazm.grounded)."""
+        from . import nazm
+
+        reply = await self.ask(
+            "List the checks of form this request asks its answer to meet, as a JSON object "
+            '{"checks": [...]}. Each check has "kind", one of: '
+            + ", ".join(nazm.KINDS)
+            + '; its values ("exact", "min" or "max" for a count; "words" for include or '
+            'exclude; "chars" for no_char; "text" for starts_with or ends_with; "keys" for '
+            'json; "name" for script: arabic, devanagari, latin or tamil); and "basis": the '
+            "words of the request it rests on, copied exactly. Only what can be checked by "
+            "counting or matching, nothing about content or quality. If the request asks for "
+            'no such form, return {"checks": []}.',
+            amanah.fence(request, "request"),
+            600,
+            task="form_checks",
+        )
+        found = _json_object(reply).get("checks")
+        return nazm.grounded(request, found if isinstance(found, list) else [])
+
+    async def conform(self, request: str, answer: str, failures: str, language: str) -> str:
+        """The answer rewritten so the checks MIZAN counted hold, its facts unchanged."""
+        return await self.ask(
+            "MIZAN counted this answer against the form the request asks for, and some checks "
+            "failed. Rewrite the answer so that every check holds, keeping its meaning, its "
+            "facts and every number exactly as they are. Reply in "
+            f"{language_name(language)} with only the rewritten answer.",
+            f"Request:\n{request}\n\nAnswer:\n{answer}\n\nFailed checks: {failures}",
+            2000,
+            task="conform",
+        )
+
 
 def _json_object(reply: str) -> dict:
     match = re.search(r"\{.*\}", reply, re.DOTALL)

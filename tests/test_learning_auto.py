@@ -132,6 +132,27 @@ async def test_two_derivations_that_still_disagree_are_not_verified(agent, monke
     assert hifz.summary(agent.adaptive, "alice")["programs"] == 0
 
 
+async def test_a_result_the_second_program_could_not_check_is_not_verified(
+    agent, monkeypatch, alice
+):
+    # Production, 28 October: the independent program failed, and F29 was shown as
+    # if verified. A check that could not run proves nothing.
+    outputs = [
+        {"stdout": "514229\n", "stderr": "", "exit_code": 0},
+        {"stdout": "", "stderr": "SyntaxError", "exit_code": 1},
+    ]
+
+    async def run(name, params):
+        return outputs.pop(0)
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", run)
+    agent.ai_client = ScriptedProvider([F29, "```python\nprint(\n```"])
+    result = await agent.execute(FIB30)
+    assert result["task_verified"] is False
+    assert "could not be run" in result["result"]
+    assert hifz.summary(agent.adaptive, "alice")["programs"] == 0
+
+
 async def test_a_program_kept_before_the_check_is_dropped_when_it_disagrees(
     agent, monkeypatch, alice
 ):

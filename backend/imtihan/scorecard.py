@@ -25,6 +25,7 @@ REPORT_KEYS = (
     "blocks",
     "index",
     "weighted",
+    "faculties",
     "agentic",
     "games",
     "isnad",

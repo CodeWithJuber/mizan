@@ -46,7 +46,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -429,7 +429,9 @@ def known(store: Any, user_id: str) -> list[Passage]:
 
 
 def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> int:
-    """Keep what an outside source settled, tied to the question that asked it."""
+    """Keep what an outside source settled, tied to the question that asked it,
+    with the host it came from; a host gains or loses trust as other, independent
+    hosts agree or disagree with it on the same claim."""
     now = datetime.now(UTC).isoformat(timespec="seconds")
     stored = _load(store, user_id)
     items = [item for item in stored if _settled(item)]
@@ -437,17 +439,27 @@ def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> in
     added = 0
     for finding in findings:
         passage = finding.passage
-        if finding.verdict == "unknown" or passage is None or passage.source == "ilm":
+        if finding.verdict == "unknown" or passage is None:
             continue
+        # A claim MIZAN's ilm settled in new words is kept under those words
+        # too, with the site that said it: that site is its first witness.
         if (finding.claim, passage.url) in seen:
             continue
+        host = host_of(passage.url)
+        others = {
+            item["host"]: item["verdict"]
+            for item in items
+            if item.get("claim") == finding.claim and item.get("host") and item["host"] != host
+        }
         items.append(
             {
                 "claim": finding.claim,
                 "verdict": finding.verdict,
+                "p": round(float(finding.probability or 0.0), 3),
                 "says": passage.text,
                 "title": passage.title,
                 "url": passage.url,
+                "host": host,
                 "source": passage.source,
                 "checked": now,
                 "used": now,
@@ -455,24 +467,129 @@ def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> in
                 "tokens": content_words(question),
             }
         )
+        seen.add((finding.claim, passage.url))
+        for other, verdict in others.items():
+            agreed = verdict == finding.verdict
+            credit(store, host, agreed)
+            credit(store, other, agreed)
         added += 1
     if added or len(items) < len(stored):
         _save(store, user_id, items)
     return added
 
 
+# ── two witnesses: corroboration and source trust (Isnad) ────────────────
+#
+# "And bring to witness two witnesses from among your men ... so that if one of
+# them [i.e., the women] errs, then the other can remind her" (2:282); "if there
+# comes to you a disobedient one with information, investigate" (49:6), from
+# which, Ibn Kathir notes, the scholars of hadith refuse narrators whose
+# reliability is unknown. So a claim one source settled is shown with that
+# source but is not yet knowledge; it becomes knowledge (given to Lisan before it
+# answers) when a second, independent source agrees and none disagrees. Each
+# host's reliability is a Beta posterior, credited when an independent host
+# agrees with it and debited when one disagrees; the sources are weighed
+# together in log-odds:
+#
+#     logit P(true) = Σ_h  s_h · p_h · logit(t̄_h)
+#
+# with s_h = +1 when host h supports the claim and −1 when it contradicts it,
+# p_h its NLI probability and t̄_h its posterior mean reliability. Copies of one
+# site count once (a host is one witness however many pages it has).
+
+_TRUST = {"alpha": 2.0, "beta": 1.0, "prior_alpha": 2.0, "prior_beta": 1.0, "forgetting": 1.0}
+
+
+def host_of(url: str) -> str:
+    """The witness behind a link: its host, without "www." (a site counts once)."""
+    host = urlparse(url or "").netloc.lower().split("@")[-1].split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def _hosts_key() -> str:
+    return "ilm:hosts"
+
+
+def trust(store: Any) -> dict[str, BetaEstimator]:
+    try:
+        data = store.get(_hosts_key()) or {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    return {host: BetaEstimator.from_dict(value, **_TRUST) for host, value in data.items()}
+
+
+def credit(store: Any, host: str, agreed: bool) -> None:
+    if not host:
+        return
+    try:
+        data = store.get(_hosts_key()) or {}
+        data[host] = BetaEstimator.from_dict(data.get(host), **_TRUST).update(agreed).to_dict()
+        store.put(_hosts_key(), data)
+    except Exception:  # noqa: BLE001 - trust is learned best effort
+        pass
+
+
+def witnesses(store: Any, user_id: str) -> dict[str, dict]:
+    """Per kept claim: its independent hosts, what each said, the sources weighed
+    together, and its grade: "sahih" (two or more hosts agree, none disagrees),
+    "hasan" (one host) or "mudtarib" (hosts disagree)."""
+    trusted = trust(store)
+    by_claim: dict[str, dict[str, dict]] = {}
+    for item in _load(store, user_id):
+        if not _settled(item):
+            continue
+        host = item.get("host") or host_of(str(item.get("url", "")))
+        by_claim.setdefault(str(item.get("claim", "")), {}).setdefault(host, item)
+    found: dict[str, dict] = {}
+    for claim, hosts in by_claim.items():
+        logit = 0.0
+        for host, item in hosts.items():
+            sign = 1.0 if item.get("verdict") == "supported" else -1.0
+            reliability = trusted.get(host) or BetaEstimator(**_TRUST)
+            mean = min(max(float(reliability.mean), 1e-6), 1 - 1e-6)
+            weight = float(item.get("p") or 0.5)
+            logit += sign * weight * math.log(mean / (1.0 - mean))
+        verdicts = {item.get("verdict") for item in hosts.values()}
+        grade = "mudtarib" if len(verdicts) > 1 else "sahih" if len(hosts) >= 2 else "hasan"
+        found[claim] = {
+            "hosts": sorted(hosts),
+            "grade": grade,
+            "p_true": round(1.0 / (1.0 + math.exp(-logit)), 3),
+            "items": list(hosts.values()),
+        }
+    return found
+
+
 def evidence_for(store: Any, user_id: str, question: str, limit: int = 4) -> list[dict]:
-    """Settled sentences that bear on a question, given to Lisan before it answers."""
-    passages = known(store, user_id)
-    if not passages:
+    """Sentences two independent sources agree on that bear on a question, given
+    to Lisan before it answers. One source's word is shown under an answer but is
+    not given as knowledge until a second witness agrees (2:282, 49:6)."""
+    corroborated = [
+        item
+        for entry in witnesses(store, user_id).values()
+        if entry["grade"] == "sahih"
+        for item in entry["items"]
+    ]
+    if not corroborated:
         return []
-    scores = bm25_scores(question, [passage.text for passage in passages])
-    ranked = sorted(range(len(passages)), key=lambda i: -scores[i])
-    return [
-        {"says": passages[i].text, "source": passages[i].title, "url": passages[i].url}
-        for i in ranked
-        if scores[i] > 0 and about(question, passages[i].text)
-    ][:limit]
+    scores = bm25_scores(question, [str(item["says"]) for item in corroborated])
+    ranked = sorted(range(len(corroborated)), key=lambda i: -scores[i])
+    chosen: list[dict] = []
+    for index in ranked:
+        item = corroborated[index]
+        if scores[index] <= 0 or not about(question, str(item["says"])):
+            continue
+        if any(entry["says"] == item["says"] for entry in chosen):
+            continue
+        chosen.append({"says": item["says"], "source": item["title"], "url": item["url"]})
+    return chosen[:limit]
+
+
+def single_witness(store: Any, user_id: str) -> set[str]:
+    """Claims only one host has settled: MIZAN still seeks a second witness."""
+    return {
+        claim for claim, entry in witnesses(store, user_id).items() if entry["grade"] == "hasan"
+    }
 
 
 # ── which outside source to ask first (learned) ──────────────────────────
@@ -569,25 +686,53 @@ async def consult(
         return [], []
     verdicts = {claim: Finding(claim, "unknown") for claim in claims}
     heard: list[str] = []
+    # Claims MIZAN's ilm settled from one host only: a second, independent
+    # witness is sought (2:282) and kept beside the first.
+    lone = single_witness(store, user_id)
+    seeking: dict[str, str] = {}
+    seconds: list[Finding] = []
 
     async def ask(pool: list[Passage]) -> int:
         if pool:
             heard.append(pool[0].source)
-        open_claims = [claim for claim, found in verdicts.items() if found.verdict == "unknown"]
+        open_claims = [
+            claim
+            for claim, found in verdicts.items()
+            if found.verdict == "unknown" or claim in seeking
+        ]
         settled = 0
         for finding in await judge(open_claims, sentences(pool)):
-            if finding.verdict != "unknown":
-                verdicts[finding.claim] = finding
-                settled += 1
+            if finding.verdict == "unknown" or finding.passage is None:
+                continue
+            claim = finding.claim
+            if claim in seeking:
+                if host_of(finding.passage.url) != seeking[claim]:
+                    seconds.append(finding)
+                    del seeking[claim]
+                    settled += 1
+                continue
+            verdicts[claim] = finding
+            settled += 1
+            if finding.passage.source == "ilm" and any(
+                about(claim, other) and about(other, claim) for other in lone
+            ):
+                seeking[claim] = host_of(finding.passage.url)
         return settled
 
     deadline = time.monotonic() + BUDGET_SECONDS
     await ask(known(store, user_id))
     outside = [] if religious(question, answer) else order(store)
     for source in outside:
-        remaining = sum(1 for found in verdicts.values() if found.verdict == "unknown")
+        unknown = sum(1 for found in verdicts.values() if found.verdict == "unknown")
+        remaining = unknown + len(seeking)
         if not remaining or time.monotonic() > deadline:
             break
+        if (
+            not unknown
+            and source == "wikipedia"
+            and all(host.endswith("wikipedia.org") for host in seeking.values())
+        ):
+            continue  # a site is never its own second witness
         try:
             async with asyncio.timeout(max(1.0, deadline - time.monotonic())):
                 if source == "wikipedia":
@@ -600,7 +745,7 @@ async def consult(
             continue
         record(store, source, remaining, await ask(pool))
     findings = list(verdicts.values())
-    keep(store, user_id, question, findings)
+    keep(store, user_id, question, findings + seconds)
     return findings, heard
 
 

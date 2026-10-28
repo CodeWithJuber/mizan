@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import type { ApiClient } from "../types";
 import { CompareView, type Run } from "./DebugCompare";
+import HumanPanel from "./HumanPanel";
 import { Legend2, ReportSummary, VIZ_STYLE } from "./ReportSummary";
 import {
   BLOCK_LABELS,
@@ -130,6 +131,7 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
   const [selected, setSelected] = useState<RunDetail | null>(null);
   const [opened, setOpened] = useState<{ taskId: string; compare: Run | null } | null>(null);
   const [error, setError] = useState("");
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -264,6 +266,14 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
           <span className="text-xs text-gray-500">
             {taskCount} tasks × {repeats} × 2 arms; at least {taskCount * repeats * 2} model calls.
           </span>
+          <button
+            type="button"
+            className="ml-auto text-xs underline"
+            aria-expanded={panelOpen}
+            onClick={() => setPanelOpen(!panelOpen)}
+          >
+            {panelOpen ? "Hide the human panel" : "Human panel: people take the test"}
+          </button>
         </div>
         {running?.progress && (
           <div className="space-y-1">
@@ -295,6 +305,8 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
         )}
         {error && <div className="text-sm text-red-500">{error}</div>}
       </div>
+
+      {panelOpen && <HumanPanel api={api} onChange={() => selected && select(selected.id)} />}
 
       {points.length > 1 && (
         <div className="card p-4">

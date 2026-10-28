@@ -100,9 +100,19 @@ def _task(row: dict) -> dict:
     evidence = row.get("evidence")
     if evidence:
         prompt += f"\n\nThe ayah ({evidence['locator']}):\n{evidence['text']}"
+    # The faculty it measures (imtihan/quwa.py): code is problem solving, declining
+    # what the ayah does not say is knowing one's limits, the rest is reading the ayah.
+    faculty = (
+        "problem_solving"
+        if row["task"] == "coding"
+        else "metacognition"
+        if row["expected_status"] == "abstain"
+        else "perception"
+    )
     return {
         "id": f"lock-{row['id']}",
         "block": "locked_eval",
+        "faculty": faculty,
         "prompt": prompt,
         "source": f"{REPO} ({row['id']}, sha256 {SHA256[:12]}…)",
         "score": {

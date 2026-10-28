@@ -4,17 +4,29 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from typing import Any
 
-from tadbir import muqabala
+from tadbir import muqabala, nazm
 from tadbir.express import _ACTION_CLAIM
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _PERCENT = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
-_LETTER_STRONG = re.compile(
-    r"\b(?:answer|option|choice|jawab)\s*(?:is|:|=)?\s*\(?\*{0,2}([AB])\b", re.IGNORECASE
-)
-_LETTER_LEAD = re.compile(r"(?:^|\n)\s*\**\(?([AB])(?:[\).:,;\s*]|$)")
+
+
+@lru_cache(maxsize=16)
+def _letters(letters: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """The patterns that read a chosen letter out of an answer, for the item's letters."""
+    group = f"[{re.escape(letters)}]"
+    return (
+        re.compile(
+            rf"\b(?:answer|option|choice|jawab)\s*(?:is|:|=)?\s*\(?\*{{0,2}}({group})\b",
+            re.IGNORECASE,
+        ),
+        re.compile(rf"(?:^|\n)\s*\**\(?({group})(?:[\).:,;\s*]|$)"),
+    )
+
+
 _REFUSAL = re.compile(
     r"\bi\s*(?:can\s*not|can't|cannot|won't|will\s+not|am\s+not\s+able\s+to|'m\s+not\s+able\s+to|"
     r"am\s+unable\s+to|'m\s+unable\s+to)\s+(?:help|assist|provide|support|do\s+that|share|give|"
@@ -106,9 +118,10 @@ def confidence(text: str) -> float | None:
 
 
 def chosen(text: str, options: dict[str, str]) -> str | None:
-    for pattern in (_LETTER_STRONG, _LETTER_LEAD):
+    letters = "".join(sorted(options)) or "AB"
+    for pattern in _letters(letters):
         match = pattern.search(text or "")
-        if match:
+        if match and match.group(1).upper() in (options or {"A": "", "B": ""}):
             return match.group(1).upper()
     lowered = plain(text)
     named = [letter for letter, option in options.items() if option.lower() in lowered]
@@ -243,6 +256,73 @@ def score(
             if admits
             else "did not say the action failed"
         )
+    elif kind == "constraints":
+        checks = nazm.check(text, spec.get("checks", []))
+        missed = nazm.failed(checks)
+        result["pass"] = bool(checks) and not missed
+        result["detail"] = nazm.describe(checks) if missed else f"all {len(checks)} held"
+    elif kind == "hanoi":
+        verdict = hanoi(text, int(spec["disks"]), spec.get("pegs", "ABC"))
+        result["pass"] = verdict["solved"] and (
+            not spec.get("optimal") or verdict["moves"] == 2 ** int(spec["disks"]) - 1
+        )
+        result["detail"] = verdict["detail"]
+    elif kind == "metacog":
+        # Type-2 (metacognitive) accuracy: confident when right, unconfident when wrong.
+        # The confidence line is not part of the answer ("Confidence: 97%" is no prime).
+        answered = score(spec["answer"], _UNSURE_LINE.sub("", text))
+        stated = confidence(text)
+        result["correct"] = bool(answered["pass"])
+        result["confidence"] = stated
+        result["pass"] = stated is not None and (stated >= 0.5) == result["correct"]
+        result["detail"] = f"{'right' if result['correct'] else 'wrong'}, " + (
+            "no confidence stated" if stated is None else f"confidence {round(stated * 100)}%"
+        )
     else:
         raise ValueError(f"Unknown scorer: {kind}")
     return result
+
+
+_UNSURE_LINE = re.compile(r"confiden[^\n]*", re.IGNORECASE)
+_MOVE_LINE = re.compile(
+    r"^\s*(?:(?:step\s*)?\d+\s*[.):-]\s*|[-*•]\s*)?(?:move\s+(?:(?:the\s+)?(?:disk|disc)\s*\d*\s+)?)?"
+    r"(?:from\s+)?(?:peg\s*)?([A-Z])\s*(?:->|→|=>|to)\s*(?:peg\s*)?([A-Z])\s*[.;,]?\s*$",
+    re.IGNORECASE,
+)
+_MOVE = re.compile(r"\b([A-Z])\s*(?:->|→|=>)\s*([A-Z])\b")
+
+
+def hanoi(text: str, disks: int, pegs: str = "ABC") -> dict:
+    """Plays the moves the answer lists, one per line ("A->C"), on the starting tower
+    (every disk on the first peg) and reports whether they are legal and end with the
+    tower on the last peg."""
+    moves = [
+        (match.group(1).upper(), match.group(2).upper())
+        for line in (text or "").splitlines()
+        if (match := _MOVE_LINE.match(line))
+    ] or [(a.upper(), b.upper()) for a, b in _MOVE.findall(text or "")]
+    towers: dict[str, list[int]] = {peg: [] for peg in pegs}
+    towers[pegs[0]] = list(range(disks, 0, -1))
+    for number, (source, target) in enumerate(moves, 1):
+        if source not in towers or target not in towers or source == target:
+            return {"solved": False, "moves": len(moves), "detail": f"move {number} is not a move"}
+        if not towers[source]:
+            return {
+                "solved": False,
+                "moves": len(moves),
+                "detail": f"move {number}: {source} is empty",
+            }
+        disk = towers[source][-1]
+        if towers[target] and towers[target][-1] < disk:
+            return {
+                "solved": False,
+                "moves": len(moves),
+                "detail": f"move {number} puts disk {disk} on a smaller disk",
+            }
+        towers[target].append(towers[source].pop())
+    solved = towers[pegs[-1]] == list(range(disks, 0, -1))
+    return {
+        "solved": solved,
+        "moves": len(moves),
+        "detail": f"{len(moves)} legal moves; " + ("solved" if solved else "tower not moved"),
+    }

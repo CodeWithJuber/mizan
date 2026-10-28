@@ -905,7 +905,10 @@ class Tadbir:
             # Running cleanly says the code works, not that it read the request
             # right: an independent derivation must agree (Tathabbut).
             checked, run, code, other = await self._tathabbut(request, task, language, code, run)
-            verified = checked is not False
+            # Printed numbers are verified only when the independent program agreed:
+            # a check that could not run (or printed nothing) proves nothing.
+            unchecked = checked is None and tathabbut.applies(str(run.get("stdout", "")))
+            verified = checked is True or (checked is None and not unchecked)
         if verified and failing is not None:
             # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
             lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
@@ -923,6 +926,8 @@ class Tadbir:
             parts.append(f"_{phrase('tathabbut_agreed', u.language)}_")
         elif checked is False:
             parts.append(f"_{phrase('tathabbut_disagrees', u.language, other=other)}_")
+        elif verified is False and run.get("exit_code") == 0 and toolkit is None:
+            parts.append(f"_{phrase('tathabbut_unchecked', u.language)}_")
         if verified:
             hifz.keep(
                 store,
@@ -1013,8 +1018,9 @@ class Tadbir:
             if agreed is False:
                 hifz.drop(store, owner, kept)
                 return None  # it answered another question: Lisan writes a new one
-            if agreed:
-                hifz.mark_checked(store, owner, kept)
+            if agreed is None:
+                return None  # not checked: a new program is written and checked
+            hifz.mark_checked(store, owner, kept)
         reliability = hifz.record(store, owner, kept, worked)
         trace.event("learn", "hifz", reused=True, worked=worked, reliability=reliability)
         if not worked:

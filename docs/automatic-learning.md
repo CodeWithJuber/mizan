@@ -82,16 +82,17 @@ Lisan's instruction for each kind of code work is MIZAN's harness for the model:
    - keeps the same `{placeholders}`
    - stays within twice the original length
 3. **Trial.** The incumbent and the challenger share the work by Thompson sampling.
-4. **Decision.** After at least 12 trials:
-   - **P(challenger better) ≥ 0.95:** the challenger becomes the incumbent.
-   - **P(challenger better) ≤ 0.05:** the challenger is retired.
+4. **Decision.** Results of the two versions are paired as they arrive, and over the pairs that disagree MIZAN keeps an e-value that may be read after every result (`core.adaptive.paired_e_value`). The full derivation is in [Quranic algorithms](quranic-algorithms.md#3-tajdid-improvement-accepted-only-on-evidence-safe-to-read-at-any-time-tadbirtajdidpy-coreadaptivepaired_e_value).
+   - **Evidence the challenger is better ≥ 1/α_k:** it becomes the incumbent. α = 0.05; the k-th challenger has α_k = α·2^-k, so the first needs 40.
+   - **Evidence the incumbent is better ≥ 1/α_k, or 80 disagreements without a decision:** the challenger is retired.
+   - The old "P(better) ≥ 0.95" rule, checked after every result, promoted no-better versions far more often than 5% of the time. By Ville's inequality the e-value cannot.
 
 **What never changes:** Lisan's base prompt, MIZAN's verification and every safety gate. Only the wording of the task instruction evolves.
 
 **Scope:** the state is shared by all users and stored in `$MIZAN_DATA_DIR/harness.db`. It holds instruction text and error signatures, never user text.
 
 **Admins:**
-- See every version, its success rate, the challenger's P(better) and the promotion history in **Majlis → Learning**.
+- See every version, its success rate, the challenger's evidence against its threshold and the promotion history in **Majlis → Learning**.
 - Reset a kind of work to the built-in instruction there (`GET /api/tadbir/harness`, `DELETE /api/tadbir/harness/{task}`).
 - Switch renewal off with `MIZAN_HARNESS_EVOLUTION=off`.
 

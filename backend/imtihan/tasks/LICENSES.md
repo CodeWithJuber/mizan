@@ -12,3 +12,5 @@ written for MIZAN.
 
 Humanity's Last Exam and GAIA forbid redistribution, so their tasks are not
 included.
+
+The nine faculty blocks (`perception.jsonl`, `generation.jsonl`, `attention.jsonl`, `memory.jsonl`, `reasoning.jsonl`, `metacognition.jsonl`, `executive.jsonl`, `problem_solving.jsonl`, `social.jsonl`) are written for MIZAN and built by `scripts/build_quwa_tasks.py`, which computes every expected answer; rebuild them with it rather than editing the files.

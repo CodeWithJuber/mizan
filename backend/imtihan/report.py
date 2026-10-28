@@ -39,7 +39,7 @@ def weighted(blocks: dict) -> dict:
     return index
 
 
-def wilson(passed: int, total: int, z: float = 1.96) -> tuple[float, float]:
+def wilson(passed: float, total: int, z: float = 1.96) -> tuple[float, float]:
     if total == 0:
         return (0.0, 0.0)
     rate = passed / total
@@ -68,6 +68,18 @@ def brier(pairs: list[tuple[float, bool]]) -> float | None:
     if not pairs:
         return None
     return round(sum((c - float(ok)) ** 2 for c, ok in pairs) / len(pairs), 3)
+
+
+def auroc2(pairs: list[tuple[float, bool]]) -> float | None:
+    """Type-2 discrimination: the chance that a right answer was stated with more
+    confidence than a wrong one (ties half). 0.5 is no insight into one's own
+    errors, 1.0 is knowing exactly which answers are wrong."""
+    right = [c for c, ok in pairs if ok]
+    wrong = [c for c, ok in pairs if not ok]
+    if not right or not wrong:
+        return None
+    wins = sum(1.0 if r > w else 0.5 if r == w else 0.0 for r in right for w in wrong)
+    return round(wins / (len(right) * len(wrong)), 3)
 
 
 def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
@@ -124,8 +136,9 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
 
     calibration = {}
     for arm in ARMS:
+        # A metacognition item passes on its confidence; its correctness is kept apart.
         pairs = [
-            (r["confidence"], r["pass"])
+            (r["confidence"], bool(r.get("correct", r["pass"])))
             for r in results
             if r["arm"] == arm and r.get("confidence") is not None and not r.get("error")
         ]
@@ -133,6 +146,7 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
         calibration[arm] = {
             "ece": ece(pairs),
             "brier": brier(pairs),
+            "auroc2": auroc2(pairs),
             "answers_with_confidence": len(pairs),
             "answers": len(stated),
         }
@@ -175,13 +189,14 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
             "supported": round(sum(r["supported"] for r in rows) / len(rows), 3) if rows else None,
             "fabricated_claims": sum(r.get("fabricated") or 0 for r in results if r["arm"] == arm),
         }
-    from . import agentic
+    from . import agentic, quwa
     from .games import play as games
 
     return {
         "blocks": blocks,
         "index": index,
         "weighted": weighted(blocks),
+        "faculties": quwa.profile(results, tasks),
         "agentic": agentic.summarize(results),
         "games": games.summarize(results),
         "isnad": isnad,
@@ -204,6 +219,27 @@ def markdown(report: dict, title: str = "MIZAN Imtihan") -> str:
             f"| {block} | {entry['tasks']} | {_pct(entry['base']['rate'])} | "
             f"{_pct(entry['mizan']['rate'])} | {_signed(entry['delta'])} |"
         )
+    profile = report.get("faculties") or {}
+    if profile.get("faculties"):
+        lines += [
+            "",
+            "## Faculties (Google DeepMind cognitive framework)",
+            "",
+            "| Faculty | Items | Base | MIZAN | Δ | MIZAN vs panel |",
+            "|---|---|---|---|---|---|",
+        ]
+        for entry in profile["faculties"]:
+            human = entry["mizan"].get("human")
+            versus = (
+                f"outperforms {_pct(human['percentile'])} of {human['people']}"
+                if human
+                else "no panel"
+            )
+            lines.append(
+                f"| {entry['name']} ({entry['arabic']}, {entry['ayah']}) | {entry['items']} | "
+                f"{_pct(entry['base']['rate'])} | {_pct(entry['mizan']['rate'])} | "
+                f"{_signed(entry['delta'])} | {versus} |"
+            )
     calibration = report["calibration"]
     lines += [
         "",

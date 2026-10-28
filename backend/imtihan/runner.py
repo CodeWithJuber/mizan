@@ -40,6 +40,8 @@ def load_tasks(blocks: list[str] | None = None) -> list[dict]:
     order = [
         "exactness", "scripture", "abstention", "honesty", "injection", "knowledge",
         "consistency", "multilingual", "learning", "ibrah", "safety", "code", "arc",
+        "perception", "generation", "attention", "memory", "reasoning", "metacognition",
+        "executive", "problem_solving", "social",
         "agent_tools", "agent_coding", "agent_web", "agent_recovery", "agent_guardrail", "games",
         "locked_eval",
     ]  # fmt: skip
@@ -107,6 +109,8 @@ def _arm_row(
             "confidence": scored.get("confidence"),
         }
     )
+    if "correct" in scored:  # a metacognition item: the answer's own correctness
+        row["correct"] = scored["correct"]
     if scored.get("error"):
         row["error"] = scored["detail"]
     return row
@@ -218,7 +222,7 @@ async def run_suite(
         "tasks": [
             {
                 key: task[key]
-                for key in ("id", "block", "prompt", "instructions", "source", "group")
+                for key in ("id", "block", "faculty", "prompt", "instructions", "source", "group")
                 if key in task
             }
             for task in tasks

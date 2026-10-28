@@ -115,12 +115,21 @@ Without the NLI model, every claim stays unknown and nothing is guessed.
   `ilm` (in MIZAN's adaptive store, most recently used first, up to 300
   sentences). Each entry holds the claim, the source's sentence, title, link,
   date and the words of the question that asked it.
-- **Asked once.** The same claim is settled from memory next time, without
-  asking again.
-- **Shown to Lisan.** Before Lisan writes an answer, the settled sentences
-  that bear on the question are given to it as **"SETTLED BY MIZAN FROM
-  SOURCES"**, so the answer starts from evidence rather than from the model's
-  memory.
+- **Asked once.** The same claim is settled from memory next time. The same
+  site is not asked again, since a site is never its own second witness.
+- **Shown to Lisan, once two sources agree.** Before Lisan writes an answer,
+  the settled sentences that bear on the question are given to it as
+  **"SETTLED BY MIZAN FROM SOURCES"**, so the answer starts from evidence rather
+  than from the model's memory. A sentence counts only when two independent
+  sites agree and none disagrees ("two witnesses", 2:282; "investigate", 49:6).
+  - **One site:** the claim is shown under the answer but is not given as
+    knowledge.
+  - **Ilm with one site:** MIZAN asks its outside sources again to find a
+    second witness.
+  - **Weighing.** Each site's reliability is a Beta posterior, raised when an
+    independent site agrees and lowered when one disagrees. The sites are
+    combined in log-odds (`witnesses`, `p_true`). See
+    [Quranic algorithms](quranic-algorithms.md#2-isnad-two-witnesses-before-a-fact-becomes-knowledge-tadbirahl_dhikrpy).
 - **Only what is about its claim.** A kept entry whose sentence is not about
   its own claim (kept before the relevance gate existed) is not used and is
   dropped from the store when it is next written. Lisan is given a settled

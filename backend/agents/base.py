@@ -1807,6 +1807,68 @@ class BaseAgent:
             logger.debug("Isnad grading skipped", exc_info=True)
             return None
 
+    def _form_wanted(self, task: Any) -> bool:
+        """Qasd's ``form`` facet reads the request as asking for a form of answer
+        MIZAN can count (tadbir/nazm.py). MIZAN checks it when it directs; in
+        "llm" mode the model does."""
+        if not isinstance(task, str) or not task.strip():
+            return False
+        try:
+            from tadbir import qasd
+            from tadbir.engine import orchestration_mode
+
+            return orchestration_mode() != "llm" and bool(qasd.facet("form", task))
+        except Exception:  # noqa: BLE001 - the answer is written either way
+            logger.debug("Nazm facet skipped", exc_info=True)
+            return False
+
+    async def _nazm(self, result: dict, task: str) -> None:
+        """Nazm: Lisan reads the checks of form out of the request (kept only when
+        they rest on its words), MIZAN counts the answer against them, and Lisan
+        rewrites it once when a check fails. The rewrite is kept only if more
+        checks hold, it brings no number the answer or request did not have, and
+        the answer quotes no Quran or hadith (scripture is never reworded)."""
+        from tadbir import ahl_dhikr, fahm, nazm, sijill, tathabbut
+        from tadbir.lisan import Lisan
+
+        try:
+            checks = await Lisan(self).form_checks(task)
+        except Exception:  # noqa: BLE001 - the answer stays as written
+            logger.debug("Nazm checks skipped", exc_info=True)
+            return
+        if not checks:
+            return
+        text = result["result"]
+        before = nazm.check(text, checks)
+        missed = nazm.failed(before)
+        report: dict[str, Any] = {"checks": len(before), "failed": len(missed), "rewritten": False}
+        if missed and not ahl_dhikr.cites_scripture(text):
+            try:
+                rewrite = await Lisan(self).conform(
+                    task, text, nazm.describe(before), fahm.detect_language(task)
+                )
+            except Exception:  # noqa: BLE001 - the first answer stays
+                logger.debug("Nazm rewrite skipped", exc_info=True)
+                rewrite = ""
+            known = set(tathabbut.numbers(text)) | set(tathabbut.numbers(task))
+            after = nazm.failed(nazm.check(rewrite, checks)) if rewrite else missed
+            if (
+                rewrite
+                and len(after) < len(missed)
+                and all(number in known for number in tathabbut.numbers(rewrite))
+            ):
+                result["result"] = rewrite
+                report.update(failed=len(after), rewritten=True)
+                graded = self._isnad(rewrite)
+                if graded:
+                    result["isnad"] = graded
+                sijill.note(
+                    "nazm",
+                    {"detail": f"Rewrote the answer: {len(missed) - len(after)} check(s) fixed"},
+                )
+        report["held"] = report["checks"] - report["failed"]
+        result["nazm"] = report
+
     async def _truth_gate(self, result: dict) -> None:
         """Sidq: correct or remove what MIZAN can prove wrong before the answer is shown."""
         text = result.get("result")
@@ -2941,6 +3003,11 @@ Match the requested depth and self-correct errors."""
             and isinstance(task, str)
             and bool(amanah.scan_message(task))
         )
+        # Nazm: a request that asks for a form MIZAN can count ("exactly three
+        # sentences", "as JSON") is answered whole once the form is checked, for
+        # the same reason.
+        form = self._form_wanted(task)
+        held_back = held_back or (stream_callback is not None and form)
         shown = stream_callback
         if held_back:
 
@@ -2961,6 +3028,13 @@ Match the requested depth and self-correct errors."""
                 result["result"], removed = amanah.scrub(
                     result["result"], amanah.payload(taint_record)
                 )
+            if (
+                form
+                and result.get("success", True)
+                and isinstance(result.get("result"), str)
+                and result.get("orchestrator") != "mizan"  # MIZAN's own recipes keep their form
+            ):
+                await self._nazm(result, task)
             if held_back and isinstance(result.get("result"), str) and result["result"]:
                 await stream_callback(result["result"])
             if "amanah" not in result:
@@ -2987,6 +3061,7 @@ Match the requested depth and self-correct errors."""
                 "amanah",
                 "sidq",
                 "ahl",
+                "nazm",
             ):
                 if key in result:
                     result["usage"][key] = result[key]

@@ -5727,7 +5727,12 @@ async def imtihan_run_detail(run_id: str, user: TokenPayload = Depends(require_a
     run = await runner.get(run_id)
     if run is None:
         raise HTTPException(404, "Run not found")
-    return run
+    if run.get("status") != "complete":
+        return run
+    from imtihan import quwa
+
+    # The faculty profile is read against the human panel as it is now.
+    return await asyncio.to_thread(quwa.with_panel, run)
 
 
 @app.post("/api/imtihan/runs/{run_id}/cancel")
@@ -5749,8 +5754,10 @@ async def imtihan_publish(run_id: str, user: TokenPayload = Depends(require_auth
     run = await runner.get(run_id)
     if run is None:
         raise HTTPException(404, "Run not found")
+    from imtihan import quwa
+
     try:
-        entry = await asyncio.to_thread(scorecard.publish, run)
+        entry = await asyncio.to_thread(lambda: scorecard.publish(quwa.with_panel(run)))
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     wali.audit.log("scorecard_published", {"run": run_id, "by": user.user_id})
@@ -5763,6 +5770,47 @@ async def imtihan_unpublish(run_id: str, user: TokenPayload = Depends(require_au
 
     _require_admin(user)
     return {"removed": await asyncio.to_thread(scorecard.unpublish, run_id)}
+
+
+class ImtihanPanelAnswers(BaseModel):
+    person: str = Field(..., min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_.-]+$")
+    answers: dict[str, str] = Field(..., min_length=1, max_length=300)
+
+
+@app.get("/api/imtihan/panel")
+async def imtihan_panel(user: TokenPayload = Depends(require_auth)):
+    """The human panel (imtihan/quwa.py): the text items people can answer, and who has."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    return {
+        "faculties": quwa.faculties(),
+        "tasks": await asyncio.to_thread(quwa.panel_tasks),
+        "people": await asyncio.to_thread(quwa.people),
+    }
+
+
+@app.post("/api/imtihan/panel")
+async def imtihan_panel_answer(
+    req: ImtihanPanelAnswers, user: TokenPayload = Depends(require_auth)
+):
+    """A panel member's answers (under a pseudonym), scored by the items' own rules."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    if any(len(answer) > 4000 for answer in req.answers.values()):
+        raise HTTPException(422, "An answer is longer than 4000 characters")
+    scored = await quwa.record(req.person, req.answers, by=user.user_id)
+    return {"person": req.person, "scored": scored}
+
+
+@app.delete("/api/imtihan/panel/{person}")
+async def imtihan_panel_forget(person: str, user: TokenPayload = Depends(require_auth)):
+    """Erase every answer a panel member gave."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    return {"removed": await asyncio.to_thread(quwa.forget, person)}
 
 
 def _open_rate_limit(request: Request) -> None:
