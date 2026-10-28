@@ -10063,6 +10063,7 @@
   "/api/imtihan/panel/{person}": {
    "delete": {
     "summary": "Imtihan Panel Forget",
+    "description": "Erase every answer a panel member gave.",
     "operationId": "imtihan_panel_forget_api_imtihan_panel__person__delete",
     "parameters": [
      {
@@ -10136,6 +10137,319 @@
       "apiKey": []
      }
     ]
+   }
+  },
+  "/api/imtihan/panel/invites": {
+   "post": {
+    "summary": "Imtihan Panel Invite",
+    "description": "A link one person opens to answer the panel's items with no account. The\ncode is shown once: only its SHA-256 is kept.",
+    "operationId": "imtihan_panel_invite_api_imtihan_panel_invites_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImtihanPanelInvite"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "get": {
+    "summary": "Imtihan Panel Invites",
+    "description": "Every invite link (never its code), whether it is active and how much was answered.",
+    "operationId": "imtihan_panel_invites_api_imtihan_panel_invites_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/imtihan/panel/invites/{invite_id}": {
+   "delete": {
+    "summary": "Imtihan Panel Revoke",
+    "description": "Close an invite link; the answers given through it are kept.",
+    "operationId": "imtihan_panel_revoke_api_imtihan_panel_invites__invite_id__delete",
+    "parameters": [
+     {
+      "name": "invite_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Invite Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/public/panel/{code}": {
+   "get": {
+    "summary": "Public Panel",
+    "description": "The items an invited person answers, and which they already have (no verdicts).",
+    "operationId": "public_panel_api_public_panel__code__get",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
+   },
+   "post": {
+    "summary": "Public Panel Answer",
+    "description": "An invited person's answers: scored by the items' own rules and kept. The\nfirst answer to an item is final and no verdict is returned.",
+    "operationId": "public_panel_answer_api_public_panel__code__post",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PanelSelfAnswers"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
    }
   },
   "/api/public/whatsapp": {
@@ -20688,6 +21002,33 @@
     ],
     "title": "ImtihanPanelAnswers"
    },
+   "ImtihanPanelInvite": {
+    "properties": {
+     "person": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.-]+$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person"
+     },
+     "days": {
+      "type": "number",
+      "maximum": 60.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Days",
+      "default": 14
+     }
+    },
+    "type": "object",
+    "title": "ImtihanPanelInvite"
+   },
    "ImtihanRunRequest": {
     "properties": {
      "blocks": {
@@ -21286,6 +21627,24 @@
      "messages"
     ],
     "title": "OwnedRequest"
+   },
+   "PanelSelfAnswers": {
+    "properties": {
+     "answers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "maxProperties": 300,
+      "minProperties": 1,
+      "title": "Answers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "answers"
+    ],
+    "title": "PanelSelfAnswers"
    },
    "PlaceRequest": {
     "properties": {

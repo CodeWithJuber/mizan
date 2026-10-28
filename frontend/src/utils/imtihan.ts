@@ -349,3 +349,9 @@ export function taskRows(results: ResultRow[], tasks: { id: string; block: strin
     return { ...task, ...arms };
   });
 }
+
+/** The invite code in a human-panel link (``/panel/<code>``), or null. */
+export function inviteCode(pathname: string): string | null {
+  const found = /^\/panel\/([A-Za-z0-9_-]{16,64})\/?$/.exec(pathname);
+  return found ? found[1] : null;
+}

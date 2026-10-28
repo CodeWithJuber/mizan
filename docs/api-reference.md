@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-287 routes in 60 areas.
+292 routes in 60 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -222,7 +222,10 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/imtihan/arc3` | admin | MIZAN's explorer plays one official ARC-AGI-3 game (needs ARC_API_KEY). |
 | GET | `/api/imtihan/panel` | admin | The human panel (imtihan/quwa.py): the text items people can answer, and who has. |
 | POST | `/api/imtihan/panel` | admin | A panel member's answers (under a pseudonym), scored by the items' own rules. |
-| DELETE | `/api/imtihan/panel/{person}` | admin | Imtihan panel forget |
+| GET | `/api/imtihan/panel/invites` | admin | Every invite link (never its code), whether it is active and how much was answered. |
+| POST | `/api/imtihan/panel/invites` | admin | A link one person opens to answer the panel's items with no account. The code is shown once: only its SHA-256 is kept. |
+| DELETE | `/api/imtihan/panel/invites/{invite_id}` | admin | Close an invite link; the answers given through it are kept. |
+| DELETE | `/api/imtihan/panel/{person}` | admin | Erase every answer a panel member gave. |
 | POST | `/api/imtihan/run` | admin | Start the AGI test in the background: every task to the base model and to MIZAN. |
 | GET | `/api/imtihan/runs` | admin | Imtihan runs |
 | GET | `/api/imtihan/runs/{run_id}` | admin | Imtihan run detail |
@@ -380,6 +383,8 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
+| GET | `/api/public/panel/{code}` | public | The items an invited person answers, and which they already have (no verdicts). |
+| POST | `/api/public/panel/{code}` | public | An invited person's answers: scored by the items' own rules and kept. The first answer to an item is final and no verdict is returned. |
 | GET | `/api/public/reliability` | public | MIZAN's published AGI-test results (aggregates only) and its signed Sakk roots. |
 | GET | `/api/public/reliability/{run_id}` | public | Public reliability run |
 | GET | `/api/public/sakk` | public | MIZAN's receipt-signing public key and its recent signed daily roots. |

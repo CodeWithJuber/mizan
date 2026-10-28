@@ -5813,6 +5813,87 @@ async def imtihan_panel_forget(person: str, user: TokenPayload = Depends(require
     return {"removed": await asyncio.to_thread(quwa.forget, person)}
 
 
+class ImtihanPanelInvite(BaseModel):
+    person: str | None = Field(None, min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_.-]+$")
+    days: float = Field(14, gt=0, le=60)
+
+
+@app.post("/api/imtihan/panel/invites")
+async def imtihan_panel_invite(req: ImtihanPanelInvite, user: TokenPayload = Depends(require_auth)):
+    """A link one person opens to answer the panel's items with no account. The
+    code is shown once: only its SHA-256 is kept."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    made = await asyncio.to_thread(quwa.invite, req.person, user.user_id, req.days)
+    return {**made, "path": f"/panel/{made['code']}"}
+
+
+@app.get("/api/imtihan/panel/invites")
+async def imtihan_panel_invites(user: TokenPayload = Depends(require_auth)):
+    """Every invite link (never its code), whether it is active and how much was answered."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    return {"invites": await asyncio.to_thread(quwa.invites)}
+
+
+@app.delete("/api/imtihan/panel/invites/{invite_id}")
+async def imtihan_panel_revoke(invite_id: str, user: TokenPayload = Depends(require_auth)):
+    """Close an invite link; the answers given through it are kept."""
+    from imtihan import quwa
+
+    _require_admin(user)
+    if not await asyncio.to_thread(quwa.revoke, invite_id[:32]):
+        raise HTTPException(404, "No invite with that id")
+    return {"revoked": invite_id}
+
+
+class PanelSelfAnswers(BaseModel):
+    answers: dict[str, str] = Field(..., min_length=1, max_length=300)
+
+
+async def _invited(code: str, request: Request) -> dict:
+    from imtihan import quwa
+
+    _open_rate_limit(request)
+    found = await asyncio.to_thread(quwa.invited, code)
+    if found is None:
+        raise HTTPException(404, "This link is not valid or has expired")
+    return found
+
+
+@app.get("/api/public/panel/{code}")
+async def public_panel(code: str, request: Request):
+    """The items an invited person answers, and which they already have (no verdicts)."""
+    from imtihan import quwa
+
+    found = await _invited(code, request)
+    return {
+        "person": found["person"],
+        "expires": found["expires"],
+        "faculties": quwa.faculties(),
+        "tasks": await asyncio.to_thread(quwa.panel_tasks),
+        "answered": await asyncio.to_thread(quwa.answered_by, found["person"]),
+    }
+
+
+@app.post("/api/public/panel/{code}")
+async def public_panel_answer(code: str, req: PanelSelfAnswers, request: Request):
+    """An invited person's answers: scored by the items' own rules and kept. The
+    first answer to an item is final and no verdict is returned."""
+    from imtihan import quwa
+
+    found = await _invited(code, request)
+    if any(len(answer) > 4000 for answer in req.answers.values()):
+        raise HTTPException(422, "An answer is longer than 4000 characters")
+    saved = await quwa.record(found["person"], req.answers, by=f"invite:{found['id']}", final=True)
+    return {
+        "saved": len(saved),
+        "answered": await asyncio.to_thread(quwa.answered_by, found["person"]),
+    }
+
+
 def _open_rate_limit(request: Request) -> None:
     client = request.client.host if request.client else "unknown"
     found = wali.check_rate_limit(f"public:{client}")

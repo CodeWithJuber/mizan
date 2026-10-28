@@ -25,6 +25,120 @@ interface PanelView {
 
 const PSEUDONYM = /^[A-Za-z0-9_.-]{1,40}$/;
 
+interface Invite {
+  id: string;
+  person: string;
+  created: number;
+  expires: number;
+  active: boolean;
+  answered: number;
+}
+
+/** Links people open to answer alone, with no account (``/panel/<code>``). */
+function PanelInvites({ api, total }: { api: ApiClient; total: number }) {
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [person, setPerson] = useState("");
+  const [link, setLink] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const data = (await api.get("/imtihan/panel/invites")) as unknown as { invites: Invite[] };
+      setInvites(data.invites);
+    } catch {
+      setError("Invite links could not be loaded");
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const named = person === "" || PSEUDONYM.test(person);
+
+  const make = async () => {
+    setError("");
+    try {
+      const made = (await api.post("/imtihan/panel/invites", person ? { person } : {})) as unknown as {
+        path: string;
+      };
+      setLink(`${window.location.origin}${made.path}`);
+      setPerson("");
+      await load();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "The link could not be made");
+    }
+  };
+
+  const revoke = async (id: string) => {
+    await api.del(`/imtihan/panel/invites/${encodeURIComponent(id)}`);
+    await load();
+  };
+
+  return (
+    <div className="space-y-2 border-t border-gray-100 dark:border-zinc-800 pt-3">
+      <h4 className="font-medium text-sm">Invite links</h4>
+      <p className="text-xs text-gray-500">
+        Send a person a link to answer on their own phone or computer, with no account. Each link is for one pseudonym
+        and lasts 14 days; their first answer to an item is final and they are not told whether it was right.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="input"
+          placeholder="Pseudonym (optional)"
+          value={person}
+          onChange={(event) => setPerson(event.target.value.trim())}
+          aria-invalid={!named}
+        />
+        <button type="button" className="btn-primary" disabled={!named} onClick={make}>
+          Make a link
+        </button>
+        {error && <span className="text-xs text-red-500">{error}</span>}
+      </div>
+      {link && (
+        <div className="text-xs space-y-1">
+          <div className="text-gray-500">Copy it now: it is shown only once.</div>
+          <code className="block break-all bg-gray-100 dark:bg-zinc-800 rounded p-2">{link}</code>
+        </div>
+      )}
+      {invites.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[420px]">
+            <thead>
+              <tr className="text-gray-500 text-left">
+                <th className="font-normal pb-1">Person</th>
+                <th className="font-normal pb-1 text-right">Answered</th>
+                <th className="font-normal pb-1 pl-3">Until</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map((entry) => (
+                <tr key={entry.id} className="border-t border-gray-100 dark:border-zinc-800">
+                  <td className="py-1.5">{entry.person}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {entry.answered}/{total}
+                  </td>
+                  <td className="py-1.5 pl-3 text-gray-500">
+                    {entry.active ? new Date(entry.expires * 1000).toLocaleDateString() : "closed"}
+                  </td>
+                  <td className="py-1.5 text-right">
+                    {entry.active && (
+                      <button type="button" className="underline" onClick={() => revoke(entry.id)}>
+                        Close
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange?: () => void }) {
   const [view, setView] = useState<PanelView | null>(null);
   const [error, setError] = useState("");
@@ -121,8 +235,11 @@ export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange
                 ))}
               </div>
             )}
-            <div className="text-sm whitespace-pre-wrap wrap-break-word max-h-64 overflow-auto">{task.prompt}</div>
+            <div dir="auto" className="text-sm whitespace-pre-wrap wrap-break-word max-h-64 overflow-auto">
+              {task.prompt}
+            </div>
             <textarea
+              dir="auto"
               className="input w-full text-sm"
               rows={task.prompt.length > 400 ? 3 : 2}
               value={answers[task.id] ?? ""}
@@ -146,6 +263,7 @@ export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange
         {!named && person !== "" && <span className="text-xs text-red-500">Letters, digits and -_. only</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
       </div>
+      <PanelInvites api={api} total={view.tasks.length} />
       {view.people.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[480px]">

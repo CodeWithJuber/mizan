@@ -298,6 +298,53 @@ async def test_panel_api_is_admin_only(monkeypatch):
         assert removed.json() == {"removed": 1}
 
 
+async def test_an_invited_person_answers_alone_and_the_first_answer_is_final(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    from api import main
+
+    admin = main.auth.create_token(main.auth.create_user("quwainviter", "pw", roles=["admin"]))
+    headers = {"Authorization": f"Bearer {admin}"}
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        made = (
+            await client.post("/api/imtihan/panel/invites", json={"person": "p07"}, headers=headers)
+        ).json()
+        assert made["path"] == f"/panel/{made['code']}" and made["person"] == "p07"
+        # No account: the code in the link is the only credential.
+        opened = (await client.get(f"/api/public/panel/{made['code']}")).json()
+        assert opened["person"] == "p07" and opened["answered"] == []
+        assert all("score" not in task for task in opened["tasks"])  # no expected answers
+        sent = await client.post(
+            f"/api/public/panel/{made['code']}", json={"answers": {"ps-tiles": "40 cm"}}
+        )
+        assert sent.json() == {"saved": 1, "answered": ["ps-tiles"]}  # no verdict shown
+        again = await client.post(
+            f"/api/public/panel/{made['code']}", json={"answers": {"ps-tiles": "60 cm"}}
+        )
+        assert again.json()["saved"] == 0  # the first answer stands
+        assert quwa.panel()["p07"] == {"ps-tiles": False}
+        listed = (await client.get("/api/imtihan/panel/invites", headers=headers)).json()
+        entry = next(item for item in listed["invites"] if item["id"] == made["id"])
+        assert entry["active"] and entry["answered"] == 1 and "code" not in entry
+        revoked = await client.delete(f"/api/imtihan/panel/invites/{made['id']}", headers=headers)
+        assert revoked.status_code == 200
+        closed = await client.get(f"/api/public/panel/{made['code']}")
+        assert closed.status_code == 404
+        assert (await client.get("/api/public/panel/not-a-real-code-at-all")).status_code == 404
+
+
+def test_an_invite_code_is_kept_only_as_its_digest_and_expires():
+    made = quwa.invite(None, by="admin", days=1)
+    assert made["person"].startswith("p-") and quwa.invited(made["code"])["id"] == made["id"]
+    with quwa._db() as connection:
+        stored = connection.execute("SELECT digest FROM invites").fetchall()
+        assert all(made["code"] not in row[0] for row in stored)
+        connection.execute("UPDATE invites SET expires = 0 WHERE id = ?", (made["id"],))
+    assert quwa.invited(made["code"]) is None
+    with pytest.raises(ValueError):
+        quwa.invite("no spaces", by="admin")
+
+
 # ── Nazm in MIZAN's own answers ──────────────────────────────────────────
 
 
