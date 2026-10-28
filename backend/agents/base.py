@@ -2933,17 +2933,42 @@ Match the requested depth and self-correct errors."""
         language_binding = _language_only.set(False)
         from tadbir import amanah
 
+        # Pasted text that tries to instruct the AI is known before the model
+        # writes: its answer is then sent whole once it is clean, so the text
+        # that streamed is the text kept.
+        held_back = (
+            stream_callback is not None
+            and isinstance(task, str)
+            and bool(amanah.scan_message(task))
+        )
+        shown = stream_callback
+        if held_back:
+
+            async def shown(chunk: str = "", **kwargs: Any) -> None:
+                if kwargs:  # tool and status frames are not the answer
+                    await stream_callback(chunk, **kwargs)
+
         try:
             with amanah.bind() as taint_record:
                 result = await self._execute_impl(
-                    task, context, stream_callback, tool_callback, thinking_callback
+                    task, context, shown, tool_callback, thinking_callback
                 )
             from api.usage import build_usage_summary
 
+            removed = 0
+            if taint_record and isinstance(result.get("result"), str):
+                # Never the code, link or word an injected instruction wanted said.
+                result["result"], removed = amanah.scrub(
+                    result["result"], amanah.payload(taint_record)
+                )
+            if held_back and isinstance(result.get("result"), str) and result["result"]:
+                await stream_callback(result["result"])
             if "amanah" not in result:
                 # Always reported, "ignored": 0 included: an absent key reads as
                 # "not checked", which is never the case.
                 result["amanah"] = amanah.summary(taint_record)
+            if removed:
+                result["amanah"]["removed_from_answer"] = removed
             result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
             if result.get("success", True) and "isnad" not in result:
                 graded = self._isnad(result.get("result"))

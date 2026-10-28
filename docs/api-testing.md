@@ -95,8 +95,10 @@ Events arrive in this order:
 - `chat_stream`: the answer, in its `chunk` field.
 - `chat_complete` or `error`. The closing event holds:
   - `response`: the full answer. It equals the `chat_stream` chunks joined,
-    with one exception: when the Truth Gate corrected or removed a claim, the
-    corrected text is the `response` and `usage.sidq` lists each change. Notes
+    with two exceptions: when the Truth Gate corrected or removed a claim
+    (`usage.sidq` lists each change), or when a tool's output carried an
+    instruction and its planted words were taken out of the answer
+    (`usage.amanah.removed_from_answer`). Notes
     about the answer (what sources said, a ruling question's referral to a
     scholar in `usage.ahl.referral`) are never added to the text;
   - `usage`: model, tokens and cost, plus `isnad` (each claim's grade), `sidq`
