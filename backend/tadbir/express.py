@@ -965,6 +965,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "सत्यापित नहीं: इसी सवाल के लिए अलग लिखा गया दूसरा प्रोग्राम {other} देता है। दोनों में से एक सवाल को अलग पढ़ता है (शुरुआती मान, इंडेक्स या सीमा); इस नतीजे पर भरोसा करने से पहले जाँच लीजिए।",
         "ar": "غير متحقَّق: برنامج ثانٍ لنفس الطلب كُتب منفصلًا أعطى {other}. أحدهما يقرأ الطلب بشكل مختلف (قيمة البداية أو الفهرس أو الحد)؛ تحقّق قبل الاعتماد على هذه النتيجة.",
     },
+    "tathabbut_unchecked": {
+        "en": "Not verified: a second program to check this result could not be run, so it is shown without MIZAN's check.",
+        "hi-latn": "Verified nahi: is nateeje ko jaanchne ke liye doosra program nahi chal saka, isliye yeh MIZAN ki jaanch ke bina dikhaya gaya hai.",
+        "ur": "تصدیق شدہ نہیں: اس نتیجے کو جانچنے کے لیے دوسرا پروگرام نہیں چل سکا، اس لیے یہ میزان کی جانچ کے بغیر دکھایا گیا ہے۔",
+        "hi": "सत्यापित नहीं: इस नतीजे को जाँचने के लिए दूसरा प्रोग्राम नहीं चल सका, इसलिए यह मीज़ान की जाँच के बिना दिखाया गया है।",
+        "ar": "غير متحقَّق: تعذّر تشغيل برنامج ثانٍ للتحقق من هذه النتيجة، فهي معروضة دون تحقّق ميزان.",
+    },
     "capabilities": {
         "en": "MIZAN works through its own tools, and they are real:",
         "hi-latn": "MIZAN apne asli tools se kaam karta hai:",
