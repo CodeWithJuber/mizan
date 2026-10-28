@@ -116,6 +116,27 @@ def test_fahm_understands_without_a_model(text, intent, language):
     assert (understanding.intent, understanding.language) == (intent, language)
 
 
+def test_material_in_the_message_is_not_a_request_of_its_own():
+    # A long list repeats its template on every line: each letter pattern counts
+    # log(1 + n) and the text term shrinks with length, so a list is never read
+    # as a near-certain action. None of these is a seed; before, each went to
+    # an action with P = 1.0 (use_tool, web_read, project_task, recall).
+    shops = ["soap", "rice", "tea", "oil", "salt"]
+    prices = "\n".join(
+        f"Item {i}: {shops[i % 5]} costs Rs {50 + 7 * i} at shop {i % 12 + 1}." for i in range(100)
+    )
+    assert fahm.understand(prices + "\nWhich shop sells item 63?").intent == "converse"
+    names = ["Aisha", "Bilal", "Hamza", "Zainab", "Usman"]
+    rolls = "\n".join(f"Roll {i}: {names[i % 5]} scored {30 + i % 70} in maths." for i in range(80))
+    assert fahm.understand(rolls + "\nWhat did roll 42 score?").intent == "converse"
+    assert fahm.understand("چائے میں چینی زیادہ ہو جائے تو کیا کریں؟").intent == "converse"
+    # Still misread (travel words), but no longer with certainty.
+    tickets = "\n".join(
+        f"Ticket T-{i:03d}: seat {i % 40 + 1} in coach {i % 9 + 1}." for i in range(120)
+    )
+    assert qasd.ranked(tickets + "\nWhich coach is ticket T-077 in?")[0][1] < 0.9
+
+
 def test_a_fixed_answer_needs_a_majority(monkeypatch):
     # The capabilities answer reads nothing in the message: as the likeliest
     # single reading but not more probable than the rest together, the
@@ -1509,6 +1530,36 @@ async def test_remember_keeps_the_users_own_words_tied_to_the_chat(with_memory, 
     assert _notes(agent, "chat:chat-7") == [(text,)]
     assert fake.calls == []  # MIZAN keeps it itself: no tool, no model
     assert "Daftar" in result["result"]
+
+
+async def test_what_the_user_said_in_this_chat_is_recalled_from_the_chat(agent, monkeypatch):
+    # Working memory before long-term memory: the chat itself holds the answer,
+    # so no memory search runs, and every earlier statement is given in order.
+    fake = tools(agent, monkeypatch)
+    history = [
+        {"role": "user", "content": "My son's name is Ibrahim."},
+        {"role": "assistant", "content": "MashaAllah, a beautiful name."},
+        {"role": "user", "content": "How long should I walk each day?"},
+        {"role": "assistant", "content": "About 30 to 45 minutes."},
+    ]
+    result = await agent.execute(
+        "What did I say my son's name is?", context={"session_id": "c1", "history": history}
+    )
+    assert result.get("orchestrator") == "mizan"
+    assert "Ibrahim" in result["result"]
+    assert fake.calls == []
+
+
+def test_chat_statements_are_given_only_when_one_speaks_of_the_request():
+    from tadbir.engine import _said_in_chat
+
+    history = [
+        {"role": "user", "content": "The Wi-Fi password is sabr2025."},
+        {"role": "user", "content": "Sorry, I changed it: it is now shukr2026."},
+    ]
+    said = _said_in_chat("What's the Wi-Fi password?", history)
+    assert said == [turn["content"] for turn in history]  # the correction comes with it
+    assert _said_in_chat("What is the capital of Japan?", history) == []
 
 
 async def test_a_stateless_chat_saves_no_note_and_says_so(with_memory, monkeypatch):

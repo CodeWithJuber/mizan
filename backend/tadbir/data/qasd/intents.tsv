@@ -1187,3 +1187,57 @@ capabilities	What else can you do?
 recall	Do you remember which company I work for?
 capabilities	What can you do, MIZAN?
 capabilities	Batao tum kya kya kar sakte ho
+# Questions about data or text given in the message itself: read from the message (converse),
+# or counted, summed or resolved exactly by a program (build_and_run).
+converse	Here is the guest list: Ali - table 3, Sara - table 7, Bilal - table 2. Which table is Sara at?
+converse	Order log: #101 shipped Monday, #102 shipped Tuesday, #103 still pending. Which order is still pending?
+converse	From these notes: the plumber comes at 10, the electrician at 2, the painter at 4. When does the electrician come?
+converse	Employee: Hamza, dept sales, ext 214\nEmployee: Noor, dept finance, ext 330\nEmployee: Usman, dept IT, ext 118\nWhat is Noor's extension?
+converse	Inventory:\nrice 25 kg\nflour 40 kg\nlentils 12 kg\nsugar 8 kg\nHow much flour is in stock?
+converse	Read this and tell me who arrived last: Amina came at 9:05, Yusra at 9:20, Khalid at 8:50.
+converse	In this text, what colour was the door? "The house had a green door and two small windows facing the lane."
+converse	Yeh list dekho: Asad - Lahore, Hina - Multan, Bilal - Quetta. Hina kahan rehti hai?
+converse	نیچے دی گئی فہرست سے بتائیں کہ زید کس کلاس میں ہے: علی - پانچویں، زید - ساتویں، عمر - چھٹی
+build_and_run	Count how many times apple appears: apple, pear, apple, plum, apple, fig, pear, apple
+build_and_run	How many even numbers are in this list: 3, 8, 12, 7, 5, 22, 41, 18, 9, 6
+build_and_run	Add up these amounts: 120, 45.5, 300, 12.25, 88, 19.75, 230
+build_and_run	A = 5; B = A + 3; C = B * 2; D = C - A. What is D?
+build_and_run	x1 = 4, x2 = x1, x3 = x2, x4 = x3, x5 = x4. What value does x5 have?
+build_and_run	Scores: Ali 78, Sana 91, Omar 65, Hiba 88, Zaid 91, Aisha 72. How many scored above 80?
+build_and_run	Animals seen: cat, dog, cat, goat, cow, cat, dog, hen, cat, goat. How many cats?
+build_and_run	Readings: 12, 15, 11, 19, 14, 15, 13. What is the average?
+build_and_run	Is list mein kitne log Lahore se hain: Ali-Lahore, Sara-Karachi, Bilal-Lahore, Hina-Multan, Asad-Lahore
+build_and_run	اس فہرست میں کتنی بار "سیب" آیا: سیب، کیلا، سیب، آم، سیب، انار
+build_and_run	Basket: plum, mango, guava, peach, guava, mango, plum, plum, mango, peach, mango, peach, peach, orange, orange, banana, banana, apple, banana, apple, apple, mango, guava, orange, apple, orange, guava, mango, orange, plum, banana, peach, peach, peach, orange, banana, mango, guava, mango, peach, guava, guava, apple, plum, peach, plum, orange, peach, peach, plum, orange, banana, peach, apple, mango, orange, banana, mango, apple, peach, banana, mango, plum, peach, banana, banana, peach, mango, orange, banana.\nHow many mangoes are in the basket?
+build_and_run	K09 = K08; K25 = K24; K27 = K26; K20 = 74; K18 = K17; K06 = K05; K00 = 57; K17 = K16; K03 = K02; K02 = K01; K22 = K21; K21 = K20; K15 = K14; K13 = K12; K14 = K13; K26 = K25; K08 = K07; K29 = K28; K19 = K18; K11 = K10; K12 = K11; K16 = K15; K28 = K27; K24 = K23; K01 = K00; K04 = K03; K10 = 86; K07 = K06; K23 = K22; K05 = K04.\nWhat is the value of K17?
+# Everyday questions in Urdu, Arabic and Hindi are conversation, like those in English.
+converse	آسمان کا رنگ نیلا کیوں ہوتا ہے؟
+converse	اگر سرخ اور پیلا رنگ ملائیں تو کون سا رنگ بنتا ہے؟
+converse	ایک لفظ میں جواب دیں: برف کا رنگ کیا ہے؟
+converse	سیب کا رنگ عام طور پر کیا ہوتا ہے؟
+converse	ٹریفک سگنل پر پیلی بتی کا کیا مطلب ہے؟
+converse	ایک ہفتے میں کتنے دن ہوتے ہیں؟
+converse	بلی اور کتے میں کیا فرق ہے؟
+converse	میرے دوست نے مجھے تحفہ دیا، میں اس کا شکریہ کیسے ادا کروں؟
+converse	اس پہیلی کا جواب کیا ہے: وہ کیا چیز ہے جو جتنی سوکھتی ہے اتنی گیلی ہوتی ہے؟
+converse	دو جملوں میں بتائیں کہ اچھا پڑوسی کیسا ہوتا ہے
+converse	قلم سیاہی سے لکھتا ہے، تو پنسل کس چیز سے لکھتی ہے؟
+converse	بچوں میں صبح جلدی اٹھنے کی عادت کیسے ڈالیں؟
+converse	پانی کس درجہ حرارت پر ابلتا ہے؟
+converse	مجھے ایک چھوٹی سی کہانی سنائیں
+converse	کیا یہ جملہ درست ہے: مچھلی درخت پر رہتی ہے؟
+converse	ما لون السماء في النهار؟
+converse	ما الفرق بين القط والكلب؟
+converse	أجب بكلمة واحدة: ما لون الثلج؟
+converse	كيف أشكر صديقي على هديته؟
+converse	إذا خلطنا الأحمر والأصفر فما اللون الناتج؟
+converse	كم يوما في الأسبوع؟
+converse	اقترح لي اسما لقطتي الجديدة
+converse	ما عاصمة اليابان؟
+converse	هل هذه الجملة صحيحة: الشمس تشرق من الغرب؟
+converse	आसमान नीला क्यों दिखता है?
+converse	एक शब्द में बताइए: बर्फ़ का रंग क्या है?
+converse	लाल और पीला मिलाने से कौन सा रंग बनता है?
+converse	अच्छी नींद के लिए क्या करना चाहिए?
+converse	एक हफ़्ते में कितने दिन होते हैं?
+converse	बिल्ली और कुत्ते में क्या अंतर है?

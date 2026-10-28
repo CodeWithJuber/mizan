@@ -5,7 +5,7 @@ evidence tokens), small enough to run on every message and to learn from
 every verified outcome. Nothing in it is a hand-set threshold:
 
 - **Model.** For each class ``c``:
-  ``score(c) = w_prior · log P(c) + w_text · Σ_text n_f log P(f|c) + w_evidence · Σ_evidence n_f log P(f|c)``
+  ``score(c) = w_prior · log P(c) + w_text · (m/m̃)^−γ · Σ_text n_f log P(f|c) + w_evidence · Σ_evidence n_f log P(f|c)``
   with ``P(c) = (N_c + 1) / (N + K)`` (Laplace) and
   ``P(f | c) = (n_cf + α) / (n_c + α·V)`` (Dirichlet smoothing), and
   ``P(c | x) = softmax(score)``.
@@ -17,7 +17,15 @@ every verified outcome. Nothing in it is a hand-set threshold:
   says how much a parser finding is worth. ``w_prior`` says how much the
   number of examples per class should count (seed sets are not real
   frequencies, so the data decides).
-- **Fitted, not chosen.** ``α``, ``w_prior``, ``w_text`` and ``w_evidence`` are fitted by
+- **Length.** A long message has many more n-grams than any example, and
+  plain naive Bayes would count each of them as fresh evidence: a pasted
+  list of 2,000 words reads as near-certain, whatever it is. The text term is
+  divided by ``(m / m̃)^γ``, where ``m`` is the message's count of known text
+  features and ``m̃`` the examples' median: ``γ = 0`` is plain naive Bayes and
+  ``γ = 1`` weighs every message's letters as one example's worth (document
+  length normalisation, Rennie et al., "Tackling the Poor Assumptions of
+  Naive Bayes Text Classifiers", ICML 2003). ``γ`` is fitted like the rest.
+- **Fitted, not chosen.** ``α``, ``w_prior``, ``w_text``, ``w_evidence`` and ``γ`` are fitted by
   exact leave-one-out log-loss: every example is scored by the model trained
   on all the others, and the values that predict the held-out examples best
   are kept.
@@ -39,7 +47,7 @@ import unicodedata
 import zlib
 from array import array
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 BITS = 18
@@ -75,8 +83,8 @@ def char_ngrams(text: str, orders: Sequence[int] = (1, 2, 3, 4, 5)) -> Counter[s
     return grams
 
 
-def hashed(features: Counter[str] | Iterable[str]) -> dict[int, float]:
-    counts = features if isinstance(features, Counter) else Counter(features)
+def hashed(features: Mapping[str, float] | Iterable[str]) -> dict[int, float]:
+    counts: Mapping[str, float] = features if isinstance(features, Mapping) else Counter(features)
     vector: dict[int, float] = {}
     for feature, count in counts.items():
         index = bucket(feature)
@@ -123,13 +131,14 @@ class Overlay:
         )
 
 
-Parts = tuple[float, float, float]  # (log prior, text log-likelihood, evidence log-likelihood)
+# (log prior, text log-likelihood, evidence log-likelihood, text features / the examples' median)
+Parts = tuple[float, float, float, float]
 
 
 class Tamyiz:
     """Weighted naive Bayes over hashed features, fitted by leave-one-out."""
 
-    def __init__(self, featurize: Callable[[str], Counter[str]]):
+    def __init__(self, featurize: Callable[[str], Mapping[str, float]]):
         self.featurize = featurize
         self.labels: list[str] = []
         self.docs: dict[str, float] = {}
@@ -139,6 +148,8 @@ class Tamyiz:
         self.vocabulary = 0
         self.alpha = 0.1
         self.weights = (1.0, 1.0, 1.0)  # (w_prior, w_text, w_evidence)
+        self.gamma = 0.0  # length exponent: the text term is divided by (m / ref)^γ
+        self.ref = 1.0  # the examples' median count of text features
         self.loo_loss: float | None = None
         self.loo_accuracy: float | None = None
 
@@ -179,6 +190,7 @@ class Tamyiz:
         documents = sum(self.docs.get(c, 0.0) + extra_docs.get(c, 0.0) for c in labels)
         size = max(1, self.vocabulary)
         known = [index for index in vector if self.used[index]] if self.vocabulary else []
+        size_of_text = _text_size(vector, known) / self.ref
         found: dict[str, Parts] = {}
         for label in labels:
             table = self.counts.get(label)
@@ -197,7 +209,7 @@ class Tamyiz:
                     evidence += term
                 else:
                     text += term
-            found[label] = (prior, text, evidence)
+            found[label] = (prior, text, evidence, size_of_text)
         return found
 
     def posterior(self, text: str, overlay: Overlay | None = None) -> dict[str, float]:
@@ -206,7 +218,7 @@ class Tamyiz:
     def posterior_of(
         self, vector: dict[int, float], overlay: Overlay | None = None
     ) -> dict[str, float]:
-        return _softmax(_combine(self.parts(vector, overlay), self.weights))
+        return _softmax(_combine(self.parts(vector, overlay), self.weights, self.gamma))
 
     def predict(self, text: str, overlay: Overlay | None = None) -> tuple[str, float]:
         posterior = self.posterior(text, overlay)
@@ -237,9 +249,11 @@ class Tamyiz:
             (label, vector, *(groups[group] if group is not None else (vector, 1.0)))
             for label, vector, group in rows
         ]
+        sizes = sorted(_text_size(vector, vector) for _label, vector, _group in rows)
+        self.ref = max(1.0, sizes[len(sizes) // 2]) if sizes else 1.0
         if calibrate and len(held_out) >= 2 * max(1, len(self.labels)):
             step = max(1, math.ceil(len(held_out) / sample))
-            self.alpha, self.weights, self.loo_loss, self.loo_accuracy = _calibrate(
+            self.alpha, self.weights, self.gamma, self.loo_loss, self.loo_accuracy = _calibrate(
                 self, held_out[::step]
             )
         return self
@@ -261,7 +275,8 @@ class Tamyiz:
             for label, vector, group in rows
         ]
         return [
-            max(_combine(parts, self.weights).items(), key=lambda item: item[1])[0] == truth
+            max(_combine(parts, self.weights, self.gamma).items(), key=lambda item: item[1])[0]
+            == truth
             for truth, parts in _loo_parts(self, held_out, self.alpha)
         ]
 
@@ -269,6 +284,8 @@ class Tamyiz:
         return {
             "alpha": self.alpha,
             "weights": list(self.weights),
+            "gamma": self.gamma,
+            "ref": self.ref,
             "loo_loss": self.loo_loss,
             "loo_accuracy": self.loo_accuracy,
             "examples": sum(self.docs.values()),
@@ -277,12 +294,19 @@ class Tamyiz:
         }
 
 
-def _combine(parts: dict[str, Parts], weights: tuple[float, ...]) -> dict[str, float]:
+def _combine(
+    parts: dict[str, Parts], weights: tuple[float, ...], gamma: float = 0.0
+) -> dict[str, float]:
     w_prior, w_text, w_evidence = weights
     return {
-        label: w_prior * prior + w_text * text + w_evidence * evidence
-        for label, (prior, text, evidence) in parts.items()
+        label: w_prior * prior + w_text * text / max(size, 1e-9) ** gamma + w_evidence * evidence
+        for label, (prior, text, evidence, size) in parts.items()
     }
+
+
+def _text_size(vector: dict[int, float], indices: Iterable[int]) -> float:
+    """How many letter and word features of ``vector`` (among ``indices``) the text term reads."""
+    return sum(vector[index] for index in indices if index not in _EVIDENCE_BUCKETS)
 
 
 def _softmax(scores: dict[str, float]) -> dict[str, float]:
@@ -308,6 +332,7 @@ def _loo_parts(
     held: list[tuple[str, dict[str, Parts]]] = []
     for truth, vector, removed, removed_docs in held_out:
         length = sum(removed.values())
+        size_of_text = _text_size(vector, vector) / model.ref
         found: dict[str, Parts] = {}
         for label in labels:
             table = model.counts[label]
@@ -327,15 +352,17 @@ def _loo_parts(
                     evidence += term
                 else:
                     text += term
-            found[label] = (prior, text, evidence)
+            found[label] = (prior, text, evidence, size_of_text)
         held.append((truth, found))
     return held
 
 
-def _loss(held: list[tuple[str, dict[str, Parts]]], weights: tuple[float, ...]) -> float:
+def _loss(
+    held: list[tuple[str, dict[str, Parts]]], weights: tuple[float, ...], gamma: float = 0.0
+) -> float:
     total = 0.0
     for truth, parts in held:
-        scores = _combine(parts, weights)
+        scores = _combine(parts, weights, gamma)
         top = max(scores.values())
         normaliser = top + math.log(sum(math.exp(s - top) for s in scores.values()))
         total -= scores[truth] - normaliser
@@ -361,10 +388,12 @@ def _golden(loss: Callable[[float], float], low: float, high: float) -> float:
 
 def _best_weights(
     held: list[tuple[str, dict[str, Parts]]],
-) -> tuple[tuple[float, float, float], float]:
-    """Coordinate descent on the log weights for the lowest LOO log-loss."""
+) -> tuple[tuple[float, float, float], float, float]:
+    """Coordinate descent on the log weights and the length exponent γ ∈ [0, 1]
+    for the lowest LOO log-loss."""
     low, high = math.log(1e-3), math.log(50.0)
     point = [0.0, 0.0, 0.0]
+    gamma = 0.0
 
     def at(index: int, value: float) -> tuple[float, ...]:
         trial = list(point)
@@ -374,27 +403,35 @@ def _best_weights(
     for _ in range(4):
         for index in range(3):
 
-            def along(x: float, i: int = index) -> float:
-                return _loss(held, at(i, x))
+            def along(x: float, i: int = index, g: float = gamma) -> float:
+                return _loss(held, at(i, x), g)
 
             point[index] = _golden(along, low, high)
+        weights = tuple(math.exp(x) for x in point)
+
+        def length(g: float, w: tuple[float, ...] = weights) -> float:
+            return _loss(held, w, g)
+
+        # The search's ends are candidates too: γ = 0 is plain naive Bayes.
+        gamma = min((0.0, _golden(length, 0.0, 1.0), 1.0), key=length)
     weights = (math.exp(point[0]), math.exp(point[1]), math.exp(point[2]))
-    return weights, _loss(held, weights)
+    return weights, gamma, _loss(held, weights, gamma)
 
 
 def _calibrate(
     model: Tamyiz, vectors: list[HeldOut]
-) -> tuple[float, tuple[float, float, float], float, float]:
-    best: tuple[float, tuple[float, float, float], float, float] | None = None
+) -> tuple[float, tuple[float, float, float], float, float, float]:
+    best: tuple[float, tuple[float, float, float], float, float, float] | None = None
     for alpha in ALPHAS:
         held = _loo_parts(model, vectors, alpha)
-        weights, loss = _best_weights(held)
-        if best is None or loss < best[2]:
+        weights, gamma, loss = _best_weights(held)
+        if best is None or loss < best[3]:
             correct = sum(
                 1
                 for truth, parts in held
-                if max(_combine(parts, weights).items(), key=lambda item: item[1])[0] == truth
+                if max(_combine(parts, weights, gamma).items(), key=lambda item: item[1])[0]
+                == truth
             )
-            best = (alpha, weights, loss, correct / max(1, len(held)))
+            best = (alpha, weights, gamma, loss, correct / max(1, len(held)))
     assert best is not None
     return best

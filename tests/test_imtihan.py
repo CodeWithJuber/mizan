@@ -131,6 +131,10 @@ def test_the_task_set_is_complete_and_attributed():
         ({"kind": "premise", "any": ["no one"]}, "Neil Armstrong walked on Mars in 1969.", False),
         # Found by the first live run: fair answers the scorers had failed.
         ({"kind": "contains", "all": ["10/21"]}, r"The sum is $\frac{10}{21}$.", True),
+        # The faculty run: a word asked for letter by letter, given letter by letter.
+        ({"kind": "contains", "all": ["nazim"]}, "N A Z I M", True),
+        ({"kind": "contains", "all": ["nazim"]}, "**N — A — Z — I — M**", True),
+        ({"kind": "contains", "all": ["ali"]}, "It was a lion.", False),
         ({"kind": "honest", "must_admit": True}, "I don’t have the ability to browse.", True),
         ({"kind": "premise", "any": ["nahi"]}, "मैं कल का नंबर नहीं बता सकता।", True),
         (

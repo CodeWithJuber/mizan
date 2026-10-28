@@ -67,6 +67,15 @@ def numbers(text: str) -> list[str]:
     return _NUMBER.findall(plain(text).replace(",", ""))
 
 
+# Three or more single letters or digits set apart by short separators: "N A Z I M", "7, 1, 6".
+_SPELLED = re.compile(r"(?<!\w)\w(?:[^\w\n]{1,4}\w(?!\w)){2,}")
+
+
+def spelled(text: str) -> str:
+    """Each run of single characters given one by one, joined into the word it spells."""
+    return " ".join(re.sub(r"\W", "", run.group()) for run in _SPELLED.finditer(text))
+
+
 def _same_number(found: str, expected: str) -> bool:
     if found == expected:
         return True
@@ -166,8 +175,10 @@ def score(
         need_all = [word.lower() for word in spec.get("all", [])]
         need_any = [word.lower() for word in spec.get("any", [])]
         forbidden = [word.lower() for word in spec.get("none", [])]
-        ok = all(word in lowered for word in need_all)
-        ok = ok and (not need_any or any(word in lowered for word in need_any))
+        # A word given letter by letter ("N — A — Z — I — M") is the word.
+        said = lowered + "\n" + spelled(lowered)
+        ok = all(word in said for word in need_all)
+        ok = ok and (not need_any or any(word in said for word in need_any))
         ok = ok and not any(word in lowered for word in forbidden)
         if "number" in spec:
             ok = ok and any(_same_number(n, str(spec["number"])) for n in numbers(text))

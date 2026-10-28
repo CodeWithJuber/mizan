@@ -238,6 +238,12 @@ class Tadbir:
                 if program
                 else fahm.Understanding("converse", understanding.language, 0.0)
             )
+        if parts is None and understanding.intent == "recall":
+            # Working memory before long-term memory: what the user said earlier
+            # in this chat is recalled from the chat itself.
+            said = _said_in_chat(task, history)
+            if said:
+                understanding.entities["said"] = said
         self._stream = stream_callback
         started = time.time()
         if parts is not None:
@@ -2736,6 +2742,16 @@ class Tadbir:
         return Outcome(phrase("remembered", u.language), True, {"note": memory_id})
 
     async def _recall(self, task: str, u: fahm.Understanding) -> Outcome:
+        said = u.entities.get("said") or []
+        if said:
+            await self._begin(["Read this chat", "Reply"])
+            statements = "\n".join(f"- {text}" for text in said)
+            await self._step()
+            fallback = f"{phrase('memories', u.language)}\n\n{statements}"
+            text, _phrased = await self._phrase_with_lisan(
+                task, {"said_earlier_in_this_chat": statements}, u.language, fallback
+            )
+            return Outcome(text, True, {"memories": True, "from": "chat"}, provenance="evidence")
         if not self._allowed("recall_memory"):
             raise Defer
         await self._begin(["Search MIZAN's memory", "Reply"])
@@ -2904,6 +2920,30 @@ def _with_screenshot(outcome: Outcome, page: dict) -> Outcome:
     if page.get("screenshot_sha"):
         outcome.images = [{"sha": page["screenshot_sha"], "media_type": "image/png"}]
     return outcome
+
+
+def _said_in_chat(task: str, history: list[dict] | None, limit: int = 40) -> list[str]:
+    """The user's earlier statements in this chat, oldest first, when one of them
+    speaks of what the request asks (it holds more than half of the request's
+    distinctive information, ``Dhikr.about``); otherwise none. All of them are
+    given, in order, so a later correction or the order of what was said is
+    kept. Outside text that Amanah reads as an instruction aimed at the AI is
+    never recalled."""
+    from memory.dhikr import about
+
+    asked = task.strip()
+    earlier = [
+        text
+        for text in (
+            str(turn.get("content") or "").strip()
+            for turn in history or []
+            if isinstance(turn, dict) and turn.get("role") == "user"
+        )
+        if text and text != asked and not text.startswith("/")
+    ][-limit:]
+    said = [text[:1000] for text in earlier if not amanah.scan(text, "this chat")]
+    rows = [(index, None, text) for index, text in enumerate(said)]
+    return said if about(task, rows) else []
 
 
 def _unanswered_request(history: list[dict] | None) -> str | None:

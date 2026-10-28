@@ -18,7 +18,7 @@ For each class `c` (a language, or an intent):
 
 ```
 score(c) = w_prior · log P(c)
-         + w_text     · Σ_text-features     n_f · log P(f | c)
+         + w_text     · (m / m̃)^(−γ) · Σ_text-features n_f · log P(f | c)
          + w_evidence · Σ_evidence-features n_f · log P(f | c)
 
 P(c)     = (N_c + 1) / (N + K)                 Laplace
@@ -37,7 +37,18 @@ P(c | x) = softmax(score)
   project is selected) is a single token. Each group has its own weight
   (weighted naive Bayes): `w_text` corrects the over-counting and
   `w_evidence` says how much a parser finding is worth.
-- **Fitted, not chosen.** `α` and the three weights are fitted by exact
+- **Length.** A long message has far more n-grams than any example, and
+  plain naive Bayes would read each one as fresh evidence: a pasted list of
+  2,000 words came out as a web search with P = 1.0 (production faculty run,
+  28 Oct 2026). The text term is divided by `(m / m̃)^γ`, where `m` is the
+  message's count of known text features and `m̃` the examples' median.
+  `γ = 0` is plain naive Bayes, `γ = 1` weighs every message's letters as one
+  example's worth (document length normalisation, Rennie et al., ICML 2003);
+  `γ` is fitted like the weights (Qasd: 0.29).
+- **Repetition (Qasd).** A letter pattern said again is bursty, not fresh
+  evidence each time (Church & Gale 1995): 160 records repeat "parcel …
+  weighs … kg" 160 times. Qasd counts each pattern `log(1 + n)`.
+- **Fitted, not chosen.** `α`, the three weights and `γ` are fitted by exact
   leave-one-out log-loss. Every example is scored by the model trained on all
   the others, and the values that predict the held-out examples best are
   kept (α from a grid, weights by coordinate descent with golden-section
