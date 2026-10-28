@@ -5754,8 +5754,10 @@ async def imtihan_publish(run_id: str, user: TokenPayload = Depends(require_auth
     run = await runner.get(run_id)
     if run is None:
         raise HTTPException(404, "Run not found")
+    from imtihan import quwa
+
     try:
-        entry = await asyncio.to_thread(scorecard.publish, run)
+        entry = await asyncio.to_thread(lambda: scorecard.publish(quwa.with_panel(run)))
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     wali.audit.log("scorecard_published", {"run": run_id, "by": user.user_id})

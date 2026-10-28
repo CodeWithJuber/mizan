@@ -22,7 +22,7 @@ export interface BlockEntry {
 export interface Report {
   blocks: Record<string, BlockEntry>;
   index: Record<Arm, { score: number | null; pooled: number | null; interval: [number, number] }>;
-  calibration: Record<Arm, { ece: number | null; brier: number | null; answers_with_confidence: number; answers: number }>;
+  calibration: Record<Arm, { ece: number | null; brier: number | null; auroc2?: number | null; answers_with_confidence: number; answers: number }>;
   consistency: Record<Arm, { groups: number; consistent: number; rate: number | null }>;
   isnad?: Record<Arm, { supported: number | null; fabricated_claims: number }>;
   cost: Record<Arm, { input_tokens: number; output_tokens: number; cost_usd: number | null; latency_ms: number; model_calls: number; tool_calls: number }>;
@@ -36,6 +36,81 @@ export interface Report {
   agentic?: Partial<Record<Arm, AgenticSummary>>;
   /** Interactive games (ARC-AGI-3 style): levels won and action efficiency, per arm. */
   games?: Partial<Record<Arm, GamesSummary>>;
+  /** The ten faculties of Google DeepMind's cognitive framework (imtihan/quwa.py). */
+  faculties?: FacultyProfile;
+}
+
+export interface Percentile {
+  people: number;
+  percentile: number;
+  interval: [number, number];
+  level: string | null;
+}
+
+export interface FacultyArm {
+  scored: number;
+  passed: number;
+  rate: number | null;
+  interval: [number, number];
+  human: Percentile | null;
+}
+
+export interface FacultyEntry {
+  key: string;
+  name: string;
+  arabic: string;
+  script: string;
+  ayah: string;
+  words: string;
+  composite: boolean;
+  items: number;
+  blocks: string[];
+  base: FacultyArm;
+  mizan: FacultyArm;
+  delta: number | null;
+  panel: { people: number; mean: number; median: number } | null;
+  anchors: { block: string; value: number; measure: string; source: string; note?: string }[];
+}
+
+export interface FacultyProfile {
+  framework: string;
+  translation: string;
+  levels_source: string;
+  faculties: FacultyEntry[];
+  propensity: Record<string, Record<Arm, { rate: number | null; interval: [number, number] }>>;
+  panel_people: number;
+}
+
+/** Short axis names for the radar. */
+export const FACULTY_SHORT: Record<string, string> = {
+  executive: "Executive",
+  problem_solving: "Problem solving",
+  social: "Social",
+};
+
+/** One point per faculty for the radar, in percent; the panel's median where it has answered. */
+export function facultyPoints(profile: FacultyProfile | undefined) {
+  return (profile?.faculties ?? [])
+    .filter((entry) => entry.items > 0)
+    .map((entry) => ({
+      key: entry.key,
+      faculty: entry.name,
+      items: entry.items,
+      base: entry.base.rate == null ? null : Math.round(entry.base.rate * 100),
+      mizan: entry.mizan.rate == null ? null : Math.round(entry.mizan.rate * 100),
+      panel: entry.panel ? Math.round(entry.panel.median * 100) : null,
+    }));
+}
+
+/** "outperforms 60% of 10 people (95% interval 31–83%), Competent" or why there is no claim. */
+export function percentileText(human: Percentile | null): string {
+  if (!human) return "no panel answers yet";
+  const [low, high] = human.interval;
+  const level = human.level ? `, ${human.level[0].toUpperCase()}${human.level.slice(1)}` : "";
+  return (
+    `outperforms ${Math.round(human.percentile * 100)}% of ${human.people} ` +
+    `(95% interval ${Math.round(low * 100)}–${Math.round(high * 100)}%)${level}`
+  );
 }
 
 export interface GamesSummary {
@@ -149,6 +224,15 @@ export const BLOCK_LABELS: Record<string, string> = {
   agent_guardrail: "Agent: keep to the request",
   games: "Interactive games (ARC-AGI-3 style)",
   locked_eval: "Your locked eval (mizan-eval-v1)",
+  perception: "Perception: reading symbols, tables, pictures",
+  generation: "Generation: answers in the asked form",
+  attention: "Attention: the needle among distractors",
+  memory: "Memory: updates, plans, forgetting",
+  reasoning: "Reasoning: deduction, induction, analogy",
+  metacognition: "Metacognition: knowing when it is wrong",
+  executive: "Executive: planning, inhibition, switching",
+  problem_solving: "Problem solving",
+  social: "Social: beliefs, intentions, irony",
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {

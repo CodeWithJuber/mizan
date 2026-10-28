@@ -16,11 +16,12 @@ import {
   signed,
   type Report,
 } from "../utils/imtihan.ts";
+import { FacultyProfile } from "./FacultyProfile";
 
 // Series colours, validated for both themes (dataviz validator: CVD ΔE ≥ 24).
 export const VIZ_STYLE = `
-.imtihan-viz { --viz-mizan: #2a78d6; --viz-base: #eb6834; --viz-grid: #e5e4e0; }
-.dark .imtihan-viz { --viz-mizan: #3987e5; --viz-base: #d95926; --viz-grid: #3f3f46; }
+.imtihan-viz { --viz-mizan: #2a78d6; --viz-base: #eb6834; --viz-grid: #e5e4e0; --viz-panel: #1baf7a; }
+.dark .imtihan-viz { --viz-mizan: #3987e5; --viz-base: #d95926; --viz-grid: #3f3f46; --viz-panel: #199e70; }
 `;
 
 function Bar({ value, color, label }: { value: number | null; color: string; label: string }) {
@@ -77,6 +78,8 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
           <div className="text-xs text-gray-500">mean of block pass rates{model ? ` · ${model}` : ""}</div>
         </div>
       </div>
+
+      {report.faculties && report.faculties.faculties.length > 0 && <FacultyProfile profile={report.faculties} />}
 
       {categories.length > 0 && (
         <div className="card p-4">
@@ -251,9 +254,18 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
           </div>
         </div>
         <div className="card p-4">
-          <div className="text-xs text-gray-500 mb-1">Calibration (TruthfulQA, lower is better)</div>
+          <div className="text-xs text-gray-500 mb-1">Calibration (stated confidence; ECE and Brier lower is better)</div>
           <div>Base ECE {report.calibration.base.ece ?? "—"} · Brier {report.calibration.base.brier ?? "—"}</div>
           <div>MIZAN ECE {report.calibration.mizan.ece ?? "—"} · Brier {report.calibration.mizan.brier ?? "—"}</div>
+          {(report.calibration.base.auroc2 != null || report.calibration.mizan.auroc2 != null) && (
+            <div
+              className="text-xs text-gray-500 mt-1"
+              title="The chance that a right answer was stated with more confidence than a wrong one (0.5 is no insight)"
+            >
+              Knows its errors (AUROC₂, higher is better): base {report.calibration.base.auroc2 ?? "—"} · MIZAN{" "}
+              {report.calibration.mizan.auroc2 ?? "—"}
+            </div>
+          )}
         </div>
         <div className="card p-4">
           <div className="text-xs text-gray-500 mb-1">Same answer to every paraphrase</div>

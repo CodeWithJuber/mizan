@@ -1,4 +1,4 @@
-import { agenticRows, blockRows, categoryRows, gameRows, historyPoints, plainArms, intervalText, pct, signed, taskRows, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
+import { agenticRows, blockRows, categoryRows, facultyPoints, gameRows, historyPoints, plainArms, intervalText, pct, percentileText, signed, taskRows, type FacultyEntry, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
 
 let checks = 0;
 function check(name: string, condition: boolean) {
@@ -78,5 +78,24 @@ const arms = plainArms({
 check("plain arms", arms !== null && arms.arms.length === 2 && arms.arms[1].checks[0].pass);
 check("failed calls are named", arms!.arms[1].calls[0] === "web_browse (failed: HTTP 404)");
 check("a debug run is not plain", plainArms({ prompt: "x", base: {}, mizan: {} }) === null);
+
+const facultyArm = (rate: number | null, human: FacultyEntry["mizan"]["human"] = null) => ({ scored: rate == null ? 0 : 10, passed: rate == null ? 0 : Math.round(rate * 10), rate, interval: [0.2, 0.8] as [number, number], human });
+const faculty = (key: string, rate: number | null, items = 10, panel: FacultyEntry["panel"] = null): FacultyEntry => ({
+  key, name: key, arabic: "", script: "", ayah: "1:1", words: "", composite: false, items, blocks: [key],
+  base: facultyArm(rate), mizan: facultyArm(rate), delta: 0, panel, anchors: [],
+});
+const profile = {
+  framework: "f", translation: "t", levels_source: "l", propensity: {}, panel_people: 0,
+  faculties: [faculty("reasoning", 0.5), faculty("memory", null), faculty("attention", 0.25, 0), faculty("social", 1, 10, { people: 3, mean: 0.7, median: 0.75 })],
+};
+const axes = facultyPoints(profile);
+check("faculty points skip empty axes", axes.length === 3 && axes[0].base === 50 && axes[1].mizan === null);
+check("panel median in percent", axes[2].panel === 75 && axes[0].panel === null);
+check("no panel", percentileText(null) === "no panel answers yet");
+check(
+  "percentile text",
+  percentileText({ people: 10, percentile: 0.6, interval: [0.31, 0.83], level: "competent" }) ===
+    "outperforms 60% of 10 (95% interval 31–83%), Competent",
+);
 
 console.log(`imtihan: ${checks} checks passed`);
