@@ -246,3 +246,25 @@ def test_project_quota_is_an_admin_setting(monkeypatch, tmp_path):
     assert caught.value.status_code == 413 and "2 projects" in caught.value.detail
     monkeypatch.setenv("MIZAN_WORKSPACE_MAX_PROJECTS", "3")  # applies without a restart
     assert store.create("three")["id"]
+
+
+async def test_a_busy_search_engine_is_asked_once_more_then_reported_not_empty(monkeypatch):
+    import httpx
+
+    from skills.builtin.web_browse import WebBrowseSkill
+
+    answers = iter([httpx.Response(202, text=""), httpx.Response(202, text="")])
+    calls = []
+
+    async def get(self, url, headers=None):
+        calls.append(url)
+        return next(answers)
+
+    async def no_wait(seconds):
+        return None
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", get)
+    monkeypatch.setattr("skills.builtin.web_browse.asyncio.sleep", no_wait)
+    found = await WebBrowseSkill().search("integer sequences")
+    assert len(calls) == 2  # one retry after a 202 ("not now")
+    assert found["status"] == 202 and "not an empty result" in found["error"]

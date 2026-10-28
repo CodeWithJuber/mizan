@@ -82,6 +82,12 @@ SETTINGS: tuple[Setting, ...] = (
             "How many coding projects each user may keep. The Scratch project MIZAN runs "
             "chat code in and AGI test projects never count.",
             "10", minimum=1, maximum=200),
+    Setting("MIZAN_TALIM", "Model", "Taught examples (Ta'lim)", "choice",
+            "on: the examples administrators taught in Developer → Teach MIZAN (each batch "
+            "kept only if it did not make MIZAN worse) are part of how MIZAN understands "
+            "messages. off: they are set aside, and MIZAN reads messages with its shipped "
+            "seeds only.",
+            "on", ("on", "off"), apply="restart"),
     Setting("MIZAN_MUHASABA", "Model", "Self-review (Muhasaba)", "choice",
             "Once a day MIZAN re-checks the answers the model gave in words: arithmetic and "
             "quoted Quran or hadith text. Where it proves one wrong it posts a correction in "

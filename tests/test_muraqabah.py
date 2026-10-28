@@ -332,3 +332,18 @@ async def test_the_watchers_api_is_per_user(monkeypatch, tmp_path):
             f"/api/muraqabah/watchers/{made.json()['id']}", headers=headers["bilal"]
         )
         assert gone.status_code == 404
+
+
+async def test_a_city_named_in_the_message_is_geocoded_by_its_own_word(monkeypatch):
+    looked_up = []
+
+    async def find(name):
+        looked_up.append(name)
+        if name == "Sharjah":
+            return muraqabah.Place("Sharjah city, AE", 25.3463, 55.4209, "Asia/Dubai")
+        return None
+
+    monkeypatch.setattr(muraqabah, "find_place", find)
+    place = await muraqabah.place_named("Aaj Sharjah mein Maghrib kab hai?")
+    assert place is not None and place.label.startswith("Sharjah")
+    assert "kab" not in looked_up and "hai" not in looked_up  # ways of asking are not places

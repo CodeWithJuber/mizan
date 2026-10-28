@@ -176,6 +176,32 @@ An upstream failure does not end the reply when it can be recovered safely:
   and 504s may still be running upstream; they end the reply as before.
 - When retries and fallbacks are exhausted the reply ends with
   `provider_unavailable` instead of the generic `agent_failed`.
+- **Reasoning that used the whole output limit.** A reasoning model can end
+  with `stop_reason: max_tokens` and no answer text. The agent and Lisan ask
+  once more with the reasoning effort lowered (`providers.REASONING_EFFORT`:
+  Anthropic `output_config.effort`, OpenRouter `reasoning.effort`); a second
+  empty answer ends as `output_budget_exhausted`. Qiyas (ARC) then says no
+  rule was found rather than handing the puzzle to the agent loop.
+
+## Run state and the end of a stream
+
+- **Every chat is a run lease.** `POST /api/chat/stream` and the async
+  `POST /api/chat` both hold one, so `GET /api/chat/{id}/run-state` shows the
+  run and `POST /api/chat/{id}/stop` (body optional; `{"request_id"}` stops
+  only that request) cancels it. A cancelled `/api/chat` run saves a
+  "stopped" message.
+- **A restart never leaves a run "running".** At boot, receipts still
+  accepted or running were cut off by the restart and read as `cancelled`
+  (`ChatStreamLedger.interrupt_unfinished`).
+- **The ending always arrives.** A reader that falls behind is detached: the
+  deltas it missed are dropped, but `chat_complete` and `error`
+  (`TERMINAL_EVENTS`) are still queued, so the stream ends with the whole
+  answer instead of breaking off.
+- **The streamed text is the kept text.** Notes about an answer (sources,
+  the Truth Gate's summary, a ruling question's referral) are under it, in
+  `usage`, never added to `response`. Only a Truth Gate correction, or words
+  an injected instruction planted, change it after it streamed; when the
+  user's own message carries an injection the answer streams once clean.
 
 ## Request language and available tools
 
