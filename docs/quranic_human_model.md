@@ -212,29 +212,31 @@ Verified against the codebase (`backend/core/`, `backend/qca/`,
 | Nafs (7 levels + triad) | `core/nafs_triad.py`, `core/architecture.py` | ✅ substantive |
 | Fu'ād (conviction) | `core/fuad.py` | ✅ substantive (Bayesian) |
 | Lubb (metacognition) | `core/lubb.py` | ✅ substantive — but runs **post-hoc only** |
-| Fiṭrah (axioms) | `core/fitrah.py` | ✅ 13 immutable axioms |
+| Fiṭrah (axioms) | `core/fitrah.py` | ✅ 14 immutable axioms (`FITRAH_AXIOMS`) |
 | Dev. stages (23:12–14) | `core/developmental_stages.py` | ✅ gates tools by nafs level |
 | Yaqīn / Mīzān (certainty) | `qca/yaqin_engine.py`, `qca/engine.py` | ✅ 5-level certainty ladder |
 | Qalb (heart/affect) | `core/qalb.py`, `core/qalb_processor.py` | ⚠️ thin (keyword sentiment); not "turning" |
 | Memory (Dhikr/Lawḥ) | `memory/*`, `qca/engine.py` (Lawh) | ✅ but written **after** the task |
-| ʿAql (reasoning act) | `qca/cognitive_methods.py`, `reasoning/aql_engine.py` | ⚠️ engines exist but are **selected, not run** |
-| Baṣīra (insight) | — | ❌ **missing** |
-| Ḥikma (wisdom engine) | tracked as a `list` on the agent | ❌ no distillation engine |
-| Hawā / Waswās (lower pull) | — | ❌ **missing** (no impulse/adversarial gate) |
+| ʿAql (reasoning act) | `qca/cognitive_methods.py`, `reasoning/aql_engine.py` | ⚠️ selected engine is run, but its result is a **diagnostic only** (`applied_to_prompt: False`) |
+| Baṣīra (insight) | `core/basira.py` (`BasiraEngine.discern`) | ⚠️ runs **after** the answer; report returned as `result["basira"]`, blind spots fed to Hikmah |
+| Ḥikma (wisdom engine) | `core/hikmah.py` (`HikmahEngine`) | ⚠️ distils success/correction/reflection; `advise()` counsel is a diagnostic (`result["hikmah_counsel"]`), not applied to the prompt |
+| Hawā / Waswās (lower pull) | `core/hawa.py` (`HawaDetector.scan`) | ⚠️ raw-text heuristic, diagnostic only (`result["hawa"]`); tool actions are gated by Fiṭrah + Izn |
 | Samʿ vs Baṣar (split) | `qca/engine.py` (named, not separated) | ⚠️ not distinctly processed |
 | Niyya / Amāna (intention) | implicit in the task prompt | ⚠️ no explicit intention object |
 
 ### Two structural problems
 1. **Faculties don't steer the loop.** Qalb, Nafs, and the cognitive method are
-   computed **once** before `_agentic_loop()` and embedded in the system prompt;
-   they are not re-consulted per turn (`backend/agents/base.py` `think()` and
+   computed **once** in `execute()` before `_agentic_loop()`; Qalb reaches the
+   system prompt only as an advisory tone note, the rest are telemetry; they are
+   not re-consulted per turn (`backend/agents/base.py` `execute()`, `think()` and
    `_agentic_loop()`). Emotional shifts, nafs re-deliberation, and metacognitive
    checks don't happen mid-task. Lubb and the dream engine only run *after* the
    task completes.
-2. **Cognitive methods are inert.** `select_method()` returns a method that is
-   logged and embedded in the prompt, but the corresponding engine
-   (`TafakkurEngine`, `TadabburEngine`, …) is **never `.process()`-ed** to
-   actually shape the next decision.
+2. **Cognitive methods are inert.** `select_method()` picks a method and
+   `_run_cognitive_method()` runs the corresponding engine (`TafakkurEngine`,
+   `TadabburEngine`, … `.process()`), but the result is only returned as
+   `result["cognitive_result"]` (`applied_to_prompt: False`); it does not shape
+   the next decision.
 
 ---
 
@@ -248,21 +250,31 @@ prompt prefix.** Three new faculties + three integrations:
    single discernment signal: *is this conclusion sound, and what is the real
    situation behind the surface?* Includes self-witnessing (75:14): flags when
    the agent's reasoning is self-serving.
+   *State:* built; `discern()` combines Lubb coherence, the Yaqīn tag's
+   confidence, evidence density and a self-witness scan, after the answer.
 2. **Hawā / Waswās — `core/hawa.py`** (lower-pull & adversarial detector). The
    safety/alignment faculty: detects shortcut-taking, reward-hacking, sycophancy,
    and "whispers" to violate the fiṭrah, then **restrains** (the literal ʿaql).
+   *State:* built as a detector on the raw task text; it no longer restrains
+   (its counsel is not put into the prompt).
 3. **Ḥikma — `core/hikmah.py`** (wisdom engine). Distils accumulated Shukr
    patterns + Tawbah lessons + Lubb evaluations into **applicable counsel**
    ("for this kind of situation, the wise move is X").
+   *State:* built (`observe_success` / `observe_correction` /
+   `observe_reflection`, `advise`); counsel is reported, not applied.
 4. **Upgrade `core/qalb.py`** to model the *turning* (q-l-b): track a heart-state
    **trajectory** and re-read emotion mid-conversation.
 5. **Run the cognitive methods** (`qca/cognitive_methods.py`) — actually execute
    the selected Tafakkur/Tadabbur/Qiyās pass so it informs the next step.
+   *State:* the pass runs; it does not yet inform the next step.
 6. **A per-turn faculty pipeline** in `_agentic_loop()`:
    `Niyya → Hawā/Fiṭrah gate → ʿAql/Tadabbur pass → tool call → Yaqīn tag →
    Lubb+Baṣīra check → (re-deliberate Nafs if confidence drops)`, with each step
    emitting a real `thinking_stream` event. Gated behind a settings flag so the
    default path is unchanged until proven.
+   *State:* not built. `DEEP_FACULTY_LOOP` (runtime setting "Active faculty
+   loop") is read into `BaseAgent.deep_faculty_loop` but no code path acts on
+   it; faculty outputs are diagnostics in every mode.
 
 **Telos as the objective function.** Every action passes a final **Mīzān check**
 against the fiṭrah axioms + the value set (truth, justice, no-harm, excellence).

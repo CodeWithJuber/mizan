@@ -3,8 +3,8 @@
 **Status (2026-09-29):** the 4-stage curriculum ran end-to-end on Kaggle
 GPUs (T4 x2) with no errors — loss 5.2660 → 1.0827 across 50 epochs. See
 [Measured run, 2026-09-29](#measured-run-2026-09-29). The training code is
-[`ruh_model/`](../../../ruh_model); entry point
-[`ruh_model/train.py`](../../../ruh_model/train.py).
+[`ruh_model/`](../ruh_model); entry point
+[`ruh_model/train.py`](../ruh_model/train.py).
 
 ## What it is
 
@@ -20,7 +20,7 @@ checkpoint in this repository — see [Honest boundaries](#honest-boundaries).
 
 ## The four stages
 
-From [`ruh_model/training/curriculum.py`](../../../ruh_model/training/curriculum.py)
+From [`ruh_model/training/curriculum.py`](../ruh_model/training/curriculum.py)
 (`NafsCurriculum`). Epochs and batch size are **stage properties, not CLI
 flags** — `train.py` does not accept `--epochs` or `--batch-size`.
 

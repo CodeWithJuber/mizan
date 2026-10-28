@@ -158,7 +158,7 @@ This section separates what the repository demonstrates from what it does not.
 | Memory | SQLite memory (Dhikr), Daftar ledger, FSRS strength, Masalik pathways, knowledge graph; Chroma when `MIZAN_VECTOR_URL` is set | [`backend/memory/`](backend/memory) | Local and per-user; vector recall is optional |
 | Evaluation | Imtihan suite with base-vs-MIZAN arms, rule scorers, Wilson intervals, faculty profile, human panel | [`backend/imtihan/`](backend/imtihan), [`tests/test_imtihan.py`](tests/test_imtihan.py) | The human baseline exists only once panel members answer |
 | Providers | Anthropic, OpenAI, OpenRouter, Ollama, the local Ruh model | [`backend/providers.py`](backend/providers.py), [`backend/providers_ruh.py`](backend/providers_ruh.py) | Tests do not prove live calls to every provider |
-| mizan.nlp | 48 per-lemma scikit-learn classifiers, 5.9 MB artifact with a validated manifest | [`nlp/`](nlp), [`nlp/artifacts/default/manifest.json`](nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py) | Accuracy 0.8150, macro-F1 0.6380 on a whole-surah holdout (n=627); off unless `MIZAN_NLP_NATIVE_WSD=1` |
+| mizan.nlp | 48 per-lemma scikit-learn classifiers, 5.4 MB artifact with a validated manifest | [`nlp/`](nlp), [`nlp/artifacts/default/manifest.json`](nlp/artifacts/default/manifest.json), [`tests/test_nlp.py`](tests/test_nlp.py) | Accuracy 0.8150, macro-F1 0.6380 on a whole-surah holdout (n=627); off unless `MIZAN_NLP_NATIVE_WSD=1` |
 
 ### Test and build proof
 
@@ -176,24 +176,25 @@ This section separates what the repository demonstrates from what it does not.
 
 ![mizan.nlp disambiguating Qur'anic Arabic with confidences](.github/assets/mizan-nlp-demo.gif)
 
-_Real recording: the shipped 5.9 MB artifact disambiguating آية (sign 0.97 vs verse 0.03) and نفس (soul 0.995 vs self/life), then abstaining (`[]`) on an unknown lemma._
+_Recording made with an earlier artifact (v1.0.0, the one PyPI `pymizan` 3.1.2 carries): آية (sign 0.97 vs verse 0.03), نفس (soul 0.995 vs self/life), then abstaining (`[]`) on an unknown lemma. The current artifact (v1.2.1) gives the output below._
 
-`mizan.nlp` ([`nlp/`](nlp)) is a native word-sense disambiguation module for Qur'anic Arabic: 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2, frozen into a 5.9 MB joblib artifact with a validated manifest.
+`mizan.nlp` ([`nlp/`](nlp)) is a native word-sense disambiguation module for Qur'anic Arabic: 48 per-lemma scikit-learn LogisticRegression classifiers trained on Q-CSMP v2, frozen into a 5.4 MB joblib artifact (`mizan-sense-wsd` v1.2.1) with a validated manifest.
 
 ```bash
 pip install -e ".[nlp]"
 python -c "
 from nlp import disambiguate, is_ready
 print(is_ready())  # True once the packaged artifact validates
-for sense_id, conf in disambiguate('تِلْكَ آيَاتُ اللَّهِ نَتْلُوهَا عَلَيْكَ بِالْحَقِّ', 'آية'):
+for sense_id, conf in disambiguate('مَٰلِكِ يَوْمِ ٱلدِّينِ', 'يَوْم'):
     print(sense_id, round(conf, 4))
-# qcsmp2:آيَة:sign 0.9732
-# qcsmp2:آيَة:verse 0.0268
+# qcsmp2:يَوْم:judgment-day 0.9629
+# qcsmp2:يَوْم:ordinary-day 0.0371
 "
 ```
 
 - **Measured:** test accuracy 0.8150 against the merged 96-sense labels, macro-F1 0.6380, whole-surah holdout (n=627), preregistered before evaluation. All of it is in [`manifest.json`](nlp/artifacts/default/manifest.json).
-- **Fail-closed:** with no valid artifact it raises `ModelNotReadyError`; with an unknown lemma it returns `[]`, not a guess.
+- **Fail-closed:** with no valid artifact it raises `ModelNotReadyError`; with an unknown lemma it returns `[]`, not a guess. The lemma must appear in the text as written (one attached clitic such as و, ب or ال is allowed); another form, such as the plural آيات for آية, also returns `[]`.
+- **Installed package:** PyPI `pymizan` 3.1.2 carries the earlier v1.0.0 artifact (accuracy 0.7592); v1.2.1 ships from source.
 - **Trust boundary:** the manifest (schema, files, SHA-256) is validated _before_ unpickling. Artifacts load only from the packaged directory or an operator-set `MIZAN_NLP_ARTIFACT`.
 - **Decisions on record:** [`nlp/artifacts/DECISIONS.md`](nlp/artifacts/DECISIONS.md).
 

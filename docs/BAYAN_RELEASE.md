@@ -4,6 +4,12 @@ Release prep lives in `packages/bayan/`. **Do not publish from a dirty tree.**
 Publish is an external action: it needs a JEV decision AND the user's PyPI
 API token (see "Credentials" below).
 
+**Status (checked 2026-10-28):** `bayan-tokenizer` 0.1.0 is on PyPI
+(uploaded 2026-09-29, `Requires-Python >=3.9`). `packages/bayan/pyproject.toml`
+still says `version = "0.1.0"` but now `requires-python = ">=3.11"`, so the
+next upload needs a version bump. No `bayan-v0.1.0` tag exists on origin
+(the tag step in §3 was not run).
+
 ## 0. Blocking decisions (resolve before publish)
 
 - [ ] **Distribution name:** the bare `bayan` name is TAKEN on PyPI by an

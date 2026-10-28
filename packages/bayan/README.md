@@ -12,7 +12,7 @@ tok.tokenize("الكتاب")
 # [{'surface': 'الكتاب', 'root': 'كتب', 'root_id': ..., 'pattern': 'NOUN', 'pattern_id': ...}]
 
 tok.roots("العلم نور")     # ['علم', 'نور']
-tok.patterns("العلم نور")  # ['NOUN', 'NOUN']
+tok.patterns("العلم نور")  # ['VERB_PAST', 'VERB_PAST']
 tok.fertility("العلم نور") # 1.0 — one morphological token per word, by construction
 ```
 
@@ -32,7 +32,8 @@ pip install bayan-tokenizer
 ```
 
 Zero dependencies. Pure standard library — no torch, no numpy, no downloads.
-Works on Python 3.9+.
+Requires Python 3.11+ (`requires-python` in `pyproject.toml`; the 0.1.0 wheel
+already on PyPI declared 3.9+).
 
 ## API
 

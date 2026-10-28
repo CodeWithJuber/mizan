@@ -11,8 +11,9 @@ tok.tokenize("الكتاب")
 
 This directory ships Bayan as a **free, dependency-free, pip-friendly**
 library — the top-of-funnel on-ramp from the Ruh use-case study (#7):
-*Bay an tokenizer, free + MIT* → here: free under the repo's license,
-zero dependencies.
+*Bayan tokenizer, free + MIT* → here: free under the repo's license,
+zero dependencies. The standalone MIT package `bayan-tokenizer`
+([`packages/bayan/`](../../packages/bayan/README.md)) vendors these modules.
 
 ## Install
 
@@ -21,18 +22,20 @@ From the repo root:
 ```bash
 git clone https://github.com/CodeWithJuber/mizan
 cd mizan
-pip install -e .          # installs the pymizan project (backend/nlp/CLI)
+pip install -e .          # installs the pymizan project (backend, nlp, ruh_model, … + CLI)
 ```
 
-`ruh_model/` is used from the source tree (it is not in the wheel's
-`packages` list yet). No torch, no numpy, no downloads — the public facade
-is pure standard library.
+The wheel's `packages` list now includes `ruh_model` (added after the v3.3.0
+tag; the 3.1.2 wheel on PyPI does not contain it). No torch, no numpy, no
+downloads — the public facade is pure standard library.
 
 ### Torch-free import (important)
 
-The repo's `ruh_model/__init__.py` unconditionally imports torch (via
-`RuhModel`). In environments **without** torch, do NOT `import ruh_model…`;
-load the facade directly by file path:
+`ruh_model/__init__.py` loads `RuhModel` (torch) lazily, so
+`from ruh_model.tokenizer.public_api import BayanTokenizer` works without
+torch. That package import still needs numpy (`tokenizer/bayan.py` imports
+`q28_articulatory.py`). In environments **without** numpy, load the facade
+directly by file path (it stubs the Q28 import):
 
 ```python
 import importlib.util
@@ -48,7 +51,7 @@ tok = mod.BayanTokenizer()
 print(tok.roots("الكتاب يكتب"))   # ['كتب', 'كتب']
 ```
 
-Where torch IS installed, the normal package import also works:
+Where numpy is installed, the normal package import works:
 `from ruh_model.tokenizer.public_api import BayanTokenizer`.
 
 ## Quickstart
@@ -104,14 +107,13 @@ corpus-trained BPE and downstream evals (study track #17).
 ## Running the tests
 
 ```bash
-BAYAN_REPO=$PWD PYTHONPATH=$HOME/workspace/bayan-pytest-stub \
-  python -m pytest -p bayan_torchfree_stub --noconftest \
+python -m pytest --noconftest --import-mode=importlib \
   ruh_model/tests/test_bayan_public_api.py
 ```
 
-(The `-p` stub plugin bypasses the torch-pulling `ruh_model/__init__.py`
-at collection time; see `public_api.py` module docstring for why. In
-torch environments the plain `pytest` invocation works.)
+(The test loads `public_api.py` by file path; `--noconftest` skips
+`ruh_model/tests/conftest.py`. This is the invocation given in the test
+module's docstring.)
 
 ```bash
 ruff check ruh_model/tokenizer/public_api.py \
@@ -127,10 +129,11 @@ ruff format --check ruh_model/tokenizer/public_api.py \
 Bayan ships **free** under the repository's license: **Apache-2.0**
 (see repo-root `LICENSE`). That is permissive — commercial use,
 modification and distribution are allowed, with attribution and a license
-notice. Note: the use-case study (#7) aspires to MIT for a standalone
-`bayan` package; the repo as it stands is Apache-2.0, not MIT.
-Re-licensing (or a standalone MIT `pip install bayan`) is the repo owner's
-explicit decision, not something this packaging assumes.
+notice. The use-case study (#7) asked for MIT: that is the standalone
+package `bayan-tokenizer` in `packages/bayan/` (import name `bayan`, MIT,
+0.1.0 on PyPI: `pip install bayan-tokenizer`; release steps in
+[`docs/BAYAN_RELEASE.md`](../../docs/BAYAN_RELEASE.md)). This directory
+itself stays under the repository's Apache-2.0.
 
 ## Honest limitations
 
