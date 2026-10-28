@@ -275,7 +275,7 @@ short odd message as a Quran search. `tadbir/iqtibas.py` looks instead:
      missing.
 
 With no span, before the editions are on disk, or with `MIZAN_IQTIBAS=off`
-(Settings → System settings; off in tests), the factor is 1. The editions are
+(Settings → Developer → System settings; off in tests), the factor is 1. The editions are
 fetched and read at startup, and while they load the message is read without
 them. What was found (words, edition, ayah, evidence, factor) is in the trace
 and in a conversation result's entities.

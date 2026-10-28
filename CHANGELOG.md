@@ -26,6 +26,23 @@ All notable changes to this project will be documented in this file.
 - Work: sandboxed coding workspaces and sessions, the Shahid sandboxed browser, MCP connectors, Agent Skills, and Hugging Face read on the server (#123).
 - Imtihan AGI test: 194 tasks across the base and MIZAN arms, agentic tasks, ARC-style games, and the Quwa ten-faculty profile with human-panel invite links (#143, #145). Debug mode compares one message across both arms.
 - Learning with no weights: Ta'allum, Qasd overlays, Tajriba, Tajdid (paired e-value, #143), Wazn, Tadhkir (FSRS, #143) and Ta'lim teaching (#142).
+- The web app, rebuilt:
+  - Every page has a URL (`/chat/<id>`, `/code`, `/agents`, `/library/*`, `/automations/*`, `/settings/*`), so Back, reload and links work. Signing out leads to a sign-in page.
+  - A six-item sidebar (Chat, Code, Agents, Library, Automations, Settings) holds the chat history, grouped by date, searchable, with rename and delete. Administrator pages are under Settings → Developer.
+  - The chat:
+    - One "Working…" line holds thinking, tools, the plan and Allow / Always / Deny. It folds into "Worked · N steps" when done.
+    - One quiet row under each answer carries the Isnad grades, Truth Gate, sources, recall and usage.
+    - Messages have "Ask again", "Edit and send again", Copy and Read aloud.
+    - Images can be pasted or dropped into the message box.
+    - A slash menu lists commands and skills; a "+" menu holds the other options.
+  - Answers stream through streamdown: tables, code highlighted by Shiki, and math. Highlighting and math load only when an answer needs them.
+  - A design system: shadcn/ui on Base UI, gold on a neutral base in light and dark, self-hosted fonts, and confirm dialogs and toasts in place of the browser's.
+  - `PATCH /api/chat/{id}` renames a chat; `GET /api/chat/sessions/list?q=` searches titles and messages.
+- Frontend checks in CI:
+  - oxlint, with a cap on warnings and a ratchet so raw colour classes can only decrease;
+  - Vitest specs;
+  - size budgets (the entry bundle dropped from 371 KB to 178 KB gzip);
+  - Playwright tests on desktop and phone against a mock API.
 
 ### Changed
 - New Compose setups select owned inference; hosted model overrides and mem0 calls are disabled in owned mode.

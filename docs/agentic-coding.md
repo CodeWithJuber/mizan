@@ -118,7 +118,7 @@ Allow / Always / Deny buttons. The card is kept with the finished message.
 
 ## The coding workspace (IDE)
 
-Open **Coding workspace** in the sidebar. It has:
+Open **Code** in the sidebar (`/code`). It has:
 
 - a file tree with new file, new folder, rename and delete
 - editor tabs (CodeMirror 6), with save on Ctrl/Cmd+S

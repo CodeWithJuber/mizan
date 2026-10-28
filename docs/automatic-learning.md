@@ -27,7 +27,7 @@ A matching request re-runs the kept program. Every reuse is a regression check: 
 - **Time- or randomness-dependent programs:** their output differs on reuse, so the check fails and a new program is written; such a program never answers from memory.
 - **Bounded:** at most 100 programs per user, the most recently used first.
 
-You can see and forget your kept programs in **Majlis → Learning** (`GET/DELETE /api/tadbir/programs`).
+You can see and forget your kept programs in **Agents → Majlis → Learning** (`GET/DELETE /api/tadbir/programs`).
 
 ### Tathabbut: an independent derivation must agree
 
@@ -50,7 +50,7 @@ Once a day (`MIZAN_MUHASABA_SECONDS`, default 86,400; first run 10 minutes after
 When it can prove a mistake, it posts a correction in that chat. The correction gives the exact value or the source text and is marked as MIZAN's review.
 
 - **Each answer is reviewed once.**
-- **Admin switch:** Settings → System settings → Self-review (`MIZAN_MUHASABA=on|off`).
+- **Admin switch:** Settings → Developer → System settings → Self-review (`MIZAN_MUHASABA=on|off`).
 - **User opt-out:** a user stops the corrections with the chat preference `muhasaba: off`.
 - **Run it now (admin):** `POST /api/tadbir/muhasaba?hours=24`.
 
@@ -70,7 +70,7 @@ Each lesson keeps a Beta posterior of how often the work it was shown for then v
 - Lessons whose usefulness falls below one half are dropped.
 - At most 60 are kept, the most recently used first.
 
-You can see and forget your lessons in **Majlis → Learning** (`GET/DELETE /api/tadbir/lessons`).
+You can see and forget your lessons in **Agents → Majlis → Learning** (`GET/DELETE /api/tadbir/lessons`).
 
 ## Tajdid: instructions renewed, kept only when proven better
 
@@ -95,7 +95,7 @@ Lisan's instruction for each kind of code work is MIZAN's harness for the model:
 **Scope:** the state is shared by all users and stored in `$MIZAN_DATA_DIR/harness.db`. It holds instruction text and error signatures, never user text.
 
 **Admins:**
-- See every version, its success rate, the challenger's evidence against its threshold and the promotion history in **Majlis → Learning**.
+- See every version, its success rate, the challenger's evidence against its threshold and the promotion history in **Agents → Majlis → Learning**.
 - Reset a kind of work to the built-in instruction there (`GET /api/tadbir/harness`, `DELETE /api/tadbir/harness/{task}`).
 - Switch renewal off with `MIZAN_HARNESS_EVOLUTION=off`.
 
@@ -114,7 +114,7 @@ A tool's result can carry a warning or an error, such as skipped files, a deprec
 
 ## Every user has their own Majlis
 
-Each signed-in user who is not an administrator gets a private instance of every agent (`_private_agent` in `api/main.py`): private memory, and learning that stays private. Those instances share one registry, so Majlis gives each part of a user's request to that user's specialist agents, not only the coordinator. Administrators use the shared agents. **Majlis → Learning** shows each user what their own agents learned.
+Each signed-in user who is not an administrator gets a private instance of every agent (`_private_agent` in `api/main.py`): private memory, and learning that stays private. Those instances share one registry, so Majlis gives each part of a user's request to that user's specialist agents, not only the coordinator. Administrators use the shared agents. **Agents → Majlis → Learning** shows each user what their own agents learned.
 
 ## The own model (Ruh / mizan_reply)
 

@@ -50,7 +50,7 @@ The code is in `backend/perception/sama.py`, the `/api/voice*` routes in `backen
 
 ## Settings
 
-Under Settings → System settings → Channels:
+Under Settings → Developer → System settings → Channels:
 
 | Setting | Default | |
 |---|---|---|

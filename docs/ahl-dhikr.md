@@ -58,7 +58,7 @@ Thompson sample. MIZAN stops when every claim is settled or a 20-second budget
 is spent.
 
 MIZAN identifies itself as Wikimedia's policy asks: by name, version and how
-to reach its operator (`MIZAN_CONTACT`, Settings → System settings). If a site
+to reach its operator (`MIZAN_CONTACT`, Settings → Developer → System settings). If a site
 refuses MIZAN, that source is skipped; nothing is done to get around the
 refusal.
 
@@ -151,4 +151,4 @@ contradicted claim with its source and link. The report travels as
 
 ## Setting
 
-`MIZAN_AHL_DHIKR`: `on` (default) or `off`, in Settings → System settings.
+`MIZAN_AHL_DHIKR`: `on` (default) or `off`, in Settings → Developer → System settings.

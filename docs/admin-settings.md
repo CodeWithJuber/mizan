@@ -1,6 +1,6 @@
 # Admin settings
 
-Administrators manage server settings in **Settings → System settings**. The
+Administrators manage server settings in **Settings → Developer → System settings**. The
 groups (`backend/runtime_settings.py`) are:
 
 - Model: who directs the work (`MIZAN_ORCHESTRATION`), the feature switches

@@ -65,7 +65,7 @@ It recomputes every hash and link, checks your chain's head is in the signed roo
 
 **What is never published:** prompts, answers and per-task rows. The locked evaluation appears only as its block score.
 
-**Publishing:** an administrator publishes a finished run from Developer → AGI Test (**Publish on the public page**), and can remove it again. Publishing writes the report's SHA-256 into a `scorecard` receipt (`backend/imtihan/scorecard.py`).
+**Publishing:** an administrator publishes a finished run from Settings → Developer → AGI test (**Publish on the public page**), and can remove it again. Publishing writes the report's SHA-256 into a `scorecard` receipt (`backend/imtihan/scorecard.py`).
 
 ## API
 
