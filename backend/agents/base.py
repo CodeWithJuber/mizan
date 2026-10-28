@@ -1817,7 +1817,7 @@ class BaseAgent:
             from tadbir import qasd
             from tadbir.engine import orchestration_mode
 
-            return orchestration_mode() != "llm" and qasd.facet("form", task)
+            return orchestration_mode() != "llm" and bool(qasd.facet("form", task))
         except Exception:  # noqa: BLE001 - the answer is written either way
             logger.debug("Nazm facet skipped", exc_info=True)
             return False
