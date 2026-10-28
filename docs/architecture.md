@@ -130,6 +130,34 @@ Learned state is the adaptive store, in the same SQLite file as the agent's memo
 | Runner | A separate host that runs code, server sessions and the browser in hardened containers, with an egress proxy ([runner-setup.md](runner-setup.md)) |
 | Providers | Anthropic, OpenAI, OpenRouter, Ollama or the local Ruh model; every paid call admitted by **Iqtisad** before it is sent |
 
+## Key decisions and trade-offs
+
+| Decision | What it buys | What it costs |
+| --- | --- | --- |
+| **MIZAN acts; the model only speaks** (`MIZAN_ORCHESTRATION=mizan`) | Every action is chosen by MIZAN, checked at one gate and leaves a receipt; results are verified; recognised requests often need no model call | A request Fahm does not recognise gets an answer in words and no tools. `hybrid` hands those to the model-driven loop instead |
+| **Understanding by fitted naive Bayes, not by the model or regexes** | Fast on the CPU, fitted by leave-one-out, auditable, learnable per user without retraining a model | It reads probabilistically: on held-out seeds the family is right 75.0% of the time ([fahm.md](fahm.md)). Lisan maps the wording only when action families outweigh conversation |
+| **Learning in per-user state, not in weights** | What is learned can be verified, listed (Daftar) and erased (Mahw); one user's mistakes never reach another | Nothing is learned across users, and the model itself does not improve |
+| **One backend worker** | Approvals are simple in-process futures; runs share the learned state without a broker | One process bounds throughput; rate limits and pending approvals live in memory |
+| **SQLite and files under `$MIZAN_DATA_DIR`** | Self-hosted with no database server; one volume to back up | Concurrency is bounded by SQLite; no multi-host deployment |
+| **Code runs on a separate runner host** | Programs, sessions and the browser never run in the backend's process or on its host | Another host to set up and keep running; without it, MIZAN runs no code |
+| **Unverified answers are checked before they are shown** | Arithmetic, quotes and links are corrected, and claims are graded and sourced | Latency for answers in words. Ahl al-Dhikr reports under the answer and never rewrites it, so a reader must read the report |
+
+## Integration points
+
+| Service | Used by | How |
+| --- | --- | --- |
+| Model providers: Anthropic, OpenAI, OpenRouter, Ollama, or local Ruh | Lisan and words-only answers (`providers.py`, `providers_ruh.py`) | Every paid call is admitted by Iqtisad before it is sent |
+| Sandbox runner (`MIZAN_WORKSPACE_RUNNER_URL`, `MIZAN_WORKSPACE_RUNNER_TOKEN`) | Code runs, sessions, previews, Shahid (`workspace/execution.py`, `session_client.py`) | HTTPS to a private host; containers with an egress proxy ([runner-setup.md](runner-setup.md)) |
+| Quran text and translations: `api.alquran.cloud` | `tadbir/quran.py`, Fihris | Downloaded once into `$MIZAN_DATA_DIR/quran` |
+| Hadith collections: `cdn.jsdelivr.net/gh/fawazahmed0/hadith-api` | `tadbir/hadith.py`, the hadith index | Downloaded once; links point to sunnah.com |
+| Quranic Arabic Corpus morphology, pinned by SHA-256 | Sarf (`tadbir/sarf.py`) | Downloaded once into `$MIZAN_DATA_DIR/morphology`, never shipped |
+| Wikipedia, DuckDuckGo HTML search | Ahl al-Dhikr, the web search recipe | Fetched per question; the User-Agent carries `MIZAN_CONTACT` |
+| Hugging Face (`huggingface.co`) | `knowledge/hf_hub.py`; pinned NLI and Whisper weights | Read on the server only; `HF_TOKEN` is used for admins only |
+| Telegram Bot API, IMAP/SMTP, WhatsApp Cloud API, Web Push services | Bab (`gateway/`) | Polling, a signed webhook, VAPID ([bab.md](bab.md)) |
+| MCP servers | Connectors (`connectors/`) | Per-user, encrypted secrets, pinned tool descriptions |
+| Chroma (`MIZAN_VECTOR_URL`) | Dhikr's vector recall | Optional |
+| GitHub Actions and GHCR | CI, image publishing, deployment | [deployment.md](deployment.md), [runbook.md](runbook.md) |
+
 ## The seven-layer QCA map
 
 The packages follow the Quranic Cognitive Architecture named in [CLAUDE.md](../CLAUDE.md):

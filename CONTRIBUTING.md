@@ -2,8 +2,19 @@
 
 Thank you for your interest in contributing to MIZAN! This document provides guidelines and information for contributors. [`CLAUDE.md`](CLAUDE.md) is the detailed, up-to-date map of the code: which module does what and which doc describes it.
 
+## Start here
+
+Read in this order. Each step takes a few minutes.
+
+1. [README](README.md#architecture): what MIZAN does and how one request is handled.
+2. [docs/architecture.md](docs/architecture.md): the components, the key decisions and their trade-offs, and the outside services.
+3. [The interactive diagrams](docs/diagrams/README.md): `runtime.html` and `chat-turn.html` link each box to its source lines.
+4. [CLAUDE.md](CLAUDE.md): the module map. Look a file up there before you open it.
+5. The document of the part you will change, under [`docs/`](docs). Each one names its module.
+
 ## Table of Contents
 
+- [Start here](#start-here)
 - [Getting Started](#getting-started)
 - [Development Workflow](#development-workflow)
 - [Code Style](#code-style)
@@ -252,6 +263,36 @@ Then add it to the `create_provider()` factory function. A paid call must be adm
 
 After editing the seeds in `backend/tadbir/data/{lughah,qasd}`, refit the cached models: `cd backend && python -m core.tamyiz_cache` (updates `backend/core/data/tamyiz.json`).
 
+### Adding a Tadbir Recipe
+
+A recipe is something MIZAN does itself, rather than handing it to the model. Follow the path of an existing recipe such as `compute` or `build_and_run`.
+
+1. **Teach Fahm the request.** Add examples to `backend/tadbir/data/qasd/intents.tsv`, one per line as `label<TAB>text`. Use several languages and phrasings, and prefix `[project] ` when a coding project is selected. Then run `cd backend && python -m core.tamyiz_cache`.
+2. **Say what the recipe needs.** In `backend/tadbir/fahm.py`:
+   - add a builder to `_BUILDERS`: it returns an `Understanding` with the entities the recipe needs, or `None` when its parser finds nothing;
+   - put the intent in a family in `FAMILIES`.
+
+   A request is acted on only when its family is decisive and the builder succeeds.
+3. **Write the recipe.** In `backend/tadbir/engine.py`, add `async def _<intent>(self, task, u) -> Outcome`. `Tadbir` finds it by name.
+   - Show the plan with `await self._begin([...])` and `await self._step()`.
+   - Act only through `await self._tool(name, params)`, which goes through `_execute_tool_safe`. Approvals and the Sakk receipt then apply; never call a tool directly.
+   - `raise Defer` when the recipe cannot do the request.
+   - Return `Outcome(text, verified, facts)`. Mark it `verified` only when MIZAN checked the result.
+4. **Choose who does it.** If a specialist agent should do the work, add the intent to `ROLE_FOR` and its required tool to `NEEDS` in `backend/tadbir/majlis.py`.
+5. **Test it** in `tests/test_tadbir.py`. That file sets `MIZAN_ORCHESTRATION=mizan`; the other suites run in `llm` mode.
+6. **Document it:**
+   - add a row to the recipe table in [`docs/tadbir.md`](docs/tadbir.md) and an entry in `CLAUDE.md`;
+   - if the request path changes, update the diagram sources (below).
+
+### Updating the Diagrams
+
+When the architecture changes, change its picture in the same pull request:
+
+- **Interactive diagrams.** Edit the typed sources in `docs/diagrams/src/`, then re-render and check them with Archify's `finalize --repo-root .`.
+- **README figures.** Edit `docs/diagrams/design/build_static.py`, then check and export the figures with diagram-design's tools.
+
+The exact commands are in [`docs/diagrams/README.md`](docs/diagrams/README.md).
+
 ## Testing
 
 Tests are in the `tests/` directory and use `pytest` with `pytest-asyncio` (`asyncio_mode = "auto"`). `tests/conftest.py` puts `backend/` on `sys.path` and, for every test, sets `MIZAN_ORCHESTRATION=llm` (the legacy suites test the model-driven loop; `tests/test_tadbir.py` covers MIZAN's own orchestration) and turns off downloads (`MIZAN_LOCKED_EVAL=off`, `MIZAN_HADITH_INDEX=off`). The Ruh model has its own tests in `ruh_model/tests/`.
@@ -314,6 +355,13 @@ class TestYourFeature:
 Shared fixtures in `tests/conftest.py`: `temp_db`, `mock_wali`, `mock_izn`, and `unplaced_wording` (Qasd reads every message as an action it cannot build, so Lisan maps the wording).
 
 ## Reporting Issues
+
+**Who to ask.**
+- **What a module does:** start with `CLAUDE.md` and that module's document.
+- **Design decisions, credentials and anything that touches users' data:** the repository owner (`CodeWithJuber`).
+- **Production incidents:** follow [docs/runbook.md](docs/runbook.md).
+
+When you open an issue:
 
 - Use [GitHub Issues](https://github.com/CodeWithJuber/mizan/issues)
 - Include reproduction steps

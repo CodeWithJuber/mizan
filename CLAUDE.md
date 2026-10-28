@@ -36,7 +36,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 
 ## Key Files
 
-- `docs/architecture.md` + `docs/diagrams/` — the current architecture and its diagrams: interactive Archify HTML (`docs/diagrams/*.html`, typed sources in `docs/diagrams/src/*.json` citing source lines at a pinned commit, rendered and checked with `archify finalize --repo-root .`) and static diagram-design SVGs for the README (`docs/diagrams/design/build_static.py`, light + `-dark`); when the architecture changes, update the sources and re-render (`docs/diagrams/README.md`)
+- `docs/architecture.md` + `docs/diagrams/` — the current architecture and its diagrams: interactive Archify HTML (`docs/diagrams/*.html`, typed sources in `docs/diagrams/src/*.json` citing source lines at a pinned commit, rendered and checked with `archify finalize --repo-root .`) and static diagram-design SVGs for the README (`docs/diagrams/design/build_static.py`, light + `-dark`); when the architecture changes, update the sources and re-render (`docs/diagrams/README.md`); `docs/runbook.md` is what to do when production misbehaves (health checks, rollback from `/var/lib/mizan-deploy/rollback.yml`, stuck runs, held actions, receipts, escalation)
 - `backend/api/main.py` — FastAPI app: most of the 292 routes (listed in `docs/api-reference.md`) + WebSocket (single large module, ~7.9k lines)
 - `backend/api/commands.py` — Slash/command handlers used by chat
 - `backend/agents/base.py` — `BaseAgent`: agentic **ReAct loop**, tool dispatch, Nafs evolution, self-healing

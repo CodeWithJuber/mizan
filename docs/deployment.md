@@ -1,5 +1,7 @@
 # Production deployments
 
+When production misbehaves or a deployment fails, follow the [runbook](runbook.md). This page explains how deployment works.
+
 Mizan production image publishing and deployment support both private and
 public repositories. Keep the repository's intended visibility; it does not
 need to be public to deploy. These workflows use standard `ubuntu-24.04`
