@@ -7,6 +7,8 @@ export interface SidqItem {
 
 export interface SidqReport {
   mode: "strict" | "flag";
+  /** The gate's one-line summary (channels without a notes view print it). */
+  note?: string;
   corrected: SidqItem[];
   removed: SidqItem[];
   flagged: SidqItem[];
@@ -19,6 +21,7 @@ const KIND_LABELS: Record<string, string> = {
   action: "Claimed action",
   citation: "Citation",
   link: "Link",
+  hadith_source: "Hadith source",
 };
 
 /** A report worth showing: the gate changed or marked something. */
@@ -48,6 +51,8 @@ export function sidqLines(report: SidqReport): string[] {
   return [
     ...report.corrected.map(line("corrected")),
     ...report.removed.map(line("removed")),
-    ...report.flagged.map(line("not backed")),
+    ...report.flagged.map((item) =>
+      item.kind === "hadith_source" ? `${KIND_LABELS[item.kind]}: ${item.detail}` : line("not backed")(item),
+    ),
   ];
 }
