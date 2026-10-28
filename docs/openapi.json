@@ -1132,11 +1132,18 @@
      }
     ],
     "requestBody": {
-     "required": true,
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/StopChatRequest"
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/StopChatRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Req"
        }
       }
      }
@@ -1591,9 +1598,32 @@
   "/api/chat/sessions/list": {
    "get": {
     "summary": "List Sessions",
-    "description": "List recent chat sessions from DB with metadata",
+    "description": "The user's chats, newest first; ``limit``/``offset`` page through them\nand ``next_offset`` is where the next page starts (null at the end).",
     "operationId": "list_sessions_api_chat_sessions_list_get",
     "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 20,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     },
      {
       "name": "authorization",
       "in": "header",
@@ -7207,14 +7237,58 @@
   "/api/health": {
    "get": {
     "summary": "Health Check",
-    "description": "Health check endpoint for monitoring and Docker",
+    "description": "Health for monitoring and Docker: ``status`` for everyone; the version,\nuptime and each check only for a signed-in administrator.",
     "operationId": "health_check_api_health_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
        }
       }
      }
@@ -8127,6 +8201,312 @@
      }
     },
     "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/tadbir/talim": {
+   "get": {
+    "summary": "Talim View",
+    "description": "Ta'lim (admin): what MIZAN can be taught, and every batch so far.",
+    "operationId": "talim_view_api_tadbir_talim_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "post": {
+    "summary": "Talim Teach",
+    "description": "Teach a batch of examples; kept only if it does not make MIZAN worse at\nwhat it already knew (leave-one-out before and after, paired bootstrap).",
+    "operationId": "talim_teach_api_tadbir_talim_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TalimBatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/tadbir/talim/import": {
+   "post": {
+    "summary": "Talim Import",
+    "description": "Teach from a Hugging Face dataset split (read through the dataset viewer).",
+    "operationId": "talim_import_api_tadbir_talim_import_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TalimImport"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/tadbir/talim/{batch}": {
+   "delete": {
+    "summary": "Talim Undo",
+    "operationId": "talim_undo_api_tadbir_talim__batch__delete",
+    "parameters": [
+     {
+      "name": "batch",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Batch"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
     "security": [
      {
       "bearer": []
@@ -18631,6 +19011,7 @@
       "type": "string",
       "maxLength": 100,
       "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$",
       "title": "Session Id"
      },
      "title": {
@@ -18692,6 +19073,7 @@
       "type": "string",
       "maxLength": 100,
       "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$",
       "title": "Session Id"
      },
      "title": {
@@ -21720,6 +22102,7 @@
       "type": "string",
       "maxLength": 100,
       "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$",
       "title": "Session Id"
      },
      "content": {
@@ -21819,6 +22202,153 @@
      "content"
     ],
     "title": "StreamChatMessage"
+   },
+   "TalimBatch": {
+    "properties": {
+     "model": {
+      "type": "string",
+      "maxLength": 60,
+      "title": "Model"
+     },
+     "examples": {
+      "items": {
+       "$ref": "#/components/schemas/TalimExample"
+      },
+      "type": "array",
+      "maxItems": 5000,
+      "minItems": 1,
+      "title": "Examples"
+     },
+     "source": {
+      "type": "string",
+      "maxLength": 300,
+      "title": "Source",
+      "default": "typed by an administrator"
+     },
+     "licence": {
+      "type": "string",
+      "maxLength": 120,
+      "title": "Licence",
+      "default": ""
+     },
+     "language_name": {
+      "type": "string",
+      "maxLength": 60,
+      "title": "Language Name",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "model",
+     "examples"
+    ],
+    "title": "TalimBatch"
+   },
+   "TalimExample": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Text"
+     },
+     "label": {
+      "type": "string",
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Label"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "label"
+    ],
+    "title": "TalimExample"
+   },
+   "TalimImport": {
+    "properties": {
+     "model": {
+      "type": "string",
+      "maxLength": 60,
+      "title": "Model"
+     },
+     "dataset": {
+      "type": "string",
+      "maxLength": 200,
+      "title": "Dataset"
+     },
+     "config": {
+      "type": "string",
+      "maxLength": 80,
+      "title": "Config",
+      "default": "default"
+     },
+     "split": {
+      "type": "string",
+      "maxLength": 40,
+      "title": "Split",
+      "default": "train"
+     },
+     "revision": {
+      "type": "string",
+      "maxLength": 80,
+      "title": "Revision",
+      "default": ""
+     },
+     "text_column": {
+      "type": "string",
+      "maxLength": 80,
+      "title": "Text Column",
+      "default": "text"
+     },
+     "label_column": {
+      "type": "string",
+      "maxLength": 80,
+      "title": "Label Column",
+      "default": "label"
+     },
+     "label_map": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label Map"
+     },
+     "limit": {
+      "type": "integer",
+      "maximum": 5000.0,
+      "minimum": 1.0,
+      "title": "Limit",
+      "default": 1000
+     },
+     "licence": {
+      "type": "string",
+      "maxLength": 120,
+      "title": "Licence",
+      "default": ""
+     },
+     "language_name": {
+      "type": "string",
+      "maxLength": 60,
+      "title": "Language Name",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "model",
+     "dataset"
+    ],
+    "title": "TalimImport"
    },
    "TaskRequest": {
     "properties": {
@@ -22329,6 +22859,7 @@
       "type": "string",
       "maxLength": 100,
       "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$",
       "title": "Session Id"
      },
      "content": {

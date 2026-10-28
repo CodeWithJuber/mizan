@@ -80,6 +80,7 @@ from memory.living_memory import LivingMemorySystem
 from nlp.arabic import arabic_tokens
 from providers import (
     DEFAULT_CLAUDE_MODEL,
+    REASONING_EFFORT,
     BaseLLMProvider,
     IncompleteToolCall,
     ProviderRefusal,
@@ -1421,6 +1422,7 @@ class BaseAgent:
             "tool_result_chars", _DEFAULT_TOOL_RESULT_CHARS, 2_000, 500_000
         )
         tool_cutoffs = 0
+        self._lower_effort = False
         capability_nudged = False
         provider_retries = 0
         output_boost = 1
@@ -1669,7 +1671,16 @@ class BaseAgent:
             # No tool calls — the turn is final, unless the model was cut off
             # by max_tokens, in which case ask it to continue (bounded, so a
             # pathological model can't loop forever).
-            self._require_answer_progress(response)
+            try:
+                self._require_answer_progress(response)
+            except OutputBudgetExceeded:
+                # The reasoning used the whole output limit and no answer came:
+                # ask once more at low effort, then report it (never silence).
+                if self._lower_effort:
+                    raise
+                self._lower_effort = True
+                logger.info("[FIKR] No answer within the output limit; retrying at low effort")
+                continue
             new_text = accumulated_text[len(text_before_call) :]
             if (
                 response.stop_reason == "max_tokens"
@@ -1919,6 +1930,7 @@ class BaseAgent:
         started = time.perf_counter()
         outcome = "failed"
         self._provider_attempt_started = True
+        lowered = REASONING_EFFORT.set("low") if getattr(self, "_lower_effort", False) else None
         try:
             deadline = asyncio.timeout(provider_limits().total)
             try:
@@ -1944,6 +1956,8 @@ class BaseAgent:
             outcome = "cancelled"
             raise
         finally:
+            if lowered is not None:
+                REASONING_EFFORT.reset(lowered)
             self._record_provider_attempt(started, "create", outcome)
 
     def _completion_metadata(self) -> dict:
@@ -2080,7 +2094,10 @@ class BaseAgent:
                 active_stream.clear()
             publish("done", final)
 
+        lowered = REASONING_EFFORT.set("low") if getattr(self, "_lower_effort", False) else None
         runner_context = copy_context()
+        if lowered is not None:
+            REASONING_EFFORT.reset(lowered)
         runner_future = loop.run_in_executor(None, runner_context.run, _runner)
         completed = False
         outcome = "failed"
@@ -2923,7 +2940,9 @@ Match the requested depth and self-correct errors."""
                 )
             from api.usage import build_usage_summary
 
-            if taint_record and "amanah" not in result:
+            if "amanah" not in result:
+                # Always reported, "ignored": 0 included: an absent key reads as
+                # "not checked", which is never the case.
                 result["amanah"] = amanah.summary(taint_record)
             result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
             if result.get("success", True) and "isnad" not in result:
@@ -2933,6 +2952,7 @@ Match the requested depth and self-correct errors."""
             if result.get("success", True) and not result.get("task_verified"):
                 await self._truth_gate(result)
                 await self._ahl_dhikr(result, task)
+            result.setdefault("orchestrator", "language_model")
             for key in (
                 "completion_status",
                 "task_verified",

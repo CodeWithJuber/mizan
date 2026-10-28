@@ -5,6 +5,7 @@ Web Browse Skill
 Enhanced web browsing with content extraction.
 """
 
+import asyncio
 from html.parser import HTMLParser
 
 import httpx
@@ -98,11 +99,22 @@ class WebBrowseSkill(SkillBase):
         url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-                response = await client.get(
-                    url, headers={"User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"}
-                )
+                headers = {"User-Agent": "Mozilla/5.0 (MIZAN AGI Browser)"}
+                response = await client.get(url, headers=headers)
+                if response.status_code == 202:
+                    # 202 is "not now" (the engine is rate limiting), not "no
+                    # results": ask once more after a pause.
+                    await asyncio.sleep(2.0)
+                    response = await client.get(url, headers=headers)
         except Exception as e:  # noqa: BLE001
             return {"error": str(e)[:300], "query": query}
+        if response.status_code != 200:
+            return {
+                "error": f"The search engine did not answer (HTTP {response.status_code}); "
+                "this is not an empty result. Try again in a minute.",
+                "query": query,
+                "status": response.status_code,
+            }
         page = response.text
         links = re.findall(
             r'<a[^>]+class=["\']result__a["\'][^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',

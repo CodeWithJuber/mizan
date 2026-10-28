@@ -250,7 +250,7 @@ export interface MessageUsageMeta {
     | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed"
     | "verified_by_mizan";
   /** "mizan" when MIZAN's own orchestration (Tadbir) produced the answer. */
-  orchestrator?: "mizan";
+  orchestrator?: "mizan" | "language_model";
   /** What supports each claim of the answer (Isnad). */
   isnad?: IsnadSummary;
   /** Instructions aimed at the AI that MIZAN found in outside text and ignored (Amanah). */

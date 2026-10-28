@@ -1763,8 +1763,8 @@ function AppInner() {
       })();
     }
     loadChatSessions();
-    // Health exposes the version without requiring administrative update details.
-    fetch(`${config.API_URL}/health`)
+    // Health gives the version to a signed-in administrator only.
+    authFetch(`${config.API_URL}/health`)
       .then((r) => r.json())
       .then((data) => {
         if (data.version) setAppVersion(data.version);

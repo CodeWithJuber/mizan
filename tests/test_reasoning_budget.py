@@ -32,7 +32,9 @@ class ScriptedProvider(BaseLLMProvider):
         self.requests = []
 
     def create(self, **kwargs):
-        self.requests.append(copy.deepcopy(kwargs))
+        from providers import REASONING_EFFORT
+
+        self.requests.append({**copy.deepcopy(kwargs), "effort": REASONING_EFFORT.get()})
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -261,7 +263,9 @@ async def test_empty_length_receipt_does_not_continue_or_capture(agent, monkeypa
     monkeypatch.setattr(agent, "_plan_error_correction", lambda *args: {"retryable": True})
     chunks = AsyncMock() if streaming else None
     result = await agent.execute("Say salaam", stream_callback=chunks)
-    assert len(agent.ai_client.requests) == 1
+    # Once more at low reasoning effort (not the same turn repeated), then the
+    # failure is reported: never a silent empty answer.
+    assert [request["effort"] for request in agent.ai_client.requests] == [None, "low"]
     assert result["success"] is False
     assert result["completion_status"] == "incomplete"
     assert result["error_code"] == "output_budget_exhausted"
@@ -270,7 +274,7 @@ async def test_empty_length_receipt_does_not_continue_or_capture(agent, monkeypa
     assert not result["task_verified"]
     assert agent.success_count == 0
     assert reflection.await_args.args[2] is False
-    assert result["usage"]["timings"]["provider_attempt_count"] == 1
+    assert result["usage"]["timings"]["provider_attempt_count"] == 2
     if chunks:
         chunks.assert_not_awaited()
 
@@ -420,3 +424,16 @@ async def test_queue_wait_and_failed_stream_attempt_are_measured_without_unlocki
     ]
     assert result["usage"].get("calls", []) == []  # Ambiguous failures are not retried.
     assert not agent.ai_client.requests
+
+
+def test_a_lowered_effort_reaches_openrouter_as_its_reasoning_parameter():
+    from providers import REASONING_EFFORT, _answer_reasoning_options
+
+    token = REASONING_EFFORT.set("low")
+    try:
+        assert _answer_reasoning_options("openrouter", "deepseek/any", 4096) == {
+            "extra_body": {"reasoning": {"effort": "low"}}
+        }
+        assert _answer_reasoning_options("openai", "gpt-5", 4096) == {}
+    finally:
+        REASONING_EFFORT.reset(token)

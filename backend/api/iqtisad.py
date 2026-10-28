@@ -342,19 +342,32 @@ def _zone_named(name: str | None) -> ZoneInfo | None:
 
 
 def _zone(owner: str) -> ZoneInfo:
-    """The user's zone: the chat's own if bound (and remembered), else the
-    last one remembered, else UTC."""
+    """The user's own zone: the place they set for prayer times (Muraqabah),
+    else the zone remembered from their first chat, else UTC. A request's
+    timezone is remembered only when none is: sending another timezone never
+    moves the spending day (it would renew the daily limit early)."""
     from tadbir import waqt
 
+    store = ledger()
+    if owner:
+        try:
+            from automation import muraqabah
+
+            place = muraqabah.default_store().place(owner)
+        except Exception:  # noqa: BLE001 - no watcher store: the remembered zone decides
+            place = None
+        if place is not None and _zone_named(place.tz) is not None:
+            return ZoneInfo(place.tz)
+    saved = store.zone(owner) if store is not None and owner else None
+    if _zone_named(saved) is not None:
+        return ZoneInfo(str(saved))
     _, bound = waqt.now()
     zone = _zone_named(bound)
-    store = ledger()
     if zone is not None:
-        if store is not None and owner and store.zone(owner) != bound:
+        if store is not None and owner:
             store.remember_zone(owner, str(bound))
         return zone
-    saved = store.zone(owner) if store is not None and owner else None
-    return _zone_named(saved) or ZoneInfo("UTC")
+    return ZoneInfo("UTC")
 
 
 def periods(owner: str) -> tuple[str, str, dict[str, str]]:

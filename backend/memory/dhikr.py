@@ -1049,8 +1049,10 @@ class DhikrMemorySystem:
         finally:
             self._release_conn(conn)
 
-    async def list_sessions(self, limit: int = 20, owner_id: str | None = None) -> list[dict]:
-        """List recent chat sessions with metadata"""
+    async def list_sessions(
+        self, limit: int = 20, owner_id: str | None = None, offset: int = 0
+    ) -> list[dict]:
+        """List recent chat sessions with metadata, newest first (``offset`` pages)."""
         conn = self._get_conn()
         self._session_table(conn)
         c = conn.cursor()
@@ -1067,9 +1069,9 @@ class DhikrMemorySystem:
             WHERE (? IS NULL OR m.session_id IN (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
             GROUP BY m.session_id
             ORDER BY MAX(m.created_at) DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
         """,
-            (owner_id, owner_id, limit),
+            (owner_id, owner_id, limit, max(0, offset)),
         )
         rows = c.fetchall()
         self._release_conn(conn)
