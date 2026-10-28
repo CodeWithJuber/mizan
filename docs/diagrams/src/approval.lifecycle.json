@@ -1,0 +1,55 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "A tool call that changes something: asked, held or refused",
+    "output": "docs/diagrams/approval.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/CodeWithJuber/mizan",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "5cc11dc1f626d5f785f8ab9254aa8c05ec060d36"
+    }
+  },
+  "mainPath": ["requested", "checked", "asked", "allowed", "ran"],
+  "states": [
+    { "id": "requested", "type": "start", "label": "Requested", "sublabel": "Tadbir or agent loop", "step": "01",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2242, "end_line": 2257, "label": "_execute_tool_safe" } ] },
+    { "id": "checked", "type": "decision", "label": "Checked", "sublabel": "Izn · mode · Amanah taint", "step": "02",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2333, "end_line": 2342, "label": "approval branch" }, { "path": "backend/security/approvals.py", "line": 111, "end_line": 129, "label": "needs_approval" } ] },
+    { "id": "asked", "type": "waiting", "label": "Asked", "sublabel": "card in the live chat", "tag": "10 min", "step": "03",
+      "sources": [ { "path": "backend/security/approvals.py", "line": 200, "end_line": 241, "label": "request_approval" } ] },
+    { "id": "allowed", "type": "active", "label": "Allowed", "sublabel": "this call, or always", "step": "04",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2340, "end_line": 2356, "label": "was_granted / decision" } ] },
+    { "id": "ran", "type": "success", "label": "Ran", "sublabel": "result + Sakk receipt", "step": "05",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2358, "end_line": 2370, "label": "tool resolution" }, { "path": "backend/security/sakk.py", "line": 456, "end_line": 472, "label": "record_tool" } ] },
+    { "id": "held", "type": "waiting", "label": "Held", "sublabel": "params + SHA-256 kept", "tag": "24 h",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2343, "end_line": 2352, "label": "hold_action" }, { "path": "backend/security/approvals.py", "line": 250, "end_line": 256, "label": "HeldActions" } ] },
+    { "id": "refused", "type": "failure", "label": "Refused", "sublabel": "plan mode is read-only",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2335, "end_line": 2339, "label": "blocks" } ] },
+    { "id": "declined", "type": "failure", "label": "Declined", "sublabel": "deny, or no answer",
+      "sources": [ { "path": "backend/agents/base.py", "line": 2354, "end_line": 2356, "label": "declined" }, { "path": "backend/api/main.py", "line": 2920, "end_line": 2965, "label": "_decide_held" } ] },
+    { "id": "expired", "type": "neutral", "label": "Expired", "sublabel": "never run",
+      "sources": [ { "path": "backend/security/approvals.py", "line": 316, "end_line": 349, "label": "claim" } ] }
+  ],
+  "transitions": [
+    { "id": "requested-checked", "from": "requested", "to": "checked", "label": "every call" },
+    { "id": "checked-asked", "from": "checked", "to": "asked", "label": "needs a person", "variant": "security" },
+    { "id": "asked-allowed", "from": "asked", "to": "allowed", "label": "allow / always" },
+    { "id": "allowed-ran", "from": "allowed", "to": "ran", "label": "execute", "variant": "emphasis" },
+    { "id": "checked-ran", "from": "checked", "to": "ran", "label": "read, or mode allows" },
+    { "id": "checked-refused", "from": "checked", "to": "refused", "label": "plan mode change", "variant": "security" },
+    { "id": "asked-declined", "from": "asked", "to": "declined", "label": "deny / timeout", "variant": "security" },
+    { "id": "checked-held", "from": "checked", "to": "held", "label": "no one watching", "variant": "dashed" },
+    { "id": "held-allowed", "from": "held", "to": "allowed", "label": "owner allows", "note": "same parameters, same SHA-256" },
+    { "id": "held-declined", "from": "held", "to": "declined", "label": "owner denies", "variant": "security" },
+    { "id": "held-expired", "from": "held", "to": "expired", "label": "after 24 h" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Modes", "items": ["auto: no asking; auto_edits: asks before execute tools", "ask: asks before every change; plan: changes are refused", "shahid_submit is asked in every mode"] },
+    { "dot": "cyan", "title": "Unattended runs", "items": ["Watchers, schedules, triggers and the queue bind a deferred context", "Sandboxed runs and private project edits go ahead", "Other changes are held, decided once via /api/chat/held/{id}"] },
+    { "dot": "rose", "title": "Receipts", "items": ["Every outcome writes a Sakk receipt: ran, held, declined, refused", "Held decisions carry the fingerprint the person was shown", "The receipt holds keyed digests, never the content"] }
+  ]
+}

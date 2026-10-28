@@ -8,7 +8,7 @@ No claim MIZAN can prove false reaches the user. Muhasaba reviews answers once a
 | Quran or hadith quoted with a reference | Compared with the text MIZAN reads from its authentic source (Arabic folded across scripts) | The altered quote is replaced by the source text, with the reference |
 | An action claimed with no receipt ("I ran the code") | The Isnad ledger grades it mawdu' (fabricated) | The sentence is removed |
 | A citation to a source that does not exist (`[7]` with 3 sources) | The Isnad ledger | The marker is removed |
-| A link MIZAN never found | Opened (public addresses only) | Removed when the page is gone (404/410) or the host does not exist; never judged when MIZAN is offline |
+| A link MIZAN never found | Opened (public addresses only; up to five links, each redirect hop checked, at most five hops) | Removed when the page is gone (404/410) or the host does not exist; never judged when MIZAN is offline |
 
 Answers MIZAN itself verified (computed, quoted from source, run and checked) skip the gate: they are already established.
 

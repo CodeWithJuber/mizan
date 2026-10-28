@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MIZAN runtime: MIZAN directs, the language model speaks",
+    "output": "docs/diagrams/runtime.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/CodeWithJuber/mizan",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "5cc11dc1f626d5f785f8ab9254aa8c05ec060d36"
+    }
+  },
+  "components": [
+    { "id": "person", "type": "external", "label": "Person", "sublabel": "the account owner", "pos": [320, 40], "size": [180, 64] },
+    { "id": "web", "type": "frontend", "label": "Web app", "sublabel": "React PWA · SSE reader", "pos": [320, 170], "size": [180, 64],
+      "sources": [ { "path": "frontend/src/App.tsx", "line": 2190, "end_line": 2200, "label": "POST chat/stream" } ] },
+    { "id": "bab", "type": "backend", "label": "Bab gateway", "sublabel": "Telegram · email · WhatsApp", "pos": [40, 300], "size": [180, 64],
+      "sources": [ { "path": "backend/api/main.py", "line": 3525, "end_line": 3530, "label": "_bab_turn" }, { "path": "backend/gateway/telegram.py", "line": 97, "end_line": 97, "label": "TelegramBot" } ] },
+    { "id": "api", "type": "security", "label": "API gate", "sublabel": "auth · Wali limits · roles", "pos": [320, 300], "size": [180, 64],
+      "sources": [ { "path": "backend/api/main.py", "line": 712, "end_line": 716, "label": "credentials_first" }, { "path": "backend/api/main.py", "line": 589, "end_line": 589, "label": "enforce_api_access" }, { "path": "backend/api/main.py", "line": 1071, "end_line": 1071, "label": "30 chat messages/min" } ] },
+    { "id": "agent", "type": "backend", "label": "BaseAgent.execute", "sublabel": "own run copy · Amanah bind", "pos": [320, 430], "size": [180, 64],
+      "sources": [ { "path": "backend/agents/base.py", "line": 2854, "end_line": 2860, "label": "execute" }, { "path": "backend/agents/base.py", "line": 3017, "end_line": 3053, "label": "Amanah, Nazm, Isnad, Sidq" }, { "path": "backend/agents/base.py", "line": 3316, "end_line": 3343, "label": "Tadbir first, then words" } ] },
+    { "id": "checks", "type": "security", "label": "Answer checks", "sublabel": "Sidq · Isnad · Ahl al-Dhikr", "tag": "unverified answers", "pos": [600, 430], "size": [180, 64],
+      "sources": [ { "path": "backend/tadbir/sidq.py", "line": 47, "end_line": 47, "label": "Sidq gate" }, { "path": "backend/tadbir/isnad.py", "line": 127, "end_line": 127, "label": "Isnad ledger" }, { "path": "backend/tadbir/ahl_dhikr.py", "line": 658, "end_line": 658, "label": "consult" } ] },
+    { "id": "sources", "type": "external", "label": "Outside sources", "sublabel": "Wikipedia · web search", "pos": [880, 430], "size": [180, 64],
+      "sources": [ { "path": "backend/tadbir/ahl_dhikr.py", "line": 658, "end_line": 680, "label": "consult" } ] },
+    { "id": "tadbir", "type": "backend", "label": "Tadbir", "sublabel": "plan → act → verify → express", "pos": [320, 560], "size": [180, 64],
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 1, "end_line": 16, "label": "Tadbir" }, { "path": "backend/tadbir/engine.py", "line": 170, "end_line": 372, "label": "handle" } ] },
+    { "id": "fahm", "type": "backend", "label": "Fahm", "sublabel": "Qasd · Lughah · Tamyiz MAP", "pos": [40, 560], "size": [180, 64],
+      "sources": [ { "path": "backend/tadbir/fahm.py", "line": 520, "end_line": 520, "label": "understand" }, { "path": "backend/tadbir/qasd.py", "line": 151, "end_line": 151, "label": "Qasd posterior" }, { "path": "backend/core/tamyiz.py", "line": 138, "end_line": 138, "label": "Tamyiz" } ] },
+    { "id": "model", "type": "cloud", "label": "Lisan · language model", "sublabel": "Wazn picks · Iqtisad admits", "pos": [880, 560], "size": [180, 64],
+      "sources": [ { "path": "backend/tadbir/lisan.py", "line": 139, "end_line": 172, "label": "Lisan.ask" }, { "path": "backend/tadbir/wazn.py", "line": 63, "end_line": 63, "label": "Wazn.choose" }, { "path": "backend/providers.py", "line": 196, "end_line": 196, "label": "Iqtisad admit" } ] },
+    { "id": "gate", "type": "security", "label": "_execute_tool_safe", "sublabel": "Izn · approvals · Hudud", "pos": [320, 690], "size": [180, 64],
+      "sources": [ { "path": "backend/agents/base.py", "line": 2242, "end_line": 2257, "label": "every tool, then receipt" }, { "path": "backend/security/approvals.py", "line": 200, "end_line": 200, "label": "request_approval" }, { "path": "backend/tadbir/hudud.py", "line": 75, "end_line": 75, "label": "Hudud guard" } ] },
+    { "id": "memory", "type": "database", "label": "Memory", "sublabel": "Dhikr · Daftar · Tadhkir", "pos": [40, 690], "size": [180, 64],
+      "sources": [ { "path": "backend/memory/dhikr.py", "line": 627, "end_line": 627, "label": "recall" }, { "path": "backend/memory/tadhkir.py", "line": 66, "end_line": 66, "label": "FSRS strength" }, { "path": "backend/agents/base.py", "line": 580, "end_line": 580, "label": "recall_memory tool" } ] },
+    { "id": "sakk", "type": "database", "label": "Sakk receipts", "sublabel": "hash chain · Ed25519", "pos": [600, 690], "size": [180, 64],
+      "sources": [ { "path": "backend/security/sakk.py", "line": 456, "end_line": 472, "label": "record_tool" } ] },
+    { "id": "runner", "type": "cloud", "label": "Sandbox runner", "sublabel": "isolated containers", "pos": [320, 820], "size": [180, 64],
+      "sources": [ { "path": "backend/workspace/execution.py", "line": 1, "end_line": 20, "label": "no local shell" }, { "path": "backend/workspace/execution.py", "line": 54, "end_line": 54, "label": "run_project" } ] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "MIZAN backend process", "wraps": ["bab", "api", "agent", "checks", "tadbir", "fahm", "gate", "memory", "sakk"] }
+  ],
+  "connections": [
+    { "id": "person-web", "from": "person", "to": "web", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "person-bab", "from": "person", "to": "bab", "label": "linked accounts" },
+    { "id": "web-api", "from": "web", "to": "api", "label": "POST /api/chat/stream", "variant": "emphasis" },
+    { "id": "api-agent", "from": "api", "to": "agent", "label": "execute()", "variant": "emphasis" },
+    { "id": "bab-agent", "from": "bab", "to": "agent", "label": "same turn" },
+    { "id": "agent-tadbir", "from": "agent", "to": "tadbir", "label": "handle()", "variant": "emphasis" },
+    { "id": "tadbir-fahm", "from": "tadbir", "to": "fahm", "label": "understand()" },
+    { "id": "tadbir-model", "from": "tadbir", "to": "model", "label": "words, code" },
+    { "id": "tadbir-gate", "from": "tadbir", "to": "gate", "label": "every tool", "variant": "security" },
+    { "id": "gate-memory", "from": "gate", "to": "memory", "label": "memory tools" },
+    { "id": "gate-sakk", "from": "gate", "to": "sakk", "label": "receipt", "variant": "security" },
+    { "id": "gate-runner", "from": "gate", "to": "runner", "label": "run code" },
+    { "id": "agent-checks", "from": "agent", "to": "checks", "label": "unverified" },
+    { "id": "checks-sources", "from": "checks", "to": "sources", "label": "ask claims", "variant": "dashed" },
+    { "id": "checks-web", "from": "checks", "to": "web", "label": "SSE answer + grades" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Who decides", "items": ["Fahm reads the request by evidence (naive Bayes posteriors, MAP); no word lists", "Tadbir plans and runs every tool itself; the model never controls a tool", "Unrecognised requests: the agent answers in words with zero tools"] },
+    { "dot": "emerald", "title": "What reaches the person", "items": ["MIZAN-verified results are marked verified_by_mizan", "Other answers pass Sidq (fix arithmetic, quotes, links) and Isnad grades", "Ahl al-Dhikr asks sources about factual claims and reports under the answer"] },
+    { "dot": "rose", "title": "Limits and trust", "items": ["Approvals hold changing actions; unattended runs defer them", "Hudud limits writes of programs MIZAN runs", "Iqtisad admits every paid model call before it is sent"] }
+  ]
+}

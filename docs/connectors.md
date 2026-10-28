@@ -49,8 +49,17 @@ reconnect. The agent never waits on a browser window.
   - Tools marked `readOnlyHint` run without approval prompts and stay available
     in plan mode.
   - Other tools follow the chat's permission mode (see `agentic-coding.md`).
-- **Ownership.** Servers are per user (`$MIZAN_DATA_DIR/connectors/<user>.json`).
-  One user's servers and tools are never visible to another.
+- **Pinning (Amanah).** Each tool is pinned to the description and input schema
+  first accepted. A tool whose description or schema later changes, or whose
+  first description carries instructions aimed at the AI, is held back from the
+  model and listed with what Amanah found, until you trust it
+  (`POST /{id}/tools/{tool}/trust`). Tool results are outside text: Amanah
+  checks them like a web page.
+- **Ownership.** Servers are per user
+  (`$MIZAN_DATA_DIR/connectors/<SHA-256 of the user id>.json`). One user's
+  servers and tools are never visible to another.
+- **Limits.** 20 servers per user, 10 open connections per user, 300 tools per
+  server, 120 seconds per call; a result longer than 20,000 characters is cut.
 
 ## Local (stdio) servers
 
@@ -92,5 +101,6 @@ All routes are under `/api/connectors`. Writes need the editor role.
 | `POST /` | add `{name, transport, url, headers}` or `{name, transport: "stdio", command, args, env}` |
 | `GET` / `PATCH` / `DELETE /{id}` | read, update (name, enabled, headers, env, `disabled_tools`), remove |
 | `POST /{id}/connect` | connect; may return `authorization_required` with `authorization_url` |
+| `POST /{id}/tools/{tool}/trust` | accept a tool Amanah held, as it is now |
 | `POST /{id}/disconnect` | disconnect |
 | `GET /oauth/callback` | browser return from the authorization server |

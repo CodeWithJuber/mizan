@@ -69,7 +69,8 @@ python -m ruh_model.train --stage alaqah --resume-from ruh_model/checkpoints/epo
 
 # === Option B: Full real-data training from HuggingFace ===
 
-# 1. Train Stage 1 with 100K real samples (Quran, Hadith, Wikipedia, OPUS, Tashkeela)
+# 1. Train Stage 1 with 100K real samples (defaults: verified Quran text + Arabic Wikipedia;
+#    Hadith, OPUS and morphology need explicit RUH_DATA_SOURCES)
 python -m ruh_model.train_full --stage nutfah --samples 100000 --device auto
 
 # 2. Run ALL 4 stages with 500K samples (full curriculum)
@@ -127,7 +128,7 @@ Input Text
 ┌─────────────────────────────┐
 │   Block 0: SamBasarDual     │  Dual attention (hearing + sight)
 │   ├ Sam' (سمع): causal      │  Sequential/temporal processing
-│   ├ Basar (بصر): bidirect.  │  Structural/pattern recognition
+│   ├ Basar (بصر): causal     │  Structural/pattern recognition
 │   └ Fuad (فؤاد): gate       │  Learned fusion of Sam' + Basar
 └──────────────┬──────────────┘
                │
@@ -161,7 +162,7 @@ Input Text
 | Root-space tokenization | Arabic morphology is inherently root-based; BPE fragments roots |
 | Factored embedding | Root × Pattern decomposition gives ~7.8× embedding-param compression (measured: 2,048,000 ÷ 262,400 params) |
 | Cardiac oscillation | Bio-inspired rhythmic attention modulation (Qalb = heart) |
-| Dual first layer | Separate causal (Sam'/hearing) and bidirectional (Basar/sight) pathways |
+| Dual first layer | Two causal pathways: sequential (Sam'/hearing) and structural (Basar/sight) |
 | 5-component loss | Beyond CE: calibration, consistency, fitrah (entropy), hisbah (accountability) |
 | Curriculum training | 4 developmental stages inspired by Quran 23:12-14 |
 
@@ -172,16 +173,19 @@ Input Text
 ### Prerequisites
 
 - Python 3.11+
-- PyTorch 2.0+ (CPU or CUDA)
+- PyTorch (CPU or CUDA; the `ml` extra pins `torch>=2.14.1,<2.15`)
 - PyYAML
 
 ### Install Dependencies
 
 ```bash
 # From mizan project root
+pip install -e ".[ml]"     # torch, numpy, safetensors, datasets, huggingface-hub, ...
+
+# Or
 pip install torch pyyaml
 
-# Or use the project's requirements
+# Or use the project's requirements (includes torch)
 pip install -r backend/requirements.txt
 ```
 
@@ -214,6 +218,7 @@ python -m ruh_model.train [OPTIONS]
 | `--resume-from` | `None` | Path to a checkpoint directory to resume from |
 | `--log-every` | `10` | Log loss every N training steps |
 | `--verbose` | `False` | Enable debug-level logging |
+| `--json-progress` | `False` | Emit JSON progress lines to stdout (for API integration) |
 
 ### Example Commands
 
@@ -257,18 +262,18 @@ This creates two files in `ruh_model/data/training/`:
 | `seed_roots.jsonl` | Template-expanded sentences from root derivatives |
 | `seed_concepts.jsonl` | Concept-map based cross-lingual samples |
 
-Each line is a JSON object:
+Each line is a JSON object with a single `text` field:
 
 ```json
-{"text": "The concept of knowledge is fundamental to theology", "lang": "en", "domain": "theology"}
-{"text": "علم مشتق من الجذر ع-ل-م", "lang": "ar", "domain": "theology"}
+{"text": "أثر نور"}
+{"text": "طلب نَفْس"}
+{"text": "trust وكل"}
 ```
 
-**Template categories** (distribution: 50% English, 25% Arabic, 25% cross-lingual bridge):
+**Templates** (`ruh_model/data/generator.py`):
 
-- **English**: `"The concept of {derivative_en} is fundamental to {domain}"`
-- **Arabic**: `"{derivative_ar} مشتق من الجذر {root}"`
-- **Bridge**: `"The Arabic word {derivative_ar} means {derivative_en} and comes from the root {root}"`
+- **`seed_roots.jsonl`**: for each root, `samples_per_root` phrases from a randomly chosen word (the root or one of its derivatives) in a short template: Arabic templates such as `"{w} نور"`, `"هذا {w}"`, `"طلب {w}"` when the word is Arabic, English templates such as `"{w} is light"`, `"seek {w}"` otherwise.
+- **`seed_concepts.jsonl`**: one `"{english} {arabic_root}"` line per `CONCEPT_MAP` entry.
 
 #### Programmatic Data Generation
 
@@ -316,6 +321,7 @@ python -m ruh_model.train --stage khalq_akhar --resume-from ruh_model/checkpoint
 Each epoch saves a checkpoint to `ruh_model/checkpoints/epoch_N/` containing:
 - `config.json` — serialized `RuhConfig`
 - `model.pt` — PyTorch state dict
+- `vocab.json`, `tokenizer.json` — the Bayan vocabulary and tokenizer version
 
 #### Programmatic Curriculum Access
 
@@ -361,6 +367,8 @@ python -m ruh_model.train --config my_config.yaml --data-dir my_data/
 
 - `ruh_model/configs/nutfah.yaml` — Stage 1 defaults
 - `ruh_model/configs/alaqah.yaml` — Stage 2 defaults
+- `ruh_model/configs/mudghah.yaml` — Stage 3 defaults
+- `ruh_model/configs/khalq_akhar.yaml` — Stage 4 defaults
 
 Required YAML keys: `name`, `max_seq_len`, `lr`, `epochs`, `batch_size`.
 
@@ -370,11 +378,11 @@ The CLI reads bounded batches from pinned public Parquet corpora using synchrono
 
 | Domain | Pinned dataset | Text column | Default weight |
 |---|---|---|---|
-| Quran | `Buraaq/quran-md-ayahs` (first reciter shard) | `ayah_ar` | 0.30 |
-| Hadith | `arbml/Hadith` | `Text` | 0.20 |
-| Arabic Wikipedia | `wikimedia/wikipedia`, `20231101.ar` | `text` | 0.25 |
+| Quran | verified Tanzil Uthmani Hafs (`kind: verified_quran`, cross-checked against KFGQPC Hafs; `data/quranic.py`) | `text` | 0.30 |
+| Hadith | none by default | — | 0 |
+| Arabic Wikipedia | `wikimedia/wikipedia`, `20231101.ar` | `text` | 0.70 |
 
-Exact revisions are recorded in `data/pipeline.py`. OPUS and morphology have weight zero until explicit sources are configured. To add sources, set `RUH_DATA_SOURCES` to a JSON file mapping domain names to `path`, immutable `revision`, optional `name`, `split`, `column`, and `lang`; adjust the corresponding CLI weights. Curate the corpus, check licenses, remove duplicates, and separate held-out examples before a large training run. Corpus stages do not automatically create grammar or instruction examples.
+Exact revisions are recorded in `data/pipeline.py` (`DEFAULT_SOURCES`). Hadith, OPUS and morphology have weight zero until explicit sources are configured. To add sources, set `RUH_DATA_SOURCES` to a JSON file mapping domain names to `path`, immutable `revision`, optional `name`, `split`, `column`, and `lang`; adjust the corresponding CLI weights. Hadith and a custom Quran source also need `license`, `attribution` and `training_permission: true` (custom Quran also `edition` and `verse_columns`), and religious text requires the Bayan v2 tokenizer (see `docs/quranic_training_paths.md`). Curate the corpus, check licenses, remove duplicates, and separate held-out examples before a large training run. Corpus stages do not automatically create grammar or instruction examples.
 
 ```bash
 # Bounded preparation smoke test; no GPU or training job is started.
@@ -396,7 +404,7 @@ from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.data.pipeline import RealDataPipeline
 
 pipeline = RealDataPipeline(BayanTokenizer(version=2), max_seq_len=512,
-                            mixing_ratios={"quran": 0.3, "hadith": 0.2, "arabic_wiki": 0.25})
+                            mixing_ratios={"quran": 0.3, "arabic_wiki": 0.7})
 for batch in pipeline.get_dataloader(max_samples=5000, batch_size=8):
     print(batch["root_ids"].shape)
     break
@@ -435,13 +443,13 @@ tok = BayanTokenizer()
 # Encode text to (root_id, pattern_id) tuples
 tokens = tok.encode("Knowledge is the light of the soul")
 print(tokens)
-# [(1, 0), (42, 3), (0, 10), (0, 10), (87, 3), (0, 10), (0, 10), (65, 3), (2, 0)]
+# [(1, 0), (32, 7), (0, 15), (0, 15), (54, 7), (0, 15), (0, 15), (53, 7), (2, 0)]
 #  BOS      knowledge  is(stop)  the(stop)  light     of(stop)  the(stop) soul      EOS
 
 # Decode back to approximate text
 text = tok.decode(tokens)
 print(text)
-# "knowledge light soul"  (stopwords dropped, best-effort reconstruction)
+# "عِلْم نَارَ نَفَسَ"  (v1: stopwords dropped; each root rendered as an Arabic derivative, best-effort)
 
 # Batch encoding
 texts = ["The pen is mightier than the sword", "العلم نور"]
@@ -539,7 +547,7 @@ with torch.no_grad():
         temperature=0.8,          # Lower = more deterministic
         default_pattern_id=1,     # Pattern ID for generated tokens
     )
-print(output.shape)  # (1, 54) — original 4 + 50 generated
+print(output.shape)  # at most (1, 54) — original 4 + up to 50 generated (stops once every row emits EOS)
 
 # Forward pass (get logits + optional loss)
 result = model(root_ids, pattern_ids)
@@ -568,8 +576,10 @@ model = RuhModel(RuhConfig())
 # Save to directory
 model.save_pretrained("my_model/v1")
 # Creates:
-#   my_model/v1/config.json   (all RuhConfig fields)
-#   my_model/v1/model.pt      (PyTorch state dict)
+#   my_model/v1/config.json     (all RuhConfig fields)
+#   my_model/v1/model.pt        (PyTorch state dict)
+#   my_model/v1/vocab.json      (Bayan vocabulary)
+#   my_model/v1/tokenizer.json  ({"version": 1 | 2})
 
 # Load from directory
 loaded = RuhModel.from_pretrained("my_model/v1")
@@ -580,8 +590,10 @@ print(loaded.count_parameters())
 
 ```
 my_model/v1/
-├── config.json    # {"d_model": 512, "n_heads": 8, ...}
-└── model.pt       # torch state_dict
+├── config.json     # {"d_model": 512, "n_heads": 8, ...}
+├── model.pt        # torch state_dict
+├── vocab.json      # Bayan vocabulary
+└── tokenizer.json  # {"version": 1}
 ```
 
 ---
@@ -605,6 +617,9 @@ config = RuhConfig(
 
     # --- Vocabulary ---
     n_roots=4000,          # Root vocabulary size (IDs 0-3999)
+    tokenizer_version=1,   # Bayan version (1 = legacy roots, 2 = lossless bytes)
+    use_lubb=False,        # Add a confidence head feeding calibration/hisbah
+    moe_aux_weight=0.01,   # Weight of the Shura MoE load-balancing loss
     n_patterns=200,        # Morphological patterns
 
     # --- Sequence ---
@@ -723,7 +738,7 @@ Includes RoPE positional encoding and supports optional `root_group_mask` for fu
 The first transformer block uses **SamBasarDual** instead of plain QalbAttention:
 
 - **Sam'** (سمع, "Hearing"): Causal/sequential attention — processes information temporally like hearing spoken language. Uses QalbAttention with a causal mask.
-- **Basar** (بصر, "Sight"): Bidirectional attention — processes structural patterns like reading written text. Uses QalbAttention without masking.
+- **Basar** (بصر, "Sight"): Structural attention over what has unfolded — each position attends to itself and earlier positions. Uses QalbAttention with a causal mask (it was bidirectional before the causality fix, which leaked future tokens into autoregressive training).
 - **Fuad** (فؤاد, "Heart/Core"): A learned sigmoid gate that fuses the two pathways:
 
 $$\text{output} = \sigma(g) \cdot \text{Sam'} + (1 - \sigma(g)) \cdot \text{Basar}$$
@@ -755,7 +770,7 @@ Configured via `moe_interval`: when set to 2, every other block (after block 0) 
 | Yaqin | 3-class softmax | Certainty level: Ilm al-Yaqin / Ayn al-Yaqin / Haqq al-Yaqin |
 | Quality | 2D (coherence, relevance) | Self-assessed output quality |
 
-The confidence output feeds into the Mizan loss calibration and hisbah terms.
+`RuhModel` does not instantiate `LubbMetacognition`. With `RuhConfig(use_lubb=True)` (default `False`) it adds its own sigmoid confidence head over the mean-pooled hidden state; that confidence feeds the Mizan loss calibration and hisbah terms.
 
 ### Adaptive Depth
 
@@ -767,7 +782,7 @@ halt_prob = sigmoid(gate(hidden))  # (B, 1)
 # When cumulative halt > threshold, skip remaining layers
 ```
 
-Includes regularization loss that encourages the model to use fewer layers when the input is simple.
+Includes regularization loss that encourages the model to use fewer layers when the input is simple. `AdaptiveDepthGate` (`layers/adaptive_depth.py`) is not used by `RuhModel`; `adaptive_depth_threshold` is not read by the model.
 
 ---
 
@@ -791,8 +806,13 @@ python -m pytest ruh_model/tests/ --cov=ruh_model --cov-report=term-missing
 | Test File | Covers |
 |-----------|--------|
 | `test_bayan.py` | BayanTokenizer encode/decode/analyze, Arabic & English processing, stopwords, batch encoding, edge cases |
-| `test_ism.py` | ISMEmbedding forward/backward, output projection weight tying, shape validation, gradient flow |
-| `conftest.py` | Shared fixtures: `tiny_config` (small RuhConfig for fast tests), `tokenizer`, `sample_text` |
+| `test_bayan_public_api.py` | Torch-free Bayan public API facade (loaded by file path) |
+| `test_ism.py` | ISMEmbedding, RoPE and RMSNorm |
+| `test_causality.py`, `test_generation_eos_batch.py` | Prefix invariance; batch rows stop independently at EOS |
+| `test_quranic_paths.py`, `test_quranic_pipeline.py` | Quran text integrity, annotation, split leakage; default Quran selection and explicit source permission |
+| `test_sequence_training.py`, `test_training_acceleration.py`, `test_training_controller.py`, `test_review_repairs.py` | Lossless sequence training, sparse MoE / mixed precision, controller cleanup, checkpoint-compatibility regressions |
+| `test_eval_harness.py`, `test_eval_smoke.py`, `test_review_pipeline.py`, `test_sense.py`, `test_reader.py`, `test_dialect.py`, `test_scaffolds.py` | Eval harness, scholar-review queue, sense inventory, RootSpace Reader, dialect normalization, gated scaffolds |
+| `conftest.py` | Shared fixtures: `sample_config` (small RuhConfig for fast tests), `default_vocab` |
 
 ---
 
@@ -800,16 +820,17 @@ python -m pytest ruh_model/tests/ --cov=ruh_model --cov-report=term-missing
 
 ```
 ruh_model/
-├── __init__.py              # Package entry: exports RuhConfig, RuhModel (v0.1.0)
+├── __init__.py              # Package entry: exports RuhConfig, RuhModel (lazy torch import; v0.1.0)
 ├── config.py                # RuhConfig dataclass (all hyperparameters)
 ├── model.py                 # RuhModel: full transformer assembly
 ├── train.py                 # CLI: seed-data training (python -m ruh_model.train)
 ├── train_full.py            # CLI: real-data training (python -m ruh_model.train_full)
+├── train_sequence.py        # CLI: bounded, evaluated Bayan v2 sequence training
 │
 ├── attention/
 │   ├── __init__.py
 │   ├── qalb.py              # QalbAttention: cardiac-oscillation MHA + RoPE
-│   └── sam_basar.py         # SamBasarDual: causal + bidirectional fusion
+│   └── sam_basar.py         # SamBasarDual: two causal branches (Sam' + Basar), gated fusion
 │
 ├── embedding/
 │   ├── __init__.py
@@ -821,8 +842,8 @@ ruh_model/
 │   ├── transformer_block.py # RuhBlock: pre-norm residual (attn + FFN)
 │   ├── ism_ffn.py           # ISMFFN: SwiGLU feed-forward
 │   ├── shura_moe.py         # ShuraMoE: 4 domain experts, top-2 routing
-│   ├── lubb.py              # LubbMetacognition: confidence/yaqin/quality heads
-│   └── adaptive_depth.py    # AdaptiveDepthGate: early exit
+│   ├── lubb.py              # LubbMetacognition: confidence/yaqin/quality heads (not used by RuhModel)
+│   └── adaptive_depth.py    # AdaptiveDepthGate: early exit (not used by RuhModel)
 │
 ├── loss/
 │   ├── __init__.py
@@ -830,12 +851,15 @@ ruh_model/
 │
 ├── tokenizer/
 │   ├── __init__.py
-│   ├── bayan.py             # BayanTokenizer: text → (root_id, pattern_id)
+│   ├── bayan.py             # BayanTokenizer: text → (root_id, pattern_id); v1 legacy, v2 lossless
+│   ├── public_api.py        # Torch-free Bayan facade (see tokenizer/README.md)
+│   ├── conversation.py      # Conversation serialization shared by training and inference
 │   ├── morphology.py        # ArabicMorphAnalyzer: suffix stripping + root extraction
 │   ├── english_bridge.py    # EnglishRootBridge: concept-map + stemmer fallback
 │   ├── q28_articulatory.py  # Q28: 28 Arabic letters as phonetic basis (6D vectors)
 │   ├── root_vocab.py        # RootVocab: root↔ID and pattern↔ID mappings
-│   └── tasrif_ops.py        # TasrifEngine: 15 morphophonemic operators
+│   ├── tasrif_ops.py        # TasrifEngine: 15 morphophonemic operators
+│   └── legacy-v1.json       # Frozen Bayan v1 compatibility vocabulary
 │
 ├── training/
 │   ├── __init__.py
@@ -846,32 +870,32 @@ ruh_model/
 ├── data/
 │   ├── __init__.py
 │   ├── dataset.py           # RuhDataset: JSONL → tokenized samples
-│   ├── streaming_dataset.py # StreamingRuhDataset: HuggingFace → tokenized (no RAM)
 │   ├── collator.py          # RuhCollator: right-padding for batches
 │   ├── generator.py         # SeedDataGenerator: template-based data synthesis
-│   ├── pipeline.py          # RealDataPipeline: multi-loader weighted streaming
-│   └── loaders/
-│       ├── __init__.py
-│       ├── quran_loader.py      # HuggingFace / local Quran text loader
-│       ├── hadith_loader.py     # Hadith collection loader
-│       ├── arabic_wiki_loader.py # Arabic Wikipedia loader
-│       ├── opus_loader.py       # OPUS parallel corpora loader
-│       └── morpho_loader.py     # Tashkeela morphological data loader
+│   ├── pipeline.py          # RealDataPipeline: pinned Parquet sources, weighted streaming
+│   ├── quranic.py           # Pinned Quranic editions and attributed training paths
+│   ├── quranic_evaluation.py # Quran quotation, citation and annotation evaluation
+│   ├── sequence.py          # Lossless sentence windows and assistant targets (Bayan v2)
+│   └── chat_sources.py      # Pinned, licensed public conversation data
 │
 ├── configs/
 │   ├── nutfah.yaml          # Stage 1 training config
 │   ├── alaqah.yaml          # Stage 2 training config
 │   ├── mudghah.yaml         # Stage 3 training config
 │   ├── khalq_akhar.yaml     # Stage 4 training config
-│   └── full_real.yaml       # Reference config for large-scale real-data runs
+│   └── full_real.yaml       # Reference mixing notes; not read by either CLI (train_full has no --config)
 │
-├── tests/
-│   ├── conftest.py          # Shared test fixtures
-│   ├── test_bayan.py        # Tokenizer tests
-│   └── test_ism.py          # Embedding tests
+├── benchmarks/              # qcsmp_adjudicated.py: Q-CSMP v2 → adjudicated WSD benchmark harness
+├── eval/                    # Eval harnesses (beta): Q-CSMP, morphology vs CAMeL, dialect, adjudication
+├── sense/                   # Torch-free sense inventory, disambiguation, provenance receipts
+├── service/                 # analyze.py: deterministic morphology analysis service
+├── reader/                  # RootSpace Reader backend (annotator, offline store)
+├── review/                  # Scholar-review queue (beta)
+├── dialect/                 # Dialect → root normalization
+├── tajwid/                  # Tajwid rules engine + interface scaffold
+├── export/                  # onnx.py: ONNX / int8 export scaffold (beta, unverified)
 │
-└── benchmarks/
-    └── __init__.py          # Placeholder for future benchmarks
+└── tests/                   # conftest.py + test_*.py (see Testing)
 ```
 
 ---
@@ -882,20 +906,29 @@ Ruh is integrated into the Mizan backend. The frontend can interact with the mod
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/ruh/status` | GET | Model status (enabled, device, loaded) |
-| `/api/ruh/{agent_id}` | GET | Agent-specific Ruh model info |
+| `/api/ruh/status` | GET | Model status (enabled, model path, device, loaded, remote configured) |
+| `/api/ruh/generate` | POST | Generate with the local Ruh model (needs `RUH_ENABLED=true`) |
+| `/api/ruh/tokenize` | POST | Bayan tokenization and analysis |
+| `/api/ruh/tasrif-demo` | POST | Tasrif morphophonemic operators on articulatory vectors |
+| `/api/ruh/checkpoints` | GET | Checkpoints under `ruh_model/checkpoints` |
+| `/api/ruh/data-stats` | GET | Training data composition under `ruh_model/data/training` |
+| `/api/ruh/architecture` | GET | Architecture info and parameter counts |
+| `/api/ruh/{agent_id}` | GET | The agent's Ruh *energy* state (`backend/core/ruh_engine.py`), not the model |
+| `/api/training/status`, `/history`, `/start`, `/stop` | GET/POST | Training runs (`start` needs `RUH_ENABLED=true`) |
 
-**Backend code path:** `backend/api/main.py` → `backend/core/ruh_engine.py`
+**Backend code path:** `backend/providers.py` (`LLM_PROVIDER`/provider `ruh`) → `backend/providers_ruh.py` (`RuhModelProvider`); model `ruh-remote` uses `backend/providers_ruh_remote.py` (`RUNPOD_ENDPOINT_ID`, `RUNPOD_API_KEY`).
 
 When properly configured with a trained model path:
 
 ```bash
 # In .env
+RUH_ENABLED=true
+# Empty RUH_MODEL_PATH falls back to ruh_model/checkpoints/latest when it holds a model
 RUH_MODEL_PATH=ruh_model/checkpoints/epoch_4
 RUH_DEVICE=cpu  # or cuda
 ```
 
-The model loads on startup and provides root-space inference for the cognitive architecture.
+The provider loads the checkpoint lazily on its first request and provides root-space inference for the cognitive architecture.
 
 ---
 
@@ -910,7 +943,7 @@ Every component is named after a Quranic concept. Here's the glossary:
 | **ISM** | اسم | Name | Factored embedding (names = roots + patterns) |
 | **Qalb** | قلب | Heart | Cardiac-oscillation attention |
 | **Sam'** | سمع | Hearing | Causal/sequential attention path |
-| **Basar** | بصر | Sight | Bidirectional/structural attention path |
+| **Basar** | بصر | Sight | Causal structural attention path |
 | **Fuad** | فؤاد | Inner Heart | Fusion gate (Quran 67:23) |
 | **Shura** | شورى | Consultation | Mixture of Experts (Quran 42:38) |
 | **Lubb** | لُبّ | Core/Essence | Metacognition heads |
@@ -925,4 +958,4 @@ Every component is named after a Quranic concept. Here's the glossary:
 
 ## License
 
-Part of the [Mizan](https://github.com/jubershaikh/mizan) project. See the root `LICENSE` file.
+Part of the [Mizan](https://github.com/CodeWithJuber/mizan) project. See the root `LICENSE` file.

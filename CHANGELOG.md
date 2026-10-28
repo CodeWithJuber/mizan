@@ -8,10 +8,33 @@ All notable changes to this project will be documented in this file.
 - Owned inference provider, authenticated review/retraction ledger, and separate OpenRouter support drafts.
 - Corrected causal byte reply model and finite/existential context reasoning from the preserved research archive.
 - Pinned full research importer, local source search, provenance inventory and research invariant CI checks.
+- Tadbir: MIZAN's own orchestration. Fahm understands the request, then MIZAN plans, runs every tool through one gate, verifies and expresses the result. The language model (Lisan) is used only for language; in the default `mizan` mode it never controls a tool. Majlis routes work between agents by Thompson sampling.
+- Fahm by evidence: language and intent from fitted naive Bayes models (Tamyiz, Lughah, Qasd) replace word lists and cue regexes. The fits include a length exponent and log(1+n) counts (#125, #144).
+- Truth and provenance:
+  - Isnad grades each claim; Sidq is the truth gate; Ahl al-Dhikr asks sources (#137); Nazm checks the answer's form (#143).
+  - Tathabbut cross-checks programs; Hifz reuses checked ones; Muhasaba re-checks answers daily.
+  - Hadith-source and Quran-word search (Fihris) and morphology (Sarf).
+- Safety and the user's data:
+  - per-chat approvals, and held actions for unattended runs;
+  - Amanah prompt-injection containment, by evidence;
+  - Hudud write limits;
+  - Sakk signed receipts and the public reliability scorecard;
+  - Iqtisad hard spending limits (#127);
+  - Mahw true forget (#128);
+  - the Daftar ledger.
+- Channels and senses: Bab for Telegram (#130), email and WhatsApp (#141), and Web Push; Sama' voice input (#132); Basar images in chat; Muraqabah watchers held during salah.
+- Work: sandboxed coding workspaces and sessions, the Shahid sandboxed browser, MCP connectors, Agent Skills, and Hugging Face read on the server (#123).
+- Imtihan AGI test: 194 tasks across the base and MIZAN arms, agentic tasks, ARC-style games, and the Quwa ten-faculty profile with human-panel invite links (#143, #145). Debug mode compares one message across both arms.
+- Learning with no weights: Ta'allum, Qasd overlays, Tajriba, Tajdid (paired e-value, #143), Wazn, Tadhkir (FSRS, #143) and Ta'lim teaching (#142).
 
 ### Changed
 - New Compose setups select owned inference; hosted model overrides and mem0 calls are disabled in owned mode.
 - Own model drafts are excluded from the legacy training exporter; useful general chat and automatic neural learning remain unverified.
+- Documentation brought up to date with the code:
+  - README, `docs/architecture.md` and the docs site rewritten;
+  - every subsystem document checked against its module;
+  - interactive Archify diagrams sourced from the code (`docs/diagrams/*.html`);
+  - diagram-design SVGs for the README, in light and dark.
 
 ## [v3.3.0] — 2026-10-01
 

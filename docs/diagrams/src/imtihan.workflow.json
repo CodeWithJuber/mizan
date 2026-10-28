@@ -1,0 +1,349 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Imtihan: the same items to the base model and to MIZAN",
+    "output": "docs/diagrams/imtihan.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/CodeWithJuber/mizan",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "5cc11dc1f626d5f785f8ab9254aa8c05ec060d36"
+    }
+  },
+  "lanes": [
+    {
+      "id": "operator",
+      "label": "Administrator"
+    },
+    {
+      "id": "runner",
+      "label": "Runner (stateless)"
+    },
+    {
+      "id": "base",
+      "label": "Base arm"
+    },
+    {
+      "id": "mizan",
+      "label": "MIZAN arm"
+    },
+    {
+      "id": "scoring",
+      "label": "Scoring and report"
+    },
+    {
+      "id": "people",
+      "label": "Human panel"
+    }
+  ],
+  "mainPath": [
+    "start",
+    "load",
+    "compare",
+    "mizan",
+    "score",
+    "report",
+    "quwa"
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "lane": "operator",
+      "col": 0,
+      "type": "frontend",
+      "label": "Start a run",
+      "sublabel": "AGI Test page or CLI",
+      "sources": [
+        {
+          "path": "backend/imtihan/runner.py",
+          "line": 301,
+          "end_line": 301,
+          "label": "start"
+        },
+        {
+          "path": "backend/imtihan/__main__.py",
+          "line": 1,
+          "end_line": 5,
+          "label": "python -m imtihan"
+        }
+      ]
+    },
+    {
+      "id": "load",
+      "lane": "runner",
+      "col": 0,
+      "type": "backend",
+      "label": "Load tasks",
+      "sublabel": "tasks/*.jsonl blocks",
+      "sources": [
+        {
+          "path": "backend/imtihan/runner.py",
+          "line": 31,
+          "end_line": 31,
+          "label": "load_tasks"
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "lane": "runner",
+      "col": 1,
+      "type": "backend",
+      "label": "Muqabala",
+      "sublabel": "one prompt, both arms",
+      "tag": "no learning",
+      "sources": [
+        {
+          "path": "backend/imtihan/runner.py",
+          "line": 206,
+          "end_line": 214,
+          "label": "stateless.bind"
+        },
+        {
+          "path": "backend/tadbir/muqabala.py",
+          "line": 379,
+          "end_line": 379,
+          "label": "compare"
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "lane": "base",
+      "col": 2,
+      "type": "cloud",
+      "label": "Base model alone",
+      "sublabel": "no tools, no memory",
+      "sources": [
+        {
+          "path": "backend/tadbir/muqabala.py",
+          "line": 109,
+          "end_line": 112,
+          "label": "base_arm"
+        }
+      ]
+    },
+    {
+      "id": "mizan",
+      "lane": "mizan",
+      "col": 2,
+      "type": "backend",
+      "label": "MIZAN",
+      "sublabel": "as a chat runs it",
+      "sources": [
+        {
+          "path": "backend/tadbir/muqabala.py",
+          "line": 158,
+          "end_line": 161,
+          "label": "mizan_arm"
+        }
+      ]
+    },
+    {
+      "id": "score",
+      "lane": "scoring",
+      "col": 3,
+      "type": "security",
+      "label": "Score by rule",
+      "sublabel": "no model judges",
+      "sources": [
+        {
+          "path": "backend/imtihan/scorers.py",
+          "line": 163,
+          "end_line": 166,
+          "label": "score"
+        },
+        {
+          "path": "backend/imtihan/runner.py",
+          "line": 128,
+          "end_line": 148,
+          "label": "run_task"
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "lane": "scoring",
+      "col": 4,
+      "type": "backend",
+      "label": "Report",
+      "sublabel": "Wilson · pass^k · ECE",
+      "sources": [
+        {
+          "path": "backend/imtihan/report.py",
+          "line": 42,
+          "end_line": 42,
+          "label": "wilson"
+        },
+        {
+          "path": "backend/imtihan/report.py",
+          "line": 85,
+          "end_line": 85,
+          "label": "summarize"
+        }
+      ]
+    },
+    {
+      "id": "quwa",
+      "lane": "scoring",
+      "col": 5,
+      "type": "backend",
+      "label": "Quwa profile",
+      "sublabel": "10 faculties, Morris level",
+      "sources": [
+        {
+          "path": "backend/imtihan/quwa.py",
+          "line": 166,
+          "end_line": 170,
+          "label": "profile"
+        },
+        {
+          "path": "backend/imtihan/quwa.py",
+          "line": 107,
+          "end_line": 107,
+          "label": "percentile"
+        }
+      ]
+    },
+    {
+      "id": "panel",
+      "lane": "people",
+      "col": 4,
+      "type": "external",
+      "label": "Panel answers",
+      "sublabel": "invite links, first try",
+      "sources": [
+        {
+          "path": "backend/imtihan/quwa.py",
+          "line": 368,
+          "end_line": 368,
+          "label": "invite"
+        },
+        {
+          "path": "backend/imtihan/quwa.py",
+          "line": 323,
+          "end_line": 323,
+          "label": "panel"
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "lane": "operator",
+      "col": 5,
+      "type": "database",
+      "label": "Scorecard",
+      "sublabel": "aggregate + Sakk receipt",
+      "sources": [
+        {
+          "path": "backend/imtihan/scorecard.py",
+          "line": 62,
+          "end_line": 66,
+          "label": "publish"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-load",
+      "from": "start",
+      "to": "load",
+      "label": "blocks, repeats",
+      "variant": "emphasis"
+    },
+    {
+      "id": "load-compare",
+      "from": "load",
+      "to": "compare",
+      "variant": "emphasis"
+    },
+    {
+      "id": "compare-base",
+      "from": "compare",
+      "to": "base",
+      "label": "same prompt",
+      "role": "branch"
+    },
+    {
+      "id": "compare-mizan",
+      "from": "compare",
+      "to": "mizan",
+      "label": "same prompt",
+      "variant": "emphasis"
+    },
+    {
+      "id": "base-score",
+      "from": "base",
+      "to": "score",
+      "label": "answer",
+      "role": "branch"
+    },
+    {
+      "id": "mizan-score",
+      "from": "mizan",
+      "to": "score",
+      "label": "answer + trace",
+      "variant": "emphasis"
+    },
+    {
+      "id": "score-report",
+      "from": "score",
+      "to": "report",
+      "variant": "emphasis"
+    },
+    {
+      "id": "report-quwa",
+      "from": "report",
+      "to": "quwa",
+      "variant": "emphasis"
+    },
+    {
+      "id": "panel-quwa",
+      "from": "panel",
+      "to": "quwa",
+      "label": "human baseline",
+      "role": "branch"
+    },
+    {
+      "id": "report-publish",
+      "from": "quwa",
+      "to": "publish",
+      "label": "owner publishes",
+      "variant": "dashed",
+      "role": "async"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Fair comparison",
+      "items": [
+        "Both arms use the same provider and model",
+        "Each run is stateless: no learning, no recall, no training capture",
+        "Agentic tasks get a fresh sandboxed project per arm"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "What is reported",
+      "items": [
+        "Pass rates with Wilson intervals, pass^k and consistency",
+        "ECE and Brier from stated confidence; Isnad grades per arm",
+        "Index weighted agents 30, coding 20, reasoning 20, general 30"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Against people",
+      "items": [
+        "Each arm's percentile is the share of the panel it outperforms",
+        "Morris level from the interval's lower end",
+        "Without panel answers, no human comparison is shown"
+      ]
+    }
+  ]
+}

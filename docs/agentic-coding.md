@@ -17,7 +17,12 @@ When a chat is bound to a project (`workspace_id`), the agent gets these tools:
 | `workspace_write` | Create or overwrite a whole file. |
 | `workspace_glob` | Find files by pattern (`src/**/*.tsx`). |
 | `workspace_grep` | Regex search across the project. Bounded: 300 matches, no nested quantifiers, binary files skipped. |
-| `workspace_run` | Run a command in the isolated runner (see `coding-workspaces.md`). |
+| `workspace_run` | Run a command in the isolated runner (see `coding-workspaces.md`). Without a selected project it runs in the user's private Scratch project. |
+| `workspace_sandbox` | Start, stop or inspect the project's server sandbox session; run a dev server and get its preview URL (see below). |
+| `workspace_checkpoint`, `workspace_diff` | Keep a checkpoint (the five latest are retained) and review changes against one. |
+| `workspace_git` | `status`, `diff`, `log`, `init` or a local `commit`; no remote operations. |
+| `workspace_artifact` | Publish a project file (code, HTML, Markdown or a raster image) as a saved artifact in the chat. |
+| `workspace_list`, `workspace_tree`, `workspace_create` | List projects, show a project's files, create one. `workspace_hardware` (administrators) reports the backend's CPU, memory and disk. |
 | `todo_write` | Keep a short plan. It is saved per chat and shown live in the UI. |
 | `web_search`, `web_browse` | Search the web and read a page. Fetches resolve DNS and refuse private, loopback and metadata addresses on every redirect. |
 
@@ -39,6 +44,18 @@ The chat request carries `permission_mode`. The UI's **Mode** selector sets it.
 | `plan` | Read-only tools only. The agent proposes changes instead of making them. |
 | `auto` | Every permitted tool runs without prompts. |
 
+Two kinds of action ask in every mode, `auto` included, even after an
+`always`:
+
+- `shahid_submit`, which sends something to a site on your behalf
+  ([Shahid](shahid.md));
+- a change the model chooses after Amanah found instructions in outside
+  content the run read (a page, a file, a tool result), or in a turn with an
+  attached image ([Amanah](amanah.md), [Basar](basar.md)).
+
+With no approval context (a REST call without `permission_mode`), both are
+refused instead of asked.
+
 A tool that waits for you emits an `approval_request` event. Answer it with
 `POST /api/chat/approvals/{id}` and `{"decision": "allow" | "deny" | "always"}`.
 `always` allows that tool for the rest of the chat. No answer within 10 minutes
@@ -49,11 +66,12 @@ Requests without `permission_mode` from an interactive caller (REST) behave as b
 
 ### Runs no one is watching
 
-Watchers, schedules, triggers and queued tasks run while no one is watching,
-so no one could answer a prompt. They act as their owner (the watcher's
-owner, the queued task's sender, or for schedules and triggers the first
-administrator) through that owner's own gates. Every action that needs a
-person is **held** instead of run:
+Watchers, schedules, triggers, queued tasks and messages from the outside
+channels (Telegram, email, WhatsApp: [Bab](bab.md)) run while no one can
+answer a prompt in the middle of the run. They act as their owner (the
+watcher's owner, the queued task's sender, the linked account's user, or for
+schedules and triggers the first administrator) through that owner's own
+gates. Every action that needs a person is **held** instead of run:
 
 - What goes ahead: reading, private project edits, and programs in MIZAN's
   isolated sandbox (`workspace_run`).
@@ -128,7 +146,8 @@ backend host. It has:
   resource limits
 - **no route to the internet except the egress proxy**, which allows HTTPS only
   to package and code hosts:
-  - npm, PyPI, GitHub, `esm.sh`, jsDelivr and unpkg
+  - npm (and the Yarn registry), PyPI, GitHub, nodejs.org, `esm.sh`, jsDelivr
+    and unpkg
   - it refuses every non-public address
 
 Start one from the **Sandbox** tab of the Coding workspace, or let the agent call
@@ -183,7 +202,7 @@ Runner settings (environment of the `workspace-runner` service):
 | `MIZAN_SESSION_IDLE_SECONDS` | 1800 | idle stop |
 | `MIZAN_SANDBOX_EGRESS` | `allowlist` | `off` keeps sessions fully offline |
 | `MIZAN_SANDBOX_EGRESS_ALLOW` | built-in list | comma list; `.example.com` allows subdomains |
-| `MIZAN_MCP_SESSION_MAX` / `_MEMORY` | 4 / 384m | containers for users' stdio MCP servers |
+| `MIZAN_MCP_SESSION_MAX` / `_MEMORY` / `_CPUS` / `_PIDS` | 4 / 384m / 0.5 / 128 | containers for users' stdio MCP servers |
 
 **Rollout.** Enabling sessions in production needs the runtime and runner
 images published for the deployed commit, then the reviewed runner setup run

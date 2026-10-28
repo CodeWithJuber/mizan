@@ -1,7 +1,9 @@
 # Mizan owns inference; OpenRouter supplies requested support drafts
 
-The default Compose configuration and `.env.example` now select `mizan-owned`.
-The existing agent loop, permissions, authenticated users and provider API remain
+Owned mode is opt-in. Since 2026-10-26 the default Compose configuration and
+`.env.example` use `LLM_PROVIDER=auto` and `MIZAN_OWNED_ONLY=false`; set the
+values under [Runtime configuration](#runtime-configuration) to select
+`mizan-owned`. The existing agent loop, permissions, authenticated users and provider API remain
 the entry points. `MIZAN_OWNED_ONLY=true` prevents provider autodetection, saved
 provider preferences and per-message model overrides from selecting hosted
 inference. Selecting `LLM_PROVIDER=mizan-owned` also enables this boundary.
@@ -88,7 +90,8 @@ remain separate services; they are not used by the owned chat pipeline.
 ## API and review workflow
 
 All routes require the existing JWT/API-key authentication. Support, review,
-research search and export also require an admin role. The ledger owner and
+retraction, research search, export and learning also require an admin role
+(`_ADMIN_PREFIXES` in `backend/api/main.py`). The ledger owner and
 reviewer come from the authenticated principal, never a model-supplied flag.
 
 1. `POST /api/owned/chat` accepts `{"system":"","messages":[{"role":"user","content":"..."}]}`.

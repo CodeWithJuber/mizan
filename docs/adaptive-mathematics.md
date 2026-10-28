@@ -4,9 +4,12 @@
 > within the balance." — Quran 55:7-8
 
 Fixed thresholds and keyword rules were replaced by estimators that learn from
-observed outcomes. All of them live in `backend/core/adaptive.py`, are pure
-Python, and persist their state in the `adaptive_state` table of the agent's
-memory database when they need to survive a restart.
+observed outcomes. The shared estimators (Beta posteriors, Wilson bounds, the
+paired e-value, exponentially weighted statistics, ACT-R activation, BM25,
+Thompson sampling) live in `backend/core/adaptive.py`, are pure Python, and
+persist their state in the `adaptive_state` table of the agent's memory
+database (Tajdid's in `$MIZAN_DATA_DIR/harness.db`) when they need to survive
+a restart. FSRS recall is in `memory/tadhkir.py` (the `fsrs` package).
 
 | Site | Before | Now |
 |---|---|---|

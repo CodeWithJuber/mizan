@@ -57,3 +57,6 @@ backend/.vault.key
 .idea/
 *.swp
 *.swo
+
+# Archify delivery receipts hold local paths (docs/diagrams/README.md)
+docs/diagrams/*.delivery.json

@@ -1,10 +1,12 @@
 # Chat output limits and metric provenance
 
 An answer that contains only a length-limit warning is not a successful answer.
-Mizan now rejects an empty, length-limited provider response with the safe
-`output_budget_exhausted` code. It does not replay tools, count that result as
-successful learning, or substitute private provider reasoning for answer text.
-Visible truncated answers may use at most two text-only continuations.
+An empty, length-limited provider response is asked once more at low reasoning
+effort; a second one ends with the safe `output_budget_exhausted` code. Mizan
+does not replay tools, count that result as successful learning, or substitute
+private provider reasoning for answer text. Visible truncated answers continue
+text-only, up to `MIZAN_CHAT_MAX_CONTINUATIONS` times (default 20; see
+[Unlimited conversations](#unlimited-conversations)).
 
 The per-call output budget defaults to the selected model's own output cap (up
 to 16,000 tokens per call, so one call stays inside its wait limit; longer

@@ -5,7 +5,7 @@ Every answer carries its **Isnad**: the answer split into claims (sentences and 
 | Grade | Meaning | When |
 |---|---|---|
 | **Sahih** (صحيح) | MIZAN established or verified it | MIZAN calculated it, read it verbatim from its Quran or hadith source, ran it in its sandbox and checked it, or proved a rule on every example. Also any claim verified against the evidence. |
-| **Hasan** (حسن) | Evidence MIZAN gathered supports it | Its numbers are in a tool result, it cites a real source, or most of its words are in the evidence. Not verified. |
+| **Hasan** (حسن) | Evidence MIZAN gathered supports it | Its numbers are in a tool result, it cites a real source, or at least half of its words are in the evidence. Not verified. |
 | **Da'if** (ضعيف) | Only the language model's words | Nothing MIZAN holds supports it, or one of its numbers has no evidence |
 | **Mawdu'** (موضوع) | Fabricated | It claims an action that never happened ("I checked…"), cites a source that does not exist, or links to a page MIZAN never found |
 
@@ -23,8 +23,10 @@ The **Mizan** (balance) is the share of the answer's claims graded sahih or hasa
 
 There are three cases:
 
-1. **MIZAN's own established work** (compute, quran, hadith, waqt, a verified run, a proven Qiyas rule, passed project checks). Every claim is sahih, and the basis is named: "MIZAN calculated it exactly", "read verbatim from MIZAN's Quran source", and so on.
+1. **MIZAN's own established work** (compute, quran, quran search and count, sarf, hadith, waqt, salah times, a saved watcher, the capabilities list, a verified run, a proven Qiyas or Silsila rule, passed project checks, a project task or file run, a Hugging Face read), when MIZAN verified the outcome and it does not rest on outside evidence. Every claim is sahih, and the basis is named (`isnad.BASIS`): "MIZAN calculated it exactly", "read verbatim from MIZAN's Quran source", and so on.
 2. **Answers Lisan worded from evidence** (web search and read, tool results, recall). Each claim is weighed against the facts and tool receipts of that run.
 3. **The model's words with no evidence.** Every claim is da'if, unless it fabricates an action, a citation or a link, which makes it mawdu'.
+
+When [Ahl al-Dhikr](ahl-dhikr.md) then asks MIZAN's sources about an answer's da'if claims, a claim a source supports becomes hasan with that source named, and a contradicted one stays da'if with the source that says otherwise (`ahl_dhikr.regrade`).
 
 Code blocks, source lists and MIZAN's italic notes are not claims and are not graded.

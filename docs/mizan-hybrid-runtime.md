@@ -10,7 +10,7 @@ It is disabled by default. It does **not** certify semantic correctness, religio
 
 ## Enable and configure
 
-Copy the optional block from `.env.example` into `.env` and set real values locally. Never commit credentials or source text.
+Copy the optional block from `.env.example` into `.env`, set `MIZAN_HYBRID_ENABLED=true` (the block ships `false`) and set real values locally. Never commit credentials or source text.
 
 ```python
 from mizan_hybrid import create_hybrid_provider_from_env

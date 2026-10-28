@@ -17,6 +17,8 @@ Each is a naive Bayes model fitted on seed examples shipped in `backend/tadbir/d
 3. **Or import from Hugging Face:** give the dataset, config, split, rows (up to 5,000), the text and label columns, and a label map (`dataset label = MIZAN label`, one per line; rows whose label is not mapped are left out). Rows are read on the server through the dataset viewer (`knowledge/hf_hub.rows`).
 4. **Teaching a new language:** pick `lughah`, use a new code as the label (`ta`), and give the language's name (Tamil).
 
+`scripts/build_massive_seeds.py` builds batches from MASSIVE (Amazon, CC BY 4.0: the same utterances in 51 languages, each with one of 60 intents), read through the dataset viewer from its Hugging Face mirror `mteb/amazon_massive_intent`. Each language's utterances teach Lughah that language. A MASSIVE intent is given a Qasd label only when MIZAN's own Qasd model reads most of its English utterances as one MIZAN intent, with that share's 95% Wilson lower bound above ½; the label then carries over to the same utterance in every language. Each batch is written as JSON for `POST /api/tadbir/talim`, or sent there with `--post`, where the same gate judges it.
+
 ## When a batch is kept
 
 A batch is kept only if it does not make MIZAN worse at what it already knew. Nothing else decides; there is no hand-set accuracy floor.
@@ -33,16 +35,18 @@ Each batch is listed with:
 - how well the refitted model reads the new examples themselves;
 - each class whose accuracy changed.
 
-A kept batch is a Sakk receipt, and **Undo** removes it. Batches live in `$MIZAN_DATA_DIR/talim.db`. The kept ones join each model's corpus, so the fit follows them; fits are cached by the corpus SHA-256.
+Every batch, kept or refused, is a Sakk receipt, and so is an **Undo**, which removes a kept batch. A batch holds at most 5,000 examples; an imported text is cut to its first 500 characters, and a typed one longer than that is refused. Batches live in `$MIZAN_DATA_DIR/talim.db`. The kept ones join each model's corpus, so the fit follows them; fits are cached by the corpus SHA-256.
 
 ## API
 
 | Route | What it does |
 |---|---|
-| `GET /api/tadbir/talim` | The teachable models and their labels, the languages taught, and every batch |
+| `GET /api/tadbir/talim` | Whether Ta'lim is on, the teachable models and their labels, the languages taught, and every batch |
 | `POST /api/tadbir/talim` | `{model, examples: [{text, label}], source?, licence?, language_name?}`: judge a batch and keep it if it passes |
 | `POST /api/tadbir/talim/import` | `{model, dataset, config, split, revision?, text_column, label_column, label_map?, limit, licence?, language_name?}`: the same, from a Hugging Face dataset |
 | `DELETE /api/tadbir/talim/{batch}` | Undo a kept batch |
+
+All four are for administrators only.
 
 ## Setting
 

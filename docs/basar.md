@@ -18,8 +18,9 @@ from a design ("Design an HTML page for this and preview it").
 3. **Scaled.** The image is scaled down to at most 1568 px on its longer
    side; beyond that, models see no more detail and only cost more.
    - Images with transparency stay PNG; the rest become JPEG.
-4. **Kept with the chat.** It is stored under
-   `$MIZAN_DATA_DIR/media/<owner>/` and named by its SHA-256.
+4. **Kept with the chat.** It is stored in the owner's own folder,
+   `$MIZAN_DATA_DIR/media/<first 24 hex characters of the SHA-256 of the
+   owner's id>/`, and named by its SHA-256.
    - The user's message records which images it carried, never the image
      itself. The request receipt does the same.
    - `GET /api/media/{sha}` returns only the owner's own images.

@@ -8,7 +8,7 @@ Learning is off by default. No production corpus or trained checkpoint is manufa
 
 Set `MIZAN_OWNED_LEARNING_DIR` to a private persistent directory outside the application source tree, for example `/data/mizan/owned_learning`. Leaving it unset keeps this registry integration unconfigured. Configuring a directory does not itself authorize training: a valid enabled policy and an approved bundle are also required. First-model activation additionally requires `allow_first_model: true` in that policy.
 
-`MIZAN_OWNED_LEARNING_AUTORUN` is off when unset; the Docker Compose templates and `.env.example` now set it to `true` with a default directory (`/data/owned_learning`, `/data/mizan/owned_learning` in production). When enabled, the watcher checks for approved ready bundles every 60 seconds and uses the same bounded cycle and admission gates as a manual run. It does not approve data, relax the policy, or turn conversation activity into training permission.
+`MIZAN_OWNED_LEARNING_AUTORUN` is on unless switched off: `autorun()` in `backend/mizan_owned/learning_service.py` treats an unset value as `true`, and the admin runtime setting "Automatic own-model training" defaults to `true`. The Docker Compose templates and `.env.example` also set it to `true` with a default directory (`data/owned_learning` in `.env.example`, `/data/owned_learning` in `docker-compose.yml`, `/data/mizan/owned_learning` in `docker-compose.prod.yml`). When enabled, the watcher checks for approved ready bundles every 60 seconds and uses the same bounded cycle and admission gates as a manual run. It does not approve data, relax the policy, or turn conversation activity into training permission.
 
 Authenticated admin controls are:
 

@@ -58,6 +58,8 @@ Under Settings → System settings → Channels:
 | `MIZAN_STT_MODEL_SIZE` | base | `tiny` (75 MB, fastest), `base` (145 MB) or `small` (484 MB). `small` hears Urdu, Hindi and Arabic best but needs about 500 MB of memory. |
 | `MIZAN_STT_DAILY_SECONDS` | 1800 | seconds per non-admin user per day |
 
+The CPU threads Whisper uses come from the server environment only: `MIZAN_STT_THREADS` (default 2).
+
 `faster-whisper` is in `backend/requirements.txt` (the production image) and in the `voice-local` extra (`pip install -e ".[voice-local]"`). Without it the microphone is hidden and `POST /api/voice/transcribe` answers 503.
 
 The browser needs microphone permission for MIZAN's own origin. The page itself sends no `Permissions-Policy` that blocks it; the API's `microphone=()` applies to API responses only.

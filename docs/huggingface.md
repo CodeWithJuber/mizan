@@ -6,7 +6,7 @@ MIZAN reads Hugging Face **itself, on the server**, and puts what is needed into
 
 | Ask | What MIZAN does |
 |---|---|
-| `https://huggingface.co/<you>/` or "mere huggingface datasets dikhao" | Lists the account's datasets and models (with "training", models too) |
+| `https://huggingface.co/<you>/` or "mere huggingface datasets dikhao" | Lists the account's datasets, models or spaces as the message names them (datasets and models when it names none; models too when it says "training"). Without a link the account is the token's owner, so that works for administrators only |
 | `https://huggingface.co/datasets/<owner>/<name>` | Lists its files and sizes, and shows the first rows (the Hub's dataset viewer) |
 | "`…/<name>` se `file.jsonl` project me lao", or a `/blob/main/<file>` link | Imports the file into the selected project (or Scratch) as `hf/<name>/<file>`, with its SHA-256 and source link |
 
@@ -20,4 +20,4 @@ Set **System settings → API keys → Hugging Face token** (`HF_TOKEN`). It is 
 
 ## The locked evaluation set
 
-The owner's published, hash-locked evaluation set (`Zubairshaikh/mizan-eval-v1`, 300 items, SHA-256 `14844d6f…`) is an AGI Test block (**Your locked eval**). MIZAN downloads it once into `$MIZAN_DATA_DIR/imtihan/` and uses it only when the hash matches; it is never copied into this repository or into training data, as its lock requires. See [imtihan.md](imtihan.md).
+The owner's published, hash-locked evaluation set (`Zubairshaikh/mizan-eval-v1`, 300 items, SHA-256 `14844d6f…`) is an AGI Test block (**Your locked eval**). MIZAN downloads it once into `$MIZAN_DATA_DIR/imtihan/` and uses it only when the hash matches; it is never copied into this repository or into training data, as its lock requires. `MIZAN_LOCKED_EVAL=off` leaves the block out. See [imtihan.md](imtihan.md).

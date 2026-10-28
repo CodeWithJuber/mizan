@@ -1,14 +1,24 @@
 # Admin settings
 
 Administrators manage server settings in **Settings → System settings**. The
-groups are:
+groups (`backend/runtime_settings.py`) are:
 
-- Model and API keys
-- chat limits
-- learning and memory
-- NLP and hybrid
-- connectors and coding
-- channel tokens
+- Model: who directs the work (`MIZAN_ORCHESTRATION`), the feature switches
+  (debug mode, Ta'lim, Muhasaba, Truth Gate, Ahl al-Dhikr, Amanah, Muraqabah,
+  Tajdid), spending limits, Lisan's models, provider and default model, chat
+  effort and output limits, owned-model-only mode, projects per user
+- API keys: Anthropic, OpenRouter, OpenAI, the hybrid base model, Hugging Face,
+  ARC
+- Chat limits
+- Learning & memory
+- NLP & hybrid
+- Connectors & coding: public URL, local MCP servers, private connector hosts,
+  project skills
+- Channels: Telegram, Discord and Slack tokens, MIZAN's mailbox, WhatsApp, and
+  voice input (Sama')
+
+Each setting shows where its value comes from: **Set here**, **From server
+.env**, or **Default**.
 
 ## How values are stored
 
@@ -30,7 +40,7 @@ groups are:
 | Badge | Meaning |
 |-------|---------|
 | Applies immediately | The next request reads it. |
-| Switches the model now | Provider, default model and API keys: every agent gets the new model at once. |
+| Switches the model now | Provider, default model, owned-only mode and the Anthropic, OpenRouter and OpenAI keys: every agent gets the new model at once. |
 | Needs a backend restart | Read at startup. The page lists pending restarts. |
 
 The API is `GET` / `PUT /api/settings/runtime`, administrators only.

@@ -37,7 +37,6 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
 | `GET /api/bab/telegram` | Whether the bot runs, its username, and whether you are linked |
 | `POST /api/bab/telegram/link` | A one-time link for your account |
 | `DELETE /api/bab/telegram/link` | Unlink your account |
-
 | `GET /api/bab/whatsapp` | Whether MIZAN is on WhatsApp, your linked number, its country and mode |
 | `POST /api/bab/whatsapp/link` | A one-time code and a `wa.me` link with `link <code>` ready to send |
 | `DELETE /api/bab/whatsapp/link` | Unlink your number |
@@ -56,9 +55,11 @@ MIZAN gets its own mailbox and answers mail from the address each user links
 - **Turning it on (administrator):** System settings → Channels: MIZAN's
   address, an app password for it, the IMAP and SMTP servers, and the
   receiving server's name as it writes it first in `Authentication-Results`
-  (Gmail: `mx.google.com`). MIZAN reads the inbox every 30 seconds,
-  read-only: nothing is marked, moved or deleted. On first start, mail
-  already there is not answered.
+  (Gmail: `mx.google.com`). The ports default to 993 (IMAP) and 465 (SMTP
+  over TLS; another port uses STARTTLS). MIZAN reads the inbox every 30
+  seconds, read-only: nothing is marked, moved or deleted. On first start,
+  mail already there is not answered. `MIZAN_EMAIL=off` keeps the mailbox
+  unread even when it is configured.
 - **Linking (each user):** MIZAN → Channels → **Link email** gives a one-time
   code (10 minutes). Send a mail from your own address to MIZAN's with the
   subject `link <code>`; MIZAN replies when it is linked.
@@ -140,3 +141,4 @@ never an unofficial client, and only as Meta's terms allow.
   app secret and a webhook verify token; in Meta's webhook settings use
   `<public URL>/api/public/whatsapp` with the same verify token and subscribe
   to `messages`. The Graph API version is a setting (default `v24.0`).
+  `MIZAN_WHATSAPP=off` keeps the channel off even when it is configured.

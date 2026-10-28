@@ -9,7 +9,7 @@ Amanah (`backend/tadbir/amanah.py`) keeps such text from steering MIZAN. It comb
 - **The model never chooses actions in the default mode.** In `mizan` mode the plan comes from the user's own words (Fahm, or Lisan mapping the user's message), and the model has no tools. Outside text cannot pick an action. This is the separation CaMeL argues for (Debenedetti et al., 2025).
 - **Pasted text never maps to an action.** Before Lisan maps a message to MIZAN's actions or fills a tool's arguments, Amanah removes instructions found inside the pasted parts of the message: quotes, `---` blocks, code fences, `>` quotes and labelled blocks such as "Email:" or "TOOL OUTPUT:". The user's own words are never changed.
 - **Fences (spotlighting).** Every piece of outside text Lisan or the model reads sits between `<<untrusted id from source>>` and `<<end untrusted id>>`. The id is random, so the text cannot fake the closing marker. Both Lisan's base prompt and the agent's system prompt say that fenced text is data (Hines et al., 2024).
-- **Taint.** Once content that tried to instruct the AI has been read in a run, every later action **the model chose** that changes something needs the user's approval, even in `auto` mode. With no live chat to ask (a schedule, another agent), the action is refused. Read-only tools are not affected, and neither are MIZAN's own planned actions.
+- **Taint.** Once content that tried to instruct the AI has been read in a run (or the turn carries an image the user attached), every later action **the model chose** that changes something needs the user's approval, even in `auto` mode. In an unattended run (a watcher, a schedule, a trigger, the queue) the exact action is held for its owner to allow or deny later (`held_actions.db`); with no approval context at all, it is refused. Read-only tools are not affected, and neither are MIZAN's own planned actions.
 
 ## The scanner
 
@@ -36,7 +36,7 @@ Patterns catch the phrasings someone wrote down. An instruction worded another w
 
 - **The model.** A naive Bayes model (`core.tamyiz`) over letter 3- and 4-grams, words and word pairs. Each pattern above is an `e:` evidence token whose weight is fitted, not fixed.
 - **Training data.** Licensed prompt-injection datasets against ordinary text: deepset, Gandalf, jailbreak-classification, SPML, FineWeb-Edu pages, Tatoeba, MIZAN's own documentation, and lines written for MIZAN in Roman Urdu/Hindi, Urdu, Hindi and Arabic. The corpus is in `backend/tadbir/data/amanah` with `LICENSES.md`; `scripts/build_amanah_corpus.py` rebuilds it from pinned revisions.
-- **Fitting.** Smoothing and weights are fitted by grouped leave-one-out (windows of one source are held out together), with 92.6% accuracy. The fit is cached by the corpus SHA-256 in `core/data/tamyiz.json`.
+- **Fitting.** Smoothing and weights are fitted by grouped leave-one-out (windows of one source are held out together), with 92.4% leave-one-out accuracy. The fit is cached by the corpus SHA-256 in `core/data/tamyiz.json`.
 - **Hard negatives.** Sentences of ordinary web prose that a first model wrongly flagged were added as data.
 - **Decision.** Text is read in windows of whole sentences, at most 300 characters each. A window whose posterior favours "attack" (MAP) is checked sentence by sentence. Only the sentences that are attacks on their own are replaced by the Amanah mark; if none is, the whole window is. A finding has kind `instruction` and carries its probability `p`.
 - **What stays as it was.** The hidden-text, comment and exfiltration-link guards. `MIZAN_AMANAH=rules` (Settings → System settings) uses the patterns alone.
@@ -59,7 +59,7 @@ These figures are honest about the limits:
 
 | Path | What Amanah does |
 |---|---|
-| Web search, page reading, `http_get`, memory recall, connector tools (`mcp__*`), skill files | `guard_value` neutralizes every string in the result, keeping its JSON shape, and adds an `amanah` note. Findings taint the run. |
+| Web search, page reading, `http_get`, `read_file`, memory recall, connector tools (`mcp__*`), skill files, Hugging Face reads (`hf_repos`, `hf_files`, `hf_preview`), Shahid's browser (`shahid_read`, `shahid_submit`) | `guard_value` neutralizes every string in the result, keeping its JSON shape, and adds an `amanah` note. Findings taint the run. |
 | Lisan's wording of facts and sources | The facts and each source are fenced. |
 | A pasted email, page or review in the chat | The model is told that the pasted text contains an instruction to ignore. Lisan's action mapping sees the text without it. |
 | The agent loop (`llm` and `hybrid` modes) | Untrusted tool results are neutralized and fenced. After a finding, the model's actions that change something need approval. |

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1000 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="trust-layers-title trust-layers-desc" id="trust-layers-root">
+<title id="trust-layers-title">What a request passes before an answer is shown</title>
+<desc id="trust-layers-desc">Layer stack of six checks from Amanah at the top to Ahl al-Dhikr at the bottom, with the tool gate highlighted as the focal layer.</desc>
+<defs>
+      <style>#trust-layers-root { font-family: 'DM Sans', system-ui, sans-serif; color: #0f172a; }
+      #trust-layers-root .diagram-container { width: 100%; overflow-x: auto; }</style><pattern id="trust-layers-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="#0f172a" fill-opacity="0.10"/></pattern><marker id="trust-layers-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#475569"/></marker><marker id="trust-layers-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8a5a0e"/></marker><marker id="trust-layers-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker><marker id="trust-layers-arrow-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#64748b"/></marker></defs>
+<rect width="100%" height="100%" fill="#f8fafc"/>
+<rect width="100%" height="100%" fill="url(#trust-layers-dots)" opacity="0.55"/>
+<text x="40" y="52" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">REQUEST</text>
+<line x1="80" y1="64" x2="80" y2="440" stroke="#0f172a" stroke-width="1" stroke-opacity="0.3"/>
+<polygon points="76,440 84,440 80,448" fill="#475569"/>
+<text x="40" y="468" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">ANSWER</text>
+<line x1="120" y1="64" x2="960" y2="64" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<rect x="120" y="64" width="840" height="64" fill="#ffffff"/>
+<line x1="120" y1="128" x2="960" y2="128" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<text x="140" y="100" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L1</text><text x="200" y="102" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Amanah</text><text x="940" y="102" fill="#475569" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">outside text is data: scan, fence, taint</text>
+<rect x="120" y="128" width="840" height="64" fill="#eef2f7"/>
+<line x1="120" y1="192" x2="960" y2="192" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<text x="140" y="164" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L2</text><text x="200" y="166" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Fahm</text><text x="940" y="166" fill="#475569" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">intent and language by evidence, no word lists</text>
+<rect x="120" y="192" width="840" height="64" fill="#d4af37" fill-opacity="0.14"/>
+<rect x="120" y="192" width="840" height="64" fill="none" stroke="#8a5a0e" stroke-width="1"/>
+<text x="140" y="228" fill="#8a5a0e" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em" font-weight="600">L3</text><text x="200" y="230" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Tool gate</text><text x="940" y="230" fill="#8a5a0e" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">Izn, approvals, Hudud; a Sakk receipt either way</text>
+<rect x="120" y="256" width="840" height="64" fill="#eef2f7"/>
+<line x1="120" y1="320" x2="960" y2="320" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<text x="140" y="292" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L4</text><text x="200" y="294" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Tathabbut, Furqan</text><text x="940" y="294" fill="#475569" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">a second program agrees; wording held to facts</text>
+<rect x="120" y="320" width="840" height="64" fill="#ffffff"/>
+<line x1="120" y1="384" x2="960" y2="384" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<text x="140" y="356" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L5</text><text x="200" y="358" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Sidq, Isnad</text><text x="940" y="358" fill="#475569" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">arithmetic, quotes, links fixed; each claim graded</text>
+<rect x="120" y="384" width="840" height="64" fill="#eef2f7"/>
+<line x1="120" y1="448" x2="960" y2="448" stroke="#0f172a" stroke-width="1" stroke-opacity="0.12"/>
+<text x="140" y="420" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L6</text><text x="200" y="422" fill="#0f172a" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Ahl al-Dhikr</text><text x="940" y="422" fill="#475569" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">sources asked (16:43); reported under the answer</text>
+<text x="120" y="496" fill="#475569" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">FOCAL LAYER</text><text x="220" y="496" fill="#475569" font-size="9" font-family="'DM Sans', system-ui, sans-serif" font-style="italic">The model never holds a tool: every action passes one gate, and every outcome leaves a receipt.</text>
+</svg>

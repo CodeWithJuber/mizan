@@ -3,7 +3,10 @@ Mizan coding projects persist under `MIZAN_WORKSPACE_ROOT` (default
 supports file trees, optimistic file edits, rename/delete of individual files,
 five retained checkpoints, actual diffs, and saved code/HTML/markdown/image
 artifacts. Files survive chat and backend restarts. Project files have a 1 MiB
-limit, projects a 10 MiB/500-entry limit, and each user can create ten projects.
+limit and projects a 10 MiB/500-entry limit (see `agentic-coding.md` for raising
+them). Each user may keep `MIZAN_WORKSPACE_MAX_PROJECTS` projects (default 10,
+at most 200; System settings, applied on the next create). The private Scratch
+project that plain-chat code runs in and the AGI test's projects do not count.
 
 The `coding_workspace` built-in skill exposes actual `workspace_*` tools to the
 agent registry. Authenticated chat binds its selected `workspace_id`; tools
@@ -22,7 +25,7 @@ symlinks, device files and oversized exports are rejected. A concurrent editor
 change prevents generated files from overwriting the editor's work.
 
 The isolated runtime image includes Matplotlib 3.11.2, NumPy 2.5.4 and Pillow
-12.3.0, with their resolved dependencies pinned in
+13.0.0, with their resolved dependencies pinned in
 `docker/workspace-runtime-requirements.txt`. These packages are installed while
 building the image; a job has no network and does not install packages. Plotting
 uses the noninteractive Agg backend, a writable cache in `/tmp`, and one BLAS
@@ -57,8 +60,10 @@ unprivileged runner user. Production images use immutable commit tags
 `ghcr.io/codewithjuber/mizan/workspace-runtime:<sha>` and
 `ghcr.io/codewithjuber/mizan/workspace-runner:<sha>`, published by the main CI
 pipeline after isolation checks. Set `MIZAN_WORKSPACE_RUNTIME_IMAGE` and
-`MIZAN_WORKSPACE_RUNNER_IMAGE` to those tags. The backend and runner share only
-the private API token. The runner
+`MIZAN_WORKSPACE_RUNNER_IMAGE` to those tags. CI also publishes
+`ghcr.io/codewithjuber/mizan/workspace-browser:<sha>`; Shahid's browser jobs run
+only when the runner has `MIZAN_WORKSPACE_BROWSER_IMAGE` set to it (see
+`shahid.md`). The backend and runner share only the private API token. The runner
 receives no Mizan database or project volume. A remotely hosted runner can
 instead use `MIZAN_WORKSPACE_RUNNER_URL` and the same token through a private or
 TLS-protected connection. Missing or unhealthy isolation returns HTTP 503 and

@@ -27,8 +27,8 @@ P(c | x) = softmax(score)
 ```
 
 - **Features** are character n-grams (2–4 for intents, 1–5 for languages)
-  and whole words, hashed into 2¹⁸ buckets (CRC-32), so memory stays fixed
-  however much is learned. Spelling variants and code-mixed Hinglish share
+  and, for intents, whole words, hashed into 2¹⁸ buckets (CRC-32), so memory
+  stays fixed however much is learned. Spelling variants and code-mixed Hinglish share
   n-grams, so "bnao", "banao" and "banaao" reinforce one another.
 - **Two groups of evidence.** A message gives hundreds of overlapping
   n-grams, which plain naive Bayes would count as independent. What a parser
@@ -72,8 +72,9 @@ cd backend && python -m core.tamyiz_cache
 
 ## Lughah: the user's language
 
-Classes: English, Roman Hindi/Urdu (`hi-latn`), Arabic, Urdu, Hindi, plus two
-neutral classes that say nothing about the asker:
+Classes: English, Roman Hindi/Urdu (`hi-latn`), Arabic, Urdu, Hindi (and any
+language an administrator teaches, [Ta'lim](talim.md)), plus two neutral
+classes that say nothing about the asker:
 
 - `quote`: the vowelled Uthmani text of the Quran
 - `name`: surah, collection and narrator names in Latin letters, from
@@ -125,7 +126,7 @@ It returns a posterior over 31 recipes and `converse` (among them `quran_count`:
 request for one of the user's connected tools (GitHub, calendar, email, Drive):
 it has no recipe of its own, so it goes to Lisan, which picks among the tools
 the user actually has, and MIZAN checks the arguments against the tool's schema. The seeds are in
-`backend/tadbir/data/qasd/intents.tsv` (CC0): 1178 requests in five languages
+`backend/tadbir/data/qasd/intents.tsv` (CC0): 1229 requests in five languages
 and scripts. A seed whose intent does not depend on the selected project is
 counted in both contexts, because P(project | intent) is the same for those
 intents.
@@ -150,8 +151,10 @@ intents.
    built as a website at P = 0.25.
 4. A family is acted on only if the words made it more probable than it was
    before reading them: its posterior must exceed its prior (the posterior of
-   a message with no evidence at all). A bare "?" carries no evidence, so it
-   can never start a recipe; it once ran a Quran search on the text "?".
+   a message with no evidence at all). A message with no evidence of its own
+   can never start a recipe; a bare "?" once ran a Quran search on the text
+   "?". (A "?" is now read as `again_follow`, below, which only takes up a
+   request that went unanswered.)
 5. If the action families that each outranked conversation, with more
    evidence than before (step 4), could not be built and together outweigh
    conversation, Lisan may map the wording into MIZAN's action schema. Many
@@ -200,9 +203,16 @@ end asks for the next term.
 - `current`: the answer depends on something current or outside MIZAN; this
   gates a web search that Lisan proposes
 - `harder`: the user asks for more effort on what came before
+- `explain`: the user asks for the working of a calculation, not only the result
 - `fact`: the question asks about the world, so the claims of an answer in the
   model's own words are asked of MIZAN's sources (Ahl al-Dhikr, `docs/ahl-dhikr.md`)
 - `ruling`: the question asks for a religious ruling, which a scholar gives
+- `deen`: the question is about the Quran, a hadith, belief or worship, so
+  Ahl al-Dhikr asks only the user's own `ilm`, never Wikipedia or the web
+- `sarf`: the user asks for the root, wazn or part of speech of an Arabic word
+  ([Sarf](sarf.md)); asked only when no request was decisive
+- `form`: the request asks for a form of answer MIZAN can count
+  ([Nazm](nazm.md))
 
 **Several requests in one message.** The message is split at its
 conjunctions, and the simpler explanation wins:
@@ -232,11 +242,17 @@ that never saw it.
 | Model | Classes | Examples | Held-out accuracy |
 |---|---|---|---|
 | Lughah | 7 | 6246 (1500 sampled for the fit) | 99.2% |
-| Qasd, exact intent | 28 | 1822 (949 seeds, two contexts) | 73.5% |
-| Qasd, family (what MIZAN acts on) | 17 | same | 77.2% |
-| Qasd, act vs answer in words | 2 | same | 86.3% |
-| Facet `current` | 2 | 104 | 86.5% |
-| Facet `harder` | 2 | 31 | 90.3% |
+| Qasd, exact intent | 32 | 2382 (1229 seeds, two contexts) | 70.0% |
+| Qasd, family (what MIZAN acts on) | 19 | same | 75.0% |
+| Qasd, act vs answer in words (P(`converse`) > ½) | 2 | same | 81.5% |
+| Facet `current` | 2 | 130 | 83.8% |
+| Facet `harder` | 2 | 57 | 77.2% |
+| Facet `explain` | 2 | 40 | 90.0% |
+| Facet `fact` | 2 | 98 | 87.8% |
+| Facet `ruling` | 2 | 179 | 87.2% |
+| Facet `deen` | 2 | 110 | 88.2% |
+| Facet `sarf` | 2 | 54 | 88.9% |
+| Facet `form` | 2 | 159 | 86.8% |
 
 At run time the parsers add precision on top: a recipe is built only when its
 parser finds what the recipe needs.
@@ -252,16 +268,19 @@ the gained ones are questions that used to get the fixed tool list. With the
 
 - **Grammars: exact readers whose findings are evidence.** Quran and hadith
   references, calculations, dates and clock times, links, fenced code, file
-  names and Hugging Face links are parsed exactly. A grammar either finds a
+  names, Hugging Face links, grid puzzles, runs of numbers, schedules and
+  prayer names are parsed exactly. A grammar either finds a
   valid reference or it does not, and what it finds is checked against
   MIZAN's indexes. The model decides how much a finding counts.
 - **Clause boundaries** (`and`, `aur`, `phir`, `اور`, `और`). These only
   propose a split; the probabilities decide whether to keep it.
-- **Safety guards.** Hudud (what a program may touch) and Amanah (instructions
-  hidden in outside text) are rules on purpose. A guard must hold for inputs
-  no example covered.
+- **Safety guards.** Hudud (what a program may touch) and Amanah's guards
+  (hidden characters, links that carry data out, instruction patterns in
+  outside text) are rules on purpose; Amanah's evidence model only adds to its
+  patterns. A guard must hold for inputs no example covered.
 - **Scope of the project blueprints.** Stacks MIZAN does not build itself
-  (React, Django, databases, logins, …) go to the agent loop. This is a list
-  of what the blueprints cannot do, not a reading of intent.
+  (React, Django, databases, logins, …) are not built by a recipe; the agent
+  loop takes them in `hybrid` mode. This is a list of what the blueprints
+  cannot do, not a reading of intent.
 - **Ta'allum's question words**, which keep a learned request from being
   reused for a question about it. These are the next to move to a facet.

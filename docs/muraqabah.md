@@ -19,11 +19,11 @@ A watcher pairs a trigger with a task.
 |---|---|
 | `ayah_of_the_day` | MIZAN's own: the next ayah of the Quran in order (one a day, the whole Quran over 6,236 days), verbatim from its Quran source, with the Hijri and Gregorian date. No model call. |
 | `remind:<text>` | The reminder text. No model call. |
-| anything else | A request run through the user's own agent and its gates, so Quran, hadith, dates and calculations come from MIZAN's recipes. |
+| anything else | A request run through the user's own agent and its gates, so Quran, hadith, dates and calculations come from MIZAN's recipes. No one is watching the run, so an action that needs a person is held for the owner, and the notice says what waits ([agentic coding](agentic-coding.md#runs-no-one-is-watching)). |
 
-Notices go to the user's own **Muraqabah** chat.
+Notices go to the user's own **Muraqabah** chat, and also to their devices (Web Push), linked Telegram and linked WhatsApp ([Bab](bab.md)).
 
-A watcher's task can never create another watcher, so a watcher cannot multiply.
+A watcher's task can never create another watcher, so a watcher cannot multiply. A user has at most 30 watchers.
 
 ## Creating watchers from the chat
 
@@ -37,7 +37,7 @@ Fahm recognises standing requests without a model:
 | "every day at 8:30 pm remind me to read Surah Al-Mulk" | 20:30 daily · reminder |
 | "har shaam 7 baje mujhe Hijri date bhejo" | 19:00 daily · "Hijri date" (MIZAN's calendar recipe) |
 
-Other wording is mapped by Lisan to a `watch` step. MIZAN validates the trigger and refuses a task that is itself a schedule.
+With no number of minutes, "after" a prayer means 20 minutes after and "before" means 30 minutes before. Other wording is mapped by Lisan to a `watch` step. MIZAN validates the trigger and refuses a task that is itself a schedule.
 
 If the message names a city that MIZAN knows ("… Karachi"), that city becomes the user's place.
 
@@ -74,7 +74,7 @@ The **digest** arrives once a day at the user's chosen time (default 21:00), out
 
 ## Places
 
-MIZAN knows about 40 cities offline: Makkah, Madinah, Karachi, Lahore, Delhi, Dhaka, Jakarta, Istanbul, Cairo, London, New York and more. Other cities are found with Open-Meteo's free geocoder, or the user enters coordinates.
+MIZAN knows 33 cities offline (37 names, counting spellings such as Makkah/Mecca): Makkah, Madinah, Karachi, Lahore, Delhi, Dhaka, Jakarta, Istanbul, Cairo, London, New York and more. Other cities are found with Open-Meteo's free geocoder, or the user enters coordinates.
 
 ## API and settings
 
