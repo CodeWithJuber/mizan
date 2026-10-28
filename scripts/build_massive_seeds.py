@@ -28,6 +28,7 @@ import json
 import math
 import random
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -55,13 +56,31 @@ def wilson_lower(successes: int, total: int, z: float = 1.959964) -> float:
     return (centre - margin) / (1 + z * z / total)
 
 
+def _page(client: httpx.Client, params: dict, tries: int = 5) -> httpx.Response:
+    """One page of rows. The dataset viewer answers 429 (rate limited) or 5xx
+    under load: wait as long as Retry-After says, else 2, 4, 8, 16 s."""
+    for attempt in range(tries):
+        response = client.get(VIEWER, params=params)
+        if response.status_code != 429 and response.status_code < 500:
+            break
+        if attempt == tries - 1:
+            break
+        try:
+            wait = float(response.headers.get("Retry-After", ""))
+        except ValueError:
+            wait = 2.0 ** (attempt + 1)
+        time.sleep(min(60.0, max(1.0, wait)))
+    response.raise_for_status()
+    return response
+
+
 def fetch(locale: str, split: str = "train", limit: int = 20_000) -> list[dict]:
     rows: list[dict] = []
     with httpx.Client(timeout=60) as client:
         while len(rows) < limit:
-            response = client.get(
-                VIEWER,
-                params={
+            response = _page(
+                client,
+                {
                     "dataset": DATASET,
                     "config": locale,
                     "split": split,
@@ -69,7 +88,7 @@ def fetch(locale: str, split: str = "train", limit: int = 20_000) -> list[dict]:
                     "length": 100,
                 },
             )
-            response.raise_for_status()
+            time.sleep(0.5)  # a pause between pages keeps under the viewer's rate
             page = [item["row"] for item in response.json().get("rows", [])]
             rows += page
             if len(page) < 100:
@@ -136,8 +155,7 @@ def main() -> None:
         rows = fetch(locale)
         source = f"https://huggingface.co/datasets/{DATASET} ({locale}/train)"
         language = [
-            {"text": row["text"], "label": locale}
-            for row in sample(rows, args.lughah_per_intent)
+            {"text": row["text"], "label": locale} for row in sample(rows, args.lughah_per_intent)
         ]
         batches.append(
             {
@@ -170,7 +188,10 @@ def main() -> None:
                 print(
                     batch["model"],
                     response.status_code,
-                    {key: data.get(key) for key in ("status", "before", "after", "p_worse", "learned")},
+                    {
+                        key: data.get(key)
+                        for key in ("status", "before", "after", "p_worse", "learned")
+                    },
                 )
 
 
