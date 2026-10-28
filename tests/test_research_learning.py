@@ -149,19 +149,45 @@ def _challenge(task: str, text: str) -> str:
 def test_a_challenger_replaces_the_incumbent_only_when_proven_better(agent):
     text = INSTRUCTIONS["write_code"] + " Define every name before use."
     variant = _challenge("write_code", text)
-    for _ in range(tajdid.MIN_TRIALS - 1):
-        tajdid.record("write_code", variant, True)
-        tajdid.record("write_code", "base", False)
-    # Not enough trials yet: no decision.
-    assert tajdid._state("write_code")["incumbent"]["id"] == "base"
-    for _ in range(4):
+    # The first challenger needs e ≥ 1/(α/2) = 40: seven straight wins give 31.9.
+    for _ in range(7):
         tajdid.record("write_code", variant, True)
         tajdid.record("write_code", "base", False)
     state = tajdid._state("write_code")
+    assert state["incumbent"]["id"] == "base"
+    assert tajdid.evidence(state)["wins"] == 7 and tajdid.evidence(state)["threshold"] == 40.0
+    # Results of the same version alone are not a comparison.
+    for _ in range(5):
+        tajdid.record("write_code", variant, True)
+    assert tajdid._state("write_code")["incumbent"]["id"] == "base"
+    tajdid.record("write_code", "base", False)  # the eighth pair: e = 56.8
+    state = tajdid._state("write_code")
     assert state["incumbent"]["id"] == variant and state["challenger"] is None
-    assert state["history"][-1]["promoted"] == variant
+    assert state["history"][-1]["promoted"] == variant and state["history"][-1]["pairs"] == 8
+    # The next challenger must clear twice as much evidence (α spending).
+    assert tajdid.threshold(state["judged"]) == 80.0
     # Lisan now writes with the promoted instruction.
     assert tajdid.instruction("write_code", INSTRUCTIONS["write_code"]) == (variant, text)
+
+
+def test_the_gate_is_safe_however_often_it_is_read():
+    # When neither version is better, reading the evidence after every pair still
+    # promotes falsely at most α of the time (Ville's inequality).
+    from core.adaptive import paired_e_value
+
+    rng = random.Random(7)
+    false = 0
+    for _ in range(2000):
+        wins = losses = 0
+        for _ in range(300):
+            if rng.random() < 0.5:
+                wins += 1
+            else:
+                losses += 1
+            if paired_e_value(wins, losses) >= 1 / tajdid.ALPHA:
+                false += 1
+                break
+    assert false / 2000 <= tajdid.ALPHA
 
 
 def test_a_worse_challenger_is_retired_and_the_incumbent_stays(agent):

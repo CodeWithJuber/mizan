@@ -10,9 +10,22 @@ as in sequential incumbent replacement, a new version must earn its place:
    signatures (self-rewrite). MIZAN accepts the rewrite as a challenger only
    if it keeps the output contract (fenced code, the same placeholders) and
    stays within length.
-3. Incumbent and challenger share traffic by Thompson sampling. When the
-   challenger has enough trials and P(challenger better) >= 0.95 it becomes
-   the incumbent; at <= 0.05 it is retired.
+3. Incumbent and challenger share traffic by Thompson sampling. Their results
+   are paired in the order they arrive, and over the pairs where they differ
+   MIZAN keeps an e-value (``core.adaptive.paired_e_value``): the challenger
+   becomes the incumbent when the evidence that it is better reaches 1/α, and
+   is retired when the evidence that the incumbent is better does, or when a
+   declared budget of disagreements passes without either.
+
+Why not "P(better) >= 0.95" after every result: looked at again and again, such
+a rule promotes a version that is no better far more often than 5% of the time.
+The Quran asks that a report be verified before it is acted on, "lest you harm a
+people out of ignorance" (49:6), and al-Tabari reads it as "give it respite until
+you know its soundness; do not hasten to accept it". The e-value is that respite
+in numbers: it may be read after every result, and by Ville's inequality the
+chance it ever wrongly reaches 1/α stays below α. Each new challenger spends half
+of what is left of α (α_k = α·2^-k), so over all challengers ever tried the chance
+of a single false promotion is at most α.
 
 The fixed parts never change: Lisan's base prompt, MIZAN's verification and
 every safety gate. Only the wording of the task instruction evolves, for all
@@ -29,7 +42,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from core.adaptive import AdaptiveStateStore, BetaEstimator
+from core.adaptive import AdaptiveStateStore, BetaEstimator, paired_e_value
 
 # The kinds of work whose outcome MIZAN verifies exactly, and the phrases
 # every version of their instruction must keep.
@@ -41,9 +54,11 @@ CONTRACTS: dict[str, tuple[str, ...]] = {
     "propose_sequence_rule": ("def a(n)", "fenced code block"),
     "revise_sequence_rule": ("fenced code block",),
 }
-MIN_TRIALS = 12
-PROMOTE = 0.95
-RETIRE = 0.05
+ALPHA = 0.05  # the declared chance of ever promoting a version that is not better
+# A declared evaluation budget: about twice the disagreements a sequential test
+# needs to detect a 65/35 split (α 0.05, power 0.8). A challenger that has not
+# shown it is better by then is retired rather than tried forever.
+MAX_DISAGREEMENTS = 80
 EVOLVE_AFTER = 5
 MAX_FAILURES = 8
 _PRIOR = {"alpha": 2.0, "beta": 1.0, "prior_alpha": 2.0, "prior_beta": 1.0, "forgetting": 1.0}
@@ -78,7 +93,18 @@ def _state(task: str) -> dict:
     data.setdefault("failures", [])
     data.setdefault("since", 0)
     data.setdefault("history", [])
+    data.setdefault("judged", 0)  # challengers decided so far (α spending)
+    data.setdefault("pairs", _fresh_pairs())
     return data
+
+
+def _fresh_pairs() -> dict:
+    return {"challenger": [], "incumbent": [], "wins": 0, "losses": 0, "ties": 0}
+
+
+def threshold(judged: int) -> float:
+    """1/α_k for the k-th challenger: α_k = α·2^-k, so Σ_k α_k ≤ α."""
+    return 1.0 / (ALPHA * 2.0 ** -(judged + 1))
 
 
 def _put(task: str, state: dict) -> None:
@@ -137,6 +163,10 @@ def record(task: str, variant: str, worked: bool, feedback: str = "") -> None:
         return  # a version that is no longer in use
     target["posterior"] = _beta(target).update(worked).to_dict()
     target["trials"] = int(target.get("trials", 0)) + 1
+    if state["challenger"]:
+        _pair(
+            state["pairs"], "challenger" if target is state["challenger"] else "incumbent", worked
+        )
     if not worked and target is state["incumbent"]:
         state["since"] = int(state["since"]) + 1
         if feedback:
@@ -145,26 +175,54 @@ def record(task: str, variant: str, worked: bool, feedback: str = "") -> None:
     _put(task, state)
 
 
+def _pair(pairs: dict, arm: str, worked: bool) -> None:
+    """Pair the k-th result of each version in the order they arrive. The pairing
+    never looks at the outcomes, so where neither version is better each
+    disagreement is a fair coin, whatever the versions' common success rate."""
+    pairs[arm] = (pairs[arm] + [int(worked)])[-200:]
+    while pairs["challenger"] and pairs["incumbent"]:
+        mine, theirs = pairs["challenger"].pop(0), pairs["incumbent"].pop(0)
+        key = "wins" if mine > theirs else "losses" if theirs > mine else "ties"
+        pairs[key] = int(pairs[key]) + 1
+
+
+def evidence(state: dict) -> dict:
+    pairs = state["pairs"]
+    wins, losses = int(pairs["wins"]), int(pairs["losses"])
+    return {
+        "wins": wins,
+        "losses": losses,
+        "ties": int(pairs["ties"]),
+        "better": round(paired_e_value(wins, losses), 3),
+        "worse": round(paired_e_value(losses, wins), 3),
+        "threshold": round(threshold(int(state["judged"])), 1),
+    }
+
+
 def _decide(state: dict) -> None:
     challenger = state["challenger"]
-    if not challenger or int(challenger.get("trials", 0)) < MIN_TRIALS:
+    if not challenger:
         return
-    p = probability_better(challenger, state["incumbent"])
-    if p >= PROMOTE:
-        state["history"] = (state["history"] + [
-            {"at": time.time(), "promoted": challenger["id"], "replaced": state["incumbent"]["id"],
-             "p_better": round(p, 3)}
-        ])[-20:]  # fmt: skip
+    found = evidence(state)
+    decided = None
+    if found["better"] >= found["threshold"]:
+        decided = {"promoted": challenger["id"], "replaced": state["incumbent"]["id"]}
         state["incumbent"] = challenger
-        state["challenger"] = None
-        state["since"] = 0
         state["failures"] = []
-    elif p <= RETIRE:
-        state["history"] = (state["history"] + [
-            {"at": time.time(), "retired": challenger["id"], "p_better": round(p, 3)}
-        ])[-20:]  # fmt: skip
-        state["challenger"] = None
-        state["since"] = 0
+    elif (
+        found["worse"] >= found["threshold"] or found["wins"] + found["losses"] >= MAX_DISAGREEMENTS
+    ):
+        decided = {"retired": challenger["id"]}
+    if decided is None:
+        return
+    state["history"] = (
+        state["history"] + [{"at": time.time(), **decided, "e_value": found["better"],
+                             "pairs": found["wins"] + found["losses"]}]
+    )[-20:]  # fmt: skip
+    state["challenger"] = None
+    state["since"] = 0
+    state["judged"] = int(state["judged"]) + 1
+    state["pairs"] = _fresh_pairs()
 
 
 def wants_challenger(task: str) -> bool:
@@ -228,6 +286,7 @@ async def evolve(task: str, default: str, lisan: Any) -> bool:
         "created": time.time(),
     }
     state["since"] = 0
+    state["pairs"] = _fresh_pairs()  # only results under both versions are compared
     _put(task, state)
     return True
 
@@ -255,6 +314,7 @@ def report() -> list[dict]:
                 "success": round(float(_beta(challenger).mean), 3),
                 "trials": int(challenger.get("trials", 0)),
                 "p_better": round(probability_better(challenger, incumbent), 3),
+                "evidence": evidence(state),
             }
         rows.append(row)
     return rows

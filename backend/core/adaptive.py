@@ -169,6 +169,41 @@ def regularized_beta(x: float, a: float, b: float) -> float:
     return 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
 
 
+def log_beta(a: float, b: float) -> float:
+    """ln B(a, b)."""
+    return math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+
+
+def paired_e_value(wins: int, losses: int, prior: float = 1.0) -> float:
+    """Evidence that the first of two versions is better, safe under any stopping.
+
+    Over the pairs where the two versions disagree, one wins with probability q.
+    If neither is better, q = ½ whatever their common success rate, so the
+    mixture likelihood ratio
+
+        E = ∫_{q>½} Π (q/½)^win ((1−q)/½)^loss dπ(q)
+          = 2^n · 2 · B(wins + a, losses + a) / B(a, a) · P(q > ½ | data),
+
+    with π = Beta(a, a) restricted to q > ½, is a test supermartingale under
+    "the first is not better" (q ≤ ½). Ville's inequality then bounds the chance
+    that E ever reaches 1/α by α, however often it is checked.
+    """
+    n = wins + losses
+    if n == 0:
+        return 1.0
+    tail = 1.0 - regularized_beta(0.5, wins + prior, losses + prior)
+    if tail <= 0.0:
+        return 0.0
+    log_e = (
+        n * math.log(2.0)
+        + math.log(2.0)
+        + log_beta(wins + prior, losses + prior)
+        - log_beta(prior, prior)
+        + math.log(tail)
+    )
+    return math.exp(min(log_e, 700.0))
+
+
 def thompson_choice(
     options: Sequence[str], posteriors: dict[str, BetaEstimator], rng: random.Random | None = None
 ) -> str:

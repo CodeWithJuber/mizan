@@ -40,7 +40,14 @@ interface HarnessRow {
   incumbent_success: number;
   incumbent_trials: number;
   failures_since_renewal: number;
-  challenger?: { id: string; success: number; trials: number; p_better: number };
+  challenger?: {
+    id: string;
+    success: number;
+    trials: number;
+    p_better: number;
+    /** Paired e-values (Tajdid): promoted when "better" reaches the threshold. */
+    evidence?: { wins: number; losses: number; ties: number; better: number; worse: number; threshold: number };
+  };
 }
 
 interface Harness {
@@ -357,8 +364,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
                 </span>
                 {row.challenger ? (
                   <span className="text-micro font-mono text-mizan-gold">
-                    trying {row.challenger.id}: {percent(row.challenger.success)} over {row.challenger.trials} ·
-                    P(better) {percent(row.challenger.p_better)}
+                    trying {row.challenger.id}: {percent(row.challenger.success)} over {row.challenger.trials} ·{" "}
+                    {row.challenger.evidence
+                      ? `evidence ${row.challenger.evidence.better.toFixed(1)} of ${row.challenger.evidence.threshold} needed (${row.challenger.evidence.wins} won, ${row.challenger.evidence.losses} lost)`
+                      : `P(better) ${percent(row.challenger.p_better)}`}
                   </span>
                 ) : (
                   <span className="text-micro text-gray-400 dark:text-gray-500">
