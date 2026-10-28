@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What a request passes before an answer is shown</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #0f172a; color: #f1f5f9; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em;
+      text-transform: uppercase; color: #cbd5e1; margin-bottom: 0.5rem; }
+    h1 { font-family: 'Space Grotesk', system-ui, sans-serif; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 500;
+      letter-spacing: -0.02em; line-height: 1.15; color: #f1f5f9; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Layer stack · MIZAN</p>
+    <h1>What a request passes before an answer is shown</h1>
+    <div class="diagram-container">
+<svg viewBox="0 0 1000 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="trust-layers-dark-title trust-layers-dark-desc">
+<title id="trust-layers-dark-title">What a request passes before an answer is shown</title>
+<desc id="trust-layers-dark-desc">Layer stack of six checks from Amanah at the top to Ahl al-Dhikr at the bottom, with the tool gate highlighted as the focal layer.</desc>
+<defs><pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(241,245,249,0.08)"/></pattern><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#cbd5e1"/></marker><marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d4af37"/></marker><marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#93c5fd"/></marker><marker id="arrow-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/></marker></defs>
+<rect width="100%" height="100%" fill="#0f172a"/>
+<rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+<text x="40" y="52" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">REQUEST</text>
+<line x1="80" y1="64" x2="80" y2="440" stroke="rgba(241,245,249,0.3)" stroke-width="1"/>
+<polygon points="76,440 84,440 80,448" fill="#cbd5e1"/>
+<text x="40" y="468" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">ANSWER</text>
+<line x1="120" y1="64" x2="960" y2="64" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<rect x="120" y="64" width="840" height="64" fill="#1e293b"/>
+<line x1="120" y1="128" x2="960" y2="128" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<text x="140" y="100" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L1</text><text x="200" y="102" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Amanah</text><text x="940" y="102" fill="#cbd5e1" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">outside text is data: scan, fence, taint</text>
+<rect x="120" y="128" width="840" height="64" fill="#1e293b"/>
+<line x1="120" y1="192" x2="960" y2="192" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<text x="140" y="164" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L2</text><text x="200" y="166" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Fahm</text><text x="940" y="166" fill="#cbd5e1" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">intent and language by evidence, no word lists</text>
+<rect x="120" y="192" width="840" height="64" fill="rgba(212,175,55,0.14)"/>
+<rect x="120" y="192" width="840" height="64" fill="none" stroke="#d4af37" stroke-width="1"/>
+<text x="140" y="228" fill="#d4af37" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em" font-weight="600">L3</text><text x="200" y="230" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Tool gate</text><text x="940" y="230" fill="#d4af37" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">Izn, approvals, Hudud; a Sakk receipt either way</text>
+<rect x="120" y="256" width="840" height="64" fill="#1e293b"/>
+<line x1="120" y1="320" x2="960" y2="320" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<text x="140" y="292" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L4</text><text x="200" y="294" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Tathabbut, Furqan</text><text x="940" y="294" fill="#cbd5e1" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">a second program agrees; wording held to facts</text>
+<rect x="120" y="320" width="840" height="64" fill="#1e293b"/>
+<line x1="120" y1="384" x2="960" y2="384" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<text x="140" y="356" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L5</text><text x="200" y="358" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Sidq, Isnad</text><text x="940" y="358" fill="#cbd5e1" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">arithmetic, quotes, links fixed; each claim graded</text>
+<rect x="120" y="384" width="840" height="64" fill="#1e293b"/>
+<line x1="120" y1="448" x2="960" y2="448" stroke="rgba(241,245,249,0.12)" stroke-width="1"/>
+<text x="140" y="420" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.14em">L6</text><text x="200" y="422" fill="#f1f5f9" font-size="16" font-weight="600" font-family="'DM Sans', system-ui, sans-serif">Ahl al-Dhikr</text><text x="940" y="422" fill="#cbd5e1" font-size="10" font-family="'IBM Plex Mono', ui-monospace, monospace" text-anchor="end" letter-spacing="0.04em">sources asked (16:43); reported under the answer</text>
+<text x="120" y="496" fill="#cbd5e1" font-size="8" font-family="'IBM Plex Mono', ui-monospace, monospace" letter-spacing="0.18em">FOCAL LAYER</text><text x="220" y="496" fill="#cbd5e1" font-size="9" font-family="'DM Sans', system-ui, sans-serif" font-style="italic">The model never holds a tool: every action passes one gate, and every outcome leaves a receipt.</text>
+</svg>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "One chat turn MIZAN recognises: write, run and check a program",
+    "output": "docs/diagrams/chat-turn.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/CodeWithJuber/mizan",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "5cc11dc1f626d5f785f8ab9254aa8c05ec060d36"
+    }
+  },
+  "participants": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web app",
+      "sublabel": "chat page",
+      "sources": [
+        {
+          "path": "frontend/src/App.tsx",
+          "line": 2190,
+          "end_line": 2200,
+          "label": "POST chat/stream"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "API",
+      "sublabel": "/api/chat/stream",
+      "sources": [
+        {
+          "path": "backend/api/main.py",
+          "line": 1932,
+          "end_line": 1945,
+          "label": "stream_chat"
+        },
+        {
+          "path": "backend/api/main.py",
+          "line": 2320,
+          "end_line": 2330,
+          "label": "binds, then execute"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "BaseAgent",
+      "sublabel": "execute()",
+      "sources": [
+        {
+          "path": "backend/agents/base.py",
+          "line": 3316,
+          "end_line": 3331,
+          "label": "Tadbir first"
+        },
+        {
+          "path": "backend/agents/base.py",
+          "line": 3046,
+          "end_line": 3053,
+          "label": "Isnad, Sidq, Ahl"
+        }
+      ]
+    },
+    {
+      "id": "tadbir",
+      "type": "backend",
+      "label": "Tadbir",
+      "sublabel": "engine.py",
+      "sources": [
+        {
+          "path": "backend/tadbir/engine.py",
+          "line": 170,
+          "end_line": 180,
+          "label": "handle"
+        },
+        {
+          "path": "backend/tadbir/engine.py",
+          "line": 849,
+          "end_line": 950,
+          "label": "_build_and_run"
+        },
+        {
+          "path": "backend/tadbir/engine.py",
+          "line": 953,
+          "end_line": 995,
+          "label": "_tathabbut"
+        }
+      ]
+    },
+    {
+      "id": "fahm",
+      "type": "backend",
+      "label": "Fahm",
+      "sublabel": "Qasd posterior",
+      "sources": [
+        {
+          "path": "backend/tadbir/fahm.py",
+          "line": 520,
+          "end_line": 520,
+          "label": "understand"
+        },
+        {
+          "path": "backend/tadbir/qasd.py",
+          "line": 151,
+          "end_line": 151,
+          "label": "posterior"
+        }
+      ]
+    },
+    {
+      "id": "lisan",
+      "type": "cloud",
+      "label": "Lisan",
+      "sublabel": "language model",
+      "sources": [
+        {
+          "path": "backend/tadbir/lisan.py",
+          "line": 240,
+          "end_line": 257,
+          "label": "write_code, cross_check"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "Tool gate",
+      "sublabel": "_execute_tool_safe",
+      "sources": [
+        {
+          "path": "backend/agents/base.py",
+          "line": 2242,
+          "end_line": 2257,
+          "label": "checks + Sakk receipt"
+        },
+        {
+          "path": "backend/tadbir/engine.py",
+          "line": 545,
+          "end_line": 553,
+          "label": "Tadbir._tool"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 439,
+      "label": "Understand"
+    },
+    {
+      "from": 447,
+      "to": 699,
+      "label": "Act"
+    },
+    {
+      "from": 707,
+      "to": 923,
+      "label": "Verify (Tathabbut)"
+    },
+    {
+      "from": 931,
+      "to": 1061,
+      "label": "Answer"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "web",
+      "to": "api",
+      "y": 165,
+      "label": "POST /api/chat/stream",
+      "variant": "emphasis",
+      "note": "bearer token; 30 messages a minute per user"
+    },
+    {
+      "id": "execute",
+      "from": "api",
+      "to": "agent",
+      "y": 235,
+      "label": "execute(task, history)",
+      "variant": "emphasis",
+      "note": "own run copy; Amanah reads pasted text"
+    },
+    {
+      "id": "handle",
+      "from": "agent",
+      "to": "tadbir",
+      "y": 305,
+      "label": "handle()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "understand",
+      "from": "tadbir",
+      "to": "fahm",
+      "y": 339,
+      "label": "understand()",
+      "note": "earlier messages are the prior"
+    },
+    {
+      "id": "intent",
+      "from": "fahm",
+      "to": "tadbir",
+      "y": 409,
+      "label": "build_and_run",
+      "variant": "return"
+    },
+    {
+      "id": "write",
+      "from": "tadbir",
+      "to": "lisan",
+      "y": 459,
+      "label": "write_code",
+      "note": "the model writes text only"
+    },
+    {
+      "id": "program",
+      "from": "lisan",
+      "to": "tadbir",
+      "y": 529,
+      "label": "program",
+      "variant": "return"
+    },
+    {
+      "id": "run",
+      "from": "tadbir",
+      "to": "gate",
+      "y": 563,
+      "label": "workspace_run",
+      "variant": "security",
+      "note": "Izn, approvals; sandbox runner"
+    },
+    {
+      "id": "stdout",
+      "from": "gate",
+      "to": "tadbir",
+      "y": 633,
+      "label": "stdout, exit code",
+      "variant": "return",
+      "note": "an error: fix_code, run again"
+    },
+    {
+      "id": "cross",
+      "from": "tadbir",
+      "to": "lisan",
+      "y": 719,
+      "label": "cross_check",
+      "variant": "default",
+      "note": "written without seeing the first"
+    },
+    {
+      "id": "second",
+      "from": "lisan",
+      "to": "tadbir",
+      "y": 789,
+      "label": "second program",
+      "variant": "return"
+    },
+    {
+      "id": "rerun",
+      "from": "tadbir",
+      "to": "gate",
+      "y": 823,
+      "label": "workspace_run",
+      "variant": "security"
+    },
+    {
+      "id": "stdout2",
+      "from": "gate",
+      "to": "tadbir",
+      "y": 857,
+      "label": "stdout",
+      "variant": "return",
+      "note": "same numbers in order: verified"
+    },
+    {
+      "id": "outcome",
+      "from": "tadbir",
+      "to": "agent",
+      "y": 943,
+      "label": "task_verified answer",
+      "variant": "return",
+      "note": "code and output quoted by MIZAN"
+    },
+    {
+      "id": "graded",
+      "from": "agent",
+      "to": "api",
+      "y": 1013,
+      "label": "result + Isnad grades",
+      "variant": "return"
+    },
+    {
+      "id": "sse",
+      "from": "api",
+      "to": "web",
+      "y": 1047,
+      "label": "chat_stream, chat_complete",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 160,
+      "to": 1053,
+      "type": "security"
+    },
+    {
+      "participant": "agent",
+      "from": 230,
+      "to": 1019,
+      "type": "backend"
+    },
+    {
+      "participant": "tadbir",
+      "from": 300,
+      "to": 949,
+      "type": "backend"
+    },
+    {
+      "participant": "fahm",
+      "from": 334,
+      "to": 415,
+      "type": "backend"
+    },
+    {
+      "participant": "lisan",
+      "from": 454,
+      "to": 535,
+      "type": "cloud"
+    },
+    {
+      "participant": "gate",
+      "from": 558,
+      "to": 639,
+      "type": "security"
+    },
+    {
+      "participant": "lisan",
+      "from": 714,
+      "to": 795,
+      "type": "cloud"
+    },
+    {
+      "participant": "gate",
+      "from": 818,
+      "to": 863,
+      "type": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Who acts",
+      "items": [
+        "Fahm picks the recipe by posterior; Tadbir runs every step",
+        "The model only writes the two programs",
+        "Each run is a tool call through the gate, with a Sakk receipt"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "When it is verified",
+      "items": [
+        "Tathabbut: an independent program prints the same numbers in order",
+        "Disagreement: the first program is repaired once, else not verified",
+        "Hifz keeps only checked programs and re-runs them with no model call"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Words-only requests",
+      "items": [
+        "When Fahm recognises no action, handle() returns nothing",
+        "The agent then answers in words with no tools",
+        "Sidq and Ahl al-Dhikr check that unverified answer before it is shown"
+      ]
+    }
+  ]
+}

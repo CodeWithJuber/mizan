@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How MIZAN learns from verified outcomes, with no weights",
+    "output": "docs/diagrams/learning.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/CodeWithJuber/mizan",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "5cc11dc1f626d5f785f8ab9254aa8c05ec060d36"
+    }
+  },
+  "stages": [
+    { "label": "Evidence" },
+    { "label": "Learn" },
+    { "label": "Kept" },
+    { "label": "Used next time" }
+  ],
+  "nodes": [
+    { "id": "outcome", "type": "backend", "label": "Verified outcome", "sublabel": "Tadbir recipe", "stage": 0, "row": 0,
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 456, "end_line": 477, "label": "_learn" } ] },
+    { "id": "checked", "type": "backend", "label": "Checked program", "sublabel": "Tathabbut agreed", "stage": 0, "row": 1,
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 953, "end_line": 995, "label": "_tathabbut" } ] },
+    { "id": "repair", "type": "backend", "label": "Repair that ran", "sublabel": "failing → fixed", "stage": 0, "row": 2,
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 915, "end_line": 922, "label": "tajriba.learn" } ] },
+    { "id": "answers", "type": "external", "label": "Sources' answers", "sublabel": "NLI entailment", "stage": 0, "row": 3,
+      "sources": [ { "path": "backend/tadbir/ahl_dhikr.py", "line": 263, "end_line": 263, "label": "judge" } ] },
+    { "id": "qasd", "type": "backend", "label": "Qasd + Ta'allum", "sublabel": "wording → intent", "stage": 1, "row": 0,
+      "sources": [ { "path": "backend/tadbir/qasd.py", "line": 238, "end_line": 238, "label": "qasd.learn" }, { "path": "backend/tadbir/taallum.py", "line": 113, "end_line": 113, "label": "taallum.learn" } ] },
+    { "id": "hifz", "type": "backend", "label": "Hifz", "sublabel": "keep the program", "stage": 1, "row": 1,
+      "sources": [ { "path": "backend/tadbir/hifz.py", "line": 85, "end_line": 85, "label": "keep" } ] },
+    { "id": "tajriba", "type": "backend", "label": "Tajriba", "sublabel": "repair lesson", "stage": 1, "row": 2,
+      "sources": [ { "path": "backend/tadbir/tajriba.py", "line": 78, "end_line": 78, "label": "learn" } ] },
+    { "id": "ilm", "type": "backend", "label": "Ahl al-Dhikr", "sublabel": "settled sentences", "stage": 1, "row": 3,
+      "sources": [ { "path": "backend/tadbir/ahl_dhikr.py", "line": 431, "end_line": 431, "label": "keep" } ] },
+    { "id": "state", "type": "database", "label": "Learned state", "sublabel": "per user, memory DB", "stage": 2, "row": 1,
+      "sources": [ { "path": "backend/agents/base.py", "line": 1197, "end_line": 1205, "label": "adaptive store" } ] },
+    { "id": "mahw", "type": "security", "label": "Mahw", "sublabel": "erase a chat", "stage": 2, "row": 3,
+      "sources": [ { "path": "backend/memory/mahw.py", "line": 126, "end_line": 150, "label": "_forget_learned" } ] },
+    { "id": "fahm", "type": "backend", "label": "Fahm", "sublabel": "user's overlay", "stage": 3, "row": 0,
+      "sources": [ { "path": "backend/tadbir/qasd.py", "line": 230, "end_line": 230, "label": "overlay" } ] },
+    { "id": "reuse", "type": "backend", "label": "Recipes", "sublabel": "re-run, no model", "stage": 3, "row": 1,
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 855, "end_line": 858, "label": "hifz.recall" } ] },
+    { "id": "lisan", "type": "cloud", "label": "Lisan prompts", "sublabel": "lessons, settled ilm", "stage": 3, "row": 2,
+      "sources": [ { "path": "backend/tadbir/engine.py", "line": 872, "end_line": 875, "label": "lessons to Lisan" }, { "path": "backend/tadbir/ahl_dhikr.py", "line": 563, "end_line": 563, "label": "evidence_for" } ] }
+  ],
+  "flows": [
+    { "id": "outcome-qasd", "from": "outcome", "to": "qasd", "label": "request wording", "variant": "emphasis" },
+    { "id": "checked-hifz", "from": "checked", "to": "hifz", "label": "program + output", "variant": "emphasis" },
+    { "id": "repair-tajriba", "from": "repair", "to": "tajriba", "label": "error → change" },
+    { "id": "answers-ilm", "from": "answers", "to": "ilm", "label": "supported claims" },
+    { "id": "qasd-state", "from": "qasd", "to": "state", "label": "examples" },
+    { "id": "hifz-state", "from": "hifz", "to": "state", "label": "checked programs" },
+    { "id": "tajriba-state", "from": "tajriba", "to": "state", "label": "lessons" },
+    { "id": "ilm-state", "from": "ilm", "to": "state", "label": "sentence + site" },
+    { "id": "mahw-state", "from": "mahw", "to": "state", "label": "unlearn chat", "variant": "security" },
+    { "id": "state-fahm", "from": "state", "to": "fahm", "label": "Qasd overlay" },
+    { "id": "state-reuse", "from": "state", "to": "reuse", "label": "kept program", "variant": "emphasis" },
+    { "id": "state-lisan", "from": "state", "to": "lisan", "label": "lessons, ilm" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Only what was verified", "items": ["Qasd learns a wording only after MIZAN verified the result", "Hifz keeps a program only when Tathabbut agreed", "Sources' sentences reach Lisan only when two independent sites agree"] },
+    { "dot": "amber", "title": "Also learned, outside this store", "items": ["Majlis: Beta posterior per agent and intent, Thompson-sampled", "Tajdid and Wazn: instruction versions and model choice in harness.db", "Tadhkir: FSRS strength of each memory, every recall a review"] },
+    { "dot": "rose", "title": "What stops learning", "items": ["Stateless chats and evaluations: every learned-state write is a no-op", "Mahw erases a chat and what was learned from its requests", "Muhasaba re-checks unverified answers daily and posts corrections"] }
+  ]
+}
