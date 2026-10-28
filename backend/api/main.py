@@ -5857,7 +5857,7 @@ async def _invited(code: str, request: Request) -> dict:
     from imtihan import quwa
 
     _open_rate_limit(request)
-    found = await asyncio.to_thread(quwa.invited, code)
+    found: dict | None = await asyncio.to_thread(quwa.invited, code)
     if found is None:
         raise HTTPException(404, "This link is not valid or has expired")
     return found
