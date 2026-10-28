@@ -7,7 +7,7 @@ only).
 The base URL is your server, for example `https://your-mizan.example`; every
 route below starts with `/api`. FastAPI's own `/docs` page is not served
 through the production proxy. This page explains the main routes;
-**every** route (268, with who may call it) is in
+**every** route (292, with who may call it) is in
 [api-reference.md](api-reference.md), and [openapi.json](openapi.json) has
 them all with their request bodies: import it into Postman, Insomnia or
 Bruno, set the server URL, and use a Bearer token or `X-API-Key`.
@@ -71,7 +71,7 @@ Server-Sent Events. Body:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `session_id` | yes | Any id you choose; the same id continues the same chat |
+| `session_id` | yes | Any id you choose (letters, digits, `_` and `-`, at most 100); the same id continues the same chat |
 | `request_id` | no | A fresh UUID per message. Sending the same id again answers 409 instead of running twice, so after a dropped connection read `GET /api/chat/{session_id}/run-state` rather than resending. If you leave it out, MIZAN makes one and returns it in every event; a resend is then a new request |
 | `content` | yes | The message |
 | `permission_mode` | no | `auto`, `auto_edits`, `ask` or `plan` |
@@ -108,7 +108,9 @@ Events arrive in this order:
     gate run, no source asked, nothing injected), so read them as optional;
   - `task_verified` and `completion_status`.
 
-**`POST /api/chat`** takes the same body without `request_id`. It answers
+**`POST /api/chat`** takes only `session_id`, `content`, `timezone` and the
+optional `agent_id` and `model_override`: no `request_id`, images, project,
+permission mode, `thinking` or `stateless`. It answers
 `{"status": "processing"}` at once; the answer is saved to the chat and also
 pushed over the WebSocket `/ws/{client_id}`.
 
@@ -120,7 +122,7 @@ pushed over the WebSocket `/ws/{client_id}`.
 | `POST /api/chat/{session_id}/stop` | Stop it |
 | `DELETE /api/chat/{session_id}` | Erase the chat everywhere (Mahw) and get a receipt |
 | `GET /api/chat/approvals`, `POST /api/chat/approvals/{id}` | Actions waiting for your Allow/Deny |
-| `GET /api/chat/held`, `POST /api/chat/held/{id}` | Actions a watcher held while you were away |
+| `GET /api/chat/held`, `POST /api/chat/held/{id}` | Actions an unattended run (a watcher, a Telegram, email or WhatsApp message) held for you |
 
 ## Base model against MIZAN (debug mode)
 
@@ -147,7 +149,9 @@ curl $MIZAN/api/debug/compare -H "Authorization: Bearer $TOKEN" -H 'Content-Type
 | `POST /api/imtihan/run` | Start a run in the background. Body: `{"blocks": ["ibrah", "quran"] or null for all, "repeats": 1-3}` |
 | `GET /api/imtihan/runs`, `GET /api/imtihan/runs/{id}` | Progress and the report: Wilson intervals, pass^k, calibration, the index |
 | `POST /api/imtihan/runs/{id}/cancel` | Stop a run |
-| `POST /api/imtihan/runs/{id}/publish` | Publish its aggregate report on the public reliability page |
+| `POST /api/imtihan/runs/{id}/publish` | Publish its aggregate report on the public reliability page (`DELETE` takes it down) |
+| `GET`/`POST /api/imtihan/panel`, `DELETE /api/imtihan/panel/{person}` | The human panel: its items, answers given under a pseudonym, and erasing a person's answers |
+| `POST`/`GET /api/imtihan/panel/invites`, `DELETE /api/imtihan/panel/invites/{id}` | Invite links (`/panel/<code>`) for one person to answer alone with no account; the code is shown once |
 | `GET`/`POST /api/imtihan/arc3` | The official ARC-AGI-3 games, when `ARC_API_KEY` is set |
 
 ## Proofs and your data
@@ -168,9 +172,11 @@ curl $MIZAN/api/debug/compare -H "Authorization: Bearer $TOKEN" -H 'Content-Type
 | Route | What it does |
 |---|---|
 | `GET /api/health` | Status and version |
-| `GET /api/public/reliability` | The published AGI-test scorecard |
-| `GET /api/public/sakk` | The daily signed root of every receipt chain, with the public key |
+| `GET /api/public/reliability`, `GET /api/public/reliability/{run_id}` | The published AGI-test scorecards, and one of them |
+| `GET /api/public/sakk` | The signed checkpoints of every receipt chain (the 30 latest), with the public key |
+| `GET`/`POST /api/public/panel/{code}` | A human-panel invite: the items to answer, and the answers (the first answer to an item is final; no verdict is returned) |
 | `GET`/`POST /api/public/whatsapp` | Meta's WhatsApp webhook; events must be signed with the app secret ([Bab](bab.md)) |
+| `POST /api/v1/root-analyze`, `/api/v1/tokenize`, `/api/v1/q28-features` | The public versioned Arabic APIs ([Sarf](sarf.md) answers root-analyze) |
 
 ## The client script
 

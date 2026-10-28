@@ -36,7 +36,7 @@ Each remembrance is a review that updates S and D by FSRS's equations. A review 
 | First written | Hard / Good / Easy by the third of importance it falls in | initial S: 1.3 / 2.3 / 8.3 days |
 | Recalled to answer | Good | S grows: 2.3 → 7.3 days after a 1-day gap, → 25 after a 10-day gap; nothing the same hour |
 | Said again by the user | Good on the memory already held | repeated, not copied (Bukhari 95) |
-| Needed but missing | Again | relearned from a lower S |
+| Needed but missing | Again | relearned from a lower S (`tadhkir.review` supports it and the tests check it; no part of MIZAN grades a lapse yet) |
 
 **Where it is used.**
 - **Ranking.** Recall order is relevance × R × importance.

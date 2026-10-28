@@ -7,9 +7,11 @@ It is not a pull-request workflow, general server installer, or Docker upgrade.
 
 The verified production baseline is commit `0176a873e266d942918de47f8888071568eeeeb2`.
 Before enabling the operations branch, retarget `EXPECTED_BACKEND_SHA` to the
-final application's deployed, CI-tested commit. Both workspace images must have
-been published for that exact commit. The workflow checks main still has that SHA; the
-host checks that its backend image ID equals the locally installed image for that
+final application's deployed, CI-tested commit. The workspace runtime and runner
+images must have been published for that exact commit. The `workspace-browser`
+image (Shahid) is pulled too when it was published; it is optional, and without
+it setup continues and MIZAN reads pages without a browser. The workflow checks
+main still has that SHA; the host checks that its backend image ID equals the locally installed image for that
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
 The baseline runtime includes the pinned plotting dependencies. A different
 runtime still requires its corresponding tested image. Production activation and
@@ -36,6 +38,10 @@ live Python, PNG and interactive HTML verification are recorded in
   socket for the production daemon. Runner has no host ports, a read-only root,
   no capabilities, and no-new-privileges. Jobs additionally have no network,
   persistent mounts, production secrets, or access to the application database.
+  Sandbox sessions and Shahid browser jobs are separate containers with their
+  own limits: their only network is an internal one whose single peer is an
+  egress proxy, and a session keeps its project files on a volume until it stops
+  ([agentic-coding.md](agentic-coding.md), [shahid.md](shahid.md)).
 - Uses the existing private `mizan_mizan-net`, Compose project and volume mounts.
   Only `workspace-runner` and `backend` can be recreated. Nginx configuration is
   tested and reloaded to refresh the backend address; other services are preserved.
@@ -52,7 +58,7 @@ Docker state. Setup requires at least 3 GiB available RAM and 4 GiB free disk.
 The existing pinned `deploy/known_hosts` and deployment SSH settings are reused.
 The short-lived GitHub registry token arrives on stdin, is never a command-line
 argument or log entry, and is used only in a temporary root-private Docker client
-configuration. That directory is removed after pulling both full-commit tags.
+configuration. That directory is removed after pulling the full-commit tags.
 Registry tags can be reassigned, so the installer records their content IDs and
 repository digests and uses the pulled content IDs in the runner configuration.
 A retry will not silently accept a different image for an already recorded tag.
@@ -148,7 +154,7 @@ not a database restore.
 The protected checkpoint records the original backend container identity and
 whether the switch started. A failure before that switch preserves the same
 healthy backend without recreation; unknown/legacy state restores conservatively.
-Both Compose PID-limit fields are set to 128 for the control service, the rendered
+Both Compose PID-limit fields are set to 512 for the control service, the rendered
 configuration is validated before activation, and the live PID limit is checked.
 The recovery workflow budgets 25 minutes for its ten-minute lock wait,
 ten-minute recovery budget and SSH/setup overhead.

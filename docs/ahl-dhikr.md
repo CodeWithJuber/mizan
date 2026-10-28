@@ -20,9 +20,12 @@ da'if claim **before the answer is shown**, and keeps what they settle.
 - **Or the question asks for a religious ruling.** This is decided by the
   `ruling` facet, for questions such as "Is it halal to invest in crypto?" or
   "Gusse mein di gayi talaq hoti hai?".
-  - MIZAN does not give fatwa. The answer shows its sources and ends with:
+  - MIZAN does not give fatwa. Under the answer, with its sources, it shows:
     *"This asks for a religious ruling. MIZAN does not give fatwa; ask a
     qualified scholar (ahl al-ilm) who can weigh your situation."*
+    (`usage.ahl.referral`, never inside the answer's text; a Telegram,
+    WhatsApp or email reply, which has no notes view, prints it on its own
+    line).
   - Scholarly bodies agree that AI may help with research but may not act as
     a mufti: the OIC Islamic Fiqh Academy (Resolution 258, 2025), Al-Azhar,
     Dar al-Ifta and the Muslim World League.
@@ -34,9 +37,9 @@ MIZAN asks its sources in this order:
    a source confirmed or contradicted earlier, each kept with its title, link
    and date.
 2. **Outside sources:**
-   - **Wikipedia**, in the answer's language (English for Roman Hindi and
-     Urdu), then English. It uses MediaWiki's own search, then the article's
-     plain text.
+   - **Wikipedia**, in the question's language (English for Roman
+     Hindi/Urdu), then English. It uses MediaWiki's own search (the top two
+     articles), then the article's plain text.
    - **A web search**, whose snippets are untrusted data: Amanah removes any
      instruction aimed at the AI.
 
@@ -64,7 +67,7 @@ refusal.
 1. The source's sentences are ranked by **BM25** against the claim. A
    sentence is kept only if it is **about what the claim is about**:
    - the claim's distinctive words are those whose information (inverse
-     document frequency over MIZAN's own corpora in seven languages) is above
+     document frequency over Lughah's corpora in five languages) is above
      the claim's mean;
    - the sentence must contain more than half of that information.
 
@@ -92,15 +95,15 @@ refusal.
      contradiction is symmetric, so a one-way reading is a misread and settles
      nothing (on 27 October an agreeing page was shown as "says otherwise").
      The claim stays da'if with "*title* says otherwise", and the source's
-     sentence and link are listed **under the answer**.
+     sentence and link are listed **under the answer**. The model's sentence
+     is never silently rewritten;
+   - **neither**: the claim stays unknown.
 
    Nothing the sources say is ever written into the answer itself. Notes inside
    the text landed in table rows, formulas, verses, refusals and after a last
    word the user required (27 October benchmark: 258 notes in 51 answers).
    An equation ("9.11 = 9 + 0.11", "60 × 60 = 3600") is never asked of a
    source either: computing it settles it ([Sidq](sidq.md)).
-     The model's sentence is never silently rewritten;
-   - **neither**: the claim stays unknown.
 
 Claims no source settled are reported under the answer ("Sources asked: 2 not
 found — the model's own words, Allahu a'lam"), not added to its text. A note

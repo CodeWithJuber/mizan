@@ -6,14 +6,16 @@ Deleting a chat, or forgetting a note, removes it from every place MIZAN keeps i
 
 | Store | What goes |
 |---|---|
-| Chat | Its messages, its running summary, its request receipts, Muhasaba's reviews of its answers, its artifacts, its plan file, and actions held for it |
+| Chat | Its messages, its running summary, its request receipts, Muhasaba's reviews of its answers, its artifacts (with their versions), its plan file, actions held for it, and the images attached in it (Basar), unless another of your chats still shows the same picture |
 | Your notes | Notes made from this chat (source `chat:<id>`), with their vectors |
-| What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries for the chat's requests. Also the intents (Qasd), wording (Ta'allum) and programs (Hifz) learned from those requests |
+| What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries (with their links) for the chat's requests. Also the intents (Qasd), wording (Ta'allum), programs (Hifz) and source-settled sentences (Ahl al-Dhikr's `ilm`) learned from those requests |
 | Learner | Training candidates captured from the chat, with their reviews |
 | Debug mode | Saved comparison runs of the chat's requests |
 | Pathways (Masalik) | Rebuilt from the notes and task records you keep. A Hebbian update cannot be subtracted, so the network is rebuilt rather than edited. 5,000 records take under a second |
 
 A preference you set in the chat stays in your Daftar. It is a setting, not part of the conversation, and you can forget it there. It stops pointing to the deleted chat.
+
+Action receipts (Sakk) stay: they hold which tool ran and how it ended, with keyed digests only and no words from the chat. The erase itself is recorded as a Sakk receipt of kind `erase` (the chat id as a keyed digest, with the counts removed and traces found).
 
 A chat that is still answering cannot be deleted (409). Stop it first.
 
@@ -43,7 +45,7 @@ The receipt records:
 - what was removed, per store
 - how many checks ran
 - how many traces were found, per store
-- what was deliberately kept
+- what was deliberately kept (the Sakk receipts, and preferences set in the chat)
 - what MIZAN cannot reach: text already sent to a model provider is held under that provider's own retention policy
 
 It keeps none of the erased content and no hashes of it.

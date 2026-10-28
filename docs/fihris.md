@@ -23,7 +23,7 @@ Every ayah has five views:
 - "Kausar" meets "kauthar";
 - "قرآن" meets "القرآن".
 
-No rule about articles, vowels or sounds is written anywhere. Text is only normalised: lower case without accents, and Arabic-script letters that are one letter in two code points (Urdu ی and Arabic ي, the seats of hamza) written one way.
+Text is only normalised: lower case without accents, Arabic-script letters that are one letter in two code points (Urdu ی and Arabic ي, the seats of hamza) written one way, Devanagari without the nukta, and, in the transliteration view, a letter repeated counts once ("lillahi", "lillaahi"). Beyond that, no rule about articles, vowels or sounds is written anywhere.
 
 ## Weighing a query
 
@@ -42,7 +42,7 @@ Every view then scores the ayahs by BM25. Its scores are standardised over all 6
 - **The person's question** is then answered from the ayah's own words, as for a question about a referenced ayah. Furqan checks that answer.
 - **Other ayahs** are named only when they are about as likely as chance among the matches: their softmax share of the standardised scores is at least 1/k. Weak hits are left out.
 - **When no ayah shares a word with the request,** MIZAN says so and quotes nothing. It does not quote ayahs from memory.
-- **When no ayah says it** (`Index.find` → `Found(matches, absent, nearest)`): a query's distinctive words are those carrying more information than its average word (P(topic | word) × the IDF of the views that read it). A distinctive Latin-script word that no view reads, and that a fitted letter model (`fihris_english`, leave-one-out, cached) reads as English, is unused by the Quran. When unused words hold most of the query's distinctive information (2 · Σ unused > Σ), MIZAN answers plainly that no ayah says this ("seven continents": no ayah names them), names those words, and gives the nearest ayah only for what it shares. A transliteration ("kausar", "munhtah") counts a repeated letter once, so it is never called unused.
+- **When no ayah says it** (`Index.find` → `Found(matches, absent, nearest)`): a query's distinctive words are those carrying more information than its average word (P(topic | word) × the IDF of the views that read it). A distinctive Latin-script word that no view reads counts as unused by the Quran with the probability that a fitted letter model (`fihris_english`: Saheeh International's and Lughah's English words against the transliteration's and Roman Hindi words, leave-one-out, cached) reads it as English. Arabic-script and Devanagari words are never counted as unused. When unused words hold most of the query's distinctive information (2 · Σ info × P(unused) > Σ info), MIZAN answers plainly that no ayah says this ("seven continents": no ayah names them), names those words (P(unused) > ½), and gives the nearest ayah only for what it shares. A transliteration ("kausar", "munhtah") counts as unused only as far as the letter model reads it as English.
 - **Counts** ("Quran mein kitni ayat hain?", "how many surahs") never search: the `quran_count` recipe reads MIZAN's surah index (114 surahs, 6,236 ayahs in the Hafs count; per surah for "Baqarah mein kitni ayat").
 
 A request that names a reference ("Surah Najm 14") goes to the reference recipe instead.
@@ -62,11 +62,10 @@ These were measured on the real index:
 | jannat ul firdaus | 23:11 |
 | light upon light | 24:35 |
 | ayah about patience and prayer | 2:153 (2:45 next) |
-| Allah does not burden a soul beyond its capacity | 23:62 (2:286 close) |
+| Allah does not burden a soul beyond its capacity | 23:62 (7:42 and 2:286 next) |
 | Which surah mentions the elephant? | 105:1 |
 | سدرة المنتهى | 53:14 |
 
 **Known gaps:**
 - **Roman Urdu meaning words.** "Shahad", meaning honey, finds ayahs about witnesses. The transliteration has *shahid* (witness), and no view holds Roman Urdu meanings.
-- **Some Devanagari words.** "सब्र" does not find ayahs on patience, because the Hindi translation uses other words.
-- **Quranic phrases Qasd does not yet know.** Some transliterated phrases are still placed as conversation, for example "Hasbunallahu wa nimal wakeel" at P = 0.38 against 0.46. The index finds 3:173 for it; Qasd has to send the request there first.
+- **Requests Qasd does not yet send here.** Read alone, with no chat before it, several requests in the table are placed as conversation: "Hasbunallahu wa nimal wakeel" (`quran_search` at P = 0.29 against 0.58), "light upon light", "سدرة المنتهى", "ayah about patience and prayer", "Allah does not burden a soul beyond its capacity", and "Sidratul muntaha kya hai" (the Quran family at 0.39, as likely as conversation, so not decisive). The index finds each; Qasd has to send the request there first.

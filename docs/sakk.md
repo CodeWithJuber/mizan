@@ -8,12 +8,14 @@ Code: `backend/security/sakk.py`, the `/api/sakk*` and `/api/public/*` routes in
 
 | Receipt | When |
 |---|---|
-| `tool` | every tool call through `_execute_tool_safe`, whatever happened: done, held, declined, error or raised |
+| `tool` | every tool call through `_execute_tool_safe`, whatever happened: done, held, declined, error or raised (not in a turn where no tool may run at all, a words-only answer or a Shura council evaluation, since nothing ran) |
 | `held_decision` | you allowed or denied a held action: the SHA-256 of its exact parameters and where you decided (`web`, `telegram`) |
 | `setting` | an administrator changed system settings (in the `system` chain): which keys, by whom, and an HMAC of the new values, never the values. Channel tokens and allowlists change only this way; no agent tool can reach it |
 | `approval` | you answered a live approval prompt |
 | `erase` | you deleted a chat (Mahw), with how much was removed and how many traces were found |
 | `scorecard` | an administrator published an AGI-test result (owner `system`) |
+| `talim` | an administrator kept or undid a Ta'lim batch (owner `system`): the batch, the model taught, how many examples, by whom, and its P(worse) |
+| `browse` | each step of a Shahid browser run: the step, its URL, the SHA-256 of the page snapshot, text and screenshot, the requests held and those the person allowed |
 
 **What a receipt holds:**
 - **Every receipt:** version, owner, sequence number, time, kind, and `prev` (the previous receipt's hash).
@@ -57,7 +59,7 @@ It recomputes every hash and link, checks your chain's head is in the signed roo
 ## Public reliability page
 
 `/reliability` needs no sign-in. It shows:
-- the latest published AGI-test result ([Imtihan](imtihan.md)), with the same aggregate charts as the admin page: per-block pass rates with 95% Wilson intervals, the weighted index, agentic dimensions, games, Isnad support, calibration, consistency and work done;
+- the latest published AGI-test result ([Imtihan](imtihan.md)), with the same aggregate charts as the admin page: per-block pass rates with 95% Wilson intervals, the weighted index, the cognitive-faculty profile (Quwa), agentic dimensions, games, Isnad support, calibration, consistency and work done;
 - the published history;
 - the signed Sakk roots and the public key.
 

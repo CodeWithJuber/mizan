@@ -28,9 +28,11 @@ Every answer names its source: *Quranic Arabic Corpus (corpus.quran.com), GPL*.
    from the corpus:
    - the reading it has most often, with the other readings and their shares
      (كتب: kutiba 57%, kataba 35%, kutub 9%);
-   - its vowelled wazn (كَاتِب → فَاعِل, مَكْتُوب → مَفْعُول, يَوْم → فَعْل).
+   - its vowelled wazn (كَاتِب → فَاعِل, يَوْم → فَعْل).
 2. **Any other word** is read by a noisy-channel model. Every probability in it
-   is counted in the corpus with add-one smoothing. MIZAN considers every split
+   is counted in the corpus: P(prefix), P(suffix), P(pattern) and P(root)
+   with add-one smoothing, P(written letter | root letter) with 0.1 added per
+   letter. MIZAN considers every split
    of the word into a prefix, a stem and a suffix the corpus has seen. For each
    split it considers every pattern the corpus has, and every root that can
    fill that pattern. The pattern is the stem with its root letters replaced by
@@ -44,9 +46,10 @@ Every answer names its source: *Quranic Arabic Corpus (corpus.quran.com), GPL*.
 
    - The most probable reading wins (MAP). Its probability is reported.
    - The part of speech is the one the corpus gives that pattern most often
-     (مكتبة → ك-ت-ب, مَفْعَلَة, noun).
-3. **A root's meaning** is the corpus's own glosses of its most frequent words,
-   for example ك-ت-ب: "the book; a book; the scripture".
+     (مكتبة → ك-ت-ب, مَفْعِلَة, noun; مكتوب, which the Quran writes only as
+     مكتوبا, → ك-ت-ب, مَفْعُول, passive participle).
+3. **A root's meaning** is the three glosses the corpus gives its words most
+   often, for example ك-ت-ب: "the book; a book; the scripture".
 
 ## In the chat
 
@@ -76,16 +79,16 @@ Quranic Arabic Corpus").
 
 ## The API
 
-`POST /api/v1/root-analyze {"text": "..."}` (public, at most 2000 characters).
-It returns:
-- `analysis`: one entry per Arabic word, with these fields:
-  - `root` and `root_letters` (ك-ت-ب);
+`POST /api/v1/root-analyze {"text": "..."}` (public, at most 2000 characters;
+a longer text answers 413). It returns:
+- `analysis`: one entry per Arabic word (the first 200), with these fields:
+  - `surface` (the word as written), `root` and `root_letters` (ك-ت-ب);
   - `pattern` (the wazn), `pos`, `verb_form`, `lemma`;
   - `gloss` (the word's own), `meaning` (the root's);
-  - `root_occurrences`, `prefix`, `suffix`;
-  - `source`: `quran` or `inferred`;
+  - `root_occurrences`, `prefix`, `suffix`, `is_stopword`;
+  - `source`: `quran`, `inferred`, or `unknown` when no reading fits;
   - `probability` and `alternatives`;
-- `word_count`;
+- `word_count` (and `token_count`, the same number, for older clients);
 - `source`: the attribution.
 
 If the corpus cannot be read, the route answers 503 and says so.
@@ -104,4 +107,4 @@ tokenizer, as `unit` says). The model's begin and end markers are listed in
   - `corpus()` loads and verifies the data.
 - `backend/api/main.py`: `/api/v1/root-analyze`, `/api/v1/tokenize`.
 - Tests: `tests/test_sarf.py`. They use a small corpus in the same format, and
-  the regression set كتب / كاتب / مكتوب / مكتبة / كتاب, all ك-ت-ب.
+  the regression set كتب / كاتب / مكتوب / مكتبة / كتاب / الكتاب, all ك-ت-ب.

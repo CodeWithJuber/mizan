@@ -20,8 +20,8 @@ When a call ends, MIZAN records what it cost:
 
 - **Provider-reported cost** (for example OpenRouter's `usage.cost`) is charged when it is sent.
 - **Otherwise, the price table:** the reported token counts are priced from `api.prices`, including cache reads (0.1×) and cache writes (1.25×) on Anthropic.
-- **Cut off before usage arrived:** a stream that broke or a request that timed out may still have run upstream. Whatever the provider did not report is charged at its bound: the input bound, plus the output that was visibly streamed. An unreported call is never free.
-- **Rejected with an explicit HTTP error** (429, 5xx): nothing was generated, so nothing is charged and the reservation is freed.
+- **Cut off before usage arrived:** a stream that broke or a request that timed out may still have run upstream. Whatever the provider did not report is charged from what MIZAN knows: the request's size (at the model's learned mean tokens per byte once it has three observations, else one token per byte, plus each image at its ceiling), plus the output that was visibly streamed. An unreported call is never free.
+- **Rejected with an explicit HTTP error** (a status code, such as 429 or 5xx): nothing was generated, so nothing is charged and the reservation is freed.
 
 Each settled call also updates the model's learned input ratio and output size.
 
@@ -54,7 +54,7 @@ Who each limit applies to:
 - **Per-user limit (administrator):** an administrator can set limits for any user, including another administrator, with `PUT /api/iqtisad/limits/{user_id}`. These replace the server default for that user. Empty values return the user to the default.
 - **Own limit (every user):** every user can set their own limits with `PUT /api/iqtisad/limits`. These only make the budget smaller: the lowest limit that applies wins.
 
-The day is the user's local day. It uses the timezone the chat sends, which MIZAN remembers for watchers and other unattended runs, and falls back to UTC.
+The day is the user's local day. Its timezone is the place the user set for prayer times (Muraqabah), else the timezone remembered from the first chat that sent one, else UTC. A chat that later sends another timezone never moves the spending day, since that would renew the daily limit early.
 
 ## What the user sees
 

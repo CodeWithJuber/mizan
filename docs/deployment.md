@@ -19,7 +19,11 @@ The separate Auto Release workflow retains its public-repository restriction;
 it is not required to publish production images or deploy the application.
 
 After a main/master merge, CI validates the source and publishes production
-backend/frontend images tagged with the exact commit. `Deploy Production`
+backend/frontend images tagged with the exact commit, together with the
+`workspace-runtime`, `workspace-runner` and `workspace-browser` (Shahid)
+images. Deployment changes only backend/frontend; the workspace images are
+installed by the reviewed runner setup ([runner-setup.md](runner-setup.md)).
+`Deploy Production`
 runs only after that CI succeeds, skips an obsolete commit, checks the pinned
 SSH host key, and updates the existing Compose project's backend/frontend.
 The running reverse proxy, database volume, host configuration and `.env`
@@ -64,4 +68,6 @@ minimum workers at zero. A failed smoke check restores the previous template.
 Docs are validated on their relevant changes. Set `ENABLE_GITHUB_PAGES=true`
 only after enabling the repository's Pages site with GitHub Actions as its
 source. PyPI publication similarly requires explicit
-`ENABLE_PYPI_PUBLISH=true` and a configured trusted publisher.
+`ENABLE_PYPI_PUBLISH=true` and a configured trusted publisher. Both are
+repository variables, and the Pages deployment and the PyPI publish job also
+run only for a public repository.
