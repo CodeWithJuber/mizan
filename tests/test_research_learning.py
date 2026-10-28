@@ -227,13 +227,10 @@ async def test_the_repair_is_asked_of_a_stronger_model(agent, monkeypatch):
     sandbox(agent, monkeypatch, FAILED, PASSED, PASSED)
     result = await agent.execute(REQUEST)
     assert result["task_verified"]
-    # The repair goes to the stronger model; so does the independent check, as
-    # no cheaper model has proven itself at checks yet.
-    assert [request["model"] for request in agent.ai_client.requests] == [
-        "small",
-        "large",
-        "large",
-    ]
+    # The repair goes to the stronger model. (The third call is the independent
+    # check, whose model Wazn samples: no model has a record at checks yet.)
+    models = [request["model"] for request in agent.ai_client.requests]
+    assert models[:2] == ["small", "large"] and len(models) == 3
     rows = {(row["task"], row["model"]): row for row in wazn.report()}
     assert rows[("fix_code", "large")]["evidence"] > 0
 
