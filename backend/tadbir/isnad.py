@@ -28,6 +28,7 @@ BASIS = {
     "compute": "MIZAN calculated it exactly",
     "quran": "read verbatim from MIZAN's Quran source",
     "quran_search": "found by MIZAN's own Quran index and read verbatim from its source",
+    "quran_count": "MIZAN's surah index (Hafs count)",
     "sarf": "read by MIZAN from the Quranic Arabic Corpus",
     "hadith": "read verbatim from MIZAN's hadith source",
     "waqt": "MIZAN's calendar (Umm al-Qura) and clock",

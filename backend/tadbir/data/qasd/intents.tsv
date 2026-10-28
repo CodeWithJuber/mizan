@@ -1082,3 +1082,108 @@ browse	https://example.com खोलो और प्राइसिंग प�
 browse	https://example.com کھولو اور قیمتوں پر کلک کرو
 browse	افتح https://example.com واضغط على الأسعار
 browse	Use the search box on https://example.org to find zakat calculator
+quran_count	How many ayat are in the whole Quran?
+quran_count	How many verses does the Quran have?
+quran_count	Total number of verses in the Quran
+quran_count	How many surahs are in the Quran?
+quran_count	How many ayahs are in Surah Al-Baqarah?
+quran_count	How many verses are in Surah Yasin?
+quran_count	Number of ayat in Surah Kahf
+quran_count	Quran mein kitni ayaat hain?
+quran_count	Quran ki total ayat kitni hain
+quran_count	Quran mein kitni surah hain
+quran_count	Surah Baqarah mein kitni ayat hain?
+quran_count	Surah Mulk ki total ayat kitni hain
+quran_count	Surah Rahman mein kul kitni ayaat hain
+quran_count	قرآن میں کتنی آیات ہیں؟
+quran_count	سورہ بقرہ میں کتنی آیتیں ہیں؟
+quran_count	قرآن میں کتنی سورتیں ہیں؟
+quran_count	كم عدد آيات القرآن؟
+quran_count	كم آية في سورة البقرة؟
+quran_count	كم سورة في القرآن؟
+quran_count	क़ुरआन में कितनी आयतें हैं?
+quran_count	सूरह यासीन में कितनी आयतें हैं?
+quran_count	क़ुरआन में कितनी सूरह हैं?
+quran	Give the Arabic text of Quran 2:285
+quran	Show me the Arabic text of 2:255
+quran	Arabic text of Surah Baqarah ayat 285 do
+quran	Quran 3:190-191 ka Arabic text dikhao
+quran	Surah Yasin ki pehli 5 ayaat Arabic mein
+quran	Surah Fatiha Urdu tarjuma ke saath
+quran	Surah Mulk ki aakhri 2 ayat Hindi mein
+quran	First 3 verses of Surah Mulk
+quran	Last 3 ayat of Surah Baqarah with translation
+quran	Surah Kahf ki pehli 10 ayat sunao
+quran	سورہ یٰسین کی پہلی پانچ آیات عربی میں
+quran	अल-बक़रह 2:285 का अरबी पाठ दिखाओ
+quran_search	Quote the ayah that talks about the night journey
+quran_search	Quote the verse mentioning the ark of Nuh
+quran_search	Which ayah is mentioning the mountains as pegs?
+quran_search	Quote me the verse where Allah speaks about the bee
+quran_search	Find the verse discussing the inheritance of daughters
+quran_search	Which verse discusses the rights of parents?
+quran_search	Show the ayah that describes the creation of the embryo
+quran_search	Which ayah describes the trumpet being blown?
+quran_search	Cite the verse that refers to the people of Lut
+quran_search	Cite the ayah where Allah speaks of iron
+quran_search	Is there a verse mentioning the dog of the cave?
+quran_search	Quote the ayah mentioning the ant and Sulaiman
+quran_search	Which verse refers to the splitting of the moon?
+quran_search	Quote the verse talking about the sun and the moon in their orbits
+converse	Naya rule: is chat mein '#' ka matlab multiplication hai
+converse	New rule: in this chat @ means addition
+converse	From now on in this chat, '#' means multiply
+converse	Is chat mein 'x' ka matlab plus hai
+converse	Rule: har jawab ke aakhir mein 'Bas' likhna
+converse	Every answer must end with the word Bas
+converse	Can a traveller combine Zuhr and Asr prayers?
+converse	Musafir Zuhr aur Asr ek saath padh sakta hai?
+converse	Is it allowed to combine Maghrib and Isha while travelling?
+converse	کیا مسافر ظہر اور عصر ملا کر پڑھ سکتا ہے؟
+converse	هل يجوز للمسافر الجمع بين الظهر والعصر؟
+converse	क्या मुसाफ़िर ज़ुहर और अस्र एक साथ पढ़ सकता है?
+salah	Aaj Sharjah mein Maghrib ka waqt kya hai?
+salah	What time is Fajr in London today?
+salah	Karachi mein Isha ka waqt kya hai?
+salah	Maghrib time in Dubai today
+salah	دبی میں مغرب کا وقت کیا ہے؟
+salah	ما وقت صلاة المغرب في الشارقة اليوم؟
+salah	दिल्ली में आज ज़ुहर का वक़्त क्या है?
+compute	2 ki power 10 kitni hoti hai?
+compute	3 to the power of 4
+compute	What is 2 to the power 16?
+compute	5 ki power 3 kitna hai
+compute	12 x 13 kitna hai
+compute	What is 25 x 4?
+compute	987654321 × 123456789
+compute	What is 987654321 × 123456789?
+build_and_run	Is 1000003 a prime number?
+build_and_run	Kya 97 prime number hai?
+build_and_run	Check whether 7919 is prime
+build_and_run	What day of the week was 15 August 1947?
+build_and_run	26 January 1950 ko kaunsa din tha?
+build_and_run	Which weekday is 1 January 2030?
+build_and_run	A shirt costs 1200 rupees with a 15% discount. What is the final price?
+build_and_run	500 par 20% discount ke baad kitna bachega?
+build_and_run	A phone costs 45000 and is 12% off, how much do I pay?
+build_and_run	Find all prime numbers below 100
+hadith	Innamal a'malu bin-niyyat kaunsi hadith hai?
+hadith	Which hadith says actions are judged by intentions?
+hadith	Woh hadees dikhao jisme hai ke aamal ka daromadar niyyat par hai
+hadith	إنما الأعمال بالنيات في أي كتاب؟
+hadith	Find the hadith: the strong man is not the one who wrestles
+hadith	Hadees: tum mein behtar woh hai jo Quran seekhe aur sikhaye
+build_and_run	Is 101 a prime number?
+build_and_run	Is 97 prime?
+build_and_run	Is 561 prime or composite?
+build_and_run	221 prime hai ya nahi?
+build_and_run	Check if 1009 is a prime
+build_and_run	Is 2027 a prime number or not?
+capabilities	What can you do for me?
+recall	Do you remember where my office is?
+capabilities	What can you do?
+capabilities	So what can you do?
+capabilities	What else can you do?
+recall	Do you remember which company I work for?
+capabilities	What can you do, MIZAN?
+capabilities	Batao tum kya kya kar sakte ho

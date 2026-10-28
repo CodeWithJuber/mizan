@@ -593,13 +593,6 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान का हिजरी कैलेंडर 1343–1500 हिजरी (1924–2077 ई.) तक है।",
         "ar": "يغطي تقويم ميزان الهجري الأعوام 1343–1500 هـ (1924–2077 م).",
     },
-    "done_by_agent": {
-        "en": "Done by {name}, MIZAN's {role} agent.",
-        "hi-latn": "Yeh kaam MIZAN ke {role} agent {name} ne kiya.",
-        "ur": "یہ کام میزان کے {role} ایجنٹ {name} نے کیا۔",
-        "hi": "यह काम मीज़ान के {role} एजेंट {name} ने किया।",
-        "ar": "أنجز هذا {name}، وكيل {role} في ميزان.",
-    },
     "tool_not_prepared": {
         "en": "MIZAN could not prepare a valid call to {tool}: {reason}",
         "hi-latn": "MIZAN {tool} ke liye sahi call tayyar nahi kar saka: {reason}",
@@ -713,6 +706,52 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "यह धार्मिक हुक्म (फ़तवा) का सवाल है। मीज़ान फ़तवा नहीं देता; किसी योग्य आलिम (अहले इल्म) "
         "से पूछिए जो आपकी स्थिति को समझ सके।",
         "ar": "هذا سؤال عن حكم شرعي. ميزان لا يُفتي؛ اسأل عالمًا مؤهلًا (أهل العلم) يقدّر حالتك.",
+    },
+    "quran_count_surah": {
+        "en": "Surah {name} ({arabic}), surah {number} of the Quran, has **{count} ayahs** "
+        "(Hafs count).",
+        "hi-latn": "Surah {name} ({arabic}), Quran ki {number}vi surah, mein **{count} ayaat** "
+        "hain (Hafs ki ginti).",
+        "ur": "سورہ {name} ({arabic})، قرآن کی {number}ویں سورت، میں **{count} آیات** ہیں "
+        "(حفص کی گنتی)۔",
+        "hi": "सूरह {name} ({arabic}), क़ुरआन की {number}वीं सूरह, में **{count} आयतें** हैं (हफ़्स की गिनती)।",
+        "ar": "سورة {arabic}، السورة {number} في القرآن، **{count} آية** (عدّ حفص).",
+    },
+    "quran_count_whole": {
+        "en": "The Quran has **{surahs} surahs** and **{ayahs} ayahs** (the Hafs count, "
+        "which follows the Kufan way of counting; other counts number the same text "
+        "differently).",
+        "hi-latn": "Quran mein **{surahs} surahs** aur **{ayahs} ayaat** hain (Hafs ki ginti, "
+        "jo Kufi tareeqe se ginti hai; doosre tareeqe isi text ko alag ginte hain).",
+        "ur": "قرآن میں **{surahs} سورتیں** اور **{ayahs} آیات** ہیں (حفص کی گنتی، جو کوفی "
+        "طریقے پر ہے؛ دوسری گنتیاں اسی متن کو مختلف گنتی ہیں)۔",
+        "hi": "क़ुरआन में **{surahs} सूरह** और **{ayahs} आयतें** हैं (हफ़्स की गिनती, जो कूफ़ी "
+        "तरीक़े पर है; दूसरी गिनतियाँ इसी पाठ को अलग गिनती हैं)।",
+        "ar": "في القرآن **{surahs} سورة** و**{ayahs} آية** (عدّ حفص، وهو العدّ الكوفي؛ "
+        "وتعدّ الأعداد الأخرى النصّ نفسه على نحو مختلف).",
+    },
+    "quran_search_absent": {
+        "en": "No ayah of the Quran says this. MIZAN searched its own index of the whole "
+        "Quran (the Arabic, its transliteration and the Saheeh International, Urdu and Hindi "
+        "translations): no ayah uses {words}.",
+        "hi-latn": "Quran ki koi ayat yeh nahi kehti. MIZAN ne poore Quran ka apna index "
+        "(Arabi, transliteration aur Saheeh International, Urdu aur Hindi tarjume) dekha: kisi "
+        "ayat mein {words} nahi hai.",
+        "ur": "قرآن کی کوئی آیت یہ نہیں کہتی۔ میزان نے پورے قرآن کا اپنا اشاریہ (عربی، رومن اور "
+        "صحیح انٹرنیشنل، اردو اور ہندی تراجم) دیکھا: کسی آیت میں {words} نہیں ہے۔",
+        "hi": "क़ुरआन की कोई आयत यह नहीं कहती। मीज़ान ने पूरे क़ुरआन का अपना इंडेक्स (अरबी, "
+        "लिप्यंतरण और सहीह इंटरनेशनल, उर्दू और हिंदी अनुवाद) देखा: किसी आयत में {words} नहीं है।",
+        "ar": "لا توجد آية في القرآن تقول هذا. بحث ميزان في فهرسه للقرآن كله (النص العربي "
+        "ونقحرته وترجمات صحيح إنترناشونال والأردية والهندية): لا تستعمل أي آية {words}.",
+    },
+    "quran_search_nearest": {
+        "en": "The nearest ayahs share only {shared} (such as {reference}) and do not "
+        "mention {words}.",
+        "hi-latn": "Sab se qareeb ayaat mein sirf {shared} hai (jaise {reference}); un mein "
+        "{words} ka zikr nahi.",
+        "ur": "قریب ترین آیات میں صرف {shared} ہے (جیسے {reference})؛ ان میں {words} کا ذکر نہیں۔",
+        "hi": "सबसे क़रीबी आयतों में सिर्फ़ {shared} है (जैसे {reference}); उनमें {words} का ज़िक्र नहीं।",
+        "ar": "أقرب الآيات لا تشترك إلا في {shared} (مثل {reference}) ولا تذكر {words}.",
     },
     "quran_search_none": {
         "en": "MIZAN found no ayah with these words in its index of the Quran (Arabic, "

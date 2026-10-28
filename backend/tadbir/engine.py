@@ -172,18 +172,19 @@ class Tadbir:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
-        parts = fahm.understand_parts(task)
-        understanding = fahm.understand(task, history=history, overlay=self._learned_intents())
+        # Reading the request is CPU work (naive Bayes over every clause): it runs
+        # off the event loop, so other chats and /api/health never wait for it.
+        overlay = self._learned_intents()
+        parts = await asyncio.to_thread(fahm.understand_parts, task)
+        understanding = await asyncio.to_thread(fahm.understand, task, history, overlay)
         if parts is None and understanding.intent == "again_follow":
             # "?", "Jawab nahi aaya": the request before this one got no answer,
             # so MIZAN takes it up again; with nothing unanswered it is words.
             unanswered = _unanswered_request(history)
             if unanswered:
                 task = unanswered
-                parts = fahm.understand_parts(task)
-                understanding = fahm.understand(
-                    task, history=history, overlay=self._learned_intents()
-                )
+                parts = await asyncio.to_thread(fahm.understand_parts, task)
+                understanding = await asyncio.to_thread(fahm.understand, task, history, overlay)
             else:
                 understanding = fahm.Understanding("converse", understanding.language, 0.0)
         if parts is None and understanding.intent in {"silsila_follow", "search_bare"}:
@@ -246,7 +247,11 @@ class Tadbir:
                 {"parts": [{"text": part, "intent": u.intent} for part, u in parts]},
             )
         example: dict | None = None
-        if parts is None and self.lisan.available and fahm.partly_understood(task, understanding):
+        if (
+            parts is None
+            and self.lisan.available
+            and await asyncio.to_thread(fahm.partly_understood, task, understanding)
+        ):
             # Several requests and MIZAN's recognisers place only some: Lisan
             # maps the whole message into steps, which MIZAN validates.
             planned = await self._lisan_plan(task, understanding, history)
@@ -367,9 +372,7 @@ class Tadbir:
         self.workers.append(
             {"agent": worker.name, "role": role, "intent": intent, "verified": outcome.verified}
         )
-        if worker is not self.coordinator:
-            note = phrase("done_by_agent", language, name=worker.name, role=role)
-            outcome.text = f"{outcome.text}\n\n_{note}_"
+        # Who did the work is metadata (orchestration.agents), never the answer's text.
         outcome.isnad = self._isnad(outcome, intent)
         return outcome
 
@@ -1962,10 +1965,13 @@ class Tadbir:
             ]
         )
         await self._step()
+        # The translation the person names ("Urdu tarjuma", "Arabic mein"),
+        # else the one of the language they write in.
+        edition = quran.requested_translation(task) or u.language
         data, error = await self._from_source(
             "quran_text",
             reference.label,
-            lambda: quran.fetch(reference, u.language),
+            lambda: quran.fetch(reference, edition),
             lambda found: f"{len(found['ayahs'])} ayah(s)",
         )
         if error is not None:
@@ -2009,21 +2015,71 @@ class Tadbir:
                 lines += ["", f"**{phrase('quran_answer', u.language)}**", answer]
         return Outcome("\n".join(lines), True, {"reference": data["reference"]})
 
+    async def _quran_count(self, task: str, u: fahm.Understanding) -> Outcome:
+        """Ayah counts from MIZAN's surah index (the Hafs count of 6236)."""
+        surah = u.entities.get("surah")
+        await self._begin(["Read the count from MIZAN's surah index", "Reply with the count"])
+        await self._step()
+        if surah:
+            name, arabic, count = quran.SURAHS[surah - 1]
+            text = phrase(
+                "quran_count_surah", u.language, name=name, arabic=arabic, number=surah, count=count
+            )
+            facts = {"surah": surah, "ayahs": count}
+        else:
+            text = phrase(
+                "quran_count_whole", u.language, surahs=len(quran.SURAHS), ayahs=quran.TOTAL_AYAHS
+            )
+            facts = {"surahs": len(quran.SURAHS), "ayahs": quran.TOTAL_AYAHS}
+        await self._step()
+        return Outcome(text, True, facts)
+
     async def _quran_search(self, task: str, u: fahm.Understanding) -> Outcome:
         """Ayahs found by their words in MIZAN's own index, then quoted verbatim
         from the source and the question answered from the ayah's words."""
 
         async def search() -> dict:
-            return {"matches": await fihris.search(u.entities.get("query") or task)}
+            found = await fihris.find(u.entities.get("query") or task)
+            return {"matches": found.matches, "absent": found.absent, "nearest": found.nearest}
+
+        def summary(data: dict) -> str:
+            if data["absent"]:
+                return "no ayah uses " + ", ".join(data["absent"])
+            return ", ".join(match.label for match in data["matches"]) or "no ayah"
 
         found, error = await self._from_source(
-            "quran_index",
-            (u.entities.get("query") or task)[:120],
-            search,
-            lambda data: ", ".join(match.label for match in data["matches"]) or "no ayah",
+            "quran_index", (u.entities.get("query") or task)[:120], search, summary
         )
         if error is not None:
             return Outcome(phrase("quran_unavailable", u.language, reason=error), False, {})
+        if found["absent"]:
+            # Established from MIZAN's own index of the whole Quran: no ayah
+            # uses these words in the Arabic, the transliteration or the
+            # translations. The nearest ayah is named for what it shares only.
+            nearest = found["nearest"]
+            shared = [word for word in nearest.words if word not in found["absent"]]
+            lines = [
+                phrase(
+                    "quran_search_absent",
+                    u.language,
+                    words=", ".join(f"“{word}”" for word in found["absent"]),
+                )
+            ]
+            if shared:
+                lines.append(
+                    phrase(
+                        "quran_search_nearest",
+                        u.language,
+                        shared=", ".join(f"“{word}”" for word in shared),
+                        reference=f"{quran.SURAHS[nearest.surah - 1][0]} {nearest.label}",
+                        words=", ".join(f"“{word}”" for word in found["absent"]),
+                    )
+                )
+            return Outcome(
+                "\n\n".join(lines),
+                True,
+                {"absent": found["absent"], "nearest": nearest.label, "shared": shared},
+            )
         matches = found["matches"]
         if not matches:
             return Outcome(phrase("quran_search_none", u.language), False, {})
@@ -2063,9 +2119,18 @@ class Tadbir:
             f"({ayah['number']}) {ayah['translation']}"
             for ayah in data["ayahs"]
             if ayah.get("translation")
-        ) or "\n".join(  # an Arabic question: the ayah's own Arabic is the source
-            f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
         )
+        if translation:
+            # The model reads the translation only; it is told the Arabic is
+            # already shown, so it never says the Arabic is not available.
+            translation = (
+                "(The Arabic text of these ayahs is shown to the person above this answer, "
+                "verbatim from the source.)\n" + translation
+            )
+        else:  # an Arabic question: the ayah's own Arabic is the source
+            translation = "\n".join(
+                f"({ayah['number']}) {ayah['arabic']}" for ayah in data["ayahs"]
+            )
         if not translation or not self.lisan.available:
             return ""
         source = [
@@ -2199,7 +2264,7 @@ class Tadbir:
         from security.auth import current_user_id
 
         owner = current_user_id()
-        place = muraqabah.city_in(task)
+        place = await muraqabah.place_named(task)
         if place is None and owner:
             place = muraqabah.default_store().place(owner)
         if place is None:

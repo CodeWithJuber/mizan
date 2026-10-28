@@ -30,6 +30,18 @@ LANGUAGE_NAMES = {
     "hi": "Hindi (Devanagari)",
     "ar": "Arabic",
 }
+
+
+def language_name(language: str) -> str:
+    """The language's name for Lisan: a shipped one, one an administrator taught
+    (Ta'lim), or English."""
+    if language in LANGUAGE_NAMES:
+        return LANGUAGE_NAMES[language]
+    from . import talim
+
+    return talim.languages().get(language) or "English"
+
+
 _BASE = (
     "You are Lisan, the language faculty of MIZAN. MIZAN's own architecture plans, runs "
     "tools and verifies results; you only handle language. Never claim you ran, searched "
@@ -336,7 +348,7 @@ class Lisan:
             f"Write the complete file `{path}`. Use only these files and the platform itself: no "
             "frameworks, external libraries, CDNs or network requests. Keep names and ids "
             "consistent with the files already written. Text the user sees is in "
-            f"{LANGUAGE_NAMES.get(language, 'English')}; code and identifiers are in English. "
+            f"{language_name(language)}; code and identifiers are in English. "
             "Reply with exactly one fenced code block containing the whole file and nothing else.",
             f"User request:\n{request}" + (f"\n\nFiles already written:\n{done}" if done else ""),
             max_tokens=6000,
@@ -358,7 +370,7 @@ class Lisan:
 
     async def express(self, request: str, facts: dict, language: str) -> str:
         return await self.ask(
-            f"Write MIZAN's reply to the user in {LANGUAGE_NAMES.get(language, 'English')}. "
+            f"Write MIZAN's reply to the user in {language_name(language)}. "
             "Use ONLY the facts provided: no extra numbers, names, sources, links or claims. "
             "Be clear and concise.",
             f"User request:\n{request}\n\nFacts (JSON):\n"
@@ -390,7 +402,7 @@ class Lisan:
                 "the answer):\n" + json.dumps(computed, ensure_ascii=False)[:2000]
             )
         return await self.ask(
-            f"Answer the user's request in {LANGUAGE_NAMES.get(language, 'English')} using ONLY "
+            f"Answer the user's request in {language_name(language)} using ONLY "
             "the numbered sources. Cite each claim with its source number like [1]. Keep each "
             "figure's unit as the source states it (for example 'million'). If the sources do "
             "not answer it, say so. Do not add links or facts from elsewhere.",
@@ -509,7 +521,7 @@ class Lisan:
             "whose info string is the file path (for example ```src/app.js). Do not return "
             "unchanged files, and keep the rest of each file as it is. Use no new external "
             "libraries or network requests. Text the user sees is in "
-            f"{LANGUAGE_NAMES.get(language, 'English')}.",
+            f"{language_name(language)}.",
             f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}"
             + again,
             max_tokens=8000,

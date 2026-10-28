@@ -341,6 +341,14 @@ def _quran(intent: str, message: str, language: str) -> Understanding | None:
     )
 
 
+def _quran_count(_intent: str, message: str, language: str) -> Understanding | None:
+    """How many ayahs (or surahs): of the surah the message names, else of the
+    whole Quran; answered from MIZAN's surah index, never by a search."""
+    reference = quran.parse_reference(message)
+    surah = reference.surah if reference is not None else None
+    return Understanding("quran_count", language, 0.0, {"surah": surah})
+
+
 def _quran_search(_intent: str, message: str, language: str) -> Understanding | None:
     # A message that names a reference is read by the reference recipe instead.
     if quran.parse_reference(message) is not None:
@@ -457,6 +465,7 @@ _BUILDERS = {
     "quran_question": _quran,
     "quran_explain": _quran,
     "quran_search": _quran_search,
+    "quran_count": _quran_count,
     "hadith": _hadith,
     "hadith_explain": _hadith,
     "waqt": _with(
@@ -600,7 +609,7 @@ def sarf_targets(message: str) -> list[str]:
 
 # Families of recipes: intents that are kinds of one request.
 FAMILIES = {
-    "quran": ("quran", "quran_question", "quran_explain", "quran_search"),
+    "quran": ("quran", "quran_question", "quran_explain", "quran_search", "quran_count"),
     "hadith": ("hadith", "hadith_explain"),
     "search": ("web_search", "search_bare"),
     "sequence": ("silsila", "silsila_follow"),
@@ -723,12 +732,17 @@ def understand_parts(text: str) -> list[tuple[str, Understanding]] | None:
     #   of the parts against the whole message's probability ("Every morning
     #   after Fajr send an ayah and the Hijri date" is one watcher).
     whole = understand(message)
+    joint = math.prod(u.confidence for _part, u in understood)
     if whole.intent not in _WORDS_ONLY:
         if all(_covers(whole, u) for _part, u in understood):
             return None
-        joint = math.prod(u.confidence for _part, u in understood)
         if len({u.intent for _part, u in understood}) > 1 and whole.confidence >= joint:
             return None
+    elif max((mass for _f, mass, _m in _families(qasd.ranked(message))), default=0.0) >= joint:
+        # The whole message read as one thing (a question about combining Zuhr
+        # and Asr) explains it better than separate requests do ("Zuhr",
+        # "Asr prayers" as two prayer-time lookups).
+        return None
     language = detect_language(message)
     for _part, u in understood:
         u.language = language

@@ -66,13 +66,22 @@ def _features(text: str):
 
 
 def corpus() -> list[tuple[str, str]]:
+    """The seeds that ship with MIZAN, then what an administrator taught (Ta'lim),
+    including languages it adds."""
+    from . import talim
+
     examples = []
     for label in LABELS:
         for line in (CORPUS / f"{label}.tsv").read_text(encoding="utf-8").splitlines():
             _source, _, text = line.partition("\t")
             if text.strip():
                 examples.append((text, label))
-    return examples
+    return examples + [(text, label) for text, label, _ in talim.rows("lughah")]
+
+
+def languages() -> tuple[str, ...]:
+    """Every language Lughah reads: the shipped ones and any taught since."""
+    return tuple(label for label in model().labels if label not in NEUTRAL)
 
 
 @cache
@@ -98,7 +107,7 @@ def _own_runs(text: str) -> tuple[list[str], dict[str, float]]:
     runs: list[str] = []
     current: list[str] = []
     kind = None
-    material = dict.fromkeys(LANGUAGES, 0.0)
+    material = dict.fromkeys(languages(), 0.0)
     for word in letters(text).split()[:MAX_WORDS]:
         found = dict(_word(word))
         label = max(found, key=found.__getitem__)
@@ -124,19 +133,20 @@ def _own_runs(text: str) -> tuple[list[str], dict[str, float]]:
 def posterior(text: str, prior: list[str] | None = None) -> dict[str, float]:
     """P(language | message), with the chat's earlier user messages as the prior."""
     runs, material = _own_runs(text)
-    counts = {label: 1.0 for label in LANGUAGES}
+    known = languages()
+    counts = {label: 1.0 for label in known}
     for earlier in (prior or [])[-12:]:
         for label, probability in posterior(earlier).items():
-            counts[label] += probability
+            counts[label] = counts.get(label, 1.0) + probability
     mass = sum(material.values())
-    for label in LANGUAGES if mass else ():
+    for label in known if mass else ():
         counts[label] += material[label] / mass
     total = sum(counts.values())
-    scores = {label: math.log(counts[label] / total) for label in LANGUAGES}
+    scores = {label: math.log(counts[label] / total) for label in known}
     for run in runs:
         found = model().posterior(run)
-        own = sum(found.get(label, 0.0) for label in LANGUAGES) or 1.0
-        for label in LANGUAGES:
+        own = sum(found.get(label, 0.0) for label in known) or 1.0
+        for label in known:
             scores[label] += math.log(found.get(label, 0.0) / own + 1e-12)
     top = max(scores.values())
     weights = {label: math.exp(score - top) for label, score in scores.items()}
