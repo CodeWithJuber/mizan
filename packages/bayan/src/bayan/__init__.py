@@ -19,6 +19,6 @@ benchmarked against CAMeL/Farasa; unknown English words surface as
 
 from bayan._tok.public_api import BayanTokenizer, NotAvailableError
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["BayanTokenizer", "NotAvailableError", "__version__"]

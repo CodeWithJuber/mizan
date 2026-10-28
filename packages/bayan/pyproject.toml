@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 # (a weblog scraper, v1.0.0). Distribution name is "bayan-tokenizer";
 # the import name stays `bayan`.
 name = "bayan-tokenizer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Bayan — morphological, root-cognizant tokenizer: Arabic words as (root, pattern) pairs, zero dependencies"
 readme = "README.md"
 license = { text = "MIT" }

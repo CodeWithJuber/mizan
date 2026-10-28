@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 
 # Common Arabic prefixes, ordered longest-first for greedy matching
 _PREFIXES: list[tuple[str, str]] = [
@@ -114,6 +115,23 @@ def _is_arabic(text: str) -> bool:
     return bool(_ARABIC_CHAR.search(text))
 
 
+@lru_cache(maxsize=1)
+def _known_roots() -> frozenset[str]:
+    """Roots of the bundled lexicon (``ARABIC_ROOTS``), normalized.
+
+    Used only to choose between readings of a word whose first letter may be
+    a prefix or a root letter (كتاب: ك-ت-ب, not the preposition ك + تاب).
+    Without a lexicon the greedy reading is kept.
+    """
+    try:
+        from ruh_model.tokenizer.root_vocab import _load_roots_module
+
+        roots = _load_roots_module().ARABIC_ROOTS
+    except Exception:  # noqa: BLE001 - no lexicon: keep the greedy reading
+        return frozenset()
+    return frozenset(_clean_word(root) for root in roots)
+
+
 class ArabicMorphAnalyzer:
     """Rule-based Arabic morphological analyzer.
 
@@ -135,12 +153,29 @@ class ArabicMorphAnalyzer:
 
         cleaned = _clean_word(word)
 
-        stem = self._strip_prefixes(cleaned)
-        stem, suffix_type = self._strip_suffixes(stem)
-        root = self._extract_trilateral(stem)
-        pattern = self._classify_pattern(cleaned, stem, suffix_type)
+        prefix, prefix_type, stem, suffix_type, root = self._best_reading(cleaned)
+        # ال, ب and ك attach only to nouns (ل also introduces a verb: ليعلم).
+        nominal = "definite" in prefix_type or prefix in ("ب", "ك")
+        pattern = self._classify_pattern(cleaned, stem, suffix_type, nominal)
 
         return (root, pattern)
+
+    def _best_reading(self, cleaned: str) -> tuple[str, str, str, str, str]:
+        """(prefix, prefix_type, stem, suffix_type, root) of the most likely reading.
+
+        The longest matching prefix and suffix are stripped, as before, unless
+        a shorter reading gives a root the lexicon knows and that one does not:
+        ك in كتاب and ي in وحي are root letters, ك in كالبرق is a preposition.
+        """
+        readings = []
+        for prefix, prefix_type in [*self._prefixes, ("", "none")]:
+            if not prefix or (cleaned.startswith(prefix) and len(cleaned) - len(prefix) >= 2):
+                rest = cleaned[len(prefix):]
+                for stem, suffix_type in dict.fromkeys([self._strip_suffixes(rest), (rest, "none")]):
+                    root = self._extract_trilateral(stem)
+                    readings.append((prefix, prefix_type, stem, suffix_type, root))
+        known = _known_roots()
+        return next((reading for reading in readings if reading[4] in known), readings[0])
 
     def extract_root(self, word: str) -> str:
         """Extract just the root from an Arabic word."""
@@ -149,10 +184,14 @@ class ArabicMorphAnalyzer:
 
     def _strip_prefixes(self, word: str) -> str:
         """Remove the longest matching prefix."""
-        for prefix, _ in self._prefixes:
+        return self._strip_prefix(word)[0]
+
+    def _strip_prefix(self, word: str) -> tuple[str, str]:
+        """Remove the longest matching prefix. Returns (stem, prefix_type)."""
+        for prefix, prefix_type in self._prefixes:
             if word.startswith(prefix) and len(word) - len(prefix) >= 2:
-                return word[len(prefix):]
-        return word
+                return (word[len(prefix):], prefix_type)
+        return (word, "none")
 
     def _strip_suffixes(self, word: str) -> tuple[str, str]:
         """Remove the longest matching suffix. Returns (stem, suffix_type)."""
@@ -179,12 +218,13 @@ class ArabicMorphAnalyzer:
         return stem[:3] if len(stem) >= 3 else stem
 
     def _classify_pattern(
-        self, original: str, stem: str, suffix_type: str
+        self, original: str, stem: str, suffix_type: str, nominal: bool = False
     ) -> str:
         """Classify the morphological pattern based on word shape.
 
         Uses prefix/suffix context and stem length to determine the
-        most likely pattern category.
+        most likely pattern category. ``nominal``: a prefix that only a
+        noun takes was stripped (ال, ب, ك), so the word is not a verb.
         """
         if suffix_type == "ta_marbuta":
             return self._classify_ta_marbuta_word(original)
@@ -195,6 +235,8 @@ class ArabicMorphAnalyzer:
         if suffix_type in ("nisba", "nisba_fem"):
             return "ADJECTIVE"
 
+        if nominal:
+            return self._classify_noun_shape(stem)
         return self._classify_by_shape(original, stem)
 
     def _classify_ta_marbuta_word(self, original: str) -> str:
@@ -204,6 +246,16 @@ class ArabicMorphAnalyzer:
         if cleaned.startswith("م") and len(cleaned) >= 5:
             return "PLACE_NOUN"
         return "VERBAL_NOUN"
+
+    def _classify_noun_shape(self, stem: str) -> str:
+        """Classify a stem known to be a noun (its prefix was ال, ب or ك)."""
+        # Active participle: fa'il, alef after the first root letter (كاتب, not كتاب)
+        if len(stem) >= 4 and stem[1] == "ا":
+            return "ACTIVE_PARTICIPLE"
+        # Passive participle: maf'ul (مكتوب)
+        if len(stem) == 5 and stem[0] == "م" and stem[3] == "و":
+            return "PASSIVE_PARTICIPLE"
+        return "NOUN"
 
     def _classify_by_shape(self, original: str, stem: str) -> str:
         """Classify based on word shape (prefix patterns, stem length)."""
@@ -217,8 +269,8 @@ class ArabicMorphAnalyzer:
         if len(stem) == 3:
             return "VERB_PAST"
 
-        # Active participle: fa'il pattern (starts with strong letter, 4+ chars)
-        if len(cleaned) >= 4 and "ا" in cleaned[1:3]:
+        # Active participle: fa'il, alef after the first root letter (كاتب, not كتاب)
+        if len(cleaned) >= 4 and cleaned[1] == "ا":
             return "ACTIVE_PARTICIPLE"
 
         # Passive participle: maf'ul pattern

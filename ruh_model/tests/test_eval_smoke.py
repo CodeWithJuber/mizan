@@ -71,7 +71,7 @@ def test_morphology_eval_end_to_end_schema(tmp_path: Path):
 
 
 def test_committed_qac_gold_file_loads():
-    """The gold file backing the published 34.9% number must stay loadable."""
+    """The gold file backing the published root-accuracy number must stay loadable."""
     gold_path = REPO_ROOT / "ruh_model" / "benchmarks" / "data" / "morph_gold_qac_test.tsv"
     assert gold_path.exists(), "committed gold file missing"
     items = morphology_eval.load_gold(gold_path)

@@ -36,6 +36,13 @@ All notable changes to this project will be documented in this file.
   - interactive Archify diagrams sourced from the code (`docs/diagrams/*.html`);
   - diagram-design SVGs for the README, in light and dark.
 
+### Fixed
+- Bayan morphology (`ruh_model/tokenizer/morphology.py`, vendored into `packages/bayan`, prepared as 0.2.0):
+  - ك, ب, ل, ف or و at the start of a word stays a root letter when only that reading gives a root the lexicon knows (كتاب → كتب, not تاب);
+  - a stem after ال, ب or ك is never read as a verb (العلم is `NOUN`, not `VERB_PAST`).
+
+  The root accuracy on the 172-word QAC-derived gold set rose from 79/172 to 81/172 (60/172 in the published 0.1.0). The vendored copy had drifted from upstream; CI now runs `sync_vendor.py --check` and the package tests.
+
 ### Removed
 - The `DEEP_FACULTY_LOOP` setting ("Active faculty loop") and the `deep_faculty_loop` field of `GET /api/nafs/{agent_id}/faculties`. The setting promised that Basira, Hawa and Hikmah would gate the agent, but no code acted on it. A saved value is ignored. The gates that act are Amanah, approvals, Hudud and Sidq.
 

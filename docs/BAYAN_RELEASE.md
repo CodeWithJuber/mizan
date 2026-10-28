@@ -5,10 +5,11 @@ Publish is an external action: it needs a JEV decision AND the user's PyPI
 API token (see "Credentials" below).
 
 **Status (checked 2026-10-28):** `bayan-tokenizer` 0.1.0 is on PyPI
-(uploaded 2026-09-29, `Requires-Python >=3.9`). `packages/bayan/pyproject.toml`
-still says `version = "0.1.0"` but now `requires-python = ">=3.11"`, so the
-next upload needs a version bump. No `bayan-v0.1.0` tag exists on origin
-(the tag step in §3 was not run).
+(uploaded 2026-09-29, `Requires-Python >=3.9`). Version **0.2.0** is prepared in
+`packages/bayan/` but not published: it carries the analyzer fixes listed in
+`packages/bayan/CHANGELOG.md` and `requires-python = ">=3.11"`. No `bayan-v*`
+tag exists on origin. CI now fails when the vendored copy drifts from
+`ruh_model/tokenizer/` (`sync_vendor.py --check`) and runs `packages/bayan/tests`.
 
 ## 0. Blocking decisions (resolve before publish)
 

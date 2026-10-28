@@ -19,7 +19,15 @@ preliminary.
 | normalization | diacritics stripped + hamza normalized on **both** sides, exactly as the analyzer does internally |
 | pattern | **not scored** — Q-CSMP v2 does not annotate the coarse pattern vocabulary |
 
-**Result: root_accuracy = 0.3488 (60/172), n_failed = 0.**
+**Result (2026-10-28): root_accuracy = 0.4709 (81/172), n_failed = 0.** Re-measured after
+two analyzer fixes: U+0671 is mapped to plain alef before affix stripping, and a
+one-letter prefix (ك ب ل ف و) is kept as a root letter when only that reading gives a
+root the lexicon knows (كتاب → كتب, not تاب). Words with U+0671: 19/40. Words without:
+62/132 = 0.4697. Command: `python -m ruh_model.eval.morphology_eval --gold
+ruh_model/benchmarks/data/morph_gold_qac_test.tsv --no-camel`.
+
+**First result (2026-09-29): root_accuracy = 0.3488 (60/172), n_failed = 0.** The failure
+analysis below is for that run.
 
 Failure analysis (the useful part):
 - Words containing U+0671 (superscript alef, standard Quranic orthography, e.g. ٱلناس): **0/40 correct**. The analyzer's prefix tables only know U+0627 alef, so Quranic ٱل never strips — garbage roots out.

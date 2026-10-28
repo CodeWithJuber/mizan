@@ -144,10 +144,11 @@ def test_run_morphology_eval_ruh_leg(tmp_path: Path):
     report = morphology_eval.run_morphology_eval(gold, use_camel=False)
     ruh = report["ruh"]
     assert ruh["n"] == 3 and ruh["n_scored"] == 3
-    # يكتب and مكتبة match the analyzer's current behavior; كتب does not
-    assert ruh["root_accuracy"] == pytest.approx(2 / 3)
-    assert ruh["pattern_accuracy"] == pytest.approx(2 / 3)
-    assert ruh["exact_accuracy"] == pytest.approx(2 / 3)
+    # The analyzer reads all three (كتب: ك is a root letter, not ka-). مكتبة's
+    # gold root here is the analyzer's own output, a fixture, not real gold.
+    assert ruh["root_accuracy"] == pytest.approx(1.0)
+    assert ruh["pattern_accuracy"] == pytest.approx(1.0)
+    assert ruh["exact_accuracy"] == pytest.approx(1.0)
     assert report["camel"]["status"] == "skipped"
 
 

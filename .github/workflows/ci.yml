@@ -57,7 +57,7 @@ jobs:
   build:
     name: Build package
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
+    needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -90,6 +90,18 @@ jobs:
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pip install -e ".[dev,nlp,knowledge]" datasets
       - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
+
+  bayan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      # The vendored copy must match ruh_model/tokenizer/ (writes nothing).
+      - run: python packages/bayan/scripts/sync_vendor.py --check
+      - run: pip install pytest
+      - run: PYTHONPATH=packages/bayan/src python -m pytest --noconftest --import-mode=importlib packages/bayan/tests -q
 
   frontend:
     runs-on: ubuntu-24.04
@@ -127,7 +139,7 @@ jobs:
   docker:
     name: Docker build
     runs-on: ubuntu-24.04
-    needs: [lint, test, typecheck, ruh, frontend, own-research, provenance]
+    needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v7
       - name: Build backend image
