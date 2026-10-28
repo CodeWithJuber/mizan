@@ -19,6 +19,10 @@ Every entry shows:
 
 "Last used" is written whenever MIZAN recalls the note for an answer.
 
+## What you said in this chat
+
+Asked what you said earlier in the same chat ("What did I say my daughter's name is?"), MIZAN answers from the chat itself before searching its memory, as working memory comes before long-term memory. When one of your earlier statements in the chat holds more than half of the request's distinctive information, all your statements in the chat are given in order, so a later correction ("I changed it: it is now …") or the order of what you said is kept. Nothing is searched or written for it.
+
 ## Your words from other chats
 
 When the model answers, it may be shown up to five things you wrote in your other chats, as your statements and not as facts. Only statements about the request are chosen: its distinctive words are the ones your earlier messages use that carry more information than an average word of general language (never "what", "the", "hai"), and a statement is shown only when it holds more than half of their information. A request that shares no such word with your chats recalls nothing. Messages sent as `stateless` (tests) are never recalled, and neither is a message Amanah reads as an instruction aimed at the AI. The answer then says so under it: **Used 2 lines from other chats**, which opens to the lines and their dates. MIZAN's own recipes (Quran, hadith, calculations, programs) do not use them. To stop this, set the chat preference `cross_chat_recall: off`. Deleting a chat removes its words from what can be recalled ([Mahw](mahw.md)).

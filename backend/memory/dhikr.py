@@ -139,7 +139,7 @@ def _native_sense_advisory(query: str) -> str:
     return "[Native sense advisory: " + ", ".join(bits) + "]"
 
 
-def _about(query: str, rows: list) -> list:
+def about(query: str, rows: list) -> list:
     """The stored statements that speak of what the query speaks of, best first.
 
     The query's distinctive words are those the user's statements use that
@@ -1153,7 +1153,7 @@ class DhikrMemorySystem:
         from tadbir import amanah
 
         rows = [row for row in rows if not _stateless_message(row[4])]
-        candidates = _about(query, rows)
+        candidates = about(query, rows)
         wanted = max(0, min(limit, 5))
         selected: list = []
         for row in candidates:
