@@ -1893,13 +1893,11 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - asking never loses the answer
             logger.debug("Ahl al-Dhikr skipped", exc_info=True)
             return
-        # What the sources said is shown under the answer (usage.ahl), never
-        # inside it: a note in a table row, a formula, a verse or after a
-        # required last word broke answers in the 27 October benchmark.
-        shown = text
-        if ruling and not ahl_dhikr.machine_readable(text):
-            shown = f"{shown}\n\n_{phrase('ahl_ruling', language)}_"
-        result["result"] = shown
+        # What the sources said, and a ruling question's referral to a scholar,
+        # are shown under the answer (usage.ahl), never inside it: a note in a
+        # table row, a formula, a verse or after a required last word broke
+        # answers in the 27 October benchmark, and the answer that streamed is
+        # the answer that is kept.
         if findings:
             result["isnad"] = isnad.summary(ahl_dhikr.regrade(ledger, findings))
             settled = sum(1 for finding in findings if finding.verdict != "unknown")
@@ -1908,6 +1906,8 @@ class BaseAgent:
                     "ahl_dhikr", {"detail": f"Sources settled {settled} claim(s) of this answer"}
                 )
         result["ahl"] = ahl_dhikr.report(findings, heard, ruling_question=ruling)
+        if ruling:
+            result["ahl"]["referral"] = phrase("ahl_ruling", language)
 
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)

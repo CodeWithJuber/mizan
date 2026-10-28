@@ -3559,6 +3559,11 @@ async def _bab_turn(
         reset_principal(binding)
     if result.get("success", True):
         reply = str(result.get("result") or "").strip() or "—"
+        # A channel shows no notes under the answer: a ruling question's
+        # referral to a scholar goes in the message itself, on its own line.
+        referral = ((result.get("usage") or {}).get("ahl") or {}).get("referral")
+        if referral:
+            reply = f"{reply}\n\n_{referral}_"
         metadata: dict = {
             "status": "complete",
             "channel": channel,

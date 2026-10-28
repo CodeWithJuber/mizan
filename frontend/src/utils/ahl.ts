@@ -17,6 +17,8 @@ export interface AhlReport {
   contradicted: AhlItem[];
   unknown: number;
   ruling?: boolean;
+  /** A ruling question: the referral to a qualified scholar, shown under the answer. */
+  referral?: string;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -51,6 +53,7 @@ export function ahlLines(report: AhlReport): { text: string; url?: string }[] {
   const where = (item: AhlItem) =>
     `${item.title ?? ""} (${SOURCE_LABELS[item.source ?? ""] ?? item.source ?? ""})`;
   return [
+    ...(report.referral ? [{ text: report.referral }] : []),
     ...report.supported.map((item) => ({ text: `Confirmed: ${item.claim} — ${where(item)}`, url: item.url })),
     ...report.contradicted.map((item) => ({
       text: `Contradicted: ${item.claim} — ${where(item)} says: “${item.says ?? ""}”`,

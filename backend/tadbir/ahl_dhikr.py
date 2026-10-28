@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import math
 import os
@@ -597,19 +596,6 @@ async def consult(
 
 
 # ── showing what the sources said ─────────────────────────────────────────
-
-
-def machine_readable(text: str) -> bool:
-    """An answer meant for a program (JSON, or one code block), which a note
-    added to the text would break; what the sources said is reported beside it."""
-    body = text.strip()
-    if re.fullmatch(r"```[^\n]*\n.*\n```", body, re.DOTALL):
-        return True
-    try:
-        json.loads(body)
-    except ValueError:
-        return False
-    return True
 
 
 def regrade(ledger: list[dict], findings: list[Finding]) -> list[dict]:

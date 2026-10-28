@@ -233,8 +233,10 @@ async def test_a_chat_answer_shows_what_its_sources_said(agent, sources):
 async def test_a_ruling_question_is_sent_to_a_scholar(agent, sources):
     agent.ai_client = ScriptedProvider(["Scholars differ on this question."])
     result = await agent.execute("Is it halal to invest in crypto?")
-    assert "ask a qualified scholar" in result["result"]
+    # The answer that streamed is the answer kept; the referral is shown under it.
+    assert result["result"] == "Scholars differ on this question."
     assert result["usage"]["ahl"]["ruling"] is True
+    assert "ask a qualified scholar" in result["usage"]["ahl"]["referral"]
 
 
 async def test_conversation_is_not_sent_to_sources(agent, sources):
@@ -274,14 +276,6 @@ async def test_an_unreachable_source_is_not_called_a_source_that_found_nothing(s
         language="en",
     )
     assert heard == [] and findings[0].verdict == "unknown"
-
-
-def test_an_answer_meant_for_a_program_is_machine_readable():
-    for text in (
-        '{"moon": "The largest moon of Saturn is Rhea."}',
-        '```json\n{"moon": "Rhea"}\n```',
-    ):
-        assert ahl_dhikr.machine_readable(text)
 
 
 def test_a_request_for_json_about_a_quote_is_not_a_ruling_or_a_fact_question():

@@ -94,7 +94,11 @@ Events arrive in this order:
 - `thinking`: only when the request has `thinking: true`.
 - `chat_stream`: the answer, in its `chunk` field.
 - `chat_complete` or `error`. The closing event holds:
-  - `response`: the full answer;
+  - `response`: the full answer. It equals the `chat_stream` chunks joined,
+    with one exception: when the Truth Gate corrected or removed a claim, the
+    corrected text is the `response` and `usage.sidq` lists each change. Notes
+    about the answer (what sources said, a ruling question's referral to a
+    scholar in `usage.ahl.referral`) are never added to the text;
   - `usage`: model, tokens and cost, plus `isnad` (each claim's grade), `sidq`
     (Truth Gate), `ahl` (what sources said), `amanah` (injections removed) and
     `orchestrator` (`mizan` when MIZAN did the work itself);
