@@ -1,4 +1,4 @@
-import { agenticRows, blockRows, categoryRows, facultyPoints, gameRows, historyPoints, plainArms, intervalText, pct, percentileText, signed, taskRows, type FacultyEntry, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
+import { agenticRows, blockRows, categoryRows, facultyPoints, gameRows, historyPoints, patternText, plainArms, intervalText, pct, percentileText, signed, taskRows, type FacultyEntry, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
 
 let checks = 0;
 function check(name: string, condition: boolean) {
@@ -92,6 +92,9 @@ const axes = facultyPoints(profile);
 check("faculty points skip empty axes", axes.length === 3 && axes[0].base === 50 && axes[1].mizan === null);
 check("panel median in percent", axes[2].panel === 75 && axes[0].panel === null);
 check("no panel", percentileText(null) === "no panel answers yet");
+check("pattern incomplete", patternText({ measured: 4, above_median: 2, top_percentile: 0, shape: "incomplete" }).includes("4 of 10"));
+check("pattern partial", patternText({ measured: 10, above_median: 7, top_percentile: 0, shape: "below_median_somewhere" }).endsWith("on 7 of 10 faculties"));
+check("pattern all", patternText({ measured: 10, above_median: 10, top_percentile: 0, shape: "above_median_everywhere" }).includes("all ten"));
 check(
   "percentile text",
   percentileText({ people: 10, percentile: 0.6, interval: [0.31, 0.83], level: "competent" }) ===

@@ -22,16 +22,17 @@ import {
   facultyPoints,
   intervalText,
   pct,
+  patternText,
   percentileText,
   signed,
   type FacultyProfile as Profile,
 } from "../utils/imtihan.ts";
 
-function Swatch({ color, dashed }: { color: string; dashed?: boolean }) {
+function Swatch({ color, dashed, dotted }: { color: string; dashed?: boolean; dotted?: boolean }) {
   return (
     <span
       className="w-4 h-0 inline-block"
-      style={{ borderTop: `2px ${dashed ? "dashed" : "solid"} ${color}` }}
+      style={{ borderTop: `2px ${dotted ? "dotted" : dashed ? "dashed" : "solid"} ${color}` }}
       aria-hidden
     />
   );
@@ -58,9 +59,14 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
             <Swatch color="var(--viz-mizan)" /> MIZAN
           </span>
           {panelComplete && (
-            <span className="flex items-center gap-1.5">
-              <Swatch color="var(--viz-panel)" dashed /> Human panel (median)
-            </span>
+            <>
+              <span className="flex items-center gap-1.5">
+                <Swatch color="var(--viz-panel)" dashed /> Median human
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Swatch color="var(--viz-panel)" dotted /> Max human
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -118,7 +124,7 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
               />
               {panelComplete && (
                 <Radar
-                  name="Human panel (median)"
+                  name="Median human"
                   dataKey="panel"
                   stroke="var(--viz-panel)"
                   fill="none"
@@ -126,9 +132,26 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
                   strokeWidth={2}
                 />
               )}
+              {panelComplete && (
+                <Radar
+                  name="Max human"
+                  dataKey="panelMax"
+                  stroke="var(--viz-panel)"
+                  fill="none"
+                  strokeDasharray="1 4"
+                  strokeLinecap="round"
+                  strokeWidth={2}
+                />
+              )}
             </RadarChart>
           </ResponsiveContainer>
         </div>
+      )}
+      {profile.pattern && (
+        <p className="text-xs text-gray-600 dark:text-gray-300">
+          Profile (as the paper sorts them, from each interval's lower end): base model{" "}
+          {patternText(profile.pattern.base)}; MIZAN {patternText(profile.pattern.mizan)}.
+        </p>
       )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">

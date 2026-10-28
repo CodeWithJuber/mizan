@@ -68,11 +68,20 @@ export interface FacultyEntry {
   base: FacultyArm;
   mizan: FacultyArm;
   delta: number | null;
-  panel: { people: number; mean: number; median: number } | null;
+  panel: { people: number; mean: number; median: number; max?: number } | null;
   anchors: { block: string; value: number; measure: string; source: string; note?: string }[];
 }
 
+export interface ProfilePattern {
+  measured: number;
+  above_median: number;
+  top_percentile: number;
+  shape: "incomplete" | "below_median_somewhere" | "above_median_everywhere" | "top_percentile_everywhere" | string;
+}
+
 export interface FacultyProfile {
+  /** The profile's shape (Burnell et al. section 3.3), per arm. */
+  pattern?: Record<Arm, ProfilePattern>;
   framework: string;
   /** The announcement, the paper and its arXiv page. */
   sources?: string[];
@@ -101,7 +110,22 @@ export function facultyPoints(profile: FacultyProfile | undefined) {
       base: entry.base.rate == null ? null : Math.round(entry.base.rate * 100),
       mizan: entry.mizan.rate == null ? null : Math.round(entry.mizan.rate * 100),
       panel: entry.panel ? Math.round(entry.panel.median * 100) : null,
+      panelMax: entry.panel?.max == null ? null : Math.round(entry.panel.max * 100),
     }));
+}
+
+/** The profile's shape in words, as the paper sorts profiles (section 3.3). */
+export function patternText(pattern: ProfilePattern | undefined): string {
+  if (!pattern) return "";
+  if (pattern.shape === "incomplete")
+    return `the human panel has answered ${pattern.measured} of 10 faculties so far`;
+  const shape =
+    pattern.shape === "top_percentile_everywhere"
+      ? "at the 99th percentile of the panel on all ten faculties"
+      : pattern.shape === "above_median_everywhere"
+        ? "above the panel's median on all ten faculties"
+        : `above the panel's median on ${pattern.above_median} of 10 faculties`;
+  return shape;
 }
 
 /** "outperforms 60% of 10 people (95% interval 31–83%), Competent" or why there is no claim. */

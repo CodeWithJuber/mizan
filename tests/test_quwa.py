@@ -210,6 +210,23 @@ def test_the_percentile_is_against_the_panel_on_the_same_items():
     assert human["level"] is None  # the interval's lower end is below the 50th percentile
 
 
+def test_the_profile_shape_follows_the_paper_and_the_panel():
+    tasks = [{"id": f"x-{key}", "block": key} for key in DEEPMIND]
+    results = _results({f"x-{key}": (False, True) for key in DEEPMIND})
+    no_panel = quwa.profile(results, tasks)["pattern"]["mizan"]
+    assert no_panel["shape"] == "incomplete" and no_panel["measured"] == 0
+    # 30 panel members fail every item MIZAN passes: above the median on all ten,
+    # but the interval's lower end (0.886) does not reach the 99th percentile.
+    panel = {f"p{n}": {f"x-{key}": False for key in DEEPMIND} for n in range(30)}
+    profile = quwa.profile(results, tasks, panel)
+    assert profile["pattern"]["mizan"] == {
+        "measured": 10, "above_median": 10, "top_percentile": 0,
+        "shape": "above_median_everywhere",
+    }  # fmt: skip
+    assert profile["pattern"]["base"]["shape"] == "below_median_somewhere"
+    assert profile["faculties"][0]["panel"]["max"] == 0.0
+
+
 def test_a_level_is_claimed_only_from_the_lower_end_of_the_interval():
     assert quwa.level(0.95) == "expert"
     assert quwa.level(0.5) == "competent"

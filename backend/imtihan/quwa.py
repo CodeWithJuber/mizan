@@ -130,7 +130,28 @@ def _human(panel: dict[str, dict[str, bool]], ids: set[str]) -> dict | None:
         "people": len(rates),
         "mean": round(sum(rates) / len(rates), 3),
         "median": round(statistics.median(rates), 3),
+        "max": round(max(rates), 3),
     }
+
+
+def pattern(rows: list[dict], arm: str) -> dict[str, Any]:
+    """The profile's shape as Burnell et al. (section 3.3) sort it: below the
+    human sample's median on one or more faculties, above it on all ten, or at
+    the 99th percentile on all ten. Read from each percentile interval's lower
+    end, so a shape is claimed only where the panel supports it."""
+    measured = [entry for entry in rows if entry["items"] and entry[arm]["human"]]
+    lows = [entry[arm]["human"]["interval"][0] for entry in measured]
+    above = sum(low > 0.5 for low in lows)
+    top = sum(low >= 0.99 for low in lows)
+    if len(measured) < len(rows):
+        shape = "incomplete"  # the panel has not answered every faculty yet
+    elif top == len(rows):
+        shape = "top_percentile_everywhere"
+    elif above == len(rows):
+        shape = "above_median_everywhere"
+    else:
+        shape = "below_median_somewhere"
+    return {"measured": len(measured), "above_median": above, "top_percentile": top, "shape": shape}
 
 
 def profile(
@@ -192,6 +213,7 @@ def profile(
                 "interval": report.wilson(passed, len(scored)),
             }
     return {
+        "pattern": {arm: pattern(rows, arm) for arm in report.ARMS},
         "framework": data()["framework"],
         "sources": data().get("sources", []),
         "translation": data()["translation"],
