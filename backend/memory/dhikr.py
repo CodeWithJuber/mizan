@@ -178,6 +178,16 @@ def _stateless_message(metadata: str | None) -> bool:
         return False
 
 
+def _fold(text: Any) -> Any:
+    """Case-fold for chat search (SQLite's own folding knows only ASCII)."""
+    return text.casefold() if isinstance(text, str) else text
+
+
+def _like_literal(text: str) -> str:
+    """``text`` for a ``LIKE ... ESCAPE '\\'`` pattern: its wildcards match themselves."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @dataclass
 class Memory:
     """Base memory unit"""
@@ -959,8 +969,40 @@ class DhikrMemorySystem:
 
     def _session_table(self, conn):
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS chat_sessions (session_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL)"
+            "CREATE TABLE IF NOT EXISTS chat_sessions "
+            "(session_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT)"
         )
+        # The chat's own name (the sidebar's title), added in place to older databases.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
+        if "title" not in existing:
+            try:
+                conn.execute("ALTER TABLE chat_sessions ADD COLUMN title TEXT")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():  # another process added it
+                    raise
+
+    @staticmethod
+    def _claim_session(
+        conn, session_id: str, owner_id: str, *, create: bool, adopt_legacy: bool
+    ) -> bool:
+        """Whether ``owner_id`` may use the chat; claims it when it is new
+        (``create``) or a legacy chat with no owner yet (``adopt_legacy``).
+        Run inside the caller's transaction."""
+        row = conn.execute(
+            "SELECT owner_id FROM chat_sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row:
+            return bool(row[0] == owner_id)
+        legacy = conn.execute(
+            "SELECT 1 FROM agent_messages WHERE session_id = ? LIMIT 1", (session_id,)
+        ).fetchone()
+        allowed = (create and not legacy) or (adopt_legacy and bool(legacy))
+        if allowed:
+            conn.execute(
+                "INSERT INTO chat_sessions (session_id, owner_id) VALUES (?, ?)",
+                (session_id, owner_id),
+            )
+        return bool(allowed)
 
     async def session_owner(self, session_id: str) -> str | None:
         conn = self._get_conn()
@@ -982,20 +1024,42 @@ class DhikrMemorySystem:
             self._session_table(conn)
             # One SQLite transaction makes concurrent first claims atomic.
             conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                "SELECT owner_id FROM chat_sessions WHERE session_id = ?", (session_id,)
-            ).fetchone()
-            if row:
-                allowed = row[0] == owner_id
-            else:
-                legacy = conn.execute(
-                    "SELECT 1 FROM agent_messages WHERE session_id = ? LIMIT 1", (session_id,)
-                ).fetchone()
-                allowed = (create and not legacy) or (adopt_legacy and bool(legacy))
-                if allowed:
-                    conn.execute("INSERT INTO chat_sessions VALUES (?, ?)", (session_id, owner_id))
+            allowed = self._claim_session(
+                conn, session_id, owner_id, create=create, adopt_legacy=adopt_legacy
+            )
             conn.commit()
-            return cast(bool, allowed)
+            return allowed
+        finally:
+            self._release_conn(conn)
+
+    async def rename_session(
+        self, owner_id: str, session_id: str, title: str | None, *, adopt_legacy: bool = False
+    ) -> bool:
+        """Name one of the owner's chats (``None`` or blank clears the name).
+
+        False when the chat does not exist or is someone else's. A chat that has
+        messages but no owner row yet is the owner's only by the same rule as
+        ``authorize_session``: ``adopt_legacy`` (an administrator) claims it.
+        """
+        name = (title or "").strip() or None
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                allowed = self._claim_session(
+                    conn, session_id, owner_id, create=False, adopt_legacy=adopt_legacy
+                )
+                if allowed:
+                    conn.execute(
+                        "UPDATE chat_sessions SET title = ? WHERE session_id = ? AND owner_id = ?",
+                        (name, session_id, owner_id),
+                    )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            return allowed
         finally:
             self._release_conn(conn)
 
@@ -1187,31 +1251,57 @@ class DhikrMemorySystem:
             self._release_conn(conn)
 
     async def list_sessions(
-        self, limit: int = 20, owner_id: str | None = None, offset: int = 0
+        self,
+        limit: int = 20,
+        owner_id: str | None = None,
+        offset: int = 0,
+        q: str | None = None,
     ) -> list[dict]:
-        """List recent chat sessions with metadata, newest first (``offset`` pages)."""
+        """List recent chat sessions with metadata, newest first (``offset`` pages).
+
+        Each row carries the chat's ``title`` (None until the owner names it).
+        ``q`` (trimmed, at most 200 characters) keeps only chats whose title or
+        first user message contains it, in any letter case; ``%`` and ``_`` in
+        it are plain characters, not wildcards.
+        """
+        search = (q or "").strip() or None
+        if search is not None and len(search) > 200:
+            raise ValueError("A chat search has at most 200 characters")
+        pattern = None if search is None else f"%{_like_literal(search.casefold())}%"
         conn = self._get_conn()
-        self._session_table(conn)
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT m.session_id,
-                   MIN(m.created_at) as started_at,
-                   MAX(m.created_at) as last_message_at,
-                   COUNT(*) as message_count,
-                   (SELECT content FROM agent_messages
-                    WHERE session_id = m.session_id AND role = 'user'
-                    ORDER BY created_at LIMIT 1) as first_message
-            FROM agent_messages m
-            WHERE (? IS NULL OR m.session_id IN (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
-            GROUP BY m.session_id
-            ORDER BY MAX(m.created_at) DESC
-            LIMIT ? OFFSET ?
-        """,
-            (owner_id, owner_id, limit, max(0, offset)),
-        )
-        rows = c.fetchall()
-        self._release_conn(conn)
+        try:
+            self._session_table(conn)
+            # SQLite folds only ASCII letters; Python's casefold folds every script.
+            conn.create_function("mizan_fold", 1, _fold, deterministic=True)
+            rows = conn.execute(
+                """
+                SELECT session_id, started_at, last_message_at, message_count,
+                       first_message, title
+                FROM (
+                    SELECT m.session_id,
+                           MIN(m.created_at) AS started_at,
+                           MAX(m.created_at) AS last_message_at,
+                           COUNT(*) AS message_count,
+                           (SELECT content FROM agent_messages
+                            WHERE session_id = m.session_id AND role = 'user'
+                            ORDER BY created_at LIMIT 1) AS first_message,
+                           (SELECT title FROM chat_sessions
+                            WHERE session_id = m.session_id) AS title
+                    FROM agent_messages m
+                    WHERE (? IS NULL OR m.session_id IN
+                           (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
+                    GROUP BY m.session_id
+                )
+                WHERE (? IS NULL
+                       OR mizan_fold(title) LIKE ? ESCAPE '\\'
+                       OR mizan_fold(first_message) LIKE ? ESCAPE '\\')
+                ORDER BY last_message_at DESC, session_id DESC
+                LIMIT ? OFFSET ?
+            """,
+                (owner_id, owner_id, pattern, pattern, pattern, limit, max(0, offset)),
+            ).fetchall()
+        finally:
+            self._release_conn(conn)
 
         return [
             {
@@ -1219,7 +1309,8 @@ class DhikrMemorySystem:
                 "started_at": r[1],
                 "last_message_at": r[2],
                 "message_count": r[3],
-                "first_message": (r[4] or "")[:80] if len(r) > 4 else "",
+                "first_message": (r[4] or "")[:80],
+                "title": r[5],
             }
             for r in rows
         ]

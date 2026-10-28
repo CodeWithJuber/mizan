@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 import time
+import unicodedata
 import uuid
 from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
@@ -38,7 +39,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
@@ -1784,6 +1785,34 @@ async def delete_chat(session_id: str, user: TokenPayload = Depends(require_auth
     return receipt
 
 
+class ChatRename(BaseModel):
+    title: str = Field(
+        ..., description="The chat's name: 1-120 characters after trimming, one line."
+    )
+
+    @field_validator("title")
+    @classmethod
+    def _one_line_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("A chat title cannot be empty")
+        if len(title) > 120:
+            raise ValueError("A chat title has at most 120 characters")
+        # Control characters (newlines, tabs, NUL, DEL, C1) and lone surrogates.
+        if any(unicodedata.category(char) in ("Cc", "Cs") for char in title):
+            raise ValueError("A chat title cannot contain control characters")
+        return title
+
+
+@app.patch("/api/chat/{session_id}")
+async def rename_chat(session_id: str, req: ChatRename, user: TokenPayload = Depends(require_auth)):
+    """Name one of the user's chats; the chat list shows the title and searches it."""
+    await authorize_session(session_id, user)
+    if not await memory.rename_session(user.user_id, session_id, req.title):
+        raise HTTPException(404, "Session not found")  # erased meanwhile
+    return {"session_id": session_id, "title": req.title}
+
+
 def chat_completion_receipt(result: dict) -> dict:
     """Carry observed completion state through storage and all chat transports."""
     return {
@@ -2820,17 +2849,28 @@ async def chat(
 async def list_sessions(
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    q: str | None = Query(
+        None,
+        max_length=200,
+        description="Only chats whose title or first message contains this, in any case.",
+    ),
     user: TokenPayload = Depends(require_auth),
 ):
     """The user's chats, newest first; ``limit``/``offset`` page through them
-    and ``next_offset`` is where the next page starts (null at the end)."""
-    db_sessions = await memory.list_sessions(limit=limit + 1, owner_id=user.user_id, offset=offset)
+    and ``next_offset`` is where the next page starts (null at the end).
+    ``q`` keeps the chats whose title or first message holds it (any case;
+    ``%`` and ``_`` are plain characters); a blank ``q`` lists every chat."""
+    search = (q or "").strip() or None
+    db_sessions = await memory.list_sessions(
+        limit=limit + 1, owner_id=user.user_id, offset=offset, q=search
+    )
     more = len(db_sessions) > limit
     return {
         "sessions": db_sessions[:limit],
         "limit": limit,
         "offset": offset,
         "next_offset": offset + limit if more else None,
+        "q": search,
     }
 
 

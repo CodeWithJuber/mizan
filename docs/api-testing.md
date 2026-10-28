@@ -7,7 +7,7 @@ only).
 The base URL is your server, for example `https://your-mizan.example`; every
 route below starts with `/api`. FastAPI's own `/docs` page is not served
 through the production proxy. This page explains the main routes;
-**every** route (292, with who may call it) is in
+**every** route (293, with who may call it) is in
 [api-reference.md](api-reference.md), and [openapi.json](openapi.json) has
 them all with their request bodies: import it into Postman, Insomnia or
 Bruno, set the server URL, and use a Bearer token or `X-API-Key`.
@@ -117,7 +117,8 @@ pushed over the WebSocket `/ws/{client_id}`.
 | Route | What it does |
 |---|---|
 | `GET /api/chat/{session_id}` | The chat's messages, newest page; `?before=<id>` pages back |
-| `GET /api/chat/sessions/list` | Your chats |
+| `GET /api/chat/sessions/list` | Your chats, newest first, each with its `title` (null until named); `?q=` keeps those whose title or first message contains it (any case, at most 200 characters) |
+| `PATCH /api/chat/{session_id}` | Name the chat: `{"title": "..."}` (1-120 characters after trimming, no control characters); returns `{"session_id", "title"}` |
 | `GET /api/chat/{session_id}/run-state` | Whether an answer is still being written |
 | `POST /api/chat/{session_id}/stop` | Stop it |
 | `DELETE /api/chat/{session_id}` | Erase the chat everywhere (Mahw) and get a receipt |

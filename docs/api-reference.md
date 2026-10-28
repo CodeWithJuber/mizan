@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-292 routes in 60 areas.
+293 routes in 60 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -104,10 +104,11 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/chat/preferences` | user | Get chat preferences |
 | DELETE | `/api/chat/preferences/{key}` | user | Delete chat preference |
 | PUT | `/api/chat/preferences/{key}` | user | Set chat preference |
-| GET | `/api/chat/sessions/list` | user | The user's chats, newest first; ``limit``/``offset`` page through them and ``next_offset`` is where the next page starts (null at the end). |
+| GET | `/api/chat/sessions/list` | user | The user's chats, newest first; ``limit``/``offset`` page through them and ``next_offset`` is where the next page starts (null at the end). ``q`` keeps the chats whose title or first message holds it (any case; ``%`` and ``_`` are plain characters); a blank ``q`` lists every chat. |
 | POST | `/api/chat/stream` | user | One authenticated POST produces one SSE stream; it is never replayed. |
 | DELETE | `/api/chat/{session_id}` | user | Delete a chat and everything MIZAN derived from it (Mahw). The answer is a receipt: what was removed from each store, how many checks ran over what is left, and how many traces were found (none, when it worked). |
 | GET | `/api/chat/{session_id}` | user | Newest ``limit`` messages; pass ``before=<message id>`` to page further back. |
+| PATCH | `/api/chat/{session_id}` | user | Name one of the user's chats; the chat list shows the title and searches it. |
 | GET | `/api/chat/{session_id}/run-state` | user | Chat run state |
 | POST | `/api/chat/{session_id}/stop` | user | Stop the user's active run in this chat (the Stop button). A dropped connection never does this: the run goes on and saves its answer. |
 

@@ -1257,6 +1257,93 @@
      }
     ]
    },
+   "patch": {
+    "summary": "Rename Chat",
+    "description": "Name one of the user's chats; the chat list shows the title and searches it.",
+    "operationId": "rename_chat_api_chat__session_id__patch",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChatRename"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
    "get": {
     "summary": "Get Chat History",
     "description": "Newest ``limit`` messages; pass ``before=<message id>`` to page further back.",
@@ -1598,7 +1685,7 @@
   "/api/chat/sessions/list": {
    "get": {
     "summary": "List Sessions",
-    "description": "The user's chats, newest first; ``limit``/``offset`` page through them\nand ``next_offset`` is where the next page starts (null at the end).",
+    "description": "The user's chats, newest first; ``limit``/``offset`` page through them\nand ``next_offset`` is where the next page starts (null at the end).\n``q`` keeps the chats whose title or first message holds it (any case;\n``%`` and ``_`` are plain characters); a blank ``q`` lists every chat.",
     "operationId": "list_sessions_api_chat_sessions_list_get",
     "parameters": [
      {
@@ -1623,6 +1710,25 @@
        "default": 0,
        "title": "Offset"
       }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 200
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Only chats whose title or first message contains this, in any case.",
+       "title": "Q"
+      },
+      "description": "Only chats whose title or first message contains this, in any case."
      },
      {
       "name": "authorization",
@@ -19795,6 +19901,20 @@
      "value"
     ],
     "title": "ChatPreferenceValue"
+   },
+   "ChatRename": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title",
+      "description": "The chat's name: 1-120 characters after trimming, one line."
+     }
+    },
+    "type": "object",
+    "required": [
+     "title"
+    ],
+    "title": "ChatRename"
    },
    "ChatRequest": {
     "properties": {

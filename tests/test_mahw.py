@@ -222,6 +222,9 @@ def test_only_the_owner_deletes_a_chat_and_not_while_it_runs(chat_api):
     client, main, chat, amina, mine, theirs = chat_api
     asyncio.run(chat.authorize_session("s-1", amina.id, create=True))
     asyncio.run(chat.save_message("s-1", "user", SECRET))
+    title = "Maryam's first day at Al-Huda"
+    named = client.patch("/api/chat/s-1", json={"title": title}, headers=mine)
+    assert named.status_code == 200, named.text
 
     assert client.delete("/api/chat/s-1", headers=theirs).status_code == 404
     main._stream_sessions.add((amina.id, "s-1"))
@@ -230,6 +233,18 @@ def test_only_the_owner_deletes_a_chat_and_not_while_it_runs(chat_api):
     response = client.delete("/api/chat/s-1", headers=mine)
     assert response.status_code == 200, response.text
     assert response.json()["traces"] == 0 and response.json()["removed"]["chat messages"] == 1
+    assert response.json()["removed"]["chat"] == 1  # the chat's row, with its title
+    assert title not in response.text  # the receipt keeps no content
     assert client.get("/api/chat/s-1", headers=mine).status_code == 404
+    # The title went with the chat: no row holds it, the list does not show
+    # it, and naming the erased chat does not bring it back.
+    with sqlite3.connect(chat.db_path) as conn:
+        left = conn.execute(
+            "SELECT COUNT(*) FROM chat_sessions WHERE session_id = ? OR title = ?", ("s-1", title)
+        ).fetchone()[0]
+    assert left == 0
+    listing = client.get("/api/chat/sessions/list", params={"q": "Maryam"}, headers=mine).json()
+    assert listing["sessions"] == []
+    assert client.patch("/api/chat/s-1", json={"title": title}, headers=mine).status_code == 404
     listed = client.get("/api/daftar/receipts", headers=mine).json()["receipts"]
     assert listed and listed[0]["kind"] == "chat"
