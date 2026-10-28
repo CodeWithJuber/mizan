@@ -57,7 +57,12 @@ One block for each faculty of Google DeepMind's cognitive framework that the blo
 
 ## Cognitive profile (Quwa)
 
-`imtihan/quwa.py` reads every run as a profile of the ten faculties of [Google DeepMind's cognitive framework](https://arxiv.org/abs/2605.28405) (Burnell et al., "Measuring Progress Toward AGI: A Cognitive Framework", 27 May 2026). That paper scores a system on each faculty as the percentage of a human sample it outperforms, on the same items under the same conditions, and gives no single AGI number.
+`imtihan/quwa.py` reads every run as a profile of the ten faculties of Google DeepMind's **Cognitive Taxonomy**:
+
+- **The paper.** Burnell et al., ["Measuring Progress Toward AGI: A Cognitive Framework"](https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf), dated 16 March 2026 ([arXiv:2605.28405](https://arxiv.org/abs/2605.28405)). Its abstract introduces "a Cognitive Taxonomy that deconstructs general intelligence into 10 key cognitive faculties".
+- **The announcement.** [Google's blog post](https://blog.google/innovation-and-ai/models-and-research/google-deepmind/measuring-agi-cognitive-framework/) of 17 March 2026 calls the paper "Measuring Progress Toward AGI: A Cognitive Taxonomy".
+
+The framework measures each faculty on held-out tasks, collects human baselines for the same tasks from a demographically representative sample of adults, and scores a system as the percentage of that sample it outperforms. It gives no single AGI number. Its Kaggle hackathon targeted the five faculties with the thinnest evaluations: learning, metacognition, attention, executive functions and social cognition.
 
 Each faculty carries its Quranic name and an ayah on that faculty (Saheeh International, quran.com; in `imtihan/faculties.json`):
 

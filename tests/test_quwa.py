@@ -27,6 +27,10 @@ def data_dir(monkeypatch, tmp_path):
 
 
 def test_ten_faculties_each_with_its_ayah_and_definition():
+    framework = quwa.data()["framework"]
+    # Both names of the work: the paper's and the announcement's.
+    assert "A Cognitive Framework" in framework and "A Cognitive Taxonomy" in framework
+    assert any("blog.google" in url for url in quwa.data()["sources"])
     found = quwa.faculties()
     assert [entry["key"] for entry in found] == DEEPMIND
     assert {entry["key"] for entry in found if entry["composite"]} == {"problem_solving", "social"}

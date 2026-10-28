@@ -36,7 +36,7 @@ export interface Report {
   agentic?: Partial<Record<Arm, AgenticSummary>>;
   /** Interactive games (ARC-AGI-3 style): levels won and action efficiency, per arm. */
   games?: Partial<Record<Arm, GamesSummary>>;
-  /** The ten faculties of Google DeepMind's cognitive framework (imtihan/quwa.py). */
+  /** The ten faculties of Google DeepMind's Cognitive Taxonomy (imtihan/quwa.py). */
   faculties?: FacultyProfile;
 }
 
@@ -74,6 +74,8 @@ export interface FacultyEntry {
 
 export interface FacultyProfile {
   framework: string;
+  /** The announcement, the paper and its arXiv page. */
+  sources?: string[];
   translation: string;
   levels_source: string;
   faculties: FacultyEntry[];

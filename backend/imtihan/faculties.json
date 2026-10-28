@@ -1,5 +1,10 @@
 {
-  "framework": "Burnell et al., \"Measuring Progress Toward AGI: A Cognitive Framework\", Google DeepMind, arXiv:2605.28405 (27 May 2026)",
+  "framework": "Google DeepMind's Cognitive Taxonomy (Burnell et al., \"Measuring Progress Toward AGI: A Cognitive Framework\", 16 March 2026, arXiv:2605.28405; announced on 17 March 2026 as \"Measuring Progress Toward AGI: A Cognitive Taxonomy\")",
+  "sources": [
+    "https://blog.google/innovation-and-ai/models-and-research/google-deepmind/measuring-agi-cognitive-framework/",
+    "https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf",
+    "https://arxiv.org/abs/2605.28405"
+  ],
   "translation": "Saheeh International (quran.com)",
   "faculties": [
     {"key": "perception", "name": "Perception", "arabic": "Idrak", "script": "إدراك", "ayah": "16:78",

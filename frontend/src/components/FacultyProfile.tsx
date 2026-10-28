@@ -68,6 +68,21 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
         The ten faculties of {profile.framework}. Each axis is the pass rate on that faculty's items; problem solving
         and social cognition are composites that draw on the others. Read each axis with its interval in the table: the
         shape and area of the chart are not a score.
+        {(profile.sources ?? []).length > 0 && (
+          <>
+            {" "}
+            Sources:{" "}
+            {(profile.sources ?? []).map((url, index) => (
+              <span key={url}>
+                {index > 0 && " · "}
+                <a className="underline" href={url} target="_blank" rel="noreferrer">
+                  {url.includes("blog.google") ? "announcement" : url.includes("arxiv") ? "arXiv" : "paper"}
+                </a>
+              </span>
+            ))}
+            .
+          </>
+        )}
       </p>
       {points.length >= 3 && (
         <div className="h-80" role="img" aria-label="Pass rate per faculty, base model and MIZAN">

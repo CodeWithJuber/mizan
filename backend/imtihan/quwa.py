@@ -1,9 +1,12 @@
 """Quwa (قوى, faculties): the Imtihan read as a profile of ten cognitive faculties.
 
-Google DeepMind's cognitive framework (Burnell et al., "Measuring Progress
-Toward AGI: A Cognitive Framework", arXiv:2605.28405, 27 May 2026) describes
-general intelligence as ten faculties and scores a system on each as the share
-of a human sample it outperforms, on the same items under the same conditions.
+Google DeepMind's Cognitive Taxonomy describes general intelligence as ten
+faculties and scores a system on each as the share of a human sample it
+outperforms, on the same items under the same conditions. It comes from Burnell
+et al., "Measuring Progress Toward AGI: A Cognitive Framework" (16 March 2026,
+arXiv:2605.28405), which the Google blog announced on 17 March 2026 as
+"Measuring Progress Toward AGI: A Cognitive Taxonomy" (``faculties.json``
+``sources``).
 Quwa does that with the Imtihan's own items:
 
 - every task belongs to one faculty: its own ``faculty`` field, else its
@@ -190,6 +193,7 @@ def profile(
             }
     return {
         "framework": data()["framework"],
+        "sources": data().get("sources", []),
         "translation": data()["translation"],
         "levels_source": data()["levels_source"],
         "faculties": rows,
