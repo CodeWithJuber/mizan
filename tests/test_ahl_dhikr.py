@@ -97,6 +97,21 @@ async def test_with_no_source_the_answer_is_reported_as_the_models_word(store, s
     assert ahl_dhikr.known(store, "u1") == []  # nothing settled, nothing kept
 
 
+NASA = "Titan is Saturn's largest moon and the second-largest moon in the solar system."
+
+
+def nasa_web():
+    async def web(query):
+        return {
+            "results": [
+                {"title": "Titan - NASA Science", "url": "https://science.nasa.gov/saturn/moons/titan/",
+                 "snippet": NASA}
+            ]
+        }  # fmt: skip
+
+    return web
+
+
 async def test_what_a_source_settled_is_answered_from_memory_next_time(store, sources):
     ledger = daif("The largest moon of Saturn is Titan.")
     await ahl_dhikr.consult(QUESTION, ledger, store=store, user_id="u1", language="en")
@@ -105,12 +120,56 @@ async def test_what_a_source_settled_is_answered_from_memory_next_time(store, so
         QUESTION, ledger, store=store, user_id="u1", language="en"
     )
     assert again.verdict == "supported" and again.passage.source == "ilm"
-    assert len(sources) == 1  # not asked again
-    # The next answer is given what was settled before it is written.
-    (evidence,) = ahl_dhikr.evidence_for(store, "u1", "Tell me about Saturn's moon Titan")
-    assert evidence["url"].endswith("Titan_(moon)")
+    assert len(sources) == 1  # a site is never its own second witness: not asked again
+    # One source's word is shown, but it is not yet knowledge (49:6).
+    assert ahl_dhikr.evidence_for(store, "u1", "Tell me about Saturn's moon Titan") == []
+    (entry,) = ahl_dhikr.witnesses(store, "u1").values()
+    assert entry["grade"] == "hasan" and entry["hosts"] == ["en.wikipedia.org"]
     # Each user's ilm is their own.
     assert ahl_dhikr.known(store, "someone else") == []
+
+
+async def test_a_second_independent_witness_makes_it_knowledge(store, sources, monkeypatch):
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia", "web"])
+    ledger = daif("The largest moon of Saturn is Titan.")
+    await ahl_dhikr.consult(QUESTION, ledger, store=store, user_id="u1", language="en")
+    # Asked again, MIZAN seeks a second witness on another site (2:282).
+    (again,), _ = await ahl_dhikr.consult(
+        QUESTION, ledger, store=store, user_id="u1", language="en", web=nasa_web()
+    )
+    assert again.passage.source == "ilm"
+    (entry,) = ahl_dhikr.witnesses(store, "u1").values()
+    assert entry["grade"] == "sahih"
+    assert entry["hosts"] == ["en.wikipedia.org", "science.nasa.gov"]
+    assert entry["p_true"] > 0.5
+    # Now it is knowledge: given to Lisan before the next answer.
+    found = ahl_dhikr.evidence_for(store, "u1", "Tell me about Saturn's moon Titan")
+    assert {item["url"] for item in found} >= {"https://en.wikipedia.org/wiki/Titan_(moon)"}
+    # Both sites gained trust from agreeing.
+    trusted = ahl_dhikr.trust(store)
+    assert trusted["science.nasa.gov"].mean > 2 / 3 and trusted["en.wikipedia.org"].mean > 2 / 3
+
+
+def test_sources_are_weighed_by_trust_and_a_dispute_is_not_knowledge(store):
+    ahl_dhikr._save(store, "u1", [
+        {"claim": "Saturn's largest moon is Rhea.", "verdict": "contradicted", "p": 0.95,
+         "says": TITAN, "title": "Titan", "url": "https://en.wikipedia.org/wiki/Titan_(moon)",
+         "host": "en.wikipedia.org", "used": "2"},
+        {"claim": "Saturn's largest moon is Rhea.", "verdict": "supported", "p": 0.6,
+         "says": "Rhea is Saturn's largest moon.", "title": "Blog", "url": "https://moons.example/rhea",
+         "host": "moons.example", "used": "1"},
+    ])  # fmt: skip
+    for _ in range(6):
+        ahl_dhikr.credit(store, "en.wikipedia.org", True)
+    (entry,) = ahl_dhikr.witnesses(store, "u1").values()
+    assert entry["grade"] == "mudtarib"
+    assert entry["p_true"] < 0.5  # the more trusted, more certain source weighs more
+    assert ahl_dhikr.evidence_for(store, "u1", "Saturn's largest moon Rhea") == []
+
+
+def test_a_site_is_one_witness():
+    assert ahl_dhikr.host_of("https://www.Example.org/a?b") == "example.org"
+    assert ahl_dhikr.host_of("https://en.wikipedia.org/wiki/X") == "en.wikipedia.org"
 
 
 async def test_without_the_model_every_claim_stays_unknown(store, sources, monkeypatch):
@@ -215,19 +274,31 @@ def agent(monkeypatch, tmp_path):
     return create_agent("general", izn=IznPermission())
 
 
-async def test_a_chat_answer_shows_what_its_sources_said(agent, sources):
+async def test_a_chat_answer_shows_what_its_sources_said(agent, sources, monkeypatch):
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia", "web"])
+    web = nasa_web()
+
+    async def search(name, params):
+        return await web(params["query"])
+
+    monkeypatch.setattr(agent, "_chat_tool_allowed", lambda name: name == "web_search")
+    monkeypatch.setattr(agent, "_execute_tool_safe", search)
     agent.ai_client = ScriptedProvider(["The largest moon of Saturn is Rhea."])
     result = await agent.execute(QUESTION)
     # Shown under the answer, never inside it (a note broke tables, formulas,
     # verses and required last words in the 27 October benchmark).
     assert result["result"] == "The largest moon of Saturn is Rhea."
     assert result["usage"]["ahl"]["contradicted"][0]["title"] == "Titan (moon)"
-    # The next answer is written with what was settled.
+    # One source is not yet knowledge: the next answer is not told it.
     agent.ai_client = ScriptedProvider(["The largest moon of Saturn is Titan."])
     result = await agent.execute(QUESTION)
-    sent = str(agent.ai_client.requests[0]["messages"])
-    assert "SETTLED BY MIZAN FROM SOURCES" in sent and "Titan is the largest moon" in sent
+    assert "SETTLED BY MIZAN FROM SOURCES" not in str(agent.ai_client.requests[0]["messages"])
     assert result["isnad"]["counts"]["hasan"] >= 1
+    # That answer's claim was asked again and a second site agreed: now it is.
+    agent.ai_client = ScriptedProvider(["Titan."])
+    await agent.execute(QUESTION)
+    sent = str(agent.ai_client.requests[0]["messages"])
+    assert "SETTLED BY MIZAN FROM SOURCES" in sent and "Titan" in sent
 
 
 async def test_a_ruling_question_is_sent_to_a_scholar(agent, sources):

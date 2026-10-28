@@ -111,7 +111,8 @@ def interval_days(state: dict | None, retention: float = 0.9) -> float | None:
     stability = (state or {}).get("stability")
     if not stability:
         return None
-    return float(stability) / _FACTOR * (retention ** (1.0 / _DECAY) - 1.0)
+    days: float = float(stability) / _FACTOR * (retention ** (1.0 / _DECAY) - 1.0)
+    return days
 
 
 def _state(card: Card) -> dict:
