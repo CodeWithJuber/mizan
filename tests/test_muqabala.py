@@ -81,7 +81,9 @@ async def test_a_wrong_base_answer_is_caught_by_mizans_exact_value(agent):
     base, mizan, checks = run["base"], run["mizan"], run["checks"]
     # The base arm: one plain call, no tools, no MIZAN system prompt.
     (request,) = agent.ai_client.requests
-    assert request["system"] == muqabala.BASE_SYSTEM and not request.get("tools")
+    # The plain prompt and the same clock MIZAN's arm reads, nothing else.
+    assert request["system"].startswith(muqabala.BASE_SYSTEM) and not request.get("tools")
+    assert "The current date and time is" in request["system"]
     assert base["usage"]["input_tokens"] == 12 and base["tool_calls"] == 0
     # MIZAN computed the value itself, with no model call.
     assert "1267650600228229401496703205376" in mizan["text"] and mizan["verified"]
@@ -168,7 +170,9 @@ async def test_the_trace_shows_every_tool_and_lisan_prompt(agent, monkeypatch):
     assert "print(" in lisan[0]["attributes"]["reply"]
     tool = next(span for span in spans if span["op"] == "execute_tool")
     assert tool["name"] == "workspace_run" and tool["attributes"]["ok"] is True
-    assert run["mizan"]["tool_calls"] == 1 and calls == ["workspace_run"]
+    # The program and the independent check written without seeing it (Tathabbut).
+    assert run["mizan"]["tool_calls"] == 2 and calls == ["workspace_run", "workspace_run"]
+    assert [span["name"] for span in lisan] == ["lisan.write_code", "lisan.cross_check"]
     # The base model claimed it ran code; it has no tools, so no receipt backs it.
     assert run["checks"]["base"]["unbacked_action_claims"]
 

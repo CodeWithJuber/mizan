@@ -1045,8 +1045,14 @@ class Tadbir:
         await self._step()
         try:
             program = await self.lisan.propose_rule(examples)
-        except LisanUnavailable as exc:
-            raise Defer from exc
+        except LisanUnavailable:
+            # The model gave no rule (often its reasoning used the whole output
+            # limit). Handing the puzzle to the agent loop would spend a larger
+            # budget the same way: MIZAN says plainly that no rule was found.
+            await self._step()
+            return Outcome(
+                phrase("qiyas_no_rule", u.language, total=total), False, {"examples": total}
+            )
         await self._step()
         best: tuple[int, str, dict | None] = (-1, program, None)
         attempts = 0

@@ -1587,3 +1587,17 @@ async def test_cross_chat_recall_can_be_turned_off(tmp_path, monkeypatch):
     await chat.set_chat_preference("u-1", "cross_chat_recall", "off")
     off = await main.chat_context(user, "new", {}, None, "Maryam school")
     assert off["conversation_memory"] == []
+
+
+def test_the_agi_tests_paraphrases_reach_the_same_recipe():
+    # The 27 October API benchmark: surah counts in English and Arabic went to
+    # a verse search, and an Urdu question about boiling water to morphology.
+    surahs = [
+        "How many surahs are in the Quran?",
+        "Quran me kitni surtein hain?",
+        "قرآن مجید میں کتنی سورتیں ہیں؟",
+        "كم عدد سور القرآن الكريم؟",
+    ]
+    assert {fahm.understand(text).intent for text in surahs} == {"quran_count"}
+    assert fahm.understand("سطح سمندر پر پانی کتنے ڈگری سیلسیس پر ابلتا ہے؟").intent != "sarf"
+    assert fahm.understand("كاتب کا مادہ کیا ہے؟").intent == "sarf"

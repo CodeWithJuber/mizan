@@ -19,7 +19,7 @@ from typing import Any
 
 from api.iqtisad import BudgetExhausted
 from perception import basar
-from providers import effective_limits, provider_retry_delay
+from providers import REASONING_EFFORT, effective_limits, provider_retry_delay
 
 from . import amanah, tajdid, trace, wazn
 
@@ -224,6 +224,16 @@ class Lisan:
             if getattr(block, "type", "") == "text"
         )
         if not text.strip():
+            stop = str(getattr(response, "stop_reason", "") or "")
+            if stop in ("max_tokens", "length") and REASONING_EFFORT.get() != "low":
+                # Reasoning used the whole output limit before any answer: ask
+                # once more at low effort rather than give up (or let the agent
+                # loop spend a larger budget the same way).
+                token = REASONING_EFFORT.set("low")
+                try:
+                    return await self._ask(system, user, max_tokens, model)
+                finally:
+                    REASONING_EFFORT.reset(token)
             raise LisanUnavailable("The language model returned no text")
         return text.strip()
 

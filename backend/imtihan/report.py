@@ -90,6 +90,8 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
                 "errors": len(rows) - len(scored),
                 "passed": passed,
                 "rate": round(passed / len(scored), 3) if scored else None,
+                # Every task counted, an error as a failure: the operational view.
+                "all_tasks": round(passed / len(rows), 3) if rows else None,
                 "interval": wilson(passed, len(scored)),
                 "pass_at_1": round(sum(r["pass"] for r in first) / len(first), 3)
                 if first
@@ -110,10 +112,14 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
         rates = [entry[arm]["rate"] for entry in blocks.values() if entry[arm]["rate"] is not None]
         scored = [r for r in results if r["arm"] == arm and not r.get("error")]
         passed = sum(1 for r in scored if r["pass"])
+        every = [r for r in results if r["arm"] == arm]
         index[arm] = {
             "score": round(sum(rates) / len(rates), 3) if rates else None,
             "pooled": round(passed / len(scored), 3) if scored else None,
             "interval": wilson(passed, len(scored)),
+            # Errors (a provider failure, an exhausted output limit) as failures.
+            "all_tasks": round(passed / len(every), 3) if every else None,
+            "errors": len(every) - len(scored),
         }
 
     calibration = {}

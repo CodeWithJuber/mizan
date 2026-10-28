@@ -350,3 +350,42 @@ def test_confidence_is_read_from_its_label_not_any_percentage():
     assert scorers.confidence("Answer A — my confidence is about 90 %") == 0.9
     assert scorers.confidence("B. I am 80% sure.") == 0.8
     assert scorers.confidence("A, confidence 0.7") == 0.7
+
+
+async def test_a_model_that_gives_no_rule_is_answered_plainly_not_handed_on(agent, monkeypatch):
+    # The 27 October run: six ARC puzzles exhausted MIZAN's output budget after
+    # Lisan's empty reply sent them to the agent loop.
+    from providers import REASONING_EFFORT
+
+    efforts = []
+
+    class Thinking(ScriptedProvider):
+        def create(self, **kwargs):
+            self.requests.append(deepcopy(kwargs))
+            efforts.append(REASONING_EFFORT.get())
+            return LLMResponse([], model="fixture-model", stop_reason="max_tokens")
+
+    local_sandbox(agent, monkeypatch)
+    agent.ai_client = Thinking()
+    result = await agent.execute("```json\n" + json.dumps(PUZZLE) + "\n```")
+    assert efforts == [None, "low"]  # one retry at low effort, then no more model calls
+    assert result["task_verified"] is False and result.get("error_code") is None
+
+
+def test_the_report_counts_errors_as_failures_in_the_all_task_rate():
+    rows = [
+        {
+            "block": "arc",
+            "task_id": f"t{i}",
+            "arm": arm,
+            "attempt": 1,
+            "pass": i == 0,
+            "error": "output_budget_exhausted" if arm == "mizan" and i > 1 else None,
+        }
+        for i in range(4)
+        for arm in ("base", "mizan")
+    ]
+    built = report.summarize(rows, [{"block": "arc", "id": f"t{i}"} for i in range(4)])
+    assert built["blocks"]["arc"]["mizan"]["rate"] == 0.5  # 1 of the 2 scored
+    assert built["blocks"]["arc"]["mizan"]["all_tasks"] == 0.25  # 1 of all 4
+    assert built["index"]["mizan"]["errors"] == 2

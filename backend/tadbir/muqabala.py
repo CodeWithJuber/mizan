@@ -94,6 +94,18 @@ def _text(response: Any) -> str:
     ).strip()
 
 
+def base_system() -> str:
+    """The base model's one plain prompt, with the same clock MIZAN's arm reads
+    (the user's zone): a date question is a fair comparison, not a test of
+    whether the model knows today's date."""
+    from .waqt import now
+
+    moment, zone = now()
+    return (
+        f"{BASE_SYSTEM} The current date and time is {moment:%A %d %B %Y, %H:%M} ({zone or 'UTC'})."
+    )
+
+
 async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
     """The model alone: the same provider and model, no tools, no memory, no MIZAN."""
     from api.usage import build_usage_block
@@ -104,8 +116,14 @@ async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
     provider, model = getattr(agent, "ai_client", None), getattr(agent, "ai_model", None)
     if provider is None or getattr(provider, "provider_name", "") == "mizan-owned":
         return {"text": "", "error": "No hosted language model is configured", "usage": {}}
-    max_tokens = max(1, min(BASE_MAX_TOKENS, effective_limits(provider, model or "")[1]))
+    # The same output limit per call as MIZAN's own agent loop, so a reasoning
+    # model has the same room in both arms (the 27 October benchmark compared
+    # 4,096 tokens for the base model with MIZAN's larger budget).
+    budget = getattr(agent, "_output_token_budget", None)
+    limit = int(budget()) if callable(budget) else BASE_MAX_TOKENS
+    max_tokens = max(1, min(limit, effective_limits(provider, model or "")[1]))
     messages = [*history[-20:], {"role": "user", "content": prompt}]
+    system = base_system()
     started = time.perf_counter()
     try:
         response = await asyncio.wait_for(
@@ -113,7 +131,7 @@ async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
                 provider.create,
                 model=model,
                 max_tokens=max_tokens,
-                system=BASE_SYSTEM,
+                system=system,
                 messages=messages,
             ),
             _call_seconds(),
@@ -131,7 +149,7 @@ async def base_arm(agent: Any, prompt: str, history: list[dict]) -> dict:
         # A reasoning model can spend the whole output limit before it answers.
         "stop_reason": getattr(response, "stop_reason", None),
         "max_tokens": max_tokens,
-        "system": BASE_SYSTEM,
+        "system": system,
         "model_calls": 1,
         "tool_calls": 0,
     }

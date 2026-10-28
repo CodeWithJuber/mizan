@@ -5597,7 +5597,8 @@ async def debug_compare(req: DebugCompareRequest, user: TokenPayload = Depends(r
     agent = await chat_agent_for(user, active_agents[agent_id])
     history: list[dict] = []
     if req.session_id:
-        await authorize_session(req.session_id, user)
+        # A new id starts an empty conversation of the caller's, as for a chat.
+        await authorize_session(req.session_id, user, create=True)
         stored = await memory.get_messages(req.session_id, limit=50)
         history = [
             {"role": m["role"], "content": m["content"]}

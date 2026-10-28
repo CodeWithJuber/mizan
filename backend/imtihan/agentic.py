@@ -83,7 +83,10 @@ async def base_arm(agent: Any, instructions: str, tools: list[dict]) -> dict:
     calls: list[dict] = []
     usage: list[dict] = []
     text, tool_ms, started = "", 0.0, time.perf_counter()
-    max_tokens = max(1, min(4000, effective_limits(provider, model or "")[1]))
+    # The same per-call output limit as MIZAN's own agent loop.
+    budget = getattr(agent, "_output_token_budget", None)
+    limit = int(budget()) if callable(budget) else 4000
+    max_tokens = max(1, min(limit, effective_limits(provider, model or "")[1]))
     for _turn in range(MAX_TURNS):
         sent = time.perf_counter()
         response = None
