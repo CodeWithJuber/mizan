@@ -1500,6 +1500,19 @@ async def test_remember_keeps_the_users_own_words_tied_to_the_chat(with_memory, 
     assert "Daftar" in result["result"]
 
 
+async def test_a_stateless_chat_saves_no_note_and_says_so(with_memory, monkeypatch):
+    from memory import stateless
+
+    agent = with_memory
+    tools(agent, monkeypatch)
+    with stateless.bind():
+        result = await agent.execute(
+            "Yaad rakhna meri beti ka naam Maryam hai", context={"session_id": "chat-8"}
+        )
+    assert _notes(agent, "chat:chat-8") == []
+    assert "stateless" in result["result"] and "Daftar" not in result["result"]
+
+
 async def test_a_watcher_task_never_saves_a_note(with_memory, monkeypatch):
     from security import approvals
 

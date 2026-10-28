@@ -3733,7 +3733,12 @@ Match the requested depth and self-correct errors."""
         Quran 3:191: "Those who remember Allah and reflect on the creation..."
 
         Writes real patterns to both in-memory hikmah and persistent DB.
+        A stateless run (an evaluation or a test chat) learns nothing.
         """
+        from memory import stateless
+
+        if stateless.active():
+            return
         self.learning_iterations += 1
         task_type = self._classify_task(task)
 

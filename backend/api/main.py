@@ -2232,6 +2232,8 @@ async def stream_chat(
                 metadata={
                     "request_id": request_id,
                     **({"images": [image.meta() for image in attached]} if attached else {}),
+                    # Never recalled in the user's other chats (Dhikr.recall_conversations).
+                    **({"stateless": True} if req.stateless else {}),
                 },
             )
             session["history"].append({"role": "user", "content": req.content})

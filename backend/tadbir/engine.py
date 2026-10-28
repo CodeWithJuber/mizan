@@ -2626,6 +2626,11 @@ class Tadbir:
         store = getattr(self.agent, "memory", None)
         if store is None or (approvals is not None and approvals.deferred):
             raise Defer  # no store, or a watcher's task: nobody asked in person
+        from memory import stateless
+
+        if stateless.active():
+            # A test chat keeps nothing: say so rather than claim it was saved.
+            return Outcome(phrase("not_remembered", u.language), True, {"note": None})
         session = current_chat_session()
         await self._begin(["Save to your notes", "Reply"])
         note = u.entities["note"]

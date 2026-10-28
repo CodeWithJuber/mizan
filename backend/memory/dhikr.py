@@ -139,6 +139,14 @@ def _native_sense_advisory(query: str) -> str:
     return "[Native sense advisory: " + ", ".join(bits) + "]"
 
 
+def _stateless_message(metadata: str | None) -> bool:
+    """Whether a stored message was sent as ``stateless`` (kept, never recalled)."""
+    try:
+        return bool(json.loads(metadata or "{}").get("stateless"))
+    except (ValueError, AttributeError):
+        return False
+
+
 @dataclass
 class Memory:
     """Base memory unit"""
@@ -992,7 +1000,10 @@ class DhikrMemorySystem:
         """Recall bounded, attributed user statements from owned conversations.
 
         Assistant replies are not facts or training labels. Legacy sessions
-        without an owner are deliberately excluded, including for admins.
+        without an owner are deliberately excluded, including for admins. Only
+        real chats are recalled: messages sent as ``stateless`` (tests,
+        evaluations) never are, and neither is a message Amanah reads as an
+        instruction aimed at the AI, since in another chat it is outside text.
         """
         if not owner_id:
             return []
@@ -1000,7 +1011,7 @@ class DhikrMemorySystem:
         try:
             self._session_table(conn)
             rows = conn.execute(
-                """SELECT m.id, m.session_id, m.content, m.created_at
+                """SELECT m.id, m.session_id, m.content, m.created_at, m.metadata
                 FROM agent_messages m JOIN chat_sessions s ON s.session_id = m.session_id
                 WHERE s.owner_id = ? AND m.session_id != ? AND m.role = 'user'
                   AND m.content NOT LIKE '/%'
@@ -1009,6 +1020,9 @@ class DhikrMemorySystem:
             ).fetchall()
         finally:
             self._release_conn(conn)
+        from tadbir import amanah
+
+        rows = [row for row in rows if not _stateless_message(row[4])]
         terms = set(re.findall(r"\w{3,}", query.casefold()))
         ranked = sorted(
             enumerate(rows),
@@ -1020,9 +1034,16 @@ class DhikrMemorySystem:
         )
         # Include recent continuity as well as query matches. Bound the bytes
         # and count so an old conversation cannot dominate the current task.
-        selected = list(rows[:2])
+        candidates = list(rows[:2])
         for _, row in ranked:
-            if row not in selected and terms & set(re.findall(r"\w{3,}", row[2].casefold())):
+            if row not in candidates and terms & set(re.findall(r"\w{3,}", row[2].casefold())):
+                candidates.append(row)
+        wanted = max(0, min(limit, 5))
+        selected: list = []
+        for row in candidates:
+            if len(selected) >= wanted:
+                break
+            if not amanah.scan(row[2], "recalled chat"):
                 selected.append(row)
         return [
             {
@@ -1032,7 +1053,7 @@ class DhikrMemorySystem:
                 "created_at": row[3],
                 "source": "prior_user_statement",
             }
-            for row in selected[: max(0, min(limit, 5))]
+            for row in selected
         ]
 
     async def conversation_counts(self, owner_id: str) -> dict:

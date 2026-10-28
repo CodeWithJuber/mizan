@@ -34,6 +34,14 @@ MAX_FILE_BYTES = _limit("MIZAN_WORKSPACE_MAX_FILE_BYTES", 1024 * 1024, 8 * 1024 
 MAX_PROJECT_BYTES = _limit("MIZAN_WORKSPACE_MAX_PROJECT_BYTES", 10 * 1024 * 1024, 100 * 1024 * 1024)
 MAX_FILES = _limit("MIZAN_WORKSPACE_MAX_FILES", 500, 5000)
 MAX_WORKSPACES = 10
+
+
+def max_workspaces() -> int:
+    """Projects a user may keep (``MIZAN_WORKSPACE_MAX_PROJECTS``, 1-200, default 10),
+    read on each create so an admin's change applies without a restart."""
+    return _limit("MIZAN_WORKSPACE_MAX_PROJECTS", MAX_WORKSPACES, 200)
+
+
 MAX_CHECKPOINTS = 5
 # Agent search bounds (glob/grep) and line reads.
 MAX_GLOB_RESULTS = 500
@@ -141,10 +149,11 @@ class WorkspaceStore:
             raise HTTPException(422, "Project name must be 1..100 characters")
         with _LOCK:
             projects = [item for item in self.list() if not item.get("reserved")]
-            if not reserved and len(projects) >= MAX_WORKSPACES:
+            quota = max_workspaces()
+            if not reserved and len(projects) >= quota:
                 raise HTTPException(
                     413,
-                    f"Workspace quota reached: {MAX_WORKSPACES} projects. Delete one in "
+                    f"Workspace quota reached: {quota} projects. Delete one in "
                     "Coding workspace to create another.",
                 )
             workspace_id = uuid.uuid4().hex

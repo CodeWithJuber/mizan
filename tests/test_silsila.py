@@ -230,3 +230,19 @@ def test_scratch_never_counts_against_the_project_quota(monkeypatch, tmp_path):
     with pytest.raises(HTTPException) as caught:
         store.create("one more")
     assert caught.value.status_code == 413 and "Delete one" in caught.value.detail
+
+
+def test_project_quota_is_an_admin_setting(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MIZAN_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setenv("MIZAN_WORKSPACE_MAX_PROJECTS", "2")
+    from workspace.store import WorkspaceStore
+
+    store = WorkspaceStore("quota-setting-user")
+    store.create("one")
+    store.create("two")
+    with pytest.raises(HTTPException) as caught:
+        store.create("three")
+    assert caught.value.status_code == 413 and "2 projects" in caught.value.detail
+    monkeypatch.setenv("MIZAN_WORKSPACE_MAX_PROJECTS", "3")  # applies without a restart
+    assert store.create("three")["id"]

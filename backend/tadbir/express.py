@@ -944,6 +944,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मैं यह याद रखूँगा। आपके शब्द जैसे थे वैसे नोट्स में सहेजे गए हैं; दफ़्तर में देख या भुला सकते हैं।",
         "ar": "سأتذكر ذلك. حُفظ في ملاحظاتك كما قلته؛ يمكنك رؤيته أو نسيانه في دفترك.",
     },
+    "not_remembered": {
+        "en": "This chat keeps no memory (it was sent as stateless), so nothing was saved to your notes.",
+        "hi-latn": "Yeh chat kuch yaad nahi rakhti (stateless bheji gayi hai), isliye notes mein kuch save nahi hua.",
+        "ur": "یہ چیٹ کچھ یاد نہیں رکھتی (اسے بغیر یادداشت بھیجا گیا ہے)، اس لیے نوٹس میں کچھ محفوظ نہیں ہوا۔",
+        "hi": "यह चैट कुछ याद नहीं रखती (इसे बिना स्मृति भेजा गया है), इसलिए नोट्स में कुछ नहीं सहेजा गया।",
+        "ar": "هذه المحادثة لا تحفظ شيئًا (أُرسلت بلا ذاكرة)، فلم يُحفظ شيء في ملاحظاتك.",
+    },
     "capabilities": {
         "en": "MIZAN works through its own tools, and they are real:",
         "hi-latn": "MIZAN apne asli tools se kaam karta hai:",
