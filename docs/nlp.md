@@ -116,8 +116,8 @@ path stays visible as a conflict, not silently folded.
 | IP-3 | QCA Layer 4, ISM Root-Space (`backend/qca/engine.py` `process_input`, ~L997)               | Additive `senses_identified` key alongside `roots_identified`; the 7-layer pipeline and Furqan validation are untouched                                                | Landed |
 | IP-4 | Memory recall (`backend/memory/dhikr.py` `recall_unified_for_prompt*`, `backend/memory/masalik.py` `recall`) | Advisory native-sense note on the recall query before spreading activation                                                                                             | Landed |
 
-Rollout is flag-gated: `MIZAN_NLP_NATIVE_WSD=1` (default off; off means
-today's behavior, bit-for-bit). The flag is consumed in all four files via
+Rollout is flag-gated: `MIZAN_NLP_NATIVE_WSD=1` (default off;
+`.env.example` sets it to `1`; off means today's behavior, bit-for-bit). The flag is consumed in all four files via
 `_nlp_native_wsd_enabled()`. Admission is quantified: a sense is admitted
 only at top-1 confidence ≥ 0.8 with margin ≥ 0.2 over the runner-up
 (`NLP_MIN_SENSE_CONFIDENCE`, `NLP_MIN_SENSE_MARGIN` in `nlp/gate.py`,
