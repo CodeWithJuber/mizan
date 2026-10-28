@@ -272,9 +272,10 @@ prompt prefix.** Three new faculties + three integrations:
    Lubb+Baṣīra check → (re-deliberate Nafs if confidence drops)`, with each step
    emitting a real `thinking_stream` event. Gated behind a settings flag so the
    default path is unchanged until proven.
-   *State:* not built. `DEEP_FACULTY_LOOP` (runtime setting "Active faculty
-   loop") is read into `BaseAgent.deep_faculty_loop` but no code path acts on
-   it; faculty outputs are diagnostics in every mode.
+   *State:* not built. Faculty outputs are diagnostics in every mode. The
+   `DEEP_FACULTY_LOOP` setting that promised this was removed, because no code
+   path acted on it; the gates that do act are Amanah, approvals, Hudud and
+   Sidq.
 
 **Telos as the objective function.** Every action passes a final **Mīzān check**
 against the fiṭrah axioms + the value set (truth, justice, no-harm, excellence).

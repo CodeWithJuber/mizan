@@ -36,6 +36,9 @@ All notable changes to this project will be documented in this file.
   - interactive Archify diagrams sourced from the code (`docs/diagrams/*.html`);
   - diagram-design SVGs for the README, in light and dark.
 
+### Removed
+- The `DEEP_FACULTY_LOOP` setting ("Active faculty loop") and the `deep_faculty_loop` field of `GET /api/nafs/{agent_id}/faculties`. The setting promised that Basira, Hawa and Hikmah would gate the agent, but no code acted on it. A saved value is ignored. The gates that act are Amanah, approvals, Hudud and Sidq.
+
 ## [v3.3.0] — 2026-10-01
 
 ### Added

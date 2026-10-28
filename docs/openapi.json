@@ -11960,7 +11960,7 @@
   "/api/nafs/{agent_id}/faculties": {
    "get": {
     "summary": "Get Agent Faculties",
-    "description": "Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status.\n\nBasira (insight) and Hawa (restraint) are per-task signals returned in the\n/api/chat and task results; this endpoint surfaces the persistent faculties.",
+    "description": "Get al-Insan faculty state for an agent: Hikmah wisdom and principles.\n\nBasira (insight) and Hawa (restraint) are per-task signals returned in the\n/api/chat and task results; this endpoint surfaces the persistent faculties.",
     "operationId": "get_agent_faculties_api_nafs__agent_id__faculties_get",
     "parameters": [
      {

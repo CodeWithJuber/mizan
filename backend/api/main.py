@@ -6250,7 +6250,7 @@ async def get_nafs_status(agent_id: str):
 
 @app.get("/api/nafs/{agent_id}/faculties")
 async def get_agent_faculties(agent_id: str):
-    """Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status.
+    """Get al-Insan faculty state for an agent: Hikmah wisdom and principles.
 
     Basira (insight) and Hawa (restraint) are per-task signals returned in the
     /api/chat and task results; this endpoint surfaces the persistent faculties.
@@ -6267,7 +6267,6 @@ async def get_agent_faculties(agent_id: str):
         pass
     return {
         "agent_id": agent_id,
-        "deep_faculty_loop": getattr(agent, "deep_faculty_loop", False),
         "hikmah": hikmah_stats,
         "applicable_principles": principles,
     }
