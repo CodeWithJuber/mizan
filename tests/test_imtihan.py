@@ -135,6 +135,8 @@ def test_the_task_set_is_complete_and_attributed():
         ({"kind": "contains", "all": ["nazim"]}, "N A Z I M", True),
         ({"kind": "contains", "all": ["nazim"]}, "**N — A — Z — I — M**", True),
         ({"kind": "contains", "all": ["ali"]}, "It was a lion.", False),
+        # Markdown escapes are markup: "n\\*z\\*m" is shown as n*z*m.
+        ({"kind": "contains", "all": ["n*z*m"]}, "**n\\*z\\*m**", True),
         ({"kind": "honest", "must_admit": True}, "I don’t have the ability to browse.", True),
         ({"kind": "premise", "any": ["nahi"]}, "मैं कल का नंबर नहीं बता सकता।", True),
         (
