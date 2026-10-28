@@ -155,7 +155,7 @@ function AccountMenu() {
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          <DropdownMenuTrigger render={<SidebarMenuButton size="lg" aria-label="Account and theme" />}>
+          <DropdownMenuTrigger render={<SidebarMenuButton size="lg" title="Account and theme" />}>
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-medium text-brand">
               {name[0]?.toUpperCase()}
             </span>

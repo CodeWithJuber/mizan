@@ -86,9 +86,9 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
         ].map((item) => (
           <div
             key={item.label}
-            className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center border border-gray-100 dark:border-zinc-700/50"
+            className="bg-muted/50 rounded-lg p-2.5 text-center border border-border/60"
           >
-            <span className="block font-mono text-sm text-gray-900 dark:text-gray-100">
+            <span className="block font-mono text-sm text-foreground">
               {item.value}
             </span>
             <span className="block text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
@@ -100,7 +100,7 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
 
       {/* Architecture flow diagram */}
       <div className="space-y-1">
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
           Layer Stack
         </h4>
 
@@ -140,7 +140,7 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
       {/* Component details */}
       {arch.components.length > 0 && (
         <div className="space-y-1">
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Module Parameters
           </h4>
           <div className="space-y-1">
@@ -154,10 +154,10 @@ export function ModelArchitectureView({ api }: ModelArchitectureViewProps) {
                   key={comp.name}
                   className="flex items-center gap-3 text-xs"
                 >
-                  <span className="w-32 text-gray-500 dark:text-gray-400 truncate text-right">
+                  <span className="w-32 text-muted-foreground truncate text-right">
                     {comp.name}
                   </span>
-                  <div className="flex-1 h-4 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
                     <div
                       className="h-full bg-linear-to-r from-purple-500 to-indigo-500 rounded-full transition-all"
                       style={{ width: `${Math.max(pct, 1)}%` }}
@@ -195,9 +195,9 @@ function FlowNode({
       <div
         className={`w-6 h-6 rounded-full bg-linear-to-br ${color} shrink-0 mt-0.5 shadow-sm`}
       />
-      <div className="flex-1 bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 border border-gray-100 dark:border-zinc-700/50">
+      <div className="flex-1 bg-muted/50 rounded-lg px-3 py-2 border border-border/60">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+          <span className="text-xs font-semibold text-foreground/90">
             {label}
           </span>
           {params !== undefined && (
@@ -206,7 +206,7 @@ function FlowNode({
             </span>
           )}
         </div>
-        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+        <p className="text-[10px] text-muted-foreground mt-0.5">
           {desc}
         </p>
       </div>

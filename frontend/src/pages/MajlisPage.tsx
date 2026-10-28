@@ -9,7 +9,6 @@ import type {
   PageProps,
   MajlisAgent,
   MajlisNafsLevel,
-  MajlisAgentStatus,
   Halaqah,
   KnowledgeItem,
 } from "../types";
@@ -377,7 +376,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      <div className="px-1 -mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
+      <div className="px-1 -mt-1 mb-3 text-xs text-muted-foreground">
         {TAB_SUBTITLES[activeTab]}
       </div>
 
@@ -512,7 +511,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       <span className="font-arabic text-lg text-mizan-gold shrink-0">
                         {agent.arabic_name || "عميل"}
                       </span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      <span className="text-sm font-medium text-foreground truncate">
                         {agent.name}
                       </span>
                     </div>
@@ -533,7 +532,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                     </span>
                   </div>
                   {showNafsInfo && (
-                    <div className="text-2xs text-gray-500 dark:text-gray-400 mt-1.5 px-1">
+                    <div className="text-2xs text-muted-foreground mt-1.5 px-1">
                       Nafs level = agent ka bharosa / maturity stage (Ammara →
                       Kamila). ★ = doosre agents ki rating se bana reputation
                       score.
@@ -555,7 +554,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       className="detail-panel mt-2.5"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="text-2xs font-mono text-gray-400 dark:text-gray-500 mb-1.5">
+                      <div className="text-2xs font-mono text-muted-foreground/80 mb-1.5">
                         ID: {agent.agent_id}
                       </div>
                       {agent.verified && (
@@ -590,7 +589,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                         </button>
                       </div>
                       <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-2xs text-gray-400 dark:text-gray-500 mr-1">
+                        <span className="text-2xs text-muted-foreground/80 mr-1">
                           Rate:
                           {(agent.reputation_score ?? 0) > 0 && (
                             <>
@@ -720,18 +719,18 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                   <span className="font-arabic text-base text-mizan-gold">
                     حلقة
                   </span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-medium text-foreground">
                     {h.name}
                   </span>
                   <span className="memory-type-badge type-semantic">
                     {h.topic}
                   </span>
-                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500">
+                  <span className="ml-auto text-2xs font-mono text-muted-foreground/80">
                     {h.member_count || 0} members
                   </span>
                 </div>
                 {h.description && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <div className="text-xs text-muted-foreground mt-1">
                     {h.description}
                   </div>
                 )}
@@ -860,11 +859,11 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       ✓ verified
                     </span>
                   )}
-                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500">
+                  <span className="ml-auto text-2xs font-mono text-muted-foreground/80">
                     {k.quality_score ? `★ ${k.quality_score.toFixed(1)}` : ""}
                   </span>
                 </div>
-                <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                <div className="text-sm text-foreground/90 whitespace-pre-wrap">
                   {k.content}
                 </div>
                 {k.source && (
@@ -889,12 +888,12 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="card">
-              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">
+              <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-3">
                 Agent Leaderboard · لوحة الشرف
               </div>
 
               {leaderboard.length === 0 && (
-                <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-5">
+                <div className="text-sm text-muted-foreground/80 text-center py-5">
                   No agents ranked yet
                 </div>
               )}
@@ -922,7 +921,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                   >
                     <div
                       className={`font-mono text-base font-semibold w-6 text-center
-                      ${i === 0 ? "text-mizan-gold" : i < 3 ? "text-amber-500" : "text-gray-400 dark:text-gray-500"}`}
+                      ${i === 0 ? "text-mizan-gold" : i < 3 ? "text-amber-500" : "text-muted-foreground/80"}`}
                     >
                       {i + 1}
                     </div>
@@ -930,10 +929,10 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                       {agent.arabic_name ? agent.arabic_name.charAt(0) : ""}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <div className="text-sm font-medium text-foreground">
                         {agent.name}
                       </div>
-                      <div className="text-micro text-gray-400 dark:text-gray-500">
+                      <div className="text-micro text-muted-foreground/80">
                         {agent.capabilities?.slice(0, 3).join(", ")}
                       </div>
                     </div>

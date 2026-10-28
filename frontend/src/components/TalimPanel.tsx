@@ -32,7 +32,7 @@ function modelHelp(name: string): string {
 function Report({ report }: { report: TalimReport }) {
   const changed = Object.entries(report.changed_classes);
   return (
-    <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+    <div className="text-xs text-foreground/75 space-y-1">
       <p className={report.kept ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
         {verdict(report)}
       </p>
@@ -156,20 +156,20 @@ export default function TalimPanel({ api }: { api: ApiClient }) {
     }
   };
 
-  if (error) return <p className="text-sm text-gray-500 dark:text-gray-400">{error}</p>;
-  if (!view) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+  if (error) return <p className="text-sm text-muted-foreground">{error}</p>;
+  if (!view) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   return (
     <div className="space-y-5">
       <div className="card p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Teach MIZAN</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <h3 className="text-sm font-semibold text-foreground">Teach MIZAN</h3>
+        <p className="text-xs text-muted-foreground">
           Add examples to how MIZAN understands messages. A batch is refitted with what MIZAN already
           knew and kept only if it does not make it worse there (leave-one-out before and after, paired
           bootstrap, refused at P(worse) ≥ 0.95).{" "}
           {!view.enabled && "Teaching is off on this server (MIZAN_TALIM=off): batches are kept but set aside."}
         </p>
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
+        <label className="block text-xs font-medium text-foreground/75">
           Model
           <select
             className="input mt-1 w-full"
@@ -183,14 +183,14 @@ export default function TalimPanel({ api }: { api: ApiClient }) {
             ))}
           </select>
         </label>
-        <p className="text-xs text-gray-500 dark:text-gray-400 break-words">
+        <p className="text-xs text-muted-foreground break-words">
           Labels: {labels.join(", ") || "—"}
           {model === "lughah" && " · a new language code (for example ta) adds that language"}
         </p>
       </div>
 
       <div className="card p-4 space-y-3">
-        <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Type examples</h4>
+        <h4 className="text-sm font-medium text-foreground">Type examples</h4>
         <textarea
           className="input w-full font-mono text-xs"
           rows={8}
@@ -228,7 +228,7 @@ export default function TalimPanel({ api }: { api: ApiClient }) {
       </div>
 
       <div className="card p-4 space-y-3">
-        <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Hugging Face</h4>
+        <h4 className="text-sm font-medium text-foreground">Import from Hugging Face</h4>
         <div className="grid gap-2 sm:grid-cols-2">
           <input className="input" placeholder="Dataset (owner/name)" value={dataset} onChange={(e) => setDataset(e.target.value)} />
           <input className="input" placeholder="Config" value={config} onChange={(e) => setConfig(e.target.value)} />
@@ -252,13 +252,13 @@ export default function TalimPanel({ api }: { api: ApiClient }) {
 
       {last && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Last batch</h4>
+          <h4 className="text-sm font-medium text-foreground mb-2">Last batch</h4>
           <Report report={last} />
         </div>
       )}
 
       <div className="card p-4 space-y-3">
-        <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <h4 className="text-sm font-medium text-foreground">
           Batches ({view.batches.length})
           {Object.keys(view.languages).length > 0 &&
             ` · languages taught: ${Object.entries(view.languages)
@@ -266,20 +266,20 @@ export default function TalimPanel({ api }: { api: ApiClient }) {
               .join(", ")}`}
         </h4>
         {view.batches.length === 0 && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">Nothing taught yet.</p>
+          <p className="text-xs text-muted-foreground">Nothing taught yet.</p>
         )}
         <ul className="space-y-3">
           {view.batches.map((batch) => (
-            <li key={batch.id} className="border-t border-gray-100 dark:border-zinc-800 pt-3 space-y-1">
+            <li key={batch.id} className="border-t border-border/60 pt-3 space-y-1">
               <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                <span className="font-medium text-gray-800 dark:text-gray-200">
+                <span className="font-medium text-foreground/90">
                   {batch.model} · {batch.size} examples · {batch.status}
                 </span>
-                <span className="text-gray-500 dark:text-gray-400">
+                <span className="text-muted-foreground">
                   {new Date(batch.created * 1000).toLocaleString()} · {batch.by}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 break-words">
+              <p className="text-xs text-muted-foreground break-words">
                 {batch.source}
                 {batch.licence && ` · ${batch.licence}`}
               </p>

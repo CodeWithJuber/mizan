@@ -60,8 +60,8 @@ export function NotificationsCard({ api }: { api: ApiClient }) {
     <div className="card p-4 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Notifications on this device</div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-sm font-medium text-foreground">Notifications on this device</div>
+          <p className="text-xs text-muted-foreground">
             {state === "unsupported" && "This browser cannot receive notifications. On iPhone, add MIZAN to the Home Screen first."}
             {state === "denied" && "Notifications are blocked for MIZAN in this browser's settings."}
             {state === "off" && "Get your watchers' notices and actions waiting for you, even with MIZAN closed."}

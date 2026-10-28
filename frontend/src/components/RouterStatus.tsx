@@ -33,9 +33,9 @@ const PROVIDER_STYLES: Record<string, { bg: string; text: string; border: string
 };
 
 const DEFAULT_STYLE = {
-  bg: "bg-gray-50 dark:bg-zinc-800",
-  text: "text-gray-700 dark:text-gray-300",
-  border: "border-gray-200 dark:border-zinc-700",
+  bg: "bg-muted/60",
+  text: "text-foreground/80",
+  border: "border-border",
 };
 
 function getProviderStyle(provider: string) {
@@ -102,7 +102,7 @@ export function RouterStatus({ decision, compact = false }: RouterStatusProps) {
       >
         <ConfidenceDot confidence={decision.confidence} />
         <span className="font-medium">{decision.provider}</span>
-        <span className="text-gray-400 dark:text-gray-500">/</span>
+        <span className="text-muted-foreground/80">/</span>
         <span className="truncate max-w-[120px]">{shortModel}</span>
       </button>
 
@@ -110,28 +110,28 @@ export function RouterStatus({ decision, compact = false }: RouterStatusProps) {
       {showTooltip && (
         <div
           role="tooltip"
-          className="absolute z-dropdown bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg animate-fade-in"
+          className="absolute z-dropdown bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 rounded-lg border border-border bg-card shadow-lg animate-fade-in"
         >
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <span className="text-xs font-semibold text-foreground/80">
                 Routing Decision
               </span>
-              <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
+              <span className="text-xs font-mono text-muted-foreground/80">
                 {Math.round(decision.confidence * 100)}%
               </span>
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="text-xs text-muted-foreground">
               <span className="font-medium">Model:</span>{" "}
               <span className="font-mono">{decision.model}</span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {decision.reason}
             </p>
           </div>
           {/* Tooltip arrow */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
-            <div className="w-2 h-2 bg-white dark:bg-zinc-900 border-r border-b border-gray-200 dark:border-zinc-700 transform rotate-45" />
+            <div className="w-2 h-2 bg-card border-r border-b border-border transform rotate-45" />
           </div>
         </div>
       )}

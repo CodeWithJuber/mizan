@@ -81,12 +81,12 @@ export default function PanelInvitePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-mizan-dark text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-50 dark:bg-mizan-dark text-foreground">
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-5">
         <header className="space-y-2">
           <div className="text-sm text-amber-700 dark:text-amber-400">ميزان MIZAN · Human panel</div>
           <h1 className="text-2xl font-semibold">Answer as yourself</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             These are the same items MIZAN and a base AI model answer. Please answer each one on your own, without
             asking an AI or searching. Your first answer to an item is kept and is final; you will not be told whether
             it was right. You can stop at any time and come back with the same link.

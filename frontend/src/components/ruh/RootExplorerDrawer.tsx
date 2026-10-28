@@ -194,7 +194,7 @@ export function RootExplorerDrawer({
               className={`min-h-[44px] px-4 text-sm font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer focus-ring ${
                 view === tab.id
                   ? "bg-mizan-gold/15 text-mizan-gold-text dark:text-mizan-gold"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                  : "text-muted-foreground hover:bg-gray-100 dark:hover:bg-zinc-800"
               }`}
             >
               {tab.id === "senses"
@@ -289,7 +289,7 @@ function OverviewView({
         <div
           dir="rtl"
           lang="ar"
-          className="text-4xl font-bold text-gray-900 dark:text-gray-100"
+          className="text-4xl font-bold text-foreground"
         >
           {analyze.word}
         </div>
@@ -307,15 +307,15 @@ function OverviewView({
       </div>
 
       {/* pattern / wazn */}
-      <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/60 dark:border-zinc-700/50">
+      <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-muted/60 border border-border/60">
         <div>
-          <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
             Pattern (wazn)
           </div>
           <div
             dir="rtl"
             lang="ar"
-            className="text-lg font-semibold text-gray-900 dark:text-gray-100"
+            className="text-lg font-semibold text-foreground"
           >
             {analyze.pattern}
             {analyze.wazn && analyze.wazn !== analyze.pattern && (
@@ -328,9 +328,9 @@ function OverviewView({
 
       {/* meaning */}
       {rootEntry ? (
-        <div className="p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/60 dark:border-zinc-700/50 space-y-1">
+        <div className="p-3 rounded-xl bg-muted/60 border border-border/60 space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
               Meaning
             </div>
             <VerifiedBadge
@@ -338,7 +338,7 @@ function OverviewView({
               source={rootEntry.source}
             />
           </div>
-          <p className="text-sm text-gray-800 dark:text-gray-200">
+          <p className="text-sm text-foreground/90">
             {rootEntry.meaning_en || rootEntry.meaning}
           </p>
           {rootEntry.domain && (
@@ -360,7 +360,7 @@ function OverviewView({
       {rootEntry && rootEntry.derivatives.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
               Derivatives
             </div>
             <VerifiedBadge

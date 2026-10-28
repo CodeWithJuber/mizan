@@ -170,7 +170,7 @@ export default function PerceptionPage({ api }: PageProps) {
           <div className="space-y-4">
             {/* Text input */}
             <div className="card p-4 space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="text-sm font-medium text-foreground/80">
                 Text Context
               </label>
               <textarea
@@ -185,7 +185,7 @@ export default function PerceptionPage({ api }: PageProps) {
             {/* Image upload */}
             <div className="card p-4 space-y-2">
               <label
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-foreground/80"
                 title="Basirah — Mizan's vision sense: describes what it sees in a photo"
               >
                 Image (Basirah)
@@ -203,7 +203,7 @@ export default function PerceptionPage({ api }: PageProps) {
                       alt="Preview"
                       className="max-h-48 mx-auto rounded-lg object-contain"
                     />
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       {imageFile?.name}
                     </p>
                   </div>
@@ -219,10 +219,10 @@ export default function PerceptionPage({ api }: PageProps) {
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                       <circle cx="12" cy="12" r="3" />
                     </svg>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Click to upload an image
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                    <p className="text-xs text-muted-foreground/80">
                       PNG, JPG, WebP
                     </p>
                   </div>
@@ -240,7 +240,7 @@ export default function PerceptionPage({ api }: PageProps) {
             {/* Audio upload */}
             <div className="card p-4 space-y-2">
               <label
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-foreground/80"
                 title="Nutq — Mizan's voice sense: transcribes what it hears in a voice note"
               >
                 Audio (Nutq)
@@ -264,7 +264,7 @@ export default function PerceptionPage({ api }: PageProps) {
                       <circle cx="6" cy="18" r="3" />
                       <circle cx="18" cy="16" r="3" />
                     </svg>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       {audioFile.name}
                     </p>
                   </div>
@@ -280,10 +280,10 @@ export default function PerceptionPage({ api }: PageProps) {
                       <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                       <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
                     </svg>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Click to upload audio
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                    <p className="text-xs text-muted-foreground/80">
                       MP3, WAV, M4A
                     </p>
                   </div>
@@ -303,7 +303,7 @@ export default function PerceptionPage({ api }: PageProps) {
               <div className="flex-1 min-w-0">
                 <label
                   htmlFor="perception-mood"
-                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                  className="block text-xs font-medium text-muted-foreground mb-1"
                 >
                   Your mood — helps the analysis read tone
                 </label>
@@ -367,7 +367,7 @@ export default function PerceptionPage({ api }: PageProps) {
                 {result.perception?.basirah && (
                   <div className="card p-4 space-y-3">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Vision (Basirah)
                       </h3>
                       <span
@@ -377,13 +377,13 @@ export default function PerceptionPage({ api }: PageProps) {
                       </span>
                     </div>
 
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <p className="text-sm text-foreground/80">
                       {result.perception.basirah.description}
                     </p>
 
                     {/* Confidence bar */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 w-20">
+                      <span className="text-xs text-muted-foreground w-20">
                         Confidence
                       </span>
                       <div className="flex-1 h-2 rounded-full bg-gray-200 dark:bg-zinc-700 overflow-hidden">
@@ -394,7 +394,7 @@ export default function PerceptionPage({ api }: PageProps) {
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 w-10 text-right">
+                      <span className="text-xs font-mono text-muted-foreground w-10 text-right">
                         {(result.perception.basirah.confidence * 100).toFixed(
                           0,
                         )}
@@ -404,11 +404,11 @@ export default function PerceptionPage({ api }: PageProps) {
 
                     {/* Extracted text */}
                     {result.perception.basirah.extracted_text && (
-                      <div className="rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/50 p-3">
-                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <div className="rounded-lg bg-muted/50 border border-border/60 p-3">
+                        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                           Extracted Text
                         </span>
-                        <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">
+                        <p className="text-xs text-foreground/80 mt-1 whitespace-pre-wrap">
                           {result.perception.basirah.extracted_text}
                         </p>
                       </div>
@@ -420,7 +420,7 @@ export default function PerceptionPage({ api }: PageProps) {
                         {result.perception.basirah.key_elements.map((el, i) => (
                           <span
                             key={i}
-                            className="px-2 py-0.5 rounded-md text-[11px] bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400"
+                            className="px-2 py-0.5 rounded-md text-[11px] bg-muted text-muted-foreground"
                           >
                             {el}
                           </span>
@@ -434,21 +434,21 @@ export default function PerceptionPage({ api }: PageProps) {
                 {result.perception?.nutq && (
                   <div className="card p-4 space-y-3">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Voice (Nutq)
                       </h3>
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400">
                         {result.perception.nutq.intent}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 dark:bg-zinc-700 text-muted-foreground">
                         {result.perception.nutq.language}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <p className="text-sm text-foreground/80">
                       {result.perception.nutq.text}
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 w-20">
+                      <span className="text-xs text-muted-foreground w-20">
                         Confidence
                       </span>
                       <div className="flex-1 h-2 rounded-full bg-gray-200 dark:bg-zinc-700 overflow-hidden">
@@ -459,7 +459,7 @@ export default function PerceptionPage({ api }: PageProps) {
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 w-10 text-right">
+                      <span className="text-xs font-mono text-muted-foreground w-10 text-right">
                         {(result.perception.nutq.confidence * 100).toFixed(0)}%
                       </span>
                     </div>
@@ -468,14 +468,14 @@ export default function PerceptionPage({ api }: PageProps) {
 
                 {/* QCA Integration results */}
                 <div className="card p-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Cognitive Integration
                   </h3>
 
                   {/* Key terms */}
                   {result.key_terms?.length > 0 && (
                     <div>
-                      <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                         Key Terms
                       </span>
                       <div className="flex flex-wrap gap-1.5 mt-1">
@@ -493,21 +493,21 @@ export default function PerceptionPage({ api }: PageProps) {
 
                   {/* Zahir / Batin */}
                   {result.zahir && (
-                    <div className="rounded-lg bg-gray-50 dark:bg-zinc-800/50 p-3 space-y-2">
+                    <div className="rounded-lg bg-muted/50 p-3 space-y-2">
                       <div>
-                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                        <span className="text-[11px] font-medium text-muted-foreground">
                           Zahir — what it appears to be
                         </span>
-                        <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
+                        <p className="text-xs text-foreground/80 mt-0.5">
                           {result.zahir}
                         </p>
                       </div>
                       {result.batin && (
                         <div>
-                          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                          <span className="text-[11px] font-medium text-muted-foreground">
                             Batin — what lies beneath the surface
                           </span>
-                          <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
+                          <p className="text-xs text-foreground/80 mt-0.5">
                             {result.batin}
                           </p>
                         </div>
@@ -519,7 +519,7 @@ export default function PerceptionPage({ api }: PageProps) {
                   {result.roots_identified &&
                     Object.keys(result.roots_identified).length > 0 && (
                       <div>
-                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                           Arabic Roots (ISM — base word-forms)
                         </span>
                         <div className="flex flex-wrap gap-1.5 mt-1">
@@ -550,7 +550,7 @@ export default function PerceptionPage({ api }: PageProps) {
             )}
 
             {!result && !error && !loading && (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/80">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"

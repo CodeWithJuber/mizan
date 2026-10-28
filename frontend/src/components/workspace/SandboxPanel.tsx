@@ -36,9 +36,9 @@ interface Props {
 }
 
 const button =
-  "px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1";
+  "px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1";
 const field =
-  "px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm focus-ring";
+  "px-3 py-2 rounded-lg border border-border bg-background text-sm focus-ring";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await authFetch(`${config.API_URL}/workspaces${path}`, init);
@@ -157,7 +157,7 @@ export default function SandboxPanel({ workspaceId, packageJson, disabled, onSta
         )}
       </div>
       {(error || notice) && (
-        <p role={error ? "alert" : "status"} className={`text-xs ${error ? "text-red-600" : "text-gray-600 dark:text-zinc-400"}`}>{error || notice}</p>
+        <p role={error ? "alert" : "status"} className={`text-xs ${error ? "text-red-600" : "text-muted-foreground"}`}>{error || notice}</p>
       )}
       {!status?.running && status !== null && (
         <p className="text-xs text-gray-500">

@@ -42,7 +42,7 @@ function ReviewCandidate({ candidate, refresh }: { candidate: Candidate; refresh
   const valid = evidence.trim().length > 0 && score.trim() !== "" && Number.isFinite(Number(score))
     && Number(score) >= 0 && Number(score) <= 1;
   return (
-    <details className="rounded border border-gray-200 dark:border-zinc-700 p-3">
+    <details className="rounded border border-border p-3">
       <summary className="cursor-pointer text-sm">
         {candidate.prompt.slice(0, 100)} · {candidate.review_status}
       </summary>
@@ -55,13 +55,13 @@ function ReviewCandidate({ candidate, refresh }: { candidate: Candidate; refresh
         Review evidence or reason
         <textarea value={evidence} maxLength={4000} rows={2} disabled={busy}
           onChange={(event) => setEvidence(event.target.value)}
-          className="block mt-1 w-full rounded border border-gray-300 dark:border-zinc-700 bg-transparent p-2" />
+          className="block mt-1 w-full rounded border border-input bg-transparent p-2" />
       </label>
       <label className="block mt-2 text-xs">
         Quality score (0–1; export requires at least 0.8)
         <input type="number" min="0" max="1" step="0.05" value={score} disabled={busy}
           onChange={(event) => setScore(event.target.value)}
-          className="ml-2 w-20 rounded border border-gray-300 dark:border-zinc-700 bg-transparent p-1" />
+          className="ml-2 w-20 rounded border border-input bg-transparent p-1" />
       </label>
       <div className="flex gap-2 mt-3">
         <button type="button" disabled={busy || !valid} onClick={() => void review(true)}

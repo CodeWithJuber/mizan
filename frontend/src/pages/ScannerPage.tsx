@@ -7,9 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PageProps,
   ScanReport,
-  ScanFinding,
   ScanHistoryItem,
-  ScanSeverity,
 } from "../types";
 import { useToast } from "../components/Toast";
 
@@ -38,7 +36,7 @@ const SEVERITY_STYLES: Record<
     border: "border-blue-500/20",
   },
   info: {
-    text: "text-gray-500 dark:text-gray-400",
+    text: "text-muted-foreground",
     bg: "bg-gray-500/10",
     border: "border-gray-500/20",
   },
@@ -250,7 +248,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
       <div className="page-body">
         {activeTab === "scan" && (
           <div className="max-w-xl space-y-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-muted-foreground">
               Checks a project on your server for leaked passwords and known
               security problems.
             </p>
@@ -265,7 +263,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                 onChange={(e) => setScanPath(e.target.value)}
                 placeholder="/path/to/project"
               />
-              <p className="text-2xs text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-2xs text-muted-foreground/80 mt-1">
                 A folder on the Mizan server — not on your phone.
               </p>
             </div>
@@ -280,12 +278,12 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                       ${
                         scanType === st.id
                           ? "bg-mizan-gold/10 border-mizan-gold/30 text-mizan-gold"
-                          : "bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700"
+                          : "bg-muted/60 border-border text-foreground/80 hover:bg-gray-100 dark:hover:bg-zinc-700"
                       }`}
                     onClick={() => setScanType(st.id)}
                   >
                     <span className="text-xs font-medium">{st.label}</span>
-                    <span className="text-micro text-gray-400 dark:text-gray-500 mt-0.5">
+                    <span className="text-micro text-muted-foreground/80 mt-0.5">
                       {st.desc}
                     </span>
                   </button>
@@ -298,7 +296,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                 <div className="text-sm font-medium text-red-600 dark:text-red-400">
                   Scan fail ho gaya
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-all">
+                <div className="text-xs text-muted-foreground mt-1 break-all">
                   {scanError}
                 </div>
                 <button
@@ -319,7 +317,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
               {scanning ? "Scanning…" : "Start Raqib Scan"}
             </button>
             {scanning && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 This can take a few minutes for large projects…
               </p>
             )}
@@ -335,10 +333,10 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                     رقيب
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-base font-semibold text-foreground">
                       Scan Report
                     </div>
-                    <div className="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">
+                    <div className="text-xs font-mono text-muted-foreground break-all">
                       {report.scan_type} · {report.target}
                     </div>
                   </div>
@@ -347,11 +345,11 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                       className={`text-2xl font-mono font-bold ${riskColor(report.summary.risk_score || 0)}`}
                     >
                       {(report.summary.risk_score || 0).toFixed(0)}
-                      <span className="text-sm font-normal text-gray-400 dark:text-gray-500">
+                      <span className="text-sm font-normal text-muted-foreground/80">
                         /100
                       </span>
                     </div>
-                    <div className="text-micro text-gray-400 dark:text-gray-500 uppercase">
+                    <div className="text-micro text-muted-foreground/80 uppercase">
                       Risk Score — {riskLevel(report.summary.risk_score || 0)}
                     </div>
                   </div>
@@ -371,14 +369,14 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                       return (
                         <div
                           key={sev}
-                          className={`text-center p-2 rounded-md border ${count > 0 ? `${style.bg} ${style.border}` : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700/50"}`}
+                          className={`text-center p-2 rounded-md border ${count > 0 ? `${style.bg} ${style.border}` : "bg-muted/50 border-gray-200 dark:border-zinc-700/50"}`}
                         >
                           <div
-                            className={`text-lg font-mono ${count > 0 ? style.text : "text-gray-400 dark:text-gray-500"}`}
+                            className={`text-lg font-mono ${count > 0 ? style.text : "text-muted-foreground/80"}`}
                           >
                             {count}
                           </div>
-                          <div className="text-micro uppercase tracking-wider text-gray-400 dark:text-gray-500 wrap-break-word">
+                          <div className="text-micro uppercase tracking-wider text-muted-foreground/80 wrap-break-word">
                             {sev}
                           </div>
                         </div>
@@ -389,7 +387,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
 
-            <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+            <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">
               Findings ({(report.findings || []).length})
             </div>
 
@@ -411,7 +409,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                     </span>
                     <span className="tool-tag">{finding.category}</span>
                     {finding.cwe_id && (
-                      <span className="text-micro font-mono text-gray-400 dark:text-gray-500">
+                      <span className="text-micro font-mono text-muted-foreground/80">
                         {finding.cwe_id}
                         {CWE_NAMES[finding.cwe_id]
                           ? `: ${CWE_NAMES[finding.cwe_id]}`
@@ -420,7 +418,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                     )}
                   </div>
 
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+                  <div className="text-sm font-medium text-foreground mb-1">
                     {finding.title}
                   </div>
 
@@ -432,7 +430,7 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                   )}
 
                   {finding.code_snippet && (
-                    <pre className="detail-panel font-mono text-2xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all my-1">
+                    <pre className="detail-panel font-mono text-2xs text-muted-foreground whitespace-pre-wrap break-all my-1">
                       {finding.code_snippet}
                     </pre>
                   )}
@@ -485,10 +483,10 @@ export default function ScannerPage({ api, addTerminalLine }: PageProps) {
                   <span className="memory-type-badge type-semantic shrink-0">
                     {scan.scan_type}
                   </span>
-                  <span className="text-xs text-gray-900 dark:text-gray-100 min-w-0 flex-1 truncate">
+                  <span className="text-xs text-foreground min-w-0 flex-1 truncate">
                     {scan.target}
                   </span>
-                  <span className="ml-auto text-2xs font-mono text-gray-400 dark:text-gray-500 shrink-0">
+                  <span className="ml-auto text-2xs font-mono text-muted-foreground/80 shrink-0">
                     {scan.finding_count} findings
                   </span>
                   {scan.summary?.risk_score != null && (

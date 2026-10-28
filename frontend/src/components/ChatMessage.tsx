@@ -9,7 +9,6 @@ import {
 import type { ReactNode } from "react";
 import type {
   ChatMessage as ChatMessageType,
-  CognitiveMetadata,
   PerceptionResult,
 } from "../types";
 import { Markdown, type Components } from "./Markdown";
@@ -152,7 +151,7 @@ function WordTapPopover({
 
   return (
     <span
-      className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[78vw] p-3 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-xl text-left animate-fade-in"
+      className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[78vw] p-3 rounded-xl bg-card border border-border shadow-xl text-left animate-fade-in"
       role="dialog"
       aria-label={`Preview of ${word}`}
     >
@@ -183,7 +182,7 @@ function WordTapPopover({
           <span
             dir="rtl"
             lang="ar"
-            className="block text-lg font-bold text-gray-900 dark:text-gray-100 pr-6"
+            className="block text-lg font-bold text-foreground pr-6"
           >
             {data.word}
           </span>
@@ -339,7 +338,7 @@ export function ChatMessageContent({
               className={`rounded-lg border transition-colors ${
                 block.isError
                   ? "bg-red-50/50 dark:bg-red-500/5 border-red-200/60 dark:border-red-500/15"
-                  : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200/60 dark:border-zinc-700/50"
+                  : "bg-muted/50 border-border/60"
               }`}
             >
               <button
@@ -389,13 +388,13 @@ export function ChatMessageContent({
               </button>
               {isExpanded ? (
                 <div className="px-3 pb-2">
-                  <pre className="text-xs font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
+                  <pre className="text-xs font-mono text-muted-foreground bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
                     {block.result}
                   </pre>
                 </div>
               ) : block.result ? (
                 <div className="px-3 pb-2">
-                  <div className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
+                  <div className="text-xs font-mono text-muted-foreground/80 truncate">
                     {truncated}
                   </div>
                 </div>
@@ -504,10 +503,10 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
         <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
           {basirah && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">
+              <div className="font-medium text-foreground/80">
                 Vision (Basirah)
               </div>
-              <p className="text-gray-500 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 {basirah.description}
               </p>
               <div className="flex items-center gap-2">
@@ -525,8 +524,8 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
                 </span>
               </div>
               {basirah.extracted_text && (
-                <div className="text-gray-500 dark:text-gray-400">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                <div className="text-muted-foreground">
+                  <span className="font-medium text-foreground/80">
                     Text:{" "}
                   </span>
                   {basirah.extracted_text.substring(0, 200)}
@@ -538,7 +537,7 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
                   {basirah.key_elements.map((el, i) => (
                     <span
                       key={i}
-                      className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400 text-[10px]"
+                      className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-muted-foreground text-[10px]"
                     >
                       {el}
                     </span>
@@ -549,17 +548,17 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
           )}
           {nutq && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">
+              <div className="font-medium text-foreground/80">
                 Voice (Nutq)
               </div>
-              <p className="text-gray-500 dark:text-gray-400">{nutq.text}</p>
-              <div className="text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-gray-700 dark:text-gray-300">
+              <p className="text-muted-foreground">{nutq.text}</p>
+              <div className="text-muted-foreground">
+                <span className="font-medium text-foreground/80">
                   Intent:{" "}
                 </span>
                 {nutq.intent}
                 {" · "}
-                <span className="font-medium text-gray-700 dark:text-gray-300">
+                <span className="font-medium text-foreground/80">
                   Lang:{" "}
                 </span>
                 {nutq.language}
@@ -567,16 +566,16 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
             </div>
           )}
           {perception.zahir && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
                 Zahir:{" "}
               </span>
               {perception.zahir}
             </div>
           )}
           {perception.batin && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
                 Batin:{" "}
               </span>
               {perception.batin}

@@ -37,8 +37,8 @@ export function TelegramLink({ api }: { api: ApiClient }) {
   if (!status) return null;
   if (!status.available)
     return (
-      <div className="card p-4 text-sm text-gray-600 dark:text-gray-400">
-        <div className="font-medium text-gray-900 dark:text-gray-100">Telegram</div>
+      <div className="card p-4 text-sm text-muted-foreground">
+        <div className="font-medium text-foreground">Telegram</div>
         <p className="mt-1">
           Not running. An administrator turns it on by saving a bot token from @BotFather as
           TELEGRAM_BOT_TOKEN in System settings.{status.error ? ` (${status.error})` : ""}
@@ -50,10 +50,10 @@ export function TelegramLink({ api }: { api: ApiClient }) {
     <div className="card p-4 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <div className="text-sm font-medium text-foreground">
             Telegram{status.bot ? ` · @${status.bot}` : ""}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-muted-foreground">
             {status.linked
               ? "Linked: messages to the bot go to your own MIZAN, and your watchers' notices come there."
               : "Talk to your own MIZAN from Telegram. Only your linked account is answered, in a private chat."}
@@ -92,7 +92,7 @@ export function TelegramLink({ api }: { api: ApiClient }) {
           <a className="text-sky-600 dark:text-sky-400 underline break-all" href={link.url} target="_blank" rel="noreferrer">
             {link.url}
           </a>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-muted-foreground">
             Open it on the phone with your Telegram and press Start. It works once, within{" "}
             {Math.round(link.expires / 60)} minutes.{" "}
             <button className="underline" onClick={load}>I pressed Start</button>

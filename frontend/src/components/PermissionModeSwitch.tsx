@@ -31,10 +31,10 @@ export default function PermissionModeSwitch({
   mode, onChange, disabled = false,
 }: { mode: PermissionMode; onChange: (mode: PermissionMode) => void; disabled?: boolean }) {
   return (
-    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400" title={PERMISSION_LABELS[mode].hint}>
+    <label className="flex items-center gap-2 text-xs text-muted-foreground" title={PERMISSION_LABELS[mode].hint}>
       <span className="font-medium">Mode</span>
       <select
-        className="rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-xs focus-ring"
+        className="rounded-md border border-border bg-card px-2 py-1 text-xs focus-ring"
         value={mode}
         disabled={disabled}
         onChange={(event) => {

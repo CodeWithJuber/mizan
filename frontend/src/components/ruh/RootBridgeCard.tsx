@@ -45,7 +45,7 @@ export function RootBridgeCard({ onExploreRoot }: RootBridgeCardProps) {
   return (
     <div className="space-y-3">
       <div>
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
           Concept → root bridge
         </h4>
         <p className="text-xs text-gray-400">
@@ -62,7 +62,7 @@ export function RootBridgeCard({ onExploreRoot }: RootBridgeCardProps) {
           onKeyDown={(e) => e.key === "Enter" && handleLookup()}
           placeholder="e.g. mercy"
           aria-label="English concept"
-          className="flex-1 min-h-[44px] px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400"
+          className="flex-1 min-h-[44px] px-3 py-2 text-sm rounded-lg border border-border bg-card text-foreground placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400"
         />
         <button
           onClick={handleLookup}
@@ -83,7 +83,7 @@ export function RootBridgeCard({ onExploreRoot }: RootBridgeCardProps) {
       )}
 
       {notFound && (
-        <div className="px-3 py-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-dashed border-gray-300 dark:border-zinc-600 text-sm text-gray-500 dark:text-gray-400">
+        <div className="px-3 py-3 rounded-xl bg-muted/60 border border-dashed border-gray-300 dark:border-zinc-600 text-sm text-muted-foreground">
           No verified bridge for “{concept.trim()}” yet. We don’t invent links —
           this concept hasn’t been mapped to an Arabic root in the verified
           dataset.
@@ -91,13 +91,13 @@ export function RootBridgeCard({ onExploreRoot }: RootBridgeCardProps) {
       )}
 
       {result && (
-        <article className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 space-y-3 animate-fade-in">
+        <article className="p-4 rounded-xl bg-card border border-border space-y-3 animate-fade-in">
           <div className="flex items-start justify-between gap-2">
             <div>
               <div
                 dir="rtl"
                 lang="ar"
-                className="text-3xl font-bold text-gray-900 dark:text-gray-100"
+                className="text-3xl font-bold text-foreground"
               >
                 {result.arabic_root}
               </div>
@@ -109,7 +109,7 @@ export function RootBridgeCard({ onExploreRoot }: RootBridgeCardProps) {
           </div>
 
           <div className="space-y-1">
-            <p className="text-sm text-gray-800 dark:text-gray-200">
+            <p className="text-sm text-foreground/90">
               {result.root_entry.meaning}
             </p>
             {result.root_entry.domain && (

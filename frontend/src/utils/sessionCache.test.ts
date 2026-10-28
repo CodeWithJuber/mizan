@@ -1,5 +1,4 @@
 import { cacheMessages, readCachedMessages } from "./sessionCache.ts";
-declare const process: { exit(code: number): void };
 const values = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
   value: {

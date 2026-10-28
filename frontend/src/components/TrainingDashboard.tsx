@@ -14,7 +14,7 @@ function StatusBadge({ running }: { running: boolean }) {
       className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${
         running
           ? "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-          : "bg-gray-100 dark:bg-zinc-700/30 text-gray-500 dark:text-gray-400"
+          : "bg-gray-100 dark:bg-zinc-700/30 text-muted-foreground"
       }`}
     >
       <span
@@ -35,37 +35,20 @@ function MetricItem({
   subtext?: string;
 }) {
   return (
-    <div className="text-center py-2 px-2 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50">
-      <span className="block font-mono text-sm text-gray-900 dark:text-gray-100">
+    <div className="text-center py-2 px-2 bg-muted/50 rounded border border-border/60">
+      <span className="block font-mono text-sm text-foreground">
         {value}
       </span>
-      <span className="block text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+      <span className="block text-xs text-muted-foreground/80 uppercase tracking-wider">
         {label}
       </span>
       {subtext && (
-        <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+        <span className="block text-xs text-muted-foreground/80 mt-0.5">
           {subtext}
         </span>
       )}
     </div>
   );
-}
-
-function LossIndicator({ loss }: { loss: number | null }) {
-  if (loss === null) {
-    return (
-      <span className="text-gray-400 dark:text-gray-500 font-mono text-sm">--</span>
-    );
-  }
-
-  const lossColor =
-    loss < 0.5
-      ? "text-emerald-600 dark:text-emerald-400"
-      : loss < 1.0
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-red-600 dark:text-red-400";
-
-  return <span className={`font-mono text-sm ${lossColor}`}>{loss.toFixed(4)}</span>;
 }
 
 function formatLastExport(lastExport: string | null): string {
@@ -115,7 +98,7 @@ export function TrainingDashboard({
               <path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342" />
             </svg>
           </div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-sm font-semibold text-foreground">
             Ruh Model
           </h3>
         </div>
@@ -124,7 +107,7 @@ export function TrainingDashboard({
 
       {/* Model status */}
       {ruhStatus && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span
             className={`w-2 h-2 rounded-full ${ruhStatus.loaded ? "bg-emerald-500" : "bg-gray-400"}`}
           />
@@ -139,8 +122,8 @@ export function TrainingDashboard({
         <div className="space-y-3">
           {/* Stage label */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              Stage: <span className="font-medium text-gray-700 dark:text-gray-300">{metrics.stage ?? "Initializing"}</span>
+            <span className="text-xs text-muted-foreground">
+              Stage: <span className="font-medium text-foreground/80">{metrics.stage ?? "Initializing"}</span>
             </span>
           </div>
 
@@ -159,19 +142,19 @@ export function TrainingDashboard({
 
           {/* Status message */}
           {metrics.message && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-zinc-800/50 rounded px-2 py-1.5 font-mono">
+            <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 font-mono">
               {metrics.message}
             </p>
           )}
         </div>
       ) : (
-        <div className="text-center py-3 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-center py-3 bg-muted/40 rounded-lg border border-dashed border-border">
+          <p className="text-sm text-muted-foreground">
             No training in progress
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground/80 mt-1">
             Start training via CLI:{" "}
-            <code className="font-mono bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">
+            <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">
               mizan train --start
             </code>
           </p>
@@ -181,7 +164,7 @@ export function TrainingDashboard({
       {/* Learner stats */}
       {learnerStats && (
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Learner Stats
           </h4>
           <div className="grid grid-cols-3 gap-2">

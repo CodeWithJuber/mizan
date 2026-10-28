@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  Check, ChevronRight, CircleDashed, ListTodo, LoaderCircle, ShieldAlert, Sparkles, X,
+  Check, ChevronRight, ListTodo, LoaderCircle, ShieldAlert, Sparkles, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -218,7 +218,7 @@ export function RunTimeline({ activity, trace, progress, awaitingText, onDecisio
         {live ? (
           <LoaderCircle className="size-4 shrink-0 animate-spin text-brand" />
         ) : (
-          <CircleDashed className="size-4 shrink-0" />
+          <Check className="size-4 shrink-0" />
         )}
         <span className={cn("truncate", live && "shimmer-text")}>{label}</span>
         {live && <span className="shrink-0 tabular-nums text-xs">{seconds(elapsed)}</span>}

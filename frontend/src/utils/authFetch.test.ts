@@ -1,5 +1,4 @@
 import { authFetch } from "./authFetch.ts";
-declare const process: { exit(code: number): void };
 const values = new Map<string, string>();
 let unauthorized = 0;
 Object.defineProperty(globalThis, "localStorage", {

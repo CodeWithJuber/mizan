@@ -58,11 +58,11 @@ function PlainArmsView({ compared }: { compared: NonNullable<ReturnType<typeof p
                 ))}
               </ul>
             )}
-            <pre className="max-h-72 overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-xs whitespace-pre-wrap wrap-break-word">
+            <pre className="max-h-72 overflow-auto rounded-lg bg-muted/50 p-3 text-xs whitespace-pre-wrap wrap-break-word">
               {arm.text || "(no answer)"}
             </pre>
             {arm.final && (
-              <pre className="overflow-auto rounded-lg bg-gray-50 dark:bg-zinc-900 p-3 text-[11px] leading-tight font-mono">{arm.final}</pre>
+              <pre className="overflow-auto rounded-lg bg-muted/50 p-3 text-[11px] leading-tight font-mono">{arm.final}</pre>
             )}
             {arm.calls.length > 0 && (
               <div className="text-[11px] text-gray-500 wrap-break-word">Tools: {arm.calls.join(" → ")}</div>
@@ -233,7 +233,7 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
                 onClick={() =>
                   setChosen(on ? chosen.filter((b) => b !== entry.block) : [...chosen, entry.block])
                 }
-                className={`text-xs px-2.5 py-1 rounded-full border ${on ? "border-amber-500 text-amber-700 dark:text-amber-400" : "border-gray-200 dark:border-zinc-700 text-gray-500"}`}
+                className={`text-xs px-2.5 py-1 rounded-full border ${on ? "border-amber-500 text-amber-700 dark:text-amber-400" : "border-border text-gray-500"}`}
               >
                 {BLOCK_LABELS[entry.block] ?? entry.block} ({entry.tasks})
               </button>
@@ -252,7 +252,7 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
           <label className="text-xs text-gray-500 flex items-center gap-2">
             Attempts per task
             <select
-              className="rounded border border-gray-200 dark:border-zinc-700 bg-transparent px-2 py-1"
+              className="rounded border border-border bg-transparent px-2 py-1"
               value={repeats}
               onChange={(event) => setRepeats(Number(event.target.value))}
             >
@@ -277,7 +277,7 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
         </div>
         {running?.progress && (
           <div className="space-y-1">
-            <div className="h-2 rounded bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+            <div className="h-2 rounded bg-muted overflow-hidden">
               <div
                 className="h-full"
                 style={{

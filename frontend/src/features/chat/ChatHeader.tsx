@@ -39,7 +39,7 @@ export function ChatHeader() {
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="ghost" size="sm" className="max-w-48 gap-1.5" aria-label="Choose the agent" />}
+          render={<Button variant="ghost" size="sm" className="max-w-48 gap-1.5" title="Choose who answers" />}
         >
           <span className="truncate">{selected?.name ?? "MIZAN"}</span>
           <ChevronDown className="size-3.5 text-muted-foreground" />

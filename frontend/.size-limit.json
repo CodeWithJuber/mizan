@@ -1,0 +1,5 @@
+[
+  { "name": "App shell (entry JS)", "path": "dist/assets/app-*.js", "gzip": true, "limit": "190 kB" },
+  { "name": "Chat page", "path": "dist/assets/ChatPage-*.js", "gzip": true, "limit": "70 kB" },
+  { "name": "Styles", "path": "dist/assets/index-*.css", "gzip": true, "limit": "40 kB" }
+]

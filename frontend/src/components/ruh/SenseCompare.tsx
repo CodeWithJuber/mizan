@@ -90,30 +90,30 @@ export function SenseCompare({
 
   return (
     <div>
-      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
         Senses of “{word}” ({senses.length})
       </h4>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
         {senses.map((sense, i) => (
           <article
             key={i}
-            className="p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/60 dark:border-zinc-700/50 space-y-1.5"
+            className="p-3 rounded-xl bg-muted/60 border border-border/60 space-y-1.5"
           >
             <div className="flex items-start justify-between gap-2">
               <span
                 dir="rtl"
                 lang="ar"
-                className="text-base font-bold text-gray-900 dark:text-gray-100"
+                className="text-base font-bold text-foreground"
               >
                 {sense.surface}
               </span>
               <VerifiedBadge level={provenance} source={source} />
             </div>
-            <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+            <div className="text-sm font-medium text-foreground/90">
               {sense.gloss}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700/50 text-gray-500 dark:text-gray-400">
+              <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700/50 text-muted-foreground">
                 {sense.kind === "root" ? "root meaning" : "derivative"}
               </span>
               {sense.pattern && (

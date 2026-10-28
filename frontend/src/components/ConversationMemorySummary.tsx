@@ -59,10 +59,10 @@ function PreferenceField({ field, saved }: {
           value={value}
           disabled={busy}
           onChange={(event) => { setValue(event.target.value); setStatus(""); }}
-          className="min-w-0 flex-1 rounded border border-gray-300 dark:border-zinc-700 bg-transparent px-2 py-1.5"
+          className="min-w-0 flex-1 rounded border border-input bg-transparent px-2 py-1.5"
         />
         <button type="button" disabled={busy} onClick={() => void save()}
-          className="self-start rounded border border-gray-300 dark:border-zinc-700 px-3 py-1.5 disabled:opacity-50">
+          className="self-start rounded border border-input px-3 py-1.5 disabled:opacity-50">
           {busy ? "Saving…" : "Save"}
         </button>
       </div>

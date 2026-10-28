@@ -87,7 +87,7 @@ export default function PythonRunner({ files, entry }: { files: Record<string, s
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-zinc-800">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <span className="text-xs font-mono text-gray-500 truncate mr-auto">python {entry} · in your browser</span>
         <button type="button" className="btn-primary btn-sm inline-flex items-center gap-1" disabled={!ready || running} onClick={run}>
           <Play className="w-3.5 h-3.5" /> {running ? "Running…" : "Run Python"}

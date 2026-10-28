@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:e2e": "VITE_API_URL=/api VITE_WS_URL=/ws vite build --outDir dist-e2e --emptyOutDir",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --max-warnings 163 src e2e && node scripts/color-ratchet.mjs",
+    "test": "vitest run",
+    "test:utils": "for test in src/utils/*.test.ts; do node \"$test\" || exit 1; done",
+    "e2e": "playwright test",
+    "size": "size-limit"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

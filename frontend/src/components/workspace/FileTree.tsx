@@ -111,7 +111,7 @@ export default function FileTree({ entries, selected, disabled, onOpen, onCreate
         >
           <input
             autoFocus
-            className="w-full px-2 py-1 rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-mono focus-ring"
+            className="w-full px-2 py-1 rounded-md border border-border bg-background text-xs font-mono focus-ring"
             placeholder={draft.kind === "file" ? "src/main.py" : "src/components"}
             value={draft.value}
             onChange={(event) => setDraft({ ...draft, value: event.target.value })}

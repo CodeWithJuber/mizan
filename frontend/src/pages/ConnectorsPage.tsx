@@ -326,12 +326,12 @@ export default function ConnectorsPage({ api }: PageProps) {
                 </div>
                 {connector.tools.length > 0 && (
                   <details>
-                    <summary className="text-sm cursor-pointer text-gray-600 dark:text-zinc-400">
+                    <summary className="text-sm cursor-pointer text-muted-foreground">
                       {connector.tools.filter((t) => t.enabled).length}/{connector.tools.length} tools enabled
                     </summary>
                     <ul className="mt-2 grid gap-1 sm:grid-cols-2">
                       {connector.tools.map((tool) => (
-                        <li key={tool.name} className="flex items-start gap-2 rounded-md border border-gray-100 dark:border-zinc-800 p-2">
+                        <li key={tool.name} className="flex items-start gap-2 rounded-md border border-border/60 p-2">
                           <input type="checkbox" className="mt-1" checked={tool.enabled} onChange={() => toggleTool(connector, tool)} aria-label={`Enable ${tool.name}`} />
                           <div className="min-w-0">
                             <p className="text-xs font-mono font-medium break-all">
@@ -380,7 +380,7 @@ export default function ConnectorsPage({ api }: PageProps) {
                     <h3 className="font-semibold break-all">{server.title || server.name}</h3>
                     <p className="text-xs font-mono text-gray-500 break-all">{server.name}{server.version && ` · v${server.version}`}</p>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-zinc-400 line-clamp-3">{server.description}</p>
+                  <p className="text-sm text-muted-foreground line-clamp-3">{server.description}</p>
                   <div className="flex flex-wrap gap-2">
                     {server.remotes.slice(0, 2).map((remote) => (
                       <button key={remote.url} className="btn-gold btn-sm" onClick={() => addFromRemote(server, remote)}>Add remote</button>

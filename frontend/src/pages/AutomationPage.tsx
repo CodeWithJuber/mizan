@@ -350,7 +350,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       {job.enabled ? "⏱" : "⏸"}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      <div className="text-sm font-semibold text-foreground truncate">
                         {job.name}
                       </div>
                       <div className="text-2xs font-mono text-mizan-gold truncate">
@@ -360,10 +360,10 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-left sm:text-right">
-                      <div className="text-2xs font-mono text-gray-400 dark:text-gray-500">
+                      <div className="text-2xs font-mono text-muted-foreground/80">
                         Runs: {job.run_count}
                       </div>
-                      <div className="text-2xs font-mono text-gray-400 dark:text-gray-500">
+                      <div className="text-2xs font-mono text-muted-foreground/80">
                         Next:{" "}
                         {job.next_run
                           ? new Date(job.next_run).toLocaleString()
@@ -385,7 +385,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                     </button>
                   </div>
                 </div>
-                <div className="detail-panel font-mono text-xs text-gray-600 dark:text-gray-400 wrap-break-word">
+                <div className="detail-panel font-mono text-xs text-muted-foreground wrap-break-word">
                   Task: {job.task}
                 </div>
               </div>
@@ -411,14 +411,14 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                     🔗
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                    <div className="text-sm font-semibold text-foreground truncate">
                       {wh.name}
                     </div>
                     <div className="text-2xs font-mono text-blue-500 dark:text-blue-400 break-all">
                       {wh.path}
                     </div>
                   </div>
-                  <div className="text-2xs font-mono text-gray-400 dark:text-gray-500 shrink-0">
+                  <div className="text-2xs font-mono text-muted-foreground/80 shrink-0">
                     Triggered: {wh.trigger_count}x
                   </div>
                   <button
@@ -529,7 +529,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 })}
               </div>
               {!cronIsCustom && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                <div className="text-xs text-muted-foreground mt-1.5">
                   {describeCron(newJob.cron)}{" "}
                   <span className="font-mono">({newJob.cron})</span>
                 </div>
@@ -547,7 +547,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       setCronError(validateCron(v));
                     }}
                   />
-                  <div className="text-2xs text-gray-400 dark:text-gray-500 mt-1">
+                  <div className="text-2xs text-muted-foreground/80 mt-1">
                     minute hour day month weekday — * ka matlab "har"
                   </div>
                   {cronError ? (
@@ -696,7 +696,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                   })
                 }
               />
-              <div className="text-2xs text-gray-400 dark:text-gray-500 mt-1">
+              <div className="text-2xs text-muted-foreground/80 mt-1">
                 Use {"{key}"} placeholders for webhook payload values
               </div>
             </div>

@@ -32,7 +32,7 @@ export function projectPreview(files: Record<string, string>, focus = ""): Proje
   const paths = Object.keys(files).filter(previewable);
   if (!paths.length) return { kind: "none", reason: "The project has no files yet." };
   const pkg = packageJson(files);
-  const dependencies = { ...(pkg?.dependencies ?? {}) };
+  const dependencies = { ...pkg?.dependencies };
   const devDependencies = pkg?.devDependencies ?? {};
   const has = (name: string) => name in dependencies || name in devDependencies;
   const typescript = paths.some((p) => /\.tsx?$/.test(p));

@@ -325,11 +325,11 @@ function SessionArtifactsPanel({
       role="dialog"
       aria-modal="true"
       aria-label="Artifacts"
-      className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white dark:bg-zinc-900 border-l border-gray-200 dark:border-zinc-700 shadow-2xl z-50 flex flex-col animate-slide-in-right"
+      className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-card border-l border-border shadow-2xl z-50 flex flex-col animate-slide-in-right"
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-700">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h2 className="text-sm font-semibold text-foreground">
             Artifacts
           </h2>
           <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 font-mono">
@@ -364,7 +364,7 @@ function SessionArtifactsPanel({
           </div>
         )}
         {all.length === 0 && (
-          <div className="text-center text-sm text-gray-400 dark:text-gray-500 py-12">
+          <div className="text-center text-sm text-muted-foreground/80 py-12">
             No artifacts yet.
             <br />
             <span className="text-xs">
@@ -380,7 +380,7 @@ function SessionArtifactsPanel({
           return (
             <div
               key={artifact.id}
-              className="border border-gray-200 dark:border-zinc-700 rounded-xl overflow-hidden bg-white dark:bg-zinc-900"
+              className="border border-border rounded-xl overflow-hidden bg-card"
             >
               <button
                 onClick={() => toggleExpand(artifact)}
@@ -397,7 +397,7 @@ function SessionArtifactsPanel({
                     clipRule="evenodd"
                   />
                 </svg>
-                <span className="min-w-0 flex-1 text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                <span className="min-w-0 flex-1 text-sm font-medium text-foreground/90 truncate">
                   {artifact.title}
                 </span>
                 <span
@@ -415,7 +415,7 @@ function SessionArtifactsPanel({
               {expanded && (
                 <div className="px-3 pb-3">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-zinc-700 text-xs">
+                    <div className="flex rounded-lg overflow-hidden border border-border text-xs">
                       {(["preview", "code"] as const).map((mode) => (
                         <button
                           key={mode}
@@ -425,7 +425,7 @@ function SessionArtifactsPanel({
                           className={`px-2.5 py-1 capitalize transition-colors ${
                             v === mode
                               ? "bg-amber-500 text-white"
-                              : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                              : "text-muted-foreground hover:bg-gray-100 dark:hover:bg-zinc-800"
                           }`}
                         >
                           {mode}
@@ -446,7 +446,7 @@ function SessionArtifactsPanel({
                               [artifact.id]: Number(e.target.value),
                             }))
                           }
-                          className="text-xs rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2 py-1 text-gray-700 dark:text-gray-300"
+                          className="text-xs rounded-lg border border-border bg-white dark:bg-zinc-800 px-2 py-1 text-foreground/80"
                           title="Version history"
                         >
                           {vers.map((ver) => (
@@ -461,7 +461,7 @@ function SessionArtifactsPanel({
                         <button
                           onClick={() => void handleRestore(artifact)}
                           disabled={restoring}
-                          className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                          className="text-xs px-2.5 py-1 rounded-lg border border-border text-foreground/75 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                           title="Restore this version as a new version (non-destructive)"
                         >
                           {restoring ? "Restoring…" : "Restore"}
@@ -477,14 +477,14 @@ function SessionArtifactsPanel({
                   {cur && (
                     <div className="flex gap-2 pb-3">
                       <button
-                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700"
+                        className="text-xs px-3 py-1.5 rounded-lg border border-border"
                         onClick={() => download(artifact, cur.content)}
                       >
                         Download
                       </button>
                       {artifact.kind !== "image" && (
                         <button
-                          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700"
+                          className="text-xs px-3 py-1.5 rounded-lg border border-border"
                           onClick={() => {
                             setDraft(cur.content);
                             setEditingId(artifact.id);
@@ -502,7 +502,7 @@ function SessionArtifactsPanel({
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
                         spellCheck={false}
-                        className="w-full min-h-[360px] p-3 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-950 text-sm font-mono"
+                        className="w-full min-h-[360px] p-3 rounded-lg border border-border bg-gray-50 dark:bg-zinc-950 text-sm font-mono"
                       />
                       <div className="flex gap-2">
                         <button

@@ -27,7 +27,7 @@ export default function ReliabilityPage() {
   const latest = view?.latest;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-mizan-dark text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-50 dark:bg-mizan-dark text-foreground">
       <style>{VIZ_STYLE}</style>
       <main className="imtihan-viz max-w-5xl mx-auto px-4 py-8 space-y-6">
         <header className="space-y-2">
@@ -38,7 +38,7 @@ export default function ReliabilityPage() {
             API docs
           </a>
           <h1 className="text-2xl font-semibold">How reliable is MIZAN?</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+          <p className="text-sm text-muted-foreground max-w-3xl">
             Every task goes to the base model alone and to MIZAN, and each answer is scored by rule, not by another
             model. The scores below are aggregates with 95% Wilson intervals; no prompt or answer is published. Each
             published result's hash is written into MIZAN's signed action receipts (Sakk), so it cannot be changed
@@ -94,7 +94,7 @@ export default function ReliabilityPage() {
         {view && (
           <section className="card p-4 space-y-3">
             <h2 className="font-semibold text-sm">Signed action receipts (Sakk)</h2>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-muted-foreground">
               Every action MIZAN takes or holds is a receipt chained to the one before it. Once a day MIZAN signs the
               Merkle root of every chain's latest receipt with this Ed25519 key. Any user can export their chain in
               Settings → Receipts and check it, offline, with <code>scripts/verify_sakk.py</code>.
@@ -115,7 +115,7 @@ export default function ReliabilityPage() {
                   </thead>
                   <tbody>
                     {view.sakk.roots.map((root) => (
-                      <tr key={root.day} className="border-t border-gray-100 dark:border-zinc-800">
+                      <tr key={root.day} className="border-t border-border/60">
                         <td className="py-1 pr-3 tabular-nums">{root.day}</td>
                         <td className="py-1 pr-3 font-mono" title={`${root.root}\nsignature ${root.signature}`}>
                           {short(root.root, 16)}

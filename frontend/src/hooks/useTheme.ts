@@ -9,7 +9,8 @@ import { useSyncExternalStore } from "react";
 export type ThemeMode = "light" | "dark" | "system";
 
 const KEY = "mizan_theme";
-const media = () => window.matchMedia("(prefers-color-scheme: dark)");
+// Missing in some embedded browsers and in jsdom: then the device counts as light.
+const media = (): MediaQueryList | undefined => window.matchMedia?.("(prefers-color-scheme: dark)");
 
 function readMode(): ThemeMode {
   try {
@@ -22,16 +23,16 @@ function readMode(): ThemeMode {
 }
 
 let mode: ThemeMode = readMode();
-let dark = mode === "dark" || (mode === "system" && media().matches);
+let dark = mode === "dark" || (mode === "system" && Boolean(media()?.matches));
 const listeners = new Set<() => void>();
 
 function apply() {
-  dark = mode === "dark" || (mode === "system" && media().matches);
+  dark = mode === "dark" || (mode === "system" && Boolean(media()?.matches));
   document.documentElement.classList.toggle("dark", dark);
   listeners.forEach((listener) => listener());
 }
 
-media().addEventListener("change", () => {
+media()?.addEventListener("change", () => {
   if (mode === "system") apply();
 });
 apply();

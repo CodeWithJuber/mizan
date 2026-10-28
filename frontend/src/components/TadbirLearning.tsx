@@ -94,26 +94,26 @@ function LiveLearning({ api }: { api: ApiClient }) {
           <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
         </span>
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">
           Learning now · سجل
         </div>
       </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+      <p className="text-xs text-muted-foreground mb-2">
         Each step MIZAN learns from verified work, the moment it happens. No weights change: this is learning by
         evidence.
       </p>
       {notes.length === 0 ? (
-        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
+        <div className="text-sm text-muted-foreground/80 text-center py-3">
           Nothing yet. Ask MIZAN to compute, run code, quote a source or play a game, and watch here.
         </div>
       ) : (
         <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 max-h-72 overflow-y-auto">
           {notes.map((note) => (
             <li key={note.seq} className="py-1.5 flex items-start gap-2 text-sm">
-              <span className="shrink-0 text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300">
+              <span className="shrink-0 text-micro font-mono px-1.5 py-0.5 rounded bg-muted text-foreground/75">
                 {NOTE_LABELS[note.kind] ?? note.kind}
               </span>
-              <span className="min-w-0 flex-1 wrap-break-word text-gray-800 dark:text-gray-200">{note.summary}</span>
+              <span className="min-w-0 flex-1 wrap-break-word text-foreground/90">{note.summary}</span>
               <span className="shrink-0 text-micro text-gray-400 tabular-nums">{ago(note.at)}</span>
             </li>
           ))}
@@ -189,31 +189,31 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       <LiveLearning api={api} />
 
       <div className="card">
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
           Who does which work · مَن يعمل ماذا
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           MIZAN gives each part of a request to an agent and runs independent parts side by side.
           Every result it verifies, or fails to verify, moves these estimates.
         </p>
         {rows.length === 0 && (
-          <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No agents yet</div>
+          <div className="text-sm text-muted-foreground/80 text-center py-4">No agents yet</div>
         )}
         <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
           {rows.map((row) => (
             <li key={row.intent} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 min-w-[10rem]">
+              <span className="text-sm font-medium text-foreground min-w-[10rem]">
                 {row.label}
               </span>
               <span className="text-sm text-mizan-gold font-semibold">{row.leader}</span>
-              <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+              <span className="text-micro font-mono text-muted-foreground">
                 {percent(row.estimate)} expected to verify
               </span>
-              <span className="text-micro text-gray-400 dark:text-gray-500">
+              <span className="text-micro text-muted-foreground/80">
                 {row.evidence > 0 ? learnedCount(row.evidence) : "prior only"}
               </span>
               {row.others.length > 0 && (
-                <span className="text-micro text-gray-400 dark:text-gray-500 basis-full">
+                <span className="text-micro text-muted-foreground/80 basis-full">
                   Also able: {row.others.map((o) => `${o.agent} ${percent(o.estimate)}`).join(" · ")}
                 </span>
               )}
@@ -223,15 +223,15 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       </div>
 
       <div className="card">
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
           Wording MIZAN learned from you · تعلّم
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           When the language model maps an unusual request and MIZAN verifies the result, MIZAN keeps that
           wording. Similar requests are then understood without the model. This stays private to your account.
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm text-gray-900 dark:text-gray-100">
+          <span className="text-sm text-foreground">
             {wording ? `${wording.examples} learned` : "—"}
           </span>
           {wording &&
@@ -255,17 +255,17 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
             Forget my wording
           </button>
         </div>
-        <p className="text-micro text-gray-400 dark:text-gray-500 mt-3">
+        <p className="text-micro text-muted-foreground/80 mt-3">
           This is MIZAN's own understanding, not model training. Training the own model's weights still needs an
           approved data bundle (Ruh Model → Own learning).
         </p>
       </div>
 
       <div className="card">
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
           Programs MIZAN keeps · حفظ
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           A program MIZAN verified for you is kept. The same request, with the same numbers, re-runs it in the
           sandbox with no model call, and the output must match what was verified. A program whose output
           changes is distrusted and written again.
@@ -274,16 +274,16 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
             {programs.items.map((item, index) => (
               <li key={index} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <span className="min-w-0 flex-1 truncate text-gray-900 dark:text-gray-100">{item.request}</span>
-                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">{item.language}</span>
-                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                <span className="min-w-0 flex-1 truncate text-foreground">{item.request}</span>
+                <span className="text-micro font-mono text-muted-foreground">{item.language}</span>
+                <span className="text-micro font-mono text-muted-foreground">
                   {item.runs} run{item.runs === 1 ? "" : "s"} · {percent(item.reliability)} reliable
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="text-sm text-gray-400 dark:text-gray-500 mb-3">No programs kept yet</div>
+          <div className="text-sm text-muted-foreground/80 mb-3">No programs kept yet</div>
         )}
         <button
           className="btn-secondary btn-sm"
@@ -306,10 +306,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       </div>
 
       <div className="card">
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
           Lessons from repairs · تجربة
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           When a program failed in the sandbox and a repair then verified, MIZAN keeps the error (without your
           names or values) and the change that fixed it. Similar work later is written with that lesson in view.
           Lessons that stop helping are dropped.
@@ -318,17 +318,17 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
             {lessons.items.map((item, index) => (
               <li key={index} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-900 dark:text-gray-100">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
                   {item.signature}
                 </span>
-                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                <span className="text-micro font-mono text-muted-foreground">
                   {percent(item.usefulness)} useful
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="text-sm text-gray-400 dark:text-gray-500 mb-3">No lessons yet</div>
+          <div className="text-sm text-muted-foreground/80 mb-3">No lessons yet</div>
         )}
         <button
           className="btn-secondary btn-sm"
@@ -343,10 +343,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
 
       {harness && (
         <div className="card">
-          <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+          <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
             Instructions MIZAN renewed · تجديد
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             After repeated failures the model rewrites one of MIZAN&apos;s code instructions. The new version gets
             part of the work and replaces the old one only when MIZAN&apos;s checks show it is better (95%), or is
             retired. Shared by all users; only error kinds are stored.
@@ -355,8 +355,8 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60 mb-3">
             {harness.instructions.map((row) => (
               <li key={row.task} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <span className="font-mono text-xs text-gray-900 dark:text-gray-100 min-w-[10rem]">{row.task}</span>
-                <span className="text-micro font-mono text-gray-500 dark:text-gray-400">
+                <span className="font-mono text-xs text-foreground min-w-[10rem]">{row.task}</span>
+                <span className="text-micro font-mono text-muted-foreground">
                   {row.incumbent} ·{" "}
                   {row.incumbent_trials > 0
                     ? `${percent(row.incumbent_success)} verified over ${row.incumbent_trials}`
@@ -370,7 +370,7 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
                       : `P(better) ${percent(row.challenger.p_better)}`}
                   </span>
                 ) : (
-                  <span className="text-micro text-gray-400 dark:text-gray-500">
+                  <span className="text-micro text-muted-foreground/80">
                     {row.failures_since_renewal} failures since renewal
                   </span>
                 )}
@@ -395,10 +395,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           </ul>
           {harness.models.length > 0 && (
             <>
-              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+              <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
                 Models for code work · وزن
               </div>
-              <ul className="text-micro font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
+              <ul className="text-micro font-mono text-muted-foreground space-y-0.5">
                 {harness.routing
                   .filter((row) => row.evidence > 0)
                   .map((row) => (

@@ -148,7 +148,7 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
         </div>
       )}
       {profile.pattern && (
-        <p className="text-xs text-gray-600 dark:text-gray-300">
+        <p className="text-xs text-foreground/75">
           Profile (as the paper sorts them, from each interval's lower end): base model{" "}
           {patternText(profile.pattern.base)}; MIZAN {patternText(profile.pattern.mizan)}.
         </p>
@@ -167,7 +167,7 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
           </thead>
           <tbody>
             {profile.faculties.map((entry) => (
-              <tr key={entry.key} className="border-t border-gray-100 dark:border-zinc-800 align-top">
+              <tr key={entry.key} className="border-t border-border/60 align-top">
                 <td className="py-2 pr-3">
                   <div>
                     {entry.name}
@@ -201,7 +201,7 @@ export function FacultyProfile({ profile }: { profile: Profile }) {
                   </td>
                 ))}
                 <td className="py-2 pl-2 text-right tabular-nums whitespace-nowrap">{signed(entry.delta)}</td>
-                <td className="py-2 pl-3 text-xs text-gray-600 dark:text-gray-300">
+                <td className="py-2 pl-3 text-xs text-foreground/75">
                   {percentileText(entry.mizan.human)}
                   {entry.panel && (
                     <div className="text-[11px] text-gray-500">

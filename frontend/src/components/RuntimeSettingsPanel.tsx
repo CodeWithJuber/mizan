@@ -18,7 +18,7 @@ interface View {
 }
 
 const field =
-  "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm focus-ring";
+  "w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus-ring";
 const APPLY_LABEL = {
   live: "Applies immediately",
   provider: "Switches the model now",
@@ -96,8 +96,8 @@ export default function RuntimeSettingsPanel() {
   return (
     <div className="space-y-4 pb-20">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">System settings</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <h3 className="text-lg font-semibold text-foreground">System settings</h3>
+        <p className="text-sm text-muted-foreground">
           Every server setting in one place. Saved values are stored on the server (keys encrypted) and override its .env.
         </p>
       </div>
@@ -114,7 +114,7 @@ export default function RuntimeSettingsPanel() {
         {!query && view.groups.map((name) => (
           <button
             key={name}
-            className={`px-3 py-1.5 text-xs rounded-full border ${group === name ? "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300" : "border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400"}`}
+            className={`px-3 py-1.5 text-xs rounded-full border ${group === name ? "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300" : "border-border text-muted-foreground"}`}
             aria-pressed={group === name}
             onClick={() => setGroup(name)}
           >
@@ -131,7 +131,7 @@ export default function RuntimeSettingsPanel() {
             <div key={item.key} className="card">
               <div className="flex flex-wrap items-start gap-2 justify-between">
                 <div className="min-w-0">
-                  <label htmlFor={inputId} className="font-medium text-sm text-gray-900 dark:text-gray-100">{item.label}</label>
+                  <label htmlFor={inputId} className="font-medium text-sm text-foreground">{item.label}</label>
                   <p className="text-2xs font-mono text-gray-400">{item.key}</p>
                 </div>
                 <div className="flex flex-wrap gap-1 text-2xs">
@@ -143,7 +143,7 @@ export default function RuntimeSettingsPanel() {
                   </span>
                 </div>
               </div>
-              {item.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.description}</p>}
+              {item.description && <p className="text-xs text-muted-foreground mt-1">{item.description}</p>}
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   {item.kind === "bool" ? (
@@ -179,7 +179,7 @@ export default function RuntimeSettingsPanel() {
                 </div>
                 {(item.source === "admin" || edited) && (
                   <button
-                    className="p-2 rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                    className="p-2 rounded-lg border border-border hover:bg-gray-100 dark:hover:bg-zinc-800"
                     title={item.source === "admin" ? "Use the server's own value" : "Undo"}
                     aria-label={`Reset ${item.label}`}
                     onClick={() => {
@@ -198,11 +198,11 @@ export default function RuntimeSettingsPanel() {
         })}
         {visible.length === 0 && <p className="text-sm text-gray-500">No settings match.</p>}
       </div>
-      <div className="sticky bottom-0 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/95 dark:bg-zinc-950/95 border-t border-gray-200 dark:border-zinc-800 flex flex-wrap items-center gap-2">
-        <span className="text-sm text-gray-600 dark:text-gray-400 mr-auto" role="status">
+      <div className="sticky bottom-0 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/95 dark:bg-zinc-950/95 border-t border-border flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground mr-auto" role="status">
           {error ? <span className="text-red-600">{error}</span> : notes.length ? notes.join(" ") : changeCount ? `${changeCount} unsaved change${changeCount > 1 ? "s" : ""}` : "No unsaved changes"}
         </span>
-        <button className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 disabled:opacity-40" disabled={!changeCount || saving} onClick={() => { setEdits({}); setFieldErrors({}); }}>
+        <button className="px-3 py-1.5 text-sm rounded-lg border border-border disabled:opacity-40" disabled={!changeCount || saving} onClick={() => { setEdits({}); setFieldErrors({}); }}>
           Discard
         </button>
         <button className="px-3 py-1.5 text-sm rounded-lg bg-amber-600 text-white disabled:opacity-40" disabled={!changeCount || saving} onClick={() => void save()}>

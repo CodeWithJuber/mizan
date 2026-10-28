@@ -1,6 +1,6 @@
 /**
- * Every page has a URL. Pages load on demand, so the first screen downloads
- * only the shell and the chat.
+ * Every page has a URL. Pages load on demand; the chat, which nearly every
+ * visit opens first, starts downloading as soon as the shell runs.
  */
 import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter, Link, Navigate, Outlet, useNavigate } from "react-router-dom";
@@ -14,10 +14,11 @@ import { SectionLayout } from "./SectionLayout";
 import { SettingsLayout } from "./SettingsLayout";
 import { PageFallback } from "./PageFallback";
 import { takeLegacyTab } from "./legacyTabs";
-import ChatPage from "../features/chat/ChatPage";
 import type { DeveloperTab } from "../pages/DeveloperPage";
 import type { SettingsSection } from "../pages/SettingsPage";
 
+const chatPage = import("../features/chat/ChatPage");
+const ChatPage = lazy(() => chatPage);
 const LoginPage = lazy(() => import("../pages/LoginPage"));
 const WelcomePage = lazy(() => import("../pages/WelcomePage"));
 const CodePage = lazy(() => import("../pages/code/CodePage"));

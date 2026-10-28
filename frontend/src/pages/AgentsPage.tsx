@@ -73,7 +73,7 @@ export default function AgentsPage() {
   return (
     <div className="page-wrapper">
       <PageHeader
-        title="Agents"
+        sub
         description="Your AI team. The selected agent answers in chat."
         actions={
           <Button

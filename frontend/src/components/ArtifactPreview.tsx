@@ -69,7 +69,7 @@ export function ArtifactPreview({
 
   if (view === "code") {
     return (
-      <pre className="rounded-b-xl border-t border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900/60 p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word max-h-[420px] overflow-auto text-gray-800 dark:text-gray-200">
+      <pre className="rounded-b-xl border-t border-border bg-gray-50 dark:bg-zinc-900/60 p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word max-h-[420px] overflow-auto text-foreground/90">
         {content}
       </pre>
     );
@@ -91,7 +91,7 @@ export function ArtifactPreview({
       title={title}
       sandbox="allow-scripts"
       srcDoc={doc}
-      className="w-full min-h-[380px] rounded-b-xl border-t border-gray-200 dark:border-zinc-700 bg-white"
+      className="w-full min-h-[380px] rounded-b-xl border-t border-border bg-white"
     />
   );
 }

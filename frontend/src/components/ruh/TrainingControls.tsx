@@ -70,7 +70,7 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Manual Training
         </h4>
         {running && (
@@ -81,13 +81,13 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
         )}
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
+      <p className="text-xs text-muted-foreground">
         Uses the prepared dataset on the server. Captured chat responses are
         separate review candidates. This run does not verify source authorship
         or automatically activate a new checkpoint.
       </p>
       {!running && (
-        <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <label className="flex items-start gap-2 text-xs text-foreground/75">
           <input
             type="checkbox"
             checked={generateSeedData}
@@ -105,14 +105,14 @@ export function TrainingControls({ api, running, ruhStatus, onStatusChange }: Tr
       {!running ? (
         <div className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label className="block text-xs text-muted-foreground mb-1">
               Stage
             </label>
             <select
               value={stage}
               onChange={(e) => setStage(e.target.value)}
               disabled={disabled || loading}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500/30 disabled:opacity-50"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-purple-500/30 disabled:opacity-50"
             >
               {STAGES.map((s) => (
                 <option key={s.value} value={s.value}>

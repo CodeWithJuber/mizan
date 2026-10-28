@@ -241,10 +241,10 @@ export default function WelcomePage({
               <div className="text-5xl font-arabic text-mizan-gold">
                 &#1605;&#1610;&#1586;&#1575;&#1606;
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-2xl font-bold text-foreground">
                 Welcome to MIZAN
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 Pehle login karo, phir setup karenge.
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500">
@@ -253,7 +253,7 @@ export default function WelcomePage({
             </div>
 
             <form
-              className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-6 space-y-4 text-left"
+              className="bg-card border border-border rounded-xl p-6 space-y-4 text-left"
               onSubmit={(e) => {
                 e.preventDefault();
                 handleLogin();
@@ -262,7 +262,7 @@ export default function WelcomePage({
               <div>
                 <label
                   htmlFor="welcome-username"
-                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                  className="block text-xs font-medium text-muted-foreground mb-1"
                 >
                   Username
                 </label>
@@ -272,7 +272,7 @@ export default function WelcomePage({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
+                  className="w-full px-4 py-2.5 border border-input rounded-lg bg-white dark:bg-zinc-800 text-foreground focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
                   placeholder="admin"
                   autoComplete="username"
                 />
@@ -280,7 +280,7 @@ export default function WelcomePage({
               <div>
                 <label
                   htmlFor="welcome-password"
-                  className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
+                  className="block text-xs font-medium text-muted-foreground mb-1"
                 >
                   Password
                 </label>
@@ -290,7 +290,7 @@ export default function WelcomePage({
                   onChange={setPassword}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
+                  className="w-full px-4 py-2.5 border border-input rounded-lg bg-white dark:bg-zinc-800 text-foreground focus:outline-none focus:ring-2 focus:ring-mizan-gold/50"
                 />
               </div>
               {loginError && (
@@ -306,7 +306,7 @@ export default function WelcomePage({
                 {loginLoading ? "Logging in..." : "Log in"}
               </button>
             </form>
-            <p className="text-xs text-gray-500 dark:text-gray-400 space-x-3">
+            <p className="text-xs text-muted-foreground space-x-3">
               <a href="/reliability" className="underline hover:text-mizan-gold">
                 Measured reliability
               </a>
@@ -325,25 +325,25 @@ export default function WelcomePage({
               <div className="text-5xl font-arabic text-mizan-gold">
                 &#1605;&#1610;&#1586;&#1575;&#1606;
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-3xl font-bold text-foreground">
                 Welcome to MIZAN
               </h1>
-              <p className="text-lg text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+              <p className="text-lg text-muted-foreground max-w-md mx-auto">
                 Your personal AI assistant that can chat, browse the web, run
                 code, and much more.
               </p>
             </div>
 
             {/* Connection status */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border shadow-sm">
               <div className={`w-2.5 h-2.5 rounded-full ${wsDot}`} />
-              <span className="text-sm text-gray-600 dark:text-gray-400">
+              <span className="text-sm text-muted-foreground">
                 {wsLabel}
               </span>
             </div>
 
             {wsStatus !== "connected" && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 Text chat uses a separate connection. Live notifications can
                 reconnect in the background.
               </p>
@@ -364,12 +364,12 @@ export default function WelcomePage({
         {step === "provider" && (
           <div className="space-y-6">
             <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h2 className="text-2xl font-bold text-foreground">
                 Choose Your AI Provider
               </h2>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 You need at least one AI provider. Add your key in{" "}
-                <span className="font-medium text-gray-900 dark:text-gray-100">
+                <span className="font-medium text-foreground">
                   Settings → AI Providers
                 </span>
                 .
@@ -394,16 +394,16 @@ export default function WelcomePage({
               {providers.map((p) => (
                 <div
                   key={p.id}
-                  className={`bg-white dark:bg-zinc-900 border rounded-xl p-4 transition ${
+                  className={`bg-card border rounded-xl p-4 transition ${
                     p.configured || healthResult[p.id]
                       ? "border-emerald-300 dark:border-emerald-500/30 ring-1 ring-emerald-200 dark:ring-emerald-500/20"
-                      : "border-gray-200 dark:border-zinc-800"
+                      : "border-border"
                   }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                        <h3 className="font-semibold text-foreground">
                           {p.name}
                         </h3>
                         {p.badge && (
@@ -417,7 +417,7 @@ export default function WelcomePage({
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {p.description}
                       </p>
                     </div>
@@ -433,7 +433,7 @@ export default function WelcomePage({
                       <button
                         onClick={() => testProvider(p.id)}
                         disabled={testing !== null}
-                        className="text-xs px-4 py-2.5 min-h-[44px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
+                        className="text-xs px-4 py-2.5 min-h-[44px] bg-muted hover:bg-gray-200 dark:hover:bg-zinc-700 text-foreground/80 rounded-lg transition disabled:opacity-50"
                       >
                         {testing === p.id ? "Testing..." : "Test key"}
                       </button>
@@ -452,7 +452,7 @@ export default function WelcomePage({
             <div className="flex justify-between items-center pt-4">
               <button
                 onClick={() => setStep("welcome")}
-                className="px-4 py-2 min-h-[44px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-sm transition"
+                className="px-4 py-2 min-h-[44px] text-muted-foreground hover:text-gray-700 dark:hover:text-gray-200 text-sm transition"
               >
                 Back
               </button>
@@ -465,7 +465,7 @@ export default function WelcomePage({
               </button>
             </div>
             {!anyConfigured && (
-              <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-center text-muted-foreground">
                 Add at least one provider key to continue.
               </p>
             )}
@@ -477,10 +477,10 @@ export default function WelcomePage({
           <div className="text-center space-y-8">
             <div className="space-y-3">
               <div className="text-5xl">&#10024;</div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h2 className="text-2xl font-bold text-foreground">
                 You're All Set!
               </h2>
-              <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+              <p className="text-muted-foreground max-w-md mx-auto">
                 Start chatting with your AI, explore the agents, or build
                 plugins to extend it.
               </p>
@@ -506,13 +506,13 @@ export default function WelcomePage({
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 text-center"
+                  className="bg-card border border-border rounded-xl p-4 text-center"
                 >
                   <div className="text-2xl mb-2">{item.icon}</div>
-                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  <div className="font-medium text-sm text-foreground">
                     {item.label}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     {item.desc}
                   </div>
                 </div>

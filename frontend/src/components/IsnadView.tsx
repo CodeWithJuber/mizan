@@ -54,7 +54,7 @@ export default function IsnadView({ isnad, compact = false }: { isnad: IsnadSumm
                 </span>
                 <span className="min-w-0">
                   <span
-                    className="block text-gray-700 dark:text-gray-300 break-words"
+                    className="block text-foreground/80 break-words"
                     dir={claim.kind === "quote" ? "auto" : undefined}
                   >
                     {claim.text}

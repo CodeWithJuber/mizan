@@ -23,7 +23,7 @@ export default function CodeArtifact({
   const { isDark } = useTheme();
 
   return (
-    <div className="rounded-b-xl overflow-hidden border-t border-gray-200 dark:border-zinc-700">
+    <div className="rounded-b-xl overflow-hidden border-t border-border">
       <SandpackProvider
         template={template}
         files={files}
@@ -42,7 +42,7 @@ export default function CodeArtifact({
                 closableTabs={false}
               />
               {view === "preview" && !runnable && (
-                <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-zinc-800/50">
+                <div className="px-3 py-2 text-[11px] text-muted-foreground bg-muted/50">
                   Live preview is only available for JavaScript/TypeScript/HTML
                   {lang ? ` — "${lang}"` : ""} shows as read-only code.
                 </div>

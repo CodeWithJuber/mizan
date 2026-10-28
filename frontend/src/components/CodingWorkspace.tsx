@@ -70,9 +70,9 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 const button =
-  "px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1";
+  "px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1";
 const field =
-  "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm focus-ring";
+  "w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus-ring";
 const isImage = (path: string) => /\.(png|jpe?g|webp|gif)$/i.test(path);
 
 export function CodingWorkspace({
@@ -143,8 +143,8 @@ export function CodingWorkspace({
   }, []);
   const refresh = useCallback(async () => {
     const data = await api<{ workspaces: Workspace[]; capabilities: Capabilities }>("");
-    setWorkspaces(data.workspaces);
-    setCapabilities(data.capabilities);
+    setWorkspaces(data.workspaces ?? []);
+    setCapabilities(data.capabilities ?? null);
   }, []);
   useEffect(() => {
     void refresh().catch((e) => setError(e.message));
@@ -401,16 +401,16 @@ export function CodingWorkspace({
         </div>
       ) : (
         <div className={`flex-1 min-h-0 grid grid-cols-1 auto-rows-max lg:grid-rows-[minmax(0,1fr)] overflow-auto lg:overflow-hidden ${showPreview ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,0.9fr)]" : "lg:grid-cols-[220px_minmax(0,1fr)]"}`}>
-          <aside className="border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-zinc-800 lg:overflow-auto max-h-56 lg:max-h-none overflow-auto">
+          <aside className="border-b lg:border-b-0 lg:border-r border-border lg:overflow-auto max-h-56 lg:max-h-none overflow-auto">
             <FileTree entries={entries} selected={path} disabled={Boolean(busy)} onOpen={openFile} onCreate={create} onRename={rename} onDelete={remove} />
           </aside>
           <div className="min-w-0 min-h-0 flex flex-col">
-            <div className="flex items-center border-b border-gray-100 dark:border-zinc-800 overflow-x-auto">
+            <div className="flex items-center border-b border-border/60 overflow-x-auto">
               {tabs.map((tab) => {
                 const buffer = buffers[tab];
                 const changed = buffer && !buffer.image && buffer.content !== buffer.original;
                 return (
-                  <div key={tab} className={`flex items-center gap-1 pl-3 pr-1 py-1.5 text-xs font-mono border-r border-gray-100 dark:border-zinc-800 whitespace-nowrap ${tab === path ? "bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-zinc-100" : "text-gray-500"}`}>
+                  <div key={tab} className={`flex items-center gap-1 pl-3 pr-1 py-1.5 text-xs font-mono border-r border-border/60 whitespace-nowrap ${tab === path ? "bg-muted/50 text-gray-900 dark:text-zinc-100" : "text-gray-500"}`}>
                     <button type="button" onClick={() => setPath(tab)} title={tab}>{tab.split("/").pop()}{changed ? " ●" : ""}</button>
                     <button type="button" className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-zinc-800" aria-label={`Close ${tab}`} onClick={() => closeTab(tab)}>
                       <X className="w-3 h-3" />
@@ -445,10 +445,10 @@ export function CodingWorkspace({
                 <div className="h-full flex items-center justify-center text-sm text-gray-400 p-6">Select a file to edit, or ask the agent to build something.</div>
               )}
             </div>
-            <div className={`border-t border-gray-200 dark:border-zinc-800 overflow-auto ${panel === "sandbox" ? "lg:max-h-[60%]" : "lg:max-h-[40%]"}`}>
+            <div className={`border-t border-border overflow-auto ${panel === "sandbox" ? "lg:max-h-[60%]" : "lg:max-h-[40%]"}`}>
               <div className="flex items-center gap-1 px-3 pt-2">
                 {(["run", "sandbox", "changes"] as const).map((value) => (
-                  <button key={value} className={`px-3 py-1 text-xs rounded-md ${panel === value ? "bg-gray-100 dark:bg-zinc-800 font-semibold" : "text-gray-500"}`} onClick={() => setPanel(value)}>
+                  <button key={value} className={`px-3 py-1 text-xs rounded-md ${panel === value ? "bg-muted font-semibold" : "text-gray-500"}`} onClick={() => setPanel(value)}>
                     {value === "run" ? "Command" : value === "sandbox" ? `Sandbox${sandbox?.running ? " ●" : ""}` : "Changes"}
                   </button>
                 ))}
@@ -576,15 +576,15 @@ export function CodingWorkspace({
             </div>
           </div>
           {showPreview && (
-            <div className="min-w-0 min-h-[320px] border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-zinc-800 flex flex-col">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-zinc-800">
+            <div className="min-w-0 min-h-[320px] border-t lg:border-t-0 lg:border-l border-border flex flex-col">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
                 <span className="text-xs font-semibold mr-auto">
                   Preview{previewMode === "server" ? " · sandbox server" : preview?.kind === "web" ? ` · ${preview.template}` : preview?.kind === "python" ? " · Python" : ""}
                 </span>
                 {serverPreview && (
-                  <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden text-xs" role="group" aria-label="Preview source">
+                  <div className="flex rounded-md border border-border overflow-hidden text-xs" role="group" aria-label="Preview source">
                     {(["browser", "server"] as const).map((mode) => (
-                      <button key={mode} className={`px-2 py-0.5 ${previewMode === mode ? "bg-gray-100 dark:bg-zinc-800 font-semibold" : "text-gray-500"}`} aria-pressed={previewMode === mode} onClick={() => setPreviewMode(mode)}>
+                      <button key={mode} className={`px-2 py-0.5 ${previewMode === mode ? "bg-muted font-semibold" : "text-gray-500"}`} aria-pressed={previewMode === mode} onClick={() => setPreviewMode(mode)}>
                         {mode === "browser" ? "Browser" : "Server"}
                       </button>
                     ))}

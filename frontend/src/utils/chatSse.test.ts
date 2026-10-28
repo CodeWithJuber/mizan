@@ -1,5 +1,4 @@
 import { SseDecoder, consumeChatStream } from "./chatSse.ts";
-declare const process: { exit(code: number): void };
 let checks = 0;
 function check(name: string, ok: boolean) {
   if (!ok) throw new Error(name);

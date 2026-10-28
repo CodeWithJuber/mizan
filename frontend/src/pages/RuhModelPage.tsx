@@ -240,7 +240,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border">
         <div>
           <h2 className="page-title">Ruh Model</h2>
           <p className="page-description">
@@ -249,7 +249,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
         </div>
         <div className="flex items-center gap-2">
           {/* WS indicator */}
-          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span
               className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500" : "bg-gray-400"}`}
               title={
@@ -261,7 +261,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
           <button
             onClick={refreshAll}
             disabled={refreshing}
-            className="text-xs px-3 py-1.5 min-h-[36px] rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+            className="text-xs px-3 py-1.5 min-h-[36px] rounded-lg bg-muted text-muted-foreground hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
             {refreshing && (
               <svg
@@ -294,7 +294,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
       </div>
 
       {/* Sub-tab bar */}
-      <div className="flex gap-1 px-4 sm:px-5 pt-2 pb-0 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto -webkit-overflow-scrolling-touch">
+      <div className="flex gap-1 px-4 sm:px-5 pt-2 pb-0 border-b border-border bg-card overflow-x-auto -webkit-overflow-scrolling-touch">
         {SUB_TABS.map((t) => (
           <button
             key={t.id}
@@ -302,7 +302,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
             className={`px-3 py-2 text-xs font-medium rounded-t-lg transition-colors relative whitespace-nowrap shrink-0 min-h-[44px] ${
               tab === t.id
                 ? "text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+                : "text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
             }`}
           >
             {t.label}
@@ -322,14 +322,14 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
             {/* Model status bar */}
             <div className="card">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <h3 className="text-sm font-semibold text-foreground">
                   Model Status
                 </h3>
                 <span
                   className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-full ${
                     ruhStatus?.enabled
                       ? "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                      : "bg-gray-100 dark:bg-zinc-700/30 text-gray-500 dark:text-gray-400"
+                      : "bg-gray-100 dark:bg-zinc-700/30 text-muted-foreground"
                   }`}
                 >
                   <span
@@ -356,10 +356,10 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 text-center border border-gray-100 dark:border-zinc-700/50"
+                    className="bg-muted/50 rounded-lg p-3 text-center border border-border/60"
                   >
                     <div
-                      className="text-sm font-mono text-gray-900 dark:text-gray-100 truncate"
+                      className="text-sm font-mono text-foreground truncate"
                       title={String(item.value)}
                     >
                       {item.value}
@@ -370,7 +370,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                   </div>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+              <p className="mt-3 text-xs text-muted-foreground">
                 Chat response models: {ruhStatus?.active_chat_models?.join(", ") || "Unavailable"}.
                 {" "}Checkpoint present: {ruhStatus ? (ruhStatus.checkpoint_exists ? "Yes" : "No") : "Unknown"}.
                 {" "}Remote endpoint configured: {ruhStatus ? (ruhStatus.remote_configured ? "Yes — liveness not verified" : "No") : "Unknown"}.
@@ -433,7 +433,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
             {metrics?.running && (
               <div className="card">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <span className="text-xs font-medium text-foreground/75">
                     Training:{" "}
                     <span className="text-purple-600 dark:text-purple-400">
                       {metrics.stage}
@@ -464,7 +464,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
             {/* Training controls + loss curve side by side */}
             {metrics?.data_source && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Run data: {metrics.data_source === "generated_seed_examples"
                   ? "Includes generated seed examples"
                   : "Supplied data — source provenance has not been verified"}
@@ -482,10 +482,10 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
 
             {/* Generation playground */}
             <div className="card space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-sm font-semibold text-foreground">
                 Generation Playground
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Generate text using the configured Ruh provider. A configured remote endpoint takes priority.
                 {!ruhStatus?.enabled && " (Requires RUH_ENABLED=true)"}
               </p>
@@ -494,10 +494,10 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                 onChange={(e) => setGeneratePrompt(e.target.value)}
                 placeholder="Enter a prompt..."
                 rows={3}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 resize-none"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card text-foreground placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 resize-none"
               />
               <div className="flex flex-wrap items-end gap-3 sm:gap-4">
-                <label className="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   <span>
                     Max tokens{" "}
                     <span className="opacity-70">
@@ -510,10 +510,10 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                     onChange={(e) => setMaxTokens(Number(e.target.value))}
                     min={1}
                     max={2048}
-                    className="w-20 px-2 py-1.5 min-h-[44px] text-xs rounded border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100"
+                    className="w-20 px-2 py-1.5 min-h-[44px] text-xs rounded border border-border bg-card text-foreground"
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   <span>
                     Temperature{" "}
                     <span className="opacity-70">
@@ -527,7 +527,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                     min={0}
                     max={2}
                     step={0.1}
-                    className="w-20 px-2 py-1.5 min-h-[44px] text-xs rounded border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100"
+                    className="w-20 px-2 py-1.5 min-h-[44px] text-xs rounded border border-border bg-card text-foreground"
                   />
                 </label>
                 <button
@@ -550,8 +550,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
               )}
               {generateResult && (
                 <div className="space-y-2">
-                  <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 border border-gray-100 dark:border-zinc-700/50">
-                    <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+                  <div className="bg-muted/50 rounded-lg p-3 border border-border/60">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
                       {generateResult.text}
                     </p>
                   </div>
@@ -594,11 +594,11 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
             {/* Learner stats */}
             {learnerStats && (
               <div className="card">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                <h3 className="text-sm font-semibold text-foreground mb-3">
                   Learner Pipeline
                 </h3>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 text-center border border-gray-100 dark:border-zinc-700/50">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center border border-border/60">
                     <div className="text-lg font-mono font-semibold text-blue-600 dark:text-blue-400">
                       {(learnerStats.total_interactions ?? 0).toLocaleString()}
                     </div>
@@ -606,7 +606,7 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                       Total Interactions
                     </div>
                   </div>
-                  <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 text-center border border-gray-100 dark:border-zinc-700/50">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center border border-border/60">
                     <div className="text-lg font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                       {(learnerStats.exportable_count ?? 0).toLocaleString()}
                     </div>
@@ -614,8 +614,8 @@ export default function RuhModelPage({ api }: { api: ApiClient }) {
                       Reviewed Candidates
                     </div>
                   </div>
-                  <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 text-center border border-gray-100 dark:border-zinc-700/50">
-                    <div className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center border border-border/60">
+                    <div className="text-sm font-mono text-foreground/75 truncate">
                       {learnerStats.last_export ?? "Not tracked"}
                     </div>
                     <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
