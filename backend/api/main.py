@@ -366,6 +366,12 @@ async def lifespan(app: FastAPI):
         else None
     )
 
+    # Iqtibas reads the Quran's texts (fetched once, as Fihris fetches them) so a
+    # message that quotes the Quran is recognised from the first chat; best effort.
+    from tadbir import iqtibas
+
+    iqtibas_task = asyncio.create_task(iqtibas.warm()) if iqtibas.enabled() else None
+
     async def self_review() -> None:
         # Muhasaba: MIZAN re-checks the answers the model gave in words and
         # posts a correction where it can prove one wrong.
@@ -478,6 +484,8 @@ async def lifespan(app: FastAPI):
     await connector_manager.shutdown()
     if model_limits_task is not None:
         model_limits_task.cancel()
+    if iqtibas_task is not None:
+        iqtibas_task.cancel()
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
     self_review_task.cancel()

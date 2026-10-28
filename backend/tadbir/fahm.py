@@ -26,7 +26,20 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
 
-from . import amanah, calc, hadith, lughah, project, qasd, qiyas, quran, silsila, waqt
+from . import (
+    amanah,
+    calc,
+    hadith,
+    iqtibas,
+    lughah,
+    project,
+    qasd,
+    qiyas,
+    quran,
+    silsila,
+    trace,
+    waqt,
+)
 
 
 @dataclass
@@ -525,6 +538,11 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
     earlier = qasd.earlier_messages(history)
     project = bool(_selected_project())
     ranked = qasd.ranked(message, project=project, overlay=overlay, earlier=earlier)
+    # Words the Quran's texts hold, and that ordinary speech would not say,
+    # are evidence of a Quran request that Qasd's letters cannot see (Iqtibas).
+    ranked, quote = iqtibas.weigh(ranked, message)
+    if quote:
+        trace.event("understand", "iqtibas", **quote)
     # MAP first over families of recipes (a request to make something is one
     # family whether it builds or edits), conversation, and "an action MIZAN
     # could not build from these words" (the mass of the families that failed;
@@ -580,7 +598,12 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
         "converse",
         language,
         0.0,
-        {"posterior": dict(ranked[:3]), "mappable": mappable, "conversation": conversation},
+        {
+            "posterior": dict(ranked[:3]),
+            "mappable": mappable,
+            "conversation": conversation,
+            **({"quote": quote} if quote else {}),
+        },
     )
 
 

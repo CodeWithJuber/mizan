@@ -110,6 +110,12 @@ SETTINGS: tuple[Setting, ...] = (
             "operator, sent in MIZAN's User-Agent as their policies ask, for example an "
             "email address. Empty sends only the project's address.",
             ""),
+    Setting("MIZAN_IQTIBAS", "Model", "Quran quotes (Iqtibas)", "choice",
+            "A message that is the Quran's own words (\"light upon light\") counts as a "
+            "request to find the ayah, weighed by how unusual those words are in ordinary "
+            "speech, so greetings and dhikr stay conversation. Reads the Quran texts Fihris "
+            "downloads.",
+            "on", ("on", "off")),
     Setting("MIZAN_AMANAH", "Model", "Injection check (Amanah)", "choice",
             "Outside text (pages, files, tool results, pasted text) is checked for "
             "instructions aimed at the AI. evidence adds a model trained on licensed "

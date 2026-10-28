@@ -43,6 +43,7 @@ All notable changes to this project will be documented in this file.
   - Lisan may map wording to `quran_search` over the user's own words, and a Quran surah Lisan names that the user did not write is refused.
 
   Ta'lim's gate kept the batch (P(worse) = 0.61). The leave-one-out loss on the seeds both fits share fell from 1.0045 to 0.9907.
+- Iqtibas: a message that is the Quran's own words reaches MIZAN's Quran search. The evidence is how much likelier the span is drawn from the Quran than said in ordinary speech, times the share of the message it is, as a Bayes factor on the Quran family. b is fitted by leave-one-out on the seeds and a calibration set of quotes against Quranic formulas said in conversation. "light upon light" is now searched; salam, dhikr and "peace be upon you" stay conversation. `MIZAN_IQTIBAS`.
 - Bayan morphology (`ruh_model/tokenizer/morphology.py`, vendored into `packages/bayan`, prepared as 0.2.0):
   - ك, ب, ل, ف or و at the start of a word stays a root letter when only that reading gives a root the lexicon knows (كتاب → كتب, not تاب);
   - a stem after ال, ب or ك is never read as a verb (العلم is `NOUN`, not `VERB_PAST`).

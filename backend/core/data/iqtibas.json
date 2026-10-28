@@ -1,0 +1,17 @@
+{
+ "b": 0.04077458784494235,
+ "seeds_sha256": "88891d018d731c3eea524b372e99bc834ce31d883275a64073158a04128bd2d5",
+ "editions_sha256": "8c0268ceda717cdb95e6223a8bbe091114666c1b5f7fb338644825c850975891",
+ "loo_loss_before": 1.006583,
+ "loo_loss_after": 0.994568,
+ "seed_accuracy_before": 0.7036,
+ "seed_accuracy_after": 0.7048,
+ "calibration_accuracy_before": 0.557692,
+ "calibration_accuracy_after": 0.692308,
+ "p_worse": 0.191,
+ "auc": 0.7524,
+ "seeds_with_a_span": 2213,
+ "seeds": 2500,
+ "calibration_sha256": "88a892285cdd914b71bc8cb6b95399aa6ab6c214bddb13dea810816eae26f486",
+ "calibration": 52
+}

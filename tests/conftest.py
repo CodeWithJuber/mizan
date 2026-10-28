@@ -31,6 +31,7 @@ def isolated_provider_mode(monkeypatch):
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
     monkeypatch.setenv("MIZAN_LOCKED_EVAL", "off")  # tests never download the locked eval
     monkeypatch.setenv("MIZAN_HADITH_INDEX", "off")  # nor the six books' text
+    monkeypatch.setenv("MIZAN_IQTIBAS", "off")  # nor read the Quran's texts for quotes
 
 
 @pytest.fixture
