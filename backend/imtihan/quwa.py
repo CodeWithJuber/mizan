@@ -26,12 +26,21 @@ Quwa does that with the Imtihan's own items:
 
 The panel's answers are kept in ``$MIZAN_DATA_DIR/imtihan/panel.db`` under the
 pseudonym the administrator gives each person; nothing else about them.
+
+People can also answer on their own: the administrator makes an invite link
+(``/panel/<code>``, a 128-bit code kept only as its SHA-256, bound to one
+pseudonym, expiring), and the person answers there with no account. Such an
+answer is final: the first one given for an item is kept, and no verdict is
+shown, so an item cannot be retried until it passes.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import secrets
 import sqlite3
 import statistics
 import time
@@ -235,6 +244,10 @@ def _db() -> sqlite3.Connection:
         "CREATE TABLE IF NOT EXISTS answers (person TEXT, task_id TEXT, answer TEXT, "
         "pass INTEGER, detail TEXT, by TEXT, created REAL, PRIMARY KEY (person, task_id))"
     )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS invites (id TEXT PRIMARY KEY, digest TEXT UNIQUE, "
+        "person TEXT, by TEXT, created REAL, expires REAL, revoked INTEGER DEFAULT 0)"
+    )
     return connection
 
 
@@ -254,17 +267,19 @@ def panel_tasks() -> list[dict]:
     ]
 
 
-async def record(person: str, answers: dict[str, str], by: str) -> list[dict]:
-    """Scores a person's answers by the items' own rules and keeps them."""
+async def record(person: str, answers: dict[str, str], by: str, final: bool = False) -> list[dict]:
+    """Scores a person's answers by the items' own rules and keeps them. With
+    ``final`` an item already answered keeps its first answer."""
     import asyncio
 
     from . import runner
 
     known = {task["id"]: task for task in runner.load_tasks() if answerable(task)}
+    given = set(panel().get(person, {})) if final else set()
     scored: list[dict] = []
     for task_id, answer in answers.items():
         task = known.get(task_id)
-        if task is None:
+        if task is None or task_id in given:
             continue
         authentic = (
             await runner.authentic_text(task["score"])
@@ -337,6 +352,84 @@ def people() -> list[dict]:
 def forget(person: str) -> int:
     with _db() as connection:
         return connection.execute("DELETE FROM answers WHERE person = ?", (person,)).rowcount
+
+
+# ── invite links: people answer on their own ─────────────────────────────
+
+INVITE_DAYS = 14  # declared: how long a link may be used unless the administrator says
+PSEUDONYM = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+_CODE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+
+def _digest(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def invite(person: str | None, by: str, days: float = INVITE_DAYS) -> dict:
+    """A new link for one person. The code is returned once and kept only as its
+    SHA-256; without a pseudonym one is made (``p-`` and six hex digits)."""
+    if person is not None and not PSEUDONYM.match(person):
+        raise ValueError("A pseudonym is letters, digits and -_. only")
+    code = secrets.token_urlsafe(16)  # 128 bits
+    entry = {
+        "id": secrets.token_hex(6),
+        "person": person or f"p-{secrets.token_hex(3)}",
+        "created": time.time(),
+        "expires": time.time() + days * 86400,
+    }
+    with _db() as connection:
+        connection.execute(
+            "INSERT INTO invites (id, digest, person, by, created, expires) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (entry["id"], _digest(code), entry["person"], by, entry["created"], entry["expires"]),
+        )
+    return {**entry, "code": code}
+
+
+def invited(code: str) -> dict | None:
+    """The invite a code opens, while it is neither expired nor revoked."""
+    if not _CODE.match(code or ""):
+        return None
+    with _db() as connection:
+        row = connection.execute(
+            "SELECT id, person, expires FROM invites WHERE digest = ? AND revoked = 0",
+            (_digest(code),),
+        ).fetchone()
+    if row is None or row[2] < time.time():
+        return None
+    return {"id": row[0], "person": row[1], "expires": row[2]}
+
+
+def invites() -> list[dict]:
+    answered = {person: len(items) for person, items in panel().items()}
+    with _db() as connection:
+        rows = connection.execute(
+            "SELECT id, person, created, expires, revoked FROM invites ORDER BY created DESC"
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "person": row[1],
+            "created": row[2],
+            "expires": row[3],
+            "active": not row[4] and row[3] >= time.time(),
+            "answered": answered.get(row[1], 0),
+        }
+        for row in rows
+    ]
+
+
+def revoke(invite_id: str) -> bool:
+    with _db() as connection:
+        changed = connection.execute(
+            "UPDATE invites SET revoked = 1 WHERE id = ?", (invite_id,)
+        ).rowcount
+    return bool(changed)
+
+
+def answered_by(person: str) -> list[str]:
+    """The items a person has answered (no verdicts)."""
+    return sorted(panel().get(person, {}))
 
 
 def with_panel(run: dict) -> dict:

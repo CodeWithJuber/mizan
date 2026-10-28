@@ -1,4 +1,4 @@
-import { agenticRows, blockRows, categoryRows, facultyPoints, gameRows, historyPoints, patternText, plainArms, intervalText, pct, percentileText, signed, taskRows, type FacultyEntry, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
+import { agenticRows, blockRows, categoryRows, facultyPoints, gameRows, historyPoints, inviteCode, patternText, plainArms, intervalText, pct, percentileText, signed, taskRows, type FacultyEntry, type Report, type ResultRow, type RunSummary } from "./imtihan.ts";
 
 let checks = 0;
 function check(name: string, condition: boolean) {
@@ -100,5 +100,8 @@ check(
   percentileText({ people: 10, percentile: 0.6, interval: [0.31, 0.83], level: "competent" }) ===
     "outperforms 60% of 10 (95% interval 31–83%), Competent",
 );
+
+check("invite code read from its link", inviteCode("/panel/AbC_123-xyzAbC_123-x/") === "AbC_123-xyzAbC_123-x");
+check("no invite code elsewhere", inviteCode("/panel/short") === null && inviteCode("/reliability") === null);
 
 console.log(`imtihan: ${checks} checks passed`);

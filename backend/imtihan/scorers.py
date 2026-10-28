@@ -53,13 +53,17 @@ QUOTE_ORDER = ["missing", "differs", "close", "excerpt", "matches"]
 
 _QUOTES = str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"'})
 _FRACTION = re.compile(r"\\d?frac\{\s*([^{}]+?)\s*\}\{\s*([^{}]+?)\s*\}")
+# CommonMark lets any ASCII punctuation be escaped with a backslash: "n\*z\*m" reads as n*z*m.
+_ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
 # Hindi and Urdu negations ("cannot", "is not") count as declining or admitting.
 _NEGATION = re.compile("नहीं|نہیں")
 
 
 def plain(text: str) -> str:
-    """Lower case, Western digits, straight quotes and LaTeX fractions as a/b."""
+    """The answer as a reader sees it: lower case, Western digits, straight quotes,
+    LaTeX fractions as a/b and Markdown escapes removed."""
     text = _FRACTION.sub(r"\1/\2", (text or "").translate(_QUOTES))
+    text = _ESCAPED.sub(r"\1", text)
     return text.translate(muqabala._DIGITS).lower()
 
 

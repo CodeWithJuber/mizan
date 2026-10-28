@@ -4,21 +4,25 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { installStaleBuildReload } from './utils/staleBuild'
 import { registerWorker } from './utils/push'
+import { inviteCode } from './utils/imtihan.ts'
 import './index.css'
 
 installStaleBuildReload()
 // Notifications-only service worker (caches nothing); harmless where unsupported.
 registerWorker().catch(() => undefined)
 
-// The public reliability page needs no sign-in and none of the app around it.
+// The public reliability page and an invited person's human-panel page need no
+// sign-in and none of the app around them.
 const ReliabilityPage = lazy(() => import('./pages/ReliabilityPage'))
-const isPublicPage = window.location.pathname.replace(/\/+$/, '') === '/reliability'
+const PanelInvitePage = lazy(() => import('./pages/PanelInvitePage'))
+const path = window.location.pathname.replace(/\/+$/, '')
+const PublicPage = path === '/reliability' ? ReliabilityPage : inviteCode(path) ? PanelInvitePage : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isPublicPage ? (
+    {PublicPage ? (
       <Suspense fallback={null}>
-        <ReliabilityPage />
+        <PublicPage />
       </Suspense>
     ) : (
       <BrowserRouter>
