@@ -59,6 +59,7 @@ from . import (
     taallum,
     tajdid,
     tajriba,
+    tathabbut,
     trace,
     waqt,
     wazn,
@@ -898,6 +899,13 @@ class Tadbir:
                 tajriba.credit(store, owner, known, _ran_clean(run))
         # A program that was only compiled is not verified: it never ran.
         verified = run.get("exit_code") == 0 and not run.get("error") and toolkit is None
+        checked: bool | None = None
+        other = ""
+        if verified:
+            # Running cleanly says the code works, not that it read the request
+            # right: an independent derivation must agree (Tathabbut).
+            checked, run, code, other = await self._tathabbut(request, task, language, code, run)
+            verified = checked is not False
         if verified and failing is not None:
             # Rewrite the failed attempt into a verified lesson (Terminal-RSI's self-rewrite).
             lesson = tajriba.learn(store, owner, "build_and_run", request, *failing, code)
@@ -911,10 +919,62 @@ class Tadbir:
             parts.append(phrase("gui_checked", u.language, toolkit=toolkit))
         if tries > 1 and verified:
             parts.append(f"_{phrase('repaired', u.language, tries=tries)}_")
+        if checked is True:
+            parts.append(f"_{phrase('tathabbut_agreed', u.language)}_")
+        elif checked is False:
+            parts.append(f"_{phrase('tathabbut_disagrees', u.language, other=other)}_")
         if verified:
-            hifz.keep(store, owner, task, language, code, str(run.get("stdout", "")))
+            hifz.keep(
+                store,
+                owner,
+                task,
+                language,
+                code,
+                str(run.get("stdout", "")),
+                checked=bool(checked),
+            )
             trace.event("learn", "hifz", kept=True, language=language)
-        return Outcome("\n\n".join(parts), verified, {"run": _run_facts(run), "attempts": tries})
+        facts = {"run": _run_facts(run), "attempts": tries}
+        if checked is not None:
+            facts["cross_check"] = {"agreed": checked, "other": other}
+        return Outcome("\n\n".join(parts), verified, facts)
+
+    async def _tathabbut(
+        self, request: str, task: str, language: str, code: str, run: dict
+    ) -> tuple[bool | None, dict, str, str]:
+        """An independent program for the same request must print the numbers
+        this one printed (N-version programming). On disagreement the first
+        program is repaired once with what the second printed. Returns whether
+        they agreed (None: nothing to compare), the run and code kept, and what
+        the independent program printed."""
+        printed = str(run.get("stdout", ""))
+        if not tathabbut.applies(printed):
+            return None, run, code, ""
+        try:
+            second = await self.lisan.cross_check(request, language)
+        except LisanUnavailable:
+            return None, run, code, ""
+        check = await self._run(second, language) if second.strip() else {}
+        said = str(check.get("stdout", "")).strip()
+        agreed = tathabbut.agree(printed, said) if _ran_clean(check) else None
+        trace.event("verify", "tathabbut", agreed=agreed)
+        if agreed is not False:
+            return agreed, run, code, said[:200]
+        error = (
+            f"The program ran, but an independent program written for the same request "
+            f"printed:\n{said[:500]}\nwhile this one printed:\n{printed.strip()[:500]}\n"
+            "One of them misreads the request (a starting value, an index, an inclusive or "
+            "exclusive bound). Re-read the request and return the corrected program."
+        )
+        try:
+            fixed = await self.lisan.fix_code(task, language, code, error, attempt=1)
+        except LisanUnavailable:
+            return False, run, code, said[:200]
+        rerun, _toolkit = await self._run_or_check(fixed, language)
+        if _ran_clean(rerun) and tathabbut.agree(str(rerun.get("stdout", "")), said):
+            trace.event("verify", "tathabbut", agreed=True, repaired=True)
+            return True, rerun, fixed, said[:200]
+        return False, run, code, said[:200]
 
     async def _reuse_program(
         self, u: fahm.Understanding, kept: dict, store: Any, owner: str
@@ -937,6 +997,24 @@ class Tadbir:
             and not run.get("error")
             and hifz.matches(kept, str(run.get("stdout", "")))
         )
+        if worked and not kept.get("checked") and tathabbut.applies(str(run.get("stdout", ""))):
+            # Kept before Tathabbut: an independent program must agree once.
+            try:
+                second = await self.lisan.cross_check(" ".join(kept["tokens"]), language)
+            except LisanUnavailable:
+                second = ""
+            check = await self._run(second, language) if second.strip() else {}
+            agreed = (
+                tathabbut.agree(str(run.get("stdout", "")), str(check.get("stdout", "")))
+                if _ran_clean(check)
+                else None
+            )
+            trace.event("verify", "tathabbut", agreed=agreed, kept=True)
+            if agreed is False:
+                hifz.drop(store, owner, kept)
+                return None  # it answered another question: Lisan writes a new one
+            if agreed:
+                hifz.mark_checked(store, owner, kept)
         reliability = hifz.record(store, owner, kept, worked)
         trace.event("learn", "hifz", reused=True, worked=worked, reliability=reliability)
         if not worked:

@@ -137,14 +137,16 @@ def models() -> dict[str, list[str]]:
     return found
 
 
-def _model(name: str) -> tuple[Callable, Callable[[], list[tuple[str, ...]]], Callable]:
+def _model(
+    name: str,
+) -> tuple[Callable[..., Any], Callable[[], Sequence[tuple[str, ...]]], Callable[..., Any]]:
     """(featurize, current corpus, shape of new rows) for a model."""
     from . import lughah, qasd
 
     if name == "qasd":
 
         def shape(examples: list[tuple[str, str]], batch: str) -> list[tuple[str, ...]]:
-            return qasd.shaped(examples, batch)
+            return list(qasd.shaped(examples, batch))
 
         return qasd._features, qasd.examples, shape
     if name.startswith("qasd."):

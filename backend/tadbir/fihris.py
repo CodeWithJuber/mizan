@@ -276,7 +276,7 @@ class Index:
             self.views[name].words[word] for name in SCRIPT_VIEWS["latin"] if name in self.views
         ):
             return 0.0
-        return self.english.posterior(word).get("en", 0.0)
+        return float(self.english.posterior(word).get("en", 0.0))
 
     def _matched(
         self, doc: int, weighted: dict[str, dict[str, float]], used: dict[str, set[str]]
@@ -373,7 +373,7 @@ def build(editions: dict[str, list[tuple[int, int, str]]]) -> Index:
 
 
 def _letters(word: str) -> Counter[str]:
-    return char_ngrams(f"^{word}$", (2, 3, 4))
+    return Counter(char_ngrams(f"^{word}$", (2, 3, 4)))
 
 
 def _english(views: dict[str, View]) -> Tamyiz | None:

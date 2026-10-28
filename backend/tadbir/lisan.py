@@ -57,6 +57,14 @@ INSTRUCTIONS = {
         "input, must print its results, and must use only the standard library. Reply "
         "with exactly one fenced code block and nothing else."
     ),
+    "cross_check": (
+        "Write one complete {language} program that computes what the request asks by a "
+        "different method than the most direct one (a closed form, a brute force over the "
+        "definition, or another kind of loop). Read every bound, index and starting value "
+        "exactly as the request states it. Print only the final result, nothing else. It "
+        "must not read input and must use only the standard library. Reply with exactly "
+        "one fenced code block and nothing else."
+    ),
     "fix_code": (
         "MIZAN ran this {language} program in its sandbox and it failed. Return the "
         "corrected complete program for the same request, standard library only, as "
@@ -228,6 +236,13 @@ class Lisan:
         reply = await self.ask(
             system, f"{request}\n\n{lessons}" if lessons else request, task="write_code"
         )
+        return extract_code(reply)
+
+    async def cross_check(self, request: str, language: str) -> str:
+        """A second program for the same request, written without seeing the
+        first, so the two derivations share no code (Tathabbut)."""
+        system = self._instruction("cross_check", INSTRUCTIONS["cross_check"], language=language)
+        reply = await self.ask(system, request, task="cross_check")
         return extract_code(reply)
 
     async def fix_code(

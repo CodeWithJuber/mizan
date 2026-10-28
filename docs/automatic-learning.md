@@ -14,7 +14,7 @@ MIZAN learns from its own verified work, automatically and per user. No chat tra
 
 ## Hifz: programs kept and re-checked
 
-When a program Lisan wrote runs cleanly in the sandbox, MIZAN keeps it with its output, for you only. A later request is matched by:
+When a program Lisan wrote runs cleanly in the sandbox, and an independent check agrees with it (Tathabbut, below), MIZAN keeps it with its output, for you only. A later request is matched by:
 
 - 80% of its content words
 - exactly the same numbers ("10 Fibonacci numbers" is not "20")
@@ -26,6 +26,16 @@ A matching request re-runs the kept program. Every reuse is a regression check: 
 - **Time- or randomness-dependent programs:** they retire themselves the first time their output differs.
 
 You can see and forget your kept programs in **Majlis → Learning** (`GET/DELETE /api/tadbir/programs`).
+
+### Tathabbut: an independent derivation must agree
+
+Running cleanly says a program works, not that it read the request right: in the 27 October API benchmark, "the 30th Fibonacci number, F1 = F2 = 1" printed F29 (514229), exited 0 and was kept as verified. So when a program prints numbers (`backend/tadbir/tathabbut.py`):
+
+1. Lisan writes a second program for the same request by a different method, **without seeing the first** (`Lisan.cross_check`), and MIZAN runs it.
+2. **Agreement:** every number the second prints appears, in order, in the first's output, each compared at the precision the less precise of the two was printed with. The answer says a second program printed the same result.
+3. **Disagreement:** the first program is repaired once, told what the independent program printed. If the repair agrees, it is the answer. If not, the answer is **not verified**, says what the second program printed, and nothing is kept.
+
+A program kept before this check is checked once on its next reuse: if an independent program disagrees, it is forgotten and Lisan writes a new one (`hifz.drop`); if it agrees, it is marked `checked`. Two derivations that share no code rarely share a misreading; this is N-version programming, with the cost of one more Lisan call and one more sandbox run per program that prints a number.
 
 ## Muhasaba: self-review and correction (Tawbah)
 

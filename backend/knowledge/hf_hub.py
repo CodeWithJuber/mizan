@@ -193,19 +193,20 @@ async def rows(
     found: list[dict] = []
     async with _client(timeout=60.0) as client:
         while len(found) < limit:
-            params = {
+            length = min(100, limit - len(found))
+            params: dict[str, object] = {
                 "dataset": repo,
                 "config": config,
                 "split": split,
                 "offset": len(found),
-                "length": min(100, limit - len(found)),
+                "length": length,
             }
             if revision:
                 params["revision"] = revision
             data = await _json(client, f"{VIEWER}/rows", params)
             page = [item.get("row") for item in data.get("rows", []) if isinstance(item, dict)]
             found += [row for row in page if isinstance(row, dict)]
-            if len(page) < params["length"]:
+            if len(page) < length:
                 break
     return found[:limit]
 

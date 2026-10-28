@@ -489,7 +489,11 @@ async def test_a_wrong_sandbox_result_is_not_marked_verified(agent, monkeypatch)
 
 async def test_lisan_writes_code_and_mizan_repairs_failures(agent, monkeypatch):
     agent.ai_client = ScriptedProvider(
-        ["```python\nprint(fib(10)\n```", "```python\nprint([0, 1, 1, 2, 3])\n```"]
+        [
+            "```python\nprint(fib(10)\n```",
+            "```python\nprint([0, 1, 1, 2, 3])\n```",
+            "```python\nf = [0, 1]\nwhile len(f) < 5: f.append(f[-1] + f[-2])\nprint(f)\n```",
+        ]
     )
     fake = tools(
         agent,
@@ -497,14 +501,17 @@ async def test_lisan_writes_code_and_mizan_repairs_failures(agent, monkeypatch):
         workspace_run=[
             {"stdout": "", "stderr": "SyntaxError: '(' was never closed", "exit_code": 1},
             {"stdout": "[0, 1, 1, 2, 3]\n", "stderr": "", "exit_code": 0, "duration_ms": 30},
+            {"stdout": "[0, 1, 1, 2, 3]\n", "stderr": "", "exit_code": 0, "duration_ms": 20},
         ],
     )
     result = await agent.execute(
         "Ek python program likho jo 5 fibonacci numbers print kare aur run karo"
     )
-    assert [name for name, _ in fake.calls] == ["workspace_run", "workspace_run"]
+    assert [name for name, _ in fake.calls] == ["workspace_run"] * 3
     assert fake.calls[1][1]["command"] == "print([0, 1, 1, 2, 3])"
-    assert len(agent.ai_client.requests) == 2
+    # Code, its repair, and an independent program written without seeing it.
+    assert len(agent.ai_client.requests) == 3
+    assert "Program:" not in agent.ai_client.requests[2]["messages"][0]["content"]
     assert "tools" not in agent.ai_client.requests[0] or not agent.ai_client.requests[0].get(
         "tools"
     )
@@ -616,14 +623,15 @@ async def test_a_window_program_is_compiled_not_run(agent, monkeypatch):
 
 async def test_mizan_understands_a_program_request_without_lisan(agent, monkeypatch):
     fib = "```python\na, b = 0, 1\nfor _ in range(50):\n    a, b = b, a + b\nprint(a)\n```"
-    agent.ai_client = ScriptedProvider([fib])
+    agent.ai_client = ScriptedProvider([fib, fib])
     fake = tools(
         agent, monkeypatch, workspace_run={"stdout": "12586269025\n", "stderr": "", "exit_code": 0}
     )
     result = await agent.execute("Fibonacci series ka 50th number kya hai?")
     assert result["orchestration"]["intent"] == "build_and_run"
     assert result["orchestration"]["entities"].get("understood_by") is None  # Fahm, alone
-    assert len(agent.ai_client.requests) == 1  # Lisan writes the code; nothing was mapped
+    # Lisan writes the code and an independent check; nothing was mapped.
+    assert len(agent.ai_client.requests) == 2
     assert fake.calls[0][0] == "workspace_run" and "12586269025" in result["result"]
 
 
@@ -1229,6 +1237,8 @@ async def test_verified_wording_is_learned_and_reused_without_asking_lisan(
             '"language":"python"}',
             fib,
             fib,
+            fib,
+            fib,
         ]
     )
     tools(
@@ -1238,8 +1248,9 @@ async def test_verified_wording_is_learned_and_reused_without_asking_lisan(
     assert first["orchestration"]["entities"]["understood_by"] == "lisan"
     second = await agent.execute("Fibonacci series ka 60th number kya hai?")
     assert second["orchestration"]["entities"]["understood_by"] == "mizan_learned"
-    assert second["orchestration"]["language_model_calls"] == 1  # code only, no mapping call
-    assert len(agent.ai_client.requests) == 3
+    # The code and its independent check only, no mapping call.
+    assert second["orchestration"]["language_model_calls"] == 2
+    assert len(agent.ai_client.requests) == 5
     assert taallum.summary(agent.adaptive, "")["by_intent"] == {"build_and_run": 1}
 
 

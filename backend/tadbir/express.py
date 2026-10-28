@@ -951,6 +951,20 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "यह चैट कुछ याद नहीं रखती (इसे बिना स्मृति भेजा गया है), इसलिए नोट्स में कुछ नहीं सहेजा गया।",
         "ar": "هذه المحادثة لا تحفظ شيئًا (أُرسلت بلا ذاكرة)، فلم يُحفظ شيء في ملاحظاتك.",
     },
+    "tathabbut_agreed": {
+        "en": "Checked: a second program, written separately by another method, printed the same result.",
+        "hi-latn": "Jaanch: ek doosra program, alag tareeqe se alag likha gaya, wahi nateeja deta hai.",
+        "ur": "جانچ: ایک دوسرا پروگرام، الگ طریقے سے الگ لکھا گیا، وہی نتیجہ دیتا ہے۔",
+        "hi": "जाँच: एक दूसरा प्रोग्राम, अलग तरीक़े से अलग लिखा गया, वही नतीजा देता है।",
+        "ar": "تحقّق: برنامج ثانٍ كُتب منفصلًا بطريقة أخرى أعطى النتيجة نفسها.",
+    },
+    "tathabbut_disagrees": {
+        "en": "Not verified: a second program for the same request, written separately, printed {other}. One of the two reads the request differently (a starting value, an index or a bound); check it before relying on this result.",
+        "hi-latn": "Verified nahi: isi sawaal ke liye alag likha gaya doosra program {other} deta hai. Dono mein se ek sawaal ko alag padhta hai (shuruaati value, index ya hadd); is nateeje par bharosa karne se pehle jaanch lijiye.",
+        "ur": "تصدیق شدہ نہیں: اسی سوال کے لیے الگ لکھا گیا دوسرا پروگرام {other} دیتا ہے۔ دونوں میں سے ایک سوال کو مختلف پڑھتا ہے (ابتدائی قدر، اشاریہ یا حد)؛ اس نتیجے پر بھروسا کرنے سے پہلے جانچ لیں۔",
+        "hi": "सत्यापित नहीं: इसी सवाल के लिए अलग लिखा गया दूसरा प्रोग्राम {other} देता है। दोनों में से एक सवाल को अलग पढ़ता है (शुरुआती मान, इंडेक्स या सीमा); इस नतीजे पर भरोसा करने से पहले जाँच लीजिए।",
+        "ar": "غير متحقَّق: برنامج ثانٍ لنفس الطلب كُتب منفصلًا أعطى {other}. أحدهما يقرأ الطلب بشكل مختلف (قيمة البداية أو الفهرس أو الحد)؛ تحقّق قبل الاعتماد على هذه النتيجة.",
+    },
     "capabilities": {
         "en": "MIZAN works through its own tools, and they are real:",
         "hi-latn": "MIZAN apne asli tools se kaam karta hai:",
