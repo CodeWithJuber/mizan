@@ -162,7 +162,11 @@ intents.
    request, and are never mapped. Lisan sees the user's last three messages
    as context, so a word taught in a dialect lesson reads as part of the
    lesson. A fixed answer (`capabilities`) is never mapped. MIZAN validates
-   every step and runs it itself.
+   every step and runs it itself. A Quran surah must be the user's own, as a
+   hadith number must be. If Lisan names a surah the user did not write (53:14
+   from memory for "Sidratul muntaha kya hai"), the step is refused. Its
+   `quran_search` action searches the user's own words with Fihris instead,
+   and Fihris chooses the ayah.
 
 **The chat is the prior.** As Lughah does for the language, Qasd reads the
 user's earlier messages in the chat (up to 12) as a Dirichlet prior: each

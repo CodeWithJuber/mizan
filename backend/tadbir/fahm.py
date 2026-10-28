@@ -792,9 +792,22 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
             )
         except (TypeError, ValueError):
             return None
-        if reference is None:
+        # The surah must be the user's own, never one the model supplied from
+        # memory for a topic ("Sidratul muntaha kya hai"): a topic is found by
+        # MIZAN's own search (quran_search). Numbers the user wrote win.
+        own = quran.parse_reference(message)
+        if reference is None or own is None or own.surah != reference.surah:
             return None
-        entities.update(reference=reference, explain=False)
+        entities.update(reference=own if own.start is not None else reference, explain=False)
+    elif intent == "quran_search":
+        # The words searched are the user's own: the step's words when they are
+        # part of the message, else the whole message; never the model's paraphrase.
+        words = " ".join(str(parsed.get("text") or "").split())
+        said = " ".join(_own_words(message).split())
+        query = words if len(words) >= 3 and words in said else said
+        if len(query) < 3 or quran.parse_reference(query) is not None:
+            return None  # a reference is read by the reference recipe
+        entities["query"] = query[:500]
     elif intent == "hadith":
         try:
             number = int(str(parsed.get("number", "")))

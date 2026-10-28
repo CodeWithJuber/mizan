@@ -253,3 +253,115 @@ async def test_no_ayah_says_it_plainly_and_quotes_nothing(monkeypatch, tmp_path)
     assert text.startswith("No ayah of the Quran says this.")
     assert "“continents”" in text and "“seven”" in text and "Yusuf 12:46" in text
     assert agent.ai_client.requests == []
+
+
+# Requests for an ayah by its topic or wording, none of them a seed
+# (docs/fihris.md): Qasd sends them to MIZAN's own search.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sidratul muntaha kya hai",
+        "Hasbunallahu wa nimal wakeel",
+        "ayah about patience and prayer",
+        "sidrat al-muntaha ka zikr kis ayat me hai",
+    ],
+)
+def test_a_request_for_an_ayah_by_its_topic_is_searched(text):
+    assert fahm.understand(text).intent == "quran_search"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sabr ke baare me kuch batao",
+        "Sabr kya hota hai?",
+        "Indonesia ki rajdhani kya hai?",
+        "Explain the importance of Surah Fatiha in daily prayer",
+        "JazakAllah khair bhai",
+        "SubhanAllah, kitna khoobsurat mausam hai",
+    ],
+)
+def test_talk_about_the_deen_stays_conversation(text):
+    assert fahm.understand(text).intent == "converse"
+
+
+def test_the_ayah_is_found_by_the_users_words_never_the_models_reference():
+    # Lisan may know that Sidrat al-Muntaha is 53:14, but a reference the user
+    # did not write is refused; MIZAN's own search reads the user's words.
+    assert (
+        fahm.validate_parsed(
+            {"intent": "quran", "surah": 53, "ayah_start": 14},
+            "Sidratul muntaha kya hai",
+            "hi-latn",
+        )
+        is None
+    )
+    found = fahm.validate_parsed({"intent": "quran_search"}, "Sidratul muntaha kya hai", "hi-latn")
+    assert (found.intent, found.entities["query"]) == ("quran_search", "Sidratul muntaha kya hai")
+    # The step's own words when they are the user's, never a paraphrase.
+    paraphrase = {"intent": "quran_search", "text": "the verse about divine light"}
+    assert fahm.validate_parsed(paraphrase, "light upon light", "en").entities["query"] == (
+        "light upon light"
+    )
+    part = {"intent": "quran_search", "text": "light upon light"}
+    understood = fahm.validate_parsed(part, "light upon light wali ayat aur 2+2", "hi-latn")
+    assert understood.entities["query"] == "light upon light"
+    # A reference is read by the reference recipe, not searched.
+    assert fahm.validate_parsed({"intent": "quran_search"}, "Surah Najm 14", "en") is None
+
+
+def test_a_surah_the_user_named_keeps_lisans_ayahs():
+    message = "Surah Baqarah ki aakhri do ayat"
+    last_two = {"intent": "quran", "surah": 2, "ayah_start": 285, "ayah_end": 286}
+    assert fahm.validate_parsed(last_two, message, "hi-latn").entities["reference"] == (
+        quran.Reference(2, 285, 286)
+    )
+    other_surah = {"intent": "quran", "surah": 3, "ayah_start": 190}
+    assert fahm.validate_parsed(other_surah, message, "hi-latn") is None
+    # Numbers the user wrote win over the model's.
+    mapped = {"intent": "quran", "surah": 2, "ayah_start": 1}
+    understood = fahm.validate_parsed(mapped, "Surah Baqarah 255 sunao", "hi-latn")
+    assert understood.entities["reference"] == quran.Reference(2, 255, 255)
+
+
+async def test_lisan_maps_an_ayah_phrase_to_mizans_search(monkeypatch, tmp_path, unplaced_wording):
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "mizan")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
+    agent = create_agent("general", izn=IznPermission())
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"steps":[{"intent":"quran_search","text":"light upon light"}]}',
+            "Allah guides to His light whom He wills.",
+        ]
+    )
+    searched = []
+
+    async def find(query, limit=3):
+        searched.append(query)
+        return fihris.Found([fihris.Match(24, 35, 14.2, ["light"])], [])
+
+    async def fetch(reference, language):
+        assert (reference.surah, reference.start, reference.end) == (24, 35, 35)
+        return {
+            "reference": reference.label,
+            "surah_arabic": "النور",
+            "ayahs": [
+                {
+                    "number": 35,
+                    "arabic": "نُّورٌ عَلَىٰ نُورٍ",
+                    "translation": "Light upon light.",
+                }
+            ],
+            "translation": "Saheeh International",
+            "source": "api.alquran.cloud (Tanzil Uthmani text)",
+        }
+
+    monkeypatch.setattr(fihris, "find", find)
+    monkeypatch.setattr(quran, "fetch", fetch)
+    result = await agent.execute("light upon light")
+    assert result["orchestration"]["intent"] == "quran_search"
+    assert result["orchestration"]["entities"]["understood_by"] == "lisan"
+    assert searched == ["light upon light"]
+    assert "نُّورٌ عَلَىٰ نُورٍ" in result["result"]
