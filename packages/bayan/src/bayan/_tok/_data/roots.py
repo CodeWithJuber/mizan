@@ -2,8 +2,8 @@
 Arabic Root Database (جذور عربية)
 ==================================
 
-Comprehensive Arabic root database for the ISM layer.
-3,000+ most important Quranic and Classical roots.
+Curated Arabic root lookup table for the ISM layer.
+This is a limited hand-authored resource, not a complete morphology corpus.
 
 Each entry maps: root → {meaning, domain, derivatives, frequency, patterns}
 

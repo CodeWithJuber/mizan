@@ -36,6 +36,23 @@ All notable changes to this project will be documented in this file.
   - interactive Archify diagrams sourced from the code (`docs/diagrams/*.html`);
   - diagram-design SVGs for the README, in light and dark.
 
+### Fixed
+- Quran requests by topic or wording reach MIZAN's own search again (they had been answered as conversation since the decisive rule of #139):
+  - 37 shorter `quran_search` seeds ("<term> kya hai", "ayah about <topic>", bare transliteration), balanced by 19 conversation seeds of everyday dhikr and 3 `build_project` seeds with "about";
+  - held-out requests: "Sidratul muntaha kya hai", "Hasbunallahu wa nimal wakeel" and "ayah about patience and prayer" are now decisive;
+  - Lisan may map wording to `quran_search` over the user's own words, and a Quran surah Lisan names that the user did not write is refused.
+
+  Ta'lim's gate kept the batch (P(worse) = 0.61). The leave-one-out loss on the seeds both fits share fell from 1.0045 to 0.9907.
+- Iqtibas: a message that is the Quran's own words reaches MIZAN's Quran search. The evidence is how much likelier the span is drawn from the Quran than said in ordinary speech, times the share of the message it is, as a Bayes factor on the Quran family. b is fitted by leave-one-out on the seeds and a calibration set of quotes against Quranic formulas said in conversation. "light upon light" is now searched; salam, dhikr and "peace be upon you" stay conversation. `MIZAN_IQTIBAS`.
+- Bayan morphology (`ruh_model/tokenizer/morphology.py`, vendored into `packages/bayan`, prepared as 0.2.0):
+  - ك, ب, ل, ف or و at the start of a word stays a root letter when only that reading gives a root the lexicon knows (كتاب → كتب, not تاب);
+  - a stem after ال, ب or ك is never read as a verb (العلم is `NOUN`, not `VERB_PAST`).
+
+  The root accuracy on the 172-word QAC-derived gold set rose from 79/172 to 81/172 (60/172 in the published 0.1.0). The vendored copy had drifted from upstream; CI now runs `sync_vendor.py --check` and the package tests.
+
+### Removed
+- The `DEEP_FACULTY_LOOP` setting ("Active faculty loop") and the `deep_faculty_loop` field of `GET /api/nafs/{agent_id}/faculties`. The setting promised that Basira, Hawa and Hikmah would gate the agent, but no code acted on it. A saved value is ignored. The gates that act are Amanah, approvals, Hudud and Sidq.
+
 ## [v3.3.0] — 2026-10-01
 
 ### Added

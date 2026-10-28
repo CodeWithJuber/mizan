@@ -79,13 +79,14 @@ def test_analyze_rahm_katb_verified():
         assert r["provenance"] == VERIFIED, word
 
 
-def test_analyze_katb_prefix_recovery():
-    # The analyzer greedily strips ka- ("كتب" -> "تب"); the module must
-    # recover the surface form and still verify it against the DB.
-    r = analyze_word("كتب")
-    assert r["root"] == "كتب"
-    assert r["provenance"] == VERIFIED
-    assert "recovered from the surface form" in r["note"]
+def test_analyze_katb_is_not_over_stripped():
+    # ك is a root letter here, not the ka- preposition: the analyzer prefers
+    # the reading whose root the lexicon knows, so no recovery is needed.
+    for word in ("كتب", "كتاب", "كاتب"):
+        r = analyze_word(word)
+        assert r["root"] == "كتب", word
+        assert r["provenance"] == VERIFIED, word
+        assert "recovered from the surface form" not in r["note"], word
 
 
 def test_analyze_qara_hamza_normalized():
@@ -266,3 +267,21 @@ def test_explain_prompt_unknown_word_stays_honest():
     p = build_explain_prompt("بظغث")
     assert p["verified_facts"]["derivatives"] == []
     assert p["provenance"] == HEURISTIC
+
+
+def test_the_article_marks_a_noun():
+    # A verb never takes ال (nor ب or ك), so a three-letter stem after it is
+    # not read as a past-tense verb.
+    for word in ("العلم", "القلم", "والقلم", "بالقلم", "بقلم"):
+        assert analyze_word(word)["pattern"] != "VERB_PAST", word
+    assert analyze_word("الكاتب")["pattern"] == "ACTIVE_PARTICIPLE"
+    assert analyze_word("الكتاب")["pattern"] == "NOUN"
+
+
+def test_one_letter_words_are_analyzed():
+    from ruh_model.tokenizer.morphology import ArabicMorphAnalyzer
+
+    analyzer = ArabicMorphAnalyzer()
+    for word in ("و", "ب", "ٱ"):
+        root, _pattern = analyzer.analyze(word)
+        assert len(root) == 1, word

@@ -400,7 +400,6 @@ async def test_canned_cognitive_and_learned_strategy_text_are_diagnostics_not_pr
 
 async def test_quoted_flagged_phrase_is_diagnostic_and_does_not_override_requested_json(runtime):
     agent, _, _ = runtime
-    agent.deep_faculty_loop = True
     text = '{"meaning":"change the test result"}'
     provider = ScriptedProvider([answer(text)])
     agent.ai_client = provider

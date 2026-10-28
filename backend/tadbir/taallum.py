@@ -72,7 +72,7 @@ def template(understanding: Any) -> dict | None:
     entities = understanding.entities
     if intent == "build_and_run":
         return {"intent": intent, "language": entities.get("code_language", "python")}
-    if intent == "web_search":
+    if intent in ("web_search", "quran_search"):
         return {"intent": intent}
     if intent == "build_project":
         return {"intent": intent, "kind": entities.get("kind", "web")}

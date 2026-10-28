@@ -162,7 +162,11 @@ intents.
    request, and are never mapped. Lisan sees the user's last three messages
    as context, so a word taught in a dialect lesson reads as part of the
    lesson. A fixed answer (`capabilities`) is never mapped. MIZAN validates
-   every step and runs it itself.
+   every step and runs it itself. A Quran surah must be the user's own, as a
+   hadith number must be. If Lisan names a surah the user did not write (53:14
+   from memory for "Sidratul muntaha kya hai"), the step is refused. Its
+   `quran_search` action searches the user's own words with Fihris instead,
+   and Fihris chooses the ayah.
 
 **The chat is the prior.** As Lughah does for the language, Qasd reads the
 user's earlier messages in the chat (up to 12) as a Dirichlet prior: each
@@ -233,6 +237,71 @@ counts as a separate request only when it is decisively an action of its own
 then verified the work, Qasd adds that wording to the user's own counts. The
 next request like it is understood with no model call. Up to 400 examples
 are kept per user, and Ta'allum keeps the full mapping alongside.
+
+## Iqtibas: words the Quran holds
+
+"light upon light" and "سدرة المنتهى" carry no word that asks for an ayah. What
+makes them a Quran request is that they are the Quran's own words, which
+Qasd's letters cannot see; seeds of such bare phrases taught Qasd to read any
+short odd message as a Quran search. `tadbir/iqtibas.py` looks instead:
+
+1. **The span.** The longest run of the message's words that one of the
+   editions Fihris downloads holds word for word. Arabic and Urdu are read
+   by words after Fihris's folding, the transliteration by its letters (a
+   repeated letter counts once), and English and Hindi by words.
+2. **The evidence.** log P(span | drawn from the Quran) − log P(span |
+   ordinary speech), a likelihood ratio.
+   - The first term is the times the edition holds the span over the places
+     a span could start.
+   - The second comes from a Witten–Bell bigram model of the ordinary speech
+     that ships with MIZAN: the Lughah corpora, without the Uthmani quotes or
+     the names, and Qasd's conversation seeds, where everyday salam and dhikr
+     live. A phrase people say ("Alhamdulillah") is cheap; "light upon light"
+     is not said in passing.
+   - The evidence is multiplied by the share of the message the span is, so
+     "May Allah have mercy on him", which only holds "have mercy", weighs
+     little.
+3. **The factor.** The Quran family's posterior is multiplied by exp(b ·
+   evidence) and renormalised.
+   - b is fitted the way Tamyiz fits its own weights: the value that
+     minimises the log-loss, leave-one-out over Qasd's seeds and out of
+     sample over `data/iqtibas/calibration.tsv`.
+   - That file holds 26 bare quotes sent as requests and 26 Quranic formulas
+     said in conversation. Qasd never trains on it.
+   - The fit is stored in `core/data/iqtibas.json`, with the SHA-256 of the
+     seeds, the calibration file and the editions.
+   - After changing either file, refit with `cd backend && python -m
+     tadbir.iqtibas --fit`. It needs the editions and fetches them if they are
+     missing.
+
+With no span, before the editions are on disk, or with `MIZAN_IQTIBAS=off`
+(Settings → System settings; off in tests), the factor is 1. The editions are
+fetched and read at startup, and while they load the message is read without
+them. What was found (words, edition, ayah, evidence, factor) is in the trace
+and in a conversation result's entities.
+
+Measured on 2026-10-28 (b = 0.041):
+
+| | Without the factor | With it |
+|---|---|---|
+| Log-loss | 1.0066 | 0.9946 |
+| Seeds right (leave-one-out) | 0.7036 | 0.7048 |
+| Calibration rows right | 0.56 | 0.69 |
+
+The paired bootstrap's P(seeds worse) is 0.19.
+
+Effect on the held-out requests:
+
+| Request | P(Quran) | Route |
+|---|---|---|
+| "light upon light" | 0.51 | `quran_search` |
+| "سدرة المنتهى" | 0.48 | Lisan maps the wording |
+| "Who created the heavens and the earth?" (39:38) | 0.99 | `quran_search` |
+
+Salam, dhikr, "peace be upon you", "In the name of Allah, let's begin" and
+the other guard phrases stay conversation. A paraphrase ("Allah does not
+burden a soul beyond its capacity") is not a quote and is not helped.
+Finding the span takes about 1–17 ms per message.
 
 ## How well it does (held-out)
 

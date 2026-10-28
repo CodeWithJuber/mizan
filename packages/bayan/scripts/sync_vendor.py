@@ -19,12 +19,18 @@ Every patch is anchored on exact source text. If an anchor is not found the
 script exits non-zero — upstream drift can never silently ship a broken
 package. Re-run after any change to the sources, then rebuild the wheel.
 
+``--check`` builds the same files in memory and compares them with the
+vendored copy without writing anything: it exits 1 when they differ, so CI
+catches an upstream fix that was never re-vendored.
+
 Usage (from the repo root):
-    python packages/bayan/scripts/sync_vendor.py
+    python packages/bayan/scripts/sync_vendor.py           # re-vendor
+    python packages/bayan/scripts/sync_vendor.py --check   # verify, write nothing
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -121,15 +127,16 @@ def _replace_stubs_fn(text: str) -> str:
     return "".join(lines[:start]) + _STUBS_REPLACEMENT + "".join(lines[end:])
 
 
-def main() -> None:
+def rendered() -> dict[Path, str]:
+    """Every vendored file as the sync writes it, keyed by destination path."""
     if not (REPO_ROOT / "pyproject.toml").exists():
         raise SystemExit(f"Repo root not found at {REPO_ROOT}")
-    TOK_DST.mkdir(parents=True, exist_ok=True)
-    (TOK_DST / "_data").mkdir(exist_ok=True)
-    (TOK_DST / "__init__.py").write_text(
-        '"""Vendored Bayan tokenizer internals (see scripts/sync_vendor.py)."""\n'
-    )
-    (TOK_DST / "_data" / "__init__.py").write_text("")
+    files = {
+        TOK_DST / "__init__.py": (
+            '"""Vendored Bayan tokenizer internals (see scripts/sync_vendor.py)."""\n'
+        ),
+        TOK_DST / "_data" / "__init__.py": "",
+    }
 
     for src_name, dst_name in VENDOR_FILES:
         src = TOK_SRC / src_name
@@ -171,18 +178,46 @@ def main() -> None:
                 "public_api unused imports",
             )
 
-        (TOK_DST / dst_name).write_text(text, encoding="utf-8")
-        print(f"vendored: {src_name} -> _tok/{dst_name}")
+        files[TOK_DST / dst_name] = text
 
     # 3. The roots lexicon ships as package data.
     roots_src = REPO_ROOT / "backend" / "qca" / "roots.py"
     if not roots_src.exists():
         raise SystemExit(f"SYNC FAILED: roots lexicon missing: {roots_src}")
-    (TOK_DST / "_data" / "roots.py").write_text(
-        roots_src.read_text(encoding="utf-8"), encoding="utf-8"
+    files[TOK_DST / "_data" / "roots.py"] = roots_src.read_text(encoding="utf-8")
+    return files
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="compare with the vendored copy; write nothing",
     )
-    print("vendored: backend/qca/roots.py -> _tok/_data/roots.py")
+    args = parser.parse_args(argv)
+    files = rendered()
+
+    if args.check:
+        stale = [
+            path
+            for path, text in files.items()
+            if not path.exists() or path.read_text(encoding="utf-8") != text
+        ]
+        for path in stale:
+            print(f"DRIFT: {path.relative_to(REPO_ROOT)}")
+        if stale:
+            print("The vendored Bayan copy is out of date: run sync_vendor.py.")
+            return 1
+        print(f"OK — {len(files)} vendored files match their sources.")
+        return 0
+
+    (TOK_DST / "_data").mkdir(parents=True, exist_ok=True)
+    for path, text in files.items():
+        path.write_text(text, encoding="utf-8")
+        print(f"vendored: {path.relative_to(TOK_DST)}")
     print("OK — vendoring complete.")
+    return 0
 
 
 if __name__ == "__main__":

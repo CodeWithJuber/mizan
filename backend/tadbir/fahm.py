@@ -26,7 +26,20 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
 
-from . import amanah, calc, hadith, lughah, project, qasd, qiyas, quran, silsila, waqt
+from . import (
+    amanah,
+    calc,
+    hadith,
+    iqtibas,
+    lughah,
+    project,
+    qasd,
+    qiyas,
+    quran,
+    silsila,
+    trace,
+    waqt,
+)
 
 
 @dataclass
@@ -525,6 +538,11 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
     earlier = qasd.earlier_messages(history)
     project = bool(_selected_project())
     ranked = qasd.ranked(message, project=project, overlay=overlay, earlier=earlier)
+    # Words the Quran's texts hold, and that ordinary speech would not say,
+    # are evidence of a Quran request that Qasd's letters cannot see (Iqtibas).
+    ranked, quote = iqtibas.weigh(ranked, message)
+    if quote:
+        trace.event("understand", "iqtibas", **quote)
     # MAP first over families of recipes (a request to make something is one
     # family whether it builds or edits), conversation, and "an action MIZAN
     # could not build from these words" (the mass of the families that failed;
@@ -580,7 +598,12 @@ def understand(text: str, history: list[dict] | None = None, overlay: Any = None
         "converse",
         language,
         0.0,
-        {"posterior": dict(ranked[:3]), "mappable": mappable, "conversation": conversation},
+        {
+            "posterior": dict(ranked[:3]),
+            "mappable": mappable,
+            "conversation": conversation,
+            **({"quote": quote} if quote else {}),
+        },
     )
 
 
@@ -792,9 +815,22 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
             )
         except (TypeError, ValueError):
             return None
-        if reference is None:
+        # The surah must be the user's own, never one the model supplied from
+        # memory for a topic ("Sidratul muntaha kya hai"): a topic is found by
+        # MIZAN's own search (quran_search). Numbers the user wrote win.
+        own = quran.parse_reference(message)
+        if reference is None or own is None or own.surah != reference.surah:
             return None
-        entities.update(reference=reference, explain=False)
+        entities.update(reference=own if own.start is not None else reference, explain=False)
+    elif intent == "quran_search":
+        # The words searched are the user's own: the step's words when they are
+        # part of the message, else the whole message; never the model's paraphrase.
+        words = " ".join(str(parsed.get("text") or "").split())
+        said = " ".join(_own_words(message).split())
+        query = words if len(words) >= 3 and words in said else said
+        if len(query) < 3 or quran.parse_reference(query) is not None:
+            return None  # a reference is read by the reference recipe
+        entities["query"] = query[:500]
     elif intent == "hadith":
         try:
             number = int(str(parsed.get("number", "")))

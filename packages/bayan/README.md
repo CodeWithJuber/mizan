@@ -12,7 +12,7 @@ tok.tokenize("الكتاب")
 # [{'surface': 'الكتاب', 'root': 'كتب', 'root_id': ..., 'pattern': 'NOUN', 'pattern_id': ...}]
 
 tok.roots("العلم نور")     # ['علم', 'نور']
-tok.patterns("العلم نور")  # ['VERB_PAST', 'VERB_PAST']
+tok.patterns("العلم نور")  # ['NOUN', 'VERB_PAST'] — bare نور is a noun or a verb; unvowelled, the shape cannot tell
 tok.fertility("العلم نور") # 1.0 — one morphological token per word, by construction
 ```
 
@@ -67,6 +67,9 @@ upstream sources, re-vendor and rebuild:
 python packages/bayan/scripts/sync_vendor.py
 cd packages/bayan && python -m build && twine check dist/*
 ```
+
+`sync_vendor.py --check` writes nothing and exits 1 when the vendored copy
+differs from its sources; CI runs it on every push.
 
 See `../../docs/BAYAN_RELEASE.md` for the full release checklist.
 

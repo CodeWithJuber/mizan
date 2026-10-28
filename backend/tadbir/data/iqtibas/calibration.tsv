@@ -1,0 +1,59 @@
+# Calibration for Iqtibas (backend/tadbir/iqtibas.py), used only to fit its one
+# parameter b, never to train Qasd. label<TAB>text.
+# quran_search: a bare phrase of the Quran sent as a request, written as the
+# editions Fihris downloads write it (Tanzil quran-simple-clean and
+# en.transliteration, Saheeh International); short quotations only.
+# converse: Quranic formulas said in ordinary conversation.
+# None of these is a phrase the tests route (light upon light, سدرة المنتهى, ...).
+quran_search	قل هو الله أحد
+quran_search	الله لا إله إلا هو الحي القيوم
+quran_search	إنا أعطيناك الكوثر
+quran_search	فبأي آلاء ربكما تكذبان
+quran_search	إن مع العسر يسرا
+quran_search	وما خلقت الجن والإنس إلا ليعبدون
+quran_search	كل نفس ذائقة الموت
+quran_search	ألا بذكر الله تطمئن القلوب
+quran_search	رب اشرح لي صدري
+quran_search	ونحن أقرب إليه من حبل الوريد
+quran_search	والعصر إن الإنسان لفي خسر
+quran_search	اهدنا الصراط المستقيم
+quran_search	Qul huwallahu ahad
+quran_search	Fabi ayyi aalaa i rabbikuma tukazziban
+quran_search	Inna ma al usri yusra
+quran_search	Wal asr innal insana lafi khusr
+quran_search	Ihdinas siratal mustaqeem
+quran_search	Allahus samad
+quran_search	Guide us to the straight path
+quran_search	Recite in the name of your Lord who created
+quran_search	And He found you lost and guided
+quran_search	every soul will taste death
+quran_search	the Lord of the worlds
+quran_search	We are closer to him than his jugular vein
+quran_search	so which of the favors of your Lord would you deny
+quran_search	and the hereafter is better for you than the first life
+converse	Assalamu alaikum bhai, kya haal hai
+converse	Walaikum assalam, sab khair
+converse	Bismillah karke kaam shuru karo
+converse	Alhamdulillah sab khair hai
+converse	InshaAllah kal milenge
+converse	MashaAllah bahut khoob likha
+converse	SubhanAllah kya nazara hai
+converse	Astaghfirullah, mujhse galti ho gayi
+converse	May Allah reward you
+converse	Allah bless you brother
+converse	Peace be upon you all
+converse	In the name of God, I start my work
+converse	Allah is the greatest, what a day
+converse	May Allah forgive us
+converse	God knows what will happen
+converse	Ya Allah meri madad kar
+converse	Allah hafiz, phir milte hain
+converse	JazakAllah khair, bahut madad hui
+converse	Rabbana, aap sab ko khush rakhe
+converse	السلام عليكم ورحمة الله وبركاته
+converse	الحمد لله على كل حال
+converse	إن شاء الله نلتقي غدا
+converse	بارك الله فيك يا أخي
+converse	الله أكبر ما أجمل هذا
+converse	لا إله إلا الله، الحمد لله على السلامة
+converse	the heavens are beautiful tonight

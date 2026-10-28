@@ -480,7 +480,10 @@ class Lisan:
             "wrote) | "
             '{"intent":"build_and_run","request":"<precise English description of a program '
             'that computes and prints what the user wants>","language":"python"} | '
-            '{"intent":"quran","surah":<1-114>,"ayah_start":<n or null>,"ayah_end":<n or null>} | '
+            '{"intent":"quran","surah":<1-114>,"ayah_start":<n or null>,"ayah_end":<n or null>} '
+            "(only a surah the user named) | "
+            '{"intent":"quran_search"} (find the ayah the user describes by its words, meaning '
+            "or topic, when they name no surah) | "
             '{"intent":"hadith","collection":"bukhari|muslim|abudawud|tirmidhi|nasai|ibnmajah|'
             'malik|nawawi|qudsi|dehlawi","number":<the hadith number the user wrote>} | '
             '{"intent":"build_project","kind":"web|python"} (a new small app, website, game or '

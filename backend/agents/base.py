@@ -507,19 +507,12 @@ class BaseAgent:
         self.dev_gate = DevelopmentalGate()  # Capability gating by nafs_level
         self._nafs_approach: str = ""  # Current dominant Nafs voice instruction
 
-        # al-Insan faculties — make the human-model steer the loop
+        # al-Insan faculties: advisory diagnostics returned with each result
         self.basira = BasiraEngine()  # Insight + self-witnessing (12:108, 75:14)
         self.hawa = HawaDetector()  # Lower-pull / adversarial restraint (25:43, 79:40)
         self.hikmah_engine = HikmahEngine()  # Wisdom distillation → applicable counsel (2:269)
         self._faculty_guidance: str = ""  # Per-task guidance injected into the system prompt
         self._runtime_state_note: str = ""  # Per-call telemetry sent with the request context
-        # When enabled, faculties also actively gate/redirect (default: advisory only)
-        self.deep_faculty_loop = os.getenv("DEEP_FACULTY_LOOP", "").lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
 
         # QALB-7 extension modules
         self.parallel_scheduler = QalbParallelScheduler()  # Multi-stream parallel processing

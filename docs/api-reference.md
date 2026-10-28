@@ -315,7 +315,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 |---|---|---|---|
 | GET | `/api/nafs/tiers` | admin | Get all 7 Nafs tiers and their permission mappings. |
 | GET | `/api/nafs/{agent_id}` | admin | Get 7-level Nafs status for an agent. |
-| GET | `/api/nafs/{agent_id}/faculties` | admin | Get al-Insan faculty state for an agent: Hikmah wisdom + deep-loop status. |
+| GET | `/api/nafs/{agent_id}/faculties` | admin | Get al-Insan faculty state for an agent: Hikmah wisdom and principles. |
 
 ## openapi.json
 

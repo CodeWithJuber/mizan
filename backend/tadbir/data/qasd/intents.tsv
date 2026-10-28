@@ -1016,6 +1016,9 @@ build_project	Yeh screenshot wali website bana do
 build_project	اس تصویر جیسا ویب پیج بنا دو
 build_project	इस तस्वीर जैसा वेब पेज बनाओ
 build_project	اصنع صفحة ويب مثل هذه الصورة
+build_project	Create a website about my bakery
+build_project	Make a game about space for kids
+build_project	Build a small app about healthy recipes
 converse	What is in this picture?
 converse	Describe this image for me
 converse	What does the text in this screenshot say?
@@ -1130,6 +1133,43 @@ quran_search	Is there a verse mentioning the dog of the cave?
 quran_search	Quote the ayah mentioning the ant and Sulaiman
 quran_search	Which verse refers to the splitting of the moon?
 quran_search	Quote the verse talking about the sun and the moon in their orbits
+quran_search	Shajaratuz zaqqum kya hai
+quran_search	Salsabeel kya hai Quran mein
+quran_search	Baitul Mamur kya hai
+quran_search	Illiyyin kya hai
+quran_search	Sijjeen kya hai
+quran_search	Yajuj Majuj ka zikr kahan hai
+quran_search	Zul Qarnain ka zikr
+quran_search	Ashabul Ukhdood kaun the
+quran_search	Naqatullah ka qissa
+quran_search	Firdaus ka zikr kis ayat me
+quran_search	سلسبیل کیا ہے
+quran_search	یاجوج ماجوج کا ذکر
+quran_search	ayah about gratitude
+quran_search	verses about charity
+quran_search	verse about the last day
+quran_search	ayat about rizq
+quran_search	ayah on kindness to parents
+quran_search	verses about tawakkul and trust
+quran_search	verse about mercy and forgiveness
+quran_search	ayat about salah and zakat
+quran_search	sabr ki ayat
+quran_search	shukr ke baare me ayat
+quran_search	आयत शुक्र के बारे में
+quran_search	رزق کے بارے میں آیات
+quran_search	آية عن الشكر
+quran_search	Ala bi dhikrillahi tatmainnul qulub
+quran_search	Wa nahnu aqrabu ilayhi min hablil warid
+quran_search	Fadhkuruni adhkurkum
+quran_search	Wa qul rabbir hamhuma kama rabbayani saghira
+quran_search	Innallaha ala kulli shayin qadeer
+quran_search	Wa lasawfa yutika rabbuka fatarda
+quran_search	Which ayah orders us to guard the prayers?
+quran_search	verse about standing in prayer at night
+quran_search	ayah about being patient in hardship
+quran_search	ayat about fasting and taqwa
+quran_search	verses about family and kindness
+quran_search	ayah about death and the grave
 converse	Naya rule: is chat mein '#' ka matlab multiplication hai
 converse	New rule: in this chat @ means addition
 converse	From now on in this chat, '#' means multiply
@@ -1241,3 +1281,22 @@ converse	लाल और पीला मिलाने से कौन स�
 converse	अच्छी नींद के लिए क्या करना चाहिए?
 converse	एक हफ़्ते में कितने दिन होते हैं?
 converse	बिल्ली और कुत्ते में क्या अंतर है?
+converse	Alhamdulillah main bilkul theek hoon
+converse	JazakAllah, bahut madad hui
+converse	InshaAllah, zaroor
+converse	Walaikum assalam bhai
+converse	MashaAllah bahut acha kaam kiya
+converse	SubhanAllah kya baat hai
+converse	Ameen, Allah qabool kare
+converse	Bismillah, chalo shuru karte hain
+converse	Assalamualaikum dost
+converse	Shukriya, Allah aapko jaza de
+converse	Astaghfirullah, galti ho gayi
+converse	الحمد لله، أنا بخير
+converse	जज़ाकल्लाह, बहुत शुक्रिया
+converse	Sabr kaise badhayein mushkil waqt mein?
+converse	Shukr guzar kaise banein?
+converse	جزاك الله خيرا
+converse	ما شاء الله، عمل رائع
+converse	السلام عليكم يا صديقي
+converse	Allah aapko sehat de

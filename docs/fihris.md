@@ -68,4 +68,8 @@ These were measured on the real index:
 
 **Known gaps:**
 - **Roman Urdu meaning words.** "Shahad", meaning honey, finds ayahs about witnesses. The transliteration has *shahid* (witness), and no view holds Roman Urdu meanings.
-- **Requests Qasd does not yet send here.** Read alone, with no chat before it, several requests in the table are placed as conversation: "Hasbunallahu wa nimal wakeel" (`quran_search` at P = 0.29 against 0.58), "light upon light", "سدرة المنتهى", "ayah about patience and prayer", "Allah does not burden a soul beyond its capacity", and "Sidratul muntaha kya hai" (the Quran family at 0.39, as likely as conversation, so not decisive). The index finds each; Qasd has to send the request there first.
+- **Requests Qasd does not yet send here.** Read alone, with no chat before it, the Quran family's posterior for the requests in the table (measured 2026-10-28, after shorter seeds of the shapes "<term> kya hai", "ayah about <topic>" and bare transliteration were added):
+  - "Sidratul muntaha kya hai" 0.71, "Hasbunallahu wa nimal wakeel" 0.57 and "ayah about patience and prayer" 0.77 are decisive and searched here.
+  - "light upon light" (0.51) now reaches this search through Iqtibas (`docs/fahm.md`), which reads that the message is the Quran's own words. "سدرة المنتهى" (0.48) is mapped by Lisan.
+  - "Allah does not burden a soul beyond its capacity" (0.10) is a paraphrase, not a quote, and is still answered as conversation.
+  - Seeds of bare English ayah phrases and bare Arabic or Hindi terms made other short messages read as Quran searches ("Mudguard मरघाट" at 0.66), so they were left out.
