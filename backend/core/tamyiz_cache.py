@@ -51,11 +51,13 @@ def fitted(name: str, featurize: Callable, examples: Callable[[], list[tuple[str
     model = Tamyiz(featurize)
     for source in (PACKAGED, _runtime()):
         saved = _read(source).get(name) or {}
-        if saved.get("sha256") == key and len(saved.get("weights") or []) == 3:
+        # A fit made before the length exponent γ existed is fitted again.
+        if saved.get("sha256") == key and len(saved.get("weights") or []) == 3 and "gamma" in saved:
             model.fit(rows, calibrate=False)
             model.alpha = float(saved["alpha"])
             w_prior, w_text, w_evidence = (float(value) for value in saved["weights"])
             model.weights = (w_prior, w_text, w_evidence)
+            model.gamma = float(saved["gamma"])
             model.loo_loss, model.loo_accuracy = saved.get("loo_loss"), saved.get("loo_accuracy")
             return model
     model.fit(rows)

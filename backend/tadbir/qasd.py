@@ -30,6 +30,7 @@ effort on what came before).
 from __future__ import annotations
 
 import hashlib
+import math
 import threading
 from collections import Counter
 from collections.abc import Sequence
@@ -49,19 +50,25 @@ def compose(message: str, project: bool) -> str:
     return (PROJECT if project else "") + message
 
 
-def _features(text: str) -> Counter[str]:
+def _features(text: str) -> dict[str, float]:
     from . import fahm
 
     project = text.startswith(PROJECT)
     message = text[len(PROJECT) :] if project else text
-    found: Counter[str] = Counter()
+    found: dict[str, float] = {}
     for token in fahm.evidence(message):
-        found["e:" + token] += 1
+        found["e:" + token] = found.get("e:" + token, 0.0) + 1.0
     if project:
-        found["c:project"] += 1
+        found["c:project"] = 1.0
     words = letters(fahm.plain_words(message)).lower()
-    found.update(char_ngrams(words, (2, 3, 4)))
-    found.update("w:" + word for word in words.split())
+    grams = char_ngrams(words, (2, 3, 4))
+    grams.update("w:" + word for word in words.split())
+    # A letter pattern said again is bursty, not fresh evidence each time: a
+    # list of 160 records repeats "parcel … weighs … kg" 160 times without
+    # being 160 times more of a request. Each pattern counts log(1 + n)
+    # (Church & Gale 1995; Rennie et al. 2003).
+    for feature, count in grams.items():
+        found[feature] = math.log1p(count)
     return found
 
 
