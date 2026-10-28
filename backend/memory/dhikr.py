@@ -194,17 +194,15 @@ class Memory:
     related_ids: list[str] = field(default_factory=list)
     source: str = ""  # Daftar provenance: manual | import | knowledge:<title> | chat:<session>
     expires: str = ""  # ISO time after which the memory is forgotten ("" = never)
+    # Tadhkir (memory/tadhkir.py): FSRS stability, difficulty and last review.
+    strength: dict | None = None
 
     def decay(self, hours_elapsed: float) -> float:
-        """
-        Memory decay following Quranic pattern:
-        - Frequently accessed memories persist (Dhikr strengthens)
-        - Unused memories fade (Nisyan - نسيان)
-        Half-life based on importance
-        """
-        half_life_hours = self.importance * 720  # Max 30 days half-life
-        decay_factor = 0.5 ** (hours_elapsed / max(half_life_hours, 1))
-        return cast(float, self.importance * decay_factor * (1 + 0.1 * self.access_count))
+        """How strongly the memory is held after ``hours_elapsed`` without use:
+        ACT-R activation from its recalls and age (dhikr strengthens, nisyan
+        fades), weighed by importance; the same strength consolidation prunes by."""
+        weight = memory_activation_weight(max(1.0, hours_elapsed * 3600.0), self.access_count)
+        return float(weight * self.importance)
 
 
 def rank_memories(
@@ -225,10 +223,15 @@ def rank_memories(
     ]
     relevance = normalise(bm25_scores(query, texts))
 
+    from memory import tadhkir
+
     def score(index: int) -> float:
         memory = memories[index]
-        age = max(1.0, (now - memory.recency).total_seconds())
-        weight = memory_activation_weight(age, memory.access_count)
+        # The chance MIZAN still recalls it (FSRS), or ACT-R for one kept before Tadhkir.
+        weight = tadhkir.retrievability(memory.strength, now)
+        if weight is None:
+            age = max(1.0, (now - memory.recency).total_seconds())
+            weight = memory_activation_weight(age, memory.access_count)
         return float((0.25 + 0.75 * relevance[index]) * weight * (0.5 + 0.5 * memory.importance))
 
     order = sorted(range(len(memories)), key=score, reverse=True)
@@ -473,6 +476,14 @@ class DhikrMemorySystem:
         for column in ("source", "created", "last_used", "expires"):
             if column not in existing:
                 c.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT DEFAULT ''")
+        # Tadhkir: each memory's FSRS strength.
+        for column, kind in (
+            ("stability", "REAL"),
+            ("difficulty", "REAL"),
+            ("last_review", "TEXT"),
+        ):
+            if column not in existing:
+                c.execute(f"ALTER TABLE memories ADD COLUMN {column} {kind}")
         existing = {row[1] for row in c.execute("PRAGMA table_info(chat_preferences)").fetchall()}
         if "session_id" not in existing:
             c.execute("ALTER TABLE chat_preferences ADD COLUMN session_id TEXT DEFAULT ''")
@@ -504,6 +515,17 @@ class DhikrMemorySystem:
         """
         import uuid
 
+        from memory import tadhkir
+
+        # Said again: the memory already held is repeated, not copied ("he used to
+        # repeat it thrice so that the people could understand it", Bukhari 95).
+        repeated = self._repeated(content, memory_type, agent_id)
+        if repeated is not None:
+            self.masalik.encode(
+                content if isinstance(content, str) else str(content), importance=importance
+            )
+            return repeated
+
         mem_id = str(uuid.uuid4())
 
         memory = Memory(
@@ -515,6 +537,7 @@ class DhikrMemorySystem:
             tags=tags or [],
             source=source,
             expires=expires,
+            strength=tadhkir.learn(importance),
         )
 
         # ── Masalik: Encode into neural pathways ──
@@ -540,6 +563,48 @@ class DhikrMemorySystem:
         cache[mem_id] = memory
 
         return mem_id
+
+    def _repeated(self, content: Any, memory_type: str, agent_id: str) -> str | None:
+        """The id of a live memory with the same words, reviewed as recalled and
+        used (Tadhkir), or None. Whitespace and case aside, nothing is merged
+        that the user did not say again."""
+        from memory import tadhkir
+
+        text = content if isinstance(content, str) else json.dumps(content)
+        wanted = " ".join(str(text).split()).casefold()
+        if not wanted:
+            return None
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, content, stability, difficulty, last_review FROM memories "
+                "WHERE memory_type = ? AND agent_id = ? "
+                "AND (expires IS NULL OR expires = '' OR expires > ?)",
+                (memory_type, agent_id or "", datetime.now(UTC).isoformat()),
+            ).fetchall()
+            for mem_id, stored, stability, difficulty, last_review in rows:
+                if " ".join(str(stored or "").split()).casefold() != wanted:
+                    continue
+                state = tadhkir.review(
+                    {"stability": stability, "difficulty": difficulty, "last_review": last_review},
+                    tadhkir.GOOD,
+                )
+                conn.execute(
+                    "UPDATE memories SET stability = ?, difficulty = ?, last_review = ?, "
+                    "recency = ? WHERE id = ?",
+                    (
+                        state["stability"],
+                        state["difficulty"],
+                        state["last_review"],
+                        datetime.now(UTC).isoformat(),
+                        mem_id,
+                    ),
+                )
+                conn.commit()
+                return str(mem_id)
+        finally:
+            self._release_conn(conn)
+        return None
 
     def _add_to_working(self, memory: Memory):
         """Add to working memory with capacity management"""
@@ -608,42 +673,66 @@ class DhikrMemorySystem:
         params.append(max(limit, 1) * 4 if query else limit)
 
         c.execute(sql, params)
-        rows = c.fetchall()
+        names = [column[0] for column in c.description]
+        rows = [dict(zip(names, row, strict=True)) for row in c.fetchall()]
         self._release_conn(conn)
 
         memories = []
         for row in rows:
             try:
-                content = json.loads(row[1]) if row[1] else None
+                content = json.loads(row["content"]) if row["content"] else None
             except Exception:
-                content = row[1]
+                content = row["content"]
 
             memories.append(
                 Memory(
-                    id=row[0],
+                    id=row["id"],
                     content=content,
-                    memory_type=row[2],
-                    importance=row[3],
-                    recency=datetime.fromisoformat(row[4]) if row[4] else datetime.now(UTC),
-                    access_count=row[5],
-                    agent_id=row[6],
-                    tags=json.loads(row[7]) if row[7] else [],
+                    memory_type=row["memory_type"],
+                    importance=row["importance"],
+                    recency=datetime.fromisoformat(row["recency"])
+                    if row["recency"]
+                    else datetime.now(UTC),
+                    access_count=row["access_count"],
+                    agent_id=row["agent_id"],
+                    tags=json.loads(row["tags"]) if row["tags"] else [],
+                    strength={
+                        "stability": row.get("stability"),
+                        "difficulty": row.get("difficulty"),
+                        "last_review": row.get("last_review"),
+                    },
                 )
             )
 
         if query and memories:
             memories = rank_memories(query, memories)[:limit]
 
-        # Update access count for recalled memories; Daftar shows when each was last used.
+        # A recalled memory is remembered: its access count and its strength grow
+        # (Tadhkir: a Good review; one the same hour adds little, one after a gap
+        # more). Daftar shows when each was last used.
+        from memory import tadhkir
+
         for mem in memories:
             mem.access_count += 1
+            mem.strength = tadhkir.review(mem.strength, tadhkir.GOOD)
         if memories:
             used = datetime.now(UTC).isoformat()
             conn = self._get_conn()
             try:
                 conn.executemany(
-                    "UPDATE memories SET access_count = ?, last_used = ? WHERE id = ?",
-                    [(mem.access_count, used, mem.id) for mem in memories],
+                    "UPDATE memories SET access_count = ?, last_used = ?, stability = ?, "
+                    "difficulty = ?, last_review = ? WHERE id = ?",
+                    [
+                        (
+                            mem.access_count,
+                            used,
+                            (mem.strength or {}).get("stability"),
+                            (mem.strength or {}).get("difficulty"),
+                            (mem.strength or {}).get("last_review"),
+                            mem.id,
+                        )
+                        for mem in memories
+                    ],
                 )
                 conn.commit()
             finally:
@@ -714,15 +803,22 @@ class DhikrMemorySystem:
             content_str = str(memory.content)
 
         previous = c.execute(
-            "SELECT created, source, last_used, expires FROM memories WHERE id = ?", (memory.id,)
+            "SELECT created, source, last_used, expires, stability, difficulty, last_review "
+            "FROM memories WHERE id = ?",
+            (memory.id,),
         ).fetchone()
         created = (previous[0] if previous and previous[0] else "") or datetime.now(UTC).isoformat()
+        strength = memory.strength or (
+            {"stability": previous[4], "difficulty": previous[5], "last_review": previous[6]}
+            if previous
+            else {}
+        )
         c.execute(
             """
             INSERT OR REPLACE INTO memories
             (id, content, memory_type, importance, recency, access_count, agent_id, tags,
-             related_ids, source, created, last_used, expires)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             related_ids, source, created, last_used, expires, stability, difficulty, last_review)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 memory.id,
@@ -738,6 +834,9 @@ class DhikrMemorySystem:
                 created,
                 previous[2] if previous else "",
                 memory.expires or (previous[3] if previous else ""),
+                strength.get("stability"),
+                strength.get("difficulty"),
+                strength.get("last_review"),
             ),
         )
         conn.commit()
