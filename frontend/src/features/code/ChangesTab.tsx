@@ -36,6 +36,12 @@ export function ChangesTab({ projectId, turnCheckpoint, revision, onChanged }: P
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const root = `/${encodeURIComponent(projectId)}`;
+  // A new message saved a new checkpoint: compare with it from now on.
+  const [seenTurn, setSeenTurn] = useState(turnCheckpoint);
+  if (turnCheckpoint !== seenTurn) {
+    setSeenTurn(turnCheckpoint);
+    if (turnCheckpoint) setBase(turnCheckpoint);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +169,11 @@ export function ChangesTab({ projectId, turnCheckpoint, revision, onChanged }: P
       {files === null ? (
         <p className="text-sm text-muted-foreground">Loading changes…</p>
       ) : files.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No changes since this checkpoint.</p>
+        <p className="text-sm text-muted-foreground">
+          {checkpoints.some((item) => item.kind === "turn")
+            ? "No changes since this checkpoint."
+            : "No changes since this checkpoint. There is no checkpoint from before a chat message yet (a project made in a chat has none for its first message); what your next message changes shows here."}
+        </p>
       ) : (
         <ul className="space-y-2" aria-label="Changed files">
           {files.map((file) => {
