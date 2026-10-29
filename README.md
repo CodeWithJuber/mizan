@@ -279,7 +279,7 @@ Two known CLI limits with Ollama:
 - `mizan setup` prompts only for Anthropic and OpenRouter keys; other providers are set in `.env`.
 - `mizan chat` checks `has_any_provider`, which counts only the three API-key providers. An Ollama-only CLI session is therefore refused until that check is widened.
 
-Administrators can change most settings at runtime: Settings → System settings ([docs/admin-settings.md](docs/admin-settings.md)).
+Administrators can change most settings at runtime: Settings → Developer → System settings ([docs/admin-settings.md](docs/admin-settings.md)).
 
 ## Build a plugin
 

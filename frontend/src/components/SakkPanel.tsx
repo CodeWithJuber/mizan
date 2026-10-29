@@ -16,7 +16,7 @@ const TONE = {
   good: "text-emerald-700 dark:text-emerald-400",
   held: "text-amber-700 dark:text-amber-400",
   bad: "text-red-700 dark:text-red-400",
-  plain: "text-gray-600 dark:text-gray-400",
+  plain: "text-muted-foreground",
 };
 
 export default function SakkPanel({ api }: { api: ApiClient }) {
@@ -63,8 +63,8 @@ export default function SakkPanel({ api }: { api: ApiClient }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Receipts</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <h3 className="text-lg font-semibold text-foreground">Receipts</h3>
+        <p className="text-sm text-muted-foreground">
           Every action MIZAN takes or holds for you is written here, chained to the one before it, so nothing can be
           changed, removed or reordered later without the chain showing it. Receipts keep no words of yours: only the
           tool, how it ended, and digests under a key that is yours.

@@ -5,8 +5,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { PageProps, Notebook, NotebookCell, CellOutput } from "../types";
+import { PageProps, Notebook } from "../types";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const CELL_BORDER_COLOR: Record<string, string> = {
   markdown: "border-l-blue-500",
@@ -155,9 +156,11 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
 
   const deleteNotebook = async (id: string, title: string) => {
     if (
-      !window.confirm(
-        `"${title}" notebook delete kar dun? Ye wapas nahi aayega.`,
-      )
+      !(await confirmDialog({
+        title: `Delete the notebook "${title}"?`,
+        description: "It cannot be restored.",
+        destructive: true,
+      }))
     )
       return;
     try {
@@ -365,10 +368,10 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                     🗑
                   </button>
                 </div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <div className="text-sm font-semibold text-foreground">
                   {nb.title}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   {nb.description}
                 </div>
                 <div className="flex gap-3 mt-3">
@@ -402,10 +405,10 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         {showCreate && (
           <div
             className="modal-overlay"
-            onClick={() => {
+            onClick={async () => {
               if (
                 !newTitle.trim() ||
-                window.confirm("Notebook ka title likha tha — band kar dun?")
+                await confirmDialog({ title: "Discard the new notebook?", confirmLabel: "Discard" })
               ) {
                 setShowCreate(false);
               }
@@ -549,12 +552,12 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
               className={`card border-l-4 ${borderColor} overflow-hidden p-0`}
             >
               {/* Cell header */}
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
-                <span className="text-micro font-mono text-gray-400 dark:text-gray-500">
+              <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
+                <span className="text-micro font-mono text-muted-foreground/80">
                   [{i}] {cell.cell_type}
                 </span>
                 {cell.execution_count != null && cell.execution_count > 0 && (
-                  <span className="text-micro font-mono text-gray-400 dark:text-gray-500">
+                  <span className="text-micro font-mono text-muted-foreground/80">
                     run: {cell.execution_count}
                   </span>
                 )}
@@ -613,7 +616,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                   className={`px-3 py-2 font-mono text-xs whitespace-pre-wrap wrap-break-word leading-relaxed m-0
                   ${
                     cell.cell_type === "markdown"
-                      ? "text-gray-600 dark:text-gray-400"
+                      ? "text-muted-foreground"
                       : "text-emerald-600 dark:text-emerald-400"
                   }`}
                 >
@@ -627,7 +630,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                 cell.outputs.map((out, oi) => (
                   <div
                     key={oi}
-                    className="border-t border-gray-200 dark:border-zinc-700 px-3 py-2 bg-gray-50 dark:bg-zinc-800/50"
+                    className="border-t border-border px-3 py-2 bg-muted/50"
                   >
                     {out.output_type === "error" ? (
                       <pre className="font-mono text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap wrap-break-word m-0">
@@ -636,7 +639,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                     ) : (
                       <>
                         {out.stdout && (
-                          <pre className="font-mono text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap wrap-break-word m-0">
+                          <pre className="font-mono text-xs text-foreground/90 whitespace-pre-wrap wrap-break-word m-0">
                             {out.stdout}
                           </pre>
                         )}
@@ -648,7 +651,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                       </>
                     )}
                     {out.execution_time != null && (
-                      <div className="text-micro text-gray-400 dark:text-gray-500 font-mono mt-1">
+                      <div className="text-micro text-muted-foreground/80 font-mono mt-1">
                         {out.execution_time.toFixed(2)}s
                       </div>
                     )}

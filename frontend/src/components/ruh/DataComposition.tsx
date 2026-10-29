@@ -50,10 +50,10 @@ export function DataComposition({ api }: DataCompositionProps) {
 
   if (!stats || stats.sources.length === 0) {
     return (
-      <div className="text-center py-6 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+      <div className="text-center py-6 bg-muted/40 rounded-lg border border-dashed border-border">
         <p className="text-sm text-gray-400">No training data found</p>
         <p className="text-xs text-gray-400 mt-1">
-          Generate seed data: <code className="font-mono bg-gray-100 dark:bg-zinc-800 px-1 py-0.5 rounded">python -m ruh_model.train --generate-data</code>
+          Generate seed data: <code className="font-mono bg-muted px-1 py-0.5 rounded">python -m ruh_model.train --generate-data</code>
         </p>
       </div>
     );
@@ -70,7 +70,7 @@ export function DataComposition({ api }: DataCompositionProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Training Data
         </h4>
         <div className="flex items-center gap-3 text-xs text-gray-400">
@@ -96,14 +96,14 @@ export function DataComposition({ api }: DataCompositionProps) {
             {seedSources.map((s) => (
               <div
                 key={s.name}
-                className="bg-gray-50 dark:bg-zinc-800/50 rounded px-3 py-2 border border-gray-100 dark:border-zinc-700/50"
+                className="bg-muted/50 rounded px-3 py-2 border border-border/60"
               >
                 <div className="flex items-center gap-2">
                   <span
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: SOURCE_COLORS[s.name] ?? "#94a3b8" }}
                   />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{s.name}</span>
+                  <span className="text-xs font-medium text-foreground/80">{s.name}</span>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
                   <span>{formatNum(s.samples)} samples</span>
@@ -128,8 +128,8 @@ export function DataComposition({ api }: DataCompositionProps) {
                 key={s.name}
                 className={`rounded px-3 py-2 border ${
                   s.available
-                    ? "bg-gray-50 dark:bg-zinc-800/50 border-gray-100 dark:border-zinc-700/50"
-                    : "bg-gray-50/50 dark:bg-zinc-800/20 border-dashed border-gray-200 dark:border-zinc-700"
+                    ? "bg-muted/50 border-border/60"
+                    : "bg-gray-50/50 dark:bg-zinc-800/20 border-dashed border-border"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export function DataComposition({ api }: DataCompositionProps) {
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: SOURCE_COLORS[s.name] ?? "#94a3b8", opacity: s.available ? 1 : 0.4 }}
                   />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{s.name}</span>
+                  <span className="text-xs font-medium text-foreground/80">{s.name}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
                   <span>{((s.weight ?? 0) * 100).toFixed(0)}% weight</span>
@@ -160,10 +160,10 @@ function SourceBar({ source, maxSamples }: { source: DataSource; maxSamples: num
 
   return (
     <div className="flex items-center gap-3">
-      <span className="w-24 text-xs text-gray-500 dark:text-gray-400 truncate text-right">
+      <span className="w-24 text-xs text-muted-foreground truncate text-right">
         {source.name}
       </span>
-      <div className="flex-1 h-5 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-5 bg-muted rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: color }}

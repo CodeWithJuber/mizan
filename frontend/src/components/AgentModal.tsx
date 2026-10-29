@@ -96,7 +96,7 @@ export function AgentModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3
           id="agent-modal-title"
-          className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5"
+          className="text-lg font-semibold text-foreground mb-5"
         >
           {editingAgent ? "Edit Agent" : "Create New Agent"}
         </h3>
@@ -105,7 +105,7 @@ export function AgentModal({
           <div>
             <label
               htmlFor="agent-name"
-              className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+              className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5"
             >
               Agent Name
             </label>
@@ -128,7 +128,7 @@ export function AgentModal({
           <div>
             <label
               htmlFor="agent-type"
-              className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+              className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5"
             >
               Agent Type
             </label>
@@ -152,7 +152,7 @@ export function AgentModal({
           </div>
 
           <div>
-            <label htmlFor="agent-provider" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="agent-provider" className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
               Browse provider models
             </label>
             <select id="agent-provider" className="input w-full mb-3" value={browseProvider || source?.provider || ""}
@@ -165,7 +165,7 @@ export function AgentModal({
             </select>
             <label
               htmlFor="agent-model"
-              className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+              className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5"
             >
               AI Model
             </label>
@@ -212,7 +212,7 @@ export function AgentModal({
           <div>
             <label
               htmlFor="agent-prompt"
-              className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+              className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5"
             >
               System Prompt{" "}
               <span className="normal-case tracking-normal font-normal">

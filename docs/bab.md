@@ -5,7 +5,7 @@ When an administrator saves a Telegram bot token, MIZAN runs the bot itself. It 
 ## Turning it on (administrator)
 
 1. In Telegram, ask @BotFather for a new bot and copy its token.
-2. In MIZAN → Settings → System settings, save it as `TELEGRAM_BOT_TOKEN`. It is stored sealed, like other secrets. Restart the backend.
+2. In MIZAN → Settings → Developer → System settings, save it as `TELEGRAM_BOT_TOKEN`. It is stored sealed, like other secrets. Restart the backend.
 3. Channels then shows Telegram as **Connected**. `MIZAN_TELEGRAM=off` keeps the bot stopped even with a token.
 
 ## Linking (each user)

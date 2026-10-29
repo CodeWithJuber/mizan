@@ -39,7 +39,7 @@ Patterns catch the phrasings someone wrote down. An instruction worded another w
 - **Fitting.** Smoothing and weights are fitted by grouped leave-one-out (windows of one source are held out together), with 92.4% leave-one-out accuracy. The fit is cached by the corpus SHA-256 in `core/data/tamyiz.json`.
 - **Hard negatives.** Sentences of ordinary web prose that a first model wrongly flagged were added as data.
 - **Decision.** Text is read in windows of whole sentences, at most 300 characters each. A window whose posterior favours "attack" (MAP) is checked sentence by sentence. Only the sentences that are attacks on their own are replaced by the Amanah mark; if none is, the whole window is. A finding has kind `instruction` and carries its probability `p`.
-- **What stays as it was.** The hidden-text, comment and exfiltration-link guards. `MIZAN_AMANAH=rules` (Settings → System settings) uses the patterns alone.
+- **What stays as it was.** The hidden-text, comment and exfiltration-link guards. `MIZAN_AMANAH=rules` (Settings → Developer → System settings) uses the patterns alone.
 
 **Held out, never trained on** (`scripts/amanah_eval.py`; 95% Wilson intervals; a text counts as caught when `scan` reports anything for it):
 

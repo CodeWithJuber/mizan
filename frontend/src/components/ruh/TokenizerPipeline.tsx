@@ -52,7 +52,7 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
           Tokenizer Pipeline Explorer
         </h4>
         <p className="text-xs text-gray-400 mb-3">
@@ -68,7 +68,7 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleTokenize()}
           placeholder="Type Arabic (كتب الطالب الدرس) or English (the student wrote)..."
-          className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400"
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-card text-foreground placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400"
           dir="auto"
         />
         <button
@@ -84,9 +84,9 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
 
       {/* Quick result summary */}
       {result && (
-        <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-gray-100 dark:border-zinc-700/50">
+        <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-lg border border-border/60">
           <span className="text-xs text-gray-500">
-            <strong className="text-gray-700 dark:text-gray-300">{result.token_count}</strong> tokens
+            <strong className="text-foreground/80">{result.token_count}</strong> tokens
           </span>
           <div className="flex flex-wrap gap-1">
             {result.tokens.map(([rootId, patternId], idx) => (
@@ -125,7 +125,7 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
       {/* Per-word analysis */}
       {result && result.analysis.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Per-Word Analysis
           </h4>
           <div className="overflow-x-auto">
@@ -140,8 +140,8 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
               </thead>
               <tbody>
                 {result.analysis.map((item, idx) => (
-                  <tr key={idx} className="border-t border-gray-100 dark:border-zinc-700/50">
-                    <td className="py-1.5 px-2 font-medium text-gray-800 dark:text-gray-200" dir="auto">
+                  <tr key={idx} className="border-t border-border/60">
+                    <td className="py-1.5 px-2 font-medium text-foreground/90" dir="auto">
                       {String(item.surface)}
                     </td>
                     <td className="py-1.5 px-2 font-mono text-purple-600 dark:text-purple-400" dir="auto">
@@ -156,7 +156,7 @@ export function TokenizerPipeline({ api }: TokenizerPipelineProps) {
                         {String(item.pattern)}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-gray-500 dark:text-gray-400">
+                    <td className="py-1.5 px-2 text-muted-foreground">
                       {String(item.root_meaning)}
                     </td>
                   </tr>
@@ -186,7 +186,7 @@ function PipelineStep({
   const info = PHASE_INFO[step.phase] ?? {
     label: step.phase,
     icon: "⚡",
-    color: "bg-gray-100 dark:bg-zinc-700/30 text-gray-700 dark:text-gray-300",
+    color: "bg-gray-100 dark:bg-zinc-700/30 text-foreground/80",
   };
 
   return (
@@ -205,7 +205,7 @@ function PipelineStep({
         className={`w-full text-left rounded-lg border transition-colors ${
           expanded
             ? "border-purple-300 dark:border-purple-500/30 bg-purple-50/50 dark:bg-purple-500/5"
-            : "border-gray-100 dark:border-zinc-700/50 bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-700/30"
+            : "border-border/60 bg-muted/50 hover:bg-gray-100 dark:hover:bg-zinc-700/30"
         }`}
       >
         <div className="flex items-center gap-3 px-3 py-2.5">
@@ -227,7 +227,7 @@ function PipelineStep({
       </button>
 
       {expanded && (
-        <div className="mt-1 ml-4 mr-1 p-3 bg-white dark:bg-zinc-900 rounded-lg border border-gray-100 dark:border-zinc-700/50 overflow-x-auto">
+        <div className="mt-1 ml-4 mr-1 p-3 bg-card rounded-lg border border-border/60 overflow-x-auto">
           <StepOutput phase={step.phase} output={step.output} />
         </div>
       )}
@@ -271,7 +271,7 @@ function StepOutput({ phase, output }: { phase: string; output: unknown }) {
       <div className="space-y-1">
         {(output as Array<{ word: string; type: string; root: string; pattern: string }>).map((item, idx) => (
           <div key={idx} className="flex items-center gap-3 text-xs py-1 border-b border-gray-50 dark:border-zinc-800 last:border-0">
-            <span className="w-20 font-medium text-gray-800 dark:text-gray-200" dir="auto">{item.word}</span>
+            <span className="w-20 font-medium text-foreground/90" dir="auto">{item.word}</span>
             <span className="text-gray-400">→</span>
             <span className="font-mono text-purple-600 dark:text-purple-400" dir="auto">{item.root || "—"}</span>
             <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 text-[10px]">
@@ -289,8 +289,8 @@ function StepOutput({ phase, output }: { phase: string; output: unknown }) {
     return (
       <div className="flex flex-wrap gap-2">
         {(output as Array<{ word: string; root_id: number; pattern_id: number; root: string; pattern: string }>).map((item, idx) => (
-          <div key={idx} className="bg-gray-50 dark:bg-zinc-800 rounded px-2 py-1.5 text-xs border border-gray-100 dark:border-zinc-700/50">
-            <span className="font-medium text-gray-700 dark:text-gray-300" dir="auto">{item.word}</span>
+          <div key={idx} className="bg-muted/60 rounded px-2 py-1.5 text-xs border border-border/60">
+            <span className="font-medium text-foreground/80" dir="auto">{item.word}</span>
             <div className="flex items-center gap-1 mt-0.5 font-mono text-[10px] text-gray-400">
               <span>root:{item.root_id}</span>
               <span>pat:{item.pattern_id}</span>
@@ -308,7 +308,7 @@ function StepOutput({ phase, output }: { phase: string; output: unknown }) {
       <div className="space-y-2">
         {(output as Array<{ word: string; features: number[][]; dimensions?: string[] }>).map((item, idx) => (
           <div key={idx} className="space-y-1">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300" dir="auto">{item.word}</span>
+            <span className="text-xs font-medium text-foreground/80" dir="auto">{item.word}</span>
             {item.features.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {item.features.slice(0, 8).map((feat, fidx) => (
@@ -350,7 +350,7 @@ function StepOutput({ phase, output }: { phase: string; output: unknown }) {
             key={idx}
             className={`inline-flex items-center px-2 py-1 rounded text-xs font-mono border ${
               tok.root_id <= 2
-                ? "bg-gray-100 dark:bg-zinc-700/30 border-gray-200 dark:border-zinc-700 text-gray-400"
+                ? "bg-gray-100 dark:bg-zinc-700/30 border-border text-gray-400"
                 : "bg-purple-50 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300"
             }`}
           >
@@ -365,7 +365,7 @@ function StepOutput({ phase, output }: { phase: string; output: unknown }) {
 
   // Fallback: JSON
   return (
-    <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 max-h-48 overflow-auto">
+    <pre className="text-[10px] font-mono text-muted-foreground max-h-48 overflow-auto">
       {JSON.stringify(output, null, 2)}
     </pre>
   );

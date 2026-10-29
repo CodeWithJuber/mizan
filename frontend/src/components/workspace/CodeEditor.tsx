@@ -9,6 +9,7 @@ import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { languageOf } from "../../utils/workspaceTree";
+import { useTheme } from "../../hooks/useTheme";
 
 function languageExtension(path: string) {
   switch (languageOf(path)) {
@@ -35,7 +36,7 @@ interface Props {
 
 export default function CodeEditor({ path, value, onChange, onSave, readOnly = false }: Props) {
   const extensions = useMemo(() => languageExtension(path), [path]);
-  const dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+  const { isDark: dark } = useTheme();
   return (
     <div
       className="h-full min-h-[260px] text-sm"

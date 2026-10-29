@@ -85,7 +85,7 @@ export function PatternTutorCard({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Pattern tutor
         </h4>
         {!data.available ? (
@@ -100,11 +100,11 @@ export function PatternTutorCard({
         )}
       </div>
 
-      <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700">
+      <div className="p-4 rounded-xl bg-card border border-border">
         <div
           dir="rtl"
           lang="ar"
-          className="text-3xl font-bold text-center text-gray-900 dark:text-gray-100"
+          className="text-3xl font-bold text-center text-foreground"
         >
           {data.wazn}
         </div>
@@ -118,7 +118,7 @@ export function PatternTutorCard({
 
       {data.siblings.length > 0 ? (
         <div>
-          <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
             Sibling words on this pattern
           </div>
           <div className="flex flex-wrap gap-1.5">

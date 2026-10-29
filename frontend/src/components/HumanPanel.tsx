@@ -76,7 +76,7 @@ function PanelInvites({ api, total }: { api: ApiClient; total: number }) {
   };
 
   return (
-    <div className="space-y-2 border-t border-gray-100 dark:border-zinc-800 pt-3">
+    <div className="space-y-2 border-t border-border/60 pt-3">
       <h4 className="font-medium text-sm">Invite links</h4>
       <p className="text-xs text-gray-500">
         Send a person a link to answer on their own phone or computer, with no account. Each link is for one pseudonym
@@ -98,7 +98,7 @@ function PanelInvites({ api, total }: { api: ApiClient; total: number }) {
       {link && (
         <div className="text-xs space-y-1">
           <div className="text-gray-500">Copy it now: it is shown only once.</div>
-          <code className="block break-all bg-gray-100 dark:bg-zinc-800 rounded p-2">{link}</code>
+          <code className="block break-all bg-muted rounded p-2">{link}</code>
         </div>
       )}
       {invites.length > 0 && (
@@ -114,7 +114,7 @@ function PanelInvites({ api, total }: { api: ApiClient; total: number }) {
             </thead>
             <tbody>
               {invites.map((entry) => (
-                <tr key={entry.id} className="border-t border-gray-100 dark:border-zinc-800">
+                <tr key={entry.id} className="border-t border-border/60">
                   <td className="py-1.5">{entry.person}</td>
                   <td className="py-1.5 text-right tabular-nums">
                     {entry.answered}/{total}
@@ -225,7 +225,7 @@ export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange
       </div>
       <ol className="space-y-4">
         {shown.map((task) => (
-          <li key={task.id} className="border-t border-gray-100 dark:border-zinc-800 pt-3 space-y-2">
+          <li key={task.id} className="border-t border-border/60 pt-3 space-y-2">
             {task.history.length > 0 && (
               <div className="space-y-1 text-xs">
                 {task.history.map((turn, index) => (
@@ -277,7 +277,7 @@ export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange
             </thead>
             <tbody>
               {view.people.map((entry) => (
-                <tr key={entry.person} className="border-t border-gray-100 dark:border-zinc-800">
+                <tr key={entry.person} className="border-t border-border/60">
                   <td className="py-1.5">{entry.person}</td>
                   <td className="py-1.5 text-right tabular-nums">{entry.answered}</td>
                   <td className="py-1.5 pl-3 text-gray-500">

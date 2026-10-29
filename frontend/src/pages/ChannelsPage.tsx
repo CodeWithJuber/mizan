@@ -18,6 +18,7 @@ import { EmailLink } from "../components/EmailLink";
 import { TelegramLink } from "../components/TelegramLink";
 import { WhatsAppLink } from "../components/WhatsAppLink";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const CHANNEL_TYPES: Record<
   string,
@@ -91,7 +92,7 @@ const CHANNEL_TYPES: Record<
   },
 };
 
-export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
+export default function ChannelsPage({ api }: PageProps) {
   const { addToast } = useToast();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -164,7 +165,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
       channel?.status === "connected" || integration?.enabled === true;
     const displayName = CHANNEL_TYPES[channelId]?.name || channelId;
 
-    if (isConnected && !window.confirm(`Stop the ${displayName} channel?`)) {
+    if (isConnected && !(await confirmDialog({ title: `Stop the ${displayName} channel?`, confirmLabel: "Stop" }))) {
       return;
     }
 
@@ -313,7 +314,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                     {info.icon}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-sm font-semibold text-foreground">
                       {info.name}
                     </div>
                     <div
@@ -333,7 +334,7 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
                   </span>
                 </div>
                 {channel.detail && !isConnected && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  <p className="text-xs text-muted-foreground mb-3">
                     {channel.detail}
                   </p>
                 )}
@@ -386,11 +387,11 @@ export default function ChannelsPage({ api, addTerminalLine }: PageProps) {
 
                 {showConfig === type && (
                   <div className="detail-panel mt-3">
-                    <div className="text-xs font-mono text-gray-500 dark:text-gray-400 mb-2">
+                    <div className="text-xs font-mono text-muted-foreground mb-2">
                       Configuration for {info.name}
                     </div>
                     {type === "webchat" ? (
-                      <div className="text-sm text-gray-600 dark:text-gray-300">
+                      <div className="text-sm text-foreground/75">
                         WebChat works automatically inside this app — nothing to
                         set up.
                       </div>

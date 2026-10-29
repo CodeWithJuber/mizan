@@ -129,10 +129,10 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
       <div className="card space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+            <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">
               Daftar · دفتر
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Everything MIZAN keeps about you, with where it came from. Change or forget anything; take it with you.
             </p>
           </div>
@@ -166,7 +166,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                   kind === item.key
                     ? "bg-mizan-gold/10 text-mizan-gold border-mizan-gold/20"
-                    : "text-gray-500 dark:text-gray-400 border-transparent hover:bg-gray-100 dark:hover:bg-zinc-800"
+                    : "text-muted-foreground border-transparent hover:bg-gray-100 dark:hover:bg-zinc-800"
                 }`}
                 onClick={() => setKind(item.key)}
               >
@@ -184,7 +184,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
           />
         </div>
 
-        <div className="rounded-lg border border-gray-200 dark:border-zinc-700 p-3 space-y-2">
+        <div className="rounded-lg border border-border p-3 space-y-2">
           <textarea
             className="input w-full h-16 resize-none text-sm"
             placeholder="Something MIZAN should remember about you…"
@@ -198,7 +198,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
               value={draft.tags}
               onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
             />
-            <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+            <label className="text-xs text-muted-foreground flex items-center gap-1">
               Forget after
               <select
                 className="input text-sm py-1"
@@ -222,7 +222,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
 
       <ul className="space-y-2">
         {ledger.entries.length === 0 && (
-          <li className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
+          <li className="text-sm text-muted-foreground/80 text-center py-6">
             {query ? "Nothing about that." : "MIZAN keeps nothing about you yet."}
           </li>
         )}
@@ -232,7 +232,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
               <span className={KIND_BADGE[entry.kind].style}>{KIND_BADGE[entry.kind].label}</span>
               {entry.key && <span className="font-mono text-xs text-gray-500">{entry.key}</span>}
               {entry.tags?.map((tag) => (
-                <span key={tag} className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500">
+                <span key={tag} className="text-micro font-mono px-1.5 py-0.5 rounded bg-muted text-gray-500">
                   {tag}
                 </span>
               ))}
@@ -255,12 +255,12 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap wrap-break-word line-clamp-6">
+              <p className="text-sm text-foreground whitespace-pre-wrap wrap-break-word line-clamp-6">
                 {entry.content}
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-micro text-gray-400 dark:text-gray-500">{provenance(entry)}</span>
+              <span className="text-micro text-muted-foreground/80">{provenance(entry)}</span>
               <span className="flex-1" />
               {entry.editable && editing?.id !== entry.id && (
                 <>
@@ -279,7 +279,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
       </ul>
 
       <div className="card space-y-2">
-        <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">
           Forget a topic
         </div>
         <div className="flex flex-wrap gap-2">
@@ -302,7 +302,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
               <p className="text-sm text-gray-400">No notes or preferences about that.</p>
             ) : (
               <>
-                <ul className="text-sm list-disc pl-5 text-gray-700 dark:text-gray-300">
+                <ul className="text-sm list-disc pl-5 text-foreground/80">
                   {preview.map((entry) => (
                     <li key={entry.id} className="wrap-break-word">
                       {entry.key ? `${entry.key}: ` : ""}

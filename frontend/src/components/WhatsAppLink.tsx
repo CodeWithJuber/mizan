@@ -45,8 +45,8 @@ export function WhatsAppLink({ api }: { api: ApiClient }) {
   if (!status) return null;
   if (!status.available)
     return (
-      <div className="card p-4 text-sm text-gray-600 dark:text-gray-400">
-        <div className="font-medium text-gray-900 dark:text-gray-100">WhatsApp</div>
+      <div className="card p-4 text-sm text-muted-foreground">
+        <div className="font-medium text-foreground">WhatsApp</div>
         <p className="mt-1">
           Not running. An administrator connects MIZAN's own WhatsApp Business number under
           System settings → Channels (official Cloud API: access token, phone number ID, app
@@ -64,10 +64,10 @@ export function WhatsAppLink({ api }: { api: ApiClient }) {
     <div className="card p-4 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 break-all">
+          <div className="text-sm font-medium text-foreground break-all">
             WhatsApp{status.number ? ` · ${status.number}` : ""}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-muted-foreground">
             {status.linked
               ? `Linked to +${status.linked_number}${status.region ? ` (${status.region})` : ""}: ${where}. Actions are never allowed from WhatsApp, and nothing said there is used to train a model.`
               : "Link your number. Where Meta allows assistants, you chat with MIZAN there; elsewhere your notices come there."}
@@ -112,12 +112,12 @@ export function WhatsAppLink({ api }: { api: ApiClient }) {
               Open WhatsApp with the message ready
             </a>
           ) : (
-            <p className="text-gray-600 dark:text-gray-300">Send this to MIZAN's WhatsApp number:</p>
+            <p className="text-foreground/75">Send this to MIZAN's WhatsApp number:</p>
           )}
-          <code className="block font-mono break-all rounded bg-gray-50 dark:bg-zinc-900 p-2 select-all">
+          <code className="block font-mono break-all rounded bg-muted/50 p-2 select-all">
             {code.text}
           </code>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-muted-foreground">
             It works once, within {Math.round(code.expires / 60)} minutes.{" "}
             <button className="underline" onClick={load}>I sent it</button>
           </p>

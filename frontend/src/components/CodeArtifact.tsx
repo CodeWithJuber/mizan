@@ -7,6 +7,7 @@ import {
 } from "@codesandbox/sandpack-react";
 import type { ArtifactPreviewProps } from "./ArtifactPreview";
 import { codeArtifactConfig } from "../utils/codeArtifact.ts";
+import { useTheme } from "../hooks/useTheme";
 
 export default function CodeArtifact({
   language,
@@ -19,12 +20,10 @@ export default function CodeArtifact({
     () => codeArtifactConfig(language, content, view),
     [language, content, view],
   );
-  const isDark =
-    typeof document !== "undefined" &&
-    document.documentElement.classList.contains("dark");
+  const { isDark } = useTheme();
 
   return (
-    <div className="rounded-b-xl overflow-hidden border-t border-gray-200 dark:border-zinc-700">
+    <div className="rounded-b-xl overflow-hidden border-t border-border">
       <SandpackProvider
         template={template}
         files={files}
@@ -43,7 +42,7 @@ export default function CodeArtifact({
                 closableTabs={false}
               />
               {view === "preview" && !runnable && (
-                <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-zinc-800/50">
+                <div className="px-3 py-2 text-[11px] text-muted-foreground bg-muted/50">
                   Live preview is only available for JavaScript/TypeScript/HTML
                   {lang ? ` — "${lang}"` : ""} shows as read-only code.
                 </div>

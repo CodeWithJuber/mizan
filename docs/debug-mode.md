@@ -9,12 +9,12 @@ MIZAN then checks both answers against what it established itself.
 
 ## Where to find it
 
-- **Debug** in the sidebar (Tools). It is shown only to accounts allowed to use it.
-- In a chat, turn on **Debug** under the permission switch. Every message you sent then gets a **Compare with the base model** link.
+- **Settings → Developer → Debug compare** (`/settings/developer/debug`). It is shown only to accounts allowed to use it.
+- In a chat, turn on **Debug compare** in the composer's **+** menu. Every message you sent then gets a **Compare with the base model** button.
 
 ## Who may use it
 
-Admins set this in Settings → System settings → **Debug mode**, or with `MIZAN_DEBUG_MODE`:
+Admins set this in Settings → Developer → System settings → **Debug mode**, or with `MIZAN_DEBUG_MODE`:
 
 | Value | Meaning |
 |---|---|

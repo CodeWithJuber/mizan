@@ -79,7 +79,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
 
   if (!status) {
     return (
-      <div className="text-center py-6 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+      <div className="text-center py-6 bg-muted/40 rounded-lg border border-dashed border-border">
         <p className="text-sm text-gray-400">Queue unavailable</p>
       </div>
     );
@@ -97,7 +97,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
         ].map((item) => (
           <div
             key={item.label}
-            className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center border border-gray-100 dark:border-zinc-700/50"
+            className="bg-muted/50 rounded-lg p-2.5 text-center border border-border/60"
           >
             <span className={`block font-mono text-lg font-semibold ${item.color}`}>
               {item.value}
@@ -110,7 +110,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
       </div>
 
       {/* Worker status */}
-      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span
           className={`w-2 h-2 rounded-full ${status.worker?.running ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`}
         />
@@ -124,14 +124,14 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
       {/* Task list */}
       {(status.tasks ?? []).length > 0 ? (
         <div className="space-y-1">
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Recent Tasks ({status.total})
           </h4>
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {(status.tasks ?? []).map((task: QueueTask) => (
               <div
                 key={task.task_id}
-                className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2 border border-gray-100 dark:border-zinc-700/50"
+                className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 border border-border/60"
               >
                 {/* Status badge */}
                 <span
@@ -146,7 +146,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
                 </span>
 
                 {/* Task text */}
-                <span className="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">
+                <span className="flex-1 text-xs text-foreground/80 truncate">
                   {task.payload?.task || task.task_id.slice(0, 8)}
                 </span>
 
@@ -176,7 +176,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
           </div>
         </div>
       ) : (
-        <div className="text-center py-4 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+        <div className="text-center py-4 bg-muted/40 rounded-lg border border-dashed border-border">
           <p className="text-sm text-gray-400">No tasks in queue</p>
           <p className="text-xs text-gray-400 mt-1">Tasks are queued via chat or API</p>
         </div>

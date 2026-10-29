@@ -1,7 +1,7 @@
 /** Izn mode for the next chat request: how much the agent may do without asking. */
 import { PERMISSION_MODES, type PermissionMode } from "../utils/agentActivity";
 
-const LABELS: Record<PermissionMode, { title: string; hint: string }> = {
+export const PERMISSION_LABELS: Record<PermissionMode, { title: string; hint: string }> = {
   auto_edits: { title: "Auto edits", hint: "Edits project files; asks before running commands or external actions" },
   ask: { title: "Ask first", hint: "Asks before every change or command" },
   plan: { title: "Plan", hint: "Read-only: investigates and proposes a plan" },
@@ -9,6 +9,14 @@ const LABELS: Record<PermissionMode, { title: string; hint: string }> = {
 };
 
 export const STORAGE_KEY = "mizan_permission_mode";
+
+export function savePermissionMode(mode: PermissionMode) {
+  try {
+    localStorage.setItem(STORAGE_KEY, mode);
+  } catch {
+    // per-viewer convenience only
+  }
+}
 
 export function loadPermissionMode(): PermissionMode {
   try {
@@ -23,10 +31,10 @@ export default function PermissionModeSwitch({
   mode, onChange, disabled = false,
 }: { mode: PermissionMode; onChange: (mode: PermissionMode) => void; disabled?: boolean }) {
   return (
-    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400" title={LABELS[mode].hint}>
+    <label className="flex items-center gap-2 text-xs text-muted-foreground" title={PERMISSION_LABELS[mode].hint}>
       <span className="font-medium">Mode</span>
       <select
-        className="rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-xs focus-ring"
+        className="rounded-md border border-border bg-card px-2 py-1 text-xs focus-ring"
         value={mode}
         disabled={disabled}
         onChange={(event) => {
@@ -37,7 +45,7 @@ export default function PermissionModeSwitch({
         aria-label="Agent permission mode"
       >
         {PERMISSION_MODES.map((value) => (
-          <option key={value} value={value}>{LABELS[value].title}</option>
+          <option key={value} value={value}>{PERMISSION_LABELS[value].title}</option>
         ))}
       </select>
     </label>

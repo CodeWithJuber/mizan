@@ -100,7 +100,7 @@ function QuoteChanges({ changes }: { changes: { source: string; given: string }[
         </thead>
         <tbody>
           {changes.map((change, index) => (
-            <tr key={index} className="align-top border-t border-gray-100 dark:border-zinc-800">
+            <tr key={index} className="align-top border-t border-border/60">
               <td dir="rtl" className="py-1 pr-2 break-words text-emerald-700 dark:text-emerald-400">
                 {change.source}
               </td>
@@ -163,7 +163,7 @@ function ArmCard({ title, subtitle, arm, badges, quoteChanges, isnad }: {
           </div>
         )}
       </div>
-      <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-200 dark:border-zinc-800 pt-2">
+      <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2">
         {stats.map((item) => (
           <span key={String(item)}>{item}</span>
         ))}
@@ -204,14 +204,14 @@ function SpanRow({ span, depth }: { span: TraceSpan; depth: number }) {
                   <div className="text-[10px] uppercase tracking-wide text-gray-500">
                     {key === "user" ? "Prompt" : key === "reply" ? "Lisan's reply" : "Instructions"}
                   </div>
-                  <pre className="text-xs whitespace-pre-wrap bg-gray-50 dark:bg-zinc-900 rounded p-2 max-h-64 overflow-auto">
+                  <pre className="text-xs whitespace-pre-wrap bg-muted/50 rounded p-2 max-h-64 overflow-auto">
                     {String(a[key] ?? "")}
                   </pre>
                 </div>
               ))}
             </>
           ) : (
-            <pre className="text-xs whitespace-pre-wrap bg-gray-50 dark:bg-zinc-900 rounded p-2 max-h-64 overflow-auto">
+            <pre className="text-xs whitespace-pre-wrap bg-muted/50 rounded p-2 max-h-64 overflow-auto">
               {JSON.stringify(a, null, 2)}
             </pre>
           )}
@@ -250,7 +250,7 @@ export function CompareView({ run }: { run: Run }) {
               key={key}
               type="button"
               onClick={() => setView(key)}
-              className={`text-sm px-3 py-1 rounded-full border whitespace-nowrap ${view === key ? "border-amber-500 text-amber-600 dark:text-amber-400" : "border-gray-200 dark:border-zinc-700 text-gray-500"}`}
+              className={`text-sm px-3 py-1 rounded-full border whitespace-nowrap ${view === key ? "border-amber-500 text-amber-600 dark:text-amber-400" : "border-border text-gray-500"}`}
             >
               {key === "trace" ? `Steps (${tree.length})` : "Difference"}
             </button>
@@ -379,7 +379,7 @@ export default function DebugCompare({
     <div className="space-y-4">
       <div className="card p-4 space-y-3">
         <textarea
-          className="w-full min-h-24 rounded-lg border border-gray-200 dark:border-zinc-700 bg-transparent p-3 text-sm"
+          className="w-full min-h-24 rounded-lg border border-border bg-transparent p-3 text-sm"
           placeholder="One message, e.g. 2**100, Ayatul Kursi sunao, Bukhari 1"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -399,7 +399,7 @@ export default function DebugCompare({
           <label className="text-xs text-gray-500 flex items-center gap-2">
             MIZAN's tools
             <select
-              className="rounded border border-gray-200 dark:border-zinc-700 bg-transparent px-2 py-1"
+              className="rounded border border-border bg-transparent px-2 py-1"
               value={mode}
               onChange={(event) => setMode(event.target.value as "auto" | "plan")}
             >

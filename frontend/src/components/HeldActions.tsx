@@ -71,11 +71,11 @@ function HeldActionRow({ item }: { item: HeldAction }) {
   const preview = full ?? item.shown;
   return (
     <li className="flex flex-wrap items-center gap-2 py-1.5">
-      <code className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800">
+      <code className="text-xs px-1.5 py-0.5 rounded bg-muted">
         {item.tool}
       </code>
       {item.reason && (
-        <span className="text-2xs text-gray-500 dark:text-gray-400">{item.reason}</span>
+        <span className="text-2xs text-muted-foreground">{item.reason}</span>
       )}
       <span className="ml-auto flex items-center gap-2">
         {state === "waiting" && (
@@ -113,13 +113,13 @@ function HeldActionRow({ item }: { item: HeldAction }) {
       </span>
       {preview && (
         <details className="w-full" open={full !== null && full.length < 400}>
-          <summary className="text-2xs text-gray-500 dark:text-gray-400 cursor-pointer">
+          <summary className="text-2xs text-muted-foreground cursor-pointer">
             What it will do
             {item.params_sha256 && (
               <span className="font-mono"> · fingerprint {item.params_sha256.slice(0, 12)}</span>
             )}
           </summary>
-          <pre className="mt-1 text-2xs whitespace-pre-wrap break-all rounded bg-gray-50 dark:bg-zinc-900 p-2 max-h-64 overflow-auto">
+          <pre className="mt-1 text-2xs whitespace-pre-wrap break-all rounded bg-muted/50 p-2 max-h-64 overflow-auto">
             {preview}
             {full === null && "\n… (cut short)"}
           </pre>
@@ -136,7 +136,7 @@ export function HeldActions({ items }: { items: HeldAction[] }) {
       <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
         Waiting for your approval
       </div>
-      <p className="text-2xs text-gray-600 dark:text-gray-400 mb-1">
+      <p className="text-2xs text-muted-foreground mb-1">
         No one was watching this run, so MIZAN held these actions instead of taking them.
         They expire after 24 hours.
       </p>

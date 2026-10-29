@@ -1,26 +1,199 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap')
-layer(base);
-
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Streamdown renders classes from its own files; Tailwind must see them. */
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
+@source "../node_modules/@streamdown/math/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  --color-mizan-gold: #d4af37;
-  --color-mizan-gold-light: #f3e5ab;
-  --color-mizan-gold-dim: #aa8529;
-  --color-mizan-gold-text: #996515;
-  --color-mizan-dark: #0b0c10;
-  --color-mizan-dark-surface: #1f2833;
-  --color-mizan-bg-primary: #020617;
-  --color-mizan-bg-secondary: #0f172a;
-  --color-mizan-bg-surface: #1e293b;
-  --color-mizan-bg-elevated: #334155;
+/* ===================================================================
+   DESIGN TOKENS — one neutral base, the ميزان gold as the only accent.
+   shadcn/ui components read these; legacy utilities below use them too.
+   =================================================================== */
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.993 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.76 0.135 85);
+  --primary-foreground: oklch(0.22 0.04 75);
+  --secondary: oklch(0.965 0 0);
+  --secondary-foreground: oklch(0.22 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.955 0.012 90);
+  --accent-foreground: oklch(0.22 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.6 0.13 155);
+  --warning: oklch(0.66 0.12 80);
+  --info: oklch(0.58 0.14 250);
+  --border: oklch(0.915 0 0);
+  --input: oklch(0.89 0 0);
+  --ring: oklch(0.76 0.135 85 / 0.6);
+  /* Gold that passes contrast as text on the light background. */
+  --brand: oklch(0.52 0.1 75);
+  --chart-1: oklch(0.76 0.135 85);
+  --chart-2: oklch(0.6 0.13 155);
+  --chart-3: oklch(0.58 0.14 250);
+  --chart-4: oklch(0.62 0.17 30);
+  --chart-5: oklch(0.55 0.15 300);
+  --sidebar: oklch(0.982 0 0);
+  --sidebar-foreground: oklch(0.25 0 0);
+  --sidebar-primary: oklch(0.76 0.135 85);
+  --sidebar-primary-foreground: oklch(0.22 0.04 75);
+  --sidebar-accent: oklch(0.945 0 0);
+  --sidebar-accent-foreground: oklch(0.18 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.76 0.135 85 / 0.6);
+}
 
-  --font-display: Space Grotesk, sans-serif;
-  --font-body: DM Sans, Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-arabic: Amiri, serif;
-  --font-mono: IBM Plex Mono, ui-monospace, monospace;
+.dark {
+  --background: oklch(0.155 0 0);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.195 0 0);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.215 0 0);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.79 0.13 86);
+  --primary-foreground: oklch(0.2 0.035 75);
+  --secondary: oklch(0.25 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.235 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+  --accent: oklch(0.26 0.01 85);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.68 0.19 22);
+  --success: oklch(0.72 0.14 155);
+  --warning: oklch(0.8 0.13 85);
+  --info: oklch(0.72 0.12 250);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.79 0.13 86 / 0.55);
+  --brand: oklch(0.83 0.12 88);
+  --sidebar: oklch(0.135 0 0);
+  --sidebar-foreground: oklch(0.88 0 0);
+  --sidebar-primary: oklch(0.79 0.13 86);
+  --sidebar-primary-foreground: oklch(0.2 0.035 75);
+  --sidebar-accent: oklch(0.22 0 0);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.79 0.13 86 / 0.55);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  /* Older names, now on the tokens so every page follows the theme. */
+  --color-mizan-dark: var(--background);
+  --color-mizan-dark-surface: var(--card);
+  --color-mizan-gold-text: var(--brand);
+}
+
+@theme {
+  --color-mizan-gold: oklch(0.76 0.135 85);
+  --color-mizan-gold-light: oklch(0.92 0.07 90);
+  --color-mizan-gold-dim: oklch(0.62 0.115 80);
+  --color-mizan-bg-primary: var(--color-neutral-950);
+  --color-mizan-bg-secondary: var(--color-neutral-900);
+  --color-mizan-bg-surface: var(--color-neutral-800);
+  --color-mizan-bg-elevated: var(--color-neutral-700);
+
+  /* One neutral palette: gray, zinc and slate all read as neutral, and
+     amber is the gold ramp, so pages built before the tokens look as one. */
+  --color-gray-50: var(--color-neutral-50);
+  --color-gray-100: var(--color-neutral-100);
+  --color-gray-200: var(--color-neutral-200);
+  --color-gray-300: var(--color-neutral-300);
+  --color-gray-400: var(--color-neutral-400);
+  --color-gray-500: var(--color-neutral-500);
+  --color-gray-600: var(--color-neutral-600);
+  --color-gray-700: var(--color-neutral-700);
+  --color-gray-800: var(--color-neutral-800);
+  --color-gray-900: var(--color-neutral-900);
+  --color-gray-950: var(--color-neutral-950);
+  --color-zinc-50: var(--color-neutral-50);
+  --color-zinc-100: var(--color-neutral-100);
+  --color-zinc-200: var(--color-neutral-200);
+  --color-zinc-300: var(--color-neutral-300);
+  --color-zinc-400: var(--color-neutral-400);
+  --color-zinc-500: var(--color-neutral-500);
+  --color-zinc-600: var(--color-neutral-600);
+  --color-zinc-700: var(--color-neutral-700);
+  --color-zinc-800: var(--color-neutral-800);
+  --color-zinc-900: var(--color-neutral-900);
+  --color-zinc-950: var(--color-neutral-950);
+  --color-slate-50: var(--color-neutral-50);
+  --color-slate-100: var(--color-neutral-100);
+  --color-slate-200: var(--color-neutral-200);
+  --color-slate-300: var(--color-neutral-300);
+  --color-slate-400: var(--color-neutral-400);
+  --color-slate-500: var(--color-neutral-500);
+  --color-slate-600: var(--color-neutral-600);
+  --color-slate-700: var(--color-neutral-700);
+  --color-slate-800: var(--color-neutral-800);
+  --color-slate-900: var(--color-neutral-900);
+  --color-slate-950: var(--color-neutral-950);
+  --color-amber-50: oklch(0.987 0.022 95);
+  --color-amber-100: oklch(0.962 0.05 92);
+  --color-amber-200: oklch(0.92 0.09 90);
+  --color-amber-300: oklch(0.87 0.12 88);
+  --color-amber-400: oklch(0.81 0.135 86);
+  --color-amber-500: oklch(0.76 0.135 85);
+  --color-amber-600: oklch(0.66 0.12 80);
+  --color-amber-700: oklch(0.55 0.105 75);
+  --color-amber-800: oklch(0.46 0.085 72);
+  --color-amber-900: oklch(0.39 0.07 70);
+  --color-amber-950: oklch(0.27 0.05 68);
+
+  --font-display: 'DM Sans Variable', 'DM Sans', system-ui, sans-serif;
+  --font-body: 'DM Sans Variable', 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'DM Sans Variable', 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-arabic: Amiri, 'Noto Naskh Arabic', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --text-micro: 12px;
   --text-2xs: 13px;
@@ -32,11 +205,12 @@ layer(base);
   --z-index-modal: 40;
   --z-index-toast: 50;
 
-  --animate-fade-in: fadeIn 0.3s ease-out;
-  --animate-fade-in-up: fadeInUp 0.4s ease-out forwards;
+  --animate-fade-in: fadeIn 0.2s ease-out;
+  --animate-fade-in-up: fadeInUp 0.3s ease-out forwards;
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-float: float 3s ease-in-out infinite;
   --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+  --animate-slide-in-right: slideInRight 0.25s ease-out;
 
   @keyframes fadeIn {
     0% {
@@ -49,7 +223,7 @@ layer(base);
   @keyframes fadeInUp {
     0% {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateY(6px);
     }
     100% {
       opacity: 1;
@@ -73,17 +247,28 @@ layer(base);
       background-position: 200% 0;
     }
   }
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
 }
 
+/* ===================================================================
+   LEGACY UTILITIES — the class names pages already use, rebuilt on the
+   tokens above so every page follows one theme before it is rewritten.
+   =================================================================== */
 @utility page-wrapper {
-  /* Slide-in animation for toasts */
-
-  /* ===== PAGE LAYOUT ===== */
   @apply flex-1 flex flex-col overflow-hidden;
 }
 
 @utility page-header {
-  @apply flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-white/50 dark:border-white/5 bg-white/40 dark:bg-mizan-dark-surface/30 backdrop-blur-md z-10 relative shadow-xs;
+  @apply flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 py-4 border-b border-border bg-background relative z-10;
 }
 
 @utility page-body {
@@ -91,26 +276,24 @@ layer(base);
 }
 
 @utility quran-quote {
-  @apply px-5 py-1.5 text-xxs text-gray-400 dark:text-gray-500 italic;
+  @apply px-5 py-1.5 text-xs text-muted-foreground italic;
 }
 
 @utility loading-text {
-  @apply p-5 text-xs text-gray-400 dark:text-gray-500 font-mono;
+  @apply p-5 text-xs text-muted-foreground font-mono;
 }
 
 @utility chat-layout {
-  /* ===== CHAT LAYOUT (ChatGPT / Claude style) ===== */
   position: absolute;
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  /* One column no wider than the screen: content wraps or shrinks instead. */
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
 }
 
 @utility chat-header {
-  @apply flex items-center border-b border-gray-200/70 dark:border-zinc-800 bg-white dark:bg-mizan-dark z-10 px-4 py-2;
+  @apply flex items-center border-b border-border bg-background z-10 px-4 py-2;
 }
 
 @utility chat-header-inner {
@@ -132,16 +315,14 @@ layer(base);
 }
 
 @utility chat-input-area {
-  @apply px-4 pb-4 pt-3 bg-white dark:bg-mizan-dark border-t border-gray-100 dark:border-zinc-800/50 z-10;
+  @apply px-4 pb-4 pt-3 bg-background z-10;
 }
 
 @utility chat-scroll-to-bottom {
   @apply absolute bottom-3 left-1/2 -translate-x-1/2 z-20
     w-9 h-9 rounded-full flex items-center justify-center
-    bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600
-    shadow-lg shadow-black/10 dark:shadow-black/30
-    text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200
-    hover:bg-gray-50 dark:hover:bg-zinc-700
+    bg-popover border border-border shadow-lg
+    text-muted-foreground hover:text-foreground hover:bg-muted
     transition-all duration-200 cursor-pointer
     opacity-0 translate-y-2 pointer-events-none;
 
@@ -155,414 +336,278 @@ layer(base);
 }
 
 @utility chat-input-box {
-  @apply flex items-end gap-0 rounded-2xl border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 shadow-xs transition-all duration-200
-    focus-within:border-amber-400 dark:focus-within:border-amber-500/40 focus-within:shadow-md focus-within:shadow-amber-500/5 focus-within:bg-white dark:focus-within:bg-zinc-900;
+  @apply flex items-end gap-0 rounded-2xl border border-input bg-card shadow-xs transition-colors duration-200
+    focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20;
   padding: 8px 8px 8px 4px;
 }
 
 @utility chat-textarea {
-  @apply flex-1 min-w-0 resize-none bg-transparent border-none outline-hidden text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[24px] max-h-[200px] py-1 px-2 leading-normal;
-  font-family:
-    'DM Sans',
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  @apply flex-1 min-w-0 resize-none bg-transparent border-none outline-hidden text-[15px] text-foreground placeholder:text-muted-foreground min-h-[24px] max-h-[200px] py-1 px-2 leading-normal font-body;
 }
 
 @utility chat-input-btn {
-  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 shrink-0
-    text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-zinc-700/60;
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 shrink-0
+    text-muted-foreground hover:text-foreground hover:bg-muted;
 }
 
 @utility chat-send-btn {
-  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
-    bg-amber-500 hover:bg-amber-600 text-white shadow-xs
-    disabled:bg-gray-200 dark:disabled:bg-zinc-700 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed;
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 shrink-0
+    bg-primary text-primary-foreground hover:bg-primary/85
+    disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed;
 }
 
 @utility chat-stop-btn {
-  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0
-    bg-red-500 hover:bg-red-600 text-white shadow-xs;
+  @apply w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 shrink-0
+    bg-foreground text-background hover:bg-foreground/85;
 }
 
 @utility safe-area-bottom {
-  /* Safe-area padding for iPhone home indicator — used by MobileNav */
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @utility card {
-  /* ===== CARDS ===== */
-  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-colors shadow-xs;
+  @apply bg-card text-card-foreground border border-border rounded-xl p-5 transition-colors;
 }
 
 @utility card-hover {
-  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-mizan-gold/30 hover:shadow-xl hover:-translate-y-1 cursor-pointer;
+  @apply bg-card text-card-foreground border border-border rounded-xl p-5 transition-colors hover:border-ring/60 hover:bg-accent/40 cursor-pointer;
 }
 
 @utility card-grid {
-  @apply grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5;
+  @apply grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4;
 }
 
 @utility form-panel {
-  /* Form panel — amber-tinted card for create/register forms */
-  @apply bg-white dark:bg-zinc-900 border border-mizan-gold/30 dark:border-mizan-gold/20 rounded-xl p-5 mb-4;
+  @apply bg-card border border-border rounded-xl p-5 mb-4;
 }
 
 @utility form-panel-title {
-  @apply text-sm font-semibold text-mizan-gold mb-3;
-  font-family: 'Cinzel', serif;
+  @apply text-sm font-semibold text-foreground mb-3;
 }
 
 @utility detail-panel {
-  /* Detail panel — subtle bg for expanded details, code snippets */
-  @apply bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700/50 rounded-lg p-3;
+  @apply bg-muted/50 border border-border rounded-lg p-3;
 }
 
 @utility btn-primary {
-  /* ===== BUTTONS ===== */
-  @apply inline-flex items-center justify-center gap-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
+  @apply inline-flex items-center justify-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/85 font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
 }
 
 @utility btn-gold {
-  @apply inline-flex items-center justify-center gap-1.5 bg-linear-to-r from-[#D4AF37] to-[#F3E5AB] hover:from-[#F3E5AB] hover:to-yellow-300 text-black font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5;
+  @apply inline-flex items-center justify-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/85 font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
 }
 
 @utility btn-secondary {
-  @apply inline-flex items-center justify-center gap-1.5 bg-white/50 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-200 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:bg-white/80 dark:hover:bg-white/10 disabled:opacity-50 cursor-pointer shadow-xs hover:shadow-md;
+  @apply inline-flex items-center justify-center gap-1.5 bg-background border border-border text-foreground hover:bg-muted px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
 }
 
 @utility btn-danger {
-  @apply inline-flex items-center justify-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium px-5 py-2.5 rounded-xl text-sm transition-all duration-300 disabled:opacity-50 cursor-pointer hover:-translate-y-0.5;
+  @apply inline-flex items-center justify-center gap-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-destructive/30;
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100/50 dark:hover:bg-white/5 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 cursor-pointer;
+  @apply inline-flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none;
 }
 
 @utility btn-sm {
-  /* Compact button variant */
   @apply text-xs px-3 py-1.5 min-h-[36px];
 }
 
 @utility input {
-  /* ===== INPUTS ===== */
-  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-md border border-gray-300 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 shadow-inner focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-mizan-gold transition-all duration-300;
+  @apply bg-background border border-input rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:border-ring focus:ring-3 focus:ring-ring/30 transition-colors;
 }
 
 @utility badge {
-  /* ===== BADGES ===== */
   @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
 }
 
 @utility badge-success {
-  @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400;
+  @apply bg-success/12 text-success;
 }
 
 @utility badge-error {
-  @apply bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400;
+  @apply bg-destructive/12 text-destructive;
 }
 
 @utility badge-warning {
-  @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400;
+  @apply bg-warning/15 text-amber-800 dark:text-warning;
 }
 
 @utility badge-info {
-  @apply bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400;
+  @apply bg-info/12 text-info;
 }
 
 @utility badge-gold {
-  @apply bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-mizan-gold;
+  @apply bg-primary/15 text-brand;
 }
 
 @utility tab-bar {
-  /* ===== TABS ===== */
-  @apply flex gap-1 bg-gray-100 dark:bg-zinc-900 rounded-lg p-1 mx-4 sm:mx-5 mb-3 overflow-x-auto;
-  role: tablist;
+  @apply flex gap-1 bg-muted rounded-lg p-1 mx-4 sm:mx-5 mb-3 overflow-x-auto;
 }
 
 @utility tab {
-  @apply flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all cursor-pointer text-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-ring whitespace-nowrap min-h-[44px] flex items-center justify-center;
+  @apply flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer text-center text-muted-foreground hover:text-foreground focus-ring whitespace-nowrap min-h-[36px] flex items-center justify-center;
 
   &.active {
-    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-xs;
+    @apply bg-background text-foreground shadow-xs;
   }
 }
 
 @utility active {
   &.tab {
-    @apply bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 shadow-xs;
+    @apply bg-background text-foreground shadow-xs;
   }
 }
 
 @utility page-title {
-  /* ===== SECTION TITLES ===== */
-  @apply text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-linear-to-br from-gray-900 to-gray-600 dark:from-white dark:to-gray-400;
-  font-family: 'Space Grotesk', sans-serif;
+  @apply text-xl sm:text-2xl font-semibold tracking-tight text-foreground font-display;
 }
 
 @utility page-description {
-  @apply text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium;
+  @apply text-sm text-muted-foreground mt-1;
 }
 
 @utility code {
-  /* ===== CODE ===== */
-  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-sm text-xs font-mono text-amber-700 dark:text-mizan-gold;
+  @apply bg-muted px-1.5 py-0.5 rounded-sm text-xs font-mono text-foreground;
 }
 
 @utility modal-backdrop {
-  /* ===== MODAL ===== */
-  @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-40 flex items-center justify-center p-4;
+  @apply fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4;
 }
 
 @utility modal-overlay {
-  @apply fixed inset-0 bg-black/50 dark:bg-black/70 z-40 flex items-center justify-center p-4;
+  @apply fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4;
 }
 
 @utility modal {
-  @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85dvh] overflow-y-auto;
+  @apply bg-popover text-popover-foreground border border-border rounded-xl shadow-2xl w-full max-w-lg p-6 max-h-[85dvh] overflow-y-auto;
 }
 
 @utility modal-title {
-  @apply flex items-center gap-3 text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5;
+  @apply flex items-center gap-3 text-lg font-semibold text-foreground mb-5;
 }
 
 @utility modal-footer {
-  @apply flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-zinc-800;
+  @apply flex justify-end gap-2 mt-6 pt-4 border-t border-border;
 }
 
 @utility form-group {
-  /* ===== FORM ELEMENTS ===== */
   @apply mb-4;
 }
 
 @utility form-label {
-  @apply block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5;
+  @apply block text-xs font-medium text-muted-foreground mb-1.5;
 }
 
 @utility form-input {
-  @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
+  @apply w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-3 focus:ring-ring/30 focus:border-ring transition-colors;
 }
 
 @utility form-select {
-  @apply w-full bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-colors;
+  @apply w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-3 focus:ring-ring/30 focus:border-ring transition-colors;
 }
 
 @utility memory-item {
-  /* ===== LIST ITEMS ===== */
-  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-md border border-white/50 dark:border-white/5 rounded-2xl p-4 mb-4 transition-all hover:shadow-md hover:border-mizan-gold/20;
+  @apply bg-card border border-border rounded-xl p-4 mb-3 transition-colors hover:border-ring/50;
 }
 
 @utility memory-type-badge {
-  @apply inline-flex items-center px-2 py-0.5 rounded-sm text-2xs font-mono font-medium uppercase tracking-wide;
-
-  &.type-semantic {
-    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30;
-  }
-
-  &.type-episodic {
-    @apply bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30;
-  }
-
-  &.type-procedural {
-    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30;
-  }
-}
-
-@utility type-semantic {
-  &.memory-type-badge {
-    @apply bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30;
-  }
-}
-
-@utility type-episodic {
-  &.memory-type-badge {
-    @apply bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30;
-  }
-}
-
-@utility type-procedural {
-  &.memory-type-badge {
-    @apply bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30;
-  }
+  @apply inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-mono font-medium uppercase tracking-wide bg-muted text-muted-foreground border border-border;
 }
 
 @utility stat {
-  /* ===== STATS ===== */
-  @apply text-center py-1.5 px-2 bg-gray-50 dark:bg-zinc-800/50 rounded-sm border border-gray-100 dark:border-zinc-700/50;
+  @apply text-center py-1.5 px-2 bg-muted/60 rounded-md border border-border;
 }
 
 @utility stat-value {
-  @apply block font-mono text-sm text-gray-900 dark:text-gray-100;
+  @apply block font-mono text-sm text-foreground;
 }
 
 @utility stat-label {
-  @apply block text-2xs text-gray-400 dark:text-gray-500 uppercase tracking-wider;
+  @apply block text-xs text-muted-foreground uppercase tracking-wider;
 }
 
 @utility agent-card {
-  /* ===== AGENT CARD ===== */
-  @apply bg-white/80 dark:bg-mizan-dark-surface/60 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-2xl p-5 transition-all duration-300 hover:border-mizan-gold/30 hover:shadow-xl hover:-translate-y-1;
+  @apply bg-card border border-border rounded-xl p-5 transition-colors hover:border-ring/60;
 }
 
 @utility empty-state {
-  /* ===== EMPTY STATE ===== */
   @apply flex flex-col items-center justify-center py-16 text-center;
 }
 
 @utility empty-arabic {
-  @apply text-4xl text-mizan-gold/60 mb-3;
-  font-family: Georgia, serif;
+  @apply text-4xl text-brand/70 mb-3 font-arabic;
 }
 
 @utility empty-text {
-  @apply text-sm font-medium text-gray-500 dark:text-gray-400;
+  @apply text-sm font-medium text-muted-foreground;
 }
 
 @utility empty-sub {
-  @apply text-xs text-gray-400 dark:text-gray-500 mt-1.5 max-w-sm;
+  @apply text-xs text-muted-foreground mt-1.5 max-w-sm;
 }
 
 @utility tool-tag {
-  /* ===== TOOL TAGS ===== */
-  @apply text-2xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-sm text-gray-500 dark:text-gray-400 font-mono;
+  @apply text-xs px-1.5 py-0.5 bg-muted border border-border rounded-sm text-muted-foreground font-mono;
 }
 
 @utility status-dot {
-  /* ===== STATUS DOTS ===== */
-  @apply w-3 h-3 rounded-full shrink-0 ring-2 ring-white dark:ring-slate-900;
+  @apply w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-background;
 }
 
 @utility status-dot-active {
-  @apply bg-emerald-500;
+  @apply bg-success;
 }
 
 @utility status-dot-idle {
-  @apply bg-amber-500;
+  @apply bg-warning;
 }
 
 @utility status-dot-busy {
-  @apply bg-red-500;
+  @apply bg-destructive;
 }
 
 @utility status-dot-offline {
-  @apply bg-gray-400 dark:bg-gray-600;
+  @apply bg-muted-foreground/50;
 }
 
-/* ===== FOCUS RING ===== */
 @utility focus-ring {
-  @apply outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2
-         focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900;
-  --tw-ring-color: rgba(212, 175, 55, 0.5);
+  @apply outline-hidden focus-visible:ring-3 focus-visible:ring-ring/60;
 }
 
-/*
-  The default border color has changed to `currentcolor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
 @layer base {
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
-  }
-}
-
-@layer base {
-  /* CSS Variables for light/dark mode — used by legacy inline styles */
-  :root {
-    --text-primary: #1f2937;
-    --text-secondary: #4b5563;
-    --text-muted: #9ca3af;
-    --gold: #d4af37;
-    --amber: #f59e0b;
-    --emerald: #10b981;
-    --ruby: #ef4444;
-    --sapphire: #3b82f6;
-    --border: #e5e7eb;
-    --font-display: "Playfair Display", serif;
-    --font-mono: "IBM Plex Mono", monospace;
-  }
-
-  .dark {
-    --text-primary: #f9fafb;
-    --text-secondary: #d1d5db;
-    --text-muted: #6b7280;
-    --border: rgba(255, 255, 255, 0.08);
+    @apply border-border outline-ring/50;
   }
 
   html {
-    /* Don't set font-size here — respect user's browser/OS font scaling (accessibility) */
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
-    font-family:
-      "DM Sans",
-      "Inter",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-    background-image: radial-gradient(
-      circle at 50% 0%,
-      #ffffff 0%,
-      transparent 70%
-    );
-    background-size: 100% 1000px;
-    background-repeat: no-repeat;
+    @apply bg-background text-foreground antialiased font-body;
   }
 
-  .dark body {
-    background-color: #0b0c10;
-    @apply text-slate-100;
-    background-image:
-      radial-gradient(
-        circle at 15% 50%,
-        rgba(212, 175, 55, 0.03) 0%,
-        transparent 50%
-      ),
-      radial-gradient(
-        circle at 85% 30%,
-        rgba(59, 130, 246, 0.03) 0%,
-        transparent 50%
-      );
+  ::selection {
+    @apply bg-primary/30;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-zinc-700 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-zinc-600;
-  }
-}
-
-@layer components {
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
+  /* Thin scrollbars that follow the theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
   }
 }
 
@@ -573,7 +618,7 @@ layer(base);
    =================================================================== */
 
 .prose {
-  @apply text-gray-700 dark:text-gray-300 leading-relaxed text-sm;
+  @apply text-foreground/90 leading-relaxed text-[15px];
   word-break: break-word;
 }
 
@@ -590,48 +635,47 @@ layer(base);
 }
 
 /* --- Inline code --- */
-.prose .inline-code,
+.prose [data-streamdown="inline-code"],
 .prose code:not([class]) {
-  @apply bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-sm text-2xs font-mono
-         text-amber-700 dark:text-mizan-gold border border-gray-200/60 dark:border-zinc-700/60;
+  @apply bg-muted px-1.5 py-0.5 rounded-md text-[0.85em] font-mono text-foreground border border-border;
 }
 
-/* --- Code blocks (pre) --- */
-.prose pre {
-  @apply bg-[#0d1117] dark:bg-[#0d1117] border border-gray-200 dark:border-zinc-800
-         rounded-lg overflow-x-auto text-2xs leading-relaxed my-3;
-  padding: 1rem 1.25rem;
+/* --- Code blocks: streamdown draws the card, header and highlighting;
+   only a bare <pre> outside it gets a quiet box. --- */
+.prose pre:not([data-streamdown] pre) {
+  @apply my-3 overflow-x-auto rounded-lg border bg-muted/50 px-4 py-3 font-mono text-[13px] leading-relaxed;
 }
 
-.prose pre code {
-  @apply bg-transparent p-0 font-mono text-gray-200 border-none;
-  white-space: pre;
-  font-size: inherit;
+.prose [data-streamdown="code-block"] {
+  @apply my-3;
+}
+
+.prose [data-streamdown="code-block"] pre {
+  @apply text-[13px] leading-relaxed;
 }
 
 /* --- Links --- */
 .prose a {
-  @apply text-blue-600 dark:text-blue-400 underline decoration-blue-600/30 dark:decoration-blue-400/30
-         hover:decoration-blue-600 dark:hover:decoration-blue-400 transition-colors;
+  @apply text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand transition-colors;
 }
 
 /* --- Headings --- */
 .prose h1 {
-  @apply text-lg font-bold text-gray-900 dark:text-gray-100 mt-5 mb-2 pb-1.5 border-b border-gray-200 dark:border-zinc-700;
+  @apply mt-6 mb-2 text-xl font-semibold text-foreground;
 }
 
 .prose h2 {
-  @apply text-base font-bold text-gray-900 dark:text-gray-100 mt-4 mb-2 pb-1 border-b border-gray-200/50 dark:border-zinc-700/50;
+  @apply mt-5 mb-2 text-lg font-semibold text-foreground;
 }
 
 .prose h3 {
-  @apply text-sm font-bold text-gray-900 dark:text-gray-100 mt-3 mb-1.5;
+  @apply mt-4 mb-1.5 text-base font-semibold text-foreground;
 }
 
 .prose h4,
 .prose h5,
 .prose h6 {
-  @apply text-sm font-semibold text-gray-800 dark:text-gray-200 mt-3 mb-1;
+  @apply mt-3 mb-1 text-[15px] font-semibold text-foreground;
 }
 
 /* --- Lists --- */
@@ -664,31 +708,22 @@ layer(base);
   @apply mb-1 leading-relaxed;
 }
 
+.prose li::marker {
+  @apply text-muted-foreground;
+}
+
 .prose li > p {
   @apply my-1;
 }
 
-/* --- Task list (GFM) --- */
-.prose li:has(.task-checkbox) {
-  list-style: none;
-  margin-left: -1.25rem;
-}
-
-.task-checkbox {
-  @apply mr-2 rounded-sm border-gray-300 dark:border-zinc-600 cursor-default;
-  accent-color: #d4af37;
-  width: 14px;
-  height: 14px;
-  vertical-align: middle;
-  position: relative;
-  top: -1px;
+.prose input[type="checkbox"] {
+  @apply mr-2 align-middle;
+  accent-color: var(--primary);
 }
 
 /* --- Blockquote --- */
 .prose blockquote {
-  @apply border-l-4 border-amber-400/70 dark:border-mizan-gold/50 pl-4 my-3
-         text-gray-500 dark:text-gray-400 bg-amber-50/30 dark:bg-amber-900/5
-         rounded-r-lg py-2 pr-3 italic;
+  @apply border-l-3 border-primary/60 pl-4 my-3 text-muted-foreground py-1 pr-3;
 }
 
 .prose blockquote p:first-child {
@@ -700,17 +735,17 @@ layer(base);
 
 /* --- Horizontal rule --- */
 .prose hr {
-  @apply my-4 border-gray-200 dark:border-zinc-700;
+  @apply my-5 border-border;
 }
 
 /* --- Images --- */
 .prose img {
-  @apply rounded-lg max-w-full h-auto my-3 shadow-xs;
+  @apply rounded-lg max-w-full h-auto my-3;
 }
 
 /* --- Strong / Em / Del --- */
 .prose strong {
-  @apply font-semibold text-gray-900 dark:text-gray-100;
+  @apply font-semibold text-foreground;
 }
 
 .prose em {
@@ -718,136 +753,51 @@ layer(base);
 }
 
 .prose del {
-  @apply line-through text-gray-400 dark:text-gray-500;
+  @apply line-through text-muted-foreground;
 }
 
-/* ===================================================================
-   TABLES (GFM)
-   =================================================================== */
-.table-wrapper {
-  @apply overflow-x-auto my-3 rounded-lg border border-gray-200 dark:border-zinc-700;
-}
-
+/* --- Tables (streamdown wraps them in a card with copy/download) --- */
 .prose table {
-  @apply w-full text-xs border-collapse;
+  @apply w-full border-collapse text-sm;
 }
 
 .prose thead {
-  @apply bg-gray-50 dark:bg-zinc-800/80;
+  @apply bg-muted/60;
 }
 
 .prose th {
-  @apply px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-300
-         border-b border-gray-200 dark:border-zinc-700 whitespace-nowrap;
+  @apply px-3 py-2 text-left font-medium text-foreground border-b whitespace-nowrap;
 }
 
 .prose td {
-  @apply px-3 py-2 text-xs text-gray-600 dark:text-gray-400
-         border-b border-gray-100 dark:border-zinc-800;
+  @apply px-3 py-2 align-top text-foreground/85 border-b;
 }
 
 .prose tbody tr:last-child td {
   border-bottom: none;
 }
 
-.prose tbody tr:hover {
-  @apply bg-gray-50/50 dark:bg-zinc-800/30;
-}
-
-/* Alternating row colors */
-.prose tbody tr:nth-child(even) {
-  @apply bg-gray-50/30 dark:bg-zinc-800/20;
-}
-
-/* ===================================================================
-   CODE BLOCK WRAPPER (with header, lang label, copy button)
-   =================================================================== */
-.code-block-wrapper {
-  position: relative;
-  margin: 0.75rem 0;
-  @apply rounded-lg overflow-hidden border border-gray-200 dark:border-zinc-800;
-}
-
-.code-block-header {
-  @apply flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-zinc-800;
-  min-height: 32px;
-}
-
-.code-block-wrapper pre {
-  @apply bg-[#0d1117] overflow-x-auto text-2xs leading-relaxed m-0 border-none rounded-none;
-  padding: 1rem 1.25rem;
-}
-
-.code-block-wrapper pre code {
-  @apply bg-transparent p-0 font-mono text-gray-200 border-none;
-  white-space: pre;
-}
-
-.code-block-wrapper .code-lang {
-  @apply text-xs font-mono text-gray-400 uppercase tracking-wide;
-  font-size: 11px;
-}
-
-/* Hide the absolute copy button when header is used */
-.code-block-wrapper .code-copy-btn {
-  @apply px-2 py-0.5 text-xs rounded-sm bg-zinc-700/60 text-gray-300 hover:bg-zinc-600 transition-colors cursor-pointer;
-}
-
-/* ===================================================================
-   HIGHLIGHT.JS OVERRIDES — ensure dark theme works in both modes
-   =================================================================== */
-.prose pre code.hljs {
-  @apply bg-transparent p-0;
-}
-
-/* Override highlight.js background so it blends with our code block */
-.hljs {
-  background: transparent !important;
-  color: #c9d1d9 !important;
-}
-
-/* ===================================================================
-   KATEX / MATH OVERRIDES
-   =================================================================== */
+/* --- Math (KaTeX) --- */
 .prose .katex-display {
   @apply my-3 overflow-x-auto py-2;
 }
 
-.prose .katex-display > .katex {
-  @apply text-gray-800 dark:text-gray-200;
-}
-
 .prose .katex {
-  font-size: 1em;
-  @apply text-gray-800 dark:text-gray-200;
+  font-size: 1.05em;
+  @apply text-foreground;
 }
 
-/* Inline math */
-.prose .katex:not(.katex-display .katex) {
-  @apply px-0.5;
-}
-
-/* Math block container */
-.prose .math-display {
-  @apply bg-gray-50/50 dark:bg-zinc-800/30 rounded-lg px-4 py-2 my-3 overflow-x-auto;
-}
-
-/* ===================================================================
-   DEFINITION LIST (bonus)
-   =================================================================== */
+/* --- Definition lists and footnotes --- */
 .prose dt {
-  @apply font-semibold text-gray-800 dark:text-gray-200 mt-2;
+  @apply font-semibold text-foreground mt-2;
 }
 
 .prose dd {
-  @apply ml-4 mb-1 text-gray-600 dark:text-gray-400;
+  @apply ml-4 mb-1 text-muted-foreground;
 }
 
-/* ===================================================================
-   FOOTNOTES (GFM)
-   =================================================================== */
 .prose .footnotes {
-  @apply mt-4 pt-3 border-t border-gray-200 dark:border-zinc-700 text-xs text-gray-500 dark:text-gray-400;
+  @apply mt-4 pt-3 border-t text-xs text-muted-foreground;
 }
 
 .prose .footnotes ol {
@@ -880,6 +830,31 @@ layer(base);
   }
 }
 
+/* ===== Live run label: a soft light moving across the text ===== */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 40%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 60%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer-text 2.2s linear infinite;
+}
+@keyframes shimmer-text {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 /* ===== CHAT UPGRADE: streaming block cursor ===== */
 @keyframes stream-cursor-blink {
   0%,
@@ -897,6 +872,6 @@ layer(base);
   margin-left: 2px;
   vertical-align: -0.15em;
   border-radius: 2px;
-  background: #f59e0b;
+  background: var(--primary);
   animation: stream-cursor-blink 0.9s steps(1) infinite;
 }

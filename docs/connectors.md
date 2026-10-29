@@ -7,7 +7,7 @@ the official `mcp` Python SDK (2.x).
 
 ## Adding a server
 
-Open **Connectors** in the sidebar. You can:
+Open **Settings → Connectors** (`/settings/connectors`). You can:
 
 - **Browse** the official MCP Registry (`registry.modelcontextprotocol.io`,
   cached for 1 hour) and add a listed remote server in one click.

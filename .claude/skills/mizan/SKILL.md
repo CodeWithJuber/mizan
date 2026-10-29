@@ -79,8 +79,9 @@ consistency and efficiency when contributing to `mizan`.
 4. Write a test file named `tests/test_<feature>.py` covering the new behavior.
 5. If you added a route, run `python scripts/api_reference.py`.
 6. Run lint and tests: `make check` (or `ruff check backend/ tests/` plus
-   `pytest tests/`). For frontend changes also run `npm run typecheck` and
-   `npm run build` in `frontend/`.
+   `pytest tests/`). For frontend changes also run `npm run typecheck`,
+   `npm run lint`, `npm test`, `npm run build`, `npm run size` and `npm run e2e`
+   in `frontend/`.
 7. Document it: `docs/<feature>.md`, its entry in `CLAUDE.md`, and
    `CHANGELOG.md` under `[Unreleased]`.
 8. Commit your changes with a `feat:` prefix.
@@ -134,6 +135,6 @@ consistency and efficiency when contributing to `mizan`.
 | `make typecheck`              | `mypy backend/ --ignore-missing-imports`                 |
 | `make check`                  | Run lint + typecheck + test                              |
 | `ruff format --check backend/ nlp/ tests/` | Verify formatting as CI does (line-length 100) |
-| `npm run typecheck` / `npm run build` | Frontend checks (in `frontend/`)                 |
+| `npm run typecheck` / `lint` / `test` / `build` / `size` / `e2e` | Frontend checks (in `frontend/`) |
 | `python scripts/api_reference.py` | Regenerate the API reference after adding a route    |
 | `mizan doctor [--check\|--fix]` | Environment diagnostics                                |

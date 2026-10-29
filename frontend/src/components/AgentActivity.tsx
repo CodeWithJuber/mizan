@@ -24,7 +24,7 @@ export function DiffView({ diff, maxLines = 400 }: { diff: string; maxLines?: nu
   const lines = diff.split("\n");
   const shown = lines.slice(0, maxLines);
   return (
-    <pre className="text-xs font-mono overflow-x-auto rounded-md border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-950 p-2 max-h-80">
+    <pre className="text-xs font-mono overflow-x-auto rounded-md border border-border bg-gray-50 dark:bg-zinc-950 p-2 max-h-80">
       {shown.map((line, index) => {
         const color = line.startsWith("+++") || line.startsWith("---")
           ? "text-gray-500"
@@ -76,10 +76,10 @@ function ToolRow({ call }: { call: ToolCall }) {
         <div className="ml-7 mt-1 mb-2 space-y-2">
           {call.diff && <DiffView diff={call.diff} />}
           {!call.diff && call.input != null && (
-            <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-md bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 p-2 max-h-48 overflow-auto">{inputPreview(call.input)}</pre>
+            <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-md bg-gray-50 dark:bg-zinc-950 border border-border p-2 max-h-48 overflow-auto">{inputPreview(call.input)}</pre>
           )}
           {call.summary && (
-            <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-md bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 p-2 max-h-48 overflow-auto text-gray-600 dark:text-zinc-400">{call.summary}</pre>
+            <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-md bg-gray-50 dark:bg-zinc-950 border border-border p-2 max-h-48 overflow-auto text-muted-foreground">{call.summary}</pre>
           )}
         </div>
       )}
@@ -138,7 +138,7 @@ export default function AgentActivity({ activity, onDecision, compact = false }:
   const done = activity.todos.filter((t) => t.status === "completed").length;
   const pending = activity.approvals.filter((a) => !a.decision);
   return (
-    <section className="my-2 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 text-sm" aria-label="Agent activity">
+    <section className="my-2 rounded-xl border border-border bg-white/70 dark:bg-zinc-900/70 text-sm" aria-label="Agent activity">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
         {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
         <span className="font-medium text-gray-700 dark:text-zinc-200">Activity</span>

@@ -10,6 +10,7 @@ import type { ApiClient } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { PasswordInput } from "../components/PasswordInput";
+import { confirmDialog } from "@/components/ui/confirm";
 
 const RuntimeSettingsPanel = lazy(() => import("../components/RuntimeSettingsPanel"));
 const SpendingPanel = lazy(() => import("../components/SpendingPanel"));
@@ -48,7 +49,10 @@ interface SettingsData {
   version: string;
 }
 
-export default function SettingsPage({ api }: { api: ApiClient }) {
+export type SettingsSection = "system" | "spending" | "receipts" | "providers" | "channels" | "security" | "memory" | "vault";
+
+/** With `section`, one section is shown inside the Settings layout (no own header or menu). */
+export default function SettingsPage({ api, section }: { api: ApiClient; section?: SettingsSection }) {
   const { addToast } = useToast();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,9 +70,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
   const [togglingChannel, setTogglingChannel] = useState<
     Record<string, boolean>
   >({});
-  const [activeSection, setActiveSection] = useState(
+  const [ownSection, setActiveSection] = useState(
     () => localStorage.getItem("mizan_settings_section") || "providers",
   );
+  const activeSection = section ?? ownSection;
   const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
@@ -92,7 +97,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
     } catch {
       // Build settings from multiple endpoints as fallback
       try {
-        const [providers, status, version] = (await Promise.all([
+        const [providers, , version] = (await Promise.all([
           api.get("/providers").catch(() => ({ providers: [] })),
           api.get("/status").catch(() => ({})),
           api.get("/version").catch(() => ({ version: "unknown" })),
@@ -226,7 +231,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
     const action = channel.connected ? "stop" : "start";
     if (
       channel.connected &&
-      !window.confirm(`Stop the ${channel.name} channel?`)
+      !(await confirmDialog({ title: `Stop the ${channel.name} channel?`, confirmLabel: "Stop" }))
     ) {
       return;
     }
@@ -273,7 +278,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
   return (
     <div className="page-wrapper">
-      <div className="page-header">
+      {!section && <div className="page-header">
         <div>
           <h2 className="page-title flex items-center gap-2">
             <svg
@@ -293,11 +298,11 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           </p>
         </div>
         {settings && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+          <span className="text-xs text-muted-foreground font-mono">
             v{settings.version}
           </span>
         )}
-      </div>
+      </div>}
 
       {saveMessage && (
         <div
@@ -313,7 +318,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Section Tabs — horizontal scroll on mobile, sidebar on desktop */}
-        <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
+        {!section && <div className="shrink-0 border-b md:border-b-0 md:border-r border-white/50 dark:border-white/5 bg-white/30 dark:bg-mizan-dark/20 backdrop-blur-sm py-2 md:py-4 flex md:flex-col flex-row overflow-x-auto md:overflow-visible md:w-56">
           {sections.map((s) => (
             <button
               key={s.id}
@@ -324,13 +329,13 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
               className={`whitespace-nowrap text-left px-4 md:px-6 py-2.5 md:py-3 text-sm transition-all duration-300 ${
                 activeSection === s.id
                   ? "text-mizan-gold font-medium bg-linear-to-r from-mizan-gold/10 to-transparent border-b-2 md:border-b-0 md:border-r-2 border-mizan-gold"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40"
+                  : "text-muted-foreground hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-mizan-dark-surface/40"
               }`}
             >
               {s.label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* Section Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative z-10">
@@ -352,10 +357,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {/* AI Providers */}
           {activeSection === "providers" && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-lg font-semibold text-foreground">
                 AI Providers
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 Configure API keys for your AI providers. Keys are encrypted at
                 rest.
               </p>
@@ -370,11 +375,11 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                     <div key={provider} className="card">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <h4 className="font-medium text-gray-900 dark:text-gray-100 capitalize">
+                          <h4 className="font-medium text-foreground capitalize">
                             {provider}
                           </h4>
                           <span
-                            className={`text-xs ${info?.key_set ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}
+                            className={`text-xs ${info?.key_set ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/80"}`}
                           >
                             {info?.key_set ? "Connected" : "Not connected"}
                           </span>
@@ -439,10 +444,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {/* Channels */}
           {activeSection === "channels" && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-lg font-semibold text-foreground">
                 Channel Configuration
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 Connect MIZAN to messaging platforms. Set bot tokens to enable
                 each channel.
               </p>
@@ -454,7 +459,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                       <div
                         className={`w-2 h-2 rounded-full ${channel.connected ? "bg-emerald-500" : "bg-gray-300 dark:bg-zinc-600"}`}
                       />
-                      <h4 className="font-medium text-gray-900 dark:text-gray-100 capitalize">
+                      <h4 className="font-medium text-foreground capitalize">
                         {channel.name}
                       </h4>
                     </div>
@@ -511,39 +516,39 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {/* Security */}
           {activeSection === "security" && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-lg font-semibold text-foreground">
                 Security Settings
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 MIZAN uses JWT auth, rate limiting, SSRF prevention, and
                 sandboxed execution by default.
               </p>
 
               <div className="card">
-                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
+                <h4 className="font-medium text-foreground mb-3">
                   Rate Limiting
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-3">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-muted-foreground">
                       Requests per minute
                     </div>
-                    <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-lg font-semibold text-foreground">
                       {settings?.security?.rate_limit_per_minute || 60}
                     </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground/80 mt-1">
                       How many requests are allowed each minute — blocks spam
                       bursts.
                     </p>
                   </div>
                   <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-3">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-muted-foreground">
                       Login session length (hours)
                     </div>
-                    <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-lg font-semibold text-foreground">
                       {settings?.security?.jwt_expiry_hours || 24}
                     </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground/80 mt-1">
                       How long you stay logged in before needing to log in
                       again.
                     </p>
@@ -552,7 +557,7 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
               </div>
 
               <div className="card">
-                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
+                <h4 className="font-medium text-foreground mb-3">
                   Security Features
                 </h4>
                 <div className="space-y-2">
@@ -593,10 +598,10 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                       className="flex items-center justify-between gap-3 py-1.5"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                        <div className="text-sm text-foreground/80">
                           {feature.name}
                         </div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500">
+                        <div className="text-xs text-muted-foreground/80">
                           {feature.desc}
                         </div>
                       </div>
@@ -615,23 +620,23 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {/* Memory */}
           {activeSection === "memory" && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-lg font-semibold text-foreground">
                 Memory System
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 MIZAN uses a 3-tier memory system (Episodic, Semantic,
                 Procedural) stored in SQLite.
               </p>
 
               <div className="card">
-                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
+                <h4 className="font-medium text-foreground mb-3">
                   Memory Configuration
                 </h4>
                 <div className="space-y-3">
                   <div>
                     <label
                       htmlFor="db-path"
-                      className="text-xs text-gray-500 dark:text-gray-400 block mb-1"
+                      className="text-xs text-muted-foreground block mb-1"
                     >
                       Database path
                     </label>
@@ -644,17 +649,17 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                     />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="text-sm text-foreground/80">
                       Auto-consolidation
                     </span>
                     <span className="badge badge-success">Enabled</span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm text-gray-700 dark:text-gray-300">
+                      <div className="text-sm text-foreground/80">
                         Memory decay (Nisyan)
                       </div>
-                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                      <div className="text-xs text-muted-foreground/80">
                         Old, unused memories fade away automatically over time.
                       </div>
                     </div>
@@ -691,22 +696,22 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
           {/* Vault */}
           {activeSection === "vault" && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-lg font-semibold text-foreground">
                 Secret Vault
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 API keys and tokens are encrypted at rest using AES-128. Unlike
                 other AI agents that store credentials in plaintext, MIZAN
                 encrypts everything.
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground/80 mt-1">
                 AES-128 is a widely-used encryption standard — your keys are
                 unreadable without the vault password.
               </p>
 
               <div className="card">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-gray-900 dark:text-gray-100">
+                  <h4 className="font-medium text-foreground">
                     Encryption Status
                   </h4>
                   <span
@@ -717,23 +722,23 @@ export default function SettingsPage({ api }: { api: ApiClient }) {
                       : "Plaintext (install cryptography)"}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   {settings?.vault?.secrets_count || 0} secrets stored
                 </p>
               </div>
 
               {(settings?.vault?.secret_names || []).length > 0 && (
                 <div className="card">
-                  <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">
+                  <h4 className="font-medium text-foreground mb-3">
                     Stored Secrets
                   </h4>
                   <div className="space-y-1">
                     {settings?.vault?.secret_names?.map((name) => (
                       <div
                         key={name}
-                        className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-zinc-800 last:border-0"
+                        className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0"
                       >
-                        <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                        <span className="text-sm font-mono text-foreground/80">
                           {name}
                         </span>
                         <span className="text-xs text-gray-400">••••••••</span>

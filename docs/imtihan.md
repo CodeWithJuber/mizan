@@ -8,7 +8,7 @@ No model judges another model's answer.
 
 Each task runs through the debug mode's comparison (`tadbir/muqabala.py`), so every attempt keeps MIZAN's full trace.
 
-Admins run it from **Developer → AGI Test**, from the API, or from the command line.
+Admins run it from **Settings → Developer → AGI test**, from the API, or from the command line.
 
 ## The tasks (194)
 
@@ -82,7 +82,7 @@ Each faculty carries its Quranic name and an ayah on that faculty (Saheeh Intern
 - **Which faculty a task measures.** A task's own `faculty` field decides (the Ibrah tasks and the locked eval have one), else its block's (`faculties.json` `blocks`). For example, ARC and Exact answers count as reasoning, TruthfulQA and Quran verbatim as memory, false premises and honesty as metacognition, the games as learning, and agentic page reading as attention.
 - **Propensity is not ability.** Prompt injection, safety and agent guardrails measure what a system is inclined to do, which the framework sets apart. They are listed beside the profile, never on it.
 - **Per faculty and arm:** the pass rate, its 95% Wilson interval and the number of items. An axis with ten items has an interval about ±25 points wide, and the table says so. Read each axis with its interval: the radar's shape and area are not a score, and depend on the order of the axes.
-- **The human panel.** People answer the same text items under a pseudonym (Developer → AGI Test → Human panel, or `POST /api/imtihan/panel`). They are scored by the same rules and kept in `$MIZAN_DATA_DIR/imtihan/panel.db`. Agentic tasks, games, the propensity blocks and code checked by tests are not offered.
+- **The human panel.** People answer the same text items under a pseudonym (Settings → Developer → AGI test → Human panel, or `POST /api/imtihan/panel`). They are scored by the same rules and kept in `$MIZAN_DATA_DIR/imtihan/panel.db`. Agentic tasks, games, the propensity blocks and code checked by tests are not offered.
   - **Answering alone.** An administrator makes an invite link (Human panel → Invite links, or `POST /api/imtihan/panel/invites {person?, days ≤ 60}`). The person opens `/panel/<code>` with no account and answers on their own phone or computer. The code is 128 bits and kept only as its SHA-256, bound to one pseudonym, and the link expires (14 days unless set) or can be closed. An answer given this way is final: the first one for an item is kept, and no verdict is shown, so no item can be retried until it passes. The public routes `GET`/`POST /api/public/panel/{code}` are rate-limited like the other public routes.
   - **Percentile.** For each panel member, the system's pass rate is compared with that person's on the items the person answered: a win counts 1, a tie ½. The percentile P is the mean over panel members, with its Wilson interval.
   - **Level.** A Morris level (Competent ≥ 50th, Expert ≥ 90th, Virtuoso ≥ 99th percentile, Superhuman 100%; Morris et al., arXiv:2311.02462) is shown only when the lower end of that interval reaches it, so no level is claimed that the panel does not support.
@@ -185,13 +185,13 @@ Click a task to open both answers and MIZAN's step-by-step trace.
 
 | Way | How |
 |---|---|
-| UI | Developer → AGI Test. Choose blocks and attempts, then run. Progress updates live; one run at a time. |
+| UI | Settings → Developer → AGI test. Choose blocks and attempts, then run. Progress updates live; one run at a time. |
 | API (admin) | `GET /api/imtihan/tasks`, `POST /api/imtihan/run {blocks?, repeats 1–3, agent_id?}`, `GET /api/imtihan/runs`, `GET /api/imtihan/runs/{id}` (its profile read against the panel as it is now), `POST /api/imtihan/runs/{id}/cancel`, `GET`/`POST /api/imtihan/arc3`, `GET /api/imtihan/panel`, `POST /api/imtihan/panel {person, answers: {task_id: text}}`, `DELETE /api/imtihan/panel/{person}`, `GET`/`POST /api/imtihan/panel/invites`, `DELETE /api/imtihan/panel/invites/{id}`; public: `GET`/`POST /api/public/panel/{code}` |
 | CLI | `cd backend && python -m imtihan --blocks exactness,scripture --repeats 1 --out report.json` (`--list` shows the blocks) |
 
 - **Cost:** a full run is at least 380 model calls per attempt. MIZAN's Lisan calls come on top.
 - **Stateless:** a run recalls none of the owner's chats, learns nothing from its tasks (no Ta'allum, Qasd, Hifz, Tajriba or Majlis update), and is never kept as training data (`memory/stateless.py`). Otherwise a test would teach MIZAN its own answers.
-- **Speed:** tasks run several at a time (`MIZAN_IMTIHAN_CONCURRENCY`, default 4, 1-8; Settings → System settings), each with both arms at once. Chats are never queued behind a run: every run of an agent works on its own copy (`docs/chat-limits-and-metrics.md`). Results keep the task order.
+- **Speed:** tasks run several at a time (`MIZAN_IMTIHAN_CONCURRENCY`, default 4, 1-8; Settings → Developer → System settings), each with both arms at once. Chats are never queued behind a run: every run of an agent works on its own copy (`docs/chat-limits-and-metrics.md`). Results keep the task order.
 - **Tool faults:** these are injected for one task only (`tadbir/trace.py` `bind_faults`). They never affect another chat.
 - **History:** runs are kept in `$MIZAN_DATA_DIR/imtihan/runs.db` (the last 20).
 

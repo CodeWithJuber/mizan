@@ -79,7 +79,7 @@ export function WordFamilyGraph({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Word family
         </span>
         <VerifiedBadge level={provenance} source={source} />
@@ -226,26 +226,26 @@ export function WordFamilyGraph({
 
       {/* detail panel */}
       {selection?.kind === "derivative" && (
-        <div className="mt-2 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/60 dark:border-zinc-700/50 animate-fade-in">
+        <div className="mt-2 p-3 rounded-xl bg-muted/60 border border-border/60 animate-fade-in">
           <div className="flex items-center justify-between gap-2">
             <span
               dir="rtl"
               lang="ar"
-              className="text-lg font-bold text-gray-900 dark:text-gray-100"
+              className="text-lg font-bold text-foreground"
             >
               {selection.derivative.surface}
             </span>
             <VerifiedBadge level={provenance} source={source} />
           </div>
           {selection.derivative.gloss && (
-            <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+            <div className="text-sm text-foreground/75 mt-1">
               {selection.derivative.gloss}
             </div>
           )}
         </div>
       )}
       {selection?.kind === "verse" && (
-        <div className="mt-2 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/60 dark:border-zinc-700/50 animate-fade-in">
+        <div className="mt-2 p-3 rounded-xl bg-muted/60 border border-border/60 animate-fade-in">
           <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
             {selection.occurrence.ref}
           </div>
@@ -253,13 +253,13 @@ export function WordFamilyGraph({
             <div
               dir="rtl"
               lang="ar"
-              className="text-sm text-gray-800 dark:text-gray-200 mt-1 leading-relaxed"
+              className="text-sm text-foreground/90 mt-1 leading-relaxed"
             >
               {selection.occurrence.text_ar}
             </div>
           )}
           {selection.occurrence.text_en && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div className="text-xs text-muted-foreground mt-1">
               {selection.occurrence.text_en}
             </div>
           )}

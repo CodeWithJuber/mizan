@@ -25,6 +25,6 @@ Sentences end at `. ! ? ؟ । ۔`; words are runs of letters and digits in any 
    - more checks hold than before;
    - it brings no number that neither the answer nor the request had, so a fact is never changed to fit a form;
    - the answer quotes no Quran or hadith, since scripture is never reworded.
-5. **The outcome is reported** as `result["nazm"]` → `usage.nazm`: `checks`, `held`, `failed`, `rewritten`. A rewrite is noted on the Learning page (Sijill).
+5. **The outcome is reported** as `result["nazm"]` → `usage.nazm`: `checks`, `held`, `failed`, `rewritten`. A rewrite is noted under Agents → Majlis → Learning (Sijill).
 
 A request with no form costs nothing beyond the facet's posterior: no Lisan call and no held stream. In `MIZAN_ORCHESTRATION=llm` the model decides everything, Nazm included, so MIZAN does not check.

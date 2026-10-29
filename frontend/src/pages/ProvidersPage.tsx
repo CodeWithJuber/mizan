@@ -235,10 +235,10 @@ export default function ProvidersPage({ api }: PageProps) {
             const h = health[provider.name];
             const colorClass =
               PROVIDER_COLORS[provider.name] ||
-              "border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900";
+              "border-border bg-card";
             const accentClass =
               PROVIDER_ACCENT[provider.name] ||
-              "text-gray-600 dark:text-gray-400";
+              "text-muted-foreground";
             const isDynamic = DYNAMIC_PROVIDERS.has(provider.name);
             const providerModels = isDynamic
               ? models[provider.name] || []
@@ -269,10 +269,10 @@ export default function ProvidersPage({ api }: PageProps) {
                     {PROVIDER_ICONS[provider.name] || "?"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                    <div className="font-medium text-foreground">
                       {provider.display}
                     </div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                    <div className="text-sm text-muted-foreground">
                       {provider.configured ? (
                         <span className="text-emerald-600 dark:text-emerald-400">
                           Configured
@@ -289,7 +289,7 @@ export default function ProvidersPage({ api }: PageProps) {
                       Add key →
                     </span>
                   ) : (
-                    <span className="text-gray-400 dark:text-gray-500 text-xs">
+                    <span className="text-muted-foreground/80 text-xs">
                       {isExpanded ? "\u25B2" : "\u25BC"}
                     </span>
                   )}
@@ -303,13 +303,13 @@ export default function ProvidersPage({ api }: PageProps) {
                         {provider.models.slice(0, 3).map((m) => (
                           <span
                             key={m.id}
-                            className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 font-mono"
+                            className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-muted-foreground font-mono"
                           >
                             {m.name || m.id}
                           </span>
                         ))}
                         {provider.models.length > 3 && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 px-1">
+                          <span className="text-xs text-muted-foreground/80 px-1">
                             +{provider.models.length - 3}
                           </span>
                         )}
@@ -367,7 +367,7 @@ export default function ProvidersPage({ api }: PageProps) {
                         >
                           Search
                         </button>
-                        <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                        <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
                           <input
                             type="checkbox"
                             checked={modelFreeOnly}
@@ -389,7 +389,7 @@ export default function ProvidersPage({ api }: PageProps) {
 
                     {/* Model count for dynamic */}
                     {isDynamic && modelTotal > 0 && (
-                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                      <div className="text-xs text-muted-foreground/80">
                         {modelTotal} models available
                       </div>
                     )}
@@ -397,11 +397,11 @@ export default function ProvidersPage({ api }: PageProps) {
                     {/* Model list */}
                     <div className="max-h-64 overflow-y-auto space-y-1 scrollbar-thin">
                       {browseLoading && isDynamic ? (
-                        <div className="text-sm text-gray-400 dark:text-gray-500 py-6 text-center animate-pulse">
+                        <div className="text-sm text-muted-foreground/80 py-6 text-center animate-pulse">
                           Loading models...
                         </div>
                       ) : providerModels.length === 0 && isDynamic ? (
-                        <div className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
+                        <div className="text-sm text-muted-foreground/80 py-4 text-center">
                           We couldn't find any models. Add your key in{" "}
                           <button
                             onClick={goToAIProvidersSettings}
@@ -427,8 +427,8 @@ export default function ProvidersPage({ api }: PageProps) {
                     {/* Pagination for OpenRouter */}
                     {provider.name === "openrouter" &&
                       modelTotal > MODEL_PAGE_SIZE && (
-                        <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-zinc-700">
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                        <div className="flex items-center justify-between pt-2 border-t border-border">
+                          <span className="text-xs text-muted-foreground/80">
                             {modelOffset + 1}&ndash;
                             {Math.min(
                               modelOffset + MODEL_PAGE_SIZE,
@@ -511,12 +511,12 @@ export default function ProvidersPage({ api }: PageProps) {
 
         {/* Setup Guide */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
             Quick Setup
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Add your API keys in{" "}
-            <span className="font-medium text-gray-900 dark:text-gray-100">
+            <span className="font-medium text-foreground">
               Settings → AI Providers
             </span>{" "}
             — no server access needed. Keys are stored securely on your Mizan
@@ -544,7 +544,7 @@ function ModelRow({
       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
         selected
           ? "bg-mizan-gold/10 border border-mizan-gold/20"
-          : "bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-transparent"
+          : "bg-muted/50 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-transparent"
       }`}
     >
       <input
@@ -566,12 +566,12 @@ function ModelRow({
           )}
         </div>
         {model.name && model.name !== model.id && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+          <div className="text-xs text-muted-foreground truncate">
             {model.name}
           </div>
         )}
       </div>
-      <div className="text-right text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-2">
+      <div className="text-right text-xs text-muted-foreground/80 shrink-0 ml-2">
         {model.context ? `${(model.context / 1000).toFixed(0)}k` : ""}
         {model.vision && (
           <div className="text-purple-500 dark:text-purple-400/60">vision</div>
@@ -599,13 +599,13 @@ function HealthBadge({ health }: { health: ProviderHealth }) {
           ? "Couldn't reach the provider — check your connection or API key."
           : `Unhealthy: ${health.error || "unknown"}`}
       {health.usage !== undefined && (
-        <span className="ml-2 text-gray-500 dark:text-gray-400">
+        <span className="ml-2 text-muted-foreground">
           Usage: ${(health.usage || 0).toFixed(4)}
           {health.limit && ` / $${health.limit}`}
         </span>
       )}
       {health.models !== undefined && (
-        <span className="ml-2 text-gray-500 dark:text-gray-400">
+        <span className="ml-2 text-muted-foreground">
           {health.models} models available
         </span>
       )}

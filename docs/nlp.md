@@ -125,7 +125,7 @@ the single source of truth imported by all four files; operators may
 override them with `MIZAN_NLP_MIN_SENSE_CONFIDENCE` /
 `MIZAN_NLP_MIN_SENSE_MARGIN`, bounded to [0, 1]); weaker candidates are
 skipped and the loop continues on heuristics + LLM. The flag is also an
-admin runtime setting (Settings → System settings, group "NLP & hybrid",
+admin runtime setting (Settings → Developer → System settings, group "NLP & hybrid",
 applied on restart).
 Deliberately untouched: prompt construction beyond IP-1's append, the
 QalbProcessor LLM params, Lawh tiering, and faculty engines.

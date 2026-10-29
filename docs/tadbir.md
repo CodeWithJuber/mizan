@@ -135,7 +135,7 @@ already trains automatically once a bundle is approved.
 wording count. `DELETE /api/tadbir/learning/wording` forgets your wording.
 `GET /api/tadbir/learning/live?after=<seq>` returns each learning step as it
 happens (Sijill), shown as **Learning now**. All appear in
-**Majlis → Learning**.
+**Agents → Majlis → Learning**.
 
 Results carry `completion_status`:
 
@@ -148,7 +148,7 @@ Results also carry `orchestrator: "mizan"`. The chat shows "Done by MIZAN" and
 
 ## Modes
 
-Admins set `MIZAN_ORCHESTRATION` in Settings → System settings. It applies
+Admins set `MIZAN_ORCHESTRATION` in Settings → Developer → System settings. It applies
 immediately.
 
 | Mode | Behaviour |

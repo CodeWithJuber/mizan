@@ -31,22 +31,22 @@ function Meter({ period, summary }: { period: Period; summary: SpendSummary }) {
   return (
     <div className="card p-4 space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-medium text-muted-foreground">
           {PERIOD_LABEL[period]}
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-muted-foreground">
           renews {renewal(summary.renews_at[period])}
         </span>
       </div>
-      <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+      <div className="text-2xl font-semibold text-foreground tabular-nums">
         {usd(spent)}
-        <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+        <span className="text-sm font-normal text-muted-foreground">
           {limit === null ? " · no limit" : ` of ${usd(limit)}`}
         </span>
       </div>
       {used !== null && (
         <div
-          className="h-2 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"
+          className="h-2 rounded-full bg-muted overflow-hidden"
           role="meter"
           aria-valuemin={0}
           aria-valuemax={limit ?? 0}
@@ -90,8 +90,8 @@ function OwnLimits({ summary, onSave }: { summary: SpendSummary; onSave: (day: n
       }}
     >
       <div>
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Your own limits</h4>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <h4 className="text-sm font-semibold text-foreground">Your own limits</h4>
+        <p className="text-xs text-muted-foreground">
           They can only make your budget smaller. Leave a box empty for no limit of your own.
         </p>
       </div>
@@ -102,7 +102,7 @@ function OwnLimits({ summary, onSave }: { summary: SpendSummary; onSave: (day: n
             ["Monthly (USD)", month, setMonth, monthValue],
           ] as const
         ).map(([label, value, set, parsed]) => (
-          <label key={label} className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+          <label key={label} className="text-xs text-muted-foreground space-y-1">
             <span>{label}</span>
             <input
               className="input w-full"
@@ -130,9 +130,9 @@ function AllUsers({ api, users, month, reload }: { api: ApiClient; users: SpendU
   if (!users.length) return null;
   return (
     <div className="card p-4 space-y-2 overflow-x-auto">
-      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Every user, {month}</h4>
+      <h4 className="text-sm font-semibold text-foreground">Every user, {month}</h4>
       <table className="w-full text-xs">
-        <thead className="text-left text-gray-500 dark:text-gray-400">
+        <thead className="text-left text-muted-foreground">
           <tr>
             <th className="py-1 pr-2 font-medium">User</th>
             <th className="py-1 pr-2 font-medium text-right">Spent</th>
@@ -143,8 +143,8 @@ function AllUsers({ api, users, month, reload }: { api: ApiClient; users: SpendU
         </thead>
         <tbody>
           {users.map((row) => (
-            <tr key={row.owner_id || "system"} className="border-t border-gray-100 dark:border-zinc-800">
-              <td className="py-1.5 pr-2 text-gray-800 dark:text-gray-200">{row.username || row.owner_id}</td>
+            <tr key={row.owner_id || "system"} className="border-t border-border/60">
+              <td className="py-1.5 pr-2 text-foreground/90">{row.username || row.owner_id}</td>
               <td className="py-1.5 pr-2 text-right tabular-nums">{usd(row.cost_usd)}</td>
               <td className="py-1.5 pr-2 text-right tabular-nums">{row.calls}</td>
               <td className="py-1.5 pr-2">
@@ -192,7 +192,7 @@ function AllUsers({ api, users, month, reload }: { api: ApiClient; users: SpendU
           ))}
         </tbody>
       </table>
-      <p className="text-2xs text-gray-500 dark:text-gray-400">
+      <p className="text-2xs text-muted-foreground">
         A limit set here replaces the server default for that user, even for an administrator. Empty boxes return them to the default.
       </p>
     </div>
@@ -236,8 +236,8 @@ export default function SpendingPanel({ api }: { api: ApiClient }) {
 .dark .iqtisad-viz { --spend-bar: #3987e5; --spend-grid: #3f3f46; }
 `}</style>
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Spending</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <h3 className="text-lg font-semibold text-foreground">Spending</h3>
+        <p className="text-sm text-muted-foreground">
           Every paid model call is checked against your limits before it is sent, and its answer
           length is capped to what is left, so no call can overspend. Prices are the providers'
           list prices unless the provider reports the cost itself.
@@ -248,7 +248,7 @@ export default function SpendingPanel({ api }: { api: ApiClient }) {
         <Meter period="month" summary={summary} />
       </div>
       <div className="card p-4">
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Last 30 days</h4>
+        <h4 className="text-sm font-semibold text-foreground mb-2">Last 30 days</h4>
         <div className="h-48" role="img" aria-label="Model spend per day for the last 30 days">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -267,14 +267,14 @@ export default function SpendingPanel({ api }: { api: ApiClient }) {
       </div>
       {summary.by_model.length > 0 && (
         <div className="card p-4 overflow-x-auto">
-          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">By model, {summary.month}</h4>
+          <h4 className="text-sm font-semibold text-foreground mb-2">By model, {summary.month}</h4>
           <table className="w-full text-xs">
             <tbody>
               {summary.by_model.map((row) => (
-                <tr key={row.model} className="border-t first:border-t-0 border-gray-100 dark:border-zinc-800">
-                  <td className="py-1.5 pr-2 font-mono text-gray-800 dark:text-gray-200 break-all">{row.model}</td>
+                <tr key={row.model} className="border-t first:border-t-0 border-border/60">
+                  <td className="py-1.5 pr-2 font-mono text-foreground/90 break-all">{row.model}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{usd(row.cost_usd)}</td>
-                  <td className="py-1.5 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  <td className="py-1.5 text-right text-muted-foreground whitespace-nowrap">
                     {row.calls} calls{row.estimated_calls ? `, ${row.estimated_calls} priced from the list` : ""}
                   </td>
                 </tr>

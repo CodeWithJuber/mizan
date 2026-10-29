@@ -10,7 +10,7 @@ Each is a naive Bayes model fitted on seed examples shipped in `backend/tadbir/d
 
 ## Where
 
-**Developer → Teach MIZAN** (administrators only):
+**Settings → Developer → Teach MIZAN** (administrators only):
 
 1. **Pick a model:** `qasd`, `lughah`, or a facet `qasd.<name>`. The labels it takes are listed.
 2. **Type examples,** one per line: `label | text` (or a tab between them).
@@ -50,6 +50,6 @@ All four are for administrators only.
 
 ## Setting
 
-`MIZAN_TALIM` is `on` by default, in Settings → System settings. When `off`, taught batches are kept but set aside, and MIZAN reads messages with its shipped seeds only. A change applies on restart.
+`MIZAN_TALIM` is `on` by default, in Settings → Developer → System settings. When `off`, taught batches are kept but set aside, and MIZAN reads messages with its shipped seeds only. A change applies on restart.
 
 The shipped fit (`core/data/tamyiz.json`, `cd backend && python -m core.tamyiz_cache`) is always computed with Ta'lim off. Production's taught batches therefore never leak into the repository's seeds.

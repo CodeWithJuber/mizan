@@ -9,6 +9,7 @@ import type { ApiClient } from "../types";
 import { useToast } from "./Toast";
 import { authFetch } from "../utils/authFetch";
 import { Markdown } from "./Markdown";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface AgentSkill {
   name: string;
@@ -79,7 +80,7 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
   };
 
   const remove = async (skill: AgentSkill) => {
-    if (!window.confirm(`Remove the skill ${skill.name}?`)) return;
+    if (!(await confirmDialog({ title: `Remove the skill ${skill.name}?`, confirmLabel: "Remove", destructive: true }))) return;
     try {
       await api.del(`/agent-skills/${encodeURIComponent(skill.name)}`);
       await load();
@@ -146,7 +147,7 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
   return (
     <div className="p-5 space-y-5">
       <div className="card space-y-3">
-        <p className="text-sm text-gray-600 dark:text-zinc-400">
+        <p className="text-sm text-muted-foreground">
           Skills are folders of instructions (<code>SKILL.md</code>) the agent loads when a task matches,
           the same open format used by other coding agents. Type <code>/skill-name</code> in chat to use one directly.
         </p>
@@ -204,7 +205,7 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
                 </div>
               </div>
             </div>
-            <p className="text-sm text-gray-600 dark:text-zinc-400 line-clamp-4">{skill.description}</p>
+            <p className="text-sm text-muted-foreground line-clamp-4">{skill.description}</p>
             {skill.diagnostics.length > 0 && <p className="text-xs text-amber-600">⚠ {skill.diagnostics.join("; ")}</p>}
             {skill.held && (
               <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2 text-xs text-amber-800 dark:text-amber-300">
@@ -234,7 +235,7 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
               <h2 className="text-lg font-semibold font-mono">{viewing.skill.name}</h2>
               <button className="btn-ghost btn-sm" onClick={() => setViewing(null)} aria-label="Close">✕</button>
             </div>
-            <p className="text-sm text-gray-600 dark:text-zinc-400 mb-3">{viewing.skill.description}</p>
+            <p className="text-sm text-muted-foreground mb-3">{viewing.skill.description}</p>
             <div className="prose dark:prose-invert max-w-none text-sm"><Markdown content={viewing.body} /></div>
             {viewing.skill.files.length > 0 && (
               <div className="mt-4">

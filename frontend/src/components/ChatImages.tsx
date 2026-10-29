@@ -38,11 +38,11 @@ export function ChatImages({ images, align = "end" }: { images?: ChatImage[]; al
           <img
             key={image.url}
             src={image.url}
-            alt={`Attached image ${index + 1}`}
+            alt={`Attachment ${index + 1}`}
             className="max-h-48 max-w-full rounded-lg object-contain"
           />
         ) : image.sha ? (
-          <KeptImage key={image.sha} sha={image.sha} alt={`Attached image ${index + 1}`} />
+          <KeptImage key={image.sha} sha={image.sha} alt={`Attachment ${index + 1}`} />
         ) : null,
       )}
     </div>

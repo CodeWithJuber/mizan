@@ -9,7 +9,7 @@ Personal agents remember things about their users. Few let the user see all of i
 | **Note** | Something to remember | You added it, imported it, a knowledge source, or you said "remember that …" in a chat (kept in your own words, tied to that chat) | Edit, set an expiry, forget |
 | **Preference** | How MIZAN should answer (language, greeting, custom instructions, self-review) | The chat you set it in | Edit, forget |
 | **Chat summary** | MIZAN's running summary of a long chat | That chat | Read (it follows the chat) |
-| **Learned** | Phrasings, verified programs and repair lessons from your verified work | Your verified requests | Manage in **Majlis → Learning** |
+| **Learned** | Phrasings, verified programs and repair lessons from your verified work | Your verified requests | Manage in **Agents → Majlis → Learning** |
 
 Every entry shows:
 - where it came from (a chat by its title, "you added it", "imported", or a knowledge source)

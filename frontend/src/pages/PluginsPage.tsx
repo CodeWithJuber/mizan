@@ -7,8 +7,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PageProps,
   Plugin,
-  PluginType,
-  TrustLevel,
   PluginHook,
 } from "../types";
 import { useToast } from "../components/Toast";
@@ -103,7 +101,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<boolean>(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [, setShowCreate] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<CreateForm>({
     name: "",
     description: "",
@@ -375,21 +373,21 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
             <div className="card">
-              <div className="text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">
+              <div className="text-2xs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-3">
                 Event Hooks · خطافات
               </div>
               {hooks.map((hook, i) => (
                 <div
                   key={i}
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 rounded mb-1 bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 rounded mb-1 bg-muted/50 border border-border/60"
                 >
                   <span className="text-2xs font-mono text-blue-500 dark:text-blue-400 w-24 sm:w-40 shrink-0 truncate">
                     {hook.event}
                   </span>
-                  <span className="text-2xs text-gray-900 dark:text-gray-100 min-w-0 flex-1 truncate">
+                  <span className="text-2xs text-foreground min-w-0 flex-1 truncate">
                     {hook.plugin}
                   </span>
-                  <span className="ml-auto text-micro font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                  <span className="ml-auto text-micro font-mono text-muted-foreground/80 whitespace-nowrap">
                     priority: {hook.priority}
                   </span>
                 </div>
@@ -445,7 +443,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                           ${
                             createForm.plugin_type === type
                               ? `${ts.bg} ${ts.border} ${ts.text}`
-                              : "bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700"
+                              : "bg-muted/60 border-border text-foreground/80 hover:bg-gray-100 dark:hover:bg-zinc-700"
                           }`}
                         onClick={() =>
                           setCreateForm({ ...createForm, plugin_type: type })
@@ -494,7 +492,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="card">
-              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">
+              <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-3">
                 Plugin Types
               </div>
               {Object.entries(TYPE_LABELS).map(([type, label]) => {
@@ -505,7 +503,7 @@ export default function PluginsPage({ api, addTerminalLine }: PageProps) {
                       className={`w-2 h-2 rounded-full ${ts.bg} border ${ts.border}`}
                     />
                     <span className={`text-xs ${ts.text}`}>{label}</span>
-                    <span className="text-2xs text-gray-400 dark:text-gray-500">
+                    <span className="text-2xs text-muted-foreground/80">
                       {type === "ayah"
                         ? "— Add new tool capabilities"
                         : type === "bab"
@@ -579,21 +577,21 @@ function PluginCard({
           </span>
         )}
         <span
-          className={`ml-auto text-micro font-mono ${plugin.active ? "text-emerald-500" : "text-gray-400 dark:text-gray-500"}`}
+          className={`ml-auto text-micro font-mono ${plugin.active ? "text-emerald-500" : "text-muted-foreground/80"}`}
         >
           {plugin.active ? "ACTIVE" : "INACTIVE"}
         </span>
       </div>
 
-      <div className="text-sm text-gray-900 dark:text-gray-100 font-medium mt-1.5">
+      <div className="text-sm text-foreground font-medium mt-1.5">
         {plugin.name}
-        <span className="text-2xs text-gray-400 dark:text-gray-500 font-normal ml-2">
+        <span className="text-2xs text-muted-foreground/80 font-normal ml-2">
           v{plugin.version}
         </span>
       </div>
 
       {plugin.description && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        <div className="text-xs text-muted-foreground mt-0.5">
           {plugin.description}
         </div>
       )}
@@ -607,21 +605,21 @@ function PluginCard({
       {expanded && (
         <div className="detail-panel mt-2">
           {plugin.author && (
-            <div className="text-2xs text-gray-500 dark:text-gray-400 mb-1">
+            <div className="text-2xs text-muted-foreground mb-1">
               Author: {plugin.author}
             </div>
           )}
           {(plugin.permissions?.length ?? 0) > 0 && (
-            <div className="text-2xs text-gray-500 dark:text-gray-400 mb-1">
+            <div className="text-2xs text-muted-foreground mb-1">
               Permissions: {plugin.permissions!.join(", ")}
             </div>
           )}
           {plugin.checksum && (
             <div className="mb-2">
-              <div className="text-micro font-mono text-gray-400 dark:text-gray-500">
+              <div className="text-micro font-mono text-muted-foreground/80">
                 SHA-256: {plugin.checksum.slice(0, 16)}...
               </div>
-              <div className="text-micro text-gray-400 dark:text-gray-500">
+              <div className="text-micro text-muted-foreground/80">
                 Ye code ka fingerprint hai — Verify dabane se file badli to
                 nahi, ye check hota hai
               </div>

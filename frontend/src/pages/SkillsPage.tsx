@@ -8,6 +8,7 @@ import { PageProps, Skill } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import AgentSkillsPanel from "../components/AgentSkillsPanel";
+import { confirmDialog } from "@/components/ui/confirm";
 
 /** Readable names for agent-type slugs shown under "Best For". */
 const AGENT_TYPE_LABELS: Record<string, string> = {
@@ -212,7 +213,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
   };
 
   const uninstallSkill = async (skillName: string) => {
-    if (!window.confirm(`"${skillName}" skill remove kar dun?`)) return;
+    if (!(await confirmDialog({ title: `Remove the skill "${skillName}"?`, confirmLabel: "Remove", destructive: true }))) return;
     setPendingSkill(skillName);
     try {
       await api.post("/skills/uninstall", { name: skillName });
@@ -330,10 +331,10 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                     {skill.arabic}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-sm font-semibold text-foreground">
                       {skill.display}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
                       {isExpanded
                         ? skill.description
                         : skill.description.split(".")[0] + "."}
@@ -359,7 +360,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                   >
                     {skill.category}
                   </span>
-                  <span className="text-micro font-mono text-gray-400 dark:text-gray-500">
+                  <span className="text-micro font-mono text-muted-foreground/80">
                     v{skill.version}
                   </span>
                   {skill.installed && (
@@ -385,7 +386,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                   <div className="mb-3 space-y-3">
                     {/* Permissions with readable labels */}
                     <div>
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                         Required Permissions
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -403,10 +404,10 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                     {/* Agent affinity */}
                     {affinity && (
                       <div>
-                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                           Best For
                         </div>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                        <p className="text-xs text-foreground/75 leading-relaxed">
                           {affinity.note}
                         </p>
                         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -429,9 +430,8 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                   disabled={pendingSkill === skill.name}
                   onClick={(e) => {
                     e.stopPropagation();
-                    skill.installed
-                      ? uninstallSkill(skill.name)
-                      : installSkill(skill.name);
+                    if (skill.installed) uninstallSkill(skill.name);
+                    else installSkill(skill.name);
                   }}
                 >
                   {pendingSkill === skill.name

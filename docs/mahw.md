@@ -6,7 +6,7 @@ Deleting a chat, or forgetting a note, removes it from every place MIZAN keeps i
 
 | Store | What goes |
 |---|---|
-| Chat | Its messages, its running summary, its request receipts, Muhasaba's reviews of its answers, its artifacts (with their versions), its plan file, actions held for it, and the images attached in it (Basar), unless another of your chats still shows the same picture |
+| Chat | Its title, its messages, its running summary, its request receipts, Muhasaba's reviews of its answers, its artifacts (with their versions), its plan file, actions held for it, and the images attached in it (Basar), unless another of your chats still shows the same picture |
 | Your notes | Notes made from this chat (source `chat:<id>`), with their vectors |
 | What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries (with their links) for the chat's requests. Also the intents (Qasd), wording (Ta'allum), programs (Hifz) and source-settled sentences (Ahl al-Dhikr's `ilm`) learned from those requests |
 | Learner | Training candidates captured from the chat, with their reviews |

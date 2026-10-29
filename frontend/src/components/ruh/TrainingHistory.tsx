@@ -73,7 +73,7 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
 
   if (runs.length === 0) {
     return (
-      <div className="text-center py-6 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+      <div className="text-center py-6 bg-muted/40 rounded-lg border border-dashed border-border">
         <p className="text-sm text-gray-400">No training history yet</p>
         <p className="text-xs text-gray-400 mt-1">History is recorded after each training run</p>
       </div>
@@ -82,7 +82,7 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
 
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Training History ({runs.length} runs)
       </h4>
 
@@ -94,7 +94,7 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
           return (
             <div
               key={runIdx}
-              className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-gray-100 dark:border-zinc-700/50 overflow-hidden"
+              className="bg-muted/50 rounded-lg border border-border/60 overflow-hidden"
             >
               <button
                 onClick={() => setExpanded(isExpanded ? null : runIdx)}
@@ -105,7 +105,7 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: STAGE_COLORS[run.stage] ?? "#94a3b8" }}
                   />
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-medium text-foreground">
                     {run.stage}
                   </span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_COLORS[run.status] ?? ""}`}>
@@ -132,7 +132,7 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
               </button>
 
               {isExpanded && run.losses.length > 0 && (
-                <div className="px-3 pb-3 border-t border-gray-100 dark:border-zinc-700/50">
+                <div className="px-3 pb-3 border-t border-border/60">
                   <div className="h-40 mt-2">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
@@ -162,20 +162,20 @@ export function TrainingHistory({ api }: TrainingHistoryProps) {
                     </ResponsiveContainer>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                    <div className="bg-white dark:bg-zinc-900 rounded px-2 py-1.5 text-center">
-                      <span className="block font-mono text-gray-700 dark:text-gray-300">
+                    <div className="bg-card rounded px-2 py-1.5 text-center">
+                      <span className="block font-mono text-foreground/80">
                         {run.dataset_size.toLocaleString()}
                       </span>
                       <span className="text-[10px] text-gray-400">Samples</span>
                     </div>
-                    <div className="bg-white dark:bg-zinc-900 rounded px-2 py-1.5 text-center">
-                      <span className="block font-mono text-gray-700 dark:text-gray-300">
+                    <div className="bg-card rounded px-2 py-1.5 text-center">
+                      <span className="block font-mono text-foreground/80">
                         {run.model_params.toLocaleString()}
                       </span>
                       <span className="text-[10px] text-gray-400">Parameters</span>
                     </div>
-                    <div className="bg-white dark:bg-zinc-900 rounded px-2 py-1.5 text-center">
-                      <span className="block font-mono text-gray-700 dark:text-gray-300">
+                    <div className="bg-card rounded px-2 py-1.5 text-center">
+                      <span className="block font-mono text-foreground/80">
                         {run.losses.length > 1
                           ? `${((1 - run.losses[run.losses.length - 1] / run.losses[0]) * 100).toFixed(1)}%`
                           : "—"}

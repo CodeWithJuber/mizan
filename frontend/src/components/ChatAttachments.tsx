@@ -7,7 +7,7 @@ function Attachment({ file, onRemove }: { file: File; onRemove: () => void }) {
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
   return (
-    <div className="flex items-center gap-3 p-2 rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 min-w-0">
+    <div className="flex items-center gap-3 p-2 rounded-xl border border-border bg-muted/50 min-w-0">
       {file.type.startsWith("image/") && url ? (
         <a
           href={url}

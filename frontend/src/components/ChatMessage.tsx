@@ -4,23 +4,31 @@ import {
   useEffect,
   isValidElement,
   cloneElement,
+  memo,
 } from "react";
 import type { ReactNode } from "react";
 import type {
   ChatMessage as ChatMessageType,
-  CognitiveMetadata,
   PerceptionResult,
 } from "../types";
-import { Markdown } from "./Markdown";
-import type { Components } from "react-markdown";
-import { useToast } from "./Toast";
+import { Markdown, type Components } from "./Markdown";
+import {
+  Check, Copy, GitCompareArrows, Pencil, RotateCcw, Scale, Volume2, VolumeX,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { addToast } from "./Toast";
 import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
 import { speakable } from "../utils/voice.ts";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
-import { MessageMeta } from "./MessageMeta";
 import { HeldActions } from "./HeldActions";
 import { ChatImages } from "./ChatImages";
-import { cognitiveMetrics } from "../utils/responseMetrics.ts";
+import { SourcesAndChecks } from "../features/chat/SourcesAndChecks";
+import { RunTimeline } from "../features/chat/RunTimeline";
+import type { ThinkingTrace } from "../types/ruh";
 // MORPH-FEAT: Arabic word tap-to-explore
 import { useMorphology } from "../hooks/useMorphology";
 import { VerifiedBadge } from "./ruh/VerifiedBadge";
@@ -72,24 +80,6 @@ function parseChatContent(text: string): ContentBlock[] {
   return blocks;
 }
 
-export function TypingIndicator() {
-  return (
-    <span className="inline-flex gap-1 items-center py-1">
-      <span
-        className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-        style={{ animationDelay: "0ms" }}
-      />
-      <span
-        className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-        style={{ animationDelay: "150ms" }}
-      />
-      <span
-        className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce"
-        style={{ animationDelay: "300ms" }}
-      />
-    </span>
-  );
-}
 
 // ===== MORPH-FEAT: Arabic word tap-to-explore (start) =====
 // Splits text into Arabic / non-Arabic runs. Matches the contract regex
@@ -161,7 +151,7 @@ function WordTapPopover({
 
   return (
     <span
-      className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[78vw] p-3 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-xl text-left animate-fade-in"
+      className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[78vw] p-3 rounded-xl bg-card border border-border shadow-xl text-left animate-fade-in"
       role="dialog"
       aria-label={`Preview of ${word}`}
     >
@@ -192,7 +182,7 @@ function WordTapPopover({
           <span
             dir="rtl"
             lang="ar"
-            className="block text-lg font-bold text-gray-900 dark:text-gray-100 pr-6"
+            className="block text-lg font-bold text-foreground pr-6"
           >
             {data.word}
           </span>
@@ -263,20 +253,22 @@ function linkifyArabic(
 export function ChatMessageContent({
   content,
   onExploreWord,
+  streaming = false,
 }: {
   content: string;
   onExploreWord?: (word: string) => void;
+  streaming?: boolean;
 }) {
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
   const blocks = useMemo(() => parseChatContent(content), [content]);
-  // MORPH-FEAT: react-markdown overrides that linkify Arabic words in
+  // MORPH-FEAT: element overrides that linkify Arabic words in
   // paragraphs. Memoized so the memoized <Markdown> keeps its memo.
-  const arabicComponents: Components = useMemo(
-    () => ({
-      p: (props) => <p>{linkifyArabic(props.children, onExploreWord, "p")}</p>,
-    }),
-    [onExploreWord],
-  );
+  const arabicComponents = useMemo(() => {
+    const p = ({ children }: { children?: ReactNode }) => (
+      <p dir="auto">{linkifyArabic(children, onExploreWord, "p")}</p>
+    );
+    return { p } as unknown as Partial<Components>;
+  }, [onExploreWord]);
 
   const toggleTool = (idx: number) => {
     setExpandedTools((prev) => {
@@ -289,7 +281,7 @@ export function ChatMessageContent({
 
   if (blocks.length === 1 && blocks[0].type === "text") {
     return (
-      <Markdown content={blocks[0].content} components={arabicComponents} />
+      <Markdown content={blocks[0].content} components={arabicComponents} streaming={streaming} />
     );
   }
 
@@ -302,6 +294,7 @@ export function ChatMessageContent({
               key={idx}
               content={block.content}
               components={arabicComponents}
+              streaming={streaming}
             />
           );
         }
@@ -345,7 +338,7 @@ export function ChatMessageContent({
               className={`rounded-lg border transition-colors ${
                 block.isError
                   ? "bg-red-50/50 dark:bg-red-500/5 border-red-200/60 dark:border-red-500/15"
-                  : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200/60 dark:border-zinc-700/50"
+                  : "bg-muted/50 border-border/60"
               }`}
             >
               <button
@@ -395,13 +388,13 @@ export function ChatMessageContent({
               </button>
               {isExpanded ? (
                 <div className="px-3 pb-2">
-                  <pre className="text-xs font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
+                  <pre className="text-xs font-mono text-muted-foreground bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
                     {block.result}
                   </pre>
                 </div>
               ) : block.result ? (
                 <div className="px-3 pb-2">
-                  <div className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
+                  <div className="text-xs font-mono text-muted-foreground/80 truncate">
                     {truncated}
                   </div>
                 </div>
@@ -411,111 +404,6 @@ export function ChatMessageContent({
         }
         return null;
       })}
-    </div>
-  );
-}
-
-// ===== Qalb state → color mapping =====
-const QALB_COLORS: Record<string, string> = {
-  neutral: "bg-gray-100 dark:bg-zinc-700/40 text-gray-600 dark:text-gray-300",
-  positive:
-    "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  frustrated: "bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400",
-  anxious:
-    "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  confused:
-    "bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400",
-  determined:
-    "bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  fatigued: "bg-gray-100 dark:bg-zinc-700/40 text-gray-500 dark:text-gray-400",
-};
-
-const LUBB_COLORS: Record<string, string> = {
-  confident:
-    "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  hedged:
-    "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  uncertain: "bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400",
-};
-
-function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
-  const [expanded, setExpanded] = useState(false);
-  const { pills, details } = cognitiveMetrics(cognitive);
-  if (!pills.length && !details.length) return null;
-  const allDetails = [
-    ...new Map(
-      [...pills, ...details].map((metric) => [metric.key, metric]),
-    ).values(),
-  ];
-  const pillColors: Record<string, string> = {
-    qalb: QALB_COLORS[cognitive.qalb?.state ?? "neutral"] || QALB_COLORS.neutral,
-    lubb: LUBB_COLORS[cognitive.lubb?.quality ?? "uncertain"] || LUBB_COLORS.uncertain,
-    yaqin: "bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400",
-    ruh: "bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
-    nafs: "bg-mizan-gold/10 text-mizan-gold-text dark:text-mizan-gold border border-mizan-gold/20",
-    repair: "bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400",
-  };
-
-  return (
-    <div className="mt-1.5 animate-fade-in">
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        className="flex max-w-full flex-wrap items-center gap-1.5 text-left cursor-pointer group"
-        aria-expanded={expanded}
-        aria-label="Heuristic diagnostics and metric sources"
-      >
-        <span className="text-[10px] text-gray-500 dark:text-gray-400">
-          Heuristic diagnostics
-        </span>
-        {pills.map((metric) => (
-          <span
-            key={metric.key}
-            className={`inline-flex flex-wrap items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${pillColors[metric.key] ?? QALB_COLORS.neutral}`}
-            title={metric.explanation}
-          >
-            <span className="opacity-70">{metric.label}</span>
-            {metric.value}
-          </span>
-        ))}
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className={`w-3 h-3 shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-          aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </button>
-      {expanded && (
-        <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
-          <p className="text-gray-600 dark:text-gray-300">
-            Internal estimates and counters. They do not measure answer accuracy,
-            model training progress or server health.
-          </p>
-          <dl className="space-y-2">
-            {allDetails.map((metric) => (
-              <div key={metric.key} className="min-w-0 wrap-break-word">
-                <dt className="inline font-medium text-gray-700 dark:text-gray-300">
-                  {metric.label}:
-                </dt>{" "}
-                <dd className="inline text-gray-600 dark:text-gray-400">
-                  {metric.value}
-                  {metric.explanation && (
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-                      {metric.explanation}
-                    </p>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
     </div>
   );
 }
@@ -615,10 +503,10 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
         <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
           {basirah && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">
+              <div className="font-medium text-foreground/80">
                 Vision (Basirah)
               </div>
-              <p className="text-gray-500 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 {basirah.description}
               </p>
               <div className="flex items-center gap-2">
@@ -636,8 +524,8 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
                 </span>
               </div>
               {basirah.extracted_text && (
-                <div className="text-gray-500 dark:text-gray-400">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                <div className="text-muted-foreground">
+                  <span className="font-medium text-foreground/80">
                     Text:{" "}
                   </span>
                   {basirah.extracted_text.substring(0, 200)}
@@ -649,7 +537,7 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
                   {basirah.key_elements.map((el, i) => (
                     <span
                       key={i}
-                      className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400 text-[10px]"
+                      className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-muted-foreground text-[10px]"
                     >
                       {el}
                     </span>
@@ -660,17 +548,17 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
           )}
           {nutq && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">
+              <div className="font-medium text-foreground/80">
                 Voice (Nutq)
               </div>
-              <p className="text-gray-500 dark:text-gray-400">{nutq.text}</p>
-              <div className="text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-gray-700 dark:text-gray-300">
+              <p className="text-muted-foreground">{nutq.text}</p>
+              <div className="text-muted-foreground">
+                <span className="font-medium text-foreground/80">
                   Intent:{" "}
                 </span>
                 {nutq.intent}
                 {" · "}
-                <span className="font-medium text-gray-700 dark:text-gray-300">
+                <span className="font-medium text-foreground/80">
                   Lang:{" "}
                 </span>
                 {nutq.language}
@@ -678,16 +566,16 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
             </div>
           )}
           {perception.zahir && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
                 Zahir:{" "}
               </span>
               {perception.zahir}
             </div>
           )}
           {perception.batin && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
                 Batin:{" "}
               </span>
               {perception.batin}
@@ -699,119 +587,170 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
   );
 }
 
-interface ChatMessageBubbleProps {
-  msg: ChatMessageType;
-  selectedAgent?: { name: string } | null;
-  // Loaded agents list — used to resolve a raw agent_id into a display name.
-  agents?: NamedAgent[];
-  // MORPH-FEAT: forwarded to ChatMessageContent; opens RootExplorerDrawer.
-  onExploreWord?: (word: string) => void;
-  // Optional in-message CTA button (e.g. "AI Providers kholo" → settings tab).
-  onNavigateTab?: (tab: string) => void;
-}
 
 const COPY_FORMATS: { id: CopyFormatId; label: string; hint: string }[] = [
-  { id: "markdown", label: "Copy", hint: "as-is" },
+  { id: "markdown", label: "Copy", hint: "as written" },
   { id: "plain", label: "Copy plain text", hint: "no formatting" },
   { id: "whatsapp", label: "Copy for WhatsApp", hint: "*bold* style" },
 ];
 
-function CopyMenuItem({
+/** An icon button with a tooltip and an accessible name. */
+export function IconAction({
   label,
-  hint,
-  onSelect,
+  onClick,
+  children,
+  pressed,
 }: {
   label: string;
-  hint: string;
-  onSelect: () => void;
+  onClick: () => void;
+  children: ReactNode;
+  pressed?: boolean;
 }) {
   return (
-    <button
-      role="menuitem"
-      onClick={onSelect}
-      className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
-    >
-      <span className="text-2xs font-medium text-gray-800 dark:text-gray-200">
-        {label}
-      </span>
-      <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
-        {hint}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={pressed}
+            onClick={onClick}
+            className="text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
-export function ChatMessageBubble({
-  msg,
-  selectedAgent,
-  agents,
-  onExploreWord,
-  onNavigateTab,
-}: ChatMessageBubbleProps) {
+function copyText(text: string, label: string, done: () => void) {
+  navigator.clipboard.writeText(text).then(
+    () => {
+      done();
+      addToast({ type: "success", title: "Copied", description: label === "Copy" ? undefined : label });
+    },
+    () => addToast({ type: "error", title: "Copy failed — clipboard unavailable" }),
+  );
+}
+
+function CopyMenu({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
-  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const done = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" aria-label="Copy options" className="text-muted-foreground hover:text-foreground" />
+              }
+            />
+          }
+        >
+          {copied ? <Check className="text-success" /> : <Copy />}
+        </TooltipTrigger>
+        <TooltipContent>Copy</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent className="w-52" side="top">
+        {COPY_FORMATS.map((format) => (
+          <DropdownMenuItem key={format.id} onClick={() => copyText(convertCopyFormat(content, format.id), format.label, done)}>
+            <span className="flex-1">{format.label}</span>
+            <span className="text-xs text-muted-foreground">{format.hint}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReadAloud({ content }: { content: string }) {
   const [speaking, setSpeaking] = useState(false);
-  const { addToast } = useToast();
-  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
-  const speak = () => {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !content.trim()) return null;
+  const toggle = () => {
     const voice = window.speechSynthesis;
     voice.cancel();
     if (speaking) {
       setSpeaking(false);
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(
-      convertCopyFormat(speakable(msg.content), "plain"),
-    );
+    const utterance = new SpeechSynthesisUtterance(convertCopyFormat(speakable(content), "plain"));
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     voice.speak(utterance);
     setSpeaking(true);
   };
-  const cta = (
-    msg as ChatMessageType & { cta?: { label: string; tab: string } }
-  ).cta;
+  return (
+    <IconAction
+      label={speaking ? "Stop reading aloud" : "Read aloud (Quran text is not read by the voice)"}
+      onClick={toggle}
+      pressed={speaking}
+    >
+      {speaking ? <VolumeX className="text-brand" /> : <Volume2 />}
+    </IconAction>
+  );
+}
 
-  const doCopy = (format: CopyFormatId, label: string) => {
-    const text = convertCopyFormat(msg.content, format);
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true);
-        setCopyMenuOpen(false);
-        setTimeout(() => setCopied(false), 2000);
-        addToast({
-          type: "success",
-          title: "Copied",
-          description: label === "Copy" ? undefined : label,
-        });
-      },
-      () => {
-        setCopyMenuOpen(false);
-        addToast({
-          type: "error",
-          title: "Copy failed — clipboard unavailable",
-        });
-      },
-    );
-  };
+export function MizanMark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-brand ${className}`}
+    >
+      <Scale className="size-4" />
+    </span>
+  );
+}
+
+interface ChatMessageBubbleProps {
+  msg: ChatMessageType;
+  /** The chatting agent's name, used when a message does not name its own. */
+  agentName?: string;
+  // Loaded agents list — used to resolve a raw agent_id into a display name.
+  agents?: NamedAgent[];
+  // Forwarded to ChatMessageContent; opens the root explorer.
+  onExploreWord?: (word: string) => void;
+  // Optional in-message CTA button (e.g. "Open providers").
+  onNavigateTab?: (tab: string) => void;
+  /** Debug mode: raw metadata and heuristic diagnostics under answers. */
+  debug?: boolean;
+  /** Ask again (the last answer only). */
+  onRetry?: () => void;
+  /** Put a sent message back in the message box. */
+  onEdit?: (text: string) => void;
+  /** Debug mode: compare this message with the base model alone. */
+  onCompare?: (text: string) => void;
+  /** The thinking steps of this answer, shown with its tools in the run summary. */
+  trace?: ThinkingTrace;
+}
+
+export const ChatMessageBubble = memo(function ChatMessageBubble({
+  msg,
+  agentName,
+  agents,
+  onExploreWord,
+  onNavigateTab,
+  debug = false,
+  onRetry,
+  onEdit,
+  onCompare,
+  trace,
+}: ChatMessageBubbleProps) {
+  const cta = (msg as ChatMessageType & { cta?: { label: string; tab: string } }).cta;
 
   if (msg.role === "system") {
     return (
       <div className="chat-message-row">
         <div className="chat-message-container flex justify-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50/80 dark:bg-amber-500/5 border border-amber-200/40 dark:border-amber-500/10 text-xs text-amber-700 dark:text-amber-300/80">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="w-3 h-3"
-              aria-hidden="true"
-            >
-              <path d="M7 9l3 3-3 3M13 15h4" />
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-            </svg>
-            <span>{msg.content}</span>
+          <div className="inline-flex max-w-full items-center gap-2 rounded-full border bg-muted/60 px-4 py-1.5 text-xs text-muted-foreground">
+            <span className="break-words">{msg.content}</span>
           </div>
         </div>
       </div>
@@ -820,179 +759,93 @@ export function ChatMessageBubble({
 
   if (msg.role === "user") {
     return (
-      <div className="chat-message-row">
-        <div className="chat-message-container flex justify-end">
-          <div className="max-w-[80%] lg:max-w-[70%]">
-            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm wrap-break-word">
-              {msg.content}
-            </div>
-            <ChatImages images={msg.images} />
-            {msg.notStarted && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+      <div className="chat-message-row group/msg">
+        <div className="chat-message-container flex flex-col items-end">
+          <div
+            dir="auto"
+            className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[15px] leading-relaxed text-foreground"
+          >
+            {msg.content}
+          </div>
+          <ChatImages images={msg.images} />
+          {msg.notStarted && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-warning">
               Not started — no model execution was started for this message.
-            </p>}
-            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right font-mono px-1">
-              {msg.ts}
-            </div>
+            </p>
+          )}
+          <div className="mt-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100 md:focus-within:opacity-100">
+            <span className="mr-1 font-mono text-[11px] text-muted-foreground">{msg.ts}</span>
+            <CopyMenu content={msg.content} />
+            {onEdit && (
+              <IconAction label="Edit and send again" onClick={() => onEdit(msg.content)}>
+                <Pencil />
+              </IconAction>
+            )}
+            {onCompare && (
+              <IconAction label="Compare with the base model" onClick={() => onCompare(msg.content)}>
+                <GitCompareArrows />
+              </IconAction>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  // Assistant message — full-width like ChatGPT/Claude
+  // Assistant message — full width, no bubble.
   return (
     <div className="chat-message-row group/msg">
       <div className="chat-message-container">
-        <div className="flex gap-3.5">
-          {/* Avatar */}
-          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-linear-to-br from-amber-400 to-amber-600 shadow-sm">
-            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
-              <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
-            </svg>
-          </div>
-
-          {/* Body */}
-          <div className="min-w-0 flex-1 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-2xs font-semibold text-gray-900 dark:text-gray-100">
-                {resolveAgentName(msg.agent, agents, selectedAgent?.name)}
+        <div className="flex gap-3">
+          <MizanMark className="mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex h-7 items-center gap-2">
+              <span className="text-sm font-medium text-foreground">
+                {resolveAgentName(msg.agent, agents, agentName)}
               </span>
-              {msg.model && (
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400">
-                  {msg.model}
-                </span>
-              )}
             </div>
-
-            {/* Content */}
-            <div className="prose">
-              <ChatMessageContent
-                content={msg.content}
-                onExploreWord={onExploreWord}
-              />
-            </div>
-
+            <RunTimeline activity={msg.activity} trace={trace} />
+            {msg.content.trim() && (
+              <ChatMessageContent content={msg.content} onExploreWord={onExploreWord} />
+            )}
             {msg.error && (
-              <p role="alert" className="mt-2 wrap-break-word text-sm text-amber-700 dark:text-amber-300">
+              <p role="alert" className="mt-2 break-words rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-sm text-destructive">
                 {msg.error.message}
               </p>
             )}
-
-            {/* Cognitive bar */}
-            {msg.cognitive && <CognitiveBar cognitive={msg.cognitive} />}
-
-            {/* Perception card */}
             {msg.perception && <PerceptionCard perception={msg.perception} />}
-
             {/* Pictures MIZAN made for this answer (Shahid's screenshot) */}
             <ChatImages images={msg.images} align="start" />
-
-            {/* Model transparency: observed model + usage + cost (workstreams C/E) */}
             {msg.stopped && (
-              <p role="status" className="text-xs text-gray-500 mt-2">
-                Stop requested · {msg.content.length ? "received text preserved" : "no answer received"}
+              <p role="status" className="mt-2 text-xs text-muted-foreground">
+                Stopped · {msg.content.length ? "received text kept" : "no answer received"}
               </p>
             )}
             {msg.interrupted && (
-              <p role="status" className="text-xs text-gray-500 mt-2">
+              <p role="status" className="mt-2 text-xs text-muted-foreground">
                 Interrupted · {msg.content.trim() ? "partial response saved" : "no answer received"}
               </p>
             )}
             {msg.held && <HeldActions items={msg.held} />}
-            <MessageMeta meta={msg.meta} />
-
-            {/* In-message CTA button (e.g. navigate to Settings) */}
+            <SourcesAndChecks meta={msg.meta} cognitive={msg.cognitive} debug={debug} />
             {cta && (
-              <button
-                onClick={() => onNavigateTab?.(cta.tab)}
-                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 transition-colors"
-              >
+              <Button className="mt-2" onClick={() => onNavigateTab?.(cta.tab)}>
                 {cta.label}
-              </button>
+              </Button>
             )}
-
-            {/* Action buttons — hover reveal */}
-            <div className="flex items-center gap-1 mt-2 opacity-100 md:opacity-0 md:group-hover/msg:opacity-100 transition-opacity duration-200">
-              <div className="relative">
-                <button
-                  onClick={() => setCopyMenuOpen((v) => !v)}
-                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="Copy options"
-                  aria-haspopup="menu"
-                  aria-expanded={copyMenuOpen}
-                  aria-label="Copy options"
-                >
-                  {copied ? (
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-3.5 h-3.5 text-green-500"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-3.5 h-3.5"
-                    >
-                      <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
-                      <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
-                    </svg>
-                  )}
-                </button>
-                {copyMenuOpen && (
-                  <>
-                    <button
-                      className="fixed inset-0 z-40 cursor-default bg-transparent border-0 p-0"
-                      onClick={() => setCopyMenuOpen(false)}
-                      aria-label="Close copy menu"
-                      tabIndex={-1}
-                    />
-                    <div
-                      role="menu"
-                      aria-label="Copy options"
-                      className="absolute bottom-full left-0 mb-1.5 z-50 w-56 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden animate-fade-in"
-                    >
-                      {COPY_FORMATS.map((fmt) => (
-                        <CopyMenuItem
-                          key={fmt.id}
-                          label={fmt.label}
-                          hint={fmt.hint}
-                          onSelect={() => doCopy(fmt.id, fmt.label)}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              {canSpeak && msg.content.trim() && (
-                <button
-                  onClick={speak}
-                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                  title={speaking ? "Stop reading aloud" : "Read aloud (Quran text is not read by the voice)"}
-                  aria-label={speaking ? "Stop reading aloud" : "Read aloud"}
-                  aria-pressed={speaking}
-                >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 ${speaking ? "text-amber-500" : ""}`}>
-                    <path d="M10.5 3.75a.75.75 0 00-1.264-.546L5.203 7H3.167a.75.75 0 00-.7.48A6.985 6.985 0 002 10c0 .887.165 1.737.468 2.52.111.29.39.48.7.48h2.035l4.033 3.796a.75.75 0 001.264-.546V3.75z" />
-                    <path d="M15.95 5.05a.75.75 0 00-1.06 1.061 5.5 5.5 0 010 7.778.75.75 0 001.06 1.06 7 7 0 000-9.899z" />
-                    <path d="M13.829 7.172a.75.75 0 00-1.061 1.06 2.5 2.5 0 010 3.536.75.75 0 001.06 1.06 4 4 0 000-5.656z" />
-                  </svg>
-                </button>
+            <div className="mt-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100 md:focus-within:opacity-100">
+              {msg.content.trim() && <CopyMenu content={msg.content} />}
+              <ReadAloud content={msg.content} />
+              {onRetry && (
+                <IconAction label="Ask again" onClick={onRetry}>
+                  <RotateCcw />
+                </IconAction>
               )}
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">
-                {msg.ts}
-              </span>
+              <span className="ml-1 font-mono text-[11px] text-muted-foreground">{msg.ts}</span>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
+});

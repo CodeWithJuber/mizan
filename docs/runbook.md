@@ -93,7 +93,7 @@ A client must not resend the same message with a fresh `request_id` after a drop
 
 Code runs only on the runner host; the backend has no local shell fallback.
 
-1. Check that `MIZAN_WORKSPACE_RUNNER_URL` and `MIZAN_WORKSPACE_RUNNER_TOKEN` are set on the backend. Settings → System settings shows whether a value comes from `.env` or was set there.
+1. Check that `MIZAN_WORKSPACE_RUNNER_URL` and `MIZAN_WORKSPACE_RUNNER_TOKEN` are set on the backend. Settings → Developer → System settings shows whether a value comes from `.env` or was set there.
 2. Follow [runner-setup.md](runner-setup.md), which covers execution, verification, failure, retry and rollback for the runner.
 
 ## Receipts look wrong

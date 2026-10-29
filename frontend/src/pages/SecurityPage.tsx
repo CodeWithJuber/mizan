@@ -10,6 +10,7 @@ import { SkeletonCard } from "../components/Skeleton";
 import { PasswordInput } from "../components/PasswordInput";
 import { useToast } from "../components/Toast";
 import { ApiError } from "../hooks/useApi";
+import { confirmDialog } from "@/components/ui/confirm";
 
 interface AuditEvent {
   timestamp: string;
@@ -150,8 +151,8 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
     setLoading(false);
   };
 
-  const logout = () => {
-    if (!window.confirm("Log out of Mizan?")) return;
+  const logout = async () => {
+    if (!(await confirmDialog({ title: "Log out of MIZAN?", confirmLabel: "Log out" }))) return;
     localStorage.removeItem("mizan_token");
     window.dispatchEvent(new CustomEvent("mizan:authchanged"));
     setToken("");
@@ -240,15 +241,15 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 <div className="text-2xl font-mono text-emerald-600 dark:text-emerald-400 mb-1">
                   {token ? "Yes" : "No"}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
                   Authenticated
                 </div>
               </div>
               <div className="card text-center">
-                <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                <div className="text-2xl font-semibold text-foreground mb-1">
                   {local ? "This device" : "A remote server"}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
                   Where you&apos;re connected
                 </div>
               </div>
@@ -256,14 +257,14 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 <div className="text-2xl font-mono text-mizan-gold mb-1">
                   {local ? "Open" : token ? "Protected" : "Unprotected"}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
                   Status
                 </div>
               </div>
             </div>
 
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
                 Security Checklist
               </h3>
               <div className="space-y-2">
@@ -291,12 +292,12 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                           ? "bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"
                           : item.ok
                             ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-gray-100 dark:bg-zinc-800 text-gray-400 dark:text-gray-500"
+                            : "bg-muted text-muted-foreground/80"
                       }`}
                     >
                       {item.info ? "i" : item.ok ? "\u2713" : "\u2013"}
                     </div>
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="text-sm text-foreground/80">
                       {item.label}
                     </span>
                   </div>
@@ -325,10 +326,10 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                     </svg>
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-sm font-semibold text-foreground">
                       Authenticated
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-muted-foreground">
                       Your session is active
                     </div>
                   </div>
@@ -341,7 +342,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
               <>
                 {local && !showAuthForms && (
                   <div className="card text-center py-8">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                    <div className="text-sm text-muted-foreground mb-3">
                       Authentication is optional on localhost
                     </div>
                     <button
@@ -357,7 +358,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                   <div className="space-y-4">
                     {/* Login */}
                     <div className="card">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                      <h3 className="text-sm font-semibold text-foreground mb-4">
                         Login
                       </h3>
                       <form
@@ -407,7 +408,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
 
                     {/* Register */}
                     <div className="card">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                      <h3 className="text-sm font-semibold text-foreground mb-4">
                         Create Account
                       </h3>
                       <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
@@ -475,12 +476,12 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
         {activeTab === "tokens" && (
           <div className="space-y-4 max-w-lg">
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
                 Current Token
               </h3>
               {token ? (
                 <>
-                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 font-mono text-xs text-gray-600 dark:text-gray-400 break-all mb-3 border border-gray-200 dark:border-zinc-700">
+                  <div className="bg-muted/60 rounded-lg p-3 font-mono text-xs text-muted-foreground break-all mb-3 border border-border">
                     {token.substring(0, 20)}...
                     {token.substring(token.length - 10)}
                   </div>
@@ -500,7 +501,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                   </div>
                 </>
               ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-sm text-muted-foreground">
                   No active token.{" "}
                   {local
                     ? "Authentication is optional on localhost."
@@ -510,10 +511,10 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
             </div>
 
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
                 Manual Token
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p className="text-xs text-muted-foreground mb-3">
                 Paste a token from another session or API call.
               </p>
               <div className="flex gap-2">
@@ -578,10 +579,10 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="card text-center">
-                    <div className="text-2xl font-mono text-gray-900 dark:text-gray-100 mb-1">
+                    <div className="text-2xl font-mono text-foreground mb-1">
                       {auditData.total_events}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
                       Total Events
                     </div>
                   </div>
@@ -589,7 +590,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                     <div className="text-2xl font-mono text-amber-600 dark:text-amber-400 mb-1">
                       {auditData.warnings}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
                       Warnings
                     </div>
                   </div>
@@ -597,7 +598,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                     <div className="text-2xl font-mono text-red-600 dark:text-red-400 mb-1">
                       {auditData.errors}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
                       Errors
                     </div>
                   </div>
@@ -606,7 +607,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                 {/* Recent Events */}
                 <div className="card">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Recent Audit Events
                     </h3>
                     <button
@@ -618,7 +619,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                   </div>
 
                   {auditData.recent.length === 0 ? (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+                    <div className="text-sm text-muted-foreground text-center py-6">
                       No audit events recorded yet.
                     </div>
                   ) : (
@@ -638,14 +639,14 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                                   : "bg-emerald-500"
                             }`}
                           />
-                          <span className="text-gray-400 dark:text-gray-500 font-mono whitespace-nowrap">
+                          <span className="text-muted-foreground/80 font-mono whitespace-nowrap">
                             {event.timestamp.split("T")[1]?.split(".")[0] ||
                               event.timestamp}
                           </span>
-                          <span className="font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          <span className="font-mono text-foreground/80 whitespace-nowrap">
                             {event.type}
                           </span>
-                          <span className="text-gray-500 dark:text-gray-400 truncate">
+                          <span className="text-muted-foreground truncate">
                             {typeof event.details === "object"
                               ? Object.entries(event.details)
                                   .map(([k, v]) => `${k}: ${v}`)

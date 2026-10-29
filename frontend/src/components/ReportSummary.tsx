@@ -28,7 +28,7 @@ function Bar({ value, color, label }: { value: number | null; color: string; lab
   const width = value == null ? 0 : Math.max(2, Math.round(value * 100));
   return (
     <div className="flex items-center gap-2 min-w-0" title={label}>
-      <div className="flex-1 h-2.5 rounded-r bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+      <div className="flex-1 h-2.5 rounded-r bg-muted overflow-hidden">
         <div className="h-full rounded-r" style={{ width: `${width}%`, background: color }} />
       </div>
       <span className="w-10 text-right text-xs tabular-nums">{pct(value)}</span>
@@ -107,7 +107,7 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
               </thead>
               <tbody>
                 {categories.map((row) => (
-                  <tr key={row.key} className="border-t border-gray-100 dark:border-zinc-800">
+                  <tr key={row.key} className="border-t border-border/60">
                     <td className="py-2 pr-3">
                       <div>{row.label}</div>
                       <div className="text-[11px] text-gray-500">
@@ -146,7 +146,7 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
               </thead>
               <tbody>
                 {dimensions.map((row) => (
-                  <tr key={row.label} className="border-t border-gray-100 dark:border-zinc-800">
+                  <tr key={row.label} className="border-t border-border/60">
                     <td className="py-1.5 pr-3">
                       {row.label}
                       {!row.higher && <span className="text-[11px] text-gray-500"> (lower is better)</span>}
@@ -179,7 +179,7 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
               </thead>
               <tbody>
                 {played.map((row) => (
-                  <tr key={row.label} className="border-t border-gray-100 dark:border-zinc-800">
+                  <tr key={row.label} className="border-t border-border/60">
                     <td className="py-1.5 pr-3">{row.label}</td>
                     <td className="py-1.5 text-right tabular-nums">{row.base}</td>
                     <td className="py-1.5 text-right tabular-nums">{row.mizan}</td>
@@ -210,7 +210,7 @@ export function ReportSummary({ report, model }: { report: Report; model?: strin
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.block} className="border-t border-gray-100 dark:border-zinc-800">
+                <tr key={row.block} className="border-t border-border/60">
                   <td className="py-2 pr-3">
                     <div>{row.label}</div>
                     <div className="text-[11px] text-gray-500">

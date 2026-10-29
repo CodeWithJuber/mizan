@@ -79,7 +79,7 @@ export function OwnedLearningPanel({ api }: { api: ApiClient }) {
     <section className="card space-y-4">
       <div>
         <h3 className="text-sm font-semibold">Own-model learning</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-muted-foreground">
           Train the Mizan reply model on approved original-source data, evaluate it,
           and activate only candidates that pass the configured checks. This is a
           separate model from Ruh; their checkpoints cannot be interchanged.
@@ -123,7 +123,7 @@ export function OwnedLearningPanel({ api }: { api: ApiClient }) {
           Approved data bundle
           <select value={bundle} onChange={(event) => setBundle(event.target.value)}
             disabled={busy || ready.length === 0}
-            className="mt-1 block w-full rounded border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2 min-h-[44px]">
+            className="mt-1 block w-full rounded border border-input bg-card p-2 min-h-[44px]">
             {ready.length === 0 && <option value="">No approved, unprocessed bundles</option>}
             {ready.map((row) => <option key={row.bundle_id} value={row.bundle_id}>{row.bundle_id}</option>)}
           </select>
@@ -140,7 +140,7 @@ export function OwnedLearningPanel({ api }: { api: ApiClient }) {
           <button type="button" onClick={() => void refresh()} disabled={submitting}
             className="btn-secondary min-h-[44px] text-xs">Refresh</button>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted-foreground">
           A completed worker can still produce a rejected candidate. Passing development
           checks does not establish general conversation readiness. Accepted checkpoints
           are available to the mizan-owned provider; actual use appears in each reply's

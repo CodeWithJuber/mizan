@@ -20,7 +20,7 @@ const STYLES: Record<Provenance, string> = {
     "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   heuristic:
     "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  ai: "bg-gray-100 dark:bg-zinc-700/40 text-gray-500 dark:text-gray-400",
+  ai: "bg-gray-100 dark:bg-zinc-700/40 text-muted-foreground",
   unavailable:
     "bg-slate-100 dark:bg-slate-700/40 text-slate-500 dark:text-slate-400",
 };

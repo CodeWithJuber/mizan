@@ -49,7 +49,7 @@ export function CheckpointBrowser({ api }: CheckpointBrowserProps) {
 
   if (checkpoints.length === 0) {
     return (
-      <div className="text-center py-6 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+      <div className="text-center py-6 bg-muted/40 rounded-lg border border-dashed border-border">
         <p className="text-sm text-gray-400">No checkpoints saved yet</p>
         <p className="text-xs text-gray-400 mt-1">Checkpoints are created after each training epoch</p>
       </div>
@@ -58,14 +58,14 @@ export function CheckpointBrowser({ api }: CheckpointBrowserProps) {
 
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Checkpoints ({checkpoints.length})
       </h4>
       <div className="space-y-1">
         {checkpoints.map((cp) => (
           <div
             key={cp.name}
-            className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-gray-100 dark:border-zinc-700/50 overflow-hidden"
+            className="bg-muted/50 rounded-lg border border-border/60 overflow-hidden"
           >
             <button
               onClick={() => setExpanded(expanded === cp.name ? null : cp.name)}
@@ -76,7 +76,7 @@ export function CheckpointBrowser({ api }: CheckpointBrowserProps) {
                   {cp.name.match(/\d+/)?.[0] ?? "?"}
                 </span>
                 <div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-medium text-foreground">
                     {cp.name}
                   </span>
                   <span className="ml-2 text-xs text-gray-400">
@@ -98,21 +98,21 @@ export function CheckpointBrowser({ api }: CheckpointBrowserProps) {
               </div>
             </button>
             {expanded === cp.name && (
-              <div className="px-3 pb-3 border-t border-gray-100 dark:border-zinc-700/50">
+              <div className="px-3 pb-3 border-t border-border/60">
                 <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                   {cp.max_seq_len && (
-                    <div className="bg-white dark:bg-zinc-900 rounded px-2 py-1.5">
+                    <div className="bg-card rounded px-2 py-1.5">
                       <span className="text-gray-400">Max Seq Len: </span>
-                      <span className="font-mono text-gray-700 dark:text-gray-300">{cp.max_seq_len}</span>
+                      <span className="font-mono text-foreground/80">{cp.max_seq_len}</span>
                     </div>
                   )}
-                  <div className="bg-white dark:bg-zinc-900 rounded px-2 py-1.5">
+                  <div className="bg-card rounded px-2 py-1.5">
                     <span className="text-gray-400">Size: </span>
-                    <span className="font-mono text-gray-700 dark:text-gray-300">{cp.size_mb} MB</span>
+                    <span className="font-mono text-foreground/80">{cp.size_mb} MB</span>
                   </div>
                 </div>
                 {Object.keys(cp.config).length > 0 && (
-                  <pre className="mt-2 text-[10px] font-mono bg-white dark:bg-zinc-900 rounded p-2 overflow-x-auto text-gray-500 dark:text-gray-400 max-h-32 overflow-y-auto">
+                  <pre className="mt-2 text-[10px] font-mono bg-card rounded p-2 overflow-x-auto text-muted-foreground max-h-32 overflow-y-auto">
                     {JSON.stringify(cp.config, null, 2)}
                   </pre>
                 )}

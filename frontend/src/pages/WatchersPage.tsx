@@ -90,7 +90,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-200 dark:border-zinc-800">
+      <div className="px-5 py-3 border-b border-border">
         <h2 className="page-title">Watchers · مراقبة</h2>
         <p className="page-description">
           Things MIZAN does for you on a schedule, quiet during salah, learning when to interrupt you
@@ -101,10 +101,10 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
         <section className="card space-y-3" aria-label="Your place and today's prayer times">
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[12rem]">
-              <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">
+              <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
                 Your place
               </div>
-              <p className="text-sm text-gray-900 dark:text-gray-100">
+              <p className="text-sm text-foreground">
                 {place ? `${place.label} · ${place.tz}` : "Not set: prayer-time watchers and quiet windows need it."}
               </p>
             </div>
@@ -121,7 +121,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
           </div>
 
           {place && (
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <label className="flex items-center gap-1">
                 Method
                 <select className="input text-xs py-1" value={place.method} onChange={(event) => savePlace({ method: event.target.value })}>
@@ -167,13 +167,13 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
             <div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(data.today.times).map(([name, value]) => (
-                  <div key={name} className="rounded-lg border border-gray-200 dark:border-zinc-700 px-3 py-1.5 text-center min-w-[4.5rem]">
+                  <div key={name} className="rounded-lg border border-border px-3 py-1.5 text-center min-w-[4.5rem]">
                     <div className="text-micro uppercase tracking-wide text-gray-400">{name}</div>
-                    <div className="font-mono text-sm text-gray-900 dark:text-gray-100">{value}</div>
+                    <div className="font-mono text-sm text-foreground">{value}</div>
                   </div>
                 ))}
               </div>
-              <p className="text-micro text-gray-500 dark:text-gray-400 mt-2">
+              <p className="text-micro text-muted-foreground mt-2">
                 {data.today.quiet_now ? "🕌 Quiet now: notices wait until salah ends. " : ""}
                 Quiet: {data.today.quiet.map((w) => `${w.prayer === "jumuah" ? "Jumu'ah" : w.prayer} ${w.from}–${w.to}`).join(" · ")}
                 {" · "}Delivered today: {data.delivered_today} of {data.budget}
@@ -183,12 +183,12 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
         </section>
 
         <section className="card space-y-3" aria-label="New watcher">
-          <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">New watcher</div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">New watcher</div>
+          <p className="text-xs text-muted-foreground">
             Or just ask in chat: “Har subah Fajr ke baad ek ayat aur Hijri date bhejo”.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            <label className="text-xs text-muted-foreground space-y-1">
               <span>When</span>
               <select className="input text-sm w-full" value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as TriggerForm["kind"] })}>
                 <option value="prayer">Around a prayer</option>
@@ -247,7 +247,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <input className="input text-sm py-1.5 flex-1 min-w-[10rem]" placeholder="Name (optional)" value={title} onChange={(event) => setTitle(event.target.value)} />
-            <label className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <label className="text-xs text-muted-foreground flex items-center gap-1">
               <input type="checkbox" checked={always} onChange={(event) => setAlways(event.target.checked)} />
               Always deliver (still waits for salah)
             </label>
@@ -266,10 +266,10 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
           {data?.watchers.map((watcher) => (
             <article key={watcher.id} className={`card space-y-1 ${watcher.enabled ? "" : "opacity-60"}`}>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100 flex-1 min-w-0 wrap-break-word">{watcher.title}</h3>
+                <h3 className="font-medium text-sm text-foreground flex-1 min-w-0 wrap-break-word">{watcher.title}</h3>
                 {watcher.priority === "always" && <span className="badge-gold">always</span>}
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 {watcher.when} · next {localTime(watcher.next_due, tz)}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -288,9 +288,9 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
         </section>
 
         <section className="card space-y-2" aria-label="Recent notices">
-          <div className="text-xxs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Recent notices</div>
+          <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest">Recent notices</div>
           {data && (
-            <p className="text-micro text-gray-500 dark:text-gray-400">
+            <p className="text-micro text-muted-foreground">
               Useful so far:{" "}
               {Object.entries(data.attention)
                 .filter(([, counts]) => counts.useful + counts.not_now > 3)
@@ -302,7 +302,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
           <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
             {notices.map((notice) => (
               <li key={notice.id} className="py-2 space-y-1">
-                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap wrap-break-word line-clamp-4">
+                <p className="text-sm text-foreground/90 whitespace-pre-wrap wrap-break-word line-clamp-4">
                   {notice.text.replace(/\*\*/g, "")}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
