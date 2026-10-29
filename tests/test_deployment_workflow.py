@@ -44,6 +44,34 @@ elif args[0] == 'exec' and '/api/health' in ' '.join(args) and state.get('hang_h
 state_file.write_text(json.dumps(state))
 """
 
+# Stands in for scripts/setup_workspace_runner.py: records how the deploy called it
+# and whether the deploy's lock was held on the descriptor it was handed.
+FAKE_SETUP = r"""
+import fcntl, json, os, sys
+from pathlib import Path
+state_dir = Path(os.environ["MIZAN_DEPLOY_STATE_DIR"])
+lock = state_dir / "deploy.lock"
+held, named = os.fstat(9), os.stat(lock)
+fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+other = os.open(lock, os.O_RDONLY)
+try:
+    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    contended = False
+except BlockingIOError:
+    contended = True
+Path(os.environ["FAKE_SETUP_RECORD"]).write_text(json.dumps({
+    "argv": sys.argv[1:],
+    "stdin": sys.stdin.read(),
+    "same_lock": (held.st_dev, held.st_ino) == (named.st_dev, named.st_ino),
+    "contended": contended,
+    "deployed": (state_dir / "deployed-sha").exists(),
+    "token_in_env": any("synthetic-registry-token" in value for value in os.environ.values()),
+}))
+sys.exit(int(os.environ["FAKE_SETUP_STATUS"]))
+"""
+DIGEST = "d" * 64
+RUNNER = ("{release}/setup_workspace_runner.py", DIGEST)
+
 
 def deploy_fixture(
     tmp_path,
@@ -54,6 +82,9 @@ def deploy_fixture(
     grace_override=None,
     hang_health=False,
     failed_status_client=False,
+    runner_args=(),
+    managed_runner=False,
+    runner_status=0,
 ):
     root = tmp_path / "existing-project"
     root.mkdir()
@@ -97,6 +128,12 @@ def deploy_fixture(
     deployment_dir.mkdir()
     (deployment_dir / "current.yml").write_text('{"preserve":"previous current override"}')
     (deployment_dir / "rollback.yml").write_text('{"preserve":"previous rollback override"}')
+    release = deployment_dir / "release.AbCd1234"
+    release.mkdir()
+    (release / "setup_workspace_runner.py").write_text(FAKE_SETUP)
+    if managed_runner:
+        (deployment_dir / "workspace-runner").mkdir()
+        (deployment_dir / "workspace-runner" / "state.json").write_text("{}")
     process_env = {
         key: value
         for key, value in os.environ.items()
@@ -104,8 +141,9 @@ def deploy_fixture(
     }
     if grace_override is not None:
         process_env["MIZAN_GRACEFUL_SHUTDOWN_SECONDS"] = grace_override
+    arguments = [str(arg).replace("{release}", str(release)) for arg in runner_args]
     result = subprocess.run(
-        ["bash", str(SCRIPT), SHA, "codewithjuber/mizan"],
+        ["bash", str(SCRIPT), SHA, "codewithjuber/mizan", *arguments],
         input="synthetic-registry-token\n",
         capture_output=True,
         text=True,
@@ -116,6 +154,8 @@ def deploy_fixture(
             "MIZAN_DEPLOY_STATE_DIR": str(deployment_dir),
             "MIZAN_DEPLOY_HEALTH_ATTEMPTS": "1",
             "FAIL_PUBLIC": "1" if fail_public else "0",
+            "FAKE_SETUP_RECORD": str(tmp_path / "runner-setup.json"),
+            "FAKE_SETUP_STATUS": str(runner_status),
         },
         timeout=30,
     )
@@ -266,7 +306,24 @@ def test_absent_chat_tuning_does_not_override_installed_compose_settings(tmp_pat
 
 def test_workflow_reserves_time_for_lock_drain_health_and_rollback():
     workflow = SCRIPT.parents[1] / ".github/workflows/deploy.yml"
-    assert "timeout-minutes: 25" in workflow.read_text()
+    assert "timeout-minutes: 45" in workflow.read_text()
+
+
+def test_workflow_uploads_both_scripts_privately_and_reports_the_runner():
+    workflow = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    assert "mktemp -d /var/lib/mizan-deploy/release.XXXXXXXX" in workflow
+    assert "^/var/lib/mizan-deploy/release\\.[A-Za-z0-9]{8}$" in workflow
+    assert "/tmp/" not in workflow
+    assert (
+        "scripts/deploy_production.sh scripts/setup_workspace_runner.py "
+        '"$SSH_USER@$SSH_HOST:$remote_dir/"' in workflow
+    )
+    assert "      - scripts/setup_workspace_runner.py\n" in workflow
+    for status, output in (("75", "runner=kept"), ("76", "runner=unverified")):
+        assert f"            {status})\n" in workflow and output in workflow
+    # The site stays recorded as deployed; a last step turns the run red.
+    assert workflow.index("runner=unverified") < workflow.index("deployed=true")
+    assert "if: steps.production.outputs.runner != ''" in workflow
 
 
 def test_unresponsive_docker_health_exec_is_bounded_and_rolls_back(tmp_path):
@@ -292,3 +349,86 @@ def test_internal_health_clients_have_their_own_deadlines(tmp_path):
             assert args[args.index("--max-time") + 1] == "5"
         elif args[:2] == ["exec", "mizan-frontend"]:
             assert args[args.index("-T") + 1] == "5"
+
+
+def runner_record(tmp_path):
+    record = tmp_path / "runner-setup.json"
+    return json.loads(record.read_text()) if record.exists() else None
+
+
+@pytest.mark.parametrize("managed,args", [(True, ()), (False, RUNNER)])
+def test_no_runner_upgrade_without_its_script_or_a_managed_runner(tmp_path, managed, args):
+    result, _, directory = deploy_fixture(tmp_path, False, managed_runner=managed, runner_args=args)
+    assert result.returncode == 0, result.stderr
+    assert runner_record(tmp_path) is None
+    assert (directory / "deployed-sha").read_text().strip() == SHA
+
+
+def test_the_runner_upgrade_runs_after_the_site_is_live_under_the_deploy_lock(tmp_path):
+    result, state, _ = deploy_fixture(tmp_path, False, managed_runner=True, runner_args=RUNNER)
+    assert result.returncode == 0, result.stderr
+    record = runner_record(tmp_path)
+    assert record["argv"] == [
+        "--upgrade",
+        "--sha",
+        SHA,
+        "--repository",
+        "codewithjuber/mizan",
+        "--inherited-lock-fd",
+        "9",
+        "--inputs-digest",
+        DIGEST,
+    ]
+    assert record["stdin"] == "synthetic-registry-token\n"
+    assert record["same_lock"] and record["contended"] and record["deployed"]
+    assert not record["token_in_env"]
+    assert state["images"]["mizan-backend"] == f"ghcr.io/codewithjuber/mizan/backend:{SHA}"
+
+
+@pytest.mark.parametrize("status,expected", [(75, 75), (76, 76), (1, 76), (2, 76)])
+def test_a_runner_that_was_not_upgraded_keeps_the_release(tmp_path, status, expected):
+    result, state, directory = deploy_fixture(
+        tmp_path, False, managed_runner=True, runner_args=RUNNER, runner_status=status
+    )
+    assert result.returncode == expected
+    assert (directory / "deployed-sha").read_text().strip() == SHA
+    assert state["images"]["mizan-backend"] == f"ghcr.io/codewithjuber/mizan/backend:{SHA}"
+    assert len(state["updates"]) == 1
+    assert "stays deployed" in result.stderr
+
+
+def test_a_failed_site_deploy_never_touches_the_runner(tmp_path):
+    result, _, _ = deploy_fixture(tmp_path, True, managed_runner=True, runner_args=RUNNER)
+    assert result.returncode == 1
+    assert runner_record(tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("setup_workspace_runner.py",),
+        ("{release}/other.py",),
+        ("{release}/missing/setup_workspace_runner.py",),
+        ("{release}/setup_workspace_runner.py", "D" * 64),
+        ("{release}/setup_workspace_runner.py", "d" * 63),
+        ("", DIGEST),
+    ],
+)
+def test_invalid_runner_arguments_are_refused_before_login(tmp_path, args):
+    result, state, _ = deploy_fixture(tmp_path, False, managed_runner=True, runner_args=args)
+    assert result.returncode != 0
+    assert not any(command[0] == "login" for command in state["commands"])
+    assert runner_record(tmp_path) is None
+
+
+def test_a_symlinked_runner_script_is_refused(tmp_path):
+    target = tmp_path / "elsewhere.py"
+    target.write_text("raise SystemExit(0)\n")
+    link = tmp_path / "links" / "setup_workspace_runner.py"
+    link.parent.mkdir()
+    link.symlink_to(target)
+    result, state, _ = deploy_fixture(
+        tmp_path, False, managed_runner=True, runner_args=(str(link), DIGEST)
+    )
+    assert result.returncode != 0
+    assert not any(command[0] == "login" for command in state["commands"])

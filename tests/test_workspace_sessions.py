@@ -4,11 +4,13 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import importlib.util
 import json
 import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -364,6 +366,50 @@ def test_preview_route_is_public_sandboxed_and_strips_unsafe_headers(runner_env,
     assert client.get(url.rstrip("/"), follow_redirects=False).status_code == 307
 
 
+def runner_client(monkeypatch, app: FastAPI) -> None:
+    transport = httpx.ASGITransport(app=app)
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        session_client.httpx,
+        "AsyncClient",
+        lambda **kwargs: real(
+            transport=transport, **{k: v for k, v in kwargs.items() if k != "trust_env"}
+        ),
+    )
+
+
+def test_a_runner_older_than_sessions_reads_as_unavailable_not_missing(runner_env, monkeypatch):
+    # The first managed install served only these two routes.
+    old = FastAPI()
+    old.get("/health")(lambda: {"available": True, "isolated": True})
+    old.post("/run")(lambda: {})
+    runner_client(monkeypatch, old)
+    for method, path, words in (
+        ("GET", f"/sessions/{'a' * 32}", "predates sandbox sessions"),
+        ("POST", "/browse", "predates the browser sandbox"),
+    ):
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(session_client.call(method, path, {} if method == "POST" else None))
+        assert refused.value.status_code == 503
+        assert words in refused.value.detail and "next deploy" in refused.value.detail
+
+
+def test_a_real_missing_session_stays_a_404(runner_env, monkeypatch):
+    current = FastAPI()
+
+    @current.get("/sessions/{key}/manifest")
+    async def manifest(key: str):
+        return JSONResponse(
+            {"detail": "No running sandbox session"}, 404, {"X-Mizan-Runner": "error"}
+        )
+
+    runner_client(monkeypatch, current)
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(session_client.call("GET", f"/sessions/{'a' * 32}/manifest"))
+    assert refused.value.status_code == 404
+    assert refused.value.detail == "No running sandbox session"
+
+
 # ── Runner API and agent tool wiring ─────────────────────────────────────
 
 
@@ -528,6 +574,81 @@ class TestRealSessions:
         if os.getenv("MIZAN_TEST_EGRESS_INTERNET") == "1":
             npm = self.run(runner, "npm view left-pad@1.3.0 version", timeout=120)
             assert npm["stdout"].strip() == "1.3.0", npm["stderr"][-500:]
+
+
+@pytest.mark.skipif(
+    not docker_ready(), reason="Build the workspace runtime image for Docker checks"
+)
+def test_the_deploy_session_check_passes_against_the_real_runner(monkeypatch):
+    """The check every deploy runs after a runner upgrade, here on CI's Docker."""
+    import uvicorn
+
+    spec = importlib.util.spec_from_file_location(
+        "runner_setup_for_session_check",
+        Path(__file__).resolve().parents[1] / "scripts/setup_workspace_runner.py",
+    )
+    setup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(setup)
+    monkeypatch.setenv("MIZAN_WORKSPACE_RUNNER_TOKEN", TOKEN)
+    port = free_port()
+    server = uvicorn.Server(
+        uvicorn.Config(runner_app, host="127.0.0.1", port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    key, nonce = hashlib.sha256(b"deploy-session-check").hexdigest()[:32], "e" * 32
+
+    def phase(name: str) -> dict:
+        result = subprocess.run(
+            [sys.executable, "-I", "-", name, key, nonce],
+            input=setup.SESSION_SMOKE_SCRIPT,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env={
+                "PATH": os.environ["PATH"],
+                "MIZAN_WORKSPACE_RUNNER_URL": f"http://127.0.0.1:{port}",
+                "MIZAN_WORKSPACE_RUNNER_TOKEN": TOKEN,
+            },
+            check=False,
+        )
+        return json.loads(result.stdout.strip().splitlines()[-1])
+
+    def inspect(*args: str) -> dict:
+        found = subprocess.run(["docker", *args], capture_output=True, text=True, check=True)
+        return json.loads(found.stdout)[0]
+
+    try:
+        for _ in range(100):
+            if server.started:
+                break
+            time.sleep(0.1)
+        started = phase("start")
+        try:
+            assert started["ok"] is True, started
+            runtime = inspect("image", "inspect", sessions.runtime_image())["Id"]
+            container = inspect("inspect", "--type", "container", f"mizan-session-{key}")
+            setup.validate_session_container(
+                container, key, setup.session_limits(started["limits"])
+            )
+            proxy = inspect("inspect", "--type", "container", setup.SANDBOX_PROXY)
+            setup.validate_egress_proxy(proxy, {runtime})
+            network = inspect("network", "inspect", f"mizan-session-net-{key}")
+            setup.validate_session_network(network, key, {container["Id"], proxy["Id"]})
+            if os.getenv("MIZAN_TEST_EGRESS_INTERNET") == "1":
+                assert phase("probe") == {"ok": True}
+        finally:
+            assert phase("stop") == {"ok": True}
+        for kind, name in (
+            ("container", f"mizan-session-{key}"),
+            ("volume", f"mizan-session-{key}"),
+            ("network", f"mizan-session-net-{key}"),
+        ):
+            gone = subprocess.run(["docker", kind, "inspect", name], capture_output=True)
+            assert gone.returncode != 0, f"{kind} {name} was left behind"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
 
 
 def test_terminal_requires_a_subprotocol_token(runner_env, monkeypatch):

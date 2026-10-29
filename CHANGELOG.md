@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.
   - Playwright tests on desktop and phone against a mock API.
 
 ### Changed
+- A runner older than the backend now answers the session and browser routes with 503 "The private runner on this server predates sandbox sessions" instead of a bare 404. Deploy Production uploads its scripts to a fresh root-only release directory, allows 45 minutes, and fails its last step when the runner was not upgraded.
 - New Compose setups select owned inference; hosted model overrides and mem0 calls are disabled in owned mode.
 - Own model drafts are excluded from the legacy training exporter; useful general chat and automatic neural learning remain unverified.
 - Documentation brought up to date with the code:
@@ -67,6 +68,7 @@ All notable changes to this project will be documented in this file.
   - diagram-design SVGs for the README, in light and dark.
 
 ### Fixed
+- Sandbox sessions on production answered 404 and `npm install` could not reach the registry, so React and Vite projects could not install, run a dev server or preview. The private runner was still the first install's, which predates sessions and their egress proxy, and deploys never updated it. Now each deploy also moves the managed runner and runtime to the deployed commit's images (when what they are built from changed), proves a real session there (files, npm and PyPI through the egress proxy, confinement) and keeps them only then; otherwise it restores and verifies the previous runner. The site deploy stands either way and the run's last step reports a runner that was not upgraded.
 - Plan mode on a chat's project answered from memory ("I can't open files here"). MIZAN's own edit recipe needs a tool that writes, which plan mode does not offer, so the request fell back to words. Now a plan for the chat's project, of any size, is the model's, with the project's reads.
 - Editing a project no longer loses code. Files were cut to 12,000 characters (8,000 for repairs) before the model saw them, and its "complete" reply was saved, so the end of a longer file was deleted. Now a long file changes only by SEARCH/REPLACE blocks that match it exactly once, a whole-file reply for it is dropped, and a reply cut at the output limit saves nothing. TypeScript and JSX files are parsed by esbuild, added to the sandbox image.
 - "Build me a todo app in React", "Next.js mein blog banao" and "Make me an Express API" were read as conversation: 17 `build_project` and 6 `edit_project` seeds, balanced by 8 conversation seeds of questions about building ("How do I build a React app?").

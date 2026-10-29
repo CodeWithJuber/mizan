@@ -345,8 +345,11 @@ Runner settings (environment of the `workspace-runner` service):
 | `MIZAN_SANDBOX_EGRESS_ALLOW` | built-in list | comma list; `.example.com` allows subdomains |
 | `MIZAN_MCP_SESSION_MAX` / `_MEMORY` / `_CPUS` / `_PIDS` | 4 / 384m / 0.5 / 128 | containers for users' stdio MCP servers |
 
-**Rollout.** Enabling sessions in production needs the runtime and runner
-images published for the deployed commit, then the reviewed runner setup run
-again (`docs/runner-setup.md`). The runner container now gets 384 MiB and 512
-processes. The worker slice's 2 GiB budget is shared by jobs and sessions. Raise
-it before raising `MIZAN_SESSION_MAX`.
+**Rollout.** Deploys move the managed runner and runtime to the deployed
+commit's images and prove a real session (npm and PyPI through the egress proxy,
+confinement) before keeping them; a failed check restores the previous runner
+([runner-setup.md](runner-setup.md#upgrades-during-deployment)). The runner
+container gets 384 MiB and 512 processes. Until a runner serves sessions, the
+session routes answer 503 "predates sandbox sessions" instead of 404. The worker
+slice's 2 GiB budget is shared by jobs and sessions. Raise it before raising
+`MIZAN_SESSION_MAX`.

@@ -120,6 +120,7 @@ class Proxy:
                     asyncio.open_connection(address, target[1]), 15
                 )
             except (OSError, TimeoutError):
+                print(f"egress unreachable {target[0]}", flush=True)
                 writer.write(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
                 writer.close()
                 return

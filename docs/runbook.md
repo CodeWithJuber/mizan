@@ -8,7 +8,7 @@ Use this page when production misbehaves: the app is down, a deployment failed, 
 | `mizan-backend` | One uvicorn worker |
 | `mizan-frontend` | The web app |
 
-Code runs on a separate runner host ([runner-setup.md](runner-setup.md)).
+Code runs through the private `workspace-runner` service on the same host, which starts sandbox containers on its own rootless Docker daemon ([runner-setup.md](runner-setup.md)).
 
 ## Access you need
 
@@ -41,6 +41,18 @@ An administrator can also call `GET /api/doctor` for environment diagnostics. On
 1. Read the failed job's log. "Deployment did not pass health/auth checks; restoring previous images" means the new images started but were unhealthy.
 2. Fix the cause on a branch and merge it. CI runs, and Deploy Production follows on its own.
 3. To redeploy the current `main` without a code change, for example after a transient registry or SSH failure, start **Actions → Deploy Production → Run workflow** on `main`. It deploys only the commit that is still the head of the branch.
+
+## Workspace runner not upgraded by a deploy
+
+**Symptom.** Deploy Production is red only at its last step, **Workspace runner**, with "Workspace runner not upgraded" (`runner=kept`, exit 75) or "Workspace runner needs attention" (`runner=unverified`, exit 76).
+
+**What already happened.** The new site is live and recorded in `deployed-sha`. On 75 the previous runner was restored (or never replaced) and verified: one-shot code runs, but anything the new runner adds (for example sandbox sessions) is still missing. The log names the failed stage, and for egress failures the hosts the proxy refused (`egress denied <host>`) or could not reach (`egress unreachable <host>`).
+
+1. Read the stage in the log. "Not enough free disk" or a pull failure changed nothing live; free space or retry. A failed sandbox session check (npm, PyPI, confinement) points at the worker daemon's outbound network or the egress proxy.
+2. Fix the cause and run **Deploy Production** again on `main`. The upgrade runs again; an interrupted restore (phase `upgrading` in `/var/lib/mizan-deploy/workspace-runner/state.json`) is finished first.
+3. **76 is an escalation.** The runner could not be verified, or its managed files changed outside the installer. Do not edit `state.json`, the override or `override.previous` by hand; read [runner-setup.md](runner-setup.md#upgrades-during-deployment) and escalate.
+
+The chat answers "The private runner on this server predates sandbox sessions" (HTTP 503) while the runner is older than the backend; the next successful upgrade removes it.
 
 ## A deployment passed but the release is bad
 
@@ -94,7 +106,8 @@ A client must not resend the same message with a fresh `request_id` after a drop
 Code runs only on the runner host; the backend has no local shell fallback.
 
 1. Check that `MIZAN_WORKSPACE_RUNNER_URL` and `MIZAN_WORKSPACE_RUNNER_TOKEN` are set on the backend. Settings → Developer → System settings shows whether a value comes from `.env` or was set there.
-2. Follow [runner-setup.md](runner-setup.md), which covers execution, verification, failure, retry and rollback for the runner.
+2. If sandbox sessions say the runner "predates sandbox sessions", the last deploy did not upgrade the runner: see [Workspace runner not upgraded by a deploy](#workspace-runner-not-upgraded-by-a-deploy).
+3. Follow [runner-setup.md](runner-setup.md), which covers execution, verification, failure, retry and rollback for the runner.
 
 ## Receipts look wrong
 

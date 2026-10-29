@@ -100,10 +100,10 @@ from protected setup state; a setup retry must use the same option as its saved
 checkpoint. Omitting the option on a new installation leaves research
 configuration unchanged.
 
-The current installer intentionally refuses to repurpose an existing setup for
-another SHA. A later runtime upgrade must review the new tested runner/runtime
-pair and modify the managed override with equivalent rollback and smoke checks.
-Do not erase `state.json` to bypass the ownership or version guard.
+A setup run refuses to repurpose an existing installation for another SHA. Later
+commits reach the runner through deploys instead (see
+[Upgrades during deployment](#upgrades-during-deployment)). Do not erase
+`state.json` to bypass the ownership or version guard.
 
 ## Execution and verification
 
@@ -138,6 +138,81 @@ Only fixed stage names and a sanitized receipt reach GitHub logs. A failure retu
 nonzero. Do not infer functional readiness from a running container or `/health`
 alone. Local unit tests validate guard/rollback logic with fakes; actual rootless
 Docker, systemd, registry pulls and HTTP execution require this host-side run.
+
+## Upgrades during deployment
+
+The setup above runs once. After that, every Deploy Production run keeps the
+runner on the deployed commit: the workflow uploads `deploy_production.sh` and
+this script into a fresh root-only `/var/lib/mizan-deploy/release.XXXXXXXX`
+directory, and once the new backend has passed its health and public checks the
+deploy script runs
+
+```bash
+python3 -I setup_workspace_runner.py --upgrade --sha SHA --repository codewithjuber/mizan \
+  --inherited-lock-fd 9 --inputs-digest DIGEST   # registry token on stdin
+```
+
+It does so only on a host with this setup's `state.json`; anywhere else nothing
+changes. The deploy still holds `deploy.lock` on descriptor 9: the installer checks
+that the descriptor is that file and that the lock is held on it, and never
+releases it. The digest is `git ls-files -s` over what the runner, runtime and
+browser images are built from (`backend/workspace`, their Dockerfiles, the
+runtime requirements, the build script and this script). CI rebuilds those
+images for every commit, so an unchanged digest with a current runner only
+checks that the runner answers (`/health`, `GET /sessions/<random key>`).
+
+Otherwise, within 15 minutes:
+
+1. The installed runner is verified with the limits its override records: the
+   first install's 192 MiB / 128 processes, or the current 384 MiB / 512. A
+   changed override, another daemon, a missing account or a backend that is not
+   the deployed commit stops here; the account, daemon, systemd settings,
+   backend and frontend are never edited.
+2. The generation before the installed one is removed by its recorded tag, only
+   if the tag still names the recorded image (never `--force`, never prune), so
+   the installed and the new generation stay on disk. At least 4 GiB must be free
+   (6 GiB with the browser image).
+3. The commit's runner image (production daemon) and runtime image (worker
+   daemon) are pulled and pinned by content ID. The browser image (Shahid) is
+   pulled only when one is installed (then it is required) or with
+   `--with-browser`.
+4. The new override may differ from the old only in the runner's images, limits
+   and browser setting; the backend section must be identical and the token is
+   the existing one (a missing token file is an error, never a new token). It is
+   checked with `docker compose config` before anything live changes. A failure
+   up to here removes the new images and changes nothing live.
+5. The old override is saved as `override.previous`, the checkpoint (phase
+   `upgrading`) is written, and only `workspace-runner` is recreated.
+6. The new runner must pass container inspection with the new images and
+   limits, the one-shot smoke above, and a real sandbox session started through
+   the backend: the session container, its internal network and the egress
+   proxy are inspected (unprivileged user, read-only root, no capabilities, its
+   own volume only, no credential variables, `HTTPS_PROXY` set, the network
+   holding only the session and the proxy); inside it a file is synced and read
+   back by hash, `npm view left-pad@1.3.0 version` reaches the npm registry and
+   a request reaches PyPI through the proxy, while `example.com`,
+   `169.254.169.254` and a direct connection are refused. The session, its
+   volume and network are then removed and checked gone. Backend and public
+   health close the run. An idle egress proxy still on an older image is
+   replaced first; with sessions open it keeps its image until they close.
+
+Any failure in step 6 restores `override.previous` byte for byte, recreates the
+runner, verifies it with its own images and limits, reruns the one-shot smoke and
+removes the failed generation (10-minute budget). Only the proxy's
+`egress denied|unreachable <host>` lines are printed with the stage that failed.
+
+| Exit | Meaning |
+|------|---------|
+| 0 | Upgraded and verified, already current, or no managed runner here |
+| 75 | Not upgraded; the previous runner is in place and verified |
+| 76 | The runner could not be verified (a restore failed, or the install drifted) |
+
+The deploy keeps the new site in every case. The workflow records the release
+and then fails a final "Workspace runner" step on 75 or 76. An interrupted
+restore leaves phase `upgrading`; the next deploy finishes the restore first
+(and reports 75). Once a deploy has run an upgrade, `--rollback` of the original
+setup is refused: its snapshot no longer describes production. See
+[the runbook](runbook.md#workspace-runner-not-upgraded-by-a-deploy).
 
 ## Failure, retry and rollback
 
