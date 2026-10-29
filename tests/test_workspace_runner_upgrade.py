@@ -528,8 +528,11 @@ def test_the_inherited_deploy_lock_is_checked_and_never_released(tmp_path):
                 setup.verify_inherited_lock(wrong, lock)
         finally:
             os.close(wrong)
+        # A descriptor that was just closed, not a number that may be open here.
+        closed = os.open(unrelated, os.O_RDONLY)
+        os.close(closed)
         with pytest.raises(setup.SetupError, match="not open"):
-            setup.verify_inherited_lock(250, lock)
+            setup.verify_inherited_lock(closed, lock)
     finally:
         os.close(held)
 
