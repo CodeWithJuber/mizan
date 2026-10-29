@@ -1,4 +1,4 @@
-import { canDiscardRecoveredDraft, chatFailureNeedsRecovery, CHAT_INPUT_LIMIT, parseChatRun, parseRunState, phaseLabel, recoverChatRun, recoveryBlocksSend } from "./chatRecovery.ts";
+import { canDiscardRecoveredDraft, chatFailureNeedsRecovery, CHAT_INPUT_LIMIT, parseChatRun, parseRunState, phaseLabel, recoverChatRun, recoveryBlocksSend, recoveryWorthShowing } from "./chatRecovery.ts";
 import type { ChatRecoveryState } from "./chatRecovery.ts";
 
 let checks = 0;
@@ -54,4 +54,16 @@ check("successful empty history read does not erase missing-persistence distinct
 let failedStatus = false;
 try { await recoverChatRun({ sessionId: "session", readState: async () => new Response("", { status: 404 }), readHistory: async () => { throw new Error("Must not infer idle from 404"); } }); } catch { failedStatus = true; }
 check("404 is not inferred to mean idle", failedStatus);
+const background = { sessionId: "session" };
+check("opening a finished chat from history shows no notice",
+  !recoveryWorthShowing({ ...background, state: "terminal", historySaved: true })
+  && !recoveryWorthShowing({ ...background, state: "idle" })
+  && !recoveryWorthShowing({ ...background, state: "checking" }));
+check("a run still going, an unknown outcome or an unsaved reply is shown",
+  recoveryWorthShowing({ ...background, state: "active" })
+  && recoveryWorthShowing({ ...background, state: "unknown" })
+  && recoveryWorthShowing({ ...background, state: "terminal", historySaved: false }));
+check("recovering a request sent from this browser always shows its state",
+  recoveryWorthShowing({ ...background, originRequestId: "r1", state: "checking" })
+  && recoveryWorthShowing({ ...background, originRequestId: "r1", state: "terminal", historySaved: true }));
 console.log(`${checks} recovery checks passed`);

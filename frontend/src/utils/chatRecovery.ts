@@ -72,6 +72,16 @@ export function recoveryBlocksSend(state: ChatRecoveryState | null, sessionId: s
   return state?.sessionId === sessionId && ["checking", "active", "unknown"].includes(state.state);
 }
 
+/** A check of a chat opened from history (no local request behind it) speaks only when
+ *  the person has something to know: a run still going, an unknown outcome, or a reply
+ *  that was not saved. A finished run whose reply is saved needs no notice. */
+export function recoveryWorthShowing(state: ChatRecoveryState | null): boolean {
+  if (!state) return false;
+  if (state.originRequestId) return true;
+  if (state.state === "active" || state.state === "unknown") return true;
+  return state.state === "terminal" && state.historySaved === false;
+}
+
 export function canDiscardRecoveredDraft(state: ChatRunState): boolean {
   return state.state === "terminal" && state.history_saved === true && state.request !== null;
 }
