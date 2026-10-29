@@ -1,9 +1,12 @@
 """Exercise privacy, descriptor-safe file access, edit conflicts and real isolated jobs."""
 
 import base64
+import hashlib
 import io
+import json
 import os
 import subprocess
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
@@ -17,7 +20,8 @@ from security.auth import TokenPayload, bind_principal, reset_principal
 from skills.builtin.coding_workspace import CodingWorkspaceSkill, allows_user_workspace_tool
 from skills.registry import SkillRegistry
 from workspace import runner as runner_module
-from workspace.context import bind_workspace, reset_workspace
+from workspace import store as store_module
+from workspace.context import bind_workspace, reset_workspace, running_in
 from workspace.runner import app as runner_app
 from workspace.runner import execute
 from workspace.store import WorkspaceStore
@@ -153,19 +157,172 @@ def test_anonymous_workspace_requests_are_denied(storage, monkeypatch):
     assert c.post("/api/workspaces", json={"name": "attack"}).status_code == 401
 
 
-def test_checkpoints_diffs_retention_and_restart(storage):
+def test_checkpoints_diffs_retention_and_restart(storage, monkeypatch):
     workspace = storage.create("App")["id"]
     storage.write(workspace, "main.py", "before\n")
     checkpoint = storage.checkpoint(workspace, "before coding")
+    assert checkpoint["reused"] is False and checkpoint["file_count"] == 1
+    # Nothing changed: the same checkpoint comes back instead of a copy.
+    again = storage.checkpoint(workspace, "same again")
+    assert again["reused"] is True and again["id"] == checkpoint["id"]
     storage.write(workspace, "main.py", "after\n")
     storage.write(workspace, "new.py", "new\n")
     changes = storage.diff(workspace, checkpoint["id"])["files"]
     assert {item["status"] for item in changes} == {"modified", "added"}
     assert "-before" in changes[0]["diff"] and "+after" in changes[0]["diff"]
-    for _ in range(6):
-        storage.checkpoint(workspace, "next")
-    assert len(storage.checkpoints(workspace)) == 5
-    assert WorkspaceStore(USER.user_id).read(workspace, "main.py")["content"] == "after\n"
+    monkeypatch.setattr(store_module, "MAX_CHECKPOINTS", 5)
+    for index in range(7):
+        storage.write(workspace, "main.py", f"version {index}\n")
+        storage.checkpoint(workspace, f"v{index}")
+    kept = storage.checkpoints(workspace)
+    assert len(kept) == 5 and kept[0]["message"] == "v6"
+    # Objects of pruned checkpoints are gone; shared ones stay once.
+    objects = storage.project(workspace) / "checkpoints" / "objects"
+    stored = {path.name for path in objects.glob("*/*")}
+    wanted = {
+        hashlib.sha256(f"version {index}\n".encode()).hexdigest() for index in range(2, 7)
+    } | {hashlib.sha256(b"new\n").hexdigest()}
+    assert stored == wanted
+    assert WorkspaceStore(USER.user_id).read(workspace, "main.py")["content"] == "version 6\n"
+
+
+def test_restore_brings_back_files_keeps_git_and_can_be_undone(storage):
+    workspace = storage.create("App")["id"]
+    storage.write(workspace, "src/a.py", "a = 1\n")
+    storage.write(workspace, "b.py", "b = 1\n")
+    saved = storage.checkpoint(workspace, "good")
+    storage.write(workspace, "src/a.py", "a = 2\n")
+    storage.delete(workspace, "b.py")
+    storage.write(workspace, "c.py", "c\n")
+    git = storage.project(workspace) / "files" / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/main\n")
+    result = storage.restore(workspace, saved["id"])
+    assert result["restored"] == ["b.py", "src/a.py"] and result["removed"] == ["c.py"]
+    assert storage.read(workspace, "src/a.py")["content"] == "a = 1\n"
+    assert storage.read(workspace, "b.py")["content"] == "b = 1\n"
+    assert not (storage.project(workspace) / "files" / "c.py").exists()
+    assert (git / "HEAD").read_text() == "ref: refs/heads/main\n"
+    # The state before the restore was saved first, so the restore can be undone.
+    undo = storage.restore(workspace, result["before"]["id"])
+    assert undo["removed"] == ["b.py"] and undo["restored"] == ["c.py", "src/a.py"]
+    assert storage.read(workspace, "src/a.py")["content"] == "a = 2\n"
+
+
+def test_restore_selected_files_and_read_a_file_from_a_checkpoint(storage):
+    workspace = storage.create("App")["id"]
+    storage.write(workspace, "a.py", "old a\n")
+    storage.write(workspace, "b.py", "old b\n")
+    saved = storage.checkpoint(workspace, "start")
+    storage.write(workspace, "a.py", "new a\n")
+    storage.write(workspace, "b.py", "new b\n")
+    storage.write(workspace, "added.py", "added\n")
+    assert storage.file_at(workspace, saved["id"], "a.py") == {
+        "path": "a.py",
+        "content": "old a\n",
+        "sha256": hashlib.sha256(b"old a\n").hexdigest(),
+    }
+    with pytest.raises(HTTPException) as missing:
+        storage.file_at(workspace, saved["id"], "added.py")
+    assert missing.value.status_code == 404
+    result = storage.restore(workspace, saved["id"], ["a.py", "added.py"])
+    assert result["restored"] == ["a.py"] and result["removed"] == ["added.py"]
+    assert storage.read(workspace, "a.py")["content"] == "old a\n"
+    assert storage.read(workspace, "b.py")["content"] == "new b\n"
+    with pytest.raises(HTTPException) as unknown:
+        storage.restore(workspace, "0" * 32)
+    assert unknown.value.status_code == 404
+
+
+def test_old_full_copy_checkpoints_are_converted_once(storage):
+    workspace = storage.create("App")["id"]
+    storage.write(workspace, "main.py", "now\n")
+    directory = storage.project(workspace) / "checkpoints"
+    legacy = {
+        "id": "a" * 32,
+        "message": "from before",
+        "created_at": "2026-10-01T10:00:00+00:00",
+        "files": {"main.py": base64.b64encode(b"then\n").decode()},
+    }
+    (directory / f"{'a' * 32}.json").write_text(json.dumps(legacy))
+    listed = storage.checkpoints(workspace)
+    assert [item["id"] for item in listed] == ["a" * 32]
+    assert listed[0]["created_at"] == "2026-10-01T10:00:00+00:00"
+    converted = json.loads((directory / f"{'a' * 32}.json").read_text())
+    assert converted["version"] == 2 and "then" not in json.dumps(converted)
+    assert storage.file_at(workspace, "a" * 32, "main.py")["content"] == "then\n"
+    assert "-then" in storage.diff(workspace, "a" * 32)["files"][0]["diff"]
+    assert storage.checkpoints(workspace) == listed
+
+
+def test_git_folder_stays_out_of_file_tools_and_quota(storage):
+    workspace = storage.create("App")["id"]
+    storage.write(workspace, "main.py", "print(1)\n")
+    git = storage.project(workspace) / "files" / ".git"
+    (git / "objects").mkdir(parents=True)
+    (git / "config").write_text("[core]\n")
+    assert [item["path"] for item in storage.tree(workspace)["files"]] == ["main.py"]
+    assert [item["path"] for item in storage.glob(workspace, "**")["files"]] == ["main.py"]
+    assert storage.grep(workspace, "core")["matches"] == []
+    for operation in (
+        lambda: storage.write(workspace, ".git/config", "evil"),
+        lambda: storage.delete(workspace, ".git/config"),
+        lambda: storage.directory(workspace, ".git/hooks"),
+        lambda: storage.rename(workspace, "main.py", ".git/main.py"),
+    ):
+        with pytest.raises(HTTPException) as refused:
+            operation()
+        assert refused.value.status_code == 422
+    files, directories = storage.snapshot_state(workspace)
+    assert ".git/config" in files and ".git/objects" in directories
+    saved = storage.checkpoint(workspace, "x")
+    manifest = json.loads(
+        (storage.project(workspace) / "checkpoints" / f"{saved['id']}.json").read_text()
+    )
+    assert list(manifest["files"]) == ["main.py"] and saved["file_count"] == 1
+
+
+def test_project_rename_delete_export_and_restore_routes(storage):
+    c = client()
+    project = c.post("/api/workspaces", json={"name": "First"}).json()["id"]
+    base = f"/api/workspaces/{project}"
+    c.put(base + "/file", json={"path": "app.js", "content": "one\n"})
+    saved = c.post(base + "/checkpoint", json={"message": "one"}).json()
+    c.put(base + "/file", json={"path": "app.js", "content": "two\n"})
+    renamed = c.patch(base, json={"name": "  Better name "})
+    assert renamed.status_code == 200 and renamed.json()["name"] == "Better name"
+    assert c.get("/api/workspaces").json()["workspaces"][0]["name"] == "Better name"
+    at = c.get(f"{base}/checkpoints/{saved['id']}/file", params={"path": "app.js"})
+    assert at.json()["content"] == "one\n"
+    (storage.project(project) / "files" / ".git").mkdir()
+    (storage.project(project) / "files" / ".git" / "HEAD").write_text("x")
+    exported = c.get(base + "/export.zip")
+    assert exported.status_code == 200
+    assert exported.headers["content-disposition"] == 'attachment; filename="Better-name.zip"'
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        assert archive.namelist() == ["app.js"] and archive.read("app.js") == b"two\n"
+    with running_in(USER.user_id, project):
+        assert c.post(f"{base}/checkpoints/{saved['id']}/restore", json={}).status_code == 409
+        assert c.delete(base).status_code == 409
+    restored = c.post(f"{base}/checkpoints/{saved['id']}/restore", json={"paths": ["app.js"]})
+    assert restored.status_code == 200 and restored.json()["restored"] == ["app.js"]
+    assert c.get(base + "/file", params={"path": "app.js"}).json()["content"] == "one\n"
+    other = client(OTHER)
+    assert other.patch(base, json={"name": "mine"}).status_code == 404
+    assert other.delete(base).status_code == 404
+    assert other.get(base + "/export.zip").status_code == 404
+    assert other.post(f"{base}/checkpoints/{saved['id']}/restore", json={}).status_code == 404
+    assert c.delete(base).json() == {"deleted": True, "id": project}
+    assert c.get("/api/workspaces").json()["workspaces"] == []
+    assert c.get(base + "/tree").status_code == 404
+
+
+def test_quota_message_names_where_to_delete(storage, monkeypatch):
+    monkeypatch.setenv("MIZAN_WORKSPACE_MAX_PROJECTS", "1")
+    storage.create("One")
+    with pytest.raises(HTTPException) as full:
+        storage.create("Two")
+    assert full.value.status_code == 413 and "Code → Projects" in str(full.value.detail)
 
 
 def test_failed_export_cannot_partially_overwrite_and_concurrent_edits_win(storage):

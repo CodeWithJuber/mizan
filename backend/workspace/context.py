@@ -1,5 +1,8 @@
 """A selected project is bound by authenticated chat code, never by model arguments."""
 
+import threading
+from collections import Counter
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 from fastapi import HTTPException
@@ -10,6 +13,37 @@ from .store import WorkspaceStore
 
 _selected: ContextVar[str | None] = ContextVar("coding_workspace", default=None)
 _chat_session: ContextVar[str | None] = ContextVar("workspace_chat_session", default=None)
+# Projects a chat run is working in right now, so a delete or restore waits for it.
+_running: Counter[tuple[str, str]] = Counter()
+_running_lock = threading.Lock()
+
+
+@contextmanager
+def running_in(owner_id: str, workspace_id: str | None):
+    """Mark a project busy for the length of a run (nothing when no project is bound)."""
+    if not workspace_id:
+        yield
+        return
+    key = (owner_id, workspace_id)
+    with _running_lock:
+        _running[key] += 1
+    try:
+        yield
+    finally:
+        with _running_lock:
+            _running[key] -= 1
+            if _running[key] <= 0:
+                del _running[key]
+
+
+def busy(owner_id: str, workspace_id: str) -> bool:
+    with _running_lock:
+        return _running.get((owner_id, workspace_id), 0) > 0
+
+
+def refuse_if_busy(owner_id: str, workspace_id: str, action: str) -> None:
+    if busy(owner_id, workspace_id):
+        raise HTTPException(409, f"A chat is working in this project; {action} when it finishes")
 
 
 def bind_chat_session(session_id: str | None):

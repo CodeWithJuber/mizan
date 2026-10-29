@@ -283,7 +283,10 @@ class CodingWorkspaceSkill(SkillBase):
         self, workspace_id: str | None = None, message: str = "Agent checkpoint"
     ) -> dict:
         return cast(
-            dict, self.store(edit=True).checkpoint(selected_workspace(workspace_id), message)
+            dict,
+            self.store(edit=True).checkpoint(
+                selected_workspace(workspace_id), message, kind="agent"
+            ),
         )
 
     async def git(

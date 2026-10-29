@@ -6,6 +6,7 @@ import base64
 import builtins
 import difflib
 import hashlib
+import io
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import shutil
 import stat
 import threading
 import uuid
+import zipfile
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,7 +44,16 @@ def max_workspaces() -> int:
     return _limit("MIZAN_WORKSPACE_MAX_PROJECTS", MAX_WORKSPACES, 200)
 
 
-MAX_CHECKPOINTS = 5
+# Checkpoints: manifests of {path: sha256} over shared content-addressed objects,
+# so an unchanged file costs nothing in a new checkpoint.
+MAX_CHECKPOINTS = _limit("MIZAN_WORKSPACE_MAX_CHECKPOINTS", 30, 200)
+MAX_CHECKPOINT_BYTES = _limit(
+    "MIZAN_WORKSPACE_MAX_CHECKPOINT_BYTES", 50 * 1024 * 1024, 1024 * 1024 * 1024
+)
+CHECKPOINT_KINDS = ("manual", "agent", "turn", "restore")
+# Git keeps its own history in the project; the file tools, quota and checkpoints
+# leave it alone, and only runs (where git itself works) see it.
+GIT_DIR = ".git"
 # Agent search bounds (glob/grep) and line reads.
 MAX_GLOB_RESULTS = 500
 MAX_GREP_MATCHES = 300
@@ -107,6 +118,30 @@ def entry_paths(path: str) -> set[str]:
     return {"/".join(components[:index]) for index in range(1, len(components) + 1)}
 
 
+def user_path(path: str) -> builtins.list[str]:
+    """A path the file tools may change: anything but git's own folder."""
+    components = parts(path)
+    if components[0] == GIT_DIR:
+        raise HTTPException(422, "The .git folder belongs to git; use the git tool to change it")
+    return components
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _tree_digest(files: dict[str, str]) -> str:
+    """One digest for a whole {path: sha256} tree, independent of order."""
+    return _sha(json.dumps(files, sort_keys=True, separators=(",", ":")).encode())
+
+
+def _when(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=UTC)
+
+
 class WorkspaceStore:
     def __init__(self, user_id: str):
         if not user_id:
@@ -134,6 +169,30 @@ class WorkspaceStore:
         with _LOCK:
             shutil.rmtree(self.project(workspace_id))
 
+    def rename_project(self, workspace_id: str, name: str) -> dict:
+        name = (name or "").strip()
+        if not name or len(name) > 100:
+            raise HTTPException(422, "Project name must be 1..100 characters")
+        with _LOCK:
+            project = self.project(workspace_id)
+            metadata = self._metadata(project)
+            metadata["name"] = name
+            metadata["updated_at"] = now()
+            self._atomic_json(project / "metadata.json", metadata)
+            return metadata
+
+    def export_zip(self, workspace_id: str) -> tuple[str, bytes]:
+        """The project's files (not git's folder) as a zip, with the project's name."""
+        with _LOCK:
+            name = self._metadata(self.project(workspace_id))["name"]
+            files = self.files(workspace_id)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path, data in sorted(files.items()):
+                archive.writestr(path, data)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "project"
+        return f"{safe[:60]}.zip", buffer.getvalue()
+
     def list(self) -> builtins.list[dict]:
         with _LOCK:
             result = []
@@ -153,8 +212,8 @@ class WorkspaceStore:
             if not reserved and len(projects) >= quota:
                 raise HTTPException(
                     413,
-                    f"Workspace quota reached: {quota} projects. Delete one in "
-                    "Coding workspace to create another.",
+                    f"Workspace quota reached: {quota} projects. Delete one under "
+                    "Code → Projects to create another.",
                 )
             workspace_id = uuid.uuid4().hex
             path = self.root / workspace_id
@@ -376,11 +435,14 @@ class WorkspaceStore:
             "truncated": len(matches) >= limit,
         }
 
-    def tree(self, workspace_id: str) -> dict:
+    def tree(self, workspace_id: str, *, include_git: bool = False) -> dict:
+        """Every entry, in path order. ``.git`` is left out unless a run asks for it."""
         result: builtins.list[dict] = []
 
         def visit(fd: int, prefix: str) -> None:
             for name in sorted(os.listdir(fd)):
+                if not prefix and name == GIT_DIR and not include_git:
+                    continue
                 if len(result) >= MAX_FILES:
                     raise HTTPException(413, "Workspace contains too many entries")
                 info = os.stat(name, dir_fd=fd, follow_symlinks=False)
@@ -418,6 +480,7 @@ class WorkspaceStore:
     ) -> dict:
         if len(data) > MAX_FILE_BYTES:
             raise HTTPException(413, "Project file exceeds 1 MiB")
+        user_path(path)
         with _LOCK:
             entries = self.tree(workspace_id)["files"]
             existing = next((item for item in entries if item["path"] == path), None)
@@ -467,6 +530,7 @@ class WorkspaceStore:
         return self.write_bytes(workspace_id, path, content.encode("utf-8"), expected_sha256)
 
     def directory(self, workspace_id: str, path: str) -> dict:
+        user_path(path)
         with _LOCK:
             count = len(
                 {entry["path"] for entry in self.tree(workspace_id)["files"]} | entry_paths(path)
@@ -482,6 +546,8 @@ class WorkspaceStore:
             return {"path": path}
 
     def rename(self, workspace_id: str, path: str, new_path: str) -> dict:
+        user_path(path)
+        user_path(new_path)
         with _LOCK:
             entries = self.tree(workspace_id)["files"]
             existing = {entry["path"]: entry for entry in entries}
@@ -503,6 +569,7 @@ class WorkspaceStore:
             return {"path": new_path}
 
     def delete(self, workspace_id: str, path: str) -> dict:
+        user_path(path)
         with _LOCK, self.parent(workspace_id, path) as (fd, name):
             info = os.stat(name, dir_fd=fd, follow_symlinks=False)
             if not stat.S_ISREG(info.st_mode):
@@ -511,80 +578,324 @@ class WorkspaceStore:
             self._touch(self.project(workspace_id))
         return {"deleted": True, "path": path}
 
-    def snapshot(self, workspace_id: str) -> dict[str, str]:
+    def files(self, workspace_id: str, *, include_git: bool = False) -> dict[str, bytes]:
+        """Every file's bytes, within the project quota."""
         with _LOCK:
             result = {
-                item["path"]: base64.b64encode(self.read_bytes(workspace_id, item["path"])).decode(
-                    "ascii"
-                )
-                for item in self.tree(workspace_id)["files"]
+                item["path"]: self.read_bytes(workspace_id, item["path"])
+                for item in self.tree(workspace_id, include_git=include_git)["files"]
                 if item["kind"] == "file"
             }
-            if sum(len(base64.b64decode(data)) for data in result.values()) > MAX_PROJECT_BYTES:
+            if sum(map(len, result.values())) > MAX_PROJECT_BYTES:
                 raise HTTPException(413, "Workspace storage quota reached")
             return result
 
-    def snapshot_state(self, workspace_id: str) -> tuple[dict[str, str], builtins.list[str]]:
+    def snapshot(self, workspace_id: str, *, include_git: bool = False) -> dict[str, str]:
+        return {
+            path: base64.b64encode(data).decode("ascii")
+            for path, data in self.files(workspace_id, include_git=include_git).items()
+        }
+
+    def snapshot_state(
+        self, workspace_id: str, *, include_git: bool = True
+    ) -> tuple[dict[str, str], builtins.list[str]]:
+        """What a run or a sandbox session works on: files and directories, git included."""
         with _LOCK:
-            return self.snapshot(workspace_id), [
+            return self.snapshot(workspace_id, include_git=include_git), [
                 item["path"]
-                for item in self.tree(workspace_id)["files"]
+                for item in self.tree(workspace_id, include_git=include_git)["files"]
                 if item["kind"] == "directory"
             ]
 
-    def checkpoint(self, workspace_id: str, message: str) -> dict:
-        with _LOCK:
-            data = {
-                "id": uuid.uuid4().hex,
-                "message": message[:200],
-                "created_at": now(),
-                "files": self.snapshot(workspace_id),
-            }
-            directory = self.project(workspace_id) / "checkpoints"
-            self._atomic_json(directory / f"{data['id']}.json", data)
-            previous = sorted(
-                directory.glob("*.json"), key=lambda item: item.stat().st_mtime_ns, reverse=True
+    # --- checkpoints -------------------------------------------------------
+
+    def _checkpoint_dir(self, workspace_id: str) -> Path:
+        return self.project(workspace_id) / "checkpoints"
+
+    @staticmethod
+    def _object_path(directory: Path, digest: str) -> Path:
+        return directory / "objects" / digest[:2] / digest
+
+    def _put_object(self, directory: Path, data: bytes) -> str:
+        """Store bytes once under their SHA-256; an object never changes after it is written."""
+        digest = _sha(data)
+        target = self._object_path(directory, digest)
+        if target.is_file():
+            return digest
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = target.parent / f".{uuid.uuid4().hex}.tmp"
+        try:
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return digest
+
+    def _get_object(self, directory: Path, digest: str) -> bytes:
+        if not re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+            raise HTTPException(500, "Checkpoint refers to an invalid object")
+        try:
+            fd = os.open(self._object_path(directory, digest), os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            raise HTTPException(410, "A file of this checkpoint is no longer stored") from None
+        with os.fdopen(fd, "rb") as handle:
+            data = handle.read()
+        if _sha(data) != digest:
+            raise HTTPException(500, "A stored checkpoint file does not match its digest")
+        return data
+
+    def _load_manifest(self, directory: Path, path: Path) -> dict:
+        """Read one manifest; an old full-copy checkpoint is converted in place, keeping its
+        id and date, so converting again after a crash changes nothing."""
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd) as handle:
+            manifest = cast(dict, json.load(handle))
+        if manifest.get("version") == 2:
+            return manifest
+        files = {
+            name: self._put_object(directory, base64.b64decode(encoded))
+            for name, encoded in dict(manifest.get("files") or {}).items()
+        }
+        upgraded = {
+            "version": 2,
+            "id": manifest["id"],
+            "message": str(manifest.get("message") or "Project checkpoint")[:200],
+            "kind": "manual",
+            "created_at": manifest.get("created_at") or now(),
+            "tree": _tree_digest(files),
+            "files": files,
+            "bytes": sum(len(base64.b64decode(v)) for v in (manifest.get("files") or {}).values()),
+        }
+        self._atomic_json(path, upgraded)
+        return upgraded
+
+    def _manifests(self, workspace_id: str) -> builtins.list[dict]:
+        """All checkpoints of a project, newest first."""
+        directory = self._checkpoint_dir(workspace_id)
+        manifests = [
+            self._load_manifest(directory, path)
+            for path in directory.glob("*.json")
+            if _ID.fullmatch(path.stem)
+        ]
+        return sorted(manifests, key=lambda item: _when(item["created_at"]), reverse=True)
+
+    def _manifest(self, workspace_id: str, checkpoint_id: str) -> dict:
+        if not _ID.fullmatch(checkpoint_id or ""):
+            raise HTTPException(404, "Checkpoint not found")
+        directory = self._checkpoint_dir(workspace_id)
+        path = directory / f"{checkpoint_id}.json"
+        if path.is_symlink() or not path.is_file():
+            raise HTTPException(404, "Checkpoint not found")
+        return self._load_manifest(directory, path)
+
+    @staticmethod
+    def _summary(manifest: dict) -> dict:
+        summary = {
+            "id": manifest["id"],
+            "message": manifest["message"],
+            "created_at": manifest["created_at"],
+            "kind": manifest.get("kind", "manual"),
+            "file_count": len(manifest.get("files") or {}),
+            "bytes": manifest.get("bytes", 0),
+        }
+        if manifest.get("origin"):
+            summary["origin"] = manifest["origin"]
+        return summary
+
+    def _prune(self, workspace_id: str) -> None:
+        """Keep the newest checkpoints within the count and object budget, then drop
+        every object no kept checkpoint refers to."""
+        directory = self._checkpoint_dir(workspace_id)
+        kept: set[str] = set()
+        used = 0
+        for index, manifest in enumerate(self._manifests(workspace_id)):
+            fresh = set(manifest["files"].values()) - kept
+            size = sum(
+                self._object_path(directory, digest).stat().st_size
+                for digest in fresh
+                if self._object_path(directory, digest).is_file()
             )
-            for old in previous[MAX_CHECKPOINTS:]:
-                old.unlink()
-            return {key: value for key, value in data.items() if key != "files"}
+            if index and (index >= MAX_CHECKPOINTS or used + size > MAX_CHECKPOINT_BYTES):
+                (directory / f"{manifest['id']}.json").unlink(missing_ok=True)
+                continue
+            kept |= fresh
+            used += size
+        objects = directory / "objects"
+        if objects.is_dir():
+            for path in objects.glob("*/*"):
+                if path.is_file() and path.name not in kept:
+                    path.unlink(missing_ok=True)
+
+    def checkpoint(
+        self,
+        workspace_id: str,
+        message: str,
+        *,
+        kind: str = "manual",
+        origin: dict | None = None,
+    ) -> dict:
+        """Record the project's files. When nothing changed since the newest checkpoint,
+        that one is returned (``reused``) instead of a copy."""
+        if kind not in CHECKPOINT_KINDS:
+            raise HTTPException(422, "Unknown checkpoint kind")
+        with _LOCK:
+            directory = self._checkpoint_dir(workspace_id)
+            current = self.files(workspace_id)
+            digests = {path: _sha(data) for path, data in current.items()}
+            tree = _tree_digest(digests)
+            existing = self._manifests(workspace_id)
+            if existing and existing[0].get("tree") == tree:
+                return {**self._summary(existing[0]), "reused": True}
+            for data in current.values():
+                self._put_object(directory, data)
+            manifest: dict[str, Any] = {
+                "version": 2,
+                "id": uuid.uuid4().hex,
+                "message": (message or "Project checkpoint")[:200],
+                "kind": kind,
+                "created_at": datetime.now(UTC).isoformat(timespec="microseconds"),
+                "tree": tree,
+                "files": digests,
+                "bytes": sum(map(len, current.values())),
+            }
+            if origin:
+                manifest["origin"] = {
+                    key: str(value)[:100] for key, value in origin.items() if value
+                }
+            self._atomic_json(directory / f"{manifest['id']}.json", manifest)
+            self._prune(workspace_id)
+            return {**self._summary(manifest), "reused": False}
 
     def checkpoints(self, workspace_id: str) -> builtins.list[dict]:
         with _LOCK:
-            result = []
-            for path in (self.project(workspace_id) / "checkpoints").glob("*.json"):
-                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-                with os.fdopen(fd) as handle:
-                    value = json.load(handle)
-                result.append({key: value[key] for key in ("id", "message", "created_at")})
-            return sorted(result, key=lambda item: item["created_at"], reverse=True)
+            return [self._summary(item) for item in self._manifests(workspace_id)]
+
+    def file_at(self, workspace_id: str, checkpoint_id: str, path: str) -> dict:
+        """One file as it was in a checkpoint."""
+        parts(path)
+        with _LOCK:
+            manifest = self._manifest(workspace_id, checkpoint_id)
+            digest = manifest["files"].get(path)
+            if digest is None:
+                raise HTTPException(404, "That file is not in the checkpoint")
+            data = self._get_object(self._checkpoint_dir(workspace_id), digest)
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Binary file") from None
+        return {"path": path, "content": content, "sha256": digest}
+
+    def restore(
+        self,
+        workspace_id: str,
+        checkpoint_id: str,
+        paths: builtins.list[str] | None = None,
+    ) -> dict:
+        """Bring files back to a checkpoint. The current state is checkpointed first, so a
+        restore can itself be undone. ``paths`` restores only those files (a path the
+        checkpoint lacks is deleted); git's folder is never touched."""
+        with _LOCK:
+            manifest = self._manifest(workspace_id, checkpoint_id)
+            directory = self._checkpoint_dir(workspace_id)
+            if paths is not None:
+                for path in paths:
+                    user_path(path)
+            before = self.checkpoint(
+                workspace_id, f"Before restoring “{manifest['message'][:80]}”", kind="restore"
+            )
+            current = self.files(workspace_id)
+            wanted = (
+                manifest["files"]
+                if paths is None
+                else {path: manifest["files"][path] for path in paths if path in manifest["files"]}
+            )
+            target = {path: self._get_object(directory, digest) for path, digest in wanted.items()}
+            scope = set(current) | set(target) if paths is None else set(paths)
+            restored = sorted(p for p in target if current.get(p) != target[p])
+            removed = sorted(p for p in scope if p in current and p not in target)
+            if paths is not None:
+                for path in restored:
+                    self.write_bytes(workspace_id, path, target[path])
+                for path in removed:
+                    self.delete(workspace_id, path)
+            elif restored or removed:
+                self._replace_files(workspace_id, target)
+            return {
+                "checkpoint": self._summary(manifest),
+                "restored": restored,
+                "removed": removed,
+                "before": before,
+            }
+
+    def _replace_files(self, workspace_id: str, files: dict[str, bytes]) -> None:
+        """Swap the whole file tree for ``files`` at once, keeping git's folder."""
+        if len(files) > MAX_FILES or sum(map(len, files.values())) > MAX_PROJECT_BYTES:
+            raise HTTPException(413, "The checkpoint is larger than the project quota")
+        project = self.project(workspace_id)
+        staging = project / f".restore-{uuid.uuid4().hex}"
+        backup = project / f".previous-{uuid.uuid4().hex}"
+        staging.mkdir(mode=0o700)
+        git = project / "files" / GIT_DIR
+        moved_git = False
+        try:
+            for path, data in files.items():
+                destination = staging.joinpath(*parts(path))
+                destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                descriptor = os.open(
+                    destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+                )
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(data)
+            if git.is_dir() and not git.is_symlink():
+                os.rename(git, staging / GIT_DIR)
+                moved_git = True
+            os.rename(project / "files", backup)
+            try:
+                os.rename(staging, project / "files")
+            except BaseException:
+                os.rename(backup, project / "files")
+                raise
+            moved_git = False
+            self._touch(project)
+        finally:
+            if moved_git and (staging / GIT_DIR).is_dir():
+                os.rename(staging / GIT_DIR, git)
+            for cleanup_directory in (staging, backup):
+                if cleanup_directory.exists():
+                    shutil.rmtree(cleanup_directory)
 
     def diff(self, workspace_id: str, checkpoint_id: str) -> dict:
-        if not _ID.fullmatch(checkpoint_id):
-            raise HTTPException(404, "Checkpoint not found")
         with _LOCK:
-            try:
-                fd = os.open(
-                    self.project(workspace_id) / "checkpoints" / f"{checkpoint_id}.json",
-                    os.O_RDONLY | os.O_NOFOLLOW,
-                )
-            except FileNotFoundError:
-                raise HTTPException(404, "Checkpoint not found") from None
-            with os.fdopen(fd) as handle:
-                before = json.load(handle)["files"]
-            after = self.snapshot(workspace_id)
+            manifest = self._manifest(workspace_id, checkpoint_id)
+            directory = self._checkpoint_dir(workspace_id)
+            current = self.files(workspace_id)
+            after = {path: _sha(data) for path, data in current.items()}
+            before = manifest["files"]
             files = []
             remaining = 100_000
             for path in sorted(before.keys() | after.keys()):
                 if before.get(path) == after.get(path):
                     continue
-                old = base64.b64decode(before.get(path, "")).decode("utf-8", errors="replace")
-                new = base64.b64decode(after.get(path, "")).decode("utf-8", errors="replace")
+                status = (
+                    "added"
+                    if path not in before
+                    else "deleted"
+                    if path not in after
+                    else "modified"
+                )
+                old_bytes = self._get_object(directory, before[path]) if path in before else b""
+                new_bytes = current.get(path, b"")
+                old = old_bytes.decode("utf-8", errors="replace")
+                new = new_bytes.decode("utf-8", errors="replace")
                 if len(old) > 64000 or len(new) > 64000:
                     files.append(
                         {
                             "path": path,
-                            "status": "modified",
+                            "status": status,
                             "diff": "Large or binary file changed; open the file to inspect it.",
                         }
                     )
@@ -597,17 +908,7 @@ class WorkspaceStore:
                         tofile=f"b/{path}",
                     )
                 )
-                files.append(
-                    {
-                        "path": path,
-                        "status": "added"
-                        if path not in before
-                        else "deleted"
-                        if path not in after
-                        else "modified",
-                        "diff": patch[: max(0, remaining)],
-                    }
-                )
+                files.append({"path": path, "status": status, "diff": patch[: max(0, remaining)]})
                 remaining -= len(patch)
             return {"files": files, "truncated": remaining < 0}
 
@@ -660,7 +961,7 @@ class WorkspaceStore:
                 if directories is not None
                 else {
                     entry["path"]
-                    for entry in self.tree(workspace_id)["files"]
+                    for entry in self.tree(workspace_id, include_git=True)["files"]
                     if entry["kind"] == "directory"
                     and entry["path"] not in decoded
                     and not any(
