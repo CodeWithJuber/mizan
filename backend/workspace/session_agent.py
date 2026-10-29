@@ -91,6 +91,8 @@ def command_env() -> dict[str, str]:
         PIP_CACHE_DIR=f"{ROOT}/.cache/pip",
         PIP_DISABLE_PIP_VERSION_CHECK="1",
         npm_config_cache=f"{ROOT}/.cache/npm",
+        # /tmp is noexec; native addons unpacked into a cache (@swc/core) must run.
+        XDG_CACHE_HOME=f"{ROOT}/.cache",
         npm_config_update_notifier="false",
         npm_config_fund="false",
         npm_config_audit="false",

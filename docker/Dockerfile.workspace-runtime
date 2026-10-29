@@ -3,7 +3,7 @@ ARG BASE_REGISTRY=docker.io/library
 FROM ${BASE_REGISTRY}/node:24-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS node
 FROM ${BASE_REGISTRY}/python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
 # Debian package signatures remain verified; no application credentials enter this image.
-RUN apt-get update && apt-get install -y --no-install-recommends git libstdc++6 \
+RUN apt-get update && apt-get install -y --no-install-recommends curl git libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/workspace-runtime-requirements.txt /runtime-requirements.txt
 RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
@@ -14,6 +14,10 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+# npm 11 skips an install script that is not in allowScripts. esbuild's and @swc/core's
+# only check or pick their prebuilt binary; any other package is approved per project
+# (`npm install-scripts approve <name>` or allowScripts in package.json).
+RUN printf 'allow-scripts=esbuild,@swc/core\n' > /usr/local/etc/npmrc
 # esbuild parses TypeScript and JSX for MIZAN's checks of edited files (tadbir/engine.py).
 RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
     if [ -f /run/proxy-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem; fi; \

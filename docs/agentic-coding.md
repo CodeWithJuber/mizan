@@ -282,7 +282,13 @@ workspace runner, on the runner's own rootless Docker daemon, never on the
 backend host. It has:
 
 - the project files on a disk volume at `/workspace`
-- Python 3.13, Node 24, npm, git and bash
+- Python 3.13, Node 24, npm, git, curl and bash
+- npm runs the install scripts of `esbuild` and `@swc/core` (they only check
+  or pick their prebuilt binary); npm 11 skips any other package's script
+  until you approve it with `npm install-scripts approve <name>` or
+  `allowScripts` in `package.json`
+- caches in `/workspace/.cache` (`XDG_CACHE_HOME`), so a native addon a
+  package unpacks there can run; `/tmp` is not executable
 - an unprivileged user, no capabilities, a read-only root filesystem and
   resource limits
 - **no route to the internet except the egress proxy**, which allows HTTPS only
