@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 # Run over an authenticated SSH connection. Registry token arrives on stdin.
 # Preserve the existing Compose project, .env, volumes and reverse proxy.
+# Optional: $3 = setup_workspace_runner.py, $4 = digest of the runner's inputs.
+# With them, a host that has the managed workspace runner also has it upgraded
+# after the site is live (exit 75: not upgraded, previous runner kept and
+# verified; 76: the runner needs attention). The site deploy stands either way.
 set -euo pipefail
 umask 077
 sha=${1:?Commit SHA is required}
 repository=${2:?Lowercase GitHub repository is required}
+runner_setup=${3:-}
+runner_inputs=${4:-}
 [[ "$sha" =~ ^[a-f0-9]{40}$ ]] || { echo 'Invalid commit SHA' >&2; exit 1; }
 [[ "$repository" =~ ^[a-z0-9_-]+/[a-z0-9_.-]+$ ]] || exit 1
+if [[ -n "$runner_setup" ]]; then
+  [[ "$runner_setup" =~ ^/[A-Za-z0-9._/-]+/setup_workspace_runner\.py$ && -f "$runner_setup" && ! -L "$runner_setup" ]] || {
+    echo 'Invalid workspace runner setup path' >&2; exit 1;
+  }
+fi
+[[ -z "$runner_inputs" || ( -n "$runner_setup" && "$runner_inputs" =~ ^[a-f0-9]{64}$ ) ]] || {
+  echo 'Invalid workspace runner inputs digest' >&2; exit 1;
+}
 health_attempts=${MIZAN_DEPLOY_HEALTH_ATTEMPTS:-45}
 [[ "$health_attempts" =~ ^[1-9][0-9]?$ ]] && (( health_attempts <= 45 )) || {
   echo 'Health attempts must be decimal integers from 1 to 45.' >&2; exit 1;
@@ -19,6 +33,9 @@ state_dir=${MIZAN_DEPLOY_STATE_DIR:-/var/lib/mizan-deploy}
 mkdir -p "$state_dir"
 exec 9>"$state_dir/deploy.lock"
 flock -w 600 9
+# Only a host with the managed runner gets the upgrade (docs/runner-setup.md).
+upgrade_runner=false
+if [[ -n "$runner_setup" && -f "$state_dir/workspace-runner/state.json" ]]; then upgrade_runner=true; fi
 root=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' mizan-backend)
 project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' mizan-backend)
 files=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' mizan-backend)
@@ -92,7 +109,8 @@ stop_timeout=$(<"$tmp_dir/stop-timeout")
 
 "${compose[@]}" -f "$tmp_dir/new.yml" config --quiet
 printf '%s' "$registry_token" | docker login ghcr.io -u "${repository%%/*}" --password-stdin
-unset registry_token
+# The runner upgrade pulls its images with the same token, on stdin, later.
+[[ "$upgrade_runner" == true ]] || unset registry_token
 "${compose[@]}" -f "$tmp_dir/new.yml" pull backend frontend
 cp "$tmp_dir/rollback.yml" "$state_dir/rollback.yml"
 cp "$tmp_dir/new.yml" "$state_dir/current.yml"
@@ -149,3 +167,20 @@ if ! curl --fail --silent --connect-timeout 15 --max-time 30 --retry 3 --retry-d
 fi
 printf '%s\n' "$sha" > "$state_dir/deployed-sha"
 echo "Mizan deployed: $sha; health and anonymous-auth denial passed."
+[[ "$upgrade_runner" == true ]] || exit 0
+# Still under deploy.lock (fd 9): the installer checks that descriptor instead
+# of waiting for a lock this script holds.
+runner_args=(--upgrade --sha "$sha" --repository "$repository" --inherited-lock-fd 9)
+[[ -z "$runner_inputs" ]] || runner_args+=(--inputs-digest "$runner_inputs")
+runner_status=0
+printf '%s\n' "$registry_token" | python3 -I "$runner_setup" "${runner_args[@]}" || runner_status=$?
+unset registry_token
+case $runner_status in
+  0) ;;
+  75)
+    echo "Workspace runner NOT upgraded; the previous runner was kept and verified. $sha stays deployed." >&2
+    exit 75 ;;
+  *)
+    echo "Workspace runner needs attention: not verified (status $runner_status). $sha stays deployed." >&2
+    exit 76 ;;
+esac

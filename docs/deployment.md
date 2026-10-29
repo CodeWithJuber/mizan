@@ -23,11 +23,11 @@ it is not required to publish production images or deploy the application.
 After a main/master merge, CI validates the source and publishes production
 backend/frontend images tagged with the exact commit, together with the
 `workspace-runtime`, `workspace-runner` and `workspace-browser` (Shahid)
-images. Deployment changes only backend/frontend; the workspace images are
-installed by the reviewed runner setup ([runner-setup.md](runner-setup.md)).
-`Deploy Production`
+images. `Deploy Production`
 runs only after that CI succeeds, skips an obsolete commit, checks the pinned
-SSH host key, and updates the existing Compose project's backend/frontend.
+SSH host key, uploads `deploy_production.sh` and `setup_workspace_runner.py`
+into a fresh root-only `/var/lib/mizan-deploy/release.XXXXXXXX` directory
+(removed afterwards), and updates the existing Compose project's backend/frontend.
 The running reverse proxy, database volume, host configuration and `.env`
 are preserved. Nginx reloads to resolve the new container addresses as soon
 as they start (and again after the checks), so the restart window is the old
@@ -38,6 +38,16 @@ the health check and are sent again, and a chat message sent meanwhile says
 to check the chat before sending it again (`frontend/src/utils/restarting.ts`).
 A failed health or anonymous-auth denial check restores the
 previous images. Deployment state is stored in `/var/lib/mizan-deploy`.
+
+On a host with the managed workspace runner, the same run then moves the runner
+and its sandbox runtime to the deployed commit's images, still under the deploy
+lock, and proves a real sandbox session (files, npm and PyPI through the egress
+proxy, confinement) before keeping them; a failure restores and verifies the
+previous runner ([runner-setup.md](runner-setup.md#upgrades-during-deployment)).
+The new site stays live either way: the run records the release and then fails
+its last step, "Workspace runner", so a runner that was not upgraded is visible.
+The job allows 45 minutes: the lock wait, the site deploy and the runner's
+15-minute upgrade with its 10-minute restore.
 
 Required Mizan Actions secrets:
 

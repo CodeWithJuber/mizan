@@ -71,6 +71,16 @@ def preview_url(key: str, nonce: str, port: int) -> str:
     return f"{preview_prefix(key, nonce)}/{port}/"
 
 
+# A runner older than this backend answers its missing routes with FastAPI's own
+# 404 "Not Found"; the runner's real refusals carry X-Mizan-Runner: error.
+_OLDER_RUNNER = {
+    "/sessions": "The private runner on this server predates sandbox sessions; "
+    "the next deploy upgrades it",
+    "/browse": "The private runner on this server predates the browser sandbox; "
+    "the next deploy upgrades it",
+}
+
+
 def _status_error(status: int, detail: str) -> HTTPException:
     if status in (404, 409, 413, 422, 429):
         return HTTPException(status, detail)
@@ -100,7 +110,16 @@ async def call(method: str, path: str, body: Any = None, timeout: float = 60) ->
     except ValueError:
         data = {}
     if response.status_code != 200:
-        raise _status_error(response.status_code, str(data.get("detail", ""))[:300])
+        detail = str(data.get("detail", ""))[:300]
+        if (
+            response.status_code == 404
+            and detail == "Not Found"
+            and response.headers.get("x-mizan-runner") != "error"
+        ):
+            for prefix, message in _OLDER_RUNNER.items():
+                if path.startswith(prefix):
+                    raise HTTPException(503, message)
+        raise _status_error(response.status_code, detail)
     return cast(dict, data)
 
 

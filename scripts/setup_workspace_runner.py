@@ -43,10 +43,40 @@ SAFE_ENV = {
 MANAGER = "mizan-isolated-workspace-v1"
 CAP_BYTES = 2 * 1024**3
 RESEARCH_DIR = "/data/mizan/research"
+# Runner limits (memory bytes, nano-CPUs, pids) of the two reviewed override
+# generations: the first install, and the one that also serves sessions.
+LEGACY_LIMITS = (192 * 1024**2, 500000000, 128)
+CURRENT_LIMITS = (384 * 1024**2, 500000000, 512)
+JOB_FILTER = "name=^/mizan-workspace-[a-f0-9]{32}$"
+SESSION_PREFIX = "mizan-session-"
+SESSION_NETWORK = "mizan-session-net-"
+SANDBOX_PROXY = "mizan-sandbox-egress"
+RUNNER_ENV = {
+    "DOCKER_HOST",
+    "MIZAN_WORKSPACE_RUNNER_TOKEN",
+    "MIZAN_WORKSPACE_RUNTIME_IMAGE",
+    "MIZAN_WORKSPACE_BROWSER_IMAGE",
+}
+IMAGE_TAG = re.compile(
+    rf"ghcr\.io/{re.escape(REPOSITORY)}/workspace-(runtime|runner|browser):[a-f0-9]{{40}}"
+)
+UPGRADE_SECONDS = 900
+RESTORE_SECONDS = 600
+# Exit codes of --upgrade, chosen apart from sshpass's own 1-7.
+NOT_UPGRADED = 75
+NOT_VERIFIED = 76
 
 
 class SetupError(RuntimeError):
     """A safe, deliberately credential-free diagnostic."""
+
+
+class UpgradeRolledBack(SetupError):
+    """The runner was not upgraded; the previous one is in place and verified."""
+
+
+class UpgradeUnrecovered(SetupError):
+    """The runner was not upgraded and the previous one could not be verified."""
 
 
 def require(condition: bool, message: str) -> None:
@@ -416,6 +446,63 @@ def workspace_override(
     }
 
 
+def runner_limits(document: dict) -> tuple[int, int, int]:
+    """The runner limits an override sets, if they are one reviewed generation's."""
+    runner = document["services"]["workspace-runner"]
+    limits = runner.get("deploy", {}).get("resources", {}).get("limits", {})
+    memory = {"192M": 192 * 1024**2, "384M": 384 * 1024**2}.get(limits.get("memory"))
+    try:
+        cpus = round(float(limits.get("cpus", "0")) * 10**9)
+    except (TypeError, ValueError):
+        cpus = 0
+    found = (memory, cpus, runner.get("pids_limit"))
+    require(
+        found in (LEGACY_LIMITS, CURRENT_LIMITS),
+        "Runner override limits are not a reviewed generation",
+    )
+    return found  # type: ignore[return-value]
+
+
+def validate_override_transition(old: dict, new: dict, token: str) -> None:
+    """An upgrade may change only the runner's images, limits and browser setting."""
+    for document in (old, new):
+        services = document.get("services", {})
+        require(
+            set(document) == {"services"} and set(services) == {"backend", "workspace-runner"},
+            "Runner override holds services other than the backend and runner",
+        )
+        runner_environment = services["workspace-runner"].get("environment", {})
+        require(
+            services["backend"].get("environment", {}).get("MIZAN_WORKSPACE_RUNNER_TOKEN") == token
+            and runner_environment.get("MIZAN_WORKSPACE_RUNNER_TOKEN") == token,
+            "Runner override token differs from the managed token",
+        )
+        require(
+            set(runner_environment) <= RUNNER_ENV,
+            "Runner override has an unexpected runner environment",
+        )
+    require(
+        old["services"]["backend"] == new["services"]["backend"],
+        "An upgrade must not change the backend's configuration",
+    )
+    runners = [document["services"]["workspace-runner"] for document in (old, new)]
+    fixed = (
+        "restart",
+        "user",
+        "read_only",
+        "cap_drop",
+        "security_opt",
+        "volumes",
+        "tmpfs",
+        "networks",
+        "logging",
+    )
+    require(
+        all(runners[0].get(key) == runners[1].get(key) for key in fixed),
+        "An upgrade must not change the runner's identity, mounts or network",
+    )
+
+
 def validate_job(container: dict) -> None:
     host = container["HostConfig"]
     require(host.get("NetworkMode") == "none", "Job network isolation is missing")
@@ -448,6 +535,113 @@ def validate_job(container: dict) -> None:
     require(
         not any(re.search(r"TOKEN|SECRET|PASSWORD|API_KEY", key) for key in keys),
         "Job received a credential variable",
+    )
+
+
+def session_limits(limits: dict) -> tuple[int, int, int]:
+    """The runner's reported session budget as Docker inspect numbers."""
+    memory = re.fullmatch(r"([1-9][0-9]{0,5})([kmg])", str(limits.get("memory", "")).lower())
+    require(bool(memory), "Runner reported an unreadable session memory limit")
+    try:
+        cpus = round(float(limits.get("cpus", "")) * 10**9)
+        pids = int(limits.get("pids", ""))
+    except (TypeError, ValueError):
+        raise SetupError("Runner reported unreadable session limits") from None
+    unit = 1024 ** ("kmg".index(memory[2]) + 1)  # type: ignore[index]
+    return int(memory[1]) * unit, cpus, pids  # type: ignore[index]
+
+
+def validate_session_container(container: dict, key: str, limits: tuple[int, int, int]) -> None:
+    host, config = container["HostConfig"], container["Config"]
+    require(container.get("Name") == f"/{SESSION_PREFIX}{key}", "Unexpected session container")
+    require(config.get("User") == "65534:65534", "Session runs under an unexpected identity")
+    require(
+        host.get("ReadonlyRootfs") and not host.get("Privileged"),
+        "Session filesystem/privilege isolation is missing",
+    )
+    require(
+        "ALL" in (host.get("CapDrop") or [])
+        and "no-new-privileges" in " ".join(host.get("SecurityOpt") or []),
+        "Session capabilities are not restricted",
+    )
+    require(
+        host.get("NetworkMode") == SESSION_NETWORK + key,
+        "Session is not on its own internal network",
+    )
+    memory, cpus, pids = limits
+    require(
+        host.get("Memory") == memory
+        and host.get("MemorySwap") == memory
+        and host.get("NanoCpus") == cpus
+        and host.get("PidsLimit") == pids,
+        "Session resource limits differ from the runner's budget",
+    )
+    require(
+        not host.get("Binds") and not host.get("Devices") and not host.get("PortBindings"),
+        "Session has host mounts, devices or ports",
+    )
+    mounts = [mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"]
+    require(
+        len(mounts) == 1
+        and mounts[0].get("Type") == "volume"
+        and mounts[0].get("Name") == SESSION_PREFIX + key
+        and mounts[0].get("Destination") == "/workspace",
+        "Session has a mount other than its own volume",
+    )
+    environment = dict(value.split("=", 1) for value in config.get("Env", []) if "=" in value)
+    require(
+        not any(re.search(r"TOKEN|SECRET|PASSWORD|API_KEY", name) for name in environment),
+        "Session received a credential variable",
+    )
+    require(
+        environment.get("HTTPS_PROXY") == "http://egress:3128",
+        "Session egress does not go through the allowlist proxy",
+    )
+    labels = config.get("Labels") or {}
+    require(
+        labels.get("mizan.session") == key and labels.get("mizan.egress") == "allowlist",
+        "Session labels differ from the runner's",
+    )
+
+
+def validate_session_network(network: dict, key: str, members: set[str]) -> None:
+    require(
+        network.get("Name") == SESSION_NETWORK + key and network.get("Internal") is True,
+        "Session network is not internal",
+    )
+    require(
+        set(network.get("Containers") or {}) == members,
+        "Session network holds containers other than the session and its proxy",
+    )
+
+
+def validate_egress_proxy(container: dict, runtime_images: set[str]) -> None:
+    host, config = container["HostConfig"], container["Config"]
+    require(container.get("Image") in runtime_images, "Egress proxy runs an unexpected image")
+    require(config.get("User") == "65534:65534", "Egress proxy runs under an unexpected identity")
+    require(
+        host.get("ReadonlyRootfs")
+        and not host.get("Privileged")
+        and "ALL" in (host.get("CapDrop") or [])
+        and "no-new-privileges" in " ".join(host.get("SecurityOpt") or []),
+        "Egress proxy isolation is missing",
+    )
+    require(
+        host.get("Memory") == 128 * 1024**2
+        and not host.get("Binds")
+        and not host.get("Devices")
+        and not host.get("PortBindings")
+        and not [m for m in container.get("Mounts", []) if m.get("Type") != "tmpfs"],
+        "Egress proxy has host access or no memory limit",
+    )
+    keys = {value.partition("=")[0] for value in config.get("Env", [])}
+    require(
+        not any(re.search(r"TOKEN|SECRET|PASSWORD|API_KEY", key) for key in keys),
+        "Egress proxy received a credential variable",
+    )
+    require(
+        (config.get("Labels") or {}).get("mizan.egress") == "proxy",
+        "Egress proxy labels differ from the runner's",
     )
 
 
@@ -506,6 +700,120 @@ escape = run("shell", "ln -s /etc/passwd leak")
 assert escape.get("export_error") is True and not escape["files"]
 print("workspace: python javascript shell export isolation timeout symlink checks passed")
 '''
+
+# Sandbox sessions, run in the backend as ``python3 - <phase> <key> <nonce>``.
+# Phases: check (runner answers sessions), start, probe (files, npm, PyPI,
+# confinement) and stop. It prints only a JSON verdict naming a fixed step.
+SESSION_SMOKE_SCRIPT = r'''
+import hashlib, json, os, sys, urllib.error, urllib.request
+phase, key, nonce = sys.argv[1:4]
+url = os.environ["MIZAN_WORKSPACE_RUNNER_URL"].rstrip("/")
+token = os.environ["MIZAN_WORKSPACE_RUNNER_TOKEN"]
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+PYPI = """import urllib.request
+with urllib.request.urlopen('https://pypi.org/simple/pip/', timeout=30) as response:
+    assert response.status == 200
+print('pypi')
+"""
+CONFINED = """import os, pathlib, socket, urllib.request
+assert not any(s in k for k in os.environ for s in ('TOKEN', 'SECRET', 'PASSWORD', 'API_KEY'))
+for name in ('/var/run/docker.sock', '/run/docker.sock'):
+    assert not pathlib.Path(name).exists()
+for address in ('https://example.com/', 'https://169.254.169.254/'):
+    try:
+        urllib.request.urlopen(address, timeout=15)
+    except Exception as error:
+        assert '403' in str(error), 'not refused by the proxy'
+    else:
+        raise AssertionError('reached a host off the allowlist')
+try:
+    socket.create_connection(('1.1.1.1', 443), timeout=3)
+except OSError:
+    pass
+else:
+    raise AssertionError('direct network access')
+print('egress-confined')
+"""
+class Failed(Exception):
+    pass
+def call(method, path, payload=None, timeout=60):
+    body = None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(url + path, data=body, method=method, headers={
+        "Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read(8 * 1024 * 1024) or b"{}"), True
+    except urllib.error.HTTPError as error:
+        return error.code, {}, error.headers.get("X-Mizan-Runner") == "error"
+def expect(step, condition, status=0):
+    if not condition:
+        raise Failed(step, status)
+def run(step, command, language="shell", timeout=120):
+    status, reply, _ = call("POST", session + "/exec", {
+        "command": command, "language": language, "timeout_s": timeout}, timeout + 60)
+    expect(step, status == 200 and reply.get("exit_code") == 0, status)
+    return reply.get("stdout", "")
+session = "/sessions/" + key
+verdict = {"ok": True}
+try:
+    if phase in ("check", "start"):
+        status, health, _ = call("GET", "/health")
+        expect("health", status == 200 and health.get("available") is True, status)
+        status, info, ours = call("GET", session)
+        expect("predates" if status == 404 and not ours else "status",
+               status == 200 and info.get("running") is False
+               and isinstance(info.get("limits"), dict), status)
+    if phase == "start":
+        for kind in ("workspace", "mcp"):
+            status, started, _ = call("PUT", session, {
+                "nonce": nonce, "kind": kind, "preview_prefix": ""}, 120)
+            if status != 429:
+                break
+        expect("busy" if status == 429 else "start", status == 200, status)
+        expect("started", started.get("running") is True and started.get("egress") is True
+               and started.get("nonce") == nonce)
+        status, info, _ = call("GET", session)
+        expect("started", status == 200 and info.get("running") is True
+               and info.get("nonce") == nonce and info.get("kind") == kind, status)
+        verdict.update(kind=kind, limits={
+            name: str(info["limits"].get(name, "")) for name in ("memory", "cpus", "pids")})
+    elif phase == "probe":
+        status, reply, _ = call("POST", session + "/sync", {
+            "files": {"mizan-smoke.txt": "b2s="}, "directories": [], "delete": []})
+        expect("sync", status == 200 and reply.get("written") == 1, status)
+        status, reply, _ = call("POST", session + "/manifest", {})
+        expect("manifest", status == 200 and (reply.get("files") or {}).get("mizan-smoke.txt")
+               == hashlib.sha256(b"ok").hexdigest(), status)
+        npm = run("npm", "npm view left-pad@1.3.0 version --fetch-retries=2")
+        expect("npm", npm.strip() == "1.3.0")
+        expect("pypi", "pypi" in run("pypi", PYPI, "python", 60))
+        expect("confined", "egress-confined" in run("confined", CONFINED, "python", 60))
+    elif phase == "stop":
+        status, reply, _ = call("DELETE", session, timeout=90)
+        expect("stop", status == 200 and reply.get("running") is False, status)
+        status, info, _ = call("GET", session)
+        expect("stop", status == 200 and info.get("running") is False, status)
+except Failed as failure:
+    verdict = {"ok": False, "step": failure.args[0], "status": failure.args[1]}
+except Exception:
+    verdict = {"ok": False, "step": "error", "status": 0}
+print(json.dumps(verdict))
+'''
+SESSION_STEPS = {
+    "health": "the runner's health check failed",
+    "predates": "the runner predates sandbox sessions",
+    "status": "the session status request failed",
+    "busy": "all sandbox sessions are busy",
+    "start": "the session did not start",
+    "started": "the session did not report running with allowlisted egress",
+    "sync": "copying a file into the session failed",
+    "manifest": "the session's file manifest differs from what was written",
+    "npm": "the npm registry was not reachable through the egress proxy",
+    "pypi": "PyPI was not reachable through the egress proxy",
+    "confined": "the session reached a host or credential it must not",
+    "stop": "the session did not stop",
+    "error": "the probe could not reach the runner",
+}
 
 
 class Installer:
@@ -1048,9 +1356,11 @@ class Installer:
                 }
                 self.save()
 
-    def token(self) -> str:
+    def token(self, *, create: bool = True) -> str:
         path = STATE_ROOT / "runner-token"
         if not path.exists():
+            # An upgrade keeps the backend's token; a new one would lock it out.
+            require(create, "Managed runner token is missing")
             protected_write(path, secrets.token_urlsafe(48) + "\n")
         info = path.lstat()
         require(
@@ -1109,22 +1419,32 @@ class Installer:
         self.save()
         return snapshot
 
-    def verify_runner(self, files: list[str]) -> str:
+    def verify_runner(
+        self,
+        files: list[str],
+        *,
+        images: dict | None = None,
+        limits: tuple[int, int, int] = CURRENT_LIMITS,
+    ) -> str:
+        images = images or self.state["images"]
         ids = self.runner_ids(files)
         require(len(ids) == 1, "Expected exactly one managed runner service")
         container = self.docker_json("inspect", ids[0])[0]
         require(
-            container["Image"] == self.state["images"]["runner"]["id"]
-            and container["State"]["Running"],
+            container["Image"] == images["runner"]["id"] and container["State"]["Running"],
             "Runner image or running state is incorrect",
         )
         environment = dict(
             value.split("=", 1) for value in container["Config"].get("Env", []) if "=" in value
         )
         require(
-            environment.get("MIZAN_WORKSPACE_RUNTIME_IMAGE")
-            == self.state["images"]["runtime"]["id"],
+            environment.get("MIZAN_WORKSPACE_RUNTIME_IMAGE") == images["runtime"]["id"],
             "Runner runtime image is not the pinned image",
+        )
+        require(
+            environment.get("MIZAN_WORKSPACE_BROWSER_IMAGE")
+            == (images.get("browser") or {}).get("id"),
+            "Runner browser image is not the pinned image",
         )
         require(
             container["Config"].get("User") == f"{self.state['uid']}:{self.state['gid']}",
@@ -1145,9 +1465,7 @@ class Installer:
             "Runner must not expose host ports/devices",
         )
         require(
-            host.get("Memory") == 384 * 1024**2
-            and host.get("NanoCpus") == 500000000
-            and host.get("PidsLimit") == 512,
+            (host.get("Memory"), host.get("NanoCpus"), host.get("PidsLimit")) == limits,
             "Runner control-service resource limits are missing",
         )
         mounts = [mount for mount in container.get("Mounts", []) if mount.get("Type") != "tmpfs"]
@@ -1305,10 +1623,39 @@ class Installer:
             not thread.is_alive() and observed and not failures,
             "Could not verify live job isolation and limits",
         )
-        remaining = self.run_command(
-            [*self.worker, "ps", "--all", "--quiet"], stage="Verify job cleanup"
-        ).stdout.strip()
-        require(not remaining, "Dedicated daemon still has job containers; no cleanup was forced")
+        # Only one-shot jobs end with the smoke: sessions and their egress proxy
+        # live on the same daemon. The runner removes a job just after it answers.
+        deadline = time.monotonic() + 30
+        while self.run_command(
+            [*self.worker, "ps", "--all", "--quiet", "--filter", JOB_FILTER],
+            stage="Verify job cleanup",
+        ).stdout.strip():
+            require(
+                time.monotonic() < deadline,
+                "Dedicated daemon still has job containers; no cleanup was forced",
+            )
+            time.sleep(1)
+
+    def wait_for_control_api(self, runner: str) -> None:
+        # Uvicorn may need a short startup window; 401 without a token means it answers.
+        for attempt_number in range(15):
+            health = self.run_command(
+                [
+                    *DOCKER,
+                    "exec",
+                    runner,
+                    "python3",
+                    "-c",
+                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+                ],
+                stage="Wait for private control API",
+                check=False,
+            )
+            if health.returncode != 0 and "HTTP Error 401" in health.stderr:
+                return
+            if attempt_number == 14:
+                raise SetupError("Private control API did not start")
+            time.sleep(1)
 
     def remove_new_runner(self) -> None:
         """Clean up by verified container identity, never by parsing a failed override."""
@@ -1361,6 +1708,11 @@ class Installer:
             )
 
     def rollback(self) -> None:
+        require(
+            not self.state.get("last_upgrade"),
+            "A deploy upgraded this runner since setup; the setup snapshot no longer applies "
+            "(see docs/runbook.md, workspace runner)",
+        )
         self.deadline = time.monotonic() + 600
         attempt = Path(self.state.get("active_attempt", ""))
         require(
@@ -1543,25 +1895,8 @@ class Installer:
         )
         runner = self.verify_runner(files)
         # Do not switch backend configuration until the isolated control service
-        # can actually run code. Uvicorn may need a short startup window.
-        for attempt_number in range(15):
-            health = self.run_command(
-                [
-                    *DOCKER,
-                    "exec",
-                    runner,
-                    "python3",
-                    "-c",
-                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
-                ],
-                stage="Wait for private control API",
-                check=False,
-            )
-            if health.returncode != 0 and "HTTP Error 401" in health.stderr:
-                break
-            if attempt_number == 14:
-                raise SetupError("Private control API did not start")
-            time.sleep(1)
+        # can actually run code.
+        self.wait_for_control_api(runner)
         self.smoke(runner)
         self.backend()
         self.switch_backend(files)
@@ -1621,6 +1956,10 @@ class Installer:
         recovering = state_path.exists() and read_json(state_path).get("phase") == "applying"
         self.preflight(recovering=recovering)
         self.load_state()
+        require(
+            self.state.get("phase") != "upgrading",
+            "A runner upgrade was interrupted; the next deploy restores the previous runner",
+        )
         if self.state.get("phase") == "applying":
             report("Resuming interrupted setup: restoring its saved backend before retry.")
             self.rollback()
@@ -1639,7 +1978,8 @@ class Installer:
             )
             current = self.backend()
             self.research_location(current, configured=True)
-            self.verify_runner(self.config_files(current))
+            limits = runner_limits(json.loads(OVERRIDE.read_text()))
+            self.verify_runner(self.config_files(current), limits=limits)
             self.smoke("mizan-backend")
             self.health()
             self.public_health()
@@ -1673,9 +2013,555 @@ class Installer:
             raise
 
 
+def error_text(error: BaseException) -> str:
+    return str(error) if isinstance(error, SetupError) else type(error).__name__
+
+
+def now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+class Upgrade(Installer):
+    """Move the managed runner to the deployed commit's images, or keep the previous one.
+
+    deploy_production.sh runs this after the new backend is live, under its own
+    deploy.lock. Only the workspace-runner service, its override and its images
+    change; the account, daemon, systemd limits, backend and frontend are
+    verified, never edited. After the switch the runner must pass the one-shot
+    smoke and a real sandbox session (files, npm, PyPI, confinement); anything
+    less restores the previous override and verifies the previous runner.
+    """
+
+    def __init__(
+        self,
+        sha: str,
+        commands: Commands | None = None,
+        *,
+        inputs_digest: str | None = None,
+        with_browser: bool = False,
+    ):
+        super().__init__(sha, commands)
+        self.inputs_digest = inputs_digest
+        self.with_browser = with_browser
+        self.deadline = time.monotonic() + UPGRADE_SECONDS
+        # True once the installed runner verified, before anything changed.
+        self.verified = False
+        self.pending_override = STATE_ROOT / "override.pending"
+        # The override before the last upgrade: what a failed one is restored to.
+        self.previous_override = STATE_ROOT / "override.previous"
+
+    def run(self, registry_token: str) -> str:
+        """``absent``, ``current`` or ``upgraded``; otherwise UpgradeRolledBack/Unrecovered."""
+        path = STATE_ROOT / "state.json"
+        if not path.exists() and not path.is_symlink():
+            report("Workspace runner: no managed runner on this host; nothing to upgrade.")
+            return "absent"
+        try:
+            return self.upgrade(registry_token)
+        except (UpgradeRolledBack, UpgradeUnrecovered):
+            raise
+        except (SetupError, OSError, ValueError, KeyError) as error:
+            cause = error_text(error)
+            self.discard_pulled()
+            if self.verified:
+                raise UpgradeRolledBack(
+                    f"Runner not upgraded: {cause}; the previous runner was kept and verified"
+                ) from None
+            raise UpgradeUnrecovered(
+                f"Runner not upgraded: {cause}; the installed runner was not verified"
+            ) from None
+
+    def upgrade(self, registry_token: str) -> str:
+        private_directory(STATE_ROOT)
+        self.state = read_json(STATE_ROOT / "state.json")
+        require(self.state.get("manager") == MANAGER, "Runner state belongs to another installer")
+        phase = self.state.get("phase")
+        if phase in ("preparing", "rolled_back"):
+            report("Workspace runner: its setup never completed here; nothing to upgrade.")
+            return "absent"
+        require(phase != "applying", "An interrupted setup is pending; see docs/runner-setup.md")
+        require(phase in ("ready", "upgrading"), "Unknown runner state")
+        self.preflight(recovering=True)
+        require(
+            self.state.get("production_id") == self.production_id,
+            "Production daemon identity changed",
+        )
+        self.research_dir = self.state.get("research_dir")
+        validate_research_option(self.research_dir)
+        try:
+            pwd.getpwnam(ACCOUNT)
+        except KeyError:
+            raise SetupError("The managed service account is missing") from None
+        self.account()
+        self.verify_daemon()
+        files = self.config_files(self.backend())
+        require(str(OVERRIDE) in files, "The backend no longer uses the managed runner override")
+        if phase == "upgrading":
+            report("Workspace runner: an earlier upgrade was interrupted; restoring its runner.")
+            try:
+                self.restore_previous(files)
+            except (SetupError, OSError, ValueError, KeyError) as error:
+                raise UpgradeUnrecovered(
+                    f"Restoring the runner after an interrupted upgrade was not verified: "
+                    f"{error_text(error)}"
+                ) from None
+            raise UpgradeRolledBack(
+                "An interrupted upgrade was restored and verified; this deploy did not upgrade"
+            )
+        self.discard_pulled()
+        require(
+            OVERRIDE.is_file()
+            and not OVERRIDE.is_symlink()
+            and digest(OVERRIDE) == self.state.get("override_sha256"),
+            "Runner override changed outside the installer",
+        )
+        old_document = json.loads(OVERRIDE.read_text())
+        old_limits = runner_limits(old_document)
+        old_images = self.state["images"]
+        self.verify_runner(files, images=old_images, limits=old_limits)
+        self.verified = True
+        if (
+            self.inputs_digest
+            and self.state.get("inputs_digest") == self.inputs_digest
+            and old_limits == CURRENT_LIMITS
+            and (old_images.get("browser") or not self.with_browser)
+        ):
+            self.session_phase("check", secrets.token_hex(16), secrets.token_hex(16))
+            report(
+                f"Workspace runner current ({self.state.get('sha', '')[:12]}): its inputs did "
+                "not change; health and sessions answered."
+            )
+            return "current"
+        self.prune_previous()
+        browser = bool(old_images.get("browser")) or self.with_browser
+        require(
+            shutil.disk_usage("/var/lib").free >= (6 if browser else 4) * 1024**3,
+            "Not enough free disk for the new runner images",
+        )
+        new_images = self.pull_generation(
+            registry_token, browser=browser, browser_required=bool(old_images.get("browser"))
+        )
+        token = self.token(create=False)
+        new_document = workspace_override(
+            self.state["uid"],
+            self.state["gid"],
+            token,
+            runtime_image=new_images["runtime"]["id"],
+            runner_image=new_images["runner"]["id"],
+            research_dir=self.research_dir,
+            browser_image=(new_images.get("browser") or {}).get("id"),
+        )
+        validate_override_transition(old_document, new_document, token)
+        content = compose_document(new_document)
+        protected_write(self.pending_override, content)
+        pending = [str(self.pending_override) if name == str(OVERRIDE) else name for name in files]
+        self.run_command(
+            [*self.compose(pending), "config", "--quiet"],
+            stage="Validate the upgraded runner configuration",
+        )
+        self.switch(files, content, new_images)
+        previous_sha = self.state.get("sha")
+        self.state.update(
+            sha=self.sha,
+            images=new_images,
+            previous_images=old_images,
+            inputs_digest=self.inputs_digest,
+            phase="ready",
+            override_sha256=digest(OVERRIDE),
+            verified_at=now(),
+            last_upgrade={"result": "upgraded", "from": previous_sha, "to": self.sha, "at": now()},
+        )
+        self.state.pop("upgrade", None)
+        self.state.pop("pending_override_sha256", None)
+        self.save()
+        self.pending_override.unlink(missing_ok=True)
+        report(
+            f"Workspace runner upgraded to {self.sha}: sandbox sessions, npm and PyPI egress, "
+            "confinement and one-shot isolation verified."
+        )
+        return "upgraded"
+
+    def switch(self, files: list[str], content: str, new_images: dict) -> None:
+        previous = OVERRIDE.read_text()
+        protected_write(self.previous_override, previous)
+        # The intent is durable before the live override changes: an interrupted
+        # run is restored from this checkpoint by the next deploy.
+        self.state["upgrade"].update(
+            stage="switching",
+            previous_override_sha256=hashlib.sha256(previous.encode()).hexdigest(),
+        )
+        self.state["pending_override_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+        self.state["phase"] = "upgrading"
+        self.save()
+        try:
+            protected_write(OVERRIDE, content)
+            self.up_runner(files, "Start the upgraded private runner")
+            runner = self.verify_runner(files, images=new_images, limits=CURRENT_LIMITS)
+            self.wait_for_control_api(runner)
+            self.smoke("mizan-backend")
+            runtime = new_images["runtime"]["id"]
+            proxies = {runtime}
+            if not self.retire_proxy(keep=runtime):
+                proxies.add(self.state["images"]["runtime"]["id"])
+            self.session_smoke({runtime}, proxies)
+            self.health()
+            self.public_health()
+        except (SetupError, OSError, ValueError, KeyError) as error:
+            cause = error_text(error)
+            report(f"Workspace runner upgrade failed: {cause}; restoring the previous runner.")
+            try:
+                self.restore_previous(files)
+            except (SetupError, OSError, ValueError, KeyError) as restore_error:
+                raise UpgradeUnrecovered(
+                    f"Runner upgrade failed ({cause}); restoring the previous runner was not "
+                    f"verified ({error_text(restore_error)}); the next deploy retries the restore"
+                ) from None
+            raise UpgradeRolledBack(
+                f"Runner upgrade failed ({cause}); the previous runner was restored and verified"
+            ) from None
+
+    def restore_previous(self, files: list[str]) -> None:
+        self.deadline = time.monotonic() + RESTORE_SECONDS
+        upgrade = self.state.get("upgrade") or {}
+        if upgrade.get("smoke_key"):
+            self.remove_smoke_session(upgrade["smoke_key"])
+        require(
+            self.previous_override.is_file() and not self.previous_override.is_symlink(),
+            "The saved previous runner override is missing",
+        )
+        previous = self.previous_override.read_text()
+        saved = upgrade.get("previous_override_sha256")
+        require(
+            hashlib.sha256(previous.encode()).hexdigest() == saved,
+            "The saved previous runner override changed",
+        )
+        if OVERRIDE.exists() or OVERRIDE.is_symlink():
+            require(
+                not OVERRIDE.is_symlink()
+                and digest(OVERRIDE) in {saved, self.state.get("pending_override_sha256")},
+                "Runner override changed during the upgrade; refusing to overwrite it",
+            )
+        protected_write(OVERRIDE, previous)
+        self.state["override_sha256"] = digest(OVERRIDE)
+        self.save()
+        self.up_runner(files, "Restore the previous private runner")
+        runner = self.verify_runner(
+            files, images=self.state["images"], limits=runner_limits(json.loads(previous))
+        )
+        self.wait_for_control_api(runner)
+        self.smoke("mizan-backend")
+        self.retire_proxy(keep=self.state["images"]["runtime"]["id"])
+        self.discard_generation(upgrade.get("images") or {})
+        self.state["phase"] = "ready"
+        self.state.pop("upgrade", None)
+        self.state.pop("pending_override_sha256", None)
+        self.state["last_upgrade"] = {"result": "rolled_back", "to": self.sha, "at": now()}
+        self.save()
+        self.pending_override.unlink(missing_ok=True)
+        report("Workspace runner: previous runner restored; one-shot runs and isolation verified.")
+
+    def up_runner(self, files: list[str], stage: str) -> None:
+        self.run_command(
+            [
+                *self.compose(files),
+                "up",
+                "-d",
+                "--no-deps",
+                "--no-build",
+                "--pull",
+                "never",
+                "workspace-runner",
+            ],
+            stage=stage,
+            timeout=180,
+        )
+
+    def pull_generation(
+        self, registry_token: str, *, browser: bool, browser_required: bool
+    ) -> dict:
+        images: dict = {}
+        self.state["upgrade"] = {"stage": "pulling", "sha": self.sha, "images": images}
+        self.save()
+        roles = [("runner", DOCKER), ("runtime", self.worker)]
+        if browser:
+            roles.append(("browser", self.worker))
+        with tempfile.TemporaryDirectory(prefix="registry-", dir=STATE_ROOT) as directory:
+            env = {"DOCKER_CONFIG": directory}
+            self.run_command(
+                [
+                    *DOCKER,
+                    "login",
+                    "ghcr.io",
+                    "--username",
+                    REPOSITORY.split("/")[0],
+                    "--password-stdin",
+                ],
+                stage="Authenticate private image pulls",
+                stdin=registry_token + "\n",
+                env=env,
+            )
+            for role, daemon in roles:
+                source = f"ghcr.io/{REPOSITORY}/workspace-{role}:{self.sha}"
+                optional = role == "browser" and not browser_required
+                try:
+                    pulled = self.run_command(
+                        [*daemon, "pull", source],
+                        stage=f"Pull tested workspace {role} image",
+                        env=env,
+                        timeout=900 if role == "browser" else 600,
+                        check=not optional,
+                    )
+                except SetupError:
+                    if not optional:
+                        raise
+                    pulled = subprocess.CompletedProcess([], 1, "", "")
+                if pulled.returncode:
+                    report("Workspace runner: browser image not available; Shahid stays off.")
+                    continue
+                image = json.loads(
+                    self.run_command(
+                        [*daemon, "image", "inspect", source],
+                        stage=f"Pin workspace {role} image content",
+                    ).stdout
+                )[0]
+                require(
+                    bool(re.fullmatch(r"sha256:[a-f0-9]{64}", image["Id"])),
+                    "Unexpected pulled image identity",
+                )
+                images[role] = {
+                    "id": image["Id"],
+                    "source_tag": source,
+                    "repo_digests": image.get("RepoDigests", []),
+                }
+                self.save()
+        self.state["upgrade"]["stage"] = "pulled"
+        self.save()
+        return images
+
+    def kept_ids(self) -> set[str]:
+        return {
+            item["id"]
+            for generation in (self.state.get("images"), self.state.get("previous_images"))
+            for item in (generation or {}).values()
+        }
+
+    def discard_generation(self, images: dict, *, keep: set[str] | None = None) -> None:
+        """Remove a generation's images by their recorded tags; never one still kept."""
+        keep = self.kept_ids() if keep is None else keep
+        for role, item in images.items():
+            if item.get("id") in keep:
+                continue
+            tag = item.get("source_tag", "")
+            require(bool(IMAGE_TAG.fullmatch(tag)), "Recorded runner image tag is not reviewed")
+            daemon = DOCKER if role == "runner" else self.worker
+            found = self.run_command(
+                [*daemon, "image", "inspect", "--format", "{{.Id}}", tag],
+                stage="Check a runner image before removing it",
+                check=False,
+            )
+            if found.returncode or found.stdout.strip() != item.get("id"):
+                continue  # Gone already, or the tag names another image now.
+            removed = self.run_command(
+                [*daemon, "image", "rm", tag],
+                stage="Remove an unused runner image generation",
+                check=False,
+            )
+            if removed.returncode:
+                report(f"Workspace runner: the {role} image {tag} is still in use; kept.")
+
+    def prune_previous(self) -> None:
+        """Before a pull, drop the generation older than the installed one (two stay)."""
+        previous = self.state.get("previous_images")
+        if not previous:
+            return
+        installed = {item["id"] for item in self.state["images"].values()}
+        self.discard_generation(previous, keep=installed)
+        self.state.pop("previous_images")
+        self.save()
+
+    def discard_pulled(self) -> None:
+        """Images pulled by a run that stopped before the switch are not kept."""
+        upgrade = self.state.get("upgrade")
+        if not upgrade or self.state.get("phase") != "ready" or not self.worker:
+            return
+        try:
+            self.discard_generation(upgrade.get("images") or {})
+        except (SetupError, OSError, ValueError, KeyError):
+            report("Workspace runner: unused pulled images could not be removed; kept.")
+        self.state.pop("upgrade", None)
+        with contextlib.suppress(SetupError, OSError):
+            self.save()
+        with contextlib.suppress(OSError):
+            self.pending_override.unlink(missing_ok=True)
+
+    def retire_proxy(self, *, keep: str) -> bool:
+        """Remove an idle egress proxy running another image; the runner recreates it."""
+        found = self.run_command(
+            [*self.worker, "inspect", "--type", "container", SANDBOX_PROXY],
+            stage="Inspect the sandbox egress proxy",
+            check=False,
+        )
+        if found.returncode:
+            return True
+        proxy = json.loads(found.stdout)[0]
+        if proxy.get("Image") == keep:
+            return True
+        require(
+            (proxy["Config"].get("Labels") or {}).get("mizan.egress") == "proxy"
+            and bool(re.fullmatch(r"[a-f0-9]{64}", proxy.get("Id", ""))),
+            "An unmanaged container holds the egress proxy's name",
+        )
+        if self.run_command(
+            [*self.worker, "ps", "--quiet", "--filter", "label=mizan.session"],
+            stage="Check for open sandbox sessions",
+        ).stdout.split():
+            report("Workspace runner: sessions are open; their egress proxy keeps its image.")
+            return False
+        self.run_command(
+            [*self.worker, "rm", "--force", proxy["Id"]],
+            stage="Replace the idle sandbox egress proxy",
+        )
+        return True
+
+    def session_phase(self, phase: str, key: str, nonce: str) -> dict:
+        result = self.run_command(
+            [*DOCKER, "exec", "-i", "mizan-backend", "python3", "-", phase, key, nonce],
+            stage=f"Sandbox session check: {phase}",
+            stdin=SESSION_SMOKE_SCRIPT,
+            timeout=540 if phase == "probe" else 200,
+            check=False,
+        )
+        try:
+            verdict = json.loads(result.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            verdict = None
+        if not isinstance(verdict, dict):
+            verdict = {}
+        if verdict.get("ok") is True and result.returncode == 0:
+            return verdict
+        message = SESSION_STEPS.get(str(verdict.get("step")), "the session check gave no verdict")
+        status = verdict.get("status")
+        suffix = f" (HTTP {status})" if isinstance(status, int) and status else ""
+        raise SetupError(f"Sandbox sessions: {message}{suffix}")
+
+    def session_smoke(self, runtimes: set[str], proxies: set[str]) -> None:
+        """A real session: confinement checked from outside, files and egress from inside."""
+        key, nonce = secrets.token_hex(16), secrets.token_hex(16)
+        self.state["upgrade"]["smoke_key"] = key
+        self.save()
+        try:
+            started = self.session_phase("start", key, nonce)
+            (container,) = self.docker_json(
+                "inspect", "--type", "container", SESSION_PREFIX + key, worker=True
+            )
+            require(container.get("Image") in runtimes, "Session runs an unexpected image")
+            limits = session_limits(started.get("limits") or {})
+            validate_session_container(container, key, limits)
+            (proxy,) = self.docker_json(
+                "inspect", "--type", "container", SANDBOX_PROXY, worker=True
+            )
+            validate_egress_proxy(proxy, proxies)
+            (network,) = self.docker_json("network", "inspect", SESSION_NETWORK + key, worker=True)
+            validate_session_network(network, key, {container["Id"], proxy["Id"]})
+            self.session_phase("probe", key, nonce)
+        except SetupError:
+            self.report_egress_refusals()
+            raise
+        finally:
+            clean = self.remove_smoke_session(key)
+        require(clean, "The session check left its container, volume or network behind")
+        self.state["upgrade"].pop("smoke_key", None)
+        self.save()
+
+    def remove_smoke_session(self, key: str) -> bool:
+        """Stop the check's session through the runner; remove by name what it left."""
+        require(bool(re.fullmatch(r"[a-f0-9]{32}", key)), "Invalid session check key")
+        with contextlib.suppress(SetupError):
+            self.session_phase("stop", key, "0" * 32)
+        name, network = SESSION_PREFIX + key, SESSION_NETWORK + key
+        try:
+            left = [
+                (kind, target)
+                for kind, target in (("container", name), ("volume", name), ("network", network))
+                if self.run_command(
+                    [*self.worker, kind, "inspect", target],
+                    stage="Verify the session check's cleanup",
+                    check=False,
+                ).returncode
+                == 0
+            ]
+            for kind, target in left:
+                if kind == "network":
+                    self.run_command(
+                        [*self.worker, "network", "disconnect", "--force", target, SANDBOX_PROXY],
+                        stage="Remove what the session check left",
+                        check=False,
+                    )
+                    self.run_command(
+                        [*self.worker, "network", "rm", target],
+                        stage="Remove what the session check left",
+                        check=False,
+                    )
+                else:
+                    self.run_command(
+                        [*self.worker, kind, "rm", "--force", target],
+                        stage="Remove what the session check left",
+                        check=False,
+                    )
+        except SetupError:
+            return False
+        return not left
+
+    def report_egress_refusals(self) -> None:
+        """The proxy logs one line per refused or unreachable host; nothing else."""
+        try:
+            logs = self.run_command(
+                [*self.worker, "logs", "--tail", "40", SANDBOX_PROXY],
+                stage="Read the egress proxy's refusals",
+                check=False,
+            )
+        except SetupError:
+            return
+        lines: list[str] = []
+        for line in (logs.stdout + logs.stderr).splitlines():
+            line = line.strip()
+            if re.fullmatch(r"egress (denied|unreachable) [A-Za-z0-9.:-]{1,253}", line):
+                if line not in lines:
+                    lines.append(line)
+        if lines:
+            report("Workspace runner: " + "; ".join(lines[-6:]), error=True)
+
+
+def verify_inherited_lock(descriptor: int, path: Path) -> None:
+    """The deploy script holds deploy.lock on this descriptor for its whole run.
+
+    Taking the lock again on the same open file succeeds only for its holder; it
+    is never released here, since that would release the deploy's lock too.
+    """
+    try:
+        held = os.fstat(descriptor)
+        named = os.stat(path, follow_symlinks=False)
+    except OSError:
+        raise SetupError("The inherited deployment lock is not open") from None
+    require(
+        stat.S_ISREG(named.st_mode)
+        and stat.S_ISREG(held.st_mode)
+        and (held.st_dev, held.st_ino) == (named.st_dev, named.st_ino),
+        "The inherited descriptor is not the deployment lock",
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise SetupError("Another process holds the deployment lock") from None
+
+
 @contextlib.contextmanager
-def deployment_lock():
+def deployment_lock(inherited_fd: int | None = None):
     require(os.geteuid() == 0, "Installer requires root")
+    if inherited_fd is not None:
+        verify_inherited_lock(inherited_fd, DEPLOY_STATE / "deploy.lock")
+        yield
+        return
     if not DEPLOY_STATE.exists():
         DEPLOY_STATE.mkdir(mode=0o700)
     require(
@@ -1702,17 +2588,52 @@ def deployment_lock():
         os.close(descriptor)
 
 
-def main() -> int:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--repository", default=REPOSITORY)
-    parser.add_argument("--rollback", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--rollback", action="store_true")
+    mode.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Move an installed runner to this commit's images (run by deploy_production.sh)",
+    )
     parser.add_argument(
         "--research-dir",
         choices=[RESEARCH_DIR],
         help="Also persist research configuration during the same backend recreation",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--inherited-lock-fd",
+        type=int,
+        help="With --upgrade: the descriptor on which the caller holds deploy.lock",
+    )
+    parser.add_argument(
+        "--inputs-digest",
+        help="With --upgrade: digest of the runner's inputs; an unchanged one skips the pull",
+    )
+    parser.add_argument(
+        "--with-browser",
+        action="store_true",
+        help="With --upgrade: also pull the browser sandbox image (Shahid)",
+    )
+    args = parser.parse_args(argv)
+    if args.upgrade and args.research_dir:
+        parser.error("--upgrade keeps the installed research setting")
+    if not args.upgrade and (
+        args.inherited_lock_fd is not None or args.inputs_digest or args.with_browser
+    ):
+        parser.error("--inherited-lock-fd, --inputs-digest and --with-browser need --upgrade")
+    if args.inherited_lock_fd is not None and not 3 <= args.inherited_lock_fd <= 255:
+        parser.error("--inherited-lock-fd must be a descriptor from 3 to 255")
+    if args.inputs_digest is not None and not re.fullmatch(r"[a-f0-9]{64}", args.inputs_digest):
+        parser.error("--inputs-digest must be 64 lowercase hex characters")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_arguments(argv)
 
     def interrupted(_signal, _frame):
         raise SetupError("Setup interrupted; resume from the managed checkpoint")
@@ -1727,7 +2648,12 @@ def main() -> int:
         os.umask(0o077)
         for signal_number in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signal_number, interrupted)
-        with deployment_lock():
+        with deployment_lock(args.inherited_lock_fd):
+            if args.upgrade:
+                Upgrade(
+                    args.sha, inputs_digest=args.inputs_digest, with_browser=args.with_browser
+                ).run(credential)
+                return 0
             installer = Installer(args.sha, research_dir=args.research_dir)
             if args.rollback:
                 installer.preflight(recovering=True)
@@ -1735,10 +2661,15 @@ def main() -> int:
                 installer.rollback()
             else:
                 installer.setup(credential)
+    except UpgradeRolledBack as error:
+        report(f"Workspace runner NOT upgraded: {error}", error=True)
+        return NOT_UPGRADED
+    except UpgradeUnrecovered as error:
+        report(f"Workspace runner needs attention: {error}", error=True)
+        return NOT_VERIFIED
     except (SetupError, OSError, ValueError, KeyError) as error:
-        message = str(error) if isinstance(error, SetupError) else type(error).__name__
-        report(f"Workspace runner setup stopped: {message}", error=True)
-        return 1
+        report(f"Workspace runner setup stopped: {error_text(error)}", error=True)
+        return NOT_VERIFIED if args.upgrade else 1
     return 0
 
 
