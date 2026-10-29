@@ -210,12 +210,55 @@ def extract_files(reply: str, allowed: set[str], *, new_files: bool = False) -> 
     """
     found: dict[str, str] = {}
     for info, body in re.findall(r"```[ \t]*([^\n`]*)\n(.*?)```", reply, re.DOTALL):
+        if _SEARCH in body:
+            continue  # an edit block (extract_edits), never a whole file
         for token in re.split(r"[\s:=\"'`]+", info):
             path = _local(token)
             if path in allowed or (new_files and editable(path)):
                 found[path] = body.strip("\n") + "\n"
                 break
     return found
+
+
+_SEARCH = "<<<<<<< SEARCH"
+_EDIT_PAIR = re.compile(r"<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n?>>>>>>> REPLACE", re.DOTALL)
+
+
+def extract_edits(reply: str, allowed: set[str]) -> dict[str, list[tuple[str, str]]]:
+    """Edit blocks (a path, then SEARCH/REPLACE pairs) for files the project has."""
+    found: dict[str, list[tuple[str, str]]] = {}
+    for info, body in re.findall(r"```[ \t]*([^\n`]*)\n(.*?)```", reply, re.DOTALL):
+        if _SEARCH not in body:
+            continue
+        for token in re.split(r"[\s:=\"'`]+", info):
+            path = _local(token)
+            if path in allowed:
+                found.setdefault(path, []).extend(_EDIT_PAIR.findall(body))
+                break
+    return {path: pairs for path, pairs in found.items() if pairs}
+
+
+def apply_edits(
+    edits: dict[str, list[tuple[str, str]]], originals: dict[str, str]
+) -> tuple[dict[str, str], list[str]]:
+    """Each file with its edits applied in order, every SEARCH matching exactly once;
+    a file any of whose edits does not match is left as it was and named."""
+    from fastapi import HTTPException
+
+    from workspace.store import replaced
+
+    changed: dict[str, str] = {}
+    refused: list[str] = []
+    for path, pairs in edits.items():
+        text = originals[path]
+        try:
+            for old, new in pairs:
+                text, _count = replaced(text, old, new)
+        except HTTPException as exc:
+            refused.append(f"{path}: {exc.detail}")
+            continue
+        changed[path] = text
+    return changed, refused
 
 
 _PATH_COMMENT = re.compile(

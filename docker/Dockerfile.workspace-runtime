@@ -14,6 +14,11 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+# esbuild parses TypeScript and JSX for MIZAN's checks of edited files (tadbir/engine.py).
+RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
+    if [ -f /run/proxy-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem; fi; \
+    npm install --global --no-fund --no-audit esbuild@0.28.2 \
+    && esbuild --version
 COPY --chmod=444 backend/workspace/runtime.py /runtime.py
 COPY --chmod=444 backend/workspace/session_agent.py /session_agent.py
 COPY --chmod=444 backend/workspace/egress_proxy.py /egress_proxy.py

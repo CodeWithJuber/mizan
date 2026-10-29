@@ -65,7 +65,7 @@ from . import (
     wazn,
 )
 from .express import cautions, fence, furqan, phrase
-from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable
+from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable, long_files
 
 MODES = ("mizan", "hybrid", "strict", "llm")
 _RENEWALS: set[asyncio.Task] = set()  # instruction renewals running in the background
@@ -100,6 +100,21 @@ def orchestration_mode() -> str:
 def full_orchestration() -> bool:
     """MIZAN performs every action; the model may only answer in words."""
     return orchestration_mode() == "mizan"
+
+
+TYPED_KINDS = {"ts", "tsx", "jsx", "mts", "cts"}
+
+
+def _esbuild(paths: list[str]) -> str:
+    """A shell command that parses each file with esbuild (the project's own copy, else
+    a global one), stopping at the first error; 127 when there is none."""
+    files = " ".join(shlex.quote(path) for path in paths)
+    return (
+        "if [ -x node_modules/.bin/esbuild ]; then E=node_modules/.bin/esbuild; "
+        "elif command -v esbuild >/dev/null 2>&1; then E=esbuild; "
+        "else echo 'esbuild is not in the sandbox' >&2; exit 127; fi; "
+        f'for f in {files}; do "$E" "$f" --log-level=error --outfile=/dev/null || exit 1; done'
+    )
 
 
 class Defer(Exception):  # noqa: N818 - control flow, not an error
@@ -1386,7 +1401,7 @@ class Tadbir:
                 reply = await self.lisan.fix_files(task, blueprint.label, files, problem)
             except LisanUnavailable:
                 break
-            fixed = project.extract_files(reply, set(files))
+            fixed, _refused = self._repairs(reply, files, set(files))
             if not fixed:
                 break
             rounds += 1
@@ -1532,11 +1547,13 @@ class Tadbir:
                     amanah.taint([{**item, "source": f"file {path}"} for item in findings])
                 for_lisan[path] = clean
         await self._step()
+        # A long file changes only by edit blocks; a whole-file reply for it is dropped.
+        long = long_files(for_lisan)
         try:
             reply = await self.lisan.edit_files(request, for_lisan, paths, u.language)
         except LisanUnavailable as exc:
             return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
-        changes = self._changed_files(reply, paths, originals, request)
+        changes, refused = self._changed_files(reply, paths, originals, request, long)
         if not changes:
             # Lisan put the file in a block without its path, or gave a snippet: ask once
             # more, reminding it how MIZAN reads files.
@@ -1546,7 +1563,7 @@ class Tadbir:
                 )
             except LisanUnavailable as exc:
                 return Outcome(phrase("project_failed", u.language, reason=str(exc)), False, {})
-            changes = self._changed_files(reply, paths, originals, request)
+            changes, refused = self._changed_files(reply, paths, originals, request, long)
         held: list[str] = []
         if carriers:
             # A file tried to instruct the AI: only what the user named may be created,
@@ -1563,6 +1580,8 @@ class Tadbir:
                 trace.event("verify", "amanah", held=held)
         if not changes:
             text = phrase("edit_nothing", u.language)
+            if refused:
+                text += "\n\n" + phrase("edit_refused", u.language, items="; ".join(refused))
             if held:
                 text += "\n\n" + phrase(
                     "amanah_held_files", u.language, files=", ".join(f"`{p}`" for p in held)
@@ -1585,9 +1604,15 @@ class Tadbir:
                 )
             except LisanUnavailable:
                 break
-            fixed = project.extract_files(reply, set(changes)) or project.infer_file(
-                reply, {path: current[path] for path in changes}, list(changes)
-            )
+            fixed, _refused = self._repairs(reply, current, set(changes))
+            if not fixed:
+                fixed = {
+                    path: content
+                    for path, content in project.infer_file(
+                        reply, {path: current[path] for path in changes}, list(changes)
+                    ).items()
+                    if path not in long_files({path: current[path]})
+                }
             if not fixed:
                 break
             rounds += 1
@@ -1631,6 +1656,8 @@ class Tadbir:
         if held:
             listed = ", ".join(f"`{path}`" for path in held)
             lines += ["", f"_{phrase('amanah_held_files', u.language, files=listed)}_"]
+        if refused:
+            lines += ["", f"_{phrase('edit_refused', u.language, items='; '.join(refused))}_"]
         if problem and not verified:
             lines += ["", fence(problem[-1500:], "text")]
         return Outcome(
@@ -1641,12 +1668,41 @@ class Tadbir:
         )
 
     def _changed_files(
-        self, reply: str, paths: list[str], originals: dict[str, str], request: str
-    ) -> dict[str, str]:
-        files = project.extract_files(reply, set(paths), new_files=True) or project.infer_file(
+        self,
+        reply: str,
+        paths: list[str],
+        originals: dict[str, str],
+        request: str,
+        long: set[str],
+    ) -> tuple[dict[str, str], list[str]]:
+        """The files Lisan's reply changes, and the edits that did not apply. A file Lisan
+        saw as long never comes back whole: only its edit blocks count."""
+        whole = project.extract_files(reply, set(paths), new_files=True) or project.infer_file(
             reply, originals, fahm.named_files(request)
         )
-        return {path: content for path, content in files.items() if content != originals.get(path)}
+        edited, refused = project.apply_edits(
+            project.extract_edits(reply, set(originals)), originals
+        )
+        files = {path: content for path, content in whole.items() if path not in long}
+        files.update(edited)
+        changed = {path: c for path, c in files.items() if c != originals.get(path)}
+        return changed, refused
+
+    @staticmethod
+    def _repairs(
+        reply: str, current: dict[str, str], targets: set[str]
+    ) -> tuple[dict[str, str], list[str]]:
+        """Lisan's corrections of ``targets``: whole files for short ones, edit blocks."""
+        long = long_files({path: current[path] for path in targets if path in current})
+        whole = {
+            path: content
+            for path, content in project.extract_files(reply, targets).items()
+            if path not in long
+        }
+        edited, refused = project.apply_edits(
+            project.extract_edits(reply, targets & set(current)), current
+        )
+        return {**whole, **edited}, refused
 
     async def _save_edit(self, path: str, content: str, shas: dict[str, str | None]) -> str | None:
         params: dict = {"path": path, "content": content}
@@ -1689,6 +1745,11 @@ class Tadbir:
                 commands.append((path, f"node --check {shlex.quote(path)}"))
             elif kind == "py":
                 commands.append((path, f"python -m py_compile {shlex.quote(path)}"))
+        typed = sorted(p for p in changes if p.rsplit(".", 1)[-1].lower() in TYPED_KINDS)
+        if typed:
+            # One esbuild run reads every TypeScript/JSX file (syntax, not types); exit 127
+            # means the sandbox has no esbuild, reported as not run.
+            commands.insert(0, ("types:" + ", ".join(typed), _esbuild(typed)))
         if any(p.endswith(".py") for p in changes) and any(
             p.split("/")[-1].startswith("test_") and p.endswith(".py") for p in known
         ):
@@ -1697,6 +1758,8 @@ class Tadbir:
             label = (
                 phrase("check_tests", "en")
                 if subject == "tests"
+                else phrase("check_compiles", "en", path=subject[6:])
+                if subject.startswith("types:")
                 else phrase("check_syntax", "en", path=subject)
             )
             if not self._allowed("workspace_run"):
@@ -1707,6 +1770,9 @@ class Tadbir:
             )
             if run.get("error"):
                 checks.append((label, None, str(run["error"])[:200]))
+                continue
+            if subject.startswith("types:") and run.get("exit_code") == 127:
+                checks.append((label, None, "esbuild is not in the sandbox"))
                 continue
             passed = run.get("exit_code") == 0
             checks.append((label, passed, ""))

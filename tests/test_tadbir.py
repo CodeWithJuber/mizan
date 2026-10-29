@@ -11,6 +11,7 @@ from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
 from tadbir import amal, calc, fahm, hadith, majlis, project, qasd, quran, taallum, waqt
+from tadbir import lisan as lisan_module
 from tadbir.express import furqan
 
 
@@ -1490,6 +1491,136 @@ async def test_a_build_request_in_a_used_project_becomes_an_edit(agent, monkeypa
     assert files["about.html"] == "<p>About</p>\n"
     assert not any(name == "workspace_create" for name, _ in calls)
     assert "about.html" in result["result"]
+
+
+def long_project(agent, monkeypatch):
+    """A project whose app.js (about 30 KB) is longer than Lisan may rewrite whole."""
+    body = "".join(f"function step{i}() {{ return {i}; }}\n" for i in range(1000))
+    files = {"index.html": PAGE, "app.js": body + "// the end of app.js\n"}
+    calls = []
+
+    async def fake(name, params):
+        calls.append((name, deepcopy(params)))
+        if name == "workspace_glob":
+            return {"files": [{"path": p, "size": len(c)} for p, c in files.items()], "total": 2}
+        if name == "workspace_read":
+            return {"path": params["path"], "content": files[params["path"]], "sha256": "sha"}
+        if name == "workspace_write":
+            files[params["path"]] = params["content"]
+            return {"path": params["path"], "sha256": "new"}
+        if name == "workspace_run":
+            return {"stdout": "", "stderr": "", "exit_code": 0}
+        return {"id": "c1"}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", fake)
+    monkeypatch.setattr("workspace.context.bound_workspace_id", lambda: "w9")
+    names = ["workspace_glob", "workspace_read", "workspace_write", "workspace_run"]
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {}} for n in names],
+    )
+    assert len(files["app.js"]) > lisan_module.WHOLE_FILE_CHARS
+    return files, calls
+
+
+async def test_a_long_file_changes_only_by_edit_blocks_and_keeps_its_tail(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    agent.ai_client = ScriptedProvider(
+        [
+            "```app.js edit\n<<<<<<< SEARCH\nfunction step7() { return 7; }\n=======\n"
+            "function step7() { return 'seven'; }\n>>>>>>> REPLACE\n```"
+        ]
+    )
+    result = await agent.execute("Update the step7 function in app.js")
+    assert files["app.js"] == before.replace("return 7;", "return 'seven';", 1)
+    assert files["app.js"].endswith("// the end of app.js\n")
+    shown = agent.ai_client.requests[0]["messages"][0]["content"]
+    assert "long file: change it only with edit blocks" in shown
+    assert "+function step7() { return 'seven'; }" in result["result"]
+
+
+async def test_a_whole_file_reply_for_a_long_file_is_never_saved(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    cut = before[:12000] + "function added() {}\n"  # the model repeated only part of it
+    agent.ai_client = ScriptedProvider([f"```app.js\n{cut}```", f"```app.js\n{cut}```"])
+    await agent.execute("app.js mein ek added function jodo")
+    assert files["app.js"] == before
+    assert not any(name == "workspace_write" for name, _ in calls)
+
+
+async def test_an_edit_that_does_not_match_exactly_once_is_refused(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    agent.ai_client = ScriptedProvider(
+        [
+            "```app.js edit\n<<<<<<< SEARCH\nreturn\n=======\nyield\n>>>>>>> REPLACE\n```",
+            "```app.js edit\n<<<<<<< SEARCH\nno such line\n=======\nx\n>>>>>>> REPLACE\n```",
+        ]
+    )
+    result = await agent.execute("app.js mein step7 function badlo")
+    assert files["app.js"] == before
+    # Hinglish request, Hinglish note: which file's edits did not apply, and why.
+    assert (
+        "laagu nahi hue" in result["result"]
+        and "app.js: old_string was not found" in result["result"]
+    )
+
+
+async def test_a_reply_cut_at_the_output_limit_saves_nothing(agent, monkeypatch):
+    files, calls = project_tools(agent, monkeypatch, [])
+    before = dict(files)
+    cut = LLMResponse(
+        [ContentBlock(type="text", text="```style.css\nbutton { color: re")],
+        model="fixture",
+        stop_reason="max_tokens",
+    )
+    agent.ai_client = ScriptedProvider([cut])
+    result = await agent.execute("Button ka color red karo")
+    assert files == before
+    assert not any(name == "workspace_write" for name, _ in calls)
+    assert "output limit" in result["result"]
+
+
+async def test_typescript_files_are_parsed_by_esbuild_or_reported_not_run(agent, monkeypatch):
+    from tadbir.engine import Tadbir
+
+    runs = [{"stdout": "", "stderr": "esbuild is not in the sandbox", "exit_code": 127}]
+    fake = tools(agent, monkeypatch, workspace_run=runs)
+    agent._last_tool_results = []  # set by execute(); this calls the check directly
+    changes = {"src/App.tsx": "export const App = () => <p/>;\n", "src/util.ts": "export {};\n"}
+    checks, problem = await Tadbir(agent)._check_edit(changes, changes, sorted(changes))
+    assert checks == [
+        ("`src/App.tsx, src/util.ts` parses (esbuild)", None, "esbuild is not in the sandbox")
+    ]
+    assert problem == ""
+    command = fake.calls[0][1]["command"]
+    assert "node_modules/.bin/esbuild" in command and "src/App.tsx src/util.ts" in command
+    fake.results["workspace_run"] = [{"stdout": "", "stderr": "x.ts:1:5: ERROR", "exit_code": 1}]
+    checks, problem = await Tadbir(agent)._check_edit(
+        {"x.ts": "let = ;"}, {"x.ts": "let = ;"}, ["x.ts"]
+    )
+    assert checks[0][1] is False and "x.ts:1:5: ERROR" in problem
+
+
+def test_edit_blocks_are_read_and_applied_exactly():
+    reply = (
+        "```a.py edit\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n"
+        "<<<<<<< SEARCH\ny = 1\n=======\n>>>>>>> REPLACE\n```\n"
+        "```b.py\nprint('whole')\n```"
+    )
+    edits = project.extract_edits(reply, {"a.py", "b.py"})
+    assert edits == {"a.py": [("x = 1", "x = 2"), ("y = 1", "")]}
+    # An edit block is never taken for a whole file.
+    assert project.extract_files(reply, {"a.py", "b.py"}) == {"b.py": "print('whole')\n"}
+    changed, refused = project.apply_edits(edits, {"a.py": "x = 1\ny = 1\nz = 1\n"})
+    assert changed == {"a.py": "x = 2\n\nz = 1\n"} and refused == []
+    twice = {"a.py": [("1", "2")]}
+    changed, refused = project.apply_edits(twice, {"a.py": "1 1"})
+    assert changed == {} and "matches 2 places" in refused[0]
+    assert lisan_module.long_files({"s": "x" * 12000, "l": "x" * 12001}) == {"l"}
 
 
 def test_only_safe_project_paths_are_written():

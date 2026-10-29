@@ -568,6 +568,22 @@ class TestRealRuntime:
         assert result["exit_code"] == 0 and expected in result["stdout"]
         assert result["export_error"] is False
 
+    def test_typescript_is_parsed_by_the_runtimes_esbuild(self):
+        from tadbir.engine import _esbuild
+
+        good = base64.b64encode(b"export const n: number = 1;\n").decode()
+        bad = base64.b64encode(b"export const n: number = ;\n").decode()
+        passed = execute(
+            {"language": "shell", "command": _esbuild(["good.ts"]), "timeout_s": 30,
+             "files": {"good.ts": good}}
+        )  # fmt: skip
+        assert passed["exit_code"] == 0, passed["stderr"]
+        failed = execute(
+            {"language": "shell", "command": _esbuild(["good.ts", "bad.ts"]), "timeout_s": 30,
+             "files": {"good.ts": good, "bad.ts": bad}}
+        )  # fmt: skip
+        assert failed["exit_code"] == 1 and "bad.ts" in failed["stderr"]
+
     def test_generated_file_and_no_keys_network_host_mounts(self):
         code = "import os,socket,pathlib\nassert not os.getenv('MIZAN_WORKSPACE_RUNNER_TOKEN')\nassert not pathlib.Path('/var/run/docker.sock').exists()\nassert not pathlib.Path('/data/mizan.db').exists()\ntry:\n socket.create_connection(('1.1.1.1',443),timeout=1)\n raise AssertionError('network unexpectedly available')\nexcept OSError: pass\npathlib.Path('result.txt').write_text('saved')\nprint('isolated')"
         result = execute({"language": "python", "command": code, "timeout_s": 10, "files": {}})
