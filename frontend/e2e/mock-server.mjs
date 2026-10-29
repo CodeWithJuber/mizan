@@ -357,6 +357,8 @@ const server = http.createServer(async (req, res) => {
   if (path === "/api/chat/sessions/list") {
     const q = (url.searchParams.get("q") || "").toLowerCase();
     const project = url.searchParams.get("workspace_id");
+    // A slow lookup of a project's chat: a message typed meanwhile must not be lost.
+    if (project) await sleep(1500);
     const rows = [...sessions.entries()]
       .filter(([, chat]) => chat.messages.length && (!project || chat.workspace_id === project))
       .map(([id, chat]) => ({
