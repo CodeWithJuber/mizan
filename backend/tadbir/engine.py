@@ -65,7 +65,7 @@ from . import (
     wazn,
 )
 from .express import cautions, fence, furqan, phrase
-from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable, long_files
+from .lisan import INSTRUCTIONS, Lisan, LisanUnavailable, language_name, long_files
 
 MODES = ("mizan", "hybrid", "strict", "llm")
 _RENEWALS: set[asyncio.Task] = set()  # instruction renewals running in the background
@@ -137,6 +137,12 @@ class Outcome:
     isnad: list[dict] = field(default_factory=list)
     # Pictures MIZAN made for this answer (a browser screenshot), by kept id.
     images: list[dict] = field(default_factory=list)
+    # How much of ``text`` reached the chat already (the model's words in a coding
+    # handoff stream as it writes them); the rest is streamed when the outcome is done.
+    streamed: int = 0
+    # The text holds the model's own words: Sidq checks them even when MIZAN verified
+    # the work.
+    model_words: bool = False
 
 
 class Plan:
@@ -179,15 +185,117 @@ class Tadbir:
         self._stream = None
         self._nested = False
         self._assignment: str | None = None
+        # The agent's own ReAct loop (BaseAgent._model_turn), for a coding request beyond
+        # MIZAN's recipes; None where no one is there to approve its changes.
+        self._model: Callable[[str], Awaitable[str]] | None = None
 
     # ── entry point ──────────────────────────────────────────────────────
 
     async def handle(
-        self, task: str, stream_callback=None, history: list[dict] | None = None
+        self,
+        task: str,
+        stream_callback=None,
+        history: list[dict] | None = None,
+        model_turn: Callable[[str], Awaitable[str]] | None = None,
     ) -> dict | None:
         mode = orchestration_mode()
         if mode == "llm" or not isinstance(task, str) or not task.strip():
             return None
+        self._model = model_turn
+        self._stream = stream_callback
+        started = time.time()
+        if _button() and self._handoff_ready():
+            # A button ("Approve plan and run", "Fix with MIZAN"), never the words: the
+            # model works on the chat's project with its tools, and MIZAN checks it.
+            parts, example = None, None
+            understanding = fahm.Understanding(
+                "workspace_agent",
+                fahm.detect_language(task),
+                1.0,
+                # A new project is named from the request the plan answered.
+                {
+                    "understood_by": "button",
+                    "name": project.project_name(_earlier_request(history) or task),
+                },
+            )
+        else:
+            task, parts, understanding, example = await self._understand(task, history)
+        handler = getattr(self, f"_{understanding.intent}", None)
+        trace.event(
+            "understand",
+            understanding.intent,
+            language=understanding.language,
+            confidence=understanding.confidence,
+            entities=understanding.to_dict()["entities"],
+            by=understanding.entities.get("understood_by", "fahm"),
+        )
+        try:
+            if parts is not None:
+                outcome = await self._compound(parts)
+            elif understanding.intent == "converse" or handler is None:
+                # Words only: in "mizan" mode the agent answers with no tools.
+                return None
+            else:
+                outcome = await self._delegate(task, understanding)
+        except Defer:
+            return None
+        self._learn(task, understanding, example, outcome)
+        if self.plan is not None:
+            await self.plan.finish()
+        trace.event(
+            "plan",
+            "result",
+            steps=[item["content"] for item in self.plan.items] if self.plan else [],
+            verified=outcome.verified,
+            tool_backed=outcome.tool_backed,
+            facts=outcome.facts,
+        )
+        if stream_callback and outcome.text[outcome.streamed :]:
+            await stream_callback(outcome.text[outcome.streamed :])
+        status = (
+            "verified_by_mizan"
+            if outcome.verified
+            else "evidence_observed"
+            if outcome.tool_backed
+            else "unverified_answer"
+        )
+        return {
+            "success": True,
+            "result": outcome.text,
+            "duration_ms": (time.time() - started) * 1000,
+            "agent": self.agent.name,
+            "metrics_kind": "mizan_orchestration",
+            "completion_status": status,
+            "answer_delivered": True,
+            "task_verified": outcome.verified,
+            "capture_eligible": False,
+            "orchestrator": "mizan",
+            **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
+            **({"images": outcome.images} if outcome.images else {}),
+            **({"model_words": True} if outcome.model_words else {}),
+            # A project made for this request: the chat is bound to it.
+            **(
+                {"workspace_id": outcome.facts["workspace_id"]}
+                if isinstance(outcome.facts, dict) and outcome.facts.get("workspace_id")
+                else {}
+            ),
+            "orchestration": {
+                "by": "mizan",
+                "mode": mode,
+                **understanding.to_dict(),
+                "plan": deepcopy(self.plan.items) if self.plan else [],
+                "verified": outcome.verified,
+                "language_model_calls": self.lisan.calls,
+                "agents": self.workers,
+            },
+        }
+
+    async def _understand(
+        self, task: str, history: list[dict] | None
+    ) -> tuple[str, list[tuple[str, fahm.Understanding]] | None, fahm.Understanding, dict | None]:
+        """What the request asks, by Fahm, the chat, and (for wording) Lisan: the request
+        (a follow-up takes up an earlier one), its parts, the understanding, and the
+        learned example it came from, if any."""
         # Reading the request is CPU work (naive Bayes over every clause): it runs
         # off the event loop, so other chats and /api/health never wait for it.
         overlay = self._learned_intents()
@@ -259,8 +367,6 @@ class Tadbir:
             said = _said_in_chat(task, history)
             if said:
                 understanding.entities["said"] = said
-        self._stream = stream_callback
-        started = time.time()
         if parts is not None:
             understanding = fahm.Understanding(
                 "compound",
@@ -314,80 +420,14 @@ class Tadbir:
                             "understood_by": "lisan_plan",
                         },
                     )
-        handler = getattr(self, f"_{understanding.intent}", None)
-        trace.event(
-            "understand",
-            understanding.intent,
-            language=understanding.language,
-            confidence=understanding.confidence,
-            entities=understanding.to_dict()["entities"],
-            by=understanding.entities.get("understood_by", "fahm"),
-        )
-        try:
-            if parts is not None:
-                outcome = await self._compound(parts)
-            elif understanding.intent == "converse" or handler is None:
-                # Words only: in "mizan" mode the agent answers with no tools.
-                return None
-            else:
-                outcome = await self._delegate(task, understanding)
-        except Defer:
-            return None
-        self._learn(task, understanding, example, outcome)
-        if self.plan is not None:
-            await self.plan.finish()
-        trace.event(
-            "plan",
-            "result",
-            steps=[item["content"] for item in self.plan.items] if self.plan else [],
-            verified=outcome.verified,
-            tool_backed=outcome.tool_backed,
-            facts=outcome.facts,
-        )
-        if stream_callback:
-            await stream_callback(outcome.text)
-        status = (
-            "verified_by_mizan"
-            if outcome.verified
-            else "evidence_observed"
-            if outcome.tool_backed
-            else "unverified_answer"
-        )
-        return {
-            "success": True,
-            "result": outcome.text,
-            "duration_ms": (time.time() - started) * 1000,
-            "agent": self.agent.name,
-            "metrics_kind": "mizan_orchestration",
-            "completion_status": status,
-            "answer_delivered": True,
-            "task_verified": outcome.verified,
-            "capture_eligible": False,
-            "orchestrator": "mizan",
-            **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
-            **({"images": outcome.images} if outcome.images else {}),
-            # A project made for this request: the chat is bound to it.
-            **(
-                {"workspace_id": outcome.facts["workspace_id"]}
-                if isinstance(outcome.facts, dict) and outcome.facts.get("workspace_id")
-                else {}
-            ),
-            "orchestration": {
-                "by": "mizan",
-                "mode": mode,
-                **understanding.to_dict(),
-                "plan": deepcopy(self.plan.items) if self.plan else [],
-                "verified": outcome.verified,
-                "language_model_calls": self.lisan.calls,
-                "agents": self.workers,
-            },
-        }
+        return task, parts, understanding, example
 
     # ── Majlis: the agent that fits does the work ────────────────────────
 
     def _runner(self, worker: Any) -> Tadbir:
         runner = Tadbir(worker, lisan=self.lisan, coordinator=self.coordinator)
         runner._stream = self._stream
+        runner._model = self._model
         return runner
 
     def _credit(self, worker: Any, intent: str, outcome: Outcome, language: str) -> Outcome:
@@ -574,8 +614,9 @@ class Tadbir:
             result = trace.injected_fault(name) or await self.agent._execute_tool_safe(name, params)
             for delay in RETRY_DELAYS:
                 # A passing failure (busy, 503, rate limit) of a tool that only reads
-                # or runs: wait and call it again rather than give up.
-                if not _transient(name, result):
+                # or runs: wait and call it again rather than give up, unless calling
+                # again would ask the person again.
+                if not _transient(name, result) or _asks(name, params):
                     break
                 trace.event("recover", "retry", tool=name, error=str(result["error"])[:200])
                 await asyncio.sleep(delay)
@@ -1341,6 +1382,10 @@ class Tadbir:
     async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
         from workspace.context import bound_workspace_id
 
+        if u.entities.get("kind") == "stack":
+            # Beyond MIZAN's blueprints (React, a server): the model builds it with the
+            # project's tools, and MIZAN checks what it made.
+            return await self._workspace_agent(task, u)
         blueprint = project.BLUEPRINTS[u.entities["kind"]]
         needed = ["workspace_write"] + ([] if bound_workspace_id() else ["workspace_create"])
         if not self.lisan.available or not all(self._allowed(name) for name in needed):
@@ -1520,8 +1565,14 @@ class Tadbir:
         listing = await self._tool("workspace_glob", {"pattern": "**/*"})
         files = [f for f in listing.get("files", []) if isinstance(f, dict)]
         paths = [str(f.get("path", "")) for f in files]
+        if listing.get("error"):
+            raise Defer
+        if not project.recipe_sized(files) and self._handoff_ready():
+            # More than Lisan can see at once, or a project that installs and builds
+            # (package.json): the model works on it with the project's tools.
+            return await self._workspace_agent(task, u)
         chosen = project.relevant_files(files, request)
-        if listing.get("error") or not chosen:
+        if not chosen:
             raise Defer
         await self._begin(
             [
@@ -1667,6 +1718,185 @@ class Tadbir:
             succeeded=not problem,
         )
 
+    # ── Coding beyond MIZAN's recipes: the model with the project's tools ──
+
+    def _handoff_ready(self) -> bool:
+        """The model may work on a project here: someone is reading this chat and answers
+        its approval prompts, the setting is on, and the project's tools are allowed."""
+        from agents.events import has_event_sink
+        from security.approvals import current_approvals
+
+        approvals = current_approvals()
+        if approvals is None or not approvals.interactive or approvals.deferred:
+            return False
+        # Plan mode reads the project and proposes; it changes nothing.
+        needed = _HANDOFF_READS + (() if approvals.mode == "plan" else _HANDOFF_WRITES)
+        return bool(
+            os.getenv("MIZAN_WORKSPACE_AGENT", "on").strip().lower() != "off"
+            and full_orchestration()
+            and self._model is not None
+            and not self._nested
+            and has_event_sink()
+            and all(self._allowed(name) for name in needed)
+        )
+
+    async def _workspace_agent(self, task: str, u: fahm.Understanding) -> Outcome:
+        """The model works on the chat's project (made here when the chat has none) with
+        the project's tools only, every change through the chat's permission mode; MIZAN
+        then checks each file that changed, gives the model one turn to repair what
+        failed, and reports what its checks found. Verified only when checks ran and
+        all passed."""
+        from agents.base import workspace_only
+        from security.approvals import current_approvals
+        from security.auth import current_user_id
+        from workspace import context as workspace_context
+
+        if not self._handoff_ready() or self._model is None:
+            raise Defer
+        model = self._model
+        owner = current_user_id() or ""
+        workspace_id = workspace_context.bound_workspace_id()
+        create = not workspace_id
+        planning = getattr(current_approvals(), "mode", "") == "plan"
+        if create and (planning or not self._allowed("workspace_create")):
+            raise Defer  # a plan for a project that does not exist yet is words
+        name = str(u.entities.get("name") or project.project_name(task))
+        if planning:
+            assert workspace_id is not None
+            await self._begin(["Read the project and propose a plan (model)"])
+            with workspace_context.running_in(owner, workspace_id), workspace_only(workspace_id):
+                words = await model(_handoff_prompt(task, {}, u.language))
+            return Outcome(
+                words,
+                False,
+                {"plan": True},
+                tool_backed=False,
+                provenance="evidence",
+                streamed=len(words),
+                model_words=True,
+            )
+        await self._begin(
+            [
+                *(["Create the project and bind it to this chat (MIZAN)"] if create else []),
+                "Work on the project with its tools (model)",
+                "Check the changed files; one repair turn if a check fails (MIZAN)",
+                "Save a checkpoint and reply",
+            ]
+        )
+        binding = None
+        if create:
+            made = await self._tool("workspace_create", {"name": name})
+            if tool_result_failed(made) or not made.get("id"):
+                reason = str(made.get("error") or "the project could not be created")
+                return Outcome(phrase("project_failed", u.language, reason=reason), False, {})
+            workspace_id = str(made["id"])
+            binding = workspace_context.bind_workspace(workspace_id)
+            await emit("workspace", {"workspace_id": workspace_id, "name": name, "created": True})
+            await self._step()
+        assert workspace_id is not None
+        prompt = _handoff_prompt(task, _button(), u.language)
+        try:
+            with workspace_context.running_in(owner, workspace_id):
+                before = await asyncio.to_thread(_project_hashes, owner, workspace_id)
+                with workspace_only(workspace_id):
+                    words = await model(prompt)
+                await self._step()
+                after = await asyncio.to_thread(_project_hashes, owner, workspace_id)
+                checks, problem, changed, removed = await self._handoff_checks(
+                    owner, workspace_id, before, after
+                )
+                repaired = False
+                if problem:
+                    # One repair turn, the problems shown to the model as data.
+                    repaired = True
+                    with workspace_only(workspace_id):
+                        words += "\n\n" + await model(_repair_prompt(problem, u.language))
+                    after = await asyncio.to_thread(_project_hashes, owner, workspace_id)
+                    checks, problem, changed, removed = await self._handoff_checks(
+                        owner, workspace_id, before, after
+                    )
+                await self._step()
+                if changed or removed:
+                    await self._tool(
+                        "workspace_checkpoint",
+                        {"workspace_id": workspace_id, "message": f"MIZAN: {task[:60]}"},
+                    )
+        finally:
+            if binding is not None:
+                workspace_context.reset_workspace(binding)
+        verified = bool(checks) and all(ok is True for _label, ok, _detail in checks)
+        lines = ["", "---", f"**{phrase('handoff_checked', u.language)}**"]
+        if changed:
+            listed = ", ".join(f"`{path}`" for path in changed[:20])
+            lines.append(phrase("handoff_changed", u.language, files=listed))
+        if removed:
+            listed = ", ".join(f"`{path}`" for path in removed[:20])
+            lines.append(phrase("handoff_removed", u.language, files=listed))
+        if not changed and not removed:
+            lines.append(phrase("handoff_nothing", u.language))
+        for label, ok, detail in checks:
+            mark = "✓" if ok else "✗" if ok is False else "–"
+            note = (
+                f" ({phrase('check_not_run', u.language, reason=detail)})"
+                if ok is None and detail
+                else ""
+            )
+            lines.append(f"- {mark} {label}{note}")
+        if repaired:
+            lines += ["", f"_{phrase('handoff_repaired', u.language)}_"]
+        if problem:
+            lines += ["", phrase("handoff_unverified", u.language), fence(problem[-1500:], "text")]
+        report = "\n".join(lines)
+        if self._stream:
+            await self._stream(report)
+        return Outcome(
+            words + report,
+            verified,
+            {
+                **({"workspace_id": workspace_id} if create else {}),
+                "files": changed,
+                "removed": removed,
+                "repairs": int(repaired),
+            },
+            succeeded=bool(changed or removed) and not problem,
+            provenance="evidence",
+            streamed=len(words + report),
+            model_words=True,
+        )
+
+    async def _handoff_checks(
+        self, owner: str, workspace_id: str, before: dict[str, str], after: dict[str, str]
+    ) -> tuple[list[tuple[str, bool | None, str]], str, list[str], list[str]]:
+        """MIZAN's checks of what the model changed, and whether the servers it started
+        still run: (checks, problems, changed paths, removed paths)."""
+        changed = sorted(path for path, sha in after.items() if before.get(path) != sha)
+        removed = sorted(set(before) - set(after))
+        texts = await asyncio.to_thread(_project_texts, owner, workspace_id, changed)
+        checks, problem = await self._check_edit(texts, texts, sorted(after))
+        problems = [problem] if problem else []
+        served = any(
+            item.get("name") == "workspace_sandbox"
+            and isinstance(item.get("result"), dict)
+            and item["result"].get("preview_url")
+            for item in getattr(self.coordinator, "_last_tool_results", []) or []
+        )
+        if served:
+            status = await self._tool(
+                "workspace_sandbox", {"workspace_id": workspace_id, "action": "status"}
+            )
+            for service in status.get("services") or []:
+                if not isinstance(service, dict):
+                    continue
+                port = service.get("port")
+                alive = bool(service.get("alive", True))
+                checks.append((phrase("check_service", "en", port=port), alive, ""))
+                if not alive:
+                    problems.append(
+                        f"The server on port {port} stopped (command: {service.get('command')})."
+                        " Read its logs with workspace_sandbox action=logs."
+                    )
+        return checks, "\n\n".join(problems), changed, removed
+
     def _changed_files(
         self,
         reply: str,
@@ -1754,7 +1984,12 @@ class Tadbir:
             p.split("/")[-1].startswith("test_") and p.endswith(".py") for p in known
         ):
             commands.append(("tests", "python -m unittest -q"))
-        for subject, command in commands[:6]:
+        commands = commands[:6]
+        for (subject, command), (code, output, error) in zip(
+            commands,
+            await self._run_checks([command for _subject, command in commands]),
+            strict=True,
+        ):
             label = (
                 phrase("check_tests", "en")
                 if subject == "tests"
@@ -1762,24 +1997,36 @@ class Tadbir:
                 if subject.startswith("types:")
                 else phrase("check_syntax", "en", path=subject)
             )
-            if not self._allowed("workspace_run"):
-                checks.append((label, None, "the sandbox is not available in this chat"))
+            if error:
+                checks.append((label, None, error))
                 continue
-            run = await self._tool(
-                "workspace_run", {"command": command, "language": "shell", "timeout_s": 60}
-            )
-            if run.get("error"):
-                checks.append((label, None, str(run["error"])[:200]))
-                continue
-            if subject.startswith("types:") and run.get("exit_code") == 127:
+            if subject.startswith("types:") and code == 127:
                 checks.append((label, None, "esbuild is not in the sandbox"))
                 continue
-            passed = run.get("exit_code") == 0
-            checks.append((label, passed, ""))
-            if not passed:
-                output = (str(run.get("stdout", "")) + str(run.get("stderr", ""))).strip()
+            checks.append((label, code == 0, ""))
+            if code != 0:
                 problems.append(f"`{command}` failed:\n{output[-2000:]}")
         return checks, "\n\n".join(problems)
+
+    async def _run_checks(self, commands: list[str]) -> list[tuple[int | None, str, str]]:
+        """Each check's (exit code, output, error), all in one sandbox run so the person
+        is asked once, not once per check."""
+        if not commands:
+            return []
+        if not self._allowed("workspace_run"):
+            return [(None, "", "the sandbox is not available in this chat")] * len(commands)
+        mark = f"@@mizan-check-{uuid.uuid4().hex}"
+        script = commands[0] if len(commands) == 1 else _batched(commands, mark)
+        run = await self._tool(
+            "workspace_run",
+            {"command": script, "language": "shell", "timeout_s": 60 * min(len(commands), 2)},
+        )
+        if run.get("error"):
+            return [(None, "", str(run["error"])[:200])] * len(commands)
+        if len(commands) == 1:
+            output = (str(run.get("stdout", "")) + str(run.get("stderr", ""))).strip()
+            return [(run.get("exit_code"), output, "")]
+        return _batch_results(str(run.get("stdout", "")), len(commands), mark)
 
     async def _save(self, workspace_id: str, path: str, content: str) -> str | None:
         saved = await self._tool(
@@ -2852,6 +3099,36 @@ def _size(count: int) -> str:
     return f"{count} bytes"
 
 
+def _batched(commands: list[str], mark: str) -> str:
+    """One shell script running each check in its own subshell, its output and exit
+    code between markers (``mark`` is new for each run, so output cannot forge one)."""
+    return "; ".join(
+        f"echo '{mark} {index}'; ( {command} ) 2>&1; echo \"{mark} {index} exit $?\""
+        for index, command in enumerate(commands)
+    )
+
+
+def _batch_results(stdout: str, count: int, mark: str) -> list[tuple[int | None, str, str]]:
+    results: list[tuple[int | None, str, str]] = []
+    for index in range(count):
+        found = re.search(
+            rf"^{mark} {index}\n(.*?)^{mark} {index} exit (\d+)$", stdout, re.M | re.S
+        )
+        if found is None:
+            results.append((None, "", "the check did not finish"))
+        else:
+            results.append((int(found.group(2)), found.group(1).strip(), ""))
+    return results
+
+
+def _asks(name: str, params: dict) -> bool:
+    """A call of this tool waits for the person reading the chat."""
+    from security.approvals import current_approvals
+
+    approvals = current_approvals()
+    return approvals is not None and approvals.needs_approval(name, params=params)
+
+
 def _transient(name: str, result: Any) -> bool:
     return (
         name in _RETRYABLE
@@ -2960,6 +3237,71 @@ def _ungrounded(result: dict, page: str) -> list[str]:
     if not names or any(name.lower() in folded for name in names):
         return []
     return [name[:80] for name in names]
+
+
+# What the model needs to work on a project; without them the request is answered in words.
+_HANDOFF_READS = ("workspace_glob", "workspace_read")
+_HANDOFF_WRITES = ("workspace_edit", "workspace_write")
+
+
+def _button() -> dict:
+    """What a button the person pressed with this message asked for (plan_approved, fix)."""
+    from security.approvals import current_approvals
+
+    return dict(getattr(current_approvals(), "button", None) or {})
+
+
+def _project_hashes(owner: str, workspace_id: str) -> dict[str, str]:
+    """Every file of the project (not .git) by SHA-256 of its bytes."""
+    import hashlib
+
+    from workspace.store import WorkspaceStore
+
+    files = WorkspaceStore(owner).files(workspace_id)
+    return {path: hashlib.sha256(data).hexdigest() for path, data in files.items()}
+
+
+def _project_texts(owner: str, workspace_id: str, paths: list[str]) -> dict[str, str]:
+    """The changed text files MIZAN can check (not binary, vendored or build output)."""
+    from workspace.store import WorkspaceStore
+
+    store = WorkspaceStore(owner)
+    texts: dict[str, str] = {}
+    for path in paths:
+        if not project.editable(path):
+            continue
+        try:
+            texts[path] = store.read_bytes(workspace_id, path).decode("utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+    return texts
+
+
+def _handoff_prompt(task: str, button: dict, language: str) -> str:
+    """The person's request as the model reads it, with what a button sent and the
+    language MIZAN read it in (Lughah), which the reply is written in."""
+    reply = f"\n\n(Reply to the person in {language_name(language)}.)"
+    fix = button.get("fix")
+    if isinstance(fix, dict) and str(fix.get("error") or "").strip():
+        source = str(fix.get("source") or "preview")
+        return (
+            f"{task}\n\nThe {source} showed this error; find its cause in the project and "
+            f"fix it:\n{amanah.fence(str(fix['error'])[:8000], source)}{reply}"
+        )
+    if button.get("plan_approved"):
+        return (
+            f"{task}\n\nThe person approved the plan in your previous answer: carry it out "
+            f"now in the project.{reply}"
+        )
+    return task + reply
+
+
+def _repair_prompt(problem: str, language: str) -> str:
+    return (
+        "MIZAN checked the files you changed and this failed. Fix the cause in the project "
+        "(the files, not the check), then say what you changed in "
+        f"{language_name(language)}:\n" + amanah.fence(problem[-6000:], "MIZAN's checks")
+    )
 
 
 def _qasd_label(task: str, u: fahm.Understanding, source: str | None) -> str | None:

@@ -8,6 +8,7 @@ from typing import cast
 
 from fastapi import HTTPException
 
+from agents.events import emit
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
 from workspace import session_client
@@ -271,6 +272,11 @@ class CodingWorkspaceSkill(SkillBase):
             result["note"] = (
                 "The preview opens in the Coding workspace Preview panel (Server tab). "
                 "Check workspace_sandbox action=logs if it does not load."
+            )
+            # The chat opens the server's preview as soon as it starts.
+            await emit(
+                "preview",
+                {"workspace_id": project, "port": int(port), "preview_url": result["preview_url"]},
             )
             return result
         if action == "stop_service":

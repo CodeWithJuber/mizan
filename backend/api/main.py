@@ -915,6 +915,13 @@ class ImageIn(BaseModel):
     data: str = Field(..., min_length=8, max_length=14_000_000)
 
 
+class CodingFix(BaseModel):
+    """An error the person asked MIZAN to fix ("Fix with MIZAN" on the preview)."""
+
+    source: str = Field("preview", pattern=r"^(preview|server|terminal)$")
+    error: str = Field(..., min_length=1, max_length=8000)
+
+
 class StreamChatMessage(ChatMessage):
     # One UUID per user action: a client that resends it after an ambiguous
     # network failure never creates a second model call. A client that omits
@@ -934,6 +941,19 @@ class StreamChatMessage(ChatMessage):
     # An evaluation: no recall of other chats, nothing learned, nothing captured
     # as a training candidate (memory/stateless.py). Reported in usage.memory.
     stateless: bool = False
+    # Buttons, never words (Fahm reads "go ahead" as conversation): the person approved
+    # the plan the last answer made, or asks MIZAN to fix an error its project showed.
+    # Either gives the request to the model with the project's tools (Tadbir).
+    plan_approved: bool = False
+    fix: CodingFix | None = None
+
+    @model_validator(mode="after")
+    def _coding_button(self) -> "StreamChatMessage":
+        if (self.plan_approved or self.fix) and self.permission_mode in (None, "plan"):
+            raise ValueError("plan_approved and fix need a permission_mode that allows changes")
+        if self.plan_approved and self.fix:
+            raise ValueError("Send plan_approved or fix, not both")
+        return self
 
 
 class IntegrationCreate(BaseModel):
@@ -2154,6 +2174,8 @@ async def stream_chat(
                 logger.warning("Unstarted chat receipt update unavailable")
         release_finished_run()
 
+    if req.fix and not workspace_id:
+        raise HTTPException(422, "Fix with MIZAN needs the chat's project")
     if req.workspace_id and req.workspace_id != stored_workspace:
         # Sending with a project binds the chat to it, so later messages keep it.
         await memory.bind_session_workspace(user.user_id, req.session_id, req.workspace_id)
@@ -2441,6 +2463,13 @@ async def stream_chat(
                     if req.permission_mode
                     else None
                 )
+                if approval_context is not None and (req.plan_approved or req.fix):
+                    # What the person pressed, for Tadbir to act on (never their words).
+                    approval_context.button = (
+                        {"plan_approved": True}
+                        if req.plan_approved
+                        else {"fix": req.fix.model_dump() if req.fix else {}}
+                    )
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:

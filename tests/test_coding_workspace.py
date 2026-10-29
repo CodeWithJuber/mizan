@@ -429,6 +429,40 @@ async def test_agent_tools_require_principal_and_respect_selected_project(storag
         reset_principal(principal)
 
 
+async def test_a_started_server_opens_its_preview_in_the_chat(storage, monkeypatch):
+    from agents import events
+    from skills.builtin import coding_workspace as skill_module
+
+    async def start_service(user_id, workspace_id, port, command, mode):
+        return {"port": port, "preview_url": f"/api/workspaces/preview/cap/{port}/"}
+
+    monkeypatch.setattr(skill_module.session_client, "start_service", start_service)
+    seen = []
+
+    async def sink(kind, payload):
+        seen.append((kind, payload))
+
+    principal = bind_principal(USER)
+    workspace = storage.create("App")["id"]
+    selected = bind_workspace(workspace)
+    try:
+        with events.bind_event_sink(sink):
+            await CodingWorkspaceSkill().sandbox(action="serve", port=5173, command="npm run dev")
+    finally:
+        reset_workspace(selected)
+        reset_principal(principal)
+    assert seen == [
+        (
+            "preview",
+            {
+                "workspace_id": workspace,
+                "port": 5173,
+                "preview_url": "/api/workspaces/preview/cap/5173/",
+            },
+        )
+    ]
+
+
 async def test_user_tool_dispatch_accepts_only_shipped_bound_handlers(storage):
     skill = CodingWorkspaceSkill()
     registry = SkillRegistry()

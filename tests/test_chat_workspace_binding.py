@@ -218,3 +218,42 @@ def _workspace_app(module, user):
     principal = TokenPayload(user.id, user.username, ["user"], 9999999999, 0, "t")
     app.dependency_overrides[module.require_auth] = lambda: principal
     return app
+
+
+def test_coding_buttons_need_a_mode_that_changes_and_fix_needs_a_project(api):
+    main, client, tokens, users, memory, agent = api
+    body = {"session_id": "chat-b", "content": "Fix this", "request_id": str(uuid.uuid4())}
+    error = {"source": "preview", "error": "TypeError: x is undefined"}
+    for extra in (
+        {"plan_approved": True},  # no permission mode: nobody would be asked
+        {"plan_approved": True, "permission_mode": "plan"},  # plan mode changes nothing
+        {"plan_approved": True, "fix": error, "permission_mode": "ask"},
+        {"fix": {"source": "elsewhere", "error": "x"}, "permission_mode": "ask"},
+    ):
+        response = client.post("/api/chat/stream", json={**body, **extra}, headers=tokens["amina"])
+        assert response.status_code == 422, extra
+    unbound = client.post(
+        "/api/chat/stream",
+        json={**body, "fix": error, "permission_mode": "ask"},
+        headers=tokens["amina"],
+    )
+    assert unbound.status_code == 422 and "project" in unbound.text
+
+
+def test_a_button_reaches_tadbir_on_the_chats_approval_context(api, monkeypatch):
+    main, client, tokens, users, memory, agent = api
+    from security import approvals
+
+    _, mine = project(users["amina"])
+    seen = []
+    original = agent.execute
+
+    async def execute(content, context, **callbacks):
+        seen.append(approvals.current_approvals().button)
+        return await original(content, context, **callbacks)
+
+    monkeypatch.setattr(agent, "execute", execute)
+    error = {"source": "server", "error": "ReferenceError: total is not defined"}
+    send(client, tokens["amina"], "chat-f", workspace_id=mine, fix=error, permission_mode="ask")
+    send(client, tokens["amina"], "chat-f", plan_approved=True, permission_mode="auto_edits")
+    assert seen == [{"fix": error}, {"plan_approved": True}]

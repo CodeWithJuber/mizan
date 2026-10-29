@@ -130,6 +130,9 @@ class ApprovalContext:
     interactive: bool = False
     # "Always in this chat" is kept for the chat's later messages (chat_always).
     persist_always: bool = False
+    # A button the person pressed with this message, never read from its words:
+    # {"plan_approved": True} or {"fix": {"source", "error"}} (Tadbir's coding handoff).
+    button: dict = field(default_factory=dict)
 
     def was_granted(self, tool_name: str, params: dict) -> bool:
         return self.granted == (tool_name, params_digest(params))

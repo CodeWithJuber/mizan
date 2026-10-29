@@ -2,9 +2,15 @@
 
 A chat can work on a coding project the way a coding agent does. It reads files,
 searches them, edits them in place, keeps a plan, and asks before it changes
-anything you did not allow. Everything runs inside the normal ReAct loop
-(`BaseAgent._agentic_loop`). Every tool call still passes Fitrah, Izn,
-provenance and Yaqin checks.
+anything you did not allow. Every tool call passes Fitrah, Izn, Amanah and
+approvals, and leaves a Sakk receipt.
+
+Who does the work depends on the request ([Tadbir](tadbir.md)). MIZAN's own
+recipes build and edit small projects themselves (`build_project`,
+`edit_project`). A request beyond them is given to the model with the
+project's tools only (see [Coding beyond MIZAN's recipes](#coding-beyond-mizans-recipes)).
+In `hybrid` and `llm` modes the model-driven ReAct loop
+(`BaseAgent._agentic_loop`) also takes what Tadbir does not recognise.
 
 ## Tools
 
@@ -19,8 +25,8 @@ When a chat is bound to a project (`workspace_id`), the agent gets these tools:
 | `workspace_grep` | Regex search across the project. Bounded: 300 matches, no nested quantifiers, binary files skipped. |
 | `workspace_run` | Run a command in the isolated runner (see `coding-workspaces.md`). Without a selected project it runs in the user's private Scratch project. |
 | `workspace_sandbox` | Start, stop or inspect the project's server sandbox session; run a dev server and get its preview URL (see below). |
-| `workspace_checkpoint`, `workspace_diff` | Keep a checkpoint (the five latest are retained) and review changes against one. |
-| `workspace_git` | `status`, `diff`, `log`, `init` or a local `commit`; no remote operations. |
+| `workspace_checkpoint`, `workspace_diff` | Keep a checkpoint (the 30 latest are kept; see `coding-workspaces.md`) and review changes against one. |
+| `workspace_git` | `status`, `diff`, `log`, `init` or a local `commit`; no remote operations. The three reads lock nothing and write nothing back. |
 | `workspace_artifact` | Publish a project file (code, HTML, Markdown or a raster image) as a saved artifact in the chat. |
 | `workspace_list`, `workspace_tree`, `workspace_create` | List projects, show a project's files, create one. `workspace_hardware` (administrators) reports the backend's CPU, memory and disk. |
 | `todo_write` | Keep a short plan. It is saved per chat and shown live in the UI. |
@@ -58,9 +64,21 @@ refused instead of asked.
 
 A tool that waits for you emits an `approval_request` event. Answer it with
 `POST /api/chat/approvals/{id}` and `{"decision": "allow" | "deny" | "always"}`.
-`always` allows that tool for the rest of the chat. No answer within 10 minutes
-counts as deny. `GET /api/chat/approvals` lists pending requests. Izn rules that
-return `APPROVAL_REQUIRED` now prompt you the same way instead of failing.
+No answer within 10 minutes counts as deny. `GET /api/chat/approvals` lists
+pending requests. Izn rules that return `APPROVAL_REQUIRED` now prompt you the
+same way instead of failing.
+
+- **Reads never ask.** `workspace_git` `status`/`diff`/`log` and
+  `workspace_sandbox` `status`/`logs` only observe, so they run without a
+  prompt, in plan mode too. The other actions of those tools still ask.
+- **"Always" lasts the chat.** It is kept for the chat's later messages
+  (`chat_always` in `held_actions.db`) and allows one action of an action tool
+  (`workspace_git:commit`), not the whole tool. `GET /api/chat/{id}/always`
+  lists what you allowed; `DELETE /api/chat/{id}/always/{key}` takes it back,
+  also for a run going on now. Erasing the chat erases them.
+- **The prompt shows the change.** For `workspace_edit` and `workspace_write`
+  the request carries `preview {path, diff, truncated, new_file}`, the diff the
+  change would make, worked out without writing anything.
 
 Requests without `permission_mode` from an interactive caller (REST) behave as before.
 
@@ -106,8 +124,11 @@ The chat stream (SSE and WebSocket) carries these extra events:
 | `tool_start` | `call_id`, `name`, bounded `input` |
 | `tool_result` | `call_id`, `ok`, `summary`, `duration_ms`, `diff` |
 | `todo` | the plan items |
-| `approval_request` / `approval_resolved` | the approval and its decision |
+| `approval_request` / `approval_resolved` | the approval and its decision (with `preview` for edits) |
 | `skill` | an activated Agent Skill |
+| `workspace` | `workspace_id`, `name`, `created`: MIZAN made a project and the chat is bound to it |
+| `checkpoint` | `workspace_id`, `checkpoint_id`, `checkpoint_kind`, `reused`, `created_at` (or `error`): the project as it was before this message |
+| `preview` | `workspace_id`, `port`, `preview_url`: a dev server started in the project's sandbox |
 
 Inputs and outputs are redacted: keys that look like tokens, passwords or
 cookies are replaced. Text is trimmed to 32 KB per value. Events go only to
@@ -115,6 +136,86 @@ transports that asked for them; REST callers and broadcasts never see them.
 
 The chat shows these as an **Activity** card: steps with diffs, the plan, and
 Allow / Always / Deny buttons. The card is kept with the finished message.
+
+## A chat and its project
+
+A chat is bound to at most one project (`chat_sessions.workspace_id`).
+
+- Sending a message with `workspace_id` binds the chat; later messages need no
+  id. `PATCH /api/chat/{id}` with `{"workspace_id": "<id>" | null}` binds or
+  unbinds (with `title` too, if sent). `GET /api/chat/{id}` and
+  `GET /api/chat/sessions/list` return it; `?workspace_id=` lists a project's
+  chats.
+- A project MIZAN makes in a chat that had none becomes the chat's project, so
+  "add dark mode" in the next message works on it. `chat_complete` carries
+  `workspace_id`.
+- Before each message of a bound chat MIZAN saves a `turn` checkpoint
+  ("Before a chat message", never the chat's words). Its id is kept in the user
+  message's metadata as `checkpoint {workspace_id, id}` and sent in
+  `chat_complete`, so the code can be put back to before that message. When
+  nothing changed since the last one, the same checkpoint is reused.
+- While a message runs the project is busy: deleting or restoring it answers 409.
+  A deleted project unbinds the chat on its next message; naming a deleted
+  project is a 404.
+
+## Edits never lose code
+
+MIZAN's own edit recipe shows Lisan each file whole up to 12,000 characters and
+up to 48,000 characters for a long one. A long file may change only by
+`SEARCH`/`REPLACE` blocks, each applied when its search text matches the file
+exactly once; a whole-file reply for a long file is dropped, and edits that do
+not apply are listed in the answer. A reply the model cut at its output limit
+saves nothing. Changed TypeScript, TSX and JSX files are parsed by esbuild in
+the sandbox (the project's own copy, else the one in the runtime image); where
+there is none the check says "not run".
+
+## Coding beyond MIZAN's recipes
+
+A React or Next.js app, a server, or a change to a project that installs and
+builds (`package.json`, `pyproject.toml`, `requirements.txt`), or one with more
+than eight text files or 60 KB, is more than MIZAN's own recipes can see and
+check. In the default `mizan` mode such a request is given to the model, with
+the project's tools only (Tadbir `_workspace_agent`):
+
+1. **Only when someone answers.** The chat must be read by a person who answers
+   approval prompts (the web chat with a `permission_mode`), and
+   `MIZAN_WORKSPACE_AGENT` must be `on` (System settings). AGI tests,
+   comparisons, watchers, schedules and channels never hand off; there the
+   request is answered in words.
+2. **Understood by evidence.** Fahm reads the request as one to make
+   something, but no blueprint fits; Lisan reads the wording (a question about
+   how to build is conversation) and MIZAN checks the mapping
+   (`kind: "stack"`).
+3. **MIZAN makes the project** when the chat has none and binds the chat to it
+   (`workspace` event).
+4. **The model works with the project's tools only**: tree, read, glob, grep,
+   edit, write, run, sandbox, git, diff, checkpoint and `todo_write`. They are
+   sent directly (no `mizan_discover_tools`); any other tool, or another
+   project, is refused. What the tools read from the project reaches the model
+   fenced as data, and an instruction found in it makes later changes ask. Each
+   change goes through the chat's permission mode as usual.
+5. **MIZAN checks what changed.** It compares the project's files before and
+   after, checks each changed file (references, CSS, JSON, `node --check`,
+   `py_compile`, esbuild, unit tests), and checks that a dev server the model
+   started still runs. When a check fails, the model gets one turn to repair
+   it, with the failure fenced as data.
+6. **The answer says what was checked.** The model's words, then MIZAN's check
+   section: the files changed or removed and each check. It is verified only
+   when checks ran and all passed; the model's words still go through Sidq. A
+   checkpoint is saved when files changed.
+
+In plan mode the model reads the project and writes a plan; nothing changes
+and nothing is checked. A plan for a project that does not exist yet is
+answered in words.
+
+Two fields stand for buttons, never words (Fahm reads "go ahead" as
+conversation). They need a `permission_mode` other than `plan`:
+
+- `plan_approved: true` ("Approve plan and run") carries out the plan of the
+  previous answer.
+- `fix: {"source": "preview" | "server" | "terminal", "error": "..."}` ("Fix
+  with MIZAN") asks for an error the project showed to be fixed; it needs the
+  chat's project. The error reaches the model fenced as data.
 
 ## The coding workspace (IDE)
 

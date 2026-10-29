@@ -883,6 +883,12 @@ converse	क्या तुम्हें भावनाएँ होती �
 converse	کیا تمہیں غصہ آتا ہے؟
 edit_project	[project] Ek FAQ page banao
 edit_project	[project] Pricing section bana do
+edit_project	[project] Change step7 in app.js so it returns 'seven'
+edit_project	[project] Replace every var with let in app.js
+edit_project	[project] App.tsx mein dark mode toggle jodo
+edit_project	[project] Update the React component to show the total
+edit_project	[project] Change the API URL in config.ts
+edit_project	[project] Add a route for the about page in the React app
 build_project	Ek blog page banao
 run_follow	Run this code
 run_follow	Run it
@@ -1019,6 +1025,23 @@ build_project	اصنع صفحة ويب مثل هذه الصورة
 build_project	Create a website about my bakery
 build_project	Make a game about space for kids
 build_project	Build a small app about healthy recipes
+build_project	Build me a simple to-do web app with add, done and delete
+build_project	Build me a todo app in React
+build_project	Make me a React app to track my expenses
+build_project	Create a Next.js blog for me
+build_project	Ek React dashboard banao charts ke saath
+build_project	React mein ek todo app bana do
+build_project	Build a Vue app that shows prayer times
+build_project	Create a TypeScript web app for my notes
+build_project	Make me a small web app where I can add tasks and mark them done
+build_project	Mujhe ek React app chahiye apne kharche likhne ke liye
+build_project	एक React ऐप बनाओ जिसमें टू डू लिस्ट हो
+build_project	Make me an Express API with two routes
+build_project	Build a Flask API for my notes
+build_project	Create a FastAPI backend with a users endpoint
+build_project	Node.js server banao jo JSON de
+build_project	Mera React app bana do jisme login ho
+build_project	Set up a Vite React project with a contact form
 converse	What is in this picture?
 converse	Describe this image for me
 converse	What does the text in this screenshot say?
@@ -1300,3 +1323,11 @@ converse	جزاك الله خيرا
 converse	ما شاء الله، عمل رائع
 converse	السلام عليكم يا صديقي
 converse	Allah aapko sehat de
+converse	How do I build a React app?
+converse	How do I make a todo app in React?
+converse	React app kaise banate hain?
+converse	How do I make a website?
+converse	How can I create a mobile app?
+converse	How do I start a Next.js project?
+converse	What do I need to build a web app?
+converse	How would you build a todo app in React?

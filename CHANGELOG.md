@@ -38,6 +38,12 @@ All notable changes to this project will be documented in this file.
   - Answers stream through streamdown: tables, code highlighted by Shiki, and math. Highlighting and math load only when an answer needs them.
   - A design system: shadcn/ui on Base UI, gold on a neutral base in light and dark, self-hosted fonts, and confirm dialogs and toasts in place of the browser's.
   - `PATCH /api/chat/{id}` renames a chat; `GET /api/chat/sessions/list?q=` searches titles and messages.
+- Coding, closer to a coding agent:
+  - A chat keeps its project (`chat_sessions.workspace_id`, `PATCH /api/chat/{id}`), and a project MIZAN makes in a chat becomes that chat's project, so the next message works on it. Before each message of a bound chat a checkpoint is saved; the user message records it.
+  - Checkpoints store each file once by SHA-256 and can be restored, whole or file by file, with an undo (`POST /api/workspaces/{id}/checkpoints/{cid}/restore`). The 30 newest are kept within 50 MiB; an unchanged project reuses its last one. `.git` is no longer part of the project's files.
+  - Projects can be renamed, deleted and exported as a zip. Delete and restore wait while a chat works in the project.
+  - Approvals: git and sandbox reads run without a prompt; "Always" lasts the chat and can be taken back (`/api/chat/{id}/always`); the prompt for an edit shows its diff.
+  - A request beyond MIZAN's recipes (a React or Next.js app, a server, a project with `package.json`) goes to the model with the project's tools only, in a chat someone is reading. MIZAN makes and binds the project, checks every changed file and that a started dev server still runs, gives one repair turn, and reports what it checked. `plan_approved` and `fix` on the chat request stand for the "Approve plan and run" and "Fix with MIZAN" buttons. `MIZAN_WORKSPACE_AGENT`.
 - Frontend checks in CI:
   - oxlint, with a cap on warnings and a ratchet so raw colour classes can only decrease;
   - Vitest specs;
@@ -54,6 +60,9 @@ All notable changes to this project will be documented in this file.
   - diagram-design SVGs for the README, in light and dark.
 
 ### Fixed
+- Editing a project no longer loses code. Files were cut to 12,000 characters (8,000 for repairs) before the model saw them, and its "complete" reply was saved, so the end of a longer file was deleted. Now a long file changes only by SEARCH/REPLACE blocks that match it exactly once, a whole-file reply for it is dropped, and a reply cut at the output limit saves nothing. TypeScript and JSX files are parsed by esbuild, added to the sandbox image.
+- "Build me a todo app in React", "Next.js mein blog banao" and "Make me an Express API" were read as conversation: 17 `build_project` and 6 `edit_project` seeds, balanced by 8 conversation seeds of questions about building ("How do I build a React app?").
+- Opening a finished chat from history no longer shows "the previous local run has ended".
 - Quran requests by topic or wording reach MIZAN's own search again (they had been answered as conversation since the decisive rule of #139):
   - 37 shorter `quran_search` seeds ("<term> kya hai", "ayah about <topic>", bare transliteration), balanced by 19 conversation seeds of everyday dhikr and 3 `build_project` seeds with "about";
   - held-out requests: "Sidratul muntaha kya hai", "Hasbunallahu wa nimal wakeel" and "ayah about patience and prayer" are now decisive;

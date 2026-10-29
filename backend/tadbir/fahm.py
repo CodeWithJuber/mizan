@@ -847,8 +847,11 @@ def validate_parsed(parsed: dict, message: str, language: str) -> Understanding 
         )
     elif intent == "build_project":
         kind = parsed.get("kind", "web")
-        if kind not in project.BLUEPRINTS or project.out_of_scope(message):
+        # A question about building ("how do I make a React app?") is answered in words.
+        if kind not in {*project.BLUEPRINTS, "stack"} or project.asks_how(message):
             return None
+        if project.beyond(message):
+            kind = "stack"  # React, a server: the model builds it with the project's tools
         entities.update(kind=kind, name=project.project_name(message))
     elif intent == "use_tool":
         need = str(parsed.get("need", "")).strip()[:200]

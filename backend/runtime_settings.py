@@ -82,6 +82,13 @@ SETTINGS: tuple[Setting, ...] = (
             "How many coding projects each user may keep. The Scratch project MIZAN runs "
             "chat code in and AGI test projects never count.",
             "10", minimum=1, maximum=200),
+    Setting("MIZAN_WORKSPACE_AGENT", "Model", "Coding beyond MIZAN's recipes", "choice",
+            "on: in a chat someone is reading, a coding request MIZAN's own recipes cannot "
+            "build (a React or Next.js app, a server, a project with package.json) is given "
+            "to the language model with the project's workspace tools only, each change "
+            "asked or allowed by the chat's permission mode; MIZAN then checks the changed "
+            "files and reports what it found. off: such requests are answered in words.",
+            "on", ("on", "off")),
     Setting("MIZAN_TALIM", "Model", "Taught examples (Ta'lim)", "choice",
             "on: the examples administrators taught in Developer → Teach MIZAN (each batch "
             "kept only if it did not make MIZAN worse) are part of how MIZAN understands "

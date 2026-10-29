@@ -539,8 +539,10 @@ class Lisan:
             "or topic, when they name no surah) | "
             '{"intent":"hadith","collection":"bukhari|muslim|abudawud|tirmidhi|nasai|ibnmajah|'
             'malik|nawawi|qudsi|dehlawi","number":<the hadith number the user wrote>} | '
-            '{"intent":"build_project","kind":"web|python"} (a new small app, website, game or '
-            "tool) | "
+            '{"intent":"build_project","kind":"web|python|stack"} (the user asks for a new '
+            "app, website, game or tool to be made; web is a page in plain HTML, CSS and "
+            "JavaScript, python a Python program, stack anything else, such as React, Next.js "
+            "or a server) | "
             '{"intent":"edit_project","request":"<precise English description of the change>"} '
             "(change the user's selected coding project) | "
             '{"intent":"web_search","query":"<search query>"} | '
@@ -553,8 +555,8 @@ class Lisan:
             '{"intent":"use_tool","need":"<the capability needed, in a few English words, for '
             'example list my GitHub issues or remember my name>"} (any other action, such as a '
             "connected app, a skill or memory) | "
-            '{"intent":"converse"} when the user wants an explanation, opinion or conversation '
-            "rather than an action.",
+            '{"intent":"converse"} when the user wants an explanation (how to build '
+            "something included), opinion or conversation rather than an action.",
             request,
             max_tokens=500,
         )

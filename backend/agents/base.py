@@ -25,7 +25,8 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar, copy_context
 from dataclasses import replace
 from types import MethodType
@@ -387,6 +388,35 @@ _LANGUAGE_ONLY_NOTE = (
     'how to ask for it, for example "run this code", "search the web for …", "build a … '
     'app" or "use my <connector> to …".'
 )
+# A coding request beyond MIZAN's recipes (tadbir/engine.py ``_workspace_agent``):
+# the model works on one project, with that project's tools and nothing else.
+_workspace_only: ContextVar[str | None] = ContextVar("mizan_workspace_only", default=None)
+WORKSPACE_AGENT_TOOLS = frozenset(
+    {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_edit",
+     "workspace_write", "workspace_run", "workspace_sandbox", "workspace_git", "workspace_diff",
+     "workspace_checkpoint", "todo_write"}
+)  # fmt: skip
+# Their results are the project's text (files, program output): data, never instructions.
+_WORKSPACE_READS = frozenset(
+    {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_run",
+     "workspace_sandbox", "workspace_git", "workspace_diff"}
+)  # fmt: skip
+_WORKSPACE_ONLY_NOTE = (
+    "\n\nMIZAN gave you this coding task in the user's project. Use only its workspace tools: "
+    "read before you change, keep each change small, run what checks the files, and say what "
+    "you changed. MIZAN checks the changed files when you finish and reports the result, so "
+    "never claim a check passed unless a tool result in this conversation shows it."
+)
+
+
+@contextmanager
+def workspace_only(workspace_id: str) -> Iterator[None]:
+    """While it holds, the model's tools are ``WORKSPACE_AGENT_TOOLS`` on this project."""
+    token = _workspace_only.set(workspace_id)
+    try:
+        yield
+    finally:
+        _workspace_only.reset(token)
 
 
 class BaseAgent:
@@ -920,6 +950,10 @@ class BaseAgent:
                 for name, schema in visible.items()
                 if tool_category(name, self._read_only_hint(name)) == "read"
             }
+        if _workspace_only.get():
+            visible = {
+                name: schema for name, schema in visible.items() if name in WORKSPACE_AGENT_TOOLS
+            }
         return list(visible.values())
 
     @staticmethod
@@ -1096,6 +1130,7 @@ class BaseAgent:
 
         # DevelopmentalGate — filter available tools to this agent's capability level
         tool_schemas = self.dev_gate.filter_tool_schemas(tool_schemas, self.nafs_level)
+        offered = tool_schemas
         from workspace.context import bound_workspace_id
 
         tool_catalog = ToolCatalog(
@@ -1121,6 +1156,10 @@ class BaseAgent:
         if _language_only.get():
             # MIZAN performs the actions: not even the discovery tool is offered.
             tool_schemas, catalog = [], None
+        elif _workspace_only.get():
+            # A coding handoff: the project's own tools, all of them, nothing to discover.
+            tool_schemas = [s for s in offered if s.get("name") in WORKSPACE_AGENT_TOOLS]
+            catalog = None
 
         # QalbProcessor — compute cardiac oscillation state → LLM params
         qalb_proc_output = self.qalb_processor.process(
@@ -1645,7 +1684,12 @@ class BaseAgent:
                     )
 
                     content = bounded_tool_result(tool_result, tool_result_chars)
-                    if amanah.untrusted(block.name):
+                    if _workspace_only.get() and block.name in _WORKSPACE_READS:
+                        # The project's own text: fenced as data, its bytes unchanged (the
+                        # model writes them back); an instruction in it taints the run.
+                        amanah.guard_value(tool_result, block.name)
+                        content = amanah.fence(content, f"the project ({block.name})")
+                    elif amanah.untrusted(block.name):
                         # Outside text: instructions in it are removed and the rest
                         # is fenced as data; a finding taints the rest of the run.
                         guarded, _found = amanah.guard_value(tool_result, block.name)
@@ -2280,6 +2324,11 @@ class BaseAgent:
             return {"error": "Tools are disabled for read-only council evaluation"}
         if _language_only.get():
             return {"error": "MIZAN performs actions itself; the language faculty has no tools"}
+        only = _workspace_only.get()
+        if only and tool_name not in WORKSPACE_AGENT_TOOLS:
+            return {"error": "In this coding task only the project's workspace tools may be used"}
+        if only and str(params.get("workspace_id") or only) != only:
+            return {"error": "Only this chat's project may be used in this coding task"}
         from tadbir import trace
 
         # The AGI test's injected faults and fixed pages (bound only during a test run).
@@ -2648,6 +2697,8 @@ class BaseAgent:
         capability_card = ""
         if _language_only.get():
             capability_card = _LANGUAGE_ONLY_NOTE
+        elif _workspace_only.get():
+            capability_card = _WORKSPACE_ONLY_NOTE
         elif getattr(self.ai_client, "supports_tools", True) is not False:
             try:
                 capability_card = _capability_card(
@@ -3008,6 +3059,7 @@ Match the requested depth and self-correct errors."""
 
         session_binding = bind_chat_session((context or {}).get("session_id"))
         language_binding = _language_only.set(False)
+        workspace_binding = _workspace_only.set(None)
         from tadbir import amanah
 
         # Pasted text that tries to instruct the AI is known before the model
@@ -3063,7 +3115,11 @@ Match the requested depth and self-correct errors."""
                 graded = self._isnad(result.get("result"))
                 if graded:
                     result["isnad"] = graded
-            if result.get("success", True) and not result.get("task_verified"):
+            if result.get("success", True) and (
+                not result.get("task_verified") or result.get("model_words")
+            ):
+                # The model's own words (a coding handoff's included) are checked
+                # even when MIZAN verified the files.
                 await self._truth_gate(result)
                 await self._ahl_dhikr(result, task)
             result.setdefault("orchestrator", "language_model")
@@ -3175,8 +3231,71 @@ Match the requested depth and self-correct errors."""
                 self.state = "resting"
             reset_chat_session(session_binding)
             _language_only.reset(language_binding)
+            _workspace_only.reset(workspace_binding)
             _execution_stack.reset(stack_binding)
             _execution_provider.reset(binding)
+
+    async def _model_turn(
+        self,
+        task: str,
+        context: dict | None,
+        stream_callback: Callable | None,
+        qalb_reading: Any = None,
+    ) -> str:
+        """The model's ReAct loop for one request; returns the text it answered with.
+        ``self._turn_text`` holds what streamed so far, for a failure partway."""
+        full_response = self._turn_text = ""
+        after_tool = False
+        async for chunk in self.think(
+            task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
+        ):
+            if chunk == _RETRACT_MARKER:
+                # The loop withdrew a false capability denial before retrying.
+                full_response = ""
+                continue
+            if after_tool and chunk and not chunk.startswith("\n[Tool:"):
+                # Words written after a tool ran start a new paragraph, not the end
+                # of the sentence before the tool ("…in `App.jsx`.Progress is…").
+                after_tool = False
+                if full_response and not full_response.endswith("\n"):
+                    chunk = "\n\n" + chunk.lstrip("\n")
+            # Check if this is a tool_use marker from _agentic_loop
+            if chunk.startswith("\n[Tool:"):
+                # Extract tool name and send tool_use event
+                # NOTE: tool markers are NOT added to full_response — they are
+                # UI events, not user-facing text. Adding them here caused
+                # "Response formed (N chars)" with no actual message when the
+                # model produced no natural-language text after a tool call.
+                tool_name = (
+                    chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
+                )
+                after_tool = True
+                if stream_callback:
+                    await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
+            else:
+                full_response += chunk
+                self._turn_text = full_response
+                if stream_callback:
+                    await stream_callback(chunk)
+
+        # A tool-turn preamble is not a final answer. Require an observed
+        # final text receipt before recording response completion.
+        completion = self._completion_metadata()
+        if not full_response.strip() or completion["completion_status"] == "empty_response":
+            if self._last_tool_results:
+                async for chunk in self._summarize_tool_results(
+                    task, self._last_tool_results, context
+                ):
+                    full_response += chunk
+                    self._turn_text = full_response
+                    if stream_callback:
+                        await stream_callback(chunk)
+                completion = self._completion_metadata()
+            if not full_response.strip() or completion["completion_status"] == "empty_response":
+                raise ValueError("The provider returned no answer")
+        if completion["completion_status"] == "missing_receipt":
+            raise RuntimeError("The provider returned no completion receipt")
+        return full_response
 
     async def _execute_impl(
         self,
@@ -3335,7 +3454,14 @@ Match the requested depth and self-correct errors."""
 
             try:
                 handled = await Tadbir(self).handle(
-                    task, stream_callback, history=(context or {}).get("history")
+                    task,
+                    stream_callback,
+                    history=(context or {}).get("history"),
+                    # A coding request beyond MIZAN's recipes is handed to the model,
+                    # with the project's tools only (Tadbir._workspace_agent).
+                    model_turn=lambda prompt: self._model_turn(
+                        prompt, context, stream_callback, qalb_reading
+                    ),
                 )
             except Exception:
                 logger.exception("[TADBIR] orchestration failed; using the agent loop")
@@ -3362,48 +3488,10 @@ Match the requested depth and self-correct errors."""
             if settled:
                 context = {**(context or {}), "verified_evidence": settled}
 
+        full_response = self._turn_text = ""
         try:
-            full_response = ""
-            async for chunk in self.think(
-                task, context, stream=bool(stream_callback), qalb_reading=qalb_reading
-            ):
-                if chunk == _RETRACT_MARKER:
-                    # The loop withdrew a false capability denial before retrying.
-                    full_response = ""
-                    continue
-                # Check if this is a tool_use marker from _agentic_loop
-                if chunk.startswith("\n[Tool:"):
-                    # Extract tool name and send tool_use event
-                    # NOTE: tool markers are NOT added to full_response — they are
-                    # UI events, not user-facing text. Adding them here caused
-                    # "Response formed (N chars)" with no actual message when the
-                    # model produced no natural-language text after a tool call.
-                    tool_name = (
-                        chunk.split("[Tool: ")[1].split("]")[0] if "[Tool: " in chunk else "unknown"
-                    )
-                    if stream_callback:
-                        await stream_callback("", chunk_type="tool_use", tool_name=tool_name)
-                else:
-                    full_response += chunk
-                    if stream_callback:
-                        await stream_callback(chunk)
-
-            # A tool-turn preamble is not a final answer. Require an observed
-            # final text receipt before recording response completion.
+            full_response = await self._model_turn(task, context, stream_callback, qalb_reading)
             completion = self._completion_metadata()
-            if not full_response.strip() or completion["completion_status"] == "empty_response":
-                if self._last_tool_results:
-                    async for chunk in self._summarize_tool_results(
-                        task, self._last_tool_results, context
-                    ):
-                        full_response += chunk
-                        if stream_callback:
-                            await stream_callback(chunk)
-                    completion = self._completion_metadata()
-                if not full_response.strip() or completion["completion_status"] == "empty_response":
-                    raise ValueError("The provider returned no answer")
-            if completion["completion_status"] == "missing_receipt":
-                raise RuntimeError("The provider returned no completion receipt")
 
             # Abstention/review notices are delivered successfully but must not
             # become successful task lessons, evolution or training candidates.
@@ -3683,7 +3771,7 @@ Match the requested depth and self-correct errors."""
             can_retry = (
                 not isinstance(e, OutputBudgetExceeded)
                 and not self._provider_attempt_started
-                and not full_response
+                and not (full_response or self._turn_text)
                 and not self._last_tool_results
                 and not self._tool_invocation_started
                 and recovery.attempts < self.tawbah.MAX_ATTEMPTS

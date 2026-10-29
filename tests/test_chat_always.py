@@ -105,7 +105,7 @@ def test_list_revoke_and_erase_with_the_chat(api):
     assert chat_always_store().keys(amina, "chat-1") == set()
 
 
-def test_the_web_chat_seeds_what_was_allowed_before(api):
+def test_the_web_chat_seeds_what_was_allowed_before(api, monkeypatch):
     main, client, users, tokens, memory = api
     amina = users["amina"].id
     chat_always_store().add(amina, "chat-1", "workspace_run")
@@ -120,7 +120,7 @@ def test_the_web_chat_seeds_what_was_allowed_before(api):
             seen.append(approvals.current_approvals())
             return {"success": True, "result": "ok", "usage": {}}
 
-    main.active_agents = {"a": Agent()}
+    monkeypatch.setattr(main, "active_agents", {"a": Agent()})
     body = {
         "session_id": "chat-1",
         "content": "run the tests",

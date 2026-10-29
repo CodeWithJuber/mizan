@@ -20724,6 +20724,28 @@
     "type": "object",
     "title": "CheckpointRestore"
    },
+   "CodingFix": {
+    "properties": {
+     "source": {
+      "type": "string",
+      "pattern": "^(preview|server|terminal)$",
+      "title": "Source",
+      "default": "preview"
+     },
+     "error": {
+      "type": "string",
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "Error"
+     }
+    },
+    "type": "object",
+    "required": [
+     "error"
+    ],
+    "title": "CodingFix",
+    "description": "An error the person asked MIZAN to fix (\"Fix with MIZAN\" on the preview)."
+   },
    "CognitiveRouteRequest": {
     "properties": {
      "query": {
@@ -23625,6 +23647,21 @@
       "type": "boolean",
       "title": "Stateless",
       "default": false
+     },
+     "plan_approved": {
+      "type": "boolean",
+      "title": "Plan Approved",
+      "default": false
+     },
+     "fix": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CodingFix"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",

@@ -84,12 +84,17 @@ _STOP = {
 }  # fmt: skip
 
 
-def out_of_scope(message: str) -> bool:
-    """A stack beyond the blueprints, or (as MIZAN's intent model reads it) a
-    question about building rather than a request to build."""
+def beyond(message: str) -> bool:
+    """A stack beyond the blueprints (React, a server, a database)."""
+    return bool(_BEYOND.search(message))
+
+
+def asks_how(message: str) -> bool:
+    """A question about building rather than a request to build, as MIZAN's intent
+    model reads it."""
     from . import qasd
 
-    return bool(_BEYOND.search(message)) or qasd.prefers(message, "converse", "build_project")
+    return qasd.prefers(message, "converse", "build_project")
 
 
 def blueprint(message: str) -> dict | None:
@@ -327,6 +332,20 @@ def editable(path: str) -> bool:
     if any(part in _SKIP_DIRS or part.startswith(".") for part in parts):
         return False
     return path.rsplit(".", 1)[-1].lower() in TEXT_EXTENSIONS if "." in parts[-1] else False
+
+
+# Files that mean the project builds or installs before it runs, which MIZAN's recipe
+# neither does nor checks.
+_MANIFESTS = {"package.json", "pyproject.toml", "requirements.txt", "Cargo.toml", "go.mod"}
+
+
+def recipe_sized(files: list[dict], budget: int = 60_000) -> bool:
+    """MIZAN's own edit recipe can see and check the whole project: every text file
+    fits Lisan's view at once and nothing has to be installed or built first."""
+    if any(str(f.get("path", "")) in _MANIFESTS for f in files):
+        return False
+    texts = [f for f in files if editable(str(f.get("path", "")))]
+    return sum(int(f.get("size", 0)) for f in texts) <= budget and len(texts) <= 8
 
 
 def relevant_files(files: list[dict], request: str, budget: int = 60_000) -> list[str]:
