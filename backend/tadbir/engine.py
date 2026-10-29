@@ -1382,9 +1382,10 @@ class Tadbir:
     async def _build_project(self, task: str, u: fahm.Understanding) -> Outcome:
         from workspace.context import bound_workspace_id
 
-        if u.entities.get("kind") == "stack":
+        if u.entities.get("kind") == "stack" or (_planning() and bound_workspace_id()):
             # Beyond MIZAN's blueprints (React, a server): the model builds it with the
-            # project's tools, and MIZAN checks what it made.
+            # project's tools, and MIZAN checks what it made. A plan for the chat's
+            # project is the model's too: it reads the project and proposes.
             return await self._workspace_agent(task, u)
         blueprint = project.BLUEPRINTS[u.entities["kind"]]
         needed = ["workspace_write"] + ([] if bound_workspace_id() else ["workspace_create"])
@@ -1556,7 +1557,10 @@ class Tadbir:
         """Change the selected project: MIZAN reads, saves, checks and repairs."""
         from workspace.context import bound_workspace_id
 
-        needed = ("workspace_glob", "workspace_read", "workspace_write")
+        # Plan mode offers reads only: MIZAN's own recipe cannot write there, but the
+        # model can still read the project and propose (the handoff's plan).
+        planning = _planning()
+        needed = ("workspace_glob", "workspace_read") + (() if planning else ("workspace_write",))
         if not bound_workspace_id() or not self.lisan.available:
             raise Defer
         if not all(self._allowed(name) for name in needed):
@@ -1567,10 +1571,13 @@ class Tadbir:
         paths = [str(f.get("path", "")) for f in files]
         if listing.get("error"):
             raise Defer
-        if not project.recipe_sized(files) and self._handoff_ready():
+        if (planning or not project.recipe_sized(files)) and self._handoff_ready():
             # More than Lisan can see at once, or a project that installs and builds
-            # (package.json): the model works on it with the project's tools.
+            # (package.json): the model works on it with the project's tools. In plan
+            # mode it reads the project and proposes, whatever its size.
             return await self._workspace_agent(task, u)
+        if planning:
+            raise Defer
         chosen = project.relevant_files(files, request)
         if not chosen:
             raise Defer
@@ -1747,7 +1754,6 @@ class Tadbir:
         failed, and reports what its checks found. Verified only when checks ran and
         all passed."""
         from agents.base import workspace_only
-        from security.approvals import current_approvals
         from security.auth import current_user_id
         from workspace import context as workspace_context
 
@@ -1757,7 +1763,7 @@ class Tadbir:
         owner = current_user_id() or ""
         workspace_id = workspace_context.bound_workspace_id()
         create = not workspace_id
-        planning = getattr(current_approvals(), "mode", "") == "plan"
+        planning = _planning()
         if create and (planning or not self._allowed("workspace_create")):
             raise Defer  # a plan for a project that does not exist yet is words
         name = str(u.entities.get("name") or project.project_name(task))
@@ -3242,6 +3248,13 @@ def _ungrounded(result: dict, page: str) -> list[str]:
 # What the model needs to work on a project; without them the request is answered in words.
 _HANDOFF_READS = ("workspace_glob", "workspace_read")
 _HANDOFF_WRITES = ("workspace_edit", "workspace_write")
+
+
+def _planning() -> bool:
+    """Plan mode: the person asked for a plan, so nothing in the project changes."""
+    from security.approvals import current_approvals
+
+    return getattr(current_approvals(), "mode", "") == "plan"
 
 
 def _button() -> dict:

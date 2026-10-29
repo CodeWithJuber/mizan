@@ -67,6 +67,7 @@ All notable changes to this project will be documented in this file.
   - diagram-design SVGs for the README, in light and dark.
 
 ### Fixed
+- Plan mode on a chat's project answered from memory ("I can't open files here"). MIZAN's own edit recipe needs a tool that writes, which plan mode does not offer, so the request fell back to words. Now a plan for the chat's project, of any size, is the model's, with the project's reads.
 - Editing a project no longer loses code. Files were cut to 12,000 characters (8,000 for repairs) before the model saw them, and its "complete" reply was saved, so the end of a longer file was deleted. Now a long file changes only by SEARCH/REPLACE blocks that match it exactly once, a whole-file reply for it is dropped, and a reply cut at the output limit saves nothing. TypeScript and JSX files are parsed by esbuild, added to the sandbox image.
 - "Build me a todo app in React", "Next.js mein blog banao" and "Make me an Express API" were read as conversation: 17 `build_project` and 6 `edit_project` seeds, balanced by 8 conversation seeds of questions about building ("How do I build a React app?").
 - Opening a finished chat from history no longer shows "the previous local run has ended".

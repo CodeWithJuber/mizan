@@ -205,8 +205,10 @@ the project's tools only (Tadbir `_workspace_agent`):
    checkpoint is saved when files changed.
 
 In plan mode the model reads the project and writes a plan; nothing changes
-and nothing is checked. A plan for a project that does not exist yet is
-answered in words.
+and nothing is checked. This holds for any request to make or change the
+chat's project, small or large: plan mode offers no tool that writes, so
+MIZAN's own edit recipe cannot run there. A plan for a project that does not
+exist yet is answered in words.
 
 Two fields stand for buttons, never words (Fahm reads "go ahead" as
 conversation). They need a `permission_mode` other than `plan`:

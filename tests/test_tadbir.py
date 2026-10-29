@@ -2007,6 +2007,45 @@ async def test_plan_mode_reads_the_project_and_changes_nothing(agent, handoff):
     assert result["completion_status"] != "verified_by_mizan"
 
 
+async def test_plan_mode_offers_reads_only_and_a_small_project_is_still_read(
+    agent, handoff, monkeypatch
+):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Page")["id"]
+    store.write(workspace, "index.html", "<h1>Todo</h1>\n")
+    handoff.context.mode = "plan"
+    # As in a real chat: plan mode offers the project's reads and nothing that writes.
+    reads = ["workspace_glob", "workspace_read", "web_search"]
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {}} for n in reads],
+    )
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_read", path="index.html"),
+            "Plan: 1. add a footer under the list 2. show the year.",
+        ]
+    )
+    selected = bind_workspace(workspace)
+    try:
+        message = "Add a footer that shows the current year to the page"
+        assert fahm.understand(message).intent in ("edit_project", "build_project")
+        result = await agent.execute(message)
+    finally:
+        reset_workspace(selected)
+    # The model was given the project's reads and read it (MIZAN's own recipe
+    # cannot write in plan mode, so it is not words without the project).
+    assert "workspace_read" in offered_tools(agent.ai_client.requests[0])
+    assert ("workspace_read", {"path": "index.html"}) in [
+        (n, {k: v for k, v in p.items() if k == "path"}) for n, p in handoff.calls
+    ]
+    assert result["result"] == "Plan: 1. add a footer under the list 2. show the year."
+    assert store.files(workspace) == {"index.html": b"<h1>Todo</h1>\n"}
+
+
 async def test_approve_plan_and_run_goes_to_the_model_without_reading_the_words(agent, handoff):
     from workspace.context import bind_workspace, reset_workspace
 
