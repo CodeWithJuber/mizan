@@ -13,7 +13,7 @@ import type {
 } from "../types";
 import { Markdown, type Components } from "./Markdown";
 import {
-  Check, Copy, GitCompareArrows, Pencil, RotateCcw, Scale, Volume2, VolumeX,
+  Check, Copy, GitCompareArrows, History, Pencil, RotateCcw, Scale, Volume2, VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -727,6 +727,8 @@ interface ChatMessageBubbleProps {
   onEdit?: (text: string) => void;
   /** Debug mode: compare this message with the base model alone. */
   onCompare?: (text: string) => void;
+  /** Put the chat's project back to how it was before this message. */
+  onRewind?: (checkpoint: NonNullable<ChatMessageType["checkpoint"]>) => void;
   /** The thinking steps of this answer, shown with its tools in the run summary. */
   trace?: ThinkingTrace;
 }
@@ -741,6 +743,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   onRetry,
   onEdit,
   onCompare,
+  onRewind,
   trace,
 }: ChatMessageBubbleProps) {
   const cta = (msg as ChatMessageType & { cta?: { label: string; tab: string } }).cta;
@@ -784,6 +787,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             {onCompare && (
               <IconAction label="Compare with the base model" onClick={() => onCompare(msg.content)}>
                 <GitCompareArrows />
+              </IconAction>
+            )}
+            {onRewind && msg.checkpoint && (
+              <IconAction label="Rewind code to before this message" onClick={() => onRewind(msg.checkpoint!)}>
+                <History />
               </IconAction>
             )}
           </div>

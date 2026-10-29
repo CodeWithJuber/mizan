@@ -44,6 +44,13 @@ All notable changes to this project will be documented in this file.
   - Projects can be renamed, deleted and exported as a zip. Delete and restore wait while a chat works in the project.
   - Approvals: git and sandbox reads run without a prompt; "Always" lasts the chat and can be taken back (`/api/chat/{id}/always`); the prompt for an edit shows its diff.
   - A request beyond MIZAN's recipes (a React or Next.js app, a server, a project with `package.json`) goes to the model with the project's tools only, in a chat someone is reading. MIZAN makes and binds the project, checks every changed file and that a started dev server still runs, gives one repair turn, and reports what it checked. `plan_approved` and `fix` on the chat request stand for the "Approve plan and run" and "Fix with MIZAN" buttons. `MIZAN_WORKSPACE_AGENT`.
+  - The web app works this way:
+    - `/code` lists the projects; `/code/<id>` shows a project beside its chat (resizable; a Chat | Project switch on a phone), with Preview, Code, Changes and Terminal.
+    - Each chat keeps its own project in the browser, and a new chat starts with none (it was one project for every chat).
+    - Changes lists what changed since the checkpoint before your last message. A file or everything can be undone, with Undo. A file can be reviewed hunk by hunk with Accept and Reject (`@codemirror/merge`), then saved.
+    - Each of your messages with a checkpoint has "Rewind code to before this message", with Undo.
+    - "Always" grants show under the message box and can be taken back.
+    - "Approve plan and run" follows a plan-mode answer, and "Fix with MIZAN" sits on preview, Python and terminal errors. A started dev server opens in the preview.
 - Frontend checks in CI:
   - oxlint, with a cap on warnings and a ratchet so raw colour classes can only decrease;
   - Vitest specs;

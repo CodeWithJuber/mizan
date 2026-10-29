@@ -38,6 +38,7 @@ import {
 } from "../../utils/exportChat";
 import { StreamBuffer } from "../../utils/streaming";
 import { timeZoneField } from "../../utils/timezone.ts";
+import { chatWorkspace, clearChatWorkspaces, migrateLegacyWorkspace, setChatWorkspace } from "../../utils/chatWorkspaces";
 import {
   fetchChatHistoryWithRetry, hydrateCachedMessages, createHistoryLoadTracker, mergeHistoryMessages,
 } from "../../utils/historySync";
@@ -120,7 +121,10 @@ export interface ChatState {
   permissionMode: PermissionMode;
   chatModelOverride: string;
   attachedFiles: File[];
+  /** The project this chat works on ("" for none); the server's binding wins. */
   workspaceId: string;
+  /** A dev server MIZAN or the model started in this chat's project. */
+  livePreview: LivePreview | null;
   artifacts: Artifact[];
   showArtifacts: boolean;
   debugAllowed: boolean;
@@ -135,9 +139,25 @@ export interface ChatState {
   recovery: ReturnType<typeof useChatRecovery>;
 }
 
+export interface LivePreview {
+  workspaceId: string;
+  port: number;
+  url: string;
+}
+
+/** What a button sends with a message; never read from its words. */
+export interface SendOptions {
+  /** "Approve plan and run": carry out the plan of the previous answer. */
+  planApproved?: boolean;
+  /** "Fix with MIZAN": an error the project showed. */
+  fix?: { source: "preview" | "server" | "terminal"; error: string };
+  /** The mode for this message only (the buttons need one that may change files). */
+  permissionMode?: PermissionMode;
+}
+
 export interface ChatActions {
   setInput: (value: string | ((previous: string) => string)) => void;
-  sendMessage: (contentOverride?: string) => Promise<void>;
+  sendMessage: (contentOverride?: string, options?: SendOptions) => Promise<void>;
   stopGeneration: () => void;
   continueAnswer: () => void;
   dismissContinue: () => void;
@@ -224,13 +244,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [showArtifacts, setShowArtifacts] = useState(false);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-  const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem("mizan_workspace_id") || "");
+  // Each chat owns its project: a new chat starts with none.
+  const [workspaceId, setWorkspaceId] = useState(() => {
+    migrateLegacyWorkspace(sessionId);
+    return chatWorkspace(sessionId);
+  });
+  const [livePreview, setLivePreview] = useState<LivePreview | null>(null);
+  /** The server said which project a chat works on: it wins over the browser's map. */
+  const bindChatWorkspace = useCallback((sid: string, id: string) => {
+    setChatWorkspace(sid, id);
+    if (sid === sessionIdRef.current) setWorkspaceId(id);
+  }, []);
+  /** The chat a stream event belongs to (the person may have opened another since). */
+  const eventSession = (data: Record<string, unknown>) =>
+    typeof data.session_id === "string" && data.session_id ? data.session_id : sessionIdRef.current;
   const selectWorkspace = useCallback((id: string) => {
+    const sid = sessionIdRef.current;
     setWorkspaceId(id);
-    localStorage.setItem("mizan_workspace_id", id);
+    setChatWorkspace(sid, id);
+    setLivePreview(null);
     // A chat the server already has keeps its project there (a new chat is bound by
     // its first message), so removing the project also stops later messages using it.
-    const sid = sessionIdRef.current;
     if (!sid || !useChatSummary.getState().hasMessages) return;
     void authFetch(`${config.API_URL}/chat/${encodeURIComponent(sid)}`, {
       method: "PATCH",
@@ -372,6 +406,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setShowArtifacts(false);
     setAttachedFiles([]);
     setWorkspaceId("");
+    setLivePreview(null);
+    clearChatWorkspaces();
     setStreaming(false);
     setAwaitingText(false);
     setActiveThinkingId(null);
@@ -381,7 +417,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const id = newSessionId();
     setSessionId(id);
     sessionIdRef.current = id;
-    localStorage.removeItem("mizan_workspace_id");
     localStorage.removeItem(LEGACY_CHAT_SESSION_KEY);
     localStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
     queryClient.removeQueries();
@@ -572,8 +607,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         case "chat_complete": {
           // A project MIZAN made for this chat is now the chat's project.
           if (typeof data.workspace_id === "string" && data.workspace_id) {
-            setWorkspaceId(data.workspace_id);
-            localStorage.setItem("mizan_workspace_id", data.workspace_id);
+            bindChatWorkspace(eventSession(data), data.workspace_id);
           }
           const finishedDraft = activeDraftRef.current;
           if (finishedDraft && finishedDraft.message.requestId === data.request_id) {
@@ -710,6 +744,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           break;
         case "tool_use":
           addTerminalLine(`Tool: ${data.tool_name as string}`, "info");
+          break;
+        case "workspace":
+          // MIZAN made a project for this message: the chat works on it from now on.
+          if (typeof data.workspace_id === "string" && data.workspace_id) {
+            bindChatWorkspace(eventSession(data), data.workspace_id);
+            if (data.created) addTerminalLine(`Project created: ${String(data.name ?? "")}`, "gold");
+          }
+          break;
+        case "checkpoint": {
+          // The project as it was before this message: "Rewind" goes back to it.
+          const workspace = data.workspace_id;
+          const id = data.checkpoint_id;
+          if (typeof workspace === "string" && typeof id === "string" && !data.error) {
+            setMessages((prev) => prev.map((message) =>
+              message.role === "user" && message.requestId === data.request_id
+                ? { ...message, checkpoint: { workspace_id: workspace, id } }
+                : message));
+          }
+          break;
+        }
+        case "preview":
+          if (typeof data.workspace_id === "string" && typeof data.preview_url === "string"
+            && eventSession(data) === sessionIdRef.current) {
+            setLivePreview({ workspaceId: data.workspace_id, port: Number(data.port) || 0, url: data.preview_url });
+          }
           break;
         case "mode_progress": {
           // Live deep-research progress and cost meter.
@@ -861,7 +920,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [clearStopFallback, finalizeStop, selectedAgent, persistActiveDraft, recovery.begin, applyActivity, refreshAgents, refreshSessions],
+    [clearStopFallback, finalizeStop, selectedAgent, persistActiveDraft, recovery.begin, applyActivity, refreshAgents, refreshSessions, bindChatWorkspace],
   );
 
   useEffect(() => {
@@ -954,6 +1013,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
         const history = (result.messages as Parameters<typeof mapServerMessage>[0][]).map(mapServerMessage);
         setMessages((prev) => mergeHistoryMessages(history, prev));
+        if (result.workspaceId !== undefined) bindChatWorkspace(sid, result.workspaceId ?? "");
         setHasOlderHistory(result.hasMore === true);
         opts?.onLoaded?.(history.length);
         return true;
@@ -962,7 +1022,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [historyLoads],
+    [historyLoads, bindChatWorkspace],
   );
   recoveryHistoryRef.current = (sid) => loadChatHistory(sid, { quiet: true });
 
@@ -1025,6 +1085,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setArtifacts([]);
       setShowArtifacts(false);
       setSessionId(sid);
+      setWorkspaceId(chatWorkspace(sid));
+      setLivePreview(null);
       setMessages([]);
       setHistoryLoadError(false);
       setTruncatedContinue(null);
@@ -1077,6 +1139,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     sessionIdRef.current = newId;
     setDraftStorageFailed(false);
     setSessionId(newId);
+    setWorkspaceId("");
+    setLivePreview(null);
     setMessages([]);
     setLiveText("");
     setHistoryLoadError(false);
@@ -1281,7 +1345,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendMessage = async (contentOverride?: string) => {
+  const sendMessage = async (contentOverride?: string, options: SendOptions = {}) => {
     const text = contentOverride ?? input;
     if ((!text.trim() && attachedFiles.length === 0) || streamingRef.current) return;
     if (recovery.isBlocked()) { void recovery.refresh(); return; }
@@ -1352,6 +1416,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       requestId: hasMedia ? undefined : requestId,
       content: content + (others.length > 0 ? ` [${others.map((f) => f.name).join(", ")}]` : ""),
       ts: new Date().toLocaleTimeString(),
+      mode: options.permissionMode ?? permissionMode,
       ...(hasImages ? { images: images.map((file) => ({ url: URL.createObjectURL(file) })) } : {}),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -1418,10 +1483,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             content,
             agent_id: selectedAgent?.id,
             request_id: requestId,
-            permission_mode: permissionMode,
+            permission_mode: options.permissionMode ?? permissionMode,
             thinking: true,
             ...timeZoneField(),
             ...(workspaceId ? { workspace_id: workspaceId } : {}),
+            ...(options.planApproved ? { plan_approved: true } : {}),
+            ...(options.fix ? { fix: options.fix } : {}),
             ...(override ? { model_override: override } : {}),
             ...(imagePayload.length ? { images: imagePayload } : {}),
           }),
@@ -1472,7 +1539,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const actions = useMemo<ChatActions>(() => ({
     setInput,
-    sendMessage: (content) => latest.current.sendMessage(content),
+    sendMessage: (content, options) => latest.current.sendMessage(content, options),
     stopGeneration: () => latest.current.stopGeneration(),
     continueAnswer: () => {
       setTruncatedContinue(null);
@@ -1509,7 +1576,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const state: ChatState = {
     sessionId, messages, input, streaming, awaitingText, activity, thinkingTraces, activeThinkingId, runProgress,
-    agentMode, deepResearchConfirmed, permissionMode, chatModelOverride, attachedFiles, workspaceId, artifacts,
+    agentMode, deepResearchConfirmed, permissionMode, chatModelOverride, attachedFiles, workspaceId, livePreview, artifacts,
     showArtifacts, debugAllowed, debugOn, debugPrompt, historyLoadError, historyLoading, hasOlderHistory,
     olderHistoryLoading, draftStorageFailed, truncatedContinue, recovery,
   };

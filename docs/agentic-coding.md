@@ -219,17 +219,55 @@ conversation). They need a `permission_mode` other than `plan`:
 
 ## The coding workspace (IDE)
 
-Open **Code** in the sidebar (`/code`). It has:
+**Code** in the sidebar (`/code`) lists your projects: create one, open it,
+rename it, export it as a zip, or delete it (a project a chat is working in
+answers "busy"). Opening a project (`/code/<id>`) shows it beside its chat:
 
-- a file tree with new file, new folder, rename and delete
-- editor tabs (CodeMirror 6), with save on Ctrl/Cmd+S
-- **Terminal**: run a command in the isolated runner
-- **Changes**: checkpoints with coloured diffs
-- **Preview**:
-  - **Web projects** (an `index.html`, or a React/Vite `package.json`) run in
-    Sandpack in the browser.
-  - **Python files** run with Pyodide, in a sandboxed frame with its own origin
-    and a strict CSP. The frame has no access to your session.
+- **The chat** on the left is the project's chat: `?chat=<id>` when given, else
+  its newest chat, else a new chat bound to it. The browser remembers each
+  chat's project (`mizan_chat_workspaces`, at most 200 chats); the server's
+  binding wins whenever a chat loads or a reply names its project. A new chat
+  starts with no project.
+- **The project** on the right has four tabs:
+  - **Preview**: web projects (an `index.html`, or a React/Vite
+    `package.json`) run in Sandpack in the browser, and Python files run with
+    Pyodide in a sandboxed frame with its own origin and a strict CSP. When a
+    reply starts a dev server (the `preview` event), the preview switches to
+    that server.
+  - **Code**: a file tree (new file, new folder, rename, delete) and editor
+    tabs (CodeMirror 6, Ctrl/Cmd+S saves). Files a reply changed reload when it
+    finishes, unless they have unsaved edits; leaving with unsaved edits asks
+    first.
+  - **Changes**: what changed since a checkpoint, by default the one saved
+    before your last message. Each file can be undone, and all of them at once;
+    each undo saves the current files first and offers **Undo** in its notice.
+    Opening a file shows its changes hunk by hunk (CodeMirror's merge view,
+    loaded only here) with **Accept** and **Reject** on each; **Save** writes
+    what is kept, and a file changed meanwhile is reloaded instead of
+    overwritten. Binary files are listed but not merged.
+  - **Terminal**: run a command in the isolated runner, or in the project's
+    server sandbox when it runs.
+- On a phone a **Chat | Project** switch shows one side at a time; on a wider
+  screen the divider can be dragged, and its position is remembered.
+
+The chat has the coding controls:
+
+- **Rewind code to before this message**, on each of your messages that has a
+  checkpoint: it lists the files that go back, restores them, and offers
+  **Undo**. The chat itself is unchanged.
+- An edit prompt shows its diff, marked **New file** for a file that does not
+  exist yet and with a note when the diff is shortened.
+- What you allowed with **Always in this chat** is listed under the message box
+  (`Always: Edit files`, `Always: Git commit`); the ✕ takes it back, so MIZAN
+  asks again.
+- After a plan-mode answer about the chat's project, **Approve plan and run**
+  sends `plan_approved` and leaves plan mode (edits allowed, everything else
+  still asks).
+- **Fix with MIZAN** appears on a preview error, a failed Python run and a
+  failed terminal command; it sends the error as `fix` (leaving plan mode for
+  that message).
+- **Open project** in the chat's header opens the chat's project beside it; a
+  dot shows that its server is running.
 
 The preview loads the whole project in one request:
 `GET /api/workspaces/{id}/files`. It returns text files only, up to 3 MB, and

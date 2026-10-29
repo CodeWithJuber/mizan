@@ -48,7 +48,7 @@ export function chatFailureFields(
 export function restoredMessageFields(
   content: string,
   metadata: Record<string, unknown> = {},
-): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held" | "images"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held" | "images" | "checkpoint"> {
   const failure = metadata.status === "error"
     ? chatFailureFields({ ...metadata, content }) : undefined;
   const meta = failure?.meta ?? messageUsage(metadata);
@@ -62,7 +62,15 @@ export function restoredMessageFields(
     interrupted: !failure && (metadata.status === "cancelled" || metadata.partial === true),
     held: heldActions(metadata.held),
     images: keptImages(metadata.images),
+    checkpoint: checkpointRef(metadata.checkpoint),
   };
+}
+
+/** The project checkpoint saved before a user message, as the server recorded it. */
+export function checkpointRef(value: unknown): ChatMessage["checkpoint"] {
+  return record(value) && typeof value.workspace_id === "string" && typeof value.id === "string"
+    ? { workspace_id: value.workspace_id, id: value.id }
+    : undefined;
 }
 
 /** The images a user message carried, by their kept ids. */

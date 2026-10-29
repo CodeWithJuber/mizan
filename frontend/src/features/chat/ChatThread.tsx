@@ -90,6 +90,9 @@ export function ChatThread() {
     actions.setInput(text);
     actions.focusComposer();
   }, [actions]);
+  const onRewind = useCallback((checkpoint: { workspace_id: string; id: string }) => {
+    void import("../code/rewind").then(({ rewindTo }) => rewindTo(checkpoint));
+  }, []);
   const onCompare = useCallback((text: string) => {
     actions.setDebugPrompt(text);
     navigate("/settings/developer/debug");
@@ -152,6 +155,7 @@ export function ChatThread() {
                 trace={message.thinkingMessageId ? state.thinkingTraces[message.thinkingMessageId] : undefined}
                 onEdit={message.role === "user" && !streaming ? onEdit : undefined}
                 onCompare={message.role === "user" && state.debugAllowed && state.debugOn ? onCompare : undefined}
+                onRewind={message.role === "user" && message.checkpoint && !streaming ? onRewind : undefined}
                 onRetry={index === lastAssistant && !streaming && retryText ? () => void actions.sendMessage(retryText) : undefined}
               />
             ))}

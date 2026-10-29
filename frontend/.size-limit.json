@@ -1,5 +1,7 @@
 [
   { "name": "App shell (entry JS)", "path": "dist/assets/app-*.js", "gzip": true, "limit": "190 kB" },
-  { "name": "Chat page", "path": "dist/assets/ChatPage-*.js", "gzip": true, "limit": "70 kB" },
+  { "name": "Chat page (with the thread and composer it shares with Code)", "path": ["dist/assets/ChatPage-*.js", "dist/assets/Composer-*.js"], "gzip": true, "limit": "70 kB" },
+  { "name": "Code page (project list, split view, workspace)", "path": "dist/assets/CodePage-*.js", "gzip": true, "limit": "35 kB" },
+  { "name": "Merge review (loaded when a change is opened)", "path": "dist/assets/MergeEditor-*.js", "gzip": true, "limit": "12 kB" },
   { "name": "Styles", "path": "dist/assets/index-*.css", "gzip": true, "limit": "40 kB" }
 ]

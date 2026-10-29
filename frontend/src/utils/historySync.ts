@@ -106,6 +106,8 @@ export interface HistoryFetchResult {
   missing: boolean;
   /** The server holds older messages than the returned page. */
   hasMore?: boolean;
+  /** The chat's project (null: none); undefined when the server did not say. */
+  workspaceId?: string | null;
   /** The last error, when ok === false. */
   error?: Error;
 }
@@ -136,7 +138,11 @@ export async function fetchChatHistoryWithRetry(
       }
       const data = await res.json();
       const messages = Array.isArray(data?.messages) ? data.messages : [];
-      return { ok: true, messages, missing: false, hasMore: data?.has_more === true };
+      // The chat's project as the server keeps it (null: none); absent from older servers.
+      const workspaceId = typeof data?.workspace_id === "string" || data?.workspace_id === null
+        ? (data.workspace_id as string | null)
+        : undefined;
+      return { ok: true, messages, missing: false, hasMore: data?.has_more === true, workspaceId };
     } catch (err) {
       if (!isCurrent()) return { ok: false, messages: [], missing: false };
       lastError = err instanceof Error ? err : new Error(String(err));
