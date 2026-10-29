@@ -228,6 +228,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const selectWorkspace = useCallback((id: string) => {
     setWorkspaceId(id);
     localStorage.setItem("mizan_workspace_id", id);
+    // A chat the server already has keeps its project there (a new chat is bound by
+    // its first message), so removing the project also stops later messages using it.
+    const sid = sessionIdRef.current;
+    if (!sid || !useChatSummary.getState().hasMessages) return;
+    void authFetch(`${config.API_URL}/chat/${encodeURIComponent(sid)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: id || null }),
+    }).catch(() => undefined);
   }, []);
 
   // Provider check before sending: guide the person to settings when none is configured.
@@ -561,6 +570,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setActiveThinkingId(null);
           break;
         case "chat_complete": {
+          // A project MIZAN made for this chat is now the chat's project.
+          if (typeof data.workspace_id === "string" && data.workspace_id) {
+            setWorkspaceId(data.workspace_id);
+            localStorage.setItem("mizan_workspace_id", data.workspace_id);
+          }
           const finishedDraft = activeDraftRef.current;
           if (finishedDraft && finishedDraft.message.requestId === data.request_id) {
             void clearCachedChatDraft(finishedDraft.sessionId, finishedDraft.message.requestId!, finishedDraft.ownerToken);

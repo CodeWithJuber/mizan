@@ -107,8 +107,8 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/chat/sessions/list` | user | The user's chats, newest first; ``limit``/``offset`` page through them and ``next_offset`` is where the next page starts (null at the end). ``q`` keeps the chats whose title or first message holds it (any case; ``%`` and ``_`` are plain characters); a blank ``q`` lists every chat. |
 | POST | `/api/chat/stream` | user | One authenticated POST produces one SSE stream; it is never replayed. |
 | DELETE | `/api/chat/{session_id}` | user | Delete a chat and everything MIZAN derived from it (Mahw). The answer is a receipt: what was removed from each store, how many checks ran over what is left, and how many traces were found (none, when it worked). |
-| GET | `/api/chat/{session_id}` | user | Newest ``limit`` messages; pass ``before=<message id>`` to page further back. |
-| PATCH | `/api/chat/{session_id}` | user | Name one of the user's chats; the chat list shows the title and searches it. |
+| GET | `/api/chat/{session_id}` | user | Newest ``limit`` messages; pass ``before=<message id>`` to page further back. ``workspace_id`` is the project the chat is bound to (null when none). |
+| PATCH | `/api/chat/{session_id}` | user | Name one of the user's chats (the chat list shows the title and searches it), or bind it to one of their projects so its messages work on that project. |
 | GET | `/api/chat/{session_id}/run-state` | user | Chat run state |
 | POST | `/api/chat/{session_id}/stop` | user | Stop the user's active run in this chat (the Stop button). A dropped connection never does this: the run goes on and saves its answer. |
 

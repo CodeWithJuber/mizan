@@ -351,6 +351,12 @@ class Tadbir:
             "orchestrator": "mizan",
             **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
             **({"images": outcome.images} if outcome.images else {}),
+            # A project made for this request: the chat is bound to it.
+            **(
+                {"workspace_id": outcome.facts["workspace_id"]}
+                if isinstance(outcome.facts, dict) and outcome.facts.get("workspace_id")
+                else {}
+            ),
             "orchestration": {
                 "by": "mizan",
                 "mode": mode,
@@ -1367,6 +1373,8 @@ class Tadbir:
                 reason = str(created.get("error") or "the project could not be created")
                 return Outcome(phrase("project_failed", u.language, reason=reason), False, {})
             workspace_id = str(created["id"])
+            # The chat shows (and binds) the new project at once, not only at the end.
+            await emit("workspace", {"workspace_id": workspace_id, "name": name, "created": True})
         for path, content in files.items():
             if error := await self._save(workspace_id, path, content):
                 return Outcome(phrase("project_failed", u.language, reason=error), False, {})

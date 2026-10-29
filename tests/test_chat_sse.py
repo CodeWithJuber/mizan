@@ -1,6 +1,7 @@
 """SSE chat isolation, durable retries, delivery bounds and real disconnects."""
 
 import asyncio
+import contextlib
 import json
 import threading
 import time
@@ -562,6 +563,7 @@ def test_workspace_selection_is_authorized_before_execution_and_bound_for_tools(
     context_module.authorize_owned_workspace = authorize
     context_module.bind_workspace = selection.set
     context_module.reset_workspace = selection.reset
+    context_module.running_in = lambda owner_id, workspace_id: contextlib.nullcontext()
     parent_module.context = context_module
     monkeypatch.setitem(sys.modules, "workspace", parent_module)
     monkeypatch.setitem(sys.modules, "workspace.context", context_module)

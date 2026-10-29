@@ -1258,9 +1258,9 @@
     ]
    },
    "patch": {
-    "summary": "Rename Chat",
-    "description": "Name one of the user's chats; the chat list shows the title and searches it.",
-    "operationId": "rename_chat_api_chat__session_id__patch",
+    "summary": "Update Chat",
+    "description": "Name one of the user's chats (the chat list shows the title and searches it),\nor bind it to one of their projects so its messages work on that project.",
+    "operationId": "update_chat_api_chat__session_id__patch",
     "parameters": [
      {
       "name": "session_id",
@@ -1309,7 +1309,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ChatRename"
+        "$ref": "#/components/schemas/ChatUpdate"
        }
       }
      }
@@ -1346,7 +1346,7 @@
    },
    "get": {
     "summary": "Get Chat History",
-    "description": "Newest ``limit`` messages; pass ``before=<message id>`` to page further back.",
+    "description": "Newest ``limit`` messages; pass ``before=<message id>`` to page further back.\n``workspace_id`` is the project the chat is bound to (null when none).",
     "operationId": "get_chat_history_api_chat__session_id__get",
     "parameters": [
      {
@@ -1729,6 +1729,26 @@
        "title": "Q"
       },
       "description": "Only chats whose title or first message contains this, in any case."
+     },
+     {
+      "name": "workspace_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Only the chats bound to this project.",
+       "title": "Workspace Id"
+      },
+      "description": "Only the chats bound to this project."
      },
      {
       "name": "authorization",
@@ -20375,20 +20395,6 @@
     ],
     "title": "ChatPreferenceValue"
    },
-   "ChatRename": {
-    "properties": {
-     "title": {
-      "type": "string",
-      "title": "Title",
-      "description": "The chat's name: 1-120 characters after trimming, one line."
-     }
-    },
-    "type": "object",
-    "required": [
-     "title"
-    ],
-    "title": "ChatRename"
-   },
    "ChatRequest": {
     "properties": {
      "messages": {
@@ -20483,6 +20489,39 @@
      "usage"
     ],
     "title": "ChatResponse"
+   },
+   "ChatUpdate": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "The chat's name: 1-120 characters after trimming, one line."
+     },
+     "workspace_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspace Id",
+      "description": "The project this chat works on; null unbinds it."
+     }
+    },
+    "type": "object",
+    "title": "ChatUpdate",
+    "description": "Name a chat (``title``), bind it to one of the user's projects (``workspace_id``)\nor unbind it (``workspace_id: null``): at least one of the two."
    },
    "CheckpointCreate": {
     "properties": {
