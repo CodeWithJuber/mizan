@@ -34,9 +34,18 @@ PREFIX = "mizan-session-"
 NETWORK_PREFIX = "mizan-session-net-"
 EGRESS = "mizan-sandbox-egress"
 AGENT = ["python3", "-I", "/session_agent.py"]
-# /tmp is noexec; caches live on the session volume (never synced), where native
-# addons a package unpacks into its cache (@swc/core) can run.
+# /tmp is noexec, so caches and user installs live on the session volume (`.cache` is
+# never synced): native addons a package unpacks into its cache (@swc/core), npx
+# binaries, pip console scripts and compiled wheels must be able to run. Set on the
+# container, so commands, the terminal and stdio servers agree (session_agent.command_env
+# sets the same values; a test keeps the two in step).
 SESSION_CACHE = "/workspace/.cache"
+SESSION_ENV = {
+    "XDG_CACHE_HOME": SESSION_CACHE,
+    "npm_config_cache": f"{SESSION_CACHE}/npm",
+    "PIP_CACHE_DIR": f"{SESSION_CACHE}/pip",
+    "PYTHONUSERBASE": f"{SESSION_CACHE}/python-user",
+}
 MAX_REPLY = 40 * 1024 * 1024
 FRAME = struct.Struct(">IBI")
 OPEN, DATA, CLOSE, FAIL = 1, 2, 3, 4
@@ -261,7 +270,7 @@ class Sessions:
                 "--env", "NO_PROXY=localhost,127.0.0.1", "--env", "no_proxy=localhost,127.0.0.1",
                 "--env", f"MIZAN_PREVIEW_PREFIX={preview_prefix}",
                 "--env", "TERM=xterm-256color", "--env", "HOME=/tmp/home",
-                "--env", f"XDG_CACHE_HOME={SESSION_CACHE}",
+                *(f"--env={name}={value}" for name, value in SESSION_ENV.items()),
                 runtime_image(), "sleep", "infinity",
             ]  # fmt: skip
             code, _, err = await docker(*args, timeout=60)

@@ -14,10 +14,13 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
-# npm 11 skips an install script that is not in allowScripts. esbuild's and @swc/core's
-# only check or pick their prebuilt binary; any other package is approved per project
-# (`npm install-scripts approve <name>` or allowScripts in package.json).
-RUN printf 'allow-scripts=esbuild,@swc/core\n' > /usr/local/etc/npmrc
+# No global npm allow-scripts list: npm 11 runs unlisted install scripts and only warns,
+# and it passes any list on to every nested `npm install` (create-next-app, create-vite),
+# which then refuses it (EALLOWSCRIPTS). Login shells (the terminal) put the session's
+# user installs and project binaries first, as commands do (session_agent.command_env).
+RUN printf '%s\n' '# MIZAN sandbox session shells' \
+    'PATH="/workspace/.cache/python-user/bin:/workspace/node_modules/.bin:$PATH"' \
+    > /etc/profile.d/mizan-session.sh
 # esbuild parses TypeScript and JSX for MIZAN's checks of edited files (tadbir/engine.py).
 RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
     if [ -f /run/proxy-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem; fi; \

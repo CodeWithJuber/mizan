@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -135,16 +136,29 @@ def test_exec_and_service_lifecycle(agent_root):
 
 
 def test_commands_keep_caches_on_the_session_volume(agent_root):
-    """/tmp is noexec in a session; a native addon unpacked into a cache must run."""
+    """/tmp is noexec in a session: caches, npx binaries and pip user installs must run."""
     result = session_agent.run_command(
         {
-            "command": 'echo "$XDG_CACHE_HOME $npm_config_cache"',
+            "command": 'echo "$XDG_CACHE_HOME $npm_config_cache $PYTHONUSERBASE"; echo "$PATH"',
             "language": "shell",
             "timeout_s": 10,
         }
     )
-    assert result["stdout"].split() == [f"{agent_root}/.cache", f"{agent_root}/.cache/npm"]
+    values, path = result["stdout"].splitlines()
+    assert values.split() == [
+        f"{agent_root}/.cache",
+        f"{agent_root}/.cache/npm",
+        f"{agent_root}/.cache/python-user",
+    ]
+    assert f"{agent_root}/.cache/python-user/bin:{agent_root}/node_modules/.bin:" in path
     assert session_agent.heavy(".cache/swc-native-65534/v1/swc.node")
+
+
+def test_the_container_and_command_environments_agree(monkeypatch):
+    """The terminal and stdio servers inherit the container env; commands get command_env."""
+    monkeypatch.setattr(session_agent, "ROOT", Path("/workspace"))
+    env = session_agent.command_env()
+    assert {name: env[name] for name in sessions.SESSION_ENV} == sessions.SESSION_ENV
 
 
 # ── Bridge: framed TCP over a child's stdio ───────────────────────────────
@@ -525,12 +539,21 @@ class TestRealSessions:
 
     def test_project_tools_and_an_executable_cache(self, runner):
         probe = (
-            "command -v curl; npm config get allow-scripts; "
-            'mkdir -p "$XDG_CACHE_HOME" && cp /bin/true "$XDG_CACHE_HOME/t" && cp /bin/true /tmp/t; '
-            '"$XDG_CACHE_HOME/t" && echo cache-runs; /tmp/t 2>/dev/null || echo tmp-noexec'
+            "command -v curl; "
+            'mkdir -p "$XDG_CACHE_HOME" "$PYTHONUSERBASE/bin" && cp /bin/true "$XDG_CACHE_HOME/t" '
+            '&& cp /bin/true "$PYTHONUSERBASE/bin/mizan-t" && cp /bin/true /tmp/t; '
+            '"$XDG_CACHE_HOME/t" && echo cache-runs; mizan-t && echo userbin-runs; '
+            "/tmp/t 2>/dev/null || echo tmp-noexec; "
+            "python3 -c 'import site; print(site.getusersitepackages())'"
         )
         out = self.run(runner, probe)["stdout"].split()
-        assert out == ["/usr/bin/curl", "esbuild,@swc/core", "cache-runs", "tmp-noexec"]
+        assert out == [
+            "/usr/bin/curl",
+            "cache-runs",
+            "userbin-runs",
+            "tmp-noexec",
+            "/workspace/.cache/python-user/lib/python3.13/site-packages",
+        ]
 
     def test_service_preview_terminal_and_stdio(self, runner):
         runner.post(
@@ -566,12 +589,20 @@ class TestRealSessions:
         )
         assert wrong.status_code == 404
         with runner.websocket_connect(f"/sessions/{self.KEY}/terminal?cols=80&rows=20") as term:
-            term.send_bytes(b"echo TERM_$((6*7)) CACHE_$XDG_CACHE_HOME\n")
+            # A working shell always prints the marker line, so a wrong value fails instead
+            # of hanging; the echoed command holds "$((6*7))", never "42".
+            term.send_bytes(
+                b"echo TERM_$((6*7)) CACHE_${XDG_CACHE_HOME}_NPM_${npm_config_cache}"
+                b"_PATH_${PATH}_END\n"
+            )
             seen = b""
             deadline = time.time() + 10
-            while b"CACHE_/workspace/.cache" not in seen and time.time() < deadline:
+            while not re.search(rb"TERM_42 .*_END", seen) and time.time() < deadline:
                 seen += term.receive_bytes()
-        assert b"TERM_42 CACHE_/workspace/.cache" in seen
+        marker = re.search(rb"TERM_42 CACHE_(\S*)_NPM_(\S*)_PATH_(\S*)_END", seen)
+        assert marker, seen[-400:]
+        assert marker.group(1, 2) == (b"/workspace/.cache", b"/workspace/.cache/npm")
+        assert marker.group(3).startswith(b"/workspace/.cache/python-user/bin:")
         with runner.websocket_connect(f"/sessions/{self.KEY}/stdio") as pipe:
             pipe.send_text(
                 json.dumps(
@@ -598,6 +629,16 @@ class TestRealSessions:
         if os.getenv("MIZAN_TEST_EGRESS_INTERNET") == "1":
             npm = self.run(runner, "npm view left-pad@1.3.0 version", timeout=120)
             assert npm["stdout"].strip() == "1.3.0", npm["stderr"][-500:]
+            # A global allow-scripts list makes npm refuse a nested install (EALLOWSCRIPTS),
+            # which breaks create-next-app, create-vite --immediate and sub-project installs.
+            nested = self.run(
+                runner,
+                "mkdir -p nested && cd nested && npm init -y >/dev/null && "
+                'npm pkg set scripts.nested="npm install --no-fund --no-audit is-number@7.0.0" '
+                ">/dev/null && npm run nested >/dev/null 2>&1; echo nested=$?",
+                timeout=180,
+            )
+            assert nested["stdout"].strip() == "nested=0", nested["stderr"][-500:]
 
 
 @pytest.mark.skipif(

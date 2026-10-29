@@ -283,12 +283,15 @@ backend host. It has:
 
 - the project files on a disk volume at `/workspace`
 - Python 3.13, Node 24, npm, git, curl and bash
-- npm runs the install scripts of `esbuild` and `@swc/core` (they only check
-  or pick their prebuilt binary); npm 11 skips any other package's script
-  until you approve it with `npm install-scripts approve <name>` or
-  `allowScripts` in `package.json`
-- caches in `/workspace/.cache` (`XDG_CACHE_HOME`), so a native addon a
-  package unpacks there can run; `/tmp` is not executable
+- npm 11 runs a dependency's install script (esbuild, `@swc/core`, sharp…) and
+  only warns when `allowScripts` in `package.json` does not list it; the image
+  sets no global allow list, because npm passes one on to every nested
+  `npm install` (scaffolders such as `create-next-app`) and refuses it there
+- caches and user installs live on the session volume and are never synced:
+  `XDG_CACHE_HOME` and npm's cache under `/workspace/.cache`, pip user installs
+  under `/workspace/.cache/python-user` (its `bin` is on `PATH`). `/tmp` is not
+  executable, so nothing that must run (npx binaries, native addons, console
+  scripts) is placed there, in commands, the terminal and stdio servers alike
 - an unprivileged user, no capabilities, a read-only root filesystem and
   resource limits
 - **no route to the internet except the egress proxy**, which allows HTTPS only
