@@ -691,42 +691,35 @@ print('plot created')
         assert result["export_error"] is True and result["files"] == {}
 
     def test_git_history_persists_across_isolated_jobs(self, storage):
+        # Each job gets what run_project sends: the files and directories, .git included.
         workspace = storage.create("Repository")["id"]
         storage.write(workspace, "main.py", "print(42)\n")
-        baseline = storage.snapshot(workspace)
+        baseline, directories = storage.snapshot_state(workspace)
         initialized = execute(
             {"language": "shell", "command": "git init", "timeout_s": 10, "files": baseline}
         )
         assert initialized["exit_code"] == 0
         storage.apply_run(workspace, baseline, initialized["files"], initialized["directories"])
-        baseline = storage.snapshot(workspace)
+        baseline, directories = storage.snapshot_state(workspace)
         committed = execute(
             {
                 "language": "shell",
                 "command": "git add -A && git -c user.name=Test -c user.email=test@localhost commit -m initial && git log -1 --oneline",
                 "timeout_s": 10,
                 "files": baseline,
-                "directories": [
-                    item["path"]
-                    for item in storage.tree(workspace)["files"]
-                    if item["kind"] == "directory"
-                ],
+                "directories": directories,
             }
         )
         assert committed["exit_code"] == 0 and "initial" in committed["stdout"]
         storage.apply_run(workspace, baseline, committed["files"], committed["directories"])
-        baseline = storage.snapshot(workspace)
+        baseline, directories = storage.snapshot_state(workspace)
         checked = execute(
             {
                 "language": "shell",
                 "command": "git status --porcelain && git log -1 --oneline",
                 "timeout_s": 10,
                 "files": baseline,
-                "directories": [
-                    item["path"]
-                    for item in storage.tree(workspace)["files"]
-                    if item["kind"] == "directory"
-                ],
+                "directories": directories,
             }
         )
         assert checked["exit_code"] == 0 and "initial" in checked["stdout"]

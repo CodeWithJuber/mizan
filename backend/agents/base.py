@@ -966,9 +966,10 @@ class BaseAgent:
             from workspace.store import WorkspaceStore
 
             workspace_id = selected_workspace(params.get("workspace_id"))
-            return WorkspaceStore(current_user_id() or "").preview_change(
+            preview = WorkspaceStore(current_user_id() or "").preview_change(
                 workspace_id, tool_name, params
             )
+            return cast(dict | None, preview)
         except Exception:  # noqa: BLE001 - the prompt still shows the parameters
             return None
 
