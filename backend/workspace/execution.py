@@ -52,8 +52,16 @@ async def capabilities(*, admin: bool = False) -> dict:
 
 
 async def run_project(
-    store: WorkspaceStore, workspace_id: str, command: str, language: str, timeout_s: int
+    store: WorkspaceStore,
+    workspace_id: str,
+    command: str,
+    language: str,
+    timeout_s: int,
+    *,
+    apply: bool = True,
 ) -> dict:
+    """Run a command on a copy of the project. With ``apply`` (the default) the files the
+    run changed are saved back; without it the run only observes (git status, logs)."""
     if (
         language not in {"python", "javascript", "shell"}
         or not command
@@ -107,8 +115,10 @@ async def run_project(
             422,
             "Execution created unsafe files or exceeded the project quota; project changes were not applied",
         )
-    changed = store.apply_run(
-        workspace_id, baseline, data["files"], data.get("directories"), directories
+    changed = (
+        store.apply_run(workspace_id, baseline, data["files"], data.get("directories"), directories)
+        if apply
+        else []
     )
     return {
         "stdout": str(data.get("stdout", ""))[:100000],

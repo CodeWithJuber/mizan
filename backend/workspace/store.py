@@ -126,6 +126,39 @@ def user_path(path: str) -> builtins.list[str]:
     return components
 
 
+def replaced(
+    before: str, old_string: str, new_string: str, replace_all: bool = False
+) -> tuple[str, int]:
+    """The text after an exact replacement and how many places changed; ambiguity
+    is refused rather than guessed."""
+    if not isinstance(old_string, str) or not old_string:
+        raise HTTPException(422, "old_string must be non-empty exact text from the file")
+    if not isinstance(new_string, str) or new_string == old_string:
+        raise HTTPException(422, "new_string must differ from old_string")
+    matches = before.count(old_string)
+    if matches == 0:
+        raise HTTPException(404, "old_string was not found; read the file and copy the exact text")
+    if matches > 1 and not replace_all:
+        raise HTTPException(
+            409,
+            f"old_string matches {matches} places; add surrounding context or set replace_all",
+        )
+    if replace_all:
+        return before.replace(old_string, new_string), matches
+    return before.replace(old_string, new_string, 1), 1
+
+
+def unified(path: str, before: str, after: str) -> str:
+    return "".join(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=f"a/{path}",
+            tofile=f"b/{path}",
+        )
+    )
+
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -334,45 +367,53 @@ class WorkspaceStore:
         expected_sha256: str | None = None,
     ) -> dict:
         """Replace exact text; ambiguity is refused rather than guessed."""
-        if not isinstance(old_string, str) or not old_string:
-            raise HTTPException(422, "old_string must be non-empty exact text from the file")
-        if not isinstance(new_string, str) or new_string == old_string:
-            raise HTTPException(422, "new_string must differ from old_string")
         with _LOCK:
             document = self.read(workspace_id, path)
             if expected_sha256 and document["sha256"] != expected_sha256:
                 raise HTTPException(409, "File changed since it was read")
             before = document["content"]
-            matches = before.count(old_string)
-            if matches == 0:
-                raise HTTPException(
-                    404, "old_string was not found; read the file and copy the exact text"
-                )
-            if matches > 1 and not replace_all:
-                raise HTTPException(
-                    409,
-                    f"old_string matches {matches} places; add surrounding context "
-                    "or set replace_all",
-                )
-            after = (
-                before.replace(old_string, new_string)
-                if replace_all
-                else before.replace(old_string, new_string, 1)
-            )
+            after, count = replaced(before, old_string, new_string, replace_all)
             written = self.write(workspace_id, path, after, document["sha256"])
-        patch = "".join(
-            difflib.unified_diff(
-                before.splitlines(keepends=True),
-                after.splitlines(keepends=True),
-                fromfile=f"a/{path}",
-                tofile=f"b/{path}",
-            )
-        )
+        patch = unified(path, before, after)
         return {
             **written,
-            "replacements": matches if replace_all else 1,
+            "replacements": count,
             "diff": patch[:32_000],
             "diff_truncated": len(patch) > 32_000,
+        }
+
+    def preview_change(self, workspace_id: str, tool: str, params: dict) -> dict | None:
+        """The diff an edit or write would make, without making it (for an approval
+        prompt). None when the change would be refused anyway."""
+        path = str(params.get("path") or "")
+        try:
+            user_path(path)
+            try:
+                before, new_file = self.read(workspace_id, path)["content"], False
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    return None
+                before, new_file = "", True
+            if tool == "workspace_edit":
+                after, _count = replaced(
+                    before,
+                    str(params.get("old_string") or ""),
+                    str(params.get("new_string") or ""),
+                    bool(params.get("replace_all")),
+                )
+            elif tool == "workspace_write":
+                after = str(params.get("content") or "")
+            else:
+                return None
+        except HTTPException:
+            return None
+        patch = unified(path, before, after)
+        limit = 20_000
+        return {
+            "path": path,
+            "diff": patch[:limit],
+            "truncated": len(patch) > limit,
+            "new_file": new_file,
         }
 
     def glob(self, workspace_id: str, pattern: str) -> dict:

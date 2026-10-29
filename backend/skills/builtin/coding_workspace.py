@@ -295,12 +295,26 @@ class CodingWorkspaceSkill(SkillBase):
         action: str = "status",
         message: str = "Workspace update",
     ) -> dict:
-        commands = {
-            "status": "git status --short",
-            "diff": "git diff --no-ext-diff",
-            "log": "git log -10 --oneline",
-            "init": "git init",
+        # Reads never write: no index refresh (GIT_OPTIONAL_LOCKS=0) and nothing applied back.
+        reads = {
+            "status": "GIT_OPTIONAL_LOCKS=0 git status --short",
+            "diff": "GIT_OPTIONAL_LOCKS=0 git diff --no-ext-diff",
+            "log": "GIT_OPTIONAL_LOCKS=0 git log -10 --oneline",
         }
+        if action in reads:
+            store = self.store()
+            project = selected_workspace(workspace_id)
+            user_id = current_user_id() or ""
+            if await session_client.running(user_id, project):
+                return cast(
+                    dict,
+                    await session_client.execute(user_id, project, reads[action], "shell", 30),
+                )
+            return cast(
+                dict,
+                await run_project(store, project, reads[action], "shell", 30, apply=False),
+            )
+        commands = {"init": "git init"}
         if action == "commit":
             if not message or len(message) > 200:
                 raise HTTPException(422, "Commit message must be 1..200 characters")

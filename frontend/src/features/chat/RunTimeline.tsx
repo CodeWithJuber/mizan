@@ -104,7 +104,7 @@ export function ApprovalPrompt({
   const [busy, setBusy] = useState(false);
   const input = (approval.input && typeof approval.input === "object" ? approval.input : {}) as Record<string, unknown>;
   const headline = typeof input.command === "string" ? input.command : typeof input.path === "string" ? input.path : "";
-  const diff = typeof input.diff === "string" ? input.diff : "";
+  const diff = approval.preview?.diff ?? (typeof input.diff === "string" ? input.diff : "");
   if (approval.decision) {
     return (
       <li className="flex items-center gap-2 px-1.5 text-xs text-muted-foreground">

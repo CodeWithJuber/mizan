@@ -2426,15 +2426,18 @@ async def stream_chat(
                     )
 
                 from agents.events import bind_event_sink
-                from security.approvals import ApprovalContext, bind_approvals
+                from security.approvals import bind_approvals
+                from security.approvals import chat_context as approvals_for_chat
                 from tadbir.waqt import bind_timezone
 
                 async def activity_sink(kind: str, payload: dict):
                     # Structured tool/todo/approval frames for this run only.
                     await deliver(kind, **payload)
 
+                # A person reads this chat: they are asked, and what they allowed
+                # "always" in it earlier still holds.
                 approval_context = (
-                    ApprovalContext(user.user_id, req.session_id, req.permission_mode)
+                    approvals_for_chat(user.user_id, req.session_id, req.permission_mode)
                     if req.permission_mode
                     else None
                 )
@@ -3147,6 +3150,29 @@ async def _decide_held(
         metadata={"held_result": held_id, "status": "complete"},
     )
     return {"held_id": held_id, "status": "done", "tool": item["tool"], "result": outcome}
+
+
+@app.get("/api/chat/{session_id}/always")
+async def list_chat_always(session_id: str, user: TokenPayload = Depends(require_auth)):
+    """What the user allowed "always" in this chat; each can be revoked."""
+    from security.approvals import chat_always_store
+
+    await authorize_session(session_id, user)
+    return {
+        "session_id": session_id,
+        "always": chat_always_store().list(user.user_id, session_id),
+    }
+
+
+@app.delete("/api/chat/{session_id}/always/{key}")
+async def revoke_chat_always(session_id: str, key: str, user: TokenPayload = Depends(require_auth)):
+    """Ask again before this tool (or tool action) in this chat, from now on."""
+    from security.approvals import chat_always_store
+
+    await authorize_session(session_id, user)
+    if not chat_always_store().remove(user.user_id, session_id, key):
+        raise HTTPException(404, "Nothing was allowed always under that name in this chat")
+    return {"session_id": session_id, "revoked": key}
 
 
 @app.get("/api/chat/{session_id}")

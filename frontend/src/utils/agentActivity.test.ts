@@ -30,4 +30,14 @@ check("unknown events ignored", reduceActivity(state, { type: "chat_stream", chu
 check("labels are readable", toolLabel(state.tools[0]) === "Edit src/app.py");
 check("connector labels show server and tool", toolLabel({ callId: "x", name: "mcp__github__list_issues", input: {}, status: "done" }) === "github · list_issues");
 
+const previewed = reduceActivity(state, {
+  type: "approval_request", approval_id: "a2", tool: "workspace_edit", input: { path: "app.js" }, category: "edit",
+  preview: { path: "app.js", diff: "-a\n+b\n", truncated: false, new_file: false },
+});
+check("an edit prompt keeps the diff it would make",
+  previewed.approvals[1].preview?.diff === "-a\n+b\n" && previewed.approvals[1].preview?.newFile === false);
+check("a malformed preview is dropped", !reduceActivity(state, {
+  type: "approval_request", approval_id: "a3", tool: "workspace_edit", input: {}, category: "edit", preview: { diff: 1 },
+}).approvals.slice(-1)[0]?.preview);
+
 console.log(`${checks} agent activity checks passed`);

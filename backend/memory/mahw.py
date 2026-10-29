@@ -489,6 +489,12 @@ def _erase_chat_rows(
         removed["held actions"] = _run(
             held_db, "DELETE FROM held WHERE owner_id = ? AND session_id = ?", (owner, session_id)
         )
+        # What the person allowed "always" in this chat (security/approvals.ChatAlways).
+        removed["always allowed"] = _run(
+            held_db,
+            "DELETE FROM chat_always WHERE owner_id = ? AND session_id = ?",
+            (owner, session_id),
+        )
     removed["chat"] = _run(
         chat_db,
         "DELETE FROM chat_sessions WHERE session_id = ? AND owner_id = ?",

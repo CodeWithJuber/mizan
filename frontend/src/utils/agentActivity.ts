@@ -27,6 +27,15 @@ export interface ApprovalRequest {
   category: string;
   reason: string;
   decision?: string;
+  /** The diff a project edit or write would make, sent with the prompt. */
+  preview?: { path: string; diff: string; truncated: boolean; newFile: boolean };
+}
+
+function parsePreview(value: unknown): ApprovalRequest["preview"] {
+  if (!value || typeof value !== "object") return undefined;
+  const item = value as Record<string, unknown>;
+  if (typeof item.diff !== "string" || typeof item.path !== "string") return undefined;
+  return { path: item.path, diff: item.diff, truncated: item.truncated === true, newFile: item.new_file === true };
 }
 
 export interface AgentActivity {
@@ -96,6 +105,7 @@ export function reduceActivity(state: AgentActivity, event: Record<string, unkno
         approvals: [...state.approvals, {
           approvalId, tool: text(event.tool, "tool"), input: event.input,
           category: text(event.category, "execute"), reason: text(event.reason),
+          ...(parsePreview(event.preview) ? { preview: parsePreview(event.preview) } : {}),
         }],
       };
     }

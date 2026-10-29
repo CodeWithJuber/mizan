@@ -923,6 +923,22 @@ class BaseAgent:
         return list(visible.values())
 
     @staticmethod
+    def _approval_preview(tool_name: str, params: dict) -> dict | None:
+        """The diff a project edit or write would make, shown before the person decides."""
+        if tool_name not in {"workspace_edit", "workspace_write"}:
+            return None
+        try:
+            from workspace.context import selected_workspace
+            from workspace.store import WorkspaceStore
+
+            workspace_id = selected_workspace(params.get("workspace_id"))
+            return WorkspaceStore(current_user_id() or "").preview_change(
+                workspace_id, tool_name, params
+            )
+        except Exception:  # noqa: BLE001 - the prompt still shows the parameters
+            return None
+
+    @staticmethod
     def _connector_schemas() -> list[dict]:
         try:
             from connectors.tools import user_tool_schemas
@@ -2308,7 +2324,7 @@ class BaseAgent:
             # Text inside an image the user attached is outside content, like
             # a page: a change the model chooses after reading it needs a person.
             held = bool(amanah.tainted() or basar.current()) and (
-                tool_category(tool_name, self._read_only_hint(tool_name)) != "read"
+                tool_category(tool_name, self._read_only_hint(tool_name), params) != "read"
             )
         if held and approvals is None:
             return {
@@ -2325,14 +2341,14 @@ class BaseAgent:
             return {"error": "This sends something to a site, and no one is here to approve it"}
         if approvals is not None:
             read_only = self._read_only_hint(tool_name)
-            if approvals.blocks(tool_name, read_only):
+            if approvals.blocks(tool_name, read_only, params):
                 return {
                     "error": "Plan mode is read-only: describe this step in the plan instead",
                     "plan_mode": True,
                 }
             if approvals.was_granted(tool_name, params):
                 pass  # the owner allowed exactly this call when it was held
-            elif izn_asks or held or approvals.needs_approval(tool_name, read_only):
+            elif izn_asks or held or approvals.needs_approval(tool_name, read_only, params):
                 reason = perm.get("reason", "") if izn_asks else _AMANAH_REASON if held else ""
                 if approvals.deferred:
                     # No one is watching this run: keep the exact action for
@@ -2344,7 +2360,13 @@ class BaseAgent:
                         "error": "Held for the owner's approval: no one is watching this run",
                         "held_for_approval": held_id,
                     }
-                decision = await request_approval(approvals, tool_name, params, reason=reason)
+                decision = await request_approval(
+                    approvals,
+                    tool_name,
+                    params,
+                    reason=reason,
+                    preview=self._approval_preview(tool_name, params),
+                )
                 if decision == "deny":
                     return {"error": "The user declined this action", "declined": True}
 
