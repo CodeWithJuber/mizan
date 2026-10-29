@@ -249,7 +249,7 @@ def test_a_search_longer_than_200_characters_is_refused(sidebar):
 # ── Storage ──────────────────────────────────────────────────────────────
 
 
-async def test_an_existing_database_gains_the_title_column(tmp_path):
+async def test_an_existing_database_gains_the_title_and_project_columns(tmp_path):
     path = tmp_path / "old.db"
     chat = DhikrMemorySystem(str(path))
     with sqlite3.connect(path) as conn:  # the table as production has it today
@@ -265,8 +265,8 @@ async def test_an_existing_database_gains_the_title_column(tmp_path):
     with sqlite3.connect(path) as conn:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)")]
         rows = conn.execute("SELECT * FROM chat_sessions ORDER BY session_id").fetchall()
-    assert columns == ["session_id", "owner_id", "title"]
-    assert rows == [("new", "u1", None), ("old", "u1", "Named later")]
+    assert columns == ["session_id", "owner_id", "title", "workspace_id"]
+    assert rows == [("new", "u1", None, None), ("old", "u1", "Named later", None)]
     # Opening it again does not add the column twice.
     again = DhikrMemorySystem(str(path))
     assert (await again.list_sessions(owner_id="u1", q="named"))[0]["session_id"] == "old"

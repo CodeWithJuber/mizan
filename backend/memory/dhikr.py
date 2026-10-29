@@ -972,11 +972,14 @@ class DhikrMemorySystem:
             "CREATE TABLE IF NOT EXISTS chat_sessions "
             "(session_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT)"
         )
-        # The chat's own name (the sidebar's title), added in place to older databases.
+        # The chat's own name (the sidebar's title) and the project it works on,
+        # added in place to older databases.
         existing = {row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
-        if "title" not in existing:
+        for column in ("title", "workspace_id"):
+            if column in existing:
+                continue
             try:
-                conn.execute("ALTER TABLE chat_sessions ADD COLUMN title TEXT")
+                conn.execute(f"ALTER TABLE chat_sessions ADD COLUMN {column} TEXT")
             except sqlite3.OperationalError as exc:
                 if "duplicate column" not in str(exc).lower():  # another process added it
                     raise
@@ -1054,6 +1057,52 @@ class DhikrMemorySystem:
                     conn.execute(
                         "UPDATE chat_sessions SET title = ? WHERE session_id = ? AND owner_id = ?",
                         (name, session_id, owner_id),
+                    )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            return allowed
+        finally:
+            self._release_conn(conn)
+
+    async def session_workspace(self, owner_id: str, session_id: str) -> str | None:
+        """The project one of the owner's chats is bound to, if any."""
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            row = conn.execute(
+                "SELECT workspace_id FROM chat_sessions WHERE session_id = ? AND owner_id = ?",
+                (session_id, owner_id),
+            ).fetchone()
+            conn.commit()
+            return row[0] if row and row[0] else None
+        finally:
+            self._release_conn(conn)
+
+    async def bind_session_workspace(
+        self,
+        owner_id: str,
+        session_id: str,
+        workspace_id: str | None,
+        *,
+        adopt_legacy: bool = False,
+    ) -> bool:
+        """Bind one of the owner's chats to a project (``None`` unbinds). The caller has
+        already checked the project is the owner's. False when the chat is not theirs."""
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                allowed = self._claim_session(
+                    conn, session_id, owner_id, create=False, adopt_legacy=adopt_legacy
+                )
+                if allowed:
+                    conn.execute(
+                        "UPDATE chat_sessions SET workspace_id = ? "
+                        "WHERE session_id = ? AND owner_id = ?",
+                        (workspace_id or None, session_id, owner_id),
                     )
                 conn.commit()
             except BaseException:
@@ -1256,10 +1305,13 @@ class DhikrMemorySystem:
         owner_id: str | None = None,
         offset: int = 0,
         q: str | None = None,
+        workspace_id: str | None = None,
     ) -> list[dict]:
         """List recent chat sessions with metadata, newest first (``offset`` pages).
 
-        Each row carries the chat's ``title`` (None until the owner names it).
+        Each row carries the chat's ``title`` (None until the owner names it) and
+        the project it is bound to (``workspace_id``); ``workspace_id`` given keeps
+        only that project's chats.
         ``q`` (trimmed, at most 200 characters) keeps only chats whose title or
         first user message contains it, in any letter case; ``%`` and ``_`` in
         it are plain characters, not wildcards.
@@ -1276,7 +1328,7 @@ class DhikrMemorySystem:
             rows = conn.execute(
                 """
                 SELECT session_id, started_at, last_message_at, message_count,
-                       first_message, title
+                       first_message, title, workspace_id
                 FROM (
                     SELECT m.session_id,
                            MIN(m.created_at) AS started_at,
@@ -1286,7 +1338,9 @@ class DhikrMemorySystem:
                             WHERE session_id = m.session_id AND role = 'user'
                             ORDER BY created_at LIMIT 1) AS first_message,
                            (SELECT title FROM chat_sessions
-                            WHERE session_id = m.session_id) AS title
+                            WHERE session_id = m.session_id) AS title,
+                           (SELECT workspace_id FROM chat_sessions
+                            WHERE session_id = m.session_id) AS workspace_id
                     FROM agent_messages m
                     WHERE (? IS NULL OR m.session_id IN
                            (SELECT session_id FROM chat_sessions WHERE owner_id = ?))
@@ -1295,10 +1349,21 @@ class DhikrMemorySystem:
                 WHERE (? IS NULL
                        OR mizan_fold(title) LIKE ? ESCAPE '\\'
                        OR mizan_fold(first_message) LIKE ? ESCAPE '\\')
+                  AND (? IS NULL OR workspace_id = ?)
                 ORDER BY last_message_at DESC, session_id DESC
                 LIMIT ? OFFSET ?
             """,
-                (owner_id, owner_id, pattern, pattern, pattern, limit, max(0, offset)),
+                (
+                    owner_id,
+                    owner_id,
+                    pattern,
+                    pattern,
+                    pattern,
+                    workspace_id,
+                    workspace_id,
+                    limit,
+                    max(0, offset),
+                ),
             ).fetchall()
         finally:
             self._release_conn(conn)
@@ -1311,6 +1376,7 @@ class DhikrMemorySystem:
                 "message_count": r[3],
                 "first_message": (r[4] or "")[:80],
                 "title": r[5],
+                "workspace_id": r[6],
             }
             for r in rows
         ]

@@ -1,8 +1,33 @@
 Mizan coding projects persist under `MIZAN_WORKSPACE_ROOT` (default
 `MIZAN_DATA_DIR/workspaces`). Each principal has a separate namespace. The API
 supports file trees, optimistic file edits, rename/delete of individual files,
-five retained checkpoints, actual diffs, and saved code/HTML/markdown/image
-artifacts. Files survive chat and backend restarts. Project files have a 1 MiB
+checkpoints you can restore, actual diffs, and saved code/HTML/markdown/image
+artifacts. Files survive chat and backend restarts.
+
+**Projects.** `PATCH /api/workspaces/{id}` renames one (`{"name"}`),
+`DELETE /api/workspaces/{id}` deletes it (its server session is stopped first)
+and `GET /api/workspaces/{id}/export.zip` downloads its files without `.git`.
+Delete and restore answer 409 while a chat is working in the project.
+
+**Checkpoints.** A checkpoint is a manifest of `{path: sha256}`; each file's
+bytes are stored once under `checkpoints/objects/<sha[:2]>/<sha>`, so ten
+checkpoints of a project that changed one file cost one copy of the rest. A
+checkpoint whose files are the same as the newest one is not saved again
+(`reused: true`). The 30 newest are kept (`MIZAN_WORKSPACE_MAX_CHECKPOINTS`, at
+most 200) within 50 MiB of stored files; objects no checkpoint uses are
+deleted. Kinds: `manual` (you), `agent` (the model or MIZAN), `turn` (before a
+chat message) and `restore` (before a restore).
+`POST /api/workspaces/{id}/checkpoints/{cid}/restore` puts the project back as
+it was (`{"paths": [...]}` restores only those files). It saves a "Before
+restore" checkpoint first, so a restore can itself be undone, and brings a
+running server session up to date. `GET .../checkpoints/{cid}/file?path=` reads
+one file as it was. Checkpoints written by older versions (whole files in
+base64) are converted the first time they are read.
+
+**`.git` is not part of the project's files.** Glob, grep, checkpoints, diffs,
+restore and export skip it, and the file API refuses writes under it (422).
+Programs still see it, so `git` works in a run; the runner's 500-entry and
+10 MiB caps still count it. Project files have a 1 MiB
 limit and projects a 10 MiB/500-entry limit (see `agentic-coding.md` for raising
 them). Each user may keep `MIZAN_WORKSPACE_MAX_PROJECTS` projects (default 10,
 at most 200; System settings, applied on the next create). The private Scratch

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ChatMessageBubble, MizanMark } from "../../components/ChatMessage";
 import { StreamingMarkdown } from "../../components/StreamingMarkdown";
 import { ChatRunStatus } from "../../components/ChatRunStatus";
+import { recoveryWorthShowing } from "../../utils/chatRecovery.ts";
 import { routeForLegacyTab } from "../../app/legacyTabs";
 import { useAgents, useSelectedAgent } from "../agents/agents";
 import { useChatActions, useChatState } from "./ChatProvider";
@@ -174,7 +175,7 @@ export function ChatThread() {
           <div className="chat-message-container">
             <ChatRunStatus
               progress={null}
-              recovery={state.recovery.state}
+              recovery={recoveryWorthShowing(state.recovery.state) ? state.recovery.state : null}
               storageUnavailable={state.draftStorageFailed}
               onRefresh={() => void state.recovery.refresh()}
               onStop={actions.stopRecoveredRun}

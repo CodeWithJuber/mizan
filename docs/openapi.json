@@ -1258,9 +1258,9 @@
     ]
    },
    "patch": {
-    "summary": "Rename Chat",
-    "description": "Name one of the user's chats; the chat list shows the title and searches it.",
-    "operationId": "rename_chat_api_chat__session_id__patch",
+    "summary": "Update Chat",
+    "description": "Name one of the user's chats (the chat list shows the title and searches it),\nor bind it to one of their projects so its messages work on that project.",
+    "operationId": "update_chat_api_chat__session_id__patch",
     "parameters": [
      {
       "name": "session_id",
@@ -1309,7 +1309,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ChatRename"
+        "$ref": "#/components/schemas/ChatUpdate"
        }
       }
      }
@@ -1346,7 +1346,7 @@
    },
    "get": {
     "summary": "Get Chat History",
-    "description": "Newest ``limit`` messages; pass ``before=<message id>`` to page further back.",
+    "description": "Newest ``limit`` messages; pass ``before=<message id>`` to page further back.\n``workspace_id`` is the project the chat is bound to (null when none).",
     "operationId": "get_chat_history_api_chat__session_id__get",
     "parameters": [
      {
@@ -1729,6 +1729,26 @@
        "title": "Q"
       },
       "description": "Only chats whose title or first message contains this, in any case."
+     },
+     {
+      "name": "workspace_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Only the chats bound to this project.",
+       "title": "Workspace Id"
+      },
+      "description": "Only the chats bound to this project."
      },
      {
       "name": "authorization",
@@ -2313,6 +2333,173 @@
       }
      }
     },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/chat/{session_id}/always": {
+   "get": {
+    "summary": "List Chat Always",
+    "description": "What the user allowed \"always\" in this chat; each can be revoked.",
+    "operationId": "list_chat_always_api_chat__session_id__always_get",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/chat/{session_id}/always/{key}": {
+   "delete": {
+    "summary": "Revoke Chat Always",
+    "description": "Ask again before this tool (or tool action) in this chat, from now on.",
+    "operationId": "revoke_chat_always_api_chat__session_id__always__key__delete",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "key",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Key"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -15787,6 +15974,268 @@
     ]
    }
   },
+  "/api/workspaces/{workspace_id}": {
+   "patch": {
+    "tags": [
+     "coding workspaces"
+    ],
+    "summary": "Rename Workspace",
+    "description": "Rename a project.",
+    "operationId": "rename_workspace_api_workspaces__workspace_id__patch",
+    "parameters": [
+     {
+      "name": "workspace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkspaceRename"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Rename Workspace Api Workspaces  Workspace Id  Patch"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "delete": {
+    "tags": [
+     "coding workspaces"
+    ],
+    "summary": "Delete Workspace",
+    "description": "Delete a whole project, its checkpoints and its sandbox session.",
+    "operationId": "delete_workspace_api_workspaces__workspace_id__delete",
+    "parameters": [
+     {
+      "name": "workspace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Delete Workspace Api Workspaces  Workspace Id  Delete"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/workspaces/{workspace_id}/export.zip": {
+   "get": {
+    "tags": [
+     "coding workspaces"
+    ],
+    "summary": "Export Workspace",
+    "description": "The project's files (not git's folder) as a zip.",
+    "operationId": "export_workspace_api_workspaces__workspace_id__export_zip_get",
+    "parameters": [
+     {
+      "name": "workspace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/workspaces/hardware": {
    "get": {
     "tags": [
@@ -16756,6 +17205,217 @@
          "type": "object",
          "additionalProperties": true,
          "title": "Response Checkpoints Api Workspaces  Workspace Id  Checkpoints Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/workspaces/{workspace_id}/checkpoints/{checkpoint_id}/restore": {
+   "post": {
+    "tags": [
+     "coding workspaces"
+    ],
+    "summary": "Restore Checkpoint",
+    "description": "Bring files back to a checkpoint (all, or ``paths``); the current state is saved first.",
+    "operationId": "restore_checkpoint_api_workspaces__workspace_id__checkpoints__checkpoint_id__restore_post",
+    "parameters": [
+     {
+      "name": "workspace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "checkpoint_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Checkpoint Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CheckpointRestore"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Restore Checkpoint Api Workspaces  Workspace Id  Checkpoints  Checkpoint Id  Restore Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/workspaces/{workspace_id}/checkpoints/{checkpoint_id}/file": {
+   "get": {
+    "tags": [
+     "coding workspaces"
+    ],
+    "summary": "Checkpoint File",
+    "description": "One file as it was in a checkpoint.",
+    "operationId": "checkpoint_file_api_workspaces__workspace_id__checkpoints__checkpoint_id__file_get",
+    "parameters": [
+     {
+      "name": "workspace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "checkpoint_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Checkpoint Id"
+      }
+     },
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 512,
+       "title": "Path"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Checkpoint File Api Workspaces  Workspace Id  Checkpoints  Checkpoint Id  File Get"
         }
        }
       }
@@ -19902,20 +20562,6 @@
     ],
     "title": "ChatPreferenceValue"
    },
-   "ChatRename": {
-    "properties": {
-     "title": {
-      "type": "string",
-      "title": "Title",
-      "description": "The chat's name: 1-120 characters after trimming, one line."
-     }
-    },
-    "type": "object",
-    "required": [
-     "title"
-    ],
-    "title": "ChatRename"
-   },
    "ChatRequest": {
     "properties": {
      "messages": {
@@ -20011,6 +20657,39 @@
     ],
     "title": "ChatResponse"
    },
+   "ChatUpdate": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "The chat's name: 1-120 characters after trimming, one line."
+     },
+     "workspace_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspace Id",
+      "description": "The project this chat works on; null unbinds it."
+     }
+    },
+    "type": "object",
+    "title": "ChatUpdate",
+    "description": "Name a chat (``title``), bind it to one of the user's projects (``workspace_id``)\nor unbind it (``workspace_id: null``): at least one of the two."
+   },
    "CheckpointCreate": {
     "properties": {
      "message": {
@@ -20023,6 +20702,49 @@
     },
     "type": "object",
     "title": "CheckpointCreate"
+   },
+   "CheckpointRestore": {
+    "properties": {
+     "paths": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paths"
+     }
+    },
+    "type": "object",
+    "title": "CheckpointRestore"
+   },
+   "CodingFix": {
+    "properties": {
+     "source": {
+      "type": "string",
+      "pattern": "^(preview|server|terminal)$",
+      "title": "Source",
+      "default": "preview"
+     },
+     "error": {
+      "type": "string",
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "Error"
+     }
+    },
+    "type": "object",
+    "required": [
+     "error"
+    ],
+    "title": "CodingFix",
+    "description": "An error the person asked MIZAN to fix (\"Fix with MIZAN\" on the preview)."
    },
    "CognitiveRouteRequest": {
     "properties": {
@@ -22925,6 +23647,21 @@
       "type": "boolean",
       "title": "Stateless",
       "default": false
+     },
+     "plan_approved": {
+      "type": "boolean",
+      "title": "Plan Approved",
+      "default": false
+     },
+     "fix": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CodingFix"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -23555,6 +24292,21 @@
      "name"
     ],
     "title": "WorkspaceCreate"
+   },
+   "WorkspaceRename": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "WorkspaceRename"
    },
    "YaqinTagRequest": {
     "properties": {

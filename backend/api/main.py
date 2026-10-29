@@ -9,6 +9,7 @@ Secured with Wali Guardian, Izn Permissions, and Input Validation
 """
 
 import asyncio
+import contextlib
 import functools
 import json
 import logging
@@ -39,7 +40,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
@@ -914,6 +915,13 @@ class ImageIn(BaseModel):
     data: str = Field(..., min_length=8, max_length=14_000_000)
 
 
+class CodingFix(BaseModel):
+    """An error the person asked MIZAN to fix ("Fix with MIZAN" on the preview)."""
+
+    source: str = Field("preview", pattern=r"^(preview|server|terminal)$")
+    error: str = Field(..., min_length=1, max_length=8000)
+
+
 class StreamChatMessage(ChatMessage):
     # One UUID per user action: a client that resends it after an ambiguous
     # network failure never creates a second model call. A client that omits
@@ -933,6 +941,19 @@ class StreamChatMessage(ChatMessage):
     # An evaluation: no recall of other chats, nothing learned, nothing captured
     # as a training candidate (memory/stateless.py). Reported in usage.memory.
     stateless: bool = False
+    # Buttons, never words (Fahm reads "go ahead" as conversation): the person approved
+    # the plan the last answer made, or asks MIZAN to fix an error its project showed.
+    # Either gives the request to the model with the project's tools (Tadbir).
+    plan_approved: bool = False
+    fix: CodingFix | None = None
+
+    @model_validator(mode="after")
+    def _coding_button(self) -> "StreamChatMessage":
+        if (self.plan_approved or self.fix) and self.permission_mode in (None, "plan"):
+            raise ValueError("plan_approved and fix need a permission_mode that allows changes")
+        if self.plan_approved and self.fix:
+            raise ValueError("Send plan_approved or fix, not both")
+        return self
 
 
 class IntegrationCreate(BaseModel):
@@ -1785,14 +1806,25 @@ async def delete_chat(session_id: str, user: TokenPayload = Depends(require_auth
     return receipt
 
 
-class ChatRename(BaseModel):
-    title: str = Field(
-        ..., description="The chat's name: 1-120 characters after trimming, one line."
+class ChatUpdate(BaseModel):
+    """Name a chat (``title``), bind it to one of the user's projects (``workspace_id``)
+    or unbind it (``workspace_id: null``): at least one of the two."""
+
+    title: str | None = Field(
+        None, description="The chat's name: 1-120 characters after trimming, one line."
+    )
+    workspace_id: str | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="The project this chat works on; null unbinds it.",
     )
 
     @field_validator("title")
     @classmethod
-    def _one_line_title(cls, value: str) -> str:
+    def _one_line_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         title = value.strip()
         if not title:
             raise ValueError("A chat title cannot be empty")
@@ -1803,14 +1835,35 @@ class ChatRename(BaseModel):
             raise ValueError("A chat title cannot contain control characters")
         return title
 
+    @model_validator(mode="after")
+    def _something_to_change(self) -> "ChatUpdate":
+        sent = self.model_fields_set & {"title", "workspace_id"}
+        if not sent:
+            raise ValueError("Send a title, a workspace_id, or both")
+        if "title" in sent and self.title is None:
+            raise ValueError("A chat title cannot be empty")
+        return self
+
 
 @app.patch("/api/chat/{session_id}")
-async def rename_chat(session_id: str, req: ChatRename, user: TokenPayload = Depends(require_auth)):
-    """Name one of the user's chats; the chat list shows the title and searches it."""
+async def update_chat(session_id: str, req: ChatUpdate, user: TokenPayload = Depends(require_auth)):
+    """Name one of the user's chats (the chat list shows the title and searches it),
+    or bind it to one of their projects so its messages work on that project."""
     await authorize_session(session_id, user)
-    if not await memory.rename_session(user.user_id, session_id, req.title):
-        raise HTTPException(404, "Session not found")  # erased meanwhile
-    return {"session_id": session_id, "title": req.title}
+    answer: dict[str, Any] = {"session_id": session_id}
+    if "workspace_id" in req.model_fields_set:
+        if req.workspace_id:
+            from workspace.context import authorize_owned_workspace
+
+            authorize_owned_workspace(req.workspace_id, user.user_id)
+        if not await memory.bind_session_workspace(user.user_id, session_id, req.workspace_id):
+            raise HTTPException(404, "Session not found")  # erased meanwhile
+        answer["workspace_id"] = req.workspace_id
+    if "title" in req.model_fields_set:
+        if not await memory.rename_session(user.user_id, session_id, req.title):
+            raise HTTPException(404, "Session not found")
+        answer["title"] = req.title
+    return answer
 
 
 def chat_completion_receipt(result: dict) -> dict:
@@ -1966,6 +2019,43 @@ async def get_media(sha: str, user: TokenPayload = Depends(require_auth)):
     )
 
 
+async def _turn_checkpoint(
+    channel: Any, owner_id: str, workspace_id: str, session_id: str, request_id: str
+) -> dict | None:
+    """Save the project as it is before this message (one read of the project; nothing
+    is written when it is unchanged since the last checkpoint) and announce it. A failure
+    is reported and the turn goes on. The checkpoint names its chat and request, never
+    the message's words, so erasing the chat (Mahw) leaves none of them behind."""
+    from workspace.store import WorkspaceStore
+
+    try:
+        saved = await asyncio.to_thread(
+            WorkspaceStore(owner_id).checkpoint,
+            workspace_id,
+            "Before a chat message",
+            kind="turn",
+            origin={"session_id": session_id, "request_id": request_id},
+        )
+    except HTTPException as exc:
+        await channel.emit("checkpoint", workspace_id=workspace_id, error=str(exc.detail)[:300])
+        return None
+    except Exception:
+        logger.exception("Turn checkpoint failed for project %s", workspace_id)
+        await channel.emit(
+            "checkpoint", workspace_id=workspace_id, error="The project could not be saved"
+        )
+        return None
+    await channel.emit(
+        "checkpoint",
+        workspace_id=workspace_id,
+        checkpoint_id=saved["id"],
+        checkpoint_kind="turn",
+        reused=saved["reused"],
+        created_at=saved["created_at"],
+    )
+    return {"workspace_id": workspace_id, "id": saved["id"]}
+
+
 @app.post("/api/chat/stream", response_class=StreamingResponse)
 async def stream_chat(
     req: StreamChatMessage,
@@ -1988,14 +2078,24 @@ async def stream_chat(
             headers=_rate_headers(_chat_messages, f"user:{user.user_id}"),
         )
     await authorize_session(req.session_id, user, create=True)
+    # The project this message works on: the one sent, else the one the chat is bound to.
+    stored_workspace = await memory.session_workspace(user.user_id, req.session_id)
+    workspace_id = req.workspace_id or stored_workspace
     workspace_context: Any = None
-    if req.workspace_id:
+    if workspace_id:
         try:
             from workspace import context as selected_workspace_context
         except ImportError as exc:
             raise HTTPException(503, "Coding workspaces are not available") from exc
         workspace_context = selected_workspace_context
-        workspace_context.authorize_owned_workspace(req.workspace_id, user.user_id)
+        try:
+            workspace_context.authorize_owned_workspace(workspace_id, user.user_id)
+        except HTTPException:
+            if req.workspace_id:
+                raise
+            # The chat's project was deleted: the chat goes on without one.
+            await memory.bind_session_workspace(user.user_id, req.session_id, None)
+            workspace_id, workspace_context = None, None
     agent_id = req.agent_id or next(iter(active_agents), None)
     if agent_id not in active_agents and not req.content.startswith("/"):
         raise HTTPException(503, "No agents available")
@@ -2074,6 +2174,11 @@ async def stream_chat(
                 logger.warning("Unstarted chat receipt update unavailable")
         release_finished_run()
 
+    if req.fix and not workspace_id:
+        raise HTTPException(422, "Fix with MIZAN needs the chat's project")
+    if req.workspace_id and req.workspace_id != stored_workspace:
+        # Sending with a project binds the chat to it, so later messages keep it.
+        await memory.bind_session_workspace(user.user_id, req.session_id, req.workspace_id)
     channel = ChatEventChannel(
         session_id=req.session_id, message_id=message_id, request_id=request_id
     )
@@ -2085,8 +2190,13 @@ async def stream_chat(
 
         binding = bind_principal(user)
         workspace_binding = (
-            workspace_context.bind_workspace(req.workspace_id) if workspace_context else None
+            workspace_context.bind_workspace(workspace_id) if workspace_context else None
         )
+        # Delete and restore wait while this run works in the project.
+        busy = contextlib.ExitStack()
+        if workspace_context:
+            busy.enter_context(workspace_context.running_in(user.user_id, workspace_id))
+        turn_checkpoint: dict | None = None
         session: dict | None = None
         response_parts: list[str] = []
         response_characters = 0
@@ -2261,6 +2371,10 @@ async def stream_chat(
             # Images shown with this turn: the ones attached now, or with no new
             # ones, those of the message just before it ("is image ka HTML banao").
             seen = attached or await _earlier_images(user.user_id, req.session_id)
+            if workspace_id:
+                turn_checkpoint = await _turn_checkpoint(
+                    channel, user.user_id, workspace_id, req.session_id, request_id
+                )
             await memory.save_message(
                 req.session_id,
                 "user",
@@ -2268,6 +2382,8 @@ async def stream_chat(
                 agent_id,
                 metadata={
                     "request_id": request_id,
+                    # "Rewind code to before this message" restores this checkpoint.
+                    **({"checkpoint": turn_checkpoint} if turn_checkpoint else {}),
                     **({"images": [image.meta() for image in attached]} if attached else {}),
                     # Never recalled in the user's other chats (Dhikr.recall_conversations).
                     **({"stateless": True} if req.stateless else {}),
@@ -2289,7 +2405,7 @@ async def stream_chat(
             if agent is not None and req.content.startswith("/"):
                 from agent_skills.tools import resolve_slash_skill
 
-                skill_command = resolve_slash_skill(req.content, user.user_id, req.workspace_id)
+                skill_command = resolve_slash_skill(req.content, user.user_id, workspace_id)
             if skill_command:
                 from agent_skills.tools import activate
                 from workspace.context import bind_chat_session, reset_chat_session
@@ -2332,18 +2448,28 @@ async def stream_chat(
                     )
 
                 from agents.events import bind_event_sink
-                from security.approvals import ApprovalContext, bind_approvals
+                from security.approvals import bind_approvals
+                from security.approvals import chat_context as approvals_for_chat
                 from tadbir.waqt import bind_timezone
 
                 async def activity_sink(kind: str, payload: dict):
                     # Structured tool/todo/approval frames for this run only.
                     await deliver(kind, **payload)
 
+                # A person reads this chat: they are asked, and what they allowed
+                # "always" in it earlier still holds.
                 approval_context = (
-                    ApprovalContext(user.user_id, req.session_id, req.permission_mode)
+                    approvals_for_chat(user.user_id, req.session_id, req.permission_mode)
                     if req.permission_mode
                     else None
                 )
+                if approval_context is not None and (req.plan_approved or req.fix):
+                    # What the person pressed, for Tadbir to act on (never their words).
+                    approval_context.button = (
+                        {"plan_approved": True}
+                        if req.plan_approved
+                        else {"fix": req.fix.model_dump() if req.fix else {}}
+                    )
                 run_deadline = asyncio.timeout(chat_run_seconds())
                 try:
                     async with run_deadline:
@@ -2351,7 +2477,7 @@ async def stream_chat(
 
                         with stateless.bind(req.stateless):
                             context = await chat_context(
-                                user, req.session_id, session, agent, req.content, req.workspace_id
+                                user, req.session_id, session, agent, req.content, workspace_id
                             )
                         await phase_cb("queued")
                         with (
@@ -2421,6 +2547,13 @@ async def stream_chat(
             )
             session["history"].append({"role": "assistant", "content": final})
             persisted, terminal_status = True, "complete"
+            # A project MIZAN made in a chat without one becomes the chat's project, so
+            # the next message ("add dark mode") works on it.
+            chat_workspace = workspace_id
+            made_workspace = result.get("workspace_id")
+            if not workspace_id and isinstance(made_workspace, str) and made_workspace:
+                await memory.bind_session_workspace(user.user_id, req.session_id, made_workspace)
+                chat_workspace = made_workspace
             for reference in result.get("artifacts", []) or []:
                 await saved_artifact(reference)
             tool_results = getattr(agent, "_last_tool_results", []) if execution_started else []
@@ -2452,6 +2585,8 @@ async def stream_chat(
                 **chat_completion_receipt(result),
                 agent=agent.name if agent else None,
                 success=True,
+                workspace_id=chat_workspace,
+                checkpoint=turn_checkpoint,
                 **(
                     {
                         "cognitive": {
@@ -2536,6 +2671,7 @@ async def stream_chat(
                 ledger.update(user.user_id, request_id, terminal_status)
                 thinking_stream.complete(message_id)
             finally:
+                busy.close()
                 if workspace_context and workspace_binding is not None:
                     workspace_context.reset_workspace(workspace_binding)
                 reset_principal(binding)
@@ -2854,6 +2990,9 @@ async def list_sessions(
         max_length=200,
         description="Only chats whose title or first message contains this, in any case.",
     ),
+    workspace_id: str | None = Query(
+        None, min_length=1, max_length=100, description="Only the chats bound to this project."
+    ),
     user: TokenPayload = Depends(require_auth),
 ):
     """The user's chats, newest first; ``limit``/``offset`` page through them
@@ -2862,7 +3001,7 @@ async def list_sessions(
     ``%`` and ``_`` are plain characters); a blank ``q`` lists every chat."""
     search = (q or "").strip() or None
     db_sessions = await memory.list_sessions(
-        limit=limit + 1, owner_id=user.user_id, offset=offset, q=search
+        limit=limit + 1, owner_id=user.user_id, offset=offset, q=search, workspace_id=workspace_id
     )
     more = len(db_sessions) > limit
     return {
@@ -3042,6 +3181,29 @@ async def _decide_held(
     return {"held_id": held_id, "status": "done", "tool": item["tool"], "result": outcome}
 
 
+@app.get("/api/chat/{session_id}/always")
+async def list_chat_always(session_id: str, user: TokenPayload = Depends(require_auth)):
+    """What the user allowed "always" in this chat; each can be revoked."""
+    from security.approvals import chat_always_store
+
+    await authorize_session(session_id, user)
+    return {
+        "session_id": session_id,
+        "always": chat_always_store().list(user.user_id, session_id),
+    }
+
+
+@app.delete("/api/chat/{session_id}/always/{key}")
+async def revoke_chat_always(session_id: str, key: str, user: TokenPayload = Depends(require_auth)):
+    """Ask again before this tool (or tool action) in this chat, from now on."""
+    from security.approvals import chat_always_store
+
+    await authorize_session(session_id, user)
+    if not chat_always_store().remove(user.user_id, session_id, key):
+        raise HTTPException(404, "Nothing was allowed always under that name in this chat")
+    return {"session_id": session_id, "revoked": key}
+
+
 @app.get("/api/chat/{session_id}")
 async def get_chat_history(
     session_id: str,
@@ -3049,13 +3211,19 @@ async def get_chat_history(
     before: str | None = None,
     user: TokenPayload = Depends(require_auth),
 ):
-    """Newest ``limit`` messages; pass ``before=<message id>`` to page further back."""
+    """Newest ``limit`` messages; pass ``before=<message id>`` to page further back.
+    ``workspace_id`` is the project the chat is bound to (null when none)."""
     await authorize_session(session_id, user)
     limit = max(1, min(limit, 500))
     page = await memory.get_messages(session_id, limit=limit + 1, before_id=before)
     has_more = len(page) > limit
     messages = page[1:] if has_more else page
-    return {"session_id": session_id, "messages": messages, "has_more": has_more}
+    return {
+        "session_id": session_id,
+        "messages": messages,
+        "has_more": has_more,
+        "workspace_id": await memory.session_workspace(user.user_id, session_id),
+    }
 
 
 @app.get("/api/chat/memory/summary")

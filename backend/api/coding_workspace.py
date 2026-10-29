@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import shutil
 from pathlib import Path
 from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from api.artifacts import create_artifact, get_artifact, require_auth, validate_image
 from security.auth import TokenPayload
+from workspace import session_client
+from workspace.context import refuse_if_busy
 from workspace.execution import capabilities, run_project
-from workspace.store import WorkspaceStore
+from workspace.store import MAX_FILES, WorkspaceStore
 
 router = APIRouter(prefix="/api/workspaces", tags=["coding workspaces"])
 
@@ -51,6 +54,15 @@ class RunRequest(BaseModel):
 
 class CheckpointCreate(BaseModel):
     message: str = Field(default="Project checkpoint", min_length=1, max_length=200)
+
+
+class CheckpointRestore(BaseModel):
+    # Only these files (a path the checkpoint lacks is deleted); none means the whole project.
+    paths: list[str] | None = Field(default=None, max_length=MAX_FILES)
+
+
+class WorkspaceRename(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
 
 
 class ArtifactPublish(FilePath):
@@ -122,6 +134,42 @@ async def list_workspaces(user: TokenPayload = Depends(require_auth)) -> dict:
 @router.post("", status_code=201)
 def create_workspace(body: WorkspaceCreate, user: TokenPayload = Depends(require_editor)) -> dict:
     return cast(dict, WorkspaceStore(user.user_id).create(body.name))
+
+
+@router.patch("/{workspace_id}")
+def rename_workspace(
+    workspace_id: str, body: WorkspaceRename, user: TokenPayload = Depends(require_editor)
+) -> dict:
+    """Rename a project."""
+    return cast(dict, WorkspaceStore(user.user_id).rename_project(workspace_id, body.name))
+
+
+@router.delete("/{workspace_id}")
+async def delete_workspace(workspace_id: str, user: TokenPayload = Depends(require_editor)) -> dict:
+    """Delete a whole project, its checkpoints and its sandbox session."""
+    store = WorkspaceStore(user.user_id)
+    store.project(workspace_id)
+    refuse_if_busy(user.user_id, workspace_id, "delete it")
+    if await session_client.running(user.user_id, workspace_id):
+        try:
+            await session_client.stop(user.user_id, workspace_id)
+        except HTTPException:
+            pass  # the runner reaps sessions whose project is gone
+    store.remove(workspace_id)
+    return {"deleted": True, "id": workspace_id}
+
+
+@router.get("/{workspace_id}/export.zip")
+async def export_workspace(
+    workspace_id: str, user: TokenPayload = Depends(require_auth)
+) -> Response:
+    """The project's files (not git's folder) as a zip."""
+    name, data = await asyncio.to_thread(WorkspaceStore(user.user_id).export_zip, workspace_id)
+    return Response(
+        data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
 
 
 @router.get("/hardware")
@@ -252,6 +300,40 @@ def checkpoint(
 @router.get("/{workspace_id}/checkpoints")
 def checkpoints(workspace_id: str, user: TokenPayload = Depends(require_auth)) -> dict:
     return {"checkpoints": WorkspaceStore(user.user_id).checkpoints(workspace_id)}
+
+
+@router.post("/{workspace_id}/checkpoints/{checkpoint_id}/restore")
+async def restore_checkpoint(
+    workspace_id: str,
+    checkpoint_id: str,
+    body: CheckpointRestore,
+    user: TokenPayload = Depends(require_editor),
+) -> dict:
+    """Bring files back to a checkpoint (all, or ``paths``); the current state is saved first."""
+    store = WorkspaceStore(user.user_id)
+    refuse_if_busy(user.user_id, workspace_id, "restore")
+    result = cast(
+        dict, await asyncio.to_thread(store.restore, workspace_id, checkpoint_id, body.paths)
+    )
+    if (result["restored"] or result["removed"]) and await session_client.running(
+        user.user_id, workspace_id
+    ):
+        try:
+            result["session"] = await session_client.reconcile(user.user_id, workspace_id)
+        except HTTPException as exc:
+            result["session"] = {"warning": f"The sandbox session was not updated: {exc.detail}"}
+    return result
+
+
+@router.get("/{workspace_id}/checkpoints/{checkpoint_id}/file")
+def checkpoint_file(
+    workspace_id: str,
+    checkpoint_id: str,
+    path: str = Query(min_length=1, max_length=512),
+    user: TokenPayload = Depends(require_auth),
+) -> dict:
+    """One file as it was in a checkpoint."""
+    return cast(dict, WorkspaceStore(user.user_id).file_at(workspace_id, checkpoint_id, path))
 
 
 @router.get("/{workspace_id}/diff")

@@ -122,6 +122,43 @@ class LisanUnavailable(RuntimeError):
     pass
 
 
+class LisanTruncated(LisanUnavailable):
+    """The model's reply stopped at its output limit; nothing in it may be saved."""
+
+
+# A file up to this many characters is shown whole and may come back whole. A longer
+# one is shown whole up to LONG_FILE_CHARS and may change only by SEARCH/REPLACE edit
+# blocks, so a reply can never drop the part of a file the model did not repeat.
+WHOLE_FILE_CHARS = 12_000
+LONG_FILE_CHARS = 48_000
+_EDIT_BLOCKS = (
+    "A file marked long must be changed only with edit blocks: a fenced block whose "
+    "info string is its path followed by ` edit` (for example ```src/app.tsx edit), "
+    "holding one or more\n<<<<<<< SEARCH\n(lines copied exactly from the file)\n=======\n"
+    "(what replaces them)\n>>>>>>> REPLACE\nEach SEARCH must match the file exactly once; "
+    "include enough surrounding lines to make it unique."
+)
+
+
+def long_files(files: dict[str, str]) -> set[str]:
+    """The files Lisan may change only by edit blocks."""
+    return {name for name, content in files.items() if len(content) > WHOLE_FILE_CHARS}
+
+
+def shown_files(files: dict[str, str]) -> str:
+    """The files as Lisan reads them, each marked when it is long (or cut)."""
+    blocks = []
+    for name, content in files.items():
+        if len(content) <= WHOLE_FILE_CHARS:
+            blocks.append(f"```{name}\n{content}\n```")
+            continue
+        note = "long file: change it only with edit blocks"
+        if len(content) > LONG_FILE_CHARS:
+            note += f"; only its first {LONG_FILE_CHARS} characters are shown"
+        blocks.append(f"`{name}` ({note}):\n```{name}\n{content[:LONG_FILE_CHARS]}\n```")
+    return "\n\n".join(blocks)
+
+
 def _call_seconds() -> float:
     try:
         return max(5.0, min(float(os.getenv("MIZAN_LLM_MAX_CALL_SECONDS", "600")), 1800.0))
@@ -140,6 +177,8 @@ class Lisan:
     def __init__(self, agent: Any):
         self.agent = agent
         self.calls = 0
+        # Why the model stopped its last reply ("max_tokens" means it was cut off).
+        self.last_stop = ""
         # The instruction version (Tajdid) and model (Wazn) of each kind of work's
         # last call, so MIZAN can credit them with the verified outcome.
         self.last: dict[str, dict] = {}
@@ -215,6 +254,7 @@ class Lisan:
                     raise LisanUnavailable(f"Language model error: {type(exc).__name__}") from exc
                 await asyncio.sleep(delay)
         latency = (time.perf_counter() - started) * 1000
+        self.last_stop = str(getattr(response, "stop_reason", "") or "")
         self.agent._record_llm_call(response, latency)
         self.agent._add_execution_time("provider_ms", started)
         self.calls += 1
@@ -236,6 +276,14 @@ class Lisan:
                     REASONING_EFFORT.reset(token)
             raise LisanUnavailable("The language model returned no text")
         return text.strip()
+
+    def _complete(self) -> None:
+        """A file the model was cut off while writing is never saved."""
+        if self.last_stop in ("max_tokens", "length"):
+            raise LisanTruncated(
+                "the language model's reply stopped at its output limit, so MIZAN saved "
+                "nothing from it; ask for a smaller change"
+            )
 
     async def write_code(self, request: str, language: str, lessons: str = "") -> str:
         system = self._instruction(
@@ -366,7 +414,10 @@ class Lisan:
     ) -> str:
         listing = "\n".join(f"- {name}: {purpose}" for name, purpose in plan)
         done = "\n\n".join(
-            f"`{name}`:\n```\n{content[:8000]}\n```" for name, content in written.items()
+            f"`{name}`"
+            + (" (its start; it is longer)" if len(content) > WHOLE_FILE_CHARS else "")
+            + f":\n```\n{content[:WHOLE_FILE_CHARS]}\n```"
+            for name, content in written.items()
         )
         reply = await self.ask(
             f"MIZAN is building a {blueprint} with exactly these files:\n{listing}\n\n"
@@ -378,20 +429,22 @@ class Lisan:
             f"User request:\n{request}" + (f"\n\nFiles already written:\n{done}" if done else ""),
             max_tokens=6000,
         )
+        self._complete()
         return extract_code(reply).rstrip("\n") + "\n"
 
     async def fix_files(self, request: str, blueprint: str, files: dict, problem: str) -> str:
-        listing = "\n\n".join(
-            f"```{name}\n{content[:8000]}\n```" for name, content in files.items()
-        )
-        return await self.ask(
+        reply = await self.ask(
             f"MIZAN checked this {blueprint} and found a problem. Return the corrected complete "
             "content of each file you change, each as its own fenced code block whose info "
-            "string is the file path (for example ```app.js). Do not return unchanged files.",
+            "string is the file path (for example ```app.js). "
+            + _EDIT_BLOCKS
+            + " Do not return unchanged files.",
             f"User request:\n{request}\n\nProblem found by MIZAN:\n{problem[-3000:]}\n\n"
-            f"Files:\n{listing}",
+            f"Files:\n{shown_files(files)}",
             max_tokens=8000,
         )
+        self._complete()
+        return reply
 
     async def express(self, request: str, facts: dict, language: str) -> str:
         return await self.ask(
@@ -486,8 +539,10 @@ class Lisan:
             "or topic, when they name no surah) | "
             '{"intent":"hadith","collection":"bukhari|muslim|abudawud|tirmidhi|nasai|ibnmajah|'
             'malik|nawawi|qudsi|dehlawi","number":<the hadith number the user wrote>} | '
-            '{"intent":"build_project","kind":"web|python"} (a new small app, website, game or '
-            "tool) | "
+            '{"intent":"build_project","kind":"web|python|stack"} (the user asks for a new '
+            "app, website, game or tool to be made; web is a page in plain HTML, CSS and "
+            "JavaScript, python a Python program, stack anything else, such as React, Next.js "
+            "or a server) | "
             '{"intent":"edit_project","request":"<precise English description of the change>"} '
             "(change the user's selected coding project) | "
             '{"intent":"web_search","query":"<search query>"} | '
@@ -500,8 +555,8 @@ class Lisan:
             '{"intent":"use_tool","need":"<the capability needed, in a few English words, for '
             'example list my GitHub issues or remember my name>"} (any other action, such as a '
             "connected app, a skill or memory) | "
-            '{"intent":"converse"} when the user wants an explanation, opinion or conversation '
-            "rather than an action.",
+            '{"intent":"converse"} when the user wants an explanation (how to build '
+            "something included), opinion or conversation rather than an action.",
             request,
             max_tokens=500,
         )
@@ -535,25 +590,28 @@ class Lisan:
         reminder: bool = False,
     ) -> str:
         listing = "\n".join(paths[:300])
-        given = "\n\n".join(f"```{name}\n{content[:12000]}\n```" for name, content in files.items())
         again = (
             "\n\nYour previous reply could not be used: give the WHOLE file (not only the new "
             "part), in a block whose info string is exactly its path, like ```shapes.py and "
-            "not ```python."
+            "not ```python; a long file only as edit blocks whose SEARCH text is copied "
+            "exactly from it."
             if reminder
             else ""
         )
-        return await self.ask(
+        reply = await self.ask(
             "MIZAN is changing the user's existing coding project. Return the complete new "
             "content of every file you change or create, each as its own fenced code block "
-            "whose info string is the file path (for example ```src/app.js). Do not return "
-            "unchanged files, and keep the rest of each file as it is. Use no new external "
-            "libraries or network requests. Text the user sees is in "
+            "whose info string is the file path (for example ```src/app.js). "
+            + _EDIT_BLOCKS
+            + " Do not return unchanged files, and keep the rest of each file as it is. Use no "
+            "new external libraries or network requests. Text the user sees is in "
             f"{language_name(language)}.",
-            f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\nFiles:\n{given}"
-            + again,
+            f"Request:\n{request}\n\nAll files in the project:\n{listing}\n\n"
+            f"Files:\n{shown_files(files)}" + again,
             max_tokens=8000,
         )
+        self._complete()
+        return reply
 
     async def form_checks(self, request: str) -> list[dict]:
         """The checks of form the request asks its answer to meet (Nazm), each with

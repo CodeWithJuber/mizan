@@ -28,6 +28,7 @@ import sqlite3
 import threading
 import time
 import uuid
+import weakref
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -84,16 +85,37 @@ ALWAYS_ASK_TOOLS = frozenset({"shahid_submit"})
 # unattended runs may use it without a person present.
 SANDBOXED_TOOLS = frozenset({"workspace_run"})
 
+# Tools with an ``action`` parameter whose some actions only observe. The
+# action, not the tool, decides; a missing action is the tool's default, status.
+READ_ACTIONS: dict[str, frozenset[str]] = {
+    "workspace_git": frozenset({"status", "diff", "log"}),
+    "workspace_sandbox": frozenset({"status", "logs"}),
+}
 
-def tool_category(tool_name: str, read_only_hint: bool = False) -> str:
+
+def _action(params: dict | None) -> str:
+    return str((params or {}).get("action") or "status")
+
+
+def tool_category(tool_name: str, read_only_hint: bool = False, params: dict | None = None) -> str:
     if tool_name in READ_ONLY_TOOLS or read_only_hint:
+        return "read"
+    if tool_name in READ_ACTIONS and _action(params) in READ_ACTIONS[tool_name]:
         return "read"
     if tool_name in EDIT_TOOLS:
         return "edit"
     return "execute"
 
 
-@dataclass
+def always_key(tool_name: str, params: dict | None = None) -> str:
+    """What "Always in this chat" allows: a tool, or one action of an action tool
+    (allowing git commits does not allow every git action)."""
+    if tool_name in READ_ACTIONS:
+        return f"{tool_name}:{_action(params)}"
+    return tool_name
+
+
+@dataclass(eq=False)
 class ApprovalContext:
     user_id: str
     session_id: str
@@ -104,15 +126,24 @@ class ApprovalContext:
     origin: str = ""  # "watcher:<id>", "schedule", "trigger:<id>", "queue"
     # One call the owner already allowed (a held action): (tool, params digest).
     granted: tuple[str, str] | None = None
+    # A person is reading this chat now and can answer prompts (the web chat).
+    interactive: bool = False
+    # "Always in this chat" is kept for the chat's later messages (chat_always).
+    persist_always: bool = False
+    # A button the person pressed with this message, never read from its words:
+    # {"plan_approved": True} or {"fix": {"source", "error"}} (Tadbir's coding handoff).
+    button: dict = field(default_factory=dict)
 
     def was_granted(self, tool_name: str, params: dict) -> bool:
         return self.granted == (tool_name, params_digest(params))
 
-    def needs_approval(self, tool_name: str, read_only_hint: bool = False) -> bool:
-        category = tool_category(tool_name, read_only_hint)
+    def needs_approval(
+        self, tool_name: str, read_only_hint: bool = False, params: dict | None = None
+    ) -> bool:
+        category = tool_category(tool_name, read_only_hint, params)
         if tool_name in ALWAYS_ASK_TOOLS:
             return True
-        if category == "read" or tool_name in self.always:
+        if category == "read" or always_key(tool_name, params) in self.always:
             return False
         if self.deferred:
             # Unattended: private project edits and sandboxed runs go ahead;
@@ -124,8 +155,10 @@ class ApprovalContext:
             return category == "execute"
         return True  # ask; plan is refused before reaching here
 
-    def blocks(self, tool_name: str, read_only_hint: bool = False) -> bool:
-        return self.mode == "plan" and tool_category(tool_name, read_only_hint) != "read"
+    def blocks(
+        self, tool_name: str, read_only_hint: bool = False, params: dict | None = None
+    ) -> bool:
+        return self.mode == "plan" and tool_category(tool_name, read_only_hint, params) != "read"
 
 
 _context: ContextVar[ApprovalContext | None] = ContextVar("mizan_approval_context", default=None)
@@ -204,8 +237,10 @@ async def request_approval(
     *,
     reason: str = "",
     timeout: float | None = None,
+    preview: dict | None = None,
 ) -> str:
-    """Ask the user through the run's event sink; returns allow | deny | always."""
+    """Ask the user through the run's event sink; returns allow | deny | always.
+    ``preview`` (a file change's diff) is shown on the prompt."""
     from agents.events import emit, has_event_sink
 
     if not has_event_sink():
@@ -219,9 +254,10 @@ async def request_approval(
                 "approval_id": approval_id,
                 "tool": tool_name,
                 "input": params,
-                "category": tool_category(tool_name),
+                "category": tool_category(tool_name, params=params),
                 "reason": reason,
                 "expires_in": int(timeout),
+                **({"preview": preview} if preview else {}),
             },
         )
         try:
@@ -229,11 +265,104 @@ async def request_approval(
         except TimeoutError:
             decision = "deny"
         if decision == "always":
-            context.always.add(tool_name)
+            key = always_key(tool_name, params)
+            context.always.add(key)
+            if context.persist_always:
+                chat_always_store().add(context.user_id, context.session_id, key)
         await emit("approval_resolved", {"approval_id": approval_id, "decision": decision})
         return decision
     finally:
         broker.close(approval_id)
+
+
+# ── "Always in this chat", kept for the chat's later messages ───────────
+
+
+class ChatAlways:
+    """What a person allowed "always" in one of their chats, per chat and owner.
+    Erased with the chat (Mahw); each grant can be revoked."""
+
+    def __init__(self, path: str):
+        self.path = path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        with self._connect() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS chat_always (owner_id TEXT NOT NULL, "
+                "session_id TEXT NOT NULL, tool TEXT NOT NULL, created TEXT NOT NULL, "
+                "PRIMARY KEY (owner_id, session_id, tool))"
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.path, timeout=10)
+
+    def keys(self, owner_id: str, session_id: str) -> set[str]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool FROM chat_always WHERE owner_id = ? AND session_id = ?",
+                (owner_id, session_id),
+            ).fetchall()
+        return {row[0] for row in rows}
+
+    def list(self, owner_id: str, session_id: str) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool, created FROM chat_always WHERE owner_id = ? AND session_id = ? "
+                "ORDER BY created",
+                (owner_id, session_id),
+            ).fetchall()
+        return [{"tool": tool, "created": created} for tool, created in rows]
+
+    def add(self, owner_id: str, session_id: str, key: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_always (owner_id, session_id, tool, created) "
+                "VALUES (?, ?, ?, ?)",
+                (owner_id, session_id, key[:200], datetime.now(UTC).isoformat()),
+            )
+
+    def remove(self, owner_id: str, session_id: str, key: str) -> bool:
+        with self._lock, self._connect() as conn:
+            removed = conn.execute(
+                "DELETE FROM chat_always WHERE owner_id = ? AND session_id = ? AND tool = ?",
+                (owner_id, session_id, key),
+            ).rowcount
+        for context in list(_live):
+            if context.user_id == owner_id and context.session_id == session_id:
+                context.always.discard(key)
+        return bool(removed)
+
+    def erase_chat(self, owner_id: str, session_id: str) -> int:
+        with self._lock, self._connect() as conn:
+            removed = conn.execute(
+                "DELETE FROM chat_always WHERE owner_id = ? AND session_id = ?",
+                (owner_id, session_id),
+            ).rowcount
+        for context in list(_live):
+            if context.user_id == owner_id and context.session_id == session_id:
+                context.always.clear()
+        return int(removed)
+
+
+_ALWAYS_STORES: dict[str, ChatAlways] = {}
+# Contexts of runs going on now, so a revoke applies at once.
+_live: weakref.WeakSet[ApprovalContext] = weakref.WeakSet()
+
+
+def chat_always_store() -> ChatAlways:
+    path = str(Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan")) / "held_actions.db")
+    if path not in _ALWAYS_STORES:
+        _ALWAYS_STORES[path] = ChatAlways(path)
+    return _ALWAYS_STORES[path]
+
+
+def chat_context(owner_id: str, session_id: str, mode: str) -> ApprovalContext:
+    """The approval context of a message in a web chat: a person is reading it, and
+    what they allowed "always" in this chat before still holds."""
+    context = ApprovalContext(owner_id, session_id, mode, interactive=True, persist_always=True)
+    context.always |= chat_always_store().keys(owner_id, session_id)
+    _live.add(context)
+    return context
 
 
 # ── Held actions: decisions for runs no one is watching ──────────────────

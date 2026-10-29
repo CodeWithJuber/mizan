@@ -8,6 +8,7 @@ from typing import cast
 
 from fastapi import HTTPException
 
+from agents.events import emit
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
 from workspace import session_client
@@ -272,6 +273,11 @@ class CodingWorkspaceSkill(SkillBase):
                 "The preview opens in the Coding workspace Preview panel (Server tab). "
                 "Check workspace_sandbox action=logs if it does not load."
             )
+            # The chat opens the server's preview as soon as it starts.
+            await emit(
+                "preview",
+                {"workspace_id": project, "port": int(port), "preview_url": result["preview_url"]},
+            )
             return result
         if action == "stop_service":
             return cast(dict, await session_client.stop_service(user_id, project, int(port)))
@@ -283,7 +289,10 @@ class CodingWorkspaceSkill(SkillBase):
         self, workspace_id: str | None = None, message: str = "Agent checkpoint"
     ) -> dict:
         return cast(
-            dict, self.store(edit=True).checkpoint(selected_workspace(workspace_id), message)
+            dict,
+            self.store(edit=True).checkpoint(
+                selected_workspace(workspace_id), message, kind="agent"
+            ),
         )
 
     async def git(
@@ -292,12 +301,26 @@ class CodingWorkspaceSkill(SkillBase):
         action: str = "status",
         message: str = "Workspace update",
     ) -> dict:
-        commands = {
-            "status": "git status --short",
-            "diff": "git diff --no-ext-diff",
-            "log": "git log -10 --oneline",
-            "init": "git init",
+        # Reads never write: no index refresh (GIT_OPTIONAL_LOCKS=0) and nothing applied back.
+        reads = {
+            "status": "GIT_OPTIONAL_LOCKS=0 git status --short",
+            "diff": "GIT_OPTIONAL_LOCKS=0 git diff --no-ext-diff",
+            "log": "GIT_OPTIONAL_LOCKS=0 git log -10 --oneline",
         }
+        if action in reads:
+            store = self.store()
+            project = selected_workspace(workspace_id)
+            user_id = current_user_id() or ""
+            if await session_client.running(user_id, project):
+                return cast(
+                    dict,
+                    await session_client.execute(user_id, project, reads[action], "shell", 30),
+                )
+            return cast(
+                dict,
+                await run_project(store, project, reads[action], "shell", 30, apply=False),
+            )
+        commands = {"init": "git init"}
         if action == "commit":
             if not message or len(message) > 200:
                 raise HTTPException(422, "Commit message must be 1..200 characters")

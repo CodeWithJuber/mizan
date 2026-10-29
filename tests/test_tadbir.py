@@ -11,6 +11,7 @@ from agents.specialized import create_agent
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
 from tadbir import amal, calc, fahm, hadith, majlis, project, qasd, quran, taallum, waqt
+from tadbir import lisan as lisan_module
 from tadbir.express import furqan
 
 
@@ -1106,13 +1107,15 @@ async def test_compound_request_runs_every_part_under_one_plan(agent, monkeypatc
     assert agent.ai_client.requests == []
 
 
-def test_lisan_may_map_project_wording_but_not_other_stacks():
+def test_lisan_may_map_project_wording_and_other_stacks_go_to_the_model():
     parsed = {"intent": "build_project", "kind": "web"}
     understood = fahm.validate_parsed(
         parsed, "mujhe ek todo list chahiye jo browser mein chale", "en"
     )
     assert understood is not None and understood.entities["kind"] == "web"
-    assert fahm.validate_parsed(parsed, "mujhe React mein dashboard chahiye", "en") is None
+    # React is beyond MIZAN's blueprints: the coding handoff builds it (kind "stack").
+    react = fahm.validate_parsed(parsed, "mujhe React mein dashboard chahiye", "en")
+    assert react is not None and react.entities["kind"] == "stack"
     assert fahm.validate_parsed({"intent": "build_project", "kind": "rust"}, "a tool", "en") is None
 
 
@@ -1492,6 +1495,136 @@ async def test_a_build_request_in_a_used_project_becomes_an_edit(agent, monkeypa
     assert "about.html" in result["result"]
 
 
+def long_project(agent, monkeypatch):
+    """A project whose app.js (about 30 KB) is longer than Lisan may rewrite whole."""
+    body = "".join(f"function step{i}() {{ return {i}; }}\n" for i in range(1000))
+    files = {"index.html": PAGE, "app.js": body + "// the end of app.js\n"}
+    calls = []
+
+    async def fake(name, params):
+        calls.append((name, deepcopy(params)))
+        if name == "workspace_glob":
+            return {"files": [{"path": p, "size": len(c)} for p, c in files.items()], "total": 2}
+        if name == "workspace_read":
+            return {"path": params["path"], "content": files[params["path"]], "sha256": "sha"}
+        if name == "workspace_write":
+            files[params["path"]] = params["content"]
+            return {"path": params["path"], "sha256": "new"}
+        if name == "workspace_run":
+            return {"stdout": "", "stderr": "", "exit_code": 0}
+        return {"id": "c1"}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", fake)
+    monkeypatch.setattr("workspace.context.bound_workspace_id", lambda: "w9")
+    names = ["workspace_glob", "workspace_read", "workspace_write", "workspace_run"]
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {}} for n in names],
+    )
+    assert len(files["app.js"]) > lisan_module.WHOLE_FILE_CHARS
+    return files, calls
+
+
+async def test_a_long_file_changes_only_by_edit_blocks_and_keeps_its_tail(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    agent.ai_client = ScriptedProvider(
+        [
+            "```app.js edit\n<<<<<<< SEARCH\nfunction step7() { return 7; }\n=======\n"
+            "function step7() { return 'seven'; }\n>>>>>>> REPLACE\n```"
+        ]
+    )
+    result = await agent.execute("Update the step7 function in app.js")
+    assert files["app.js"] == before.replace("return 7;", "return 'seven';", 1)
+    assert files["app.js"].endswith("// the end of app.js\n")
+    shown = agent.ai_client.requests[0]["messages"][0]["content"]
+    assert "long file: change it only with edit blocks" in shown
+    assert "+function step7() { return 'seven'; }" in result["result"]
+
+
+async def test_a_whole_file_reply_for_a_long_file_is_never_saved(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    cut = before[:12000] + "function added() {}\n"  # the model repeated only part of it
+    agent.ai_client = ScriptedProvider([f"```app.js\n{cut}```", f"```app.js\n{cut}```"])
+    await agent.execute("app.js mein ek added function jodo")
+    assert files["app.js"] == before
+    assert not any(name == "workspace_write" for name, _ in calls)
+
+
+async def test_an_edit_that_does_not_match_exactly_once_is_refused(agent, monkeypatch):
+    files, calls = long_project(agent, monkeypatch)
+    before = files["app.js"]
+    agent.ai_client = ScriptedProvider(
+        [
+            "```app.js edit\n<<<<<<< SEARCH\nreturn\n=======\nyield\n>>>>>>> REPLACE\n```",
+            "```app.js edit\n<<<<<<< SEARCH\nno such line\n=======\nx\n>>>>>>> REPLACE\n```",
+        ]
+    )
+    result = await agent.execute("app.js mein step7 function badlo")
+    assert files["app.js"] == before
+    # Hinglish request, Hinglish note: which file's edits did not apply, and why.
+    assert (
+        "laagu nahi hue" in result["result"]
+        and "app.js: old_string was not found" in result["result"]
+    )
+
+
+async def test_a_reply_cut_at_the_output_limit_saves_nothing(agent, monkeypatch):
+    files, calls = project_tools(agent, monkeypatch, [])
+    before = dict(files)
+    cut = LLMResponse(
+        [ContentBlock(type="text", text="```style.css\nbutton { color: re")],
+        model="fixture",
+        stop_reason="max_tokens",
+    )
+    agent.ai_client = ScriptedProvider([cut])
+    result = await agent.execute("Button ka color red karo")
+    assert files == before
+    assert not any(name == "workspace_write" for name, _ in calls)
+    assert "output limit" in result["result"]
+
+
+async def test_typescript_files_are_parsed_by_esbuild_or_reported_not_run(agent, monkeypatch):
+    from tadbir.engine import Tadbir
+
+    runs = [{"stdout": "", "stderr": "esbuild is not in the sandbox", "exit_code": 127}]
+    fake = tools(agent, monkeypatch, workspace_run=runs)
+    agent._last_tool_results = []  # set by execute(); this calls the check directly
+    changes = {"src/App.tsx": "export const App = () => <p/>;\n", "src/util.ts": "export {};\n"}
+    checks, problem = await Tadbir(agent)._check_edit(changes, changes, sorted(changes))
+    assert checks == [
+        ("`src/App.tsx, src/util.ts` parses (esbuild)", None, "esbuild is not in the sandbox")
+    ]
+    assert problem == ""
+    command = fake.calls[0][1]["command"]
+    assert "node_modules/.bin/esbuild" in command and "src/App.tsx src/util.ts" in command
+    fake.results["workspace_run"] = [{"stdout": "", "stderr": "x.ts:1:5: ERROR", "exit_code": 1}]
+    checks, problem = await Tadbir(agent)._check_edit(
+        {"x.ts": "let = ;"}, {"x.ts": "let = ;"}, ["x.ts"]
+    )
+    assert checks[0][1] is False and "x.ts:1:5: ERROR" in problem
+
+
+def test_edit_blocks_are_read_and_applied_exactly():
+    reply = (
+        "```a.py edit\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n"
+        "<<<<<<< SEARCH\ny = 1\n=======\n>>>>>>> REPLACE\n```\n"
+        "```b.py\nprint('whole')\n```"
+    )
+    edits = project.extract_edits(reply, {"a.py", "b.py"})
+    assert edits == {"a.py": [("x = 1", "x = 2"), ("y = 1", "")]}
+    # An edit block is never taken for a whole file.
+    assert project.extract_files(reply, {"a.py", "b.py"}) == {"b.py": "print('whole')\n"}
+    changed, refused = project.apply_edits(edits, {"a.py": "x = 1\ny = 1\nz = 1\n"})
+    assert changed == {"a.py": "x = 2\n\nz = 1\n"} and refused == []
+    twice = {"a.py": [("1", "2")]}
+    changed, refused = project.apply_edits(twice, {"a.py": "1 1"})
+    assert changed == {} and "matches 2 places" in refused[0]
+    assert lisan_module.long_files({"s": "x" * 12000, "l": "x" * 12001}) == {"l"}
+
+
 def test_only_safe_project_paths_are_written():
     assert project.editable("src/app.js") and not project.editable("../etc/passwd")
     assert not project.editable("node_modules/x.js") and not project.editable(".env")
@@ -1652,3 +1785,297 @@ def test_the_agi_tests_paraphrases_reach_the_same_recipe():
     assert {fahm.understand(text).intent for text in surahs} == {"quran_count"}
     assert fahm.understand("سطح سمندر پر پانی کتنے ڈگری سیلسیس پر ابلتا ہے؟").intent != "sarf"
     assert fahm.understand("كاتب کا مادہ کیا ہے؟").intent == "sarf"
+
+
+# ── Coding beyond MIZAN's recipes: the model with the project's tools only ──
+
+HANDOFF_TOOLS = [
+    "workspace_glob", "workspace_read", "workspace_write", "workspace_edit", "workspace_run",
+    "workspace_create", "workspace_checkpoint", "workspace_sandbox", "web_search",
+]  # fmt: skip
+
+
+def tool_use(name, call_id="t1", **arguments):
+    return LLMResponse(
+        [ContentBlock(type="tool_use", id=call_id, name=name, input=arguments)],
+        model="fixture",
+        stop_reason="tool_use",
+    )
+
+
+@pytest.fixture
+def handoff(agent, monkeypatch, tmp_path):
+    """A real project store for one signed-in person, an interactive chat that answers
+    approval prompts, and project tools that act on that store."""
+    from agents.base import BaseAgent
+    from security.approvals import ApprovalContext, bind_approvals
+    from security.auth import TokenPayload, bind_principal, reset_principal
+    from workspace import context as workspace_context
+    from workspace.store import WorkspaceStore
+
+    monkeypatch.setenv("MIZAN_WORKSPACE_ROOT", str(tmp_path / "projects"))
+    user = TokenPayload("amina", "Amina", ["user"], 9999999999, 0, "t")
+    store = WorkspaceStore(user.user_id)
+    calls, events = [], []
+
+    async def act(name, params):
+        calls.append((name, deepcopy(params)))
+        bound = workspace_context.bound_workspace_id()
+        if name == "workspace_create":
+            return store.create(params["name"])
+        if name == "workspace_write":
+            return store.write(bound, params["path"], params["content"])
+        if name == "workspace_glob":
+            return store.glob(bound, params.get("pattern", "**/*"))
+        if name == "workspace_read":
+            return store.read(bound, params["path"])
+        if name == "workspace_run":
+            return runs.pop(0) if runs else {"stdout": "", "stderr": "", "exit_code": 0}
+        if name == "workspace_checkpoint":
+            return store.checkpoint(bound, params.get("message", "x"), kind="agent")
+        # Anything else goes through the real gate, which refuses it in a handoff.
+        return await BaseAgent._execute_tool_checked(agent, name, params)
+
+    runs: list[dict] = []
+    monkeypatch.setattr(agent, "_execute_tool_safe", act)
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {}} for n in HANDOFF_TOOLS],
+    )
+
+    async def sink(kind, payload):
+        events.append((kind, payload))
+
+    principal = bind_principal(user)
+    context = ApprovalContext(user.user_id, "chat-1", "auto_edits", interactive=True)
+
+    class Handoff:
+        pass
+
+    state = Handoff()
+    state.store, state.calls, state.events, state.runs, state.context = (
+        store, calls, events, runs, context,
+    )  # fmt: skip
+    with bind_event_sink(sink), bind_approvals(context):
+        yield state
+    reset_principal(principal)
+
+
+def offered_tools(request):
+    return sorted(tool["name"] for tool in request.get("tools") or [])
+
+
+async def test_a_react_app_is_built_by_the_model_with_project_tools_only(agent, handoff):
+    message = "Build me a todo app in React"
+    understood = fahm.understand(message)
+    assert understood.intent == "converse" and fahm.actionable(understood)
+    page = '<div id="root"></div><script type="module" src="src/App.jsx"></script>\n'
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"steps":[{"intent":"build_project","kind":"stack","text":"' + message + '"}]}',
+            tool_use("workspace_write", path="index.html", content=page),
+            tool_use("web_search", "t2", query="react todo example"),
+            tool_use("workspace_write", "t3", path="src/App.jsx", content="export default 1;\n"),
+            "I made a React todo app: index.html and src/App.jsx.",
+        ]
+    )
+    result = await agent.execute(message)
+    # MIZAN made the project, bound the chat to it, and the files are in it.
+    made = next(payload for kind, payload in handoff.events if kind == "workspace")
+    assert made["created"] is True and result["workspace_id"] == made["workspace_id"]
+    files = handoff.store.files(made["workspace_id"])
+    assert files["src/App.jsx"] == b"export default 1;\n" and "index.html" in files
+    # The model saw the project's tools and nothing else; web_search was refused.
+    model_turns = [r for r in agent.ai_client.requests if r.get("tools")]
+    assert model_turns and all("web_search" not in offered_tools(r) for r in model_turns)
+    assert "workspace_write" in offered_tools(model_turns[0])
+    refused = next(p for n, p in handoff.calls if n == "web_search")
+    assert refused == {"query": "react todo example"}
+    assert "only the project's workspace tools" in json.dumps(model_turns[-1]["messages"])
+    # MIZAN checked what changed (esbuild on the JSX, the page's references) and says so.
+    commands = [p["command"] for n, p in handoff.calls if n == "workspace_run"]
+    assert any("src/App.jsx" in command and "esbuild" in command for command in commands)
+    assert result["result"].startswith("I made a React todo app")
+    assert "MIZAN's check of the project" in result["result"]
+    assert "`index.html` loads only files that exist" in result["result"]
+    assert result["completion_status"] == "verified_by_mizan"
+    assert handoff.store.checkpoints(made["workspace_id"])[0]["kind"] == "agent"
+
+
+async def test_without_someone_to_approve_a_react_request_is_answered_in_words(
+    agent, handoff, monkeypatch
+):
+    from security.approvals import bind_approvals
+
+    agent.ai_client = ScriptedProvider(
+        [
+            '{"steps":[{"intent":"build_project","kind":"stack"}]}',
+            "Here is how you could structure it.",
+        ]
+    )
+    with bind_approvals(None):  # an AGI test, a watcher: nobody answers prompts
+        result = await agent.execute("Build me a todo app in React")
+    assert result["result"] == "Here is how you could structure it."
+    assert not any(name == "workspace_create" for name, _ in handoff.calls)
+    assert not agent.ai_client.requests[-1].get("tools")  # words only, no tools
+
+
+async def test_the_setting_off_answers_in_words(agent, handoff, monkeypatch):
+    monkeypatch.setenv("MIZAN_WORKSPACE_AGENT", "off")
+    agent.ai_client = ScriptedProvider(
+        ['{"steps":[{"intent":"build_project","kind":"stack"}]}', "In words only."]
+    )
+    result = await agent.execute("Build me a todo app in React")
+    assert result["result"] == "In words only."
+    assert not handoff.calls
+
+
+def test_a_question_about_building_or_a_plain_page_is_not_a_handoff():
+    assert fahm.validate_parsed({"intent": "build_project", "kind": "x"}, "app", "en") is None
+    react = fahm.validate_parsed(
+        {"intent": "build_project", "kind": "web"}, "Build me a todo app in React", "en"
+    )
+    assert react is not None and react.entities["kind"] == "stack"
+    page = fahm.validate_parsed(
+        {"intent": "build_project", "kind": "web"}, "Make a stopwatch web page", "en"
+    )
+    assert page is not None and page.entities["kind"] == "web"  # MIZAN's own blueprint
+    assert project.recipe_sized([{"path": "index.html", "size": 100}])
+    assert not project.recipe_sized([{"path": "package.json", "size": 10}])
+    many = [{"path": f"f{i}.js", "size": 10} for i in range(9)]
+    assert not project.recipe_sized(many)
+
+
+async def test_a_node_project_is_edited_by_the_model_with_one_repair_turn(agent, handoff):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    store.write(workspace, "package.json", '{"name": "shop"}\n')
+    store.write(workspace, "src/total.js", "export const total = 1;\n")
+    handoff.runs += [
+        {"stdout": "", "stderr": "SyntaxError: Unexpected token '}'", "exit_code": 1},
+        {"stdout": "", "stderr": "", "exit_code": 0},
+    ]
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_write", path="src/total.js", content="export const total = }\n"),
+            "I changed the total.",
+            tool_use("workspace_write", "t2", path="src/total.js", content="export const total = 2;\n"),
+            "Fixed the syntax error.",
+        ]
+    )  # fmt: skip
+    message = "Update the total in total.js to show 2"
+    selected = bind_workspace(workspace)
+    try:
+        assert fahm.understand(message).intent == "edit_project"
+        result = await agent.execute(message)
+    finally:
+        reset_workspace(selected)
+    assert store.read(workspace, "src/total.js")["content"] == "export const total = 2;\n"
+    repair = json.dumps(agent.ai_client.requests[2]["messages"])
+    assert "MIZAN checked the files you changed" in repair and "SyntaxError" in repair
+    assert "<<untrusted" in repair  # the check's output reaches the model as data
+    assert "one turn to repair it" in result["result"]
+    assert result["completion_status"] == "verified_by_mizan"
+    assert "workspace_id" not in result  # the chat already had this project
+
+
+async def test_plan_mode_reads_the_project_and_changes_nothing(agent, handoff):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    store.write(workspace, "package.json", '{"name": "shop"}\n')
+    handoff.context.mode = "plan"
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_read", path="package.json"),
+            "Plan: 1. add src/cart.js 2. show the total.",
+        ]
+    )
+    selected = bind_workspace(workspace)
+    try:
+        result = await agent.execute("Update the total in total.js to show 2")
+    finally:
+        reset_workspace(selected)
+    # The plan is the model's words alone: no checks of files that did not change.
+    assert result["result"] == "Plan: 1. add src/cart.js 2. show the total."
+    assert "web_search" not in offered_tools(agent.ai_client.requests[0])
+    assert store.files(workspace) == {"package.json": b'{"name": "shop"}\n'}
+    assert result["completion_status"] != "verified_by_mizan"
+
+
+async def test_approve_plan_and_run_goes_to_the_model_without_reading_the_words(agent, handoff):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    handoff.context.button = {"plan_approved": True}
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_write", path="notes.md", content="# Plan done\n"),
+            "Done: wrote notes.md as planned.",
+        ]
+    )
+    selected = bind_workspace(workspace)
+    try:
+        result = await agent.execute("Go ahead")  # Fahm alone reads this as conversation
+    finally:
+        reset_workspace(selected)
+    assert store.read(workspace, "notes.md")["content"] == "# Plan done\n"
+    assert "approved the plan" in json.dumps(agent.ai_client.requests[0]["messages"])
+    assert result["orchestration"]["entities"]["understood_by"] == "button"
+
+
+async def test_mizans_checks_run_in_one_sandbox_run_so_the_person_is_asked_once(
+    agent, monkeypatch, tmp_path
+):
+    import subprocess
+
+    from tadbir.engine import Tadbir
+
+    changes = {"good.py": "x = 1\n", "bad.py": "def broken(:\n", "data.json": "{}"}
+    for path, content in changes.items():
+        (tmp_path / path).write_text(content)
+
+    def run(command):
+        done = subprocess.run(
+            ["bash", "-c", command], cwd=tmp_path, capture_output=True, text=True, timeout=60
+        )
+        return {"stdout": done.stdout, "stderr": done.stderr, "exit_code": done.returncode}
+
+    fake = tools(agent, monkeypatch, workspace_run=[])
+
+    async def sandbox(name, params):
+        fake.calls.append((name, deepcopy(params)))
+        return run(params["command"])
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", sandbox)
+    agent._last_tool_results = []
+    checks, problem = await Tadbir(agent)._check_edit(changes, changes, sorted(changes))
+    assert [name for name, _ in fake.calls] == ["workspace_run"]  # one run, one prompt
+    assert ("`good.py` has valid syntax (sandbox)", True, "") in checks
+    assert ("`bad.py` has valid syntax (sandbox)", False, "") in checks
+    assert ("`data.json` is valid JSON", True, "") in checks
+    assert "py_compile bad.py` failed" in problem and "SyntaxError" in problem
+    # A program that prints a marker cannot pass a check: each run's marker is new.
+    forged = "echo '@@mizan-check 1 exit 0'"
+    assert forged not in fake.calls[0][1]["command"]
+
+
+async def test_words_after_a_tool_start_a_new_paragraph(agent, monkeypatch):
+    before = LLMResponse(
+        [
+            ContentBlock(type="text", text="Reading the project."),
+            ContentBlock(type="tool_use", id="t1", name="workspace_glob", input={}),
+        ],
+        model="fixture",
+        stop_reason="tool_use",
+    )
+    agent.ai_client = ScriptedProvider([before, "Done: it has no files."])
+    tools(agent, monkeypatch, workspace_glob={"files": [], "total": 0})
+    agent._llm_calls, agent._last_tool_results = [], []
+    text = await agent._model_turn("What is in the project?", None, None)
+    assert text == "Reading the project.\n\nDone: it has no files."
