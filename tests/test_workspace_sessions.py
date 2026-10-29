@@ -134,6 +134,19 @@ def test_exec_and_service_lifecycle(agent_root):
         session_agent.service_start({"port": 80, "command": "x"})
 
 
+def test_commands_keep_caches_on_the_session_volume(agent_root):
+    """/tmp is noexec in a session; a native addon unpacked into a cache must run."""
+    result = session_agent.run_command(
+        {
+            "command": 'echo "$XDG_CACHE_HOME $npm_config_cache"',
+            "language": "shell",
+            "timeout_s": 10,
+        }
+    )
+    assert result["stdout"].split() == [f"{agent_root}/.cache", f"{agent_root}/.cache/npm"]
+    assert session_agent.heavy(".cache/swc-native-65534/v1/swc.node")
+
+
 # ── Bridge: framed TCP over a child's stdio ───────────────────────────────
 
 
@@ -510,6 +523,15 @@ class TestRealSessions:
         )
         assert set(exported.json()["files"]) == {"b.txt"}
 
+    def test_project_tools_and_an_executable_cache(self, runner):
+        probe = (
+            "command -v curl; npm config get allow-scripts; "
+            'mkdir -p "$XDG_CACHE_HOME" && cp /bin/true "$XDG_CACHE_HOME/t" && cp /bin/true /tmp/t; '
+            '"$XDG_CACHE_HOME/t" && echo cache-runs; /tmp/t 2>/dev/null || echo tmp-noexec'
+        )
+        out = self.run(runner, probe)["stdout"].split()
+        assert out == ["/usr/bin/curl", "esbuild,@swc/core", "cache-runs", "tmp-noexec"]
+
     def test_service_preview_terminal_and_stdio(self, runner):
         runner.post(
             f"/sessions/{self.KEY}/sync",
@@ -537,17 +559,19 @@ class TestRealSessions:
                 break
             time.sleep(0.3)
         assert body == "<h1>served</h1>"
+        local = self.run(runner, "curl -sS http://localhost:8000/index.html")
+        assert local["stdout"] == "<h1>served</h1>", local["stderr"]
         wrong = runner.get(
             f"/sessions/{self.KEY}/proxy/8000/x", headers={**headers, "X-Mizan-Nonce": "0" * 32}
         )
         assert wrong.status_code == 404
         with runner.websocket_connect(f"/sessions/{self.KEY}/terminal?cols=80&rows=20") as term:
-            term.send_bytes(b"echo TERM_$((6*7))\n")
+            term.send_bytes(b"echo TERM_$((6*7)) CACHE_$XDG_CACHE_HOME\n")
             seen = b""
             deadline = time.time() + 10
-            while b"TERM_42" not in seen and time.time() < deadline:
+            while b"CACHE_/workspace/.cache" not in seen and time.time() < deadline:
                 seen += term.receive_bytes()
-        assert b"TERM_42" in seen
+        assert b"TERM_42 CACHE_/workspace/.cache" in seen
         with runner.websocket_connect(f"/sessions/{self.KEY}/stdio") as pipe:
             pipe.send_text(
                 json.dumps(

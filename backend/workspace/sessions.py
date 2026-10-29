@@ -34,6 +34,9 @@ PREFIX = "mizan-session-"
 NETWORK_PREFIX = "mizan-session-net-"
 EGRESS = "mizan-sandbox-egress"
 AGENT = ["python3", "-I", "/session_agent.py"]
+# /tmp is noexec; caches live on the session volume (never synced), where native
+# addons a package unpacks into its cache (@swc/core) can run.
+SESSION_CACHE = "/workspace/.cache"
 MAX_REPLY = 40 * 1024 * 1024
 FRAME = struct.Struct(">IBI")
 OPEN, DATA, CLOSE, FAIL = 1, 2, 3, 4
@@ -258,6 +261,7 @@ class Sessions:
                 "--env", "NO_PROXY=localhost,127.0.0.1", "--env", "no_proxy=localhost,127.0.0.1",
                 "--env", f"MIZAN_PREVIEW_PREFIX={preview_prefix}",
                 "--env", "TERM=xterm-256color", "--env", "HOME=/tmp/home",
+                "--env", f"XDG_CACHE_HOME={SESSION_CACHE}",
                 runtime_image(), "sleep", "infinity",
             ]  # fmt: skip
             code, _, err = await docker(*args, timeout=60)
