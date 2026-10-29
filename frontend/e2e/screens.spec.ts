@@ -58,3 +58,30 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`code ${scheme}`, async ({ page }, info) => {
+    const tag = `${info.project.name}-${scheme}`;
+    const phone = page.viewportSize()!.width < 768;
+    await open(page, scheme);
+    await page.goto("/code");
+    await page.getByLabel("New project name").fill(`todo-${scheme}`);
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("heading", { name: `todo-${scheme}` }).waitFor();
+    if (phone) await page.getByRole("button", { name: "Chat", exact: true }).click();
+    const box = page.getByLabel("Message MIZAN");
+    await box.fill("Build a todo app in React");
+    await box.press("Enter");
+    await page.getByRole("button", { name: "Send message" }).waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${OUT}/${tag}-code-chat.png` });
+    if (phone) await page.getByRole("button", { name: "Project", exact: true }).click();
+    await page.getByRole("tab", { name: "Changes" }).click();
+    await page.getByRole("button", { name: /src\/App\.jsx/ }).click();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${OUT}/${tag}-code-changes.png` });
+    await page.goto("/code");
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${OUT}/${tag}-code-list.png` });
+  });
+}
