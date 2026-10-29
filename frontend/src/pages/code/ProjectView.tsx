@@ -60,23 +60,36 @@ export default function ProjectView({ projectId }: { projectId: string }) {
     });
   }, [blocker]);
 
-  // The chat on the left is this project's chat.
+  // The chat on the left is this project's chat. Sending waits until it is settled:
+  // a message sent while it was still being looked up would be dropped by the switch.
+  const chatKey = `${projectId}:${chatParam ?? ""}`;
+  const [readyChat, setReadyChat] = useState("");
   useEffect(() => {
-    if (state.streaming) return;
     let cancelled = false;
+    const settled = () => {
+      if (!cancelled) setReadyChat(chatKey);
+    };
+    if (state.streaming) {
+      settled();
+      return;
+    }
     void (async () => {
-      if (chatParam) {
-        if (chatParam !== state.sessionId) await actions.switchSession(chatParam);
-        return;
-      }
-      if (state.workspaceId === projectId) return;
-      const [newest] = await projectChats(projectId, 1);
-      if (cancelled) return;
-      if (newest) {
-        await actions.switchSession(newest.session_id);
-      } else {
-        actions.startNewSession();
-        actions.selectWorkspace(projectId);
+      try {
+        if (chatParam) {
+          if (chatParam !== state.sessionId) await actions.switchSession(chatParam);
+          return;
+        }
+        if (state.workspaceId === projectId) return;
+        const [newest] = await projectChats(projectId, 1);
+        if (cancelled) return;
+        if (newest) {
+          await actions.switchSession(newest.session_id);
+        } else {
+          actions.startNewSession();
+          actions.selectWorkspace(projectId);
+        }
+      } finally {
+        settled();
       }
     })();
     return () => {
@@ -136,7 +149,11 @@ export default function ProjectView({ projectId }: { projectId: string }) {
   const chat = (
     <div className="flex h-full min-h-0 flex-col">
       <ChatThread />
-      <Composer />
+      {readyChat === chatKey ? (
+        <Composer />
+      ) : (
+        <p aria-live="polite" className="border-t p-3 text-sm text-muted-foreground">Opening this project's chat…</p>
+      )}
     </div>
   );
   const workspace = (
