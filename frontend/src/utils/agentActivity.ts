@@ -150,3 +150,20 @@ export function toolLabel(call: ToolCall): string {
   const verb = verbs[call.name] ?? call.name;
   return detail ? `${verb} ${detail.length > 80 ? `${detail.slice(0, 77)}…` : detail}` : verb;
 }
+
+const ALLOWED_KINDS: Record<string, string> = {
+  workspace_create: "Create projects",
+  workspace_write: "Write files",
+  workspace_edit: "Edit files",
+  workspace_run: "Run commands",
+  workspace_checkpoint: "Save checkpoints",
+  workspace_artifact: "Publish pages",
+  workspace_sandbox: "Sandbox",
+};
+
+/** What an "Always in this chat" grant allows, in words: "workspace_git:commit" → "Git commit". */
+export function allowedLabel(key: string): string {
+  const [tool, action] = key.split(":");
+  const name = ALLOWED_KINDS[tool] ?? toolLabel({ callId: "", name: tool, input: {}, status: "done" });
+  return action ? `${name} ${action}` : name;
+}

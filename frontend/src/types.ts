@@ -219,6 +219,10 @@ export interface ChatMessage {
   held?: HeldActionRef[];
   /** Images attached to this message (Basar). */
   images?: ChatImage[];
+  /** The chat's project as it was before this user message ("Rewind" goes back to it). */
+  checkpoint?: { workspace_id: string; id: string };
+  /** What MIZAN could do without asking when this message was sent (this tab only). */
+  mode?: import("./utils/agentActivity").PermissionMode;
 }
 
 export interface HeldActionRef {

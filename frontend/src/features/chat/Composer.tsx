@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowUp, Bug, FolderCode, Globe, ImagePlus, Plus, ShieldCheck, Sparkles, Square, Telescope, X,
+  ArrowUp, Bug, CircleCheck, FolderCode, Globe, ImagePlus, Plus, ShieldCheck, Sparkles, Square, Telescope, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,9 @@ import { addToast } from "../../components/Toast";
 import { useApi } from "../../hooks/useApi";
 import { withHeard } from "../../utils/voice.ts";
 import { CHAT_INPUT_LIMIT } from "../../utils/chatRecovery.ts";
-import { PERMISSION_MODES, type PermissionMode } from "../../utils/agentActivity";
+import { allowedLabel, PERMISSION_MODES, type PermissionMode } from "../../utils/agentActivity";
 import { useChatActions, useChatState } from "./ChatProvider";
+import { PlanApproval, useAllowedAlways } from "./ChatControls";
 
 const COMMANDS = [
   { name: "/help", description: "Show available commands" },
@@ -86,6 +87,7 @@ export function Composer() {
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { input, streaming, attachedFiles, recovery } = state;
+  const { allowed, revoke } = useAllowedAlways();
 
   useEffect(() => {
     actions.registerComposer(textareaRef.current);
@@ -176,13 +178,19 @@ export function Composer() {
       <Chip key="model" icon={Sparkles} label={state.chatModelOverride} onRemove={() => actions.setChatModelOverride("")} />
     ),
     state.workspaceId && (
-      <Chip key="project" icon={FolderCode} label="Project attached" to="/code" onRemove={() => actions.selectWorkspace("")} />
+      <Chip key="project" icon={FolderCode} label="Project attached" to={`/code/${encodeURIComponent(state.workspaceId)}`}
+        onRemove={() => actions.selectWorkspace("")} />
     ),
+    ...allowed.map((item) => (
+      <Chip key={`always-${item.tool}`} icon={CircleCheck} label={`Always: ${allowedLabel(item.tool)}`}
+        onRemove={() => void revoke(item.tool)} />
+    )),
   ].filter(Boolean);
 
   return (
     <div className="bg-background px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
       <div className="mx-auto max-w-3xl">
+        <PlanApproval />
         {chips.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{chips}</div>}
 
         <div

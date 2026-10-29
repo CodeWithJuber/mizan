@@ -4,7 +4,7 @@
  * cookies, and it talks to the page only through postMessage.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Play } from "lucide-react";
+import { Play, Wrench } from "lucide-react";
 
 export const PYODIDE_VERSION = "314.0.7";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
@@ -55,11 +55,17 @@ window.addEventListener("message", async (event) => {
 
 interface Line { kind: "out" | "err" | "info"; text: string }
 
-export default function PythonRunner({ files, entry }: { files: Record<string, string>; entry: string }) {
+export default function PythonRunner({ files, entry, onError }: {
+  files: Record<string, string>;
+  entry: string;
+  /** "Fix with MIZAN": the failed run's error output goes to the chat. */
+  onError?: (message: string) => void;
+}) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
   const [running, setRunning] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ kind: "info", text: "Loading Python (Pyodide)…" }]);
+  const [failed, setFailed] = useState(false);
   const doc = useMemo(runnerDocument, []);
 
   useEffect(() => {
@@ -72,6 +78,7 @@ export default function PythonRunner({ files, entry }: { files: Record<string, s
       else if (data.type === "fail") setLines([{ kind: "err", text: `Could not load Python: ${data.text}` }]);
       else if (data.type === "done") {
         setRunning(false);
+        setFailed(!data.ok);
         setLines((list) => [...list, { kind: "info", text: `${data.ok ? "Finished" : "Failed"} in ${((data.ms ?? 0) / 1000).toFixed(2)}s` }]);
       }
     };
@@ -81,6 +88,7 @@ export default function PythonRunner({ files, entry }: { files: Record<string, s
 
   const run = () => {
     setRunning(true);
+    setFailed(false);
     setLines([{ kind: "info", text: `$ python ${entry}` }]);
     frame.current?.contentWindow?.postMessage({ type: "run", files, entry }, "*");
   };
@@ -89,6 +97,15 @@ export default function PythonRunner({ files, entry }: { files: Record<string, s
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <span className="text-xs font-mono text-gray-500 truncate mr-auto">python {entry} · in your browser</span>
+        {failed && onError && (
+          <button
+            type="button"
+            className="btn-secondary btn-sm inline-flex items-center gap-1"
+            onClick={() => onError(lines.filter((line) => line.kind === "err").map((line) => line.text).join("\n").slice(-4000))}
+          >
+            <Wrench className="w-3.5 h-3.5" /> Fix with MIZAN
+          </button>
+        )}
         <button type="button" className="btn-primary btn-sm inline-flex items-center gap-1" disabled={!ready || running} onClick={run}>
           <Play className="w-3.5 h-3.5" /> {running ? "Running…" : "Run Python"}
         </button>

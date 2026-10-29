@@ -10,10 +10,12 @@ export interface ToastInput {
   type: "success" | "error" | "warning" | "info";
   title: string;
   description?: string;
+  /** One button in the toast, such as Undo. */
+  action?: { label: string; onClick: () => void };
 }
 
-export function addToast({ type, title, description }: ToastInput) {
-  toast[type](title, { description });
+export function addToast({ type, title, description, action }: ToastInput) {
+  toast[type](title, { description, ...(action ? { action, duration: 10_000 } : {}) });
 }
 
 const api = { addToast };

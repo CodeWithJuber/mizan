@@ -134,6 +134,14 @@ export function ApprovalPrompt({
           </p>
           {headline && <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{headline}</p>}
           {approval.reason && <p className="mt-1 text-xs text-muted-foreground">{approval.reason}</p>}
+          {(approval.preview?.newFile || approval.preview?.truncated) && (
+            <p className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
+              {approval.preview.newFile && <span className="badge-info">New file</span>}
+              {approval.preview.truncated && (
+                <span className="text-muted-foreground">The change is long; only its start is shown here.</span>
+              )}
+            </p>
+          )}
           {diff && <div className="mt-2"><DiffView diff={diff} maxLines={120} /></div>}
           <details className="mt-1">
             <summary className="cursor-pointer text-xs text-muted-foreground">Details</summary>

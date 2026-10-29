@@ -1,10 +1,11 @@
 /** The chat's title, who answers, and what can be done with the chat. */
 import { lazy, Suspense, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
-  Check, ChevronDown, Download, Ellipsis, FileStack, PencilLine, SquarePen, Trash2,
+  Check, ChevronDown, Download, Ellipsis, FileStack, FolderCode, PencilLine, SquarePen, Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
@@ -30,12 +31,26 @@ export function ChatHeader() {
   const row = useChatRow(state.sessionId);
   const [renaming, setRenaming] = useState(false);
   const hasChat = state.messages.length > 0;
+  const previewReady = Boolean(state.workspaceId) && state.livePreview?.workspaceId === state.workspaceId;
   const title = hasChat ? chatTitle(row ?? { first_message: state.messages.find((m) => m.role === "user")?.content }) : "New chat";
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
       <SidebarTrigger className="-ml-1 md:hidden" />
       <h1 className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>{title}</h1>
+
+      {state.workspaceId && (
+        <Link
+          to={`/code/${encodeURIComponent(state.workspaceId)}?chat=${encodeURIComponent(state.sessionId)}`}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          aria-label={previewReady ? "Open project (preview ready)" : "Open project"}
+          title={previewReady ? "The project's server is running: open it beside this chat" : "Open the project beside this chat"}
+        >
+          <FolderCode className="text-brand" />
+          <span className="hidden sm:inline">Open project</span>
+          {previewReady && <span className="size-2 rounded-full bg-success" />}
+        </Link>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger
