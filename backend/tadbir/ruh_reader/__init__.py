@@ -69,6 +69,15 @@ held-out groups, the combination beats Lughah alone on both counts:
 α = 0.05. A reader that fails it, or is missing, or was trained on another
 corpus (its SHA-256 differs from the seeds'), changes nothing.
 
+**Its own corpus** (``corpus``): Lughah's seeds stay Lughah's; the reader may
+also learn from licence-clean text that is not theirs (Tatoeba sentences the
+seeds do not use, MASSIVE 1.1's training utterances, Hinglish-1M rows), built
+at train time into ``$MIZAN_DATA_DIR`` with every line checked: its own
+script, not a seed's words in any split, not a held-out short message, once,
+never scripture. Its held-out slice of short requests (MASSIVE test
+utterances of 3 to 8 words, held-out Roman Hindi/Urdu rows) is read and
+reported beside the seeds' held-out groups; the gate stays the seeds'.
+
 **Scripture is never a target** (``scripture``): a line is not trained on when
 Lughah reads any piece of it as quoted Quran, when it shares
 ``LEAST_SHARED`` consecutive words with the Uthmani sample in Lughah's seeds,
@@ -206,8 +215,10 @@ def _quote_shingles() -> frozenset[tuple[str, ...]]:
     return frozenset(found)
 
 
-def scripture(text: str) -> bool:
-    """Whether the text holds the Quran's words, so it is never trained on."""
+def scripture(text: str, mushaf: bool = True) -> bool:
+    """Whether the text holds the Quran's words, so it is never trained on.
+    Without ``mushaf`` Iqtibas's texts are not asked (a line a corpus build
+    already checked with them)."""
     from .. import iqtibas, lughah, muqabala
 
     if not text.strip():
@@ -221,7 +232,7 @@ def scripture(text: str) -> bool:
         for i in range(len(folded) - LEAST_SHARED + 1)
     ):
         return True
-    quotes = iqtibas.ready()
+    quotes = iqtibas.ready() if mushaf else None
     if quotes is not None:
         if quotes.runs(folded, LEAST_SHARED):
             return True
@@ -232,7 +243,7 @@ def scripture(text: str) -> bool:
 
 
 def training_lines(
-    rows: Iterable[tuple[str, str]], languages: Sequence[str]
+    rows: Iterable[tuple[str, str]], languages: Sequence[str], mushaf: bool = True
 ) -> tuple[list[tuple[str, int]], int]:
     """(words as read, language slot) for every row that is not scripture, and
     how many rows were set aside as scripture."""
@@ -242,7 +253,7 @@ def training_lines(
     for text, label in rows:
         if label not in slot:
             continue
-        if scripture(text):
+        if scripture(text, mushaf):
             dropped += 1
             continue
         words = reading(text)
@@ -550,6 +561,7 @@ class Built:
     dev: list[Read]
     held_out: list[Read]
     lughah: Any  # the fit of Lughah that never saw dev or held-out
+    short: list[Read] = field(default_factory=list)  # the corpus's held-out short messages
 
 
 def held_out_lughah(rows: Sequence[tuple[str, str]], calibrate: bool = True) -> Any:
@@ -569,21 +581,58 @@ def held_out_lughah(rows: Sequence[tuple[str, str]], calibrate: bool = True) -> 
     return model
 
 
+def _corpus_lines(
+    found: Any, languages: Sequence[str], guarded: set[str]
+) -> tuple[list[tuple[str, int]], dict]:
+    """The corpus's training lines (a ``corpus.Corpus``), checked again here:
+    a line whose words are a development or held-out seed's, or a held-out
+    short message's, is dropped, and scripture is set aside (Iqtibas's texts
+    asked again only when the corpus was built without them)."""
+    short = {group_of(text) for text, _label, _group in found.short}
+    fresh = [
+        (text, label)
+        for text, label in found.train
+        if group_of(text) not in guarded and group_of(text) not in short
+    ]
+    checked = bool((found.manifest.get("scripture") or {}).get("iqtibas"))
+    lines, dropped = training_lines(fresh, languages, mushaf=not checked)
+    per_language: dict[str, int] = {}
+    for _words, slot in lines:
+        per_language[languages[slot]] = per_language.get(languages[slot], 0) + 1
+    return lines, {
+        "train_sha256": found.manifest["train"]["sha256"],
+        "short_sha256": found.manifest["short"]["sha256"],
+        "lines": len(lines),
+        "bytes": sum(len(words.encode("utf-8")) for words, _slot in lines),
+        "per_language": per_language,
+        "held_out_dropped": len(found.train) - len(fresh),
+        "scripture_set_aside": dropped,
+        "sources": [
+            {key: item.get(key) for key in ("name", "licence", "sha256", "pinned")}
+            for item in found.manifest.get("sources", [])
+        ],
+    }
+
+
 def build(
     seed: int = 0,
     *,
     config: dict | None = None,
     plan: dict | None = None,
     rows: Sequence[tuple[str, str]] | None = None,
+    corpus: Any = None,
     threads: int = 2,
     log: Callable[[str], None] = logger.info,
     loss_hook: Callable | None = None,
     calibrate: bool = True,
 ) -> Built:
-    """Train a reader on the training groups of the seeds, fit κ, γ and b on
-    the development groups, and judge it against Lughah on the held-out ones."""
+    """Train a reader on the training groups of the seeds (and on the lines of
+    ``corpus``, a ``corpus.Corpus``, when given), fit κ, γ and b on the
+    development groups, and judge it against Lughah on the held-out ones (and,
+    reported but never deciding, on the corpus's held-out short messages)."""
     import torch
 
+    from .. import iqtibas
     from . import net
 
     rows = list(rows if rows is not None else seeds())
@@ -593,11 +642,19 @@ def build(
     splits: dict[str, list[tuple[str, str]]] = {"train": [], "dev": [], "held_out": []}
     for row in rows:
         splits[part(group_of(row[0]))].append(row)
+    if iqtibas.enabled() and iqtibas.ready() is None:
+        iqtibas.load()  # the Quran's texts, when on disk: the full scripture check
     lines, dropped = training_lines(splits["train"], languages)
     dev_lines, _ = training_lines(splits["dev"], languages)
+    extra: dict | None = None
+    if corpus is not None:
+        guarded = {group_of(text) for text, _label in [*splits["dev"], *splits["held_out"]]}
+        more, extra = _corpus_lines(corpus, languages, guarded)
+        lines = [*lines, *more]
     log(
-        f"reader: {len(lines)} training lines ({dropped} set aside as scripture), "
-        f"{len(splits['dev'])} dev, {len(splits['held_out'])} held out"
+        f"reader: {len(lines)} training lines ({dropped} seeds set aside as scripture"
+        + (f", {extra['lines']} from the corpus" if extra else "")
+        + f"), {len(splits['dev'])} dev, {len(splits['held_out'])} held out"
     )
     began = time.monotonic()
     fold = held_out_lughah(rows, calibrate)
@@ -615,7 +672,13 @@ def build(
     log(f"reader: trained {report['steps']} steps in {report['seconds']}s, dev {report['dev_bpb']}")
     dev = read_with_lughah(splits["dev"], languages, fold)
     held = read_with_lughah(splits["held_out"], languages, fold)
-    score_reads(model, dev + held, languages)
+    short: list[Read] = []
+    if corpus is not None:
+        chosen = [item for item in corpus.short if item[1] in languages]
+        short = read_with_lughah([(t, label) for t, label, _g in chosen], languages, fold, ())
+        for read, (_text, _label, group) in zip(short, chosen, strict=True):
+            read.group = group  # a MASSIVE request in every language is one group
+    score_reads(model, dev + held + short, languages)
     ref = float(
         sorted(len(net.encode(text, model.config.context)) for text, _ in lines)[len(lines) // 2]
     )
@@ -638,7 +701,9 @@ def build(
         "training": {k: v for k, v in report.items() if k != "history"},
         "history": report.get("history", []),
         "scripture_set_aside": dropped,
+        "scripture_mushaf": iqtibas.ready() is not None,
         "split": {name: len(items) for name, items in splits.items()},
+        "corpus": extra,
         "fit": fit.to_dict(),
         "held_out_bpb": bits_per_byte(held, languages),
         "gate": verdict,
@@ -647,7 +712,19 @@ def build(
         "learned": [],
         "parent": None,
     }
-    return Built(model, manifest, dev, held, fold)
+    if short:
+        # Reported, never deciding: the gate is the seeds' held-out groups.
+        manifest["short"] = {
+            "n": len(short),
+            "bpb": bits_per_byte(short, languages),
+            "check": gate(
+                [r.truth for r in short],
+                [r.group for r in short],
+                arms(short, fit)["lughah"],
+                arms(short, fit)["combined"],
+            ),
+        }
+    return Built(model, manifest, dev, held, fold, short)
 
 
 # ── versions on disk ─────────────────────────────────────────────────────
@@ -1119,16 +1196,30 @@ async def rest(
 def main() -> None:
     import argparse
 
+    from . import corpus as reader_corpus
+
     parser = argparse.ArgumentParser(description="Train MIZAN's own language reader on the seeds")
+    parser.add_argument("--corpus", action="store_true", help="download and build its corpus")
+    parser.add_argument("--bytes-per-language", type=int, default=reader_corpus.BYTES_PER_LANGUAGE)
+    parser.add_argument("--workers", type=int, default=1, help="processes for the scripture check")
     parser.add_argument("--train", action="store_true", help="train and install as current")
+    parser.add_argument("--seeds-only", action="store_true", help="train without the corpus")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--threads", type=int, default=2)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # signed download links stay out
+    if args.corpus:
+        found = reader_corpus.build(
+            bytes_per_language=args.bytes_per_language, workers=args.workers, log=print
+        )
+        print(json.dumps({k: found[k] for k in ("train", "short", "kept", "dropped")}, indent=1))
     if not args.train:
-        print(json.dumps(status(), indent=1))
+        if not args.corpus:
+            print(json.dumps(status(), indent=1))
         return
-    built = build(args.seed, threads=args.threads, log=print)
+    extra = None if args.seeds_only else reader_corpus.load()
+    built = build(args.seed, corpus=extra, threads=args.threads, log=print)
     install(built)
     shown = {k: v for k, v in built.manifest.items() if k not in {"history", "learned"}}
     print(json.dumps(shown, indent=1))

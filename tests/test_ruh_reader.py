@@ -431,3 +431,252 @@ def test_the_night_learns_only_reviewed_words_of_consenting_people(reader_home, 
     conn.close()
     assert ruh_reader.reviewed_words("u1") == ["accepted words"]
     assert ruh_reader.reviewed_words("someone else") == []
+
+
+# ── the reader's own corpus (sources, licences, what is never trained on) ─
+
+
+def _seed_in(split: str) -> str:
+    """A seed of five words or more whose group falls in ``split``."""
+    for text, _label in ruh_reader.seeds():
+        if len(text.split()) >= 5 and ruh_reader.part(ruh_reader.group_of(text)) == split:
+            return text
+    raise AssertionError(split)
+
+
+def _word(n: int) -> str:
+    return "z" + "".join(chr(97 + int(digit)) for digit in str(n))
+
+
+def _said_with_quote() -> str:
+    """A line that is not a seed but holds eight words of an ayah."""
+    return "قال " + " ".join(_quote().split()[:8])
+
+
+def _fake_sources(tmp_path, tatoeba: dict, massive: dict, hinglish: list) -> dict:
+    import bz2
+    import csv
+    import io
+    import tarfile
+
+    folder = tmp_path / "downloads"
+    folder.mkdir()
+    paths = {}
+    for code, rows in tatoeba.items():
+        path = folder / f"{code}_sentences.tsv.bz2"
+        with bz2.open(path, "wt", encoding="utf-8") as handle:
+            handle.writelines(f"{number}\t{code}\t{text}\n" for number, text in rows)
+        paths[f"tatoeba-{code}"] = path
+    paths["massive"] = folder / "massive.tar.gz"
+    with tarfile.open(paths["massive"], "w:gz") as archive:
+        for locale, rows in massive.items():
+            body = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows).encode()
+            info = tarfile.TarInfo(f"1.1/data/{locale}.jsonl")
+            info.size = len(body)
+            archive.addfile(info, io.BytesIO(body))
+    paths["hinglish-1m"] = folder / "hinglish.csv"
+    with paths["hinglish-1m"].open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["input", "output"])
+        writer.writerows(hinglish)
+    return paths
+
+
+def test_the_corpus_records_its_sources_and_never_holds_what_is_held_out(tmp_path, monkeypatch):
+    from tadbir.ruh_reader import corpus
+
+    monkeypatch.setenv("MIZAN_TALIM", "off")
+    monkeypatch.setattr(corpus, "KEEP", {})  # every line of the small fake sources
+    first = (lughah.CORPUS / "en.tsv").read_text(encoding="utf-8").splitlines()[0]
+    seed_id = first.partition("\t")[0].split(":")[1]
+    held, dev = _seed_in("held_out"), _seed_in("dev")
+    request = "wake me up at seven tomorrow"
+    ordinary = [
+        "The library opens early on weekdays.",
+        "We walked along the river after dinner.",
+        "Her garden is full of tomatoes this year.",
+    ]
+    paths = _fake_sources(
+        tmp_path,
+        tatoeba={
+            "eng": [
+                (seed_id, "A sentence the seeds already hold by its id."),
+                ("900000001", held.upper() + "!!"),
+                ("900000002", dev),
+                *((str(900000010 + i), text) for i, text in enumerate(ordinary)),
+            ],
+            "ara": [("900000020", _said_with_quote()), ("900000021", "ذهبنا إلى السوق صباحا")],
+        },
+        massive={
+            "en-US": [
+                {"id": "1", "partition": "train", "utt": "set an alarm for six"},
+                {"id": "2", "partition": "train", "utt": request.title()},
+                {"id": "2", "partition": "test", "utt": request},
+                {"id": "3", "partition": "test", "utt": "stop"},
+                {"id": "4", "partition": "dev", "utt": "what is on my calendar"},
+            ],
+            "ar-SA": [
+                {"id": "5", "partition": "train", "utt": "reggae music"},
+                {"id": "6", "partition": "train", "utt": "شغل الموسيقى في المطبخ"},
+                {"id": "2", "partition": "test", "utt": "صحيني الساعة سبعة بكرة"},
+            ],
+        },
+        hinglish=[
+            (f"kal milte hain {_word(n)}", f"haan yaar zaroor {_word(n)}") for n in range(40)
+        ],
+    )
+    out = tmp_path / "corpus"
+    manifest = corpus.build(
+        paths=paths,
+        out=out,
+        scripture=ruh_reader.scripture,
+        bytes_per_language=10**6,
+        hinglish_count=100,
+        log=lambda _line: None,
+    )
+    sources = {item["name"]: item for item in manifest["sources"]}
+    assert set(sources) == {"tatoeba-eng", "tatoeba-ara", "massive", "hinglish-1m"}
+    assert sources["massive"]["licence"].startswith("CC BY 4.0")
+    assert sources["hinglish-1m"]["licence"].startswith("MIT")
+    assert sources["tatoeba-eng"]["licence"].startswith("CC BY 2.0 FR")
+    assert all(len(item["sha256"]) == 64 for item in sources.values())
+    assert manifest["seeds_sha256"] == ruh_reader.corpus_digest(ruh_reader.seeds())
+    rows = (out / "train.tsv").read_text(encoding="utf-8").splitlines()
+    assert rows and all(row.split(":")[0] in {"tatoeba", "massive", "hinglish-1m"} for row in rows)
+    found = corpus.load(out)
+    assert found is not None
+    texts = {text for text, _label in found.train}
+    assert {"set an alarm for six", "شغل الموسيقى في المطبخ", *ordinary} <= texts
+    trained = {ruh_reader.group_of(text) for text in texts}
+    guarded = {
+        ruh_reader.group_of(text)
+        for text, _label in ruh_reader.seeds()
+        if ruh_reader.part(ruh_reader.group_of(text)) != "train"
+    }
+    assert not trained & guarded  # no held-out or development seed's words
+    assert not trained & {ruh_reader.group_of(text) for text, _l, _g in found.short}
+    assert not any("reggae" in text or "قال" in text for text in texts)
+    dropped = manifest["dropped"]
+    assert dropped["tatoeba-eng"]["seed id"] == 1 and dropped["tatoeba-eng"]["seed words"] == 2
+    assert dropped["tatoeba-ara"]["scripture"] == 1
+    assert dropped["massive"]["held out here"] == 1 and dropped["massive"]["script"] == 1
+    assert dropped["massive"]["partition dev"] == 1
+    short = {(label, group): text for text, label, group in found.short}
+    assert short[("en", "massive:2")] == request  # one request in two languages, one group
+    assert short[("ar", "massive:2")] == "صحيني الساعة سبعة بكرة"
+    assert ("en", "massive:3") not in short  # a single word is not a 3-8 word message
+    roman = [group for _text, label, group in found.short if label == "hi-latn"]
+    assert roman and all(ruh_reader.part(group) == "held_out" for group in roman)
+    # A corpus that changed on disk, or was built against other seeds, is not used.
+    (out / "train.tsv").write_text("\n".join(rows[1:]) + "\n", encoding="utf-8")
+    assert corpus.load(out) is None
+    corpus.build(paths=paths, out=out, scripture=ruh_reader.scripture, log=lambda _line: None)
+    stale = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    stale["seeds_sha256"] = "0" * 64
+    (out / "manifest.json").write_text(json.dumps(stale), encoding="utf-8")
+    assert corpus.load(out) is None
+
+
+def test_a_line_is_kept_only_in_its_languages_script():
+    from tadbir.ruh_reader import corpus
+
+    assert not corpus.own_script("reggae music", "ar")
+    assert corpus.own_script("سلام olly قفل اللمبه لو سمحت", "ar")
+    assert corpus.own_script("kal milte hain", "hi-latn")
+    assert not corpus.own_script("कल मिलते हैं", "hi-latn")
+    assert corpus.own_script("कल मिलते हैं", "hi")
+    assert not corpus.own_script("ok", "en")  # too few letters to say
+
+
+def test_a_pinned_source_that_changed_is_refused(tmp_path):
+    import dataclasses
+    import hashlib
+
+    import httpx
+
+    from tadbir.ruh_reader import corpus
+
+    body = b"input,output\nkal milte hain,haan\n"
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _r: httpx.Response(200, content=body))
+    )
+    pinned = corpus.Source(
+        "x", "https://example.org/x.csv", "MIT", "x.csv", hashlib.sha256(b"pinned").hexdigest()
+    )
+    with pytest.raises(corpus.Mismatch):
+        corpus.download(pinned, tmp_path / "x", client)
+    assert list((tmp_path / "x").iterdir()) == []
+    same = dataclasses.replace(pinned, sha256=hashlib.sha256(body).hexdigest())
+    assert corpus.download(same, tmp_path / "x", client)["sha256"] == same.sha256
+    assert (tmp_path / "x" / "x.csv").read_bytes() == body
+    assert corpus.download(same, tmp_path / "x", client)["cached"] is True
+
+
+def test_a_reader_trained_on_the_corpus_never_sees_held_out_words(reader_home, few_seeds):
+    pytest.importorskip("torch")
+    from tadbir.ruh_reader import corpus
+
+    held, label = next(
+        (text, found)
+        for text, found in few_seeds
+        if len(text.split()) >= 5 and ruh_reader.part(ruh_reader.group_of(text)) == "held_out"
+    )
+    short = [
+        ("wake me up at seven tomorrow", "en", "massive:2"),
+        ("kal subah jaldi uthana hai", "hi-latn", "g"),
+    ]
+    fresh = "the river runs past the old mill"
+    extra = corpus.Corpus(
+        train=[
+            (fresh, "en"),
+            (held + "!", label),  # a held-out seed's words
+            ("Wake me up at seven tomorrow!", "en"),  # a held-out short message
+            (_said_with_quote(), "ar"),  # the Quran's words
+        ],
+        short=short,
+        manifest={
+            "train": {"sha256": "t"},
+            "short": {"sha256": "s"},
+            "scripture": {"iqtibas": True},
+            "sources": [{"name": "massive", "licence": "CC BY 4.0", "sha256": "x"}],
+        },
+    )
+    rows: set[bytes] = set()
+
+    def hook(labels, mask):
+        for row, keep in zip(labels.tolist(), mask.tolist(), strict=True):
+            rows.add(bytes(t for t, k in zip(row, keep, strict=True) if k and t < 256))
+
+    built = ruh_reader.build(
+        0,
+        config=TINY,
+        plan={"epochs": 1, "seconds": 30, "batch": 8, "checks": 3},
+        corpus=extra,
+        loss_hook=hook,
+        calibrate=False,
+        log=lambda _line: None,
+    )
+    report = built.manifest["corpus"]
+    assert report["lines"] == 1 and report["held_out_dropped"] == 2
+    assert report["scripture_set_aside"] == 1 and report["sources"][0]["licence"] == "CC BY 4.0"
+    context = TINY["context"]
+    assert ruh_reader.reading(fresh).encode()[:context] in rows
+    for text in (held, "wake me up at seven tomorrow"):
+        assert ruh_reader.reading(text).encode()[:context] not in rows
+    assert [read.group for read in built.short] == ["massive:2", "g"]
+    assert built.manifest["short"]["n"] == 2
+    assert built.manifest["short"]["check"]["n"] == 2  # reported; the gate is the seeds'
+    assert built.manifest["gate"]["n"] == len(built.held_out)
+
+
+def test_dev_checks_can_be_spread_over_one_long_pass():
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import net
+
+    torch.manual_seed(4)
+    model = net.Reader(net.Config(**TINY))
+    lines = [(f"line number {_word(n)}", n % 2) for n in range(64)]
+    plan = net.Plan(seconds=60, epochs=1, batch=8, warmup=2, checks=4)
+    report = net.train(model, lines, plan, dev=lines[:8])
+    assert report["steps"] == 8
+    assert [item["step"] for item in report["history"]] == [2, 4, 6, 8]

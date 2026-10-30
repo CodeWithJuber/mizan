@@ -264,6 +264,7 @@ class Plan:
     replay: float = 0.0  # share of each batch drawn from ``replay_lines``
     seed: int = 0
     threads: int = 2
+    checks: int = 0  # dev checks spread over the run; 0: once per pass over the lines
 
 
 def _lines_for(lines: Sequence[tuple[str, int]], context: int) -> list[tuple[list[int], int]]:
@@ -294,9 +295,12 @@ def train(
     loss_hook: Callable[[torch.Tensor, torch.Tensor], None] | None = None,
 ) -> dict:
     """Train on (text, slot) lines within the plan's budget; keep the weights
-    that read ``dev`` best (checked once per pass over the lines). With
-    ``replay``, that share of every batch is a sample of ``replay_lines``.
-    ``loss_hook`` sees the targets and mask of every batch that reaches the loss."""
+    that read ``dev`` best (checked once per pass over the lines, or
+    ``plan.checks`` times over the run). The learning rate warms up, then
+    follows a cosine to a tenth of its peak by the last step or the end of
+    the time, whichever comes first. With ``replay``, that share of every
+    batch is a sample of ``replay_lines``. ``loss_hook`` sees the targets and
+    mask of every batch that reaches the loss."""
     torch.manual_seed(plan.seed)
     torch.set_num_threads(plan.threads)
     rng = random.Random(plan.seed)
@@ -318,17 +322,21 @@ def train(
         betas=(0.9, 0.95),
     )
 
+    began = time.monotonic()
+
     def rate(step: int) -> float:
         if step < plan.warmup:
             return (step + 1) / plan.warmup
         progress = (step - plan.warmup) / max(1, total_steps - plan.warmup)
+        if plan.seconds > 0:  # a run the clock ends still anneals
+            progress = max(progress, (time.monotonic() - began) / plan.seconds)
         return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * min(1.0, progress)))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, rate)
-    began = time.monotonic()
     best: tuple[float, dict] | None = None
     history: list[dict] = []
     step, ran, tokens, stopped = 0, 0, 0, "budget"
+    every = max(1, total_steps // plan.checks) if plan.checks > 0 else 0
 
     def checkpoint() -> None:
         nonlocal best
@@ -374,7 +382,10 @@ def train(
             step += 1
             ran += 1
             tokens += int(mask.sum())
-        checkpoint()
+            if every and step % every == 0 and step < total_steps:
+                checkpoint()
+        if not every or step >= total_steps:
+            checkpoint()
     if best is not None:
         model.load_state_dict(best[1])
     model.eval()
