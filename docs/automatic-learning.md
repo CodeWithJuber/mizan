@@ -31,9 +31,11 @@ A matching request re-runs the kept program. Every reuse is a regression check: 
 
 You can see and forget your kept programs in **Agents → Majlis → Learning** (`GET/DELETE /api/tadbir/programs`).
 
-### Templates: one form, any numbers
+### Templates: one form, any numbers or words
 
-Two verified programs for "the first 10 Fibonacci numbers" and "the first 20 Fibonacci numbers" usually differ only where the requests' numbers differ. When no kept program fits a request exactly, MIZAN makes one from the kept programs of its form (`hifz.template`), with no model call:
+Two verified programs for "the first 10 Fibonacci numbers" and "the first 20 Fibonacci numbers" usually differ only where the requests' numbers differ. Two verified programs for "print a greeting for Ali" and "print a greeting for Bilal" usually differ only where the requests' words differ (`print("Assalamu alaikum, Ali")` and `print("Assalamu alaikum, Bilal")`). When no kept program fits a request exactly, MIZAN makes one from the kept programs of its form (`hifz.template`), with no model call. It tries a form that differs only in numbers first, then a form that also differs in words.
+
+**Numbers.**
 
 1. **Instances.** Python programs this user kept for requests with the same words apart from their numbers (80% overlap), the same question words and as many numbers. Each must be reliable, and a program that printed numbers must have been confirmed by an independent program (Tathabbut). At least two instances with different numbers are needed.
 2. **Anti-unification.** MIZAN reads their syntax trees and keeps what they share. Each difference becomes a slot bound to the j-th number of the request. This includes numbers inside strings ("F10 =" and "F20 ="). This is Plotkin's least general generalisation.
@@ -43,7 +45,40 @@ Two verified programs for "the first 10 Fibonacci numbers" and "the first 20 Fib
 4. **General only where it was seen to vary.** Suppose every instance had the same number at some position ("2 to the power 10", "2 to the power 20"). Then a request that changes it ("3 to the power 5") gets no template, since the program may hold that number as a literal. A number must also keep its kind: an integer slot does not take 2.5.
 5. **Run.** The new program runs in the sandbox. If it fails, Lisan writes a program as usual.
 
-The answer says what happened. MIZAN wrote no new code: it put the request's numbers into a program it verified for N requests of this form. The result for these numbers was not checked by an independent program, so the answer is reported as observed (`evidence_observed`), not verified. The kept programs remain the authority; a template is computed from them each time and is never stored. Each kept program now also stores its request's words, so the order of its numbers is known; programs kept before this change take part once they are kept again.
+**Words.** A slot may also be a span of the user's own words.
+
+1. **Requests of one form.** MIZAN anti-unifies the request's words with each kept request's words, as `memory.dhikr.same_frame` does for memories. A number matches any number here; its value is a number slot's.
+   - The words the two share, in order, are the form. Each run of other words is a span, and the g-th span is the g-th slot's value.
+   - Every span must be filled on both sides. A word that is only added or only left out, or a number that moved, makes another form.
+   - Words are compared without case. A span is taken as the user wrote it: from its first word to its last, with whatever stands between them.
+   - When kept requests share the request's form in different ways, the most specific form that two or more of them share is tried first.
+2. **The form says what the requests are about.** As in `same_frame`: the form has at least two words, one of them carries more information than an average word of general language (Lughah's corpora), and no request's spans together are longer than the form.
+3. **Instances.** Python programs this user kept for requests of this form, with the same question words and as many numbers. They are trusted as for numbers: reliable, and confirmed by Tathabbut if they printed numbers. At least two instances with different spans are needed.
+4. **Anti-unification of the programs.** As for numbers, plus one rule. A string constant, or a part of one (including a literal part of an f-string), that holds each instance's g-th span at the same place becomes a slot bound to the request's g-th span.
+   - Spans are looked for as whole words first, then anywhere in the string.
+   - Numbers in the same string still become number slots. So "the first 3 letters of the word banana" and "the first 4 letters of the word mango" give `print('coconut'[:5])` for "the first 5 letters of the word coconut".
+5. **Test-guided acceptance.** Putting each instance's numbers and spans back into the template must give that instance's program exactly.
+6. **General only where it was seen to vary.** A span that was the same in every instance gets no slot, and a request that changes it gets no template. So "count the vowels in banana" and "count the vowels in mango" answer "count the vowels in coconut", but not "count the consonants in coconut".
+   - A slot also keeps its length in words. If every instance's span there was one word, a request with two words there ("a greeting for Omar twice") gets no template.
+   - Numbers follow the rules above.
+7. **The user's words are data.** A span's value is only ever placed in an `ast.Constant`: a string, or a literal part of an f-string.
+   - The template becomes source with `ast.unparse`, and that source must parse back to exactly the same tree, or there is no template. A span such as `"); import os; ("` is printed as text, and braces in a span never open an f-string expression.
+   - Words the programs use as names (`total = 5` against `count = 5`) never become slots, since names are code.
+
+The user's words keep their case: "a greeting for omar" prints "omar". If Lisan's programs changed the case of the user's words ("ali" in the request, "Ali" in the program), there is no template.
+
+**A word the request does not say.** Suppose a kept program holds, in its strings, a word that every request it was verified for says and the new request does not. Then it was written for that word.
+- Such a program is not reused (`hifz.recall`, where requests that differ in one word can still overlap 80%).
+- A template that holds such a word is not used, whether it was made from numbers or words.
+- Without this rule, "count the vowels in the word banana and print the count" re-ran its program for "mango" and printed 3 again. Likewise, two programs for "the first 10 (11) letters of the word pomegranate" gave `print('pomegranate'[:12])` for "the first 12 letters of the word watermelon".
+
+The answer says what happened. MIZAN wrote no new code: it put the request's numbers or words into a program it verified for N requests of this form. The result for this request was not checked by an independent program, so the answer is reported as observed (`evidence_observed`), not verified. The kept programs remain the authority; a template is computed from them each time and is never stored. Each kept program now also stores its request's words, so the order of its numbers and its spans are known; programs kept before this change take part once they are kept again.
+
+**Measured** (`test_measured_word_templates` in `tests/test_learning_auto.py`): 29 cases, each with two verified programs, a new request and the output its template must print.
+- **13 correct templates:** a greeting, the user's lower case kept, vowels, reversed, capitals, `repr`, an f-string, numbers and words together, two spans, Hinglish, Arabic script, two-word names, and numbers only.
+- **14 correct refusals:** another verb (four cases), another preposition, "first" against "last", extra words (two cases), one instance, a word that never varied, a word used as a name, programs that differ beyond the span, number output that Tathabbut did not confirm, and the very request kept.
+- **2 refusals where a template would have been right:** the program changed the case of the user's word, and a span longer than any instance's.
+- **0 wrong templates.**
 
 ### Cases: what Lisan sees when it must still write
 

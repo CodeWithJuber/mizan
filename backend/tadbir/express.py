@@ -254,11 +254,11 @@ PHRASES: dict[str, dict[str, str]] = {
         "ar": "أعاد ميزان تشغيل برنامج تحقّق منه سابقًا، دون استدعاء النموذج اللغوي؛ والناتج مطابق لما تُحقِّق منه (التشغيل {runs}).",
     },
     "hifz_template": {
-        "en": "MIZAN wrote no new code: it put your numbers into the program it verified for {instances} requests of this form, with no language-model call. This result was not checked by an independent program.",
-        "hi-latn": "MIZAN ne naya code nahi likha: is tarah ki {instances} requests ke liye tasdeeq kiye hue program mein aapke numbers daal kar chalaya, bina language model ke. Is result ko kisi alag program ne check nahi kiya.",
-        "ur": "میزان نے نیا کوڈ نہیں لکھا: اس طرح کی {instances} درخواستوں کے لیے تصدیق شدہ پروگرام میں آپ کے نمبر ڈال کر چلایا، لینگویج ماڈل کے بغیر۔ اس نتیجے کو کسی الگ پروگرام نے نہیں جانچا۔",
-        "hi": "मीज़ान ने नया कोड नहीं लिखा: इस तरह की {instances} रिक्वेस्ट के लिए सत्यापित प्रोग्राम में आपके नंबर डालकर चलाया, भाषा मॉडल के बिना। इस नतीजे को किसी अलग प्रोग्राम ने नहीं जाँचा।",
-        "ar": "لم يكتب ميزان شيفرة جديدة: وضع أرقامك في البرنامج الذي تحقّق منه لـ{instances} طلبات من هذا النوع، دون استدعاء النموذج اللغوي. ولم يتحقّق برنامج مستقل من هذه النتيجة.",
+        "en": "MIZAN wrote no new code: it put your numbers or words into the program it verified for {instances} requests of this form, with no language-model call. This result was not checked by an independent program.",
+        "hi-latn": "MIZAN ne naya code nahi likha: is tarah ki {instances} requests ke liye tasdeeq kiye hue program mein aapke numbers ya alfaaz daal kar chalaya, bina language model ke. Is result ko kisi alag program ne check nahi kiya.",
+        "ur": "میزان نے نیا کوڈ نہیں لکھا: اس طرح کی {instances} درخواستوں کے لیے تصدیق شدہ پروگرام میں آپ کے نمبر یا الفاظ ڈال کر چلایا، لینگویج ماڈل کے بغیر۔ اس نتیجے کو کسی الگ پروگرام نے نہیں جانچا۔",
+        "hi": "मीज़ान ने नया कोड नहीं लिखा: इस तरह की {instances} रिक्वेस्ट के लिए सत्यापित प्रोग्राम में आपके नंबर या शब्द डालकर चलाया, भाषा मॉडल के बिना। इस नतीजे को किसी अलग प्रोग्राम ने नहीं जाँचा।",
+        "ar": "لم يكتب ميزان شيفرة جديدة: وضع أرقامك أو كلماتك في البرنامج الذي تحقّق منه لـ{instances} طلبات من هذا النوع، دون استدعاء النموذج اللغوي. ولم يتحقّق برنامج مستقل من هذه النتيجة.",
     },
     "talaqqi_reused": {
         "en": "MIZAN learned this on {kept}: the sentences of an earlier answer that its sources confirmed ({sources}). It gave them again with no language-model call.",
