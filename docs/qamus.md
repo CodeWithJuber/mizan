@@ -477,6 +477,293 @@ The same measurement found that Isnad split sentences only at `. ! ? ۔ ؟`:
 each Hindi answer was one claim (30 claims, none checkable). Isnad now also
 splits at `।` and `॥`, which gave the 119.
 
+## Roman Hindi and Urdu
+
+### The gap
+
+Most of MIZAN's users write Hindi and Urdu in Latin letters, and the teacher
+answers them so. On 30 October 2026 production asked "Taj Mahal kisne banwaya
+tha aur kab?" and the teacher answered "Taj Mahal ko Mughal badshah Shah Jahan
+ne banwaya tha — apni begum Mumtaz Mahal ki yaad mein…". Ahl al-Dhikr asked
+its three sources, and none of 8 claims was supported. Roman words such as
+"banwaya", "badshah", "begum" and "yaad" carry most of each claim's
+distinctive information, and no English sentence holds them. Qāmūs read only
+Devanagari, Urdu, Arabic and Tamil script.
+
+Two things were missing, and both were measured:
+
+1. **The gate.** `about()` found no English sentence about a Roman claim
+   unless the names in Latin letters alone carried more than half of its
+   information.
+2. **The reading.** When the gate was opened, the NLI model misread Roman
+   claims. It called true claims contradicted by sentences that do not
+   contradict them: "Mona Lisa ki painting Leonardo da Vinci ne banayi thi"
+   against Leonardo's full name, "Zuhal ka sab se bara chand Titan hai"
+   against "Titan is Saturn's moon". The model learned Hindi from XNLI, in
+   Devanagari.
+
+### Data and licences
+
+Read and checked one by one; only the first two are used to build.
+
+| Source | Licence | Used |
+|---|---|---|
+| [Aksharantar](https://huggingface.co/datasets/ai4bharat/Aksharantar) (AI4Bharat), Hindi 1.30M and Urdu 0.70M train pairs of a native word and its spelling in Latin letters, at commit `e418c1fc` | Manually collected pairs CC BY 4.0; pairs mined from Samanantar and IndicCorp, and existing sources, CC0 | How letters are written in Latin letters. Its rows that came from Dakshina (24,727 Hindi, 73,666 Urdu) are left out: Dakshina is CC BY-SA 4.0 |
+| MASSIVE 1.1 (above) | CC BY 4.0 | Which Hindi and Urdu words there are, and how common (the prior); which words are English |
+| [Dakshina](https://github.com/google-research-datasets/dakshina) v1.0 (Google), Hindi and Urdu Wikipedia sentences romanized by native speakers, word-aligned | CC BY-SA 4.0 | Measurement only: nothing is learned from it or shipped |
+| [PHINC](https://huggingface.co/datasets/LingoIITGN/PHINC) (IIT Gandhinagar), 13,738 Hinglish tweets with human English translations | CC BY 4.0 | Measured as a direct Roman→English lexicon, not adopted (below) |
+| `findnitai/english-to-hinglish` | Card says Apache-2.0 | Rejected: it re-licenses share-alike sources (Hinglish-TOP, CMU Hinglish DoG) and holds synthetic rows of unstated origin |
+| LinCE | Each part under its own terms | Rejected: an aggregate with no single clear licence |
+| CMU Hinglish DoG | CC BY-SA 3.0 / GFDL | Not needed: PHINC covers the same use under CC BY |
+| Lughah's `hi-latn.tsv` (Hinglish-Everyday-Conversations-1M, MIT) | MIT, synthetic | Not used: it has no other side to learn a reading from |
+
+### Method
+
+**A noisy channel.** A native word d is a sequence of units: each letter with
+the combining marks written on it ("बनवाया" = ब, न, वा, या). Each unit, in its
+context, writes 0 to 4 Roman letters, in order:
+
+    P(r | d) = Σ over alignments Π_i t(chunk_i | unit_i, context_i)
+
+The context is what follows the unit. In Devanagari it is the word's end, a
+bare letter or a letter with marks: a consonant's own vowel is not spoken at
+the end of a word ("kamal") and often not before a bare consonant. In Urdu,
+whose short vowels are not written, it is the next letter itself. A context
+never seen in training falls back to the unit's chunks over all its contexts.
+
+t is learned by EM with the forward-backward algorithm. With α[i][j] the
+probability that the first i units write the first j letters, and β the same
+from the end:
+
+    E step:  c(r[j-l:j] | u_i) += α[i-1][j-l] · t(r[j-l:j] | u_i) · β[i][j] / P(r | d)
+    M step:  t(chunk | u) = c(chunk | u) / Σ c(· | u)
+
+The first E step counts every alignment once. Chunks with less than 10⁻⁴ of a
+unit's mass are dropped. 100,000 training pairs per language are drawn with a
+fixed seed. EM stops when the log-likelihood of Aksharantar's validation pairs
+(without Dakshina's rows) no longer rises.
+
+**Reading a spelling.** The vocabulary is the native words of MASSIVE's train
+split (5,747 Hindi, 5,496 Urdu) with their counts n_d. Each word's 30 most
+probable spellings are taken from a beam search over the channel. Each
+spelling r is read as the word that most probably wrote it, by Bayes' rule:
+
+    P(d | r) = P(r | d) · P(d) / Σ_d' P(r | d') · P(d'),    P(d) = (n_d + 1) / (N + |V|)
+
+A reading is kept only when it is decisive, P(d | r) > ½, as Fahm takes a
+reading only when it is decisive. With a prototype of the channel (fewer
+iterations), the cut-off that maximised F1 on Dakshina's dev sentences was
+0.44 for Hindi and 0.50 for Urdu, close to ½. That was a check, not a fit: no
+number is taken from Dakshina.
+
+A spelling is never read when it is an English word: a word of MASSIVE's
+English utterances outside their slots, or of Lughah's English corpus ("main",
+"the", "door", "bus"). Slot values are left out because they hold names and
+Indian words in Latin letters ("rajdhani express", "biryani"). An English
+spelling is still read when the lexicon gives that very spelling as a
+translation of the word: English writes "rajdhani" for राजधानी. For Urdu only
+the words the lexicon translates are kept. For Hindi every word is kept,
+because a Roman claim is read by the NLI model in Devanagari (below).
+
+**What is stored.** `backend/tadbir/data/qamus/hi-latn.json.gz` holds each
+spelling with the Devanagari and Urdu words it is read as, how EM ran, and the
+held-out measurements. `scripts/build_qamus_roman.py --check` rebuilds it and
+compares the SHA-256 of its content.
+
+### Using it
+
+- `qamus.read_roman("duniya")` gives `{"hi": "दुनिया", "ur": "دنیا"}`.
+- `qamus.translate(word, target)`: a Latin-letter word that is read gives the
+  native word for its own language and the native word's translations for any
+  other: "duniya" → world, "biwi" → wife. An English word gives none, as
+  before. So `bridge()`, `found_in()`, `about()` and `ahl_dhikr.searched()`
+  read Roman claims with no change to their rules.
+- `qamus.devanagari(claim, keep=premise)` writes a Roman claim's words in
+  Devanagari, except the premise's own words, which stay as they are. A
+  premise's word is a name or a symbol the source writes so: "Au" would
+  otherwise be read as "और" (and).
+- `ahl_dhikr.judge` gives the NLI model a claim that Lughah's own model reads
+  as Hinglish (`ahl_dhikr.roman`) in that form. The claim, its finding and
+  everything shown keep the words the teacher wrote. An English claim, and a
+  code-mixed claim that Lughah reads as English, are read as written.
+- A contradiction already had to hold both ways (premise against claim, and
+  claim against premise). A Roman claim must also be contradicted however it
+  is written: in Devanagari and as the teacher wrote it, both ways, four
+  readings in all. A contradiction is shown under the answer as "the source
+  says otherwise", so it must not depend on the script the model was given.
+- `MIZAN_QAMUS=off` turns all of it off.
+
+### Measured (30 October 2026)
+
+**The channel, on Aksharantar's test split** (recorded in the file; Dakshina's
+rows are part of this split and are only read). The share of test pairs whose
+spelling is among the native word's k most probable spellings, and, for the
+pairs whose word is in the vocabulary, how often the most probable reading of
+the spelling (before the P > ½ cut and the English filter) is that word:
+
+| | EM iterations | spelling in top 1 / 5 / 10 / 30 | read as its word | readings shipped |
+|---|---|---|---|---|
+| Hindi | 23 (held-out likelihood stopped rising) | 0.278 / 0.575 / 0.673 / 0.779 of 10,112 | 596 / 718 = 0.830 | 149,200 |
+| Urdu | 30 (the bound; still rising slowly) | 0.071 / 0.214 / 0.299 / 0.420 of 14,878 | 743 / 1,633 = 0.455 | 87,647 |
+
+**Running text: Dakshina's romanized Wikipedia sentences**
+(`scripts/qamus_roman_eval.py`, test split; the dev split is within 0.01).
+A token is read right when it is read as the word the sentence wrote. Recall
+counts the tokens whose word the reading can give at all. Content tokens carry
+more information than an average running word:
+
+| | tokens | precision [95% Wilson] | same English | recall |
+|---|---|---|---|---|
+| Hindi, all | 87,367 | 0.872 [0.869, 0.874] | 0.874 | 0.773 |
+| Hindi, content | 59,492 | 0.830 [0.825, 0.833] | 0.832 | 0.853 |
+| Urdu, all | 85,027 | 0.835 [0.832, 0.839] | 0.865 | 0.615 |
+| Urdu, content | 55,855 | 0.796 [0.790, 0.801] | 0.797 | 0.687 |
+
+Most wrong readings are spelling variants of one word (की and कि, है and हैं,
+लिए and लिये) or two words written alike ("ki"). Some are not: "mahal" is read
+in Urdu as ماحول (environment) instead of محل (palace).
+
+**Teacher answers.** The production teacher (`deepseek/deepseek-v4.1-flash-1017`
+via OpenRouter) was asked the 30 questions of `scripts/ahl_coverage.py`'s set
+twice: in Hindi-leaning Hinglish ("Taj Mahal kisne banwaya tha aur kab?") and
+in Roman Urdu ("Taj Mahal kis ne tameer karwaya tha?"), with "answer in one
+paragraph of a few sentences, in the language of the question". 27 of the 60
+answers came back in Latin letters; the other 33 (in Devanagari or Urdu
+script) were asked again with production's own reply instruction for Hinglish
+("Hindi/Urdu in Latin letters, as the user writes"), and all came back in Latin
+letters. The answers gave 158 claims (78 and 80). Each claim was judged by
+`judge()` with the real NLI model against the question's Simple English
+Wikipedia articles, and, as a control, against another question's articles.
+The 20 false claims of the English false set were also written in Hinglish by
+hand. The arms add one change at a time:
+
+- **main**: Qāmūs as before (Roman words matched only as they are);
+- **gate**: the Roman reading in `translate`, so in `about()` and the search;
+  the NLI model reads the claim as written;
+- **Devanagari**: and the NLI model reads a Roman claim in Devanagari;
+- **adopted**: and a contradiction must hold however the claim is written.
+
+| Roman claims | supported, Hindi-leaning (78) | supported, Urdu-leaning (80) | supported, all 158 [95% Wilson] | contradicted (all true claims) | control: supported, contradicted |
+|---|---|---|---|---|---|
+| Qāmūs off | 6 | 1 | 7 [2.2, 8.9%] | 1 | 0, 0 |
+| main | 6 | 1 | 7 [2.2, 8.9%] | 1 | 0, 0 |
+| gate | 8 | 7 | 15 [5.8, 15.1%] | 5 | 0, 0 |
+| Devanagari | 18 | 10 | 28 [12.6, 24.4%] | 1 | 0, 0 |
+| **adopted** | **18** [15.1, 33.6%] | **10** [6.9, 21.5%] | **28** [12.6, 24.4%] | **0** [0, 2.4%] | 0, 0 |
+
+| 20 false Roman claims | supported | contradicted | control: supported, contradicted |
+|---|---|---|---|
+| main | 0 | 6 [14.5, 51.9%] | 0, 0 |
+| gate | 0 | 4 | 0, 0 |
+| Devanagari | 0 | 5 | 0, 0 |
+| **adopted** | **0** [0, 16.1%] | **5** [11.2, 46.9%] | 0, 0 |
+
+No other set changed:
+
+| Set | main | adopted |
+|---|---|---|
+| Hindi (Devanagari) answers, 119 claims | 5 supported, 0 contradicted | 5, 0 |
+| Urdu answers, 120 claims | 2, 0 | 2, 0 |
+| Their control (another question's articles) | 0, 0 | 0, 0 |
+| English set of `scripts/ahl_coverage.py`, 75 claims (5 of its questions in Hinglish) | 19 supported, 0 contradicted | 20, 0: the same 19, and the Roman claim "…duniya ka sabse bada desh Russia hai" (right) |
+| English false claims, 20 | 0 supported, 10 contradicted | 0, 10 |
+
+**Hand audit of every finding** (right: the sentence says it; part: it says
+part of it; wrong):
+
+| Claim (adopted arm) | Source sentence, shortened | Audit |
+|---|---|---|
+| Saturn ka sabse bada chand Titan hai. | The largest moon is Titan. | right |
+| Berlin ki deewar 9 November 1989 ko giri thi. | The Berlin Wall was taken down on November 9, 1989. | right |
+| Australia ki rajdhani Canberra hai. | Canberra is the capital city of Australia. | right |
+| Ye New South Wales mein located hai. (Canberra) | …an area… was given to the country by New South Wales to build Canberra in. | wrong: Canberra is in the ACT; also supported on main |
+| Pride and Prejudice Jane Austen ne likhi thi, aur yeh novel 1813 mein publish hui thi. | Pride and Prejudice is a book by Jane Austen. It was published in 1813. | right |
+| Mona Lisa ki painting Leonardo da Vinci ne banayi thi. | Leonardo's full name was "Leonardo di ser Piero da Vinci"… | wrong: true claim, the sentence does not say it |
+| Yeh ek famous portrait hai jo 16th century ke shuru mein banaya gaya tha aur ab Paris ke Louvre Museum mein rakha hai. | …is a 16th-century portrait. It is on permanent display in Paris at the Louvre museum. | right |
+| Penicillin ki khoj Alexander Fleming ne ki thi. | Penicillin was discovered by… Sir Alexander Fleming in 1928… | right |
+| Iske liye unhe 1945 mein Nobel Prize bhi mila (Howard Florey aur Ernst Chain ke saath). | He shared Nobel Prize… in 1945… with Howard Walter Florey and Ernst Boris Chain. | right |
+| Sone (gold) ka chemical symbol Au hai. | Its chemical symbol is Au. | right |
+| Yeh symbol Latin shabd "Aurum" se liya gaya hai, jiska matlab sona hota hai. | Its symbol is Au, from the Latin word for gold, aurum. | right |
+| Telephone ka avishkar mukhy roop se Alexander Graham Bell se joda jata hai, jinhone 1876 mein iska patent liya. | Alexander Graham Bell was the first person to patent the telephone, in 1876. | right |
+| Photosynthesis wo process hai jisme plants, algae aur kuch bacteria… glucose… oxygen… | Photosynthesis is how plants… make carbohydrates… carbon dioxide + water + light energy → glucose + oxygen | right |
+| Isaac Newton ek English physicist, mathematician aur astronomer the, jinka janm 1643 mein hua tha. | Sir Isaac Newton (25 December 1643 –…) was an English physicist, mathematician and astronomer. | right |
+| Microsoft ki sthapna Bill Gates aur Paul Allen ne ki thi. | Gates started Microsoft in 1975 with Paul Allen… | right |
+| Iska nirmaan 1887 se 1889 ke beech Paris mein hua tha aur ise 1889 ki Exposition Universelle ke liye banaya gaya tha. | It was built between 1887 and 1889 for the Exposition Universelle… | right |
+| Bharat ki rajdhani New Delhi hai. | New Delhi is the capital of India. | right |
+| Agar "bada" ka matlab kshetrafal (area) hai, to duniya ka sabse bada desh Russia hai. | Russia is the largest country in the world. | right |
+| Ye Saturn ke chaandron mein sab se bada hai aur poore solar system ka doosra sab se bada moon hai (Ganymede ke baad). | Titan is the largest moon of Saturn and the second largest in the Solar System… after Ganymede | right |
+| Ye New South Wales aur Australian Capital Territory mein waqe hai aur ise 1913 mein capital ke taur par banaya gaya tha. | …it is in the Australian Capital Territory (ACT). Canberra was started in 1913… | part: not in New South Wales |
+| Mona Lisa ki tasveer Leonardo da Vinci ne banai thi. | …Leonardo's most famous oil painting, the Mona Lisa. | right |
+| Woh ek Italian artist, engineer aur inventor the, aur yeh painting 16th century ke shuru mein bani thi. | He was also a scientist, mathematician, engineer, inventor… | part: the date is not in it |
+| Ye 20 July 1969 ko Apollo 11 mission ke dauran hua. | On July 20, 1969, Armstrong and Aldrin became the first humans to land on the moon… | right |
+| Sonay (gold) ka kimiyai alamat Au hai, jo Latin ke aurum se aaya hai. | Its symbol is Au, from the Latin word for gold, aurum. | right |
+| Iska atomic number 79 hota hai aur ye ek transition metal hai. | Its atomic number is 79… a transition metal in Group 11. | right |
+| Photosynthesis woh process hai jisme paudhe (aur kuch algae/bacteria)… | (as above) | right |
+| Isaac Newton ek mashhoor English physicist, mathematician aur astronomer thay (1643–1727). | (as above) | right |
+| Doosri Jang-e-Azeem (World War II) Europe mein 8 May 1945 ko khatam hui, jab Germany ne surrender kiya. | Germany surrendered on May 8, 1945… | right (main read it as contradicted) |
+| *False:* Canberra New Zealand ki rajdhani hai. | Canberra is the capital city of Australia. | right (contradicted) |
+| *False:* Mona Lisa 21 August 1950 ko chori hui thi. | On August 21, 1911, the Mona Lisa was stolen. | right (contradicted) |
+| *False:* Alexander Graham Bell ko telephone ka pehla patent 1901 mein mila tha. | …the first person to patent the telephone, in 1876. | right (contradicted) |
+| *False:* Japan ka formal surrender 2 September 1939 ko USS Arizona par sign hua tha. | Japan formally surrendered on September 2, 1945… on board the USS Missouri | right (contradicted) |
+| *False:* Microsoft ki sthapna Steve Jobs aur Paul Allen ne 1985 mein ki thi. | Gates started Microsoft in 1975 with Paul Allen… | right (contradicted) |
+
+So 28 true claims are supported where main supported 7: 24 right, 2 part, 2
+wrong (one of them, New South Wales, main supported too). Main's 8 findings
+had 2 wrong: the same New South Wales claim, and the Second World War claim
+read as contradicted. No claim was read against another question's articles.
+Of the false claims, main contradicted 6 and the adopted reading 5: it no
+longer contradicts "Germany ne May 1944 mein surrender kiya aur Japan ne
+August 1946 mein…" (right on main) or "Pacific Ocean duniya ka sabse chhota
+mahasagar hai" (main's sentence only said plate tectonics make the Pacific
+smaller), and newly contradicts "Canberra New Zealand ki rajdhani hai". The
+search by translations moved the page's best sentences away from the joined
+premise main found. One true claim main supported is no longer supported:
+"Africa ki sabse lambi nadi Nile hai, jo lagbhag 6,650 km lambi hai…".
+
+The production claim of the gap is still not read against "It was built in
+the 17th century by Emperor Shah Jahan in memory of his wife, Mumtaz Mahal.":
+of its 8 distinctive words, the sentence holds 3 (shah, mumtaz, mahal), and
+"badshah", "begum" and "banwaya" have no translation (Limits). The teacher's
+other wordings of the same fact are read: "Taj Mahal Shah Jahan ne apni biwi
+Mumtaz Mahal ki yaad mein banwaya tha" is about it through "biwi" → wife
+(`tests/test_qamus.py`). Neither Taj Mahal claim of the 60 answers was
+supported: the Simple English page's sentences on its builder were read as
+neutral.
+
+### Not adopted
+
+- **A direct Roman→English lexicon from PHINC.** IBM Model 1 in both
+  directions on PHINC's 13,738 tweet pairs (EM stopped after 3 iterations by
+  held-out likelihood) learned frequent words well: duniya → world (0.99),
+  biwi → wife (0.97), saal → years, likha → written. Encyclopedic words never
+  occur in it (tameer, mashhoor, rajdhani, haddiyan). In a prototype run with
+  the claims read as written, it added one supported claim to what reading
+  through Devanagari and Urdu gave (Hindi 8 → 9, by "bharat" → india) and
+  none for Urdu. PHINC has no annotation a cut-off could be fitted on, so a
+  second source and a second method were not taken for one claim.
+- **Opening the gate alone.** With the claims read by the NLI model as
+  written, 5 true claims were read as contradicted (the gate arm above).
+- **Reading in Devanagari without the agreement of writings.** One true claim
+  was read as contradicted (the Devanagari arm): "Taj Mahal ko Mughal badshah
+  Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein tameer karwaya tha"
+  against "The Taj Mahal was built for Shah Jahan's third wife, Mumtaz Mahal",
+  which the claim as written is not.
+- **Searching by the translations of distinctive words only**, the ones
+  `about()` counts, instead of every word's ("ne" → has, "mein" → in). It
+  found fewer true Roman claims supported (24 of 158 against 28), more false
+  Roman claims contradicted (7 against 5, both new ones right) and more
+  Devanagari and Urdu claims supported (5 → 8 of 119 and 2 → 3 of 120, all
+  right). But on the English set of `scripts/ahl_coverage.py` it read a true
+  Hindi claim, "उनका जन्म 2 अक्टूबर 1869 को पोरबंदर, गुजरात में हुआ था और उन्हें
+  राष्ट्रपिता कहा जाता है।", as contradicted by a joined premise that holds "He
+  was first called this in 1914 in South Africa". A false contradiction on a
+  set that had none, so the search is as before.
+- **Context for Urdu.** For Urdu, the next letter as the context was compared
+  with Hindi's (the word's end, a bare letter or a marked letter) on
+  Dakshina's test tokens: precision 0.846 against 0.859, recall 0.755 against
+  0.713. The next letter is used. Neither reads Urdu as well as Hindi is read
+  (Limits).
+
 ## Limits
 
 - **The vocabulary is a voice assistant's.** MASSIVE is alarms, music, weather,
@@ -501,8 +788,18 @@ splits at `।` and `॥`, which gave the 119.
   rowan.
 - **The Arabic is Saudi dialect** (MASSIVE `ar-SA`), not the Modern Standard
   Arabic of Wikipedia. This is why it has the lowest precision and coverage.
-- **Roman Hindi/Urdu is not covered.** A Hinglish word is in Latin letters, so
-  it is matched as it is, as before. MASSIVE has no Roman Hindi locale.
+- **Roman Hindi and Urdu are read through MASSIVE's words.** Only a word of
+  MASSIVE's Hindi or Urdu vocabulary (5,747 and 5,496 words) is read, and it
+  helps only when the lexicon translates it. "banwaya" (बनवाया) and "begum"
+  are not in MASSIVE; "badshah" (बादशाह) and "deewar" (दीवार) are read but have
+  no translation. A word is read only as one of the 30 spellings the channel
+  finds most probable for it.
+- **Urdu is read less well than Hindi.** Its short vowels are not written, so
+  one Urdu word has many spellings, and most of Aksharantar's Urdu pairs are
+  words run together from web text ("ہوگادوسرے", hoga dosray).
+- **A Roman word spelled like an English word is never read** ("door" for दूर,
+  "main" for मैं), nor a name that MASSIVE's English utterances use outside a
+  slot.
 - **Only English pairs.** Hindi against Urdu, or Urdu against Arabic, is not
   translated (same script, or no pair).
 - **Arabic-script spelling variants** (ي and ی, ك and ک) and optional harakat
@@ -518,3 +815,14 @@ The data folders must be new folders outside the repository; the scripts
 refuse a folder inside it. Both scripts need `pyarrow` and `huggingface_hub`,
 and the builder needs `anyascii==0.3.2`. The build takes about 40 seconds and
 the measurement about 5 minutes on one CPU.
+
+The Roman reading:
+
+    python -I scripts/build_qamus_roman.py --data /tmp/qamus_roman_data          # writes hi-latn.json.gz
+    python -I scripts/build_qamus_roman.py --data /tmp/qamus_roman_data --check  # fails if a rebuild differs
+    python -I scripts/qamus_roman_eval.py --dakshina /tmp/dakshina_dataset_v1.0
+
+The build reads Aksharantar's Hindi and Urdu archives (33 MB and 18 MB) and
+MASSIVE's train splits, and takes about 10 minutes on one CPU. The
+measurement needs Dakshina v1.0 unpacked (`dakshina_dataset_v1.0.tar` from
+Google's storage, 2 GB; only `hi/romanized` and `ur/romanized` are read).
