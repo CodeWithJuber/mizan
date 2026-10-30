@@ -105,6 +105,7 @@ import os
 import random
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
@@ -321,7 +322,9 @@ def fit_b(
     lughah: Sequence[Sequence[float]], reader: Sequence[Sequence[float]], truths: Sequence[int]
 ) -> tuple[float, float, float]:
     """b ∈ [0, 1] with the lowest log-loss of the product; 0 unless it lowers
-    it. Returns (b, loss at b = 0, loss at b)."""
+    it by more than the rounding of the loss itself (a mean of n terms, each
+    rounded: n · ε · the loss), so a reader that adds nothing gets b = 0 on
+    every platform. Returns (b, loss at b = 0, loss at b)."""
 
     def loss(b: float) -> float:
         return log_loss(
@@ -331,7 +334,8 @@ def fit_b(
     before = loss(0.0)
     b = min((_golden(loss, *B_RANGE), B_RANGE[1]), key=loss)
     after = loss(b)
-    return (b, before, after) if after < before else (0.0, before, before)
+    rounding = len(truths) * sys.float_info.epsilon * max(before, 1.0)
+    return (b, before, after) if before - after > rounding else (0.0, before, before)
 
 
 # ── the gate ─────────────────────────────────────────────────────────────
