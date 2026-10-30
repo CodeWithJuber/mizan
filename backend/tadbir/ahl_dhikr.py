@@ -53,7 +53,7 @@ import httpx
 
 from core.adaptive import BetaEstimator, bm25_scores, tokenize
 
-from . import amanah, isnad, qasd
+from . import amanah, isnad, qamus, qasd
 from .taallum import content_words
 
 logger = logging.getLogger("mizan.ahl_dhikr")
@@ -250,7 +250,15 @@ def about(claim: str, sentence: str) -> bool:
     is about the claim when it holds most (> ½) of their information. A sentence
     that shares only common words with a claim is not evidence for or against
     it, however an NLI model reads the pair (such models often call two
-    unrelated sentences a contradiction)."""
+    unrelated sentences a contradiction).
+
+    A distinctive word written in another script than the sentence (a claim in
+    Hindi or Urdu, an English Wikipedia sentence) is also present when one of
+    its translations in MIZAN's own lexicon (Qāmūs) is a word of the sentence
+    that is not a function word: a translation such as "the" or "is" is in
+    nearly every sentence, so finding it is no evidence. As a word found as it
+    is stands for itself, a word of the sentence stands for one claim word at
+    most (``docs/qamus.md``)."""
     weights = {word: information(word) for word in set(tokenize(claim))}
     if not weights:
         return False
@@ -258,7 +266,16 @@ def about(claim: str, sentence: str) -> bool:
     distinctive = {word: weight for word, weight in weights.items() if weight > mean} or weights
     present = set(tokenize(sentence))
     covered = sum(weight for word, weight in distinctive.items() if word in present)
-    return 2 * covered > sum(distinctive.values())
+    total = sum(distinctive.values())
+    if 2 * covered <= total:
+        missing = sorted(
+            (word for word in distinctive if word not in present),
+            key=lambda word: (-distinctive[word], word),
+        )
+        floor = average_information()
+        translated = qamus.found_in(missing, sentence, lambda word: information(word) > floor)
+        covered += sum(distinctive[word] for word in translated)
+    return 2 * covered > total
 
 
 def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) -> Passage | None:
