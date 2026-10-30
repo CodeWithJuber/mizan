@@ -82,3 +82,53 @@ async def test_said_again_is_repeated_not_copied_and_recall_strengthens(tmp_path
     assert count == 1 and before > 0
     found = await memory.recall("Yusuf")
     assert found and found[0].id == first and found[0].strength["stability"] >= before
+
+
+def stability_of(memory, mem_id):
+    conn = memory._get_conn()
+    try:
+        return conn.execute(
+            "SELECT stability, access_count FROM memories WHERE id = ?", (mem_id,)
+        ).fetchone()
+    finally:
+        memory._release_conn(conn)
+
+
+async def test_in_a_run_only_the_memory_the_answer_used_is_strengthened(tmp_path):
+    """Recall is not use: what is always near the top of a search must not grow
+    by being near the top, only by being used (the testing effect)."""
+    from memory.dhikr import defer_reviews, settle_reviews
+
+    memory = DhikrMemorySystem(db_path=str(tmp_path / "dhikr.db"))
+    son = await memory.remember("My son's name is Yusuf.", importance=0.5)
+    city = await memory.remember("My son Yusuf studies in Hyderabad.", importance=0.5)
+    before = {mem_id: stability_of(memory, mem_id) for mem_id in (son, city)}
+    token = defer_reviews()
+    found = await memory.recall("Yusuf", limit=5)
+    assert {item.id for item in found} >= {son, city}
+    assert stability_of(memory, son) == before[son]  # held until the answer is known
+    assert settle_reviews(token, "Yusuf is studying in Hyderabad this year.") == 1
+    assert stability_of(memory, city)[1] == before[city][1] + 1  # used
+    assert stability_of(memory, son) == before[son]  # recalled, not used
+
+
+async def test_said_again_after_its_hold_lapsed_is_relearned(tmp_path):
+    memory = DhikrMemorySystem(db_path=str(tmp_path / "dhikr.db"))
+    first = await memory.remember("My son's name is Yusuf.", importance=0.5)
+    old = datetime.now(UTC) - timedelta(days=400)
+    held = tadhkir.learn(0.5, old)
+    conn = memory._get_conn()
+    try:
+        conn.execute(
+            "UPDATE memories SET stability = ?, difficulty = ?, last_review = ? WHERE id = ?",
+            (held["stability"], held["difficulty"], held["last_review"], first),
+        )
+        conn.commit()
+    finally:
+        memory._release_conn(conn)
+    assert tadhkir.retrievability(held) < tadhkir.RETENTION
+    await memory.remember("My son's name is Yusuf.", importance=0.5)
+    lapsed = tadhkir.review(held, tadhkir.AGAIN)
+    good = tadhkir.review(held, tadhkir.GOOD)
+    (stability, _count) = stability_of(memory, first)
+    assert stability == pytest.approx(lapsed["stability"]) and stability < good["stability"]

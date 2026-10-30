@@ -34,9 +34,13 @@ Each remembrance is a review that updates S and D by FSRS's equations. A review 
 | Event | Grade | Effect |
 |---|---|---|
 | First written | Hard / Good / Easy by the third of importance it falls in | initial S: 1.3 / 2.3 / 8.3 days |
-| Recalled to answer | Good | S grows: 2.3 → 7.3 days after a 1-day gap, → 25 after a 10-day gap; nothing the same hour |
-| Said again by the user | Good on the memory already held | repeated, not copied (Bukhari 95) |
-| Needed but missing | Again | relearned from a lower S (`tadhkir.review` supports it and the tests check it; no part of MIZAN grades a lapse yet) |
+| Recalled in a run, and the answer used it | Good | S grows: 2.3 → 7.3 days after a 1-day gap, → 25 after a 10-day gap; nothing the same hour |
+| Recalled in a run, not used | none | nothing changes: being near the top of a search is not remembering |
+| Recalled outside a run (the memory API) | Good | the person asked for it, so it is used |
+| Said again while held (R ≥ 0.9) | Good | repeated, not copied (Bukhari 95) |
+| Said again after its hold fell below 0.9 | Again | it had lapsed: relearned from a lower S |
+
+A memory is "used" when the answer holds more than half of the memory's distinctive information: the same relevance test Ahl al-Dhikr applies to a source sentence (`ahl_dhikr.about`). An agent's run holds its recalls (`dhikr.defer_reviews`) and reviews them when its answer is known (`dhikr.settle_reviews`); a delegated run's recalls are settled by the outer run. Before this, every recalled memory got a Good review whether the answer used it or not. So the few memories that ranked high for common words kept growing stronger and ranking higher: rich got richer.
 
 **Where it is used.**
 - **Ranking.** Recall order is relevance × R × importance.
@@ -91,6 +95,6 @@ $$E = 2^{\,w+l}\cdot 2\cdot\frac{B(w+1,\,l+1)}{B(1,1)}\cdot P\!\left(q>\tfrac12 
 
 ## Tests
 
-- **Tadhkir:** `tests/test_tadhkir.py`. Forgetting, spacing, repetition, lapse, ranking, and "said again" being repeated rather than copied.
+- **Tadhkir:** `tests/test_tadhkir.py`. Forgetting, spacing, repetition, lapse, ranking, "said again" being repeated rather than copied, a run strengthening only the memory its answer used, and a lapsed memory said again being relearned.
 - **Isnad:** `tests/test_ahl_dhikr.py`. One witness is not knowledge, a second site makes it sahih, a dispute is weighed by trust, a site counts once.
 - **Tajdid:** `tests/test_research_learning.py`. Promotion only at the e-value bound, α spending, and the gate's error rate under repeated looks.

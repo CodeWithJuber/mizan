@@ -3002,6 +3002,11 @@ Match the requested depth and self-correct errors."""
         _agent_runs.set({**(_agent_runs.get() or {}), id(base): run})
         base._active_runs = getattr(base, "_active_runs", 0) + 1
         base.state, base.current_task = "acting", task
+        # Tadhkir by use: a memory this run recalls is strengthened only if the
+        # answer used it.
+        from memory.dhikr import defer_reviews, settle_reviews
+
+        reviews, answer = defer_reviews(), ""
         try:
             result: dict = await run._execute_run(
                 task,
@@ -3014,8 +3019,11 @@ Match the requested depth and self-correct errors."""
                 queued_at=queued_at,
                 stack=stack,
             )
+            if result.get("success", True):
+                answer = str(result.get("result") or "")
             return result
         finally:
+            settle_reviews(reviews, answer)
             base._finish_run(run)
 
     # Counters a run adds to; added back to the agent when the run ends.

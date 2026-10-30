@@ -36,12 +36,58 @@ import math
 import os
 import re
 import sqlite3
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
 logger = logging.getLogger("mizan.dhikr")
+
+# Memories an agent's run recalled, reviewed once its answer is known: only
+# those the answer used are strengthened (``settle_reviews``).
+_RECALLED: ContextVar[list | None] = ContextVar("dhikr_recalled", default=None)
+
+
+def defer_reviews() -> Token | None:
+    """Hold this run's recalls until its answer is known. None when a run is
+    already holding them (a delegated run: the outer run settles)."""
+    if _RECALLED.get() is not None:
+        return None
+    return _RECALLED.set([])
+
+
+def settle_reviews(token: Token | None, answer: str) -> int:
+    """A Good review of each memory the run recalled and its answer used: the
+    answer holds most of the memory's distinctive information (the relevance
+    test Ahl al-Dhikr applies to sources). A memory recalled but not used is
+    left as it was. Returns how many were reviewed."""
+    if token is None:
+        return 0
+    recalled = _RECALLED.get() or []
+    _RECALLED.reset(token)
+    from memory import stateless
+
+    if not answer.strip() or not recalled or not stateless.learns():
+        return 0
+    from tadbir.ahl_dhikr import about
+
+    used: dict[int, tuple[Any, list[Memory]]] = {}
+    seen: set[str] = set()
+    for system, memory in recalled:
+        if memory.id in seen:
+            continue
+        seen.add(memory.id)
+        text = memory.content if isinstance(memory.content, str) else json.dumps(memory.content)
+        try:
+            if about(str(text), answer):
+                used.setdefault(id(system), (system, []))[1].append(memory)
+        except Exception:  # noqa: BLE001 - no corpus to weigh words: nothing reviewed
+            logger.debug("Tadhkir: could not weigh a recalled memory", exc_info=True)
+    for system, memories in used.values():
+        system._strengthen(memories)
+    return sum(len(memories) for _, memories in used.values())
+
 
 CHAT_PREFERENCE_LIMITS = {
     "language": 120,
@@ -581,9 +627,9 @@ class DhikrMemorySystem:
         return mem_id
 
     def _repeated(self, content: Any, memory_type: str, agent_id: str) -> str | None:
-        """The id of a live memory with the same words, reviewed as recalled and
-        used (Tadhkir), or None. Whitespace and case aside, nothing is merged
-        that the user did not say again."""
+        """The id of a live memory with the same words, reviewed (Tadhkir), or
+        None. Whitespace and case aside, nothing is merged that the user did not
+        say again."""
         from memory import tadhkir
 
         text = content if isinstance(content, str) else json.dumps(content)
@@ -601,10 +647,17 @@ class DhikrMemorySystem:
             for mem_id, stored, stability, difficulty, last_review in rows:
                 if " ".join(str(stored or "").split()).casefold() != wanted:
                     continue
-                state = tadhkir.review(
-                    {"stability": stability, "difficulty": difficulty, "last_review": last_review},
-                    tadhkir.GOOD,
-                )
+                held = {
+                    "stability": stability,
+                    "difficulty": difficulty,
+                    "last_review": last_review,
+                }
+                # Said again while MIZAN still held it (R ≥ FSRS's target): a Good
+                # review. Said again after its hold fell below: it had lapsed, and
+                # is relearned (Again).
+                kept = tadhkir.retrievability(held)
+                grade = tadhkir.GOOD if kept is None or kept >= tadhkir.RETENTION else tadhkir.AGAIN
+                state = tadhkir.review(held, grade)
                 conn.execute(
                     "UPDATE memories SET stability = ?, difficulty = ?, last_review = ?, "
                     "recency = ? WHERE id = ?",
@@ -727,14 +780,26 @@ class DhikrMemorySystem:
         if query and memories:
             memories = rank_memories(query, memories)[:limit]
 
-        # A recalled memory is remembered: its access count and its strength grow
-        # (Tadhkir: a Good review; one the same hour adds little, one after a gap
-        # more). Daftar shows when each was last used. A stateless run (an
-        # evaluation or a test chat) reads without strengthening anything.
-        from memory import tadhkir
-
+        # A recalled memory that is used is remembered: its access count and its
+        # strength grow (Tadhkir: a Good review; one the same hour adds little,
+        # one after a gap more). Within an agent's run, only the memories its
+        # answer used are reviewed, once the answer is known (``settle_reviews``);
+        # a recall outside a run (the memory API) counts as use. Daftar shows
+        # when each was last used. A stateless run (an evaluation or a test
+        # chat) reads without strengthening anything.
         if not stateless.learns():
             return memories
+        deferred = _RECALLED.get()
+        if deferred is not None:
+            deferred.extend((self, mem) for mem in memories)
+            return memories
+        self._strengthen(memories)
+        return memories
+
+    def _strengthen(self, memories: list[Memory]) -> None:
+        """A Good review of each memory, and one more use."""
+        from memory import tadhkir
+
         for mem in memories:
             mem.access_count += 1
             mem.strength = tadhkir.review(mem.strength, tadhkir.GOOD)
@@ -760,8 +825,6 @@ class DhikrMemorySystem:
                 conn.commit()
             finally:
                 self._release_conn(conn)
-
-        return memories
 
     def recall_pathways(self, query: str, top_k: int = 8) -> str:
         """

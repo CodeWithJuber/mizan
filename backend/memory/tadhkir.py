@@ -26,9 +26,14 @@ a difficulty D. The chance of recalling it t days after it was last reviewed is
     R(t) = (1 + f·t/S)^(−w₂₀),   f = 0.9^(−1/w₂₀) − 1,
 
 and every remembrance is a review that updates S and D by FSRS's equations,
-graded by how it went: Good when it was recalled and used, Again when the user
-had to say it again. Its first writing is graded by its importance (Hard, Good
-or Easy for the lower, middle and upper third).
+graded by how it went:
+- Good when it was recalled and the answer used it. A memory recalled but not
+  used is not reviewed, so what is always near the top of a search does not
+  grow by being near the top (``dhikr.settle_reviews``);
+- when the user says it again: Good while MIZAN still held it (R ≥ 0.9, FSRS's
+  target), Again once its hold had fallen below, since it had lapsed.
+Its first writing is graded by its importance (Hard, Good or Easy for the
+lower, middle and upper third).
 """
 
 from __future__ import annotations
@@ -45,6 +50,8 @@ _SCHEDULER = Scheduler(learning_steps=(), relearning_steps=(), enable_fuzzing=Fa
 _DECAY = -DEFAULT_PARAMETERS[20]
 _FACTOR = 0.9 ** (1 / _DECAY) - 1
 GOOD, AGAIN = Rating.Good, Rating.Again
+# FSRS's own default desired retention: below it, a memory has lapsed.
+RETENTION = 0.9
 
 
 def _parse(value: Any) -> datetime | None:
