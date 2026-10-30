@@ -107,7 +107,7 @@ class RuhLearner:
         """Record an unreviewed candidate; metadata cannot grant review approval."""
         from memory import stateless
 
-        if not stateless.trains():
+        if stateless.barred_from_training():
             return  # an evaluation run, or words a channel's terms keep out of training
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(

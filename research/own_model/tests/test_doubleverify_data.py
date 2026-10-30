@@ -292,3 +292,77 @@ def test_schemas_accept_valid_unicode_records_and_sources_but_runtime_remains_ma
     assert validator("reply-record.schema.json").is_valid(r)
     with pytest.raises(data.DataValidationError, match="span"):
         data.validate_record(r)
+
+
+# ── Licensed teacher output (owner's decision of 30 Oct 2026, docs/consent.md) ──
+
+
+def teacher_record(rid="t", sid="s1"):
+    r = record(rid=rid, sid=sid)
+    r["provenance"] = {"origin": "licensed_teacher", "source_ids": [sid],
+                       "rights": "DeepSeek terms allow training on output",
+                       "reviewer_ids": ["reviewer"], "review_status": "accepted",
+                       "creation_method": "machine_generation",
+                       "teacher": {"provider": "openrouter", "model": "deepseek/deepseek-chat",
+                                   "licence": "deepseek-terms-of-use"},
+                       "verification": {"by": "tathabbut", "passed": True}}
+    return r
+
+
+def test_verified_licence_clean_teacher_output_is_a_training_target():
+    r = teacher_record()
+    assert validator("reply-record.schema.json").is_valid(r)
+    assert data.validate_record(r) is r
+
+
+@pytest.mark.parametrize("change", [
+    {"teacher": {"provider": "anthropic", "model": "any", "licence": "mit"}},
+    {"teacher": {"provider": "OpenAI", "model": "any", "licence": "mit"}},
+    {"teacher": {"provider": "openrouter", "model": "deepseek/x", "licence": "proprietary"}},
+    {"verification": {"by": "tathabbut", "passed": False}},
+    {"verification": {"by": "the model itself", "passed": True}},
+    {"verification": None},
+    {"teacher": None},
+    {"creation_method": "human"},
+])
+def test_schema_and_runtime_refuse_an_unlicensed_or_unverified_teacher(change):
+    r = teacher_record()
+    for key, value in change.items():
+        if value is None:
+            del r["provenance"][key]
+        else:
+            r["provenance"][key] = value
+    assert not validator("reply-record.schema.json").is_valid(r)
+    with pytest.raises(data.DataValidationError):
+        data.validate_record(r)
+
+
+@pytest.mark.parametrize("model", ["anthropic/claude-opus-5-5", "openai/gpt-oss-120b", "gpt-5", "Claude-Fable"])
+def test_a_router_cannot_launder_anthropic_or_openai_output(model):
+    r = teacher_record()
+    r["provenance"]["teacher"]["model"] = model
+    with pytest.raises(data.DataValidationError, match="lookup only"):
+        data.validate_record(r)
+
+
+def test_teacher_fields_belong_to_teacher_records_only():
+    r = record()
+    r["provenance"]["verification"] = {"by": "tathabbut", "passed": True}
+    assert not validator("reply-record.schema.json").is_valid(r)
+    with pytest.raises(data.DataValidationError, match="licensed_teacher"):
+        data.validate_record(r)
+
+
+@pytest.mark.parametrize("kind", ["quran", "hadith"])
+def test_teacher_output_over_scripture_is_never_a_target(kind):
+    s = source()
+    s["kind"] = kind
+    if kind == "quran":
+        s["quran"] = {"surah": 1, "ayah_start": 1, "ayah_end": 1, "text_edition": "mechanical"}
+    else:
+        s["hadith"] = {"collection": "c", "book": "b", "number": "1", "reviewer_qualification": "q",
+                       "gradings": [{"grade": "sahih", "grader": "g", "reference": "r"}]}
+    with pytest.raises(data.DataValidationError, match="never a training target"):
+        data.validate_dataset([teacher_record()], {"s1": s})
+    # A human-written record over the same source stays allowed.
+    assert data.validate_dataset([record()], {"s1": s})["records"] == 1

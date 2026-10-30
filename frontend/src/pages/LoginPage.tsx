@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [adult, setAdult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +46,8 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const data = (await api.post(registering ? "/auth/register" : "/auth/login", { username, password })) as {
+      const body = registering ? { username, password, age_16_or_older: adult } : { username, password };
+      const data = (await api.post(registering ? "/auth/register" : "/auth/login", body)) as {
         token?: string;
         error?: string;
       };
@@ -104,10 +106,29 @@ export default function LoginPage() {
               <PasswordInput id="confirm" ariaLabel="Confirm password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
             </div>
           )}
+          {registering && (
+            <div className="space-y-2">
+              <label htmlFor="adult" className="flex items-start gap-2 text-sm">
+                <input
+                  id="adult"
+                  type="checkbox"
+                  required
+                  checked={adult}
+                  onChange={(event) => setAdult(event.target.checked)}
+                  className="mt-0.5 size-4 accent-primary"
+                />
+                <span>I am 16 or older</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                MIZAN learns from your chats to help you and lists all it keeps in your Daftar. You can switch that off
+                in Memory. Your words train no model unless you allow it there.
+              </p>
+            </div>
+          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">{error}</p>
           )}
-          <Button type="submit" className="h-10 w-full" disabled={busy || !username || !password}>
+          <Button type="submit" className="h-10 w-full" disabled={busy || !username || !password || (registering && !adult)}>
             {busy && <LoaderCircle className="animate-spin" />}
             {registering ? "Create account" : "Sign in"}
           </Button>

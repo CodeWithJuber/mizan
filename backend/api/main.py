@@ -74,7 +74,7 @@ from core.hooks import HOOKS, hook_registry
 from core.middleware import middleware_pipeline
 from core.plugins import plugin_manager
 from core.qalb import QalbEngine
-from memory.dhikr import DhikrMemorySystem
+from memory.dhikr import CONSENT_PREFERENCES, DhikrMemorySystem
 from memory.knowledge_graph import KnowledgeGraph
 from mizan_owned.schemas import (
     ContextRequest,
@@ -995,6 +995,15 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=200)
 
 
+MINIMUM_AGE = 16  # the owner's decision of 30 Oct 2026 (docs/consent.md)
+
+
+class RegisterRequest(LoginRequest):
+    age_16_or_older: bool = Field(
+        False, description=f"The person confirms they are {MINIMUM_AGE} or older."
+    )
+
+
 class ShuraRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=10000)
     context: dict = {}
@@ -1140,8 +1149,14 @@ async def login(req: LoginRequest, request: Request):
 
 
 @app.post("/api/auth/register")
-async def register(req: LoginRequest):
-    """Register a new user"""
+async def register(req: RegisterRequest):
+    """Register a new user aged 16 or older (docs/consent.md): chats with an
+    Islamic assistant reveal religious belief, a special category of personal
+    data, and a younger child needs a parent's consent."""
+    if not req.age_16_or_older:
+        raise HTTPException(
+            422, f"MIZAN is for people aged {MINIMUM_AGE} or older; confirm your age to sign up"
+        )
     # Check if username already exists
     for u in auth._users.values():
         if u.username == req.username:
@@ -1149,7 +1164,10 @@ async def register(req: LoginRequest):
 
     user = auth.create_user(req.username, req.password, roles=["user"])
     token = auth.create_token(user)
-    wali.audit.log("user_registered", {"username": req.username, "user_id": user.id})
+    wali.audit.log(
+        "user_registered",
+        {"username": req.username, "user_id": user.id, "age_attested": MINIMUM_AGE},
+    )
     return {"token": token, "user_id": user.id, "username": user.username}
 
 
@@ -1481,7 +1499,8 @@ async def run_task(
                 agent = active_agents[aid]
                 tasks.append(agent.execute(req.task, req.context))
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            with await owner_consent(user.user_id if user else None):
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
             await manager.broadcast(
                 {
@@ -1519,7 +1538,8 @@ async def run_task(
                     }
                 )
 
-            result = await agent.execute(req.task, req.context, stream_callback=stream_cb)
+            with await owner_consent(user.user_id if user else None):
+                result = await agent.execute(req.task, req.context, stream_callback=stream_cb)
             balancer.release(agent_id)
 
             await manager.broadcast(
@@ -1674,6 +1694,38 @@ async def chat_history(session_id: str, session: dict, agent, task: str) -> list
     except Exception as exc:  # noqa: BLE001 - history assembly must never stop a chat
         logger.warning("Context engine unavailable; using recent turns: %s", exc)
         return list(session["history"][:-1][-50:])
+
+
+# The learning and training choices (docs/consent.md).
+CONSENT_KEYS = CONSENT_PREFERENCES
+
+
+def consent_bindings(preferences: list[dict]) -> contextlib.ExitStack:
+    """The user's own choices for this run (docs/consent.md): MIZAN learns from
+    their work for them unless ``learning: off``; their words become training
+    candidates only with ``training: on``."""
+    from memory import stateless
+
+    chosen = {str(item["key"]): str(item["value"]).strip().lower() for item in preferences}
+    stack = contextlib.ExitStack()
+    if chosen.get("learning") == "off":
+        stack.enter_context(stateless.no_learning("learning: off"))
+    if chosen.get("training") == "on":
+        stack.enter_context(stateless.allow_training("training: on"))
+    return stack
+
+
+async def owner_consent(owner_id: str | None) -> contextlib.ExitStack:
+    """:func:`consent_bindings` for a run done for ``owner_id`` (a watcher, a
+    queued or scheduled task, the WebSocket chat). If their choices cannot be
+    read, nothing is learned or captured: the safe reading of a choice unknown."""
+    if not owner_id:
+        return contextlib.ExitStack()
+    try:
+        return consent_bindings(await memory.get_chat_preferences(owner_id))
+    except Exception:  # noqa: BLE001 - never fail a run over a preference read
+        logger.warning("Preferences unavailable; this run learns and keeps nothing")
+        return consent_bindings([{"key": "learning", "value": "off"}])
 
 
 async def chat_context(
@@ -2198,6 +2250,8 @@ async def stream_chat(
 
         # Every paid call of this run is recorded under its request.
         busy.enter_context(iqtisad.bind_request(request_id))
+        # The user's learning and training choices (docs/consent.md).
+        busy.enter_context(await owner_consent(user.user_id))
         if workspace_context:
             busy.enter_context(workspace_context.running_in(user.user_id, workspace_id))
         turn_checkpoint: dict | None = None
@@ -2854,7 +2908,7 @@ async def chat(
         from tadbir.waqt import bind_timezone
 
         try:
-            with bind_timezone(req.timezone):
+            with bind_timezone(req.timezone), await owner_consent(user.user_id):
                 result = await agent.execute(
                     req.content,
                     await chat_context(user, req.session_id, session, agent, req.content),
@@ -3026,22 +3080,37 @@ async def get_chat_preferences(user: TokenPayload = Depends(require_auth)):
     return {"preferences": await memory.get_chat_preferences(user.user_id)}
 
 
+def _consent_receipt(owner: str, key: str, value: str) -> None:
+    """A change to what MIZAN may learn or keep is a Sakk receipt (docs/consent.md)."""
+    if key not in CONSENT_KEYS:
+        return
+    from security import sakk
+
+    sakk.record(owner, "consent", {"purpose": key, "value": value}, f"consent · {key} {value}")
+
+
 @app.put("/api/chat/preferences/{key}")
 async def set_chat_preference(
     key: str, req: ChatPreferenceValue, user: TokenPayload = Depends(require_auth)
 ):
     try:
-        return await memory.set_chat_preference(user.user_id, key, req.value)
+        saved = await memory.set_chat_preference(user.user_id, key, req.value)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    _consent_receipt(user.user_id, key, saved["value"])
+    return saved
 
 
 @app.delete("/api/chat/preferences/{key}")
 async def delete_chat_preference(key: str, user: TokenPayload = Depends(require_auth)):
     try:
-        return {"deleted": await memory.delete_chat_preference(user.user_id, key)}
+        deleted = await memory.delete_chat_preference(user.user_id, key)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if deleted:
+        # Back to the default: learning on, training off.
+        _consent_receipt(user.user_id, key, "default")
+    return {"deleted": deleted}
 
 
 class ApprovalDecision(BaseModel):
@@ -3526,9 +3595,11 @@ async def daftar_edit(entry_id: str, req: DaftarEdit, user: TokenPayload = Depen
         if req.content is None:
             raise HTTPException(422, "A preference needs its new value")
         try:
-            return await memory.set_chat_preference(user.user_id, key, req.content)
+            saved = await memory.set_chat_preference(user.user_id, key, req.content)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        _consent_receipt(user.user_id, key, saved["value"])
+        return saved
     if kind != "note":
         raise HTTPException(422, "Only notes and preferences can be edited")
     expires = None if req.expires is None else _expiry(req.expires)
@@ -3563,9 +3634,13 @@ async def daftar_forget(req: DaftarForget, user: TokenPayload = Depends(require_
 
     notes = [entry.partition(":")[2] for entry in ids if entry.startswith("note:")]
     others = [entry for entry in ids if not entry.startswith("note:")]
+    chosen = {item["key"] for item in await memory.get_chat_preferences(user.user_id)}
     forgotten = await daftar.forget(
         notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=others
     )
+    for key in CONSENT_KEYS:
+        if key in chosen and f"preference:{key}" in others:
+            _consent_receipt(user.user_id, key, "default")
     receipt = None
     if notes:
         # Notes live on in vectors and pathways too: Mahw removes them there.
@@ -3670,7 +3745,10 @@ async def _run_unattended(agent, task: str, owner_id: str | None, origin: str) -
         return {"error": "No owner to act for"}
     binding = bind_principal(user)
     try:
-        with approvals.unattended(user.user_id, f"unattended:{origin}", origin):
+        with (
+            approvals.unattended(user.user_id, f"unattended:{origin}", origin),
+            await owner_consent(user.user_id),
+        ):
             return cast(dict, await agent.execute(task))
     finally:
         reset_principal(binding)
@@ -3690,7 +3768,11 @@ async def _watcher_task(owner_id: str, task: str) -> str:
     binding = bind_principal(user)
     session = muraqabah_session(owner_id)
     try:
-        with muraqabah.running_watcher(), approvals.unattended(owner_id, session, "watcher"):
+        with (
+            muraqabah.running_watcher(),
+            approvals.unattended(owner_id, session, "watcher"),
+            await owner_consent(owner_id),
+        ):
             result = await agent.execute(task, {"session_id": session})
     finally:
         reset_principal(binding)
@@ -3772,6 +3854,7 @@ async def _bab_turn(
             collecting_held() as found,
             # Meta's terms s.4.7: WhatsApp data never trains or improves a model.
             stateless.no_training(channel) if channel == "whatsapp" else nullcontext(),
+            consent_bindings(context.get("user_preferences") or []),
         ):
             result = await agent.execute(text, context)
             held = list(found)
@@ -6677,7 +6760,8 @@ async def federation_route_task(
     session_id = req.session_id or str(uuid.uuid4())
     await authorize_session(session_id, user, create=True)
 
-    result = await agent.execute(req.task, {"history": []})
+    with await owner_consent(user.user_id if user else None):
+        result = await agent.execute(req.task, {"history": []})
     if result.get("success"):
         await memory.save_message(session_id, "user", req.task)
         await memory.save_message(
@@ -7815,8 +7899,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
 
                     zone = data.get("timezone")
                     try:
-                        with bind_timezone(
-                            zone if isinstance(zone, str) and len(zone) <= 64 else None
+                        with (
+                            bind_timezone(
+                                zone if isinstance(zone, str) and len(zone) <= 64 else None
+                            ),
+                            await owner_consent(user.user_id),
                         ):
                             result = await agent.execute(
                                 content,
@@ -7974,7 +8061,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             client_id, {"type": "task_stream", "chunk": chunk}
                         )
 
-                    result = await agent.execute(task, stream_callback=task_stream)
+                    with await owner_consent(user.user_id):
+                        result = await agent.execute(task, stream_callback=task_stream)
 
                     await manager.send_required(
                         client_id,

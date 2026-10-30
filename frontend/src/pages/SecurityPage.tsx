@@ -58,6 +58,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
     username: "",
     password: "",
     confirm: "",
+    adult: false,
   });
   const [showAuthForms, setShowAuthForms] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -132,6 +133,7 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
       const data = (await api.post("/auth/register", {
         username: registerForm.username,
         password: registerForm.password,
+        age_16_or_older: registerForm.adult,
       })) as { token?: string; error?: string };
       if (data.token) {
         localStorage.setItem("mizan_token", data.token);
@@ -451,6 +453,17 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                             }
                           />
                         </div>
+                        <label className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={registerForm.adult}
+                            onChange={(e) =>
+                              setRegisterForm({ ...registerForm, adult: e.target.checked })
+                            }
+                            className="mt-0.5 size-4 accent-primary"
+                          />
+                          <span>I am 16 or older</span>
+                        </label>
                         <button
                           className="btn-secondary text-sm w-full"
                           onClick={register}
@@ -458,7 +471,8 @@ export default function SecurityPage({ api, addTerminalLine }: PageProps) {
                             loading ||
                             !registerForm.username ||
                             !registerForm.password ||
-                            !registerForm.confirm
+                            !registerForm.confirm ||
+                            !registerForm.adult
                           }
                         >
                           {loading ? "Creating..." : "Create Account"}

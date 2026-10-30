@@ -386,8 +386,8 @@ class AdaptiveStateStore:
     def put(self, key: str, value: dict) -> None:
         from memory import stateless
 
-        if stateless.active():
-            return  # an evaluation run learns nothing (memory/stateless.py)
+        if not stateless.learns():
+            return  # an evaluation, or a user who turned learning off (memory/stateless.py)
         self._memory[key] = value
         if not self.db_path:
             return

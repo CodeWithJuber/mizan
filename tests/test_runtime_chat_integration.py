@@ -6,6 +6,7 @@ import pytest
 
 from agents.specialized import create_agent
 from learner.ruh_learner import RuhLearner
+from memory import stateless
 from memory.dhikr import DhikrMemorySystem
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.auth import TokenPayload, bind_principal, reset_principal
@@ -111,6 +112,14 @@ async def test_chat_capture_is_owned_unreviewed_and_bound_to_session(agent):
     alice = TokenPayload("alice", "Alice", ["user"], 9999999999, 0, "test")
     token = bind_principal(alice)
     try:
+        # Training is opt-in (docs/consent.md): without the user's yes, no candidate.
+        agent.ai_client = ScriptedProvider([answer("Hello")])
+        result = await agent.execute("hi", {"session_id": "session-a"})
+        assert result["success"] and "learning_capture" not in result
+        unasked = RuhLearner.for_owner("alice")
+        await unasked.initialize()
+        assert (await unasked.get_stats())["total_interactions"] == 0
+
         agent.ai_client = ScriptedProvider([answer("Hello")])
         # The binding is available to tools during execution, and reset afterward.
         original = agent.ai_client.create
@@ -120,7 +129,8 @@ async def test_chat_capture_is_owned_unreviewed_and_bound_to_session(agent):
             return original(**kwargs)
 
         agent.ai_client.create = inspect_binding
-        result = await agent.execute("hi", {"session_id": "session-a"})
+        with stateless.allow_training("training: on"):
+            result = await agent.execute("hi", {"session_id": "session-a"})
         assert result["success"]
         assert result["learning_capture"] == "unreviewed_candidate"
         learner = RuhLearner.for_owner("alice")

@@ -1,10 +1,11 @@
-/** Memory: the person's Daftar ledger, chat memory and stored knowledge records. */
+/** Memory: the person's Daftar ledger, what MIZAN may learn, chat memory and stored knowledge records. */
 import { useEffect, useState } from "react";
 import { Brain, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import DaftarPanel from "../components/DaftarPanel";
 import { ConversationMemorySummary } from "../components/ConversationMemorySummary";
+import { LearningConsent } from "../components/LearningConsent";
 import { addToast } from "../components/Toast";
 import { useApi } from "../hooks/useApi";
 import { config } from "../config";
@@ -75,6 +76,7 @@ export default function MemoryPage() {
   return (
     <div className="page-body">
       <DaftarPanel api={api} />
+      <LearningConsent />
       <ConversationMemorySummary />
 
       <section className="space-y-3">

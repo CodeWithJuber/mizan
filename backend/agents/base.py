@@ -3165,7 +3165,7 @@ Match the requested depth and self-correct errors."""
             result["usage"]["memory"] = {
                 "stateless": stateless.active(),
                 "recalled": len(recalled) if result.get("orchestrator") != "mizan" else 0,
-                "learning": not stateless.active(),
+                "learning": stateless.learns(),
                 "training": stateless.trains(),
             }
             # Capture successful chat pairs in the authenticated user's own
@@ -3568,7 +3568,7 @@ Match the requested depth and self-correct errors."""
             # A stateless run (an evaluation or a test chat) keeps nothing.
             from memory import stateless
 
-            if self.knowledge_graph and not stateless.active():
+            if self.knowledge_graph and stateless.learns():
                 try:
                     task_type = self._classify_task(task)
                     await self.knowledge_graph.add_entity(
@@ -3920,7 +3920,7 @@ Match the requested depth and self-correct errors."""
 
         # A stateless run (an evaluation or a test chat) leaves no task record or
         # pathway behind (memory/stateless.py).
-        if not self.memory or stateless.active():
+        if not self.memory or not stateless.learns():
             return
         from workspace.context import current_chat_session
 
@@ -3956,11 +3956,12 @@ Match the requested depth and self-correct errors."""
         Quran 3:191: "Those who remember Allah and reflect on the creation..."
 
         Writes real patterns to both in-memory hikmah and persistent DB.
-        A stateless run (an evaluation or a test chat) learns nothing.
+        A stateless run (an evaluation or a test chat), or a user who turned
+        learning off, learns nothing.
         """
         from memory import stateless
 
-        if stateless.active():
+        if not stateless.learns():
             return
         self.learning_iterations += 1
         task_type = self._classify_task(task)

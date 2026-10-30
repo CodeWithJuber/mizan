@@ -172,7 +172,8 @@
           "enum": [
             "human_original",
             "source_transcription",
-            "machine_draft"
+            "machine_draft",
+            "licensed_teacher"
           ]
         },
         "source_ids": {
@@ -244,6 +245,70 @@
               "pattern": "__REPLACE_|\u0000"
             },
             "pattern": "\\S"
+          }
+        },
+        "teacher": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "model",
+            "licence"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "not": {
+                "enum": [
+                  "anthropic",
+                  "openai",
+                  "Anthropic",
+                  "OpenAI"
+                ]
+              }
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "licence": {
+              "enum": [
+                "apache-2.0",
+                "mit",
+                "deepseek-terms-of-use",
+                "deepseek-model-license"
+              ]
+            },
+            "terms": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "by",
+            "passed"
+          ],
+          "properties": {
+            "by": {
+              "enum": [
+                "tathabbut",
+                "sandbox",
+                "sidq",
+                "ahl_dhikr",
+                "fihris",
+                "calc",
+                "hifz",
+                "qiyas"
+              ]
+            },
+            "passed": {
+              "const": true
+            }
           }
         }
       },
@@ -344,6 +409,59 @@
               "reviewer_ids": {
                 "minItems": 1
               }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "licensed_teacher"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "teacher",
+              "verification"
+            ],
+            "properties": {
+              "creation_method": {
+                "const": "machine_generation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "not": {
+                  "const": "licensed_teacher"
+                }
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "teacher"
+                  ]
+                },
+                {
+                  "required": [
+                    "verification"
+                  ]
+                }
+              ]
             }
           }
         }

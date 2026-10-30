@@ -312,6 +312,9 @@ async function stream(req, res) {
   res.end();
 }
 
+// The person's saved choices (learning, training, reply preferences).
+const preferences = new Map();
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -335,6 +338,15 @@ const server = http.createServer(async (req, res) => {
   if (path === "/api/chat/stream" && method === "POST") return stream(req, res);
   if (path === "/api/workspaces" || path.startsWith("/api/workspaces/")) return workspaces(req, res, url);
   if (path === "/api/memory/list") return json(res, 200, { results: [] });
+  if (path === "/api/chat/preferences") return json(res, 200, { preferences: [...preferences.values()] });
+  if (path.startsWith("/api/chat/preferences/")) {
+    const key = decodeURIComponent(path.slice("/api/chat/preferences/".length));
+    if (method === "DELETE") return json(res, 200, { deleted: preferences.delete(key) });
+    const { value } = await readBody(req);
+    const saved = { key, value: String(value).trim().toLowerCase(), source: "explicit_user_preference", updated_at: new Date().toISOString() };
+    preferences.set(key, saved);
+    return json(res, 200, saved);
+  }
   if (path === "/api/knowledge/sources") return json(res, 200, { sources: [] });
   if (path === "/api/muraqabah") {
     return json(res, 200, {
