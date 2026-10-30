@@ -43,6 +43,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,8 @@ logger = logging.getLogger("mizan.ahl_dhikr")
 
 REPO = "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli"
 REVISION = "0a71e92a985b6e1ad1828cf67ce9c459639c1dca"
+WEIGHTS = "onnx/model.onnx"
+VOCABULARY = "onnx/tokenizer.json"
 LABELS = ("entailment", "neutral", "contradiction")  # the model's id2label order
 IDLE_SECONDS = 600
 CANDIDATES = 3  # sentences per claim that the NLI model reads
@@ -132,10 +135,8 @@ def _load_model() -> Any:
             from tokenizers import Tokenizer
 
             root = str(_root())
-            weights = hf_hub_download(REPO, "onnx/model.onnx", revision=REVISION, cache_dir=root)
-            vocabulary = hf_hub_download(
-                REPO, "onnx/tokenizer.json", revision=REVISION, cache_dir=root
-            )
+            weights = hf_hub_download(REPO, WEIGHTS, revision=REVISION, cache_dir=root)
+            vocabulary = hf_hub_download(REPO, VOCABULARY, revision=REVISION, cache_dir=root)
             tokenizer = Tokenizer.from_file(vocabulary)
             tokenizer.enable_truncation(512)
             options = onnxruntime.SessionOptions()
@@ -260,8 +261,42 @@ def about(claim: str, sentence: str) -> bool:
     return 2 * covered > sum(distinctive.values())
 
 
+def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) -> Passage | None:
+    """One page's best sentences for the claim, joined in the page's order.
+
+    A model's sentence often joins what a source says in several ("commissioned
+    by Shah Jahan in memory of Mumtaz Mahal" against "It was built by Shah
+    Jahan…" and "…for his wife, Mumtaz Mahal"), so no single sentence holds
+    most of its information and none could be read against it. The page whose
+    best ``CANDIDATES`` sentences match the claim most (summed BM25) gives
+    them, in their order, as one premise, when together they are about the
+    claim. Measured on 30 teacher answers (``scripts/ahl_coverage.py``):
+    supported claims 5 → 17 of 66 against Simple English Wikipedia and 13 → 15
+    against web snippets, every new one right on audit; none of 20 false
+    claims supported (``docs/ahl-dhikr.md``)."""
+    by_page: dict[str, list[int]] = {}
+    for position, passage in enumerate(pool):
+        if scores[position] > 0:
+            by_page.setdefault(passage.url, []).append(position)
+    if not by_page:
+        return None
+
+    def strength(url: str) -> float:
+        return sum(sorted((scores[i] for i in by_page[url]), reverse=True)[:CANDIDATES])
+
+    best = sorted(by_page[max(by_page, key=strength)], key=lambda i: -scores[i])[:CANDIDATES]
+    if len(best) < 2:
+        return None
+    text = " ".join(pool[i].text for i in sorted(best))
+    if not about(claim, text):
+        return None
+    first = pool[best[0]]
+    return Passage(text, first.title, first.url, first.source, first.at)
+
+
 async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
-    """Each claim's verdict from the sentences of one source that are about it."""
+    """Each claim's verdict from the sentences of one source that are about it,
+    one by one and, joined, the page's best of them (``joint_premise``)."""
     if not pool:
         return [Finding(claim, "unknown") for claim in claims]
     pairs: list[tuple[str, str]] = []
@@ -274,6 +309,10 @@ async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
         for position in related[:CANDIDATES]:
             pairs.append((pool[position].text, claim))
             owners.append((index, pool[position]))
+        joint = joint_premise(claim, pool, scores)
+        if joint is not None:
+            pairs.append((joint.text, claim))
+            owners.append((index, joint))
     readings = await nli(pairs)
     if readings is None:
         return [Finding(claim, "unknown") for claim in claims]
@@ -322,55 +361,121 @@ def _client() -> httpx.AsyncClient:
     )
 
 
-async def wikipedia(question: str, language: str) -> list[Passage]:
-    """The articles Wikipedia's own search finds for the question, as plain text."""
+class _Refused(Exception):
+    """Wikimedia refused this client (403, its robot policy): every one of its
+    sites answers the same, so asking again in this call only spends time."""
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """Seconds the server asked to wait (``Retry-After``: seconds or a date)."""
+    value = response.headers.get("retry-after", "").strip()
+    if not value:
+        return None
+    if value.isdigit():
+        return float(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+async def _ask(
+    client: httpx.AsyncClient, url: str, params: dict | None, deadline: float
+) -> httpx.Response:
+    """A GET that honours Wikimedia's robot policy: on 429 or 503 it waits as
+    long as ``Retry-After`` says and asks once more, if that wait is at most
+    half the time left (the other half is the retried request's and the other
+    sources'); on 403 it stops asking (``_Refused``)."""
+    response = await client.get(url, params=params)
+    if response.status_code == 403:
+        raise _Refused
+    if response.status_code in (429, 503):
+        wait = _retry_after(response)
+        if wait is not None and wait <= (deadline - time.monotonic()) / 2:
+            await asyncio.sleep(wait)
+            response = await client.get(url, params=params)
+            if response.status_code == 403:
+                raise _Refused
+    return response
+
+
+async def _article(client: httpx.AsyncClient, base: str, title: str, deadline: float) -> str:
+    """An article's plain text from the Action API; when that does not answer,
+    its lead section from the REST API (a separate, cached service)."""
+    try:
+        response = await _ask(
+            client,
+            f"{base}/w/api.php",
+            {
+                "action": "query",
+                "prop": "extracts",
+                "explaintext": 1,
+                "titles": title,
+                "format": "json",
+                "formatversion": 2,
+            },
+            deadline,
+        )
+        items = response.json().get("query", {}).get("pages", []) if response.is_success else []
+        text = str((items[0] if items else {}).get("extract", ""))
+    except (httpx.HTTPError, ValueError):
+        text = ""
+    if text:
+        return text
+    try:
+        page = quote(title.replace(" ", "_"), safe="")
+        summary = await _ask(client, f"{base}/api/rest_v1/page/summary/{page}", None, deadline)
+        return str(summary.json().get("extract", "")) if summary.is_success else ""
+    except (httpx.HTTPError, ValueError):
+        return ""
+
+
+async def wikipedia(question: str, language: str, deadline: float | None = None) -> list[Passage]:
+    """The articles Wikipedia's own search finds for the question, as plain text.
+
+    Requests are made one at a time, as Wikimedia asks of a client that does
+    not log in (Action API: one concurrent request)."""
     found: list[Passage] = []
+    deadline = deadline or time.monotonic() + BUDGET_SECONDS
     editions = list(dict.fromkeys([WIKIPEDIA.get(language, "en"), "en"]))
     async with _client() as client:
-        for edition in editions:
-            base = f"https://{edition}.wikipedia.org"
-            try:
-                search = await client.get(
-                    f"{base}/w/api.php",
-                    params={
-                        "action": "query",
-                        "list": "search",
-                        "srsearch": question[:300],
-                        "srlimit": 2,
-                        "format": "json",
-                        "formatversion": 2,
-                    },
-                )
-                pages = (
-                    search.json().get("query", {}).get("search", [])
-                    if search.status_code == 200
-                    else []
-                )
-            except (httpx.HTTPError, ValueError):
-                continue
-            for page in pages[:2]:
-                title = str(page.get("title", ""))
+        try:
+            for edition in editions:
+                base = f"https://{edition}.wikipedia.org"
                 try:
-                    response = await client.get(
+                    search = await _ask(
+                        client,
                         f"{base}/w/api.php",
-                        params={
+                        {
                             "action": "query",
-                            "prop": "extracts",
-                            "explaintext": 1,
-                            "titles": title,
+                            "list": "search",
+                            "srsearch": question[:300],
+                            "srlimit": 2,
                             "format": "json",
                             "formatversion": 2,
                         },
+                        deadline,
                     )
-                    items = response.json().get("query", {}).get("pages", [])
+                    pages = (
+                        search.json().get("query", {}).get("search", [])
+                        if search.is_success
+                        else []
+                    )
                 except (httpx.HTTPError, ValueError):
                     continue
-                text = str((items[0] if items else {}).get("extract", ""))[:30000]
-                if text:
-                    link = f"{base}/wiki/{quote(title.replace(' ', '_'))}"
-                    found.append(Passage(text, title, link, "wikipedia"))
-            if found:
-                break
+                for page in pages[:2]:
+                    title = str(page.get("title", ""))
+                    text = (await _article(client, base, title, deadline))[:30000]
+                    if text:
+                        link = f"{base}/wiki/{quote(title.replace(' ', '_'))}"
+                        found.append(Passage(text, title, link, "wikipedia"))
+                if found:
+                    break
+        except _Refused:
+            logger.info("Ahl al-Dhikr: Wikipedia refused this client (403)")
     return found
 
 
@@ -736,7 +841,7 @@ async def consult(
         try:
             async with asyncio.timeout(max(1.0, deadline - time.monotonic())):
                 if source == "wikipedia":
-                    pool = await wikipedia(question, language)
+                    pool = await wikipedia(question, language, deadline)
                 elif web is not None:
                     pool = web_from(await web(question[:300]))
                 else:

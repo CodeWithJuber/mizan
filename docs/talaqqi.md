@@ -15,6 +15,8 @@ When the language model answers a question about the world (Qasd's `fact` facet)
 
 The kept answer carries its sanad: the question's words, the teacher model, how it was received (`sama`, heard from the teacher), and for each claim the sentence, title, link and date of the source that confirmed it.
 
+How much is kept depends on how many claims the sources confirm. A model's sentence often joins what a page says in several sentences, so Ahl al-Dhikr also reads it against the page's best sentences joined in order (`docs/ahl-dhikr.md`, "Measured"). On 30 teacher answers, that raised the answers Talaqqi would keep from 5 to 12 against Simple English Wikipedia and from 9 to 10 against web search snippets, with none of 20 false claims confirmed.
+
 ## How it is given again
 
 A later question that opens a chat, in the same language, with the same content words, numbers and asking words, is answered from the kept answer. The content words may differ by a fifth at most, the same closeness Hifz asks of a kept program. Every reuse is checked first.

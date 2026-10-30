@@ -44,7 +44,7 @@ def store(tmp_path):
 def sources(monkeypatch):
     asked = []
 
-    async def wikipedia(question, language):
+    async def wikipedia(question, language, deadline=None):
         asked.append(question)
         return [WIKI]
 
@@ -245,3 +245,30 @@ async def test_a_long_answer_comes_back_as_its_confirmed_sentences_only(agent, s
     again = await agent.execute(QUESTION)
     assert again["result"].startswith(ANSWER)
     assert "pressure" not in again["result"] and "lakes" not in again["result"]
+
+
+async def test_an_answer_whose_claim_a_page_confirms_across_sentences_is_kept(store, monkeypatch):
+    """A claim that joins what a page says in two sentences is confirmed by the
+    page's sentences together (``ahl_dhikr.joint_premise``), so it is kept."""
+    page = Passage(
+        "The Taj Mahal is a mausoleum in Agra. It was built by the Mughal emperor Shah Jahan. "
+        "He built it in memory of his wife, Mumtaz Mahal.",
+        "Taj Mahal",
+        "https://en.wikipedia.org/wiki/Taj_Mahal",
+        "wikipedia",
+    )
+    claim = "The Taj Mahal was built by Shah Jahan in memory of his wife Mumtaz Mahal."
+
+    async def entails_when_whole(pairs):
+        return [
+            {"entailment": 0.95, "neutral": 0.04, "contradiction": 0.01}
+            if "Shah Jahan" in premise and "Mumtaz Mahal" in premise
+            else {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+            for premise, _ in pairs
+        ]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_when_whole)
+    findings = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert talaqqi.keep(store, "u1", "Who built the Taj Mahal?", "en", findings, teacher="t")
+    kept = talaqqi.recall(store, "u1", "Who built the Taj Mahal?", "en")
+    assert kept is not None and kept["answer"] == claim + ("" if claim.endswith(".") else ".")
