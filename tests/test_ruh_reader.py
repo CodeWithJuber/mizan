@@ -669,6 +669,20 @@ def test_a_reader_trained_on_the_corpus_never_sees_held_out_words(reader_home, f
     assert built.manifest["gate"]["n"] == len(built.held_out)
 
 
+def test_reading_in_smaller_passes_changes_nothing():
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import net
+
+    torch.manual_seed(5)
+    model = net.Reader(net.Config(**TINY))
+    texts = [f"message {_word(n)} " * (1 + n % 4) for n in range(40)]
+    one, counts = net.score(model, texts, [0, 1, 2])
+    small, again = net.score(model, texts, [0, 1, 2], tokens_per_pass=200)
+    assert counts == again
+    for a, b in zip(one, small, strict=True):
+        assert a == pytest.approx(b, abs=1e-4)
+
+
 def test_dev_checks_can_be_spread_over_one_long_pass():
     torch = pytest.importorskip("torch")
     from tadbir.ruh_reader import net

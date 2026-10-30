@@ -243,6 +243,8 @@ def table(results: dict, languages) -> str:
                     f"P(not better)={check['p_not_better']} "
                     f"loss {check['log_loss_before']} -> {check['log_loss_after']}"
                 )
+            for arm, counted in (found.get("short_errors") or {}).items():
+                lines.append(f"mistakes on short, {arm}: {json.dumps(counted)}")
         if "latency" in found:
             lines.append(f"latency (every language, 2 threads): {json.dumps(found['latency'])}")
         if "int8" in found:
@@ -260,6 +262,25 @@ def measure_short(found: dict, short, fit, languages) -> None:
     found["short"] = short_slices(short, fit, languages)
     found["short_bpb"] = ruh_reader.bits_per_byte(short, languages)
     found["short_check"] = short_check(short, fit, languages)
+    found["short_errors"] = errors(short, fit, languages)
+
+
+def errors(reads, fit, languages) -> dict:
+    """Each arm's mistakes as 'truth -> read' counts."""
+    from collections import Counter
+
+    from tadbir import ruh_reader
+
+    rows = {**ruh_reader.arms(reads, fit), **shipped_arms(reads, fit, languages)}
+    found = {}
+    for arm, values in rows.items():
+        counted = Counter(
+            f"{languages[read.truth]} -> {languages[ruh_reader._argmax(row)]}"
+            for read, row in zip(reads, values, strict=True)
+            if ruh_reader._argmax(row) != read.truth
+        )
+        found[arm] = dict(counted.most_common())
+    return found
 
 
 def evaluate(folder: Path, extra) -> dict:
