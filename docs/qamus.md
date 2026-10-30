@@ -441,23 +441,41 @@ it accepted more: Hindi 60.7% against 58.5%, Arabic 44.1% against 38.0%. The
 Wilson cut-off was chosen by the held-out dictionary's F1, decided before
 FLORES was read, and is kept.
 
-#### The gate before `about()`: a recommendation
+#### The gate before `about()`: searched by the claim's translations too
 
 `judge()` and `joint_premise()` read only the source sentences whose BM25
-score against the claim's own words is above 0. Across scripts, only a shared
-digit or a name in Latin letters gives such a score. The correct English
-sentence is reached this way for:
+score against the claim is above 0. Across scripts, only a shared digit or a
+name in Latin letters gives such a score from the claim's own words. The
+correct English sentence was reached this way for:
 
 - 19.7% of FLORES Hindi claims;
 - 7.8% of MASSIVE Hindi claims.
 
-So the accepts that reach the NLI model today are the "through `judge()`"
-column. With the claim's Qāmūs bridge added to the BM25 query
-(`claim + " " + " ".join(qamus.bridge(claim, language))`), the correct
-sentence scores above 0 for 100% of FLORES Hindi claims and 98.2% of MASSIVE
-Hindi claims (Urdu 100% and 98.4%). That would be a one-line change in
-`judge()`. It is not made here and is left to be measured on teacher answers
-(`scripts/ahl_coverage.py`).
+With the claim's Qāmūs bridge added to the BM25 query (`ahl_dhikr.searched`:
+`claim + " " + " ".join(qamus.bridge(claim, "en"))`), the correct sentence
+scores above 0 for 100% of FLORES Hindi claims and 98.2% of MASSIVE Hindi
+claims (Urdu 100% and 98.4%). Whether a found sentence is about the claim is
+still `about()`'s decision, on the claim itself.
+
+**Measured on teacher answers before adopting it** (30 Oct 2026). The production
+teacher answered the 30 questions of `scripts/ahl_coverage.py`'s set once in
+Hindi (Devanagari) and once in Urdu, and each claim was judged by the real NLI
+model against the question's Simple English Wikipedia articles. As a control,
+each answer was also judged against another question's articles.
+
+| Claims | Qāmūs off | Qāmūs in `about()` | and in the search | Control: another question's articles |
+|---|---|---|---|---|
+| Hindi, 119 | 0 supported | 2 | 5 [1.8%, 9.5%] | 0 supported, 0 contradicted in every arm |
+| Urdu, 120 | 0 | 1 | 2 [0.5%, 5.9%] | 0 supported, 0 contradicted in every arm |
+
+All seven supported claims were checked by hand and are right ("भारत की राजधानी
+नई दिल्ली है।", "बर्लिन की दीवार 9 नवंबर 1989 को गिरी थी।", "یہ کمپنی 1975 میں قائم
+ہوئی۔", …). No claim was contradicted. The gain is small because of the
+lexicon's coverage (below), not the search, so the search is adopted.
+
+The same measurement found that Isnad split sentences only at `. ! ? ۔ ؟`:
+each Hindi answer was one claim (30 claims, none checkable). Isnad now also
+splits at `।` and `॥`, which gave the 119.
 
 ## Limits
 

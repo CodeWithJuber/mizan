@@ -127,3 +127,14 @@ def test_headings_and_questions_are_not_claims():
         "Titan is the largest moon.",
         "Because it is old.",
     ]
+
+
+def test_a_hindi_answer_is_split_at_the_danda():
+    """Measured 30 Oct 2026: a teacher's Hindi answer of three sentences was one
+    claim, so no source could hold most of it and nothing was ever checked."""
+    text = "अमेज़न नदी दक्षिण अमेरिका में है। यह पेरू के एंडीज़ पर्वतों से निकलती है। यह अटलांटिक महासागर में गिरती है।"
+    assert [unit["text"] for unit in isnad.claims(text)] == [
+        "अमेज़न नदी दक्षिण अमेरिका में है।",
+        "यह पेरू के एंडीज़ पर्वतों से निकलती है।",
+        "यह अटलांटिक महासागर में गिरती है।",
+    ]

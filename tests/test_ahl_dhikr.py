@@ -660,3 +660,41 @@ async def test_an_article_the_action_api_does_not_give_is_read_from_its_summary(
     (passage,) = await ahl_dhikr.wikipedia(QUESTION, "en")
     assert passage.text == TITAN
     assert seen[-1].url.raw_path.decode() == "/api/rest_v1/page/summary/Titan_%28moon%29"
+
+
+async def test_a_hindi_claim_finds_its_english_source_sentence(monkeypatch):
+    """Measured 30 Oct 2026 on the production teacher's Hindi answers: judge
+    searched a page's sentences by the claim's own words, which an English
+    page never holds, so the Hindi claim was never read. Its Qamus
+    translations are searched too; about() still decides on the claim."""
+
+    async def capital(pairs):
+        # Reads Pakistan against India as a contradiction both ways, so only
+        # about() keeps the Pakistan sentence from being shown against it.
+        return [
+            {"entailment": 0.97, "neutral": 0.02, "contradiction": 0.01}
+            if "capital of India" in premise
+            else {"entailment": 0.01, "neutral": 0.04, "contradiction": 0.95}
+            if "Pakistan" in premise + hypothesis
+            else {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+            for premise, hypothesis in pairs
+        ]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", capital)
+    page = Passage(
+        "New Delhi is the capital of India. The city has many old buildings.",
+        "New Delhi",
+        "https://simple.wikipedia.org/wiki/New_Delhi",
+        "wikipedia",
+    )
+    claim = "भारत की राजधानी नई दिल्ली है।"
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "supported"
+    monkeypatch.setenv("MIZAN_QAMUS", "off")
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "unknown"
+    # Another country's sentence is found but is not about the claim.
+    monkeypatch.delenv("MIZAN_QAMUS")
+    other = Passage("Islamabad is the capital of Pakistan.", "Islamabad", page.url, "wikipedia")
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([other]))
+    assert finding.verdict == "unknown"
