@@ -1937,6 +1937,8 @@ def chat_failure_payload(result: dict) -> dict:
         "provider_unavailable": "The model provider returned an error and stayed unavailable after automatic retries and fallback models. Try again in a moment or choose another model.",
         "provider_rate_limited": "The selected model is rate-limited by its provider right now (free models are often busy). Try again in a minute, or choose another model.",
         "provider_credit": "The model provider's account has run out of credit (HTTP 402), so it refused the request before answering. An administrator needs to add credit at the provider; until then only short answers may get through.",
+        "own_model_not_ready": "MIZAN's own model (Ruh) is selected as the language model, but it cannot answer in words yet: it returned no text. An administrator can choose a hosted model again in Settings → Providers. MIZAN's own recipes (Quran, hadith, calculations, code, and answers it learned) still work.",
+        "empty_answer": "The model finished without writing an answer. Try again, or choose another model.",
     }
     code = result.get("error_code")
     if code == "provider_unavailable" and result.get("provider_status") == 429:

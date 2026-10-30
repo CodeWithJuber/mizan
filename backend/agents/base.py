@@ -294,6 +294,15 @@ class OutputBudgetExceeded(RuntimeError):
     """A terminal provider receipt consumed the budget without a visible answer."""
 
 
+class EmptyAnswer(ValueError):
+    """The model finished its turn with no text (``own_model`` when it was
+    MIZAN's own Ruh model, which cannot hold a conversation yet)."""
+
+    def __init__(self, own_model: bool) -> None:
+        super().__init__("The provider returned no answer")
+        self.own_model = own_model
+
+
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-1..IP-4) ─────────────────────
 # Flag-gated rollout: MIZAN_NLP_NATIVE_WSD=1 enables the native paths.
 # Default OFF = today's behavior, bit-for-bit. Native WSD is an accelerant,
@@ -3349,7 +3358,8 @@ Match the requested depth and self-correct errors."""
                         await stream_callback(chunk)
                 completion = self._completion_metadata()
             if not full_response.strip() or completion["completion_status"] == "empty_response":
-                raise ValueError("The provider returned no answer")
+                own = getattr(self.ai_client, "provider_name", "") in {"ruh", "ruh-remote"}
+                raise EmptyAnswer(own)
         if completion["completion_status"] == "missing_receipt":
             raise RuntimeError("The provider returned no completion receipt")
         return full_response
@@ -3943,6 +3953,8 @@ Match the requested depth and self-correct errors."""
                     if provider_retry_delay(e, 0) is not None
                     else {"error_code": "provider_credit", "provider_status": 402}
                     if getattr(e, "status_code", None) == 402
+                    else {"error_code": "own_model_not_ready" if e.own_model else "empty_answer"}
+                    if isinstance(e, EmptyAnswer)
                     else {}
                 ),
                 "answer_delivered": False,
