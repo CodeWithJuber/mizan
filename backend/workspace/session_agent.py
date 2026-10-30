@@ -84,15 +84,16 @@ def command_env() -> dict[str, str]:
     )
     env = {name: os.environ[name] for name in passed if name in os.environ}
     env.update(
-        PATH=f"/tmp/home/.local/bin:{ROOT}/node_modules/.bin:/usr/local/bin:/usr/bin:/bin",
+        PATH=f"{ROOT}/.cache/python-user/bin:{ROOT}/node_modules/.bin:/usr/local/bin:/usr/bin:/bin",
         HOME="/tmp/home",
         LANG="C.UTF-8",
         PYTHONDONTWRITEBYTECODE="1",
         PIP_CACHE_DIR=f"{ROOT}/.cache/pip",
         PIP_DISABLE_PIP_VERSION_CHECK="1",
         npm_config_cache=f"{ROOT}/.cache/npm",
-        # /tmp is noexec; native addons unpacked into a cache (@swc/core) must run.
+        # /tmp is noexec; caches and user installs live on the volume (see sessions.SESSION_ENV).
         XDG_CACHE_HOME=f"{ROOT}/.cache",
+        PYTHONUSERBASE=f"{ROOT}/.cache/python-user",
         npm_config_update_notifier="false",
         npm_config_fund="false",
         npm_config_audit="false",
