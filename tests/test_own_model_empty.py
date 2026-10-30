@@ -5,7 +5,6 @@ complete this request". An empty answer now names its cause and the way back."""
 import pytest
 
 from agents.specialized import create_agent
-from api.main import chat_failure_payload
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
 
@@ -30,6 +29,9 @@ async def test_an_empty_answer_names_its_cause(monkeypatch, tmp_path, provider, 
     agent.ai_client = Silent(provider)
     result = await agent.execute("What is the largest moon of Saturn?")
     assert not result["success"] and result["error_code"] == code
+    # Imported once DB_PATH points at a writable folder (CI has no /data).
+    from api.main import chat_failure_payload
+
     payload = chat_failure_payload(result)
     assert payload["code"] == code
     if provider == "ruh":
