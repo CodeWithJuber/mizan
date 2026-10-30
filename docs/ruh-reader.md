@@ -54,6 +54,22 @@ A line is not trained on when any of these holds (`ruh_reader.scripture`):
 
 Of the 4,716 seeds in the five languages, 5 were set aside: "اذْكُر رَّبَّكَ إِذَا نَسِيتَ" (18:24) and four other fully vowelled Arabic sentences that Lughah reads as Uthmani. That is a cautious mistake, not a leak. The test `test_no_quranic_span_reaches_the_loss` records every target byte that reaches the loss while training with three Quranic lines in the training split, and checks that no run of three of the ayah's words is among them. A night's text goes through the same check.
 
+`build` now reads the Quran's texts before it filters, when Iqtibas is on and Fihris's editions are on disk (`$MIZAN_DATA_DIR/quran`), so the third check applies to the seeds too. It is much more cautious: 46 of the 3,310 training seeds are set aside, most of them ordinary sentences whose four-word span a translation also says ("I have come to the village.", "وہ اس ملک میں آتی جاتی رہتی ہے۔"). The manifest records which check ran (`scripture_mushaf`).
+
+## Its own corpus
+
+Lughah's seeds stay Lughah's. The reader may also learn from text that is not theirs (`tadbir/ruh_reader/corpus.py`; sources, licences and notices in `backend/tadbir/ruh_reader/LICENSES.md`), built at train time into `$MIZAN_DATA_DIR/corpora/ruh_reader/` and never committed:
+
+| Source | Licence | Pinned | Used for |
+|---|---|---|---|
+| Tatoeba per-language exports (eng, hin, urd, ara); every sentence id the seeds use left out | CC BY 2.0 FR | no (weekly exports; SHA-256 recorded) | training |
+| MASSIVE 1.1 (Amazon; localised from SLURP), en-US, hi-IN, ur-PK, ar-SA | CC BY 4.0 | SHA-256 | `train` partition: training; `test` partition, 3–8 words: held out |
+| Abhishekcr448/Hinglish-Everyday-Conversations-1M (synthetic, written by GPT-4o-mini per its card) | MIT | commit + SHA-256 | training; held-out rows: held out |
+
+A line is kept for training only when (in this order, each counted in the manifest): more than half of its letters are in its language's script (MASSIVE's ar-SA has utterances written in English only); it has 3 letters or more and at most 192 bytes of words; it is not a seed by its Tatoeba id; its words as read (`group_of`) are no seed's in any split, so nothing in Lughah's held-out or development groups is trained on; it is not a held-out short message; it is the first of its group; and it is not scripture, with Iqtibas's texts in memory (the build refuses to write a corpus without them). Lines are taken in an order fixed by SHA-256 of their source id, round robin over a language's sources, until the language holds 900,000 bytes of words: the training time, not the data, is the bound, so each language gets the same share. `build` checks the corpus again (dev and held-out seed groups, held-out short messages, the first two scripture checks) and records its SHA-256 and sources in the reader's manifest.
+
+**The held-out short messages** are a slice neither model has seen: MASSIVE test utterances of 3 to 8 words in en, hi, ur and ar (real request style, written for a voice assistant and localised by translators; one MASSIVE id is one group in the paired test, since its translations are one request), and 2,000 Roman Hindi/Urdu utterances of 3 to 8 words whose group the seeds' rule holds out (`part(group) == "held_out"`), none a seed's words. The Roman part is synthetic: it tests the style of that dataset, not what people type. The slice is read and reported beside the seeds' held-out groups, with Lughah as it ships (fitted on every seed) as a further arm; **the gate stays the seeds' held-out groups.**
+
 ## Measured
 
 Run on 30 Oct 2026 in the development sandbox: Intel Xeon 2.8 GHz, 4 vCPU shared with other jobs (load average 2–6), torch 2.14.1+cpu. Each seed trained on 2 torch threads, the two seeds at the same time. `python ../scripts/ruh_reader_eval.py --seeds N`, default size and plan: 3,480,064 parameters, 12 passes over the training lines (1,248 steps of 32 lines, 2,267,412 tokens), **851 s and 847 s of training**, about 16 minutes each with Lughah's refit and the evaluation. The development bits per byte were still falling at the last pass (1.829 and 1.819), so the run was bounded by its budget, not by overfitting.
@@ -112,8 +128,9 @@ Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was
   - `on`: the product is used once the gate passed.
   - `off`: the reader is never loaded.
 - **Weights:** `$MIZAN_DATA_DIR/models/ruh_reader/`. `current`, `previous` and `base`, each `.pt` (fp32 weights), `.json` (corpus SHA-256, config, fit, gate, learned digests) and `.reads.json` (the development and held-out messages as held-out Lughah read them, so a night re-scores only the reader).
-- **Train and install:** `cd backend && python -m tadbir.ruh_reader --train [--seed N] [--threads 2]`. Without `--train` it prints the status.
-- **Measure:** `cd backend && python ../scripts/ruh_reader_eval.py --seeds 0 1 --json out.json [--install 0] [--save DIR]`.
+- **Corpus:** `cd backend && python -m tadbir.ruh_reader --corpus [--bytes-per-language 900000] [--workers 3]` downloads the sources (about 250 MB, kept in `$MIZAN_DATA_DIR/corpora/ruh_reader/sources/`), fetches the Quran's texts if they are not on disk, and writes `train.tsv`, `short.tsv` and `manifest.json` (4 minutes with 4 workers on the development sandbox). A corpus whose files changed, or that was built against other seeds, is not used.
+- **Train and install:** `cd backend && python -m tadbir.ruh_reader --train [--seed N] [--threads 2] [--seeds-only]`. It trains on the corpus when one is built (`--seeds-only` ignores it). Without `--train` it prints the status.
+- **Measure:** `cd backend && python ../scripts/ruh_reader_eval.py --seeds 0 1 [--corpus] --json out.json [--install 0] [--save DIR]`; `--evaluate DIR` reads an installed reader (`current.pt`, `current.json`) on the same slices without training.
 
 Without weights nothing is loaded and torch is never imported: the default deployment is unchanged until an operator trains a reader. Once weights exist, shadow mode loads torch into the server process (a few hundred MB of resident memory on the 2 GB production machine) in a background thread. The message in hand is read without the reader until it is loaded.
 
