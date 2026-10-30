@@ -698,3 +698,111 @@ async def test_a_hindi_claim_finds_its_english_source_sentence(monkeypatch):
     other = Passage("Islamabad is the capital of Pakistan.", "Islamabad", page.url, "wikipedia")
     (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([other]))
     assert finding.verdict == "unknown"
+
+
+# ── a claim read with what it speaks of ──────────────────────────────────
+
+NOVEL_QUESTION = "Who wrote Pride and Prejudice?"
+NOVEL_CLAIMS = [
+    "Pride and Prejudice was written by Jane Austen.",
+    "It is one of her most famous novels.",
+]
+MOBY = Passage(
+    "Moby-Dick is one of the most famous novels of Herman Melville. It was published in 1851.",
+    "Moby-Dick",
+    "https://en.wikipedia.org/wiki/Moby-Dick",
+    "wikipedia",
+)
+AUSTEN = Passage(
+    "Pride and Prejudice is one of the most famous novels in the English language. "
+    "Jane Austen wrote it.",
+    "Pride and Prejudice",
+    "https://en.wikipedia.org/wiki/Pride_and_Prejudice",
+    "wikipedia",
+)
+
+
+async def entails_everything(pairs):
+    return [{"entailment": 0.95, "neutral": 0.04, "contradiction": 0.01} for _ in pairs]
+
+
+def test_a_claim_that_does_not_name_its_subject_is_read_with_it():
+    """Measured 30 Oct 2026: 13 of 17 wrong findings on the teacher's Hindi and
+    Urdu answers were claims such as "यह उनका एक प्रसिद्ध उपन्यास है।" read
+    against a sentence on another novel. The subject comes from the question
+    and the claims before it, never from a model."""
+    first, second = ahl_dhikr.contexts(NOVEL_QUESTION, NOVEL_CLAIMS)
+    assert first == ""  # names what it speaks of: it stands alone
+    assert {"pride", "prejudice", "austen"} <= set(second.split())
+    claim, sentence = NOVEL_CLAIMS[1], MOBY.text.split(". ")[0]
+    assert ahl_dhikr.about(claim, sentence)  # its own words fit any famous novel
+    assert not ahl_dhikr.about(claim, sentence, second)
+    assert ahl_dhikr.about(claim, AUSTEN.text.split(". ")[0], second)
+    # The subject comes only from the question and the claims before it.
+    assert ahl_dhikr.contexts("", ["It is one of her most famous novels."]) == [""]
+
+
+async def test_a_pronoun_claim_is_judged_only_against_its_subjects_page(monkeypatch):
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_everything)
+    context = ahl_dhikr.contexts(NOVEL_QUESTION, NOVEL_CLAIMS)
+    found = await ahl_dhikr.judge(NOVEL_CLAIMS, ahl_dhikr.sentences([MOBY]), context)
+    assert [f.verdict for f in found] == ["unknown", "unknown"]
+    found = await ahl_dhikr.judge(NOVEL_CLAIMS, ahl_dhikr.sentences([AUSTEN]), context)
+    assert [f.verdict for f in found] == ["supported", "supported"]
+    assert found[1].passage is not None and found[1].context == context[1]
+    assert found[0].context == ""
+
+
+async def test_consult_reads_each_claim_with_its_subject_and_keeps_only_those_alone(
+    store, monkeypatch
+):
+    page = MOBY
+
+    async def wikipedia(question, language, deadline=None):
+        return [page]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_everything)
+    monkeypatch.setattr(ahl_dhikr, "wikipedia", wikipedia)
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia"])
+    ledger = daif(*NOVEL_CLAIMS)
+    findings, _ = await ahl_dhikr.consult(
+        NOVEL_QUESTION, ledger, store=store, user_id="u1", language="en"
+    )
+    assert findings[1].verdict == "unknown"  # Melville's novel is not hers
+    page = AUSTEN
+    findings, _ = await ahl_dhikr.consult(
+        NOVEL_QUESTION, ledger, store=store, user_id="u2", language="en"
+    )
+    assert [f.verdict for f in findings] == ["supported", "supported"]
+    # "It is one of her most famous novels" names no novel: kept, it would be
+    # read later as about any novel of any writer.
+    kept = {item["claim"] for item in ahl_dhikr._load(store, "u2")}
+    assert kept == {NOVEL_CLAIMS[0]}
+
+
+async def test_a_joined_premise_supports_but_never_contradicts(monkeypatch):
+    """Measured 30 Oct 2026: a join of a Hindi page's sentences was read as
+    contradicting "ऑस्ट्रेलिया की राजधानी कैनबरा है।" both ways (Japan's army
+    took "their capital, Beijing"), against another question's page; joined
+    contradictions were wrong in 4 of 4 Hindi and Urdu findings."""
+
+    async def contradicts_when_joined(pairs):
+        return [
+            {"entailment": 0.01, "neutral": 0.04, "contradiction": 0.95}
+            if ("Shah Jahan" in premise and "Mumtaz Mahal" in premise) or premise == TAJ_CLAIM
+            else {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+            for premise, _ in pairs
+        ]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", contradicts_when_joined)
+    (finding,) = await ahl_dhikr.judge([TAJ_CLAIM], ahl_dhikr.sentences([TAJ]))
+    assert finding.verdict == "unknown"
+    # One sentence that contradicts the claim both ways still says otherwise.
+    page = Passage(
+        "The Taj Mahal was built by Shah Jahan in memory of his wife Mumtaz Mahal in Delhi.",
+        TAJ.title,
+        TAJ.url,
+        "wikipedia",
+    )
+    (finding,) = await ahl_dhikr.judge([TAJ_CLAIM], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "contradicted"
