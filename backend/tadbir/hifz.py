@@ -11,8 +11,11 @@ falls below one half is forgotten.
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import re
 import time
+from copy import deepcopy
 from typing import Any
 
 from core.adaptive import BetaEstimator, bm25_scores
@@ -30,8 +33,6 @@ def _key(user_id: str) -> str:
 
 
 def _numbers(text: str) -> list[str]:
-    import re
-
     return sorted(set(re.findall(r"\d+(?:\.\d+)?", text)))
 
 
@@ -102,6 +103,8 @@ def keep(
         {
             "tokens": words,
             "numbers": _numbers(message),
+            # The request itself, so its numbers' order is known (templates).
+            "request": message[:2000],
             "asking": sorted(_ASKING & set(words)),
             "language": language,
             "code": code[:20000],
@@ -174,3 +177,202 @@ def forget(store: Any, user_id: str) -> None:
         store.put(_key(user_id), {"programs": []})
     except Exception:  # noqa: BLE001
         pass
+
+
+# ── templates: one verified program for every request of its form ────────
+#
+# Two verified programs for "the first 10 Fibonacci numbers" and "the first 20
+# Fibonacci numbers" differ only where the request's numbers differ. Their
+# least general generalisation (Plotkin's anti-unification, unique up to
+# renaming for first-order terms) keeps everything they share and turns each
+# difference into a slot bound to the j-th number of the request. The template
+# is kept only if putting each instance's numbers back reproduces that
+# instance's program exactly, and it is general only where it was seen to
+# vary: a number every instance had the same, and which the new request
+# changes, may sit in the program as a literal, so the template is not used.
+# The kept programs stay the authority; the template is computed from them.
+
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+MAX_INSTANCES = 8
+
+
+def _ordered(text: str) -> list[str]:
+    """The request's numbers in the order it gives them."""
+    return _NUMBER.findall(text)
+
+
+def _shape(text: str) -> list[str]:
+    """The request's content words without its numbers."""
+    return [word for word in content_words(text) if not any(ch.isdigit() for ch in word)]
+
+
+def _value(number: str) -> int | float:
+    return float(number) if "." in number else int(number)
+
+
+def _slot(values: list[Any], numbers: list[list[str]]) -> int | None:
+    """The one position j of the requests' numbers that every value equals."""
+    if any(isinstance(value, bool) or not isinstance(value, int | float) for value in values):
+        return None
+    kinds = {type(value) for value in values}
+    if len(kinds) != 1:
+        return None
+    fits = [
+        j
+        for j in range(len(numbers[0]))
+        if all(
+            _value(found[j]) == value and type(_value(found[j])) is type(value)
+            for found, value in zip(numbers, values, strict=True)
+        )
+    ]
+    return fits[0] if len(fits) == 1 else None
+
+
+def _generalise(trees: list[ast.AST], numbers: list[list[str]]) -> list[tuple[int, Any]] | None:
+    """Slots of the trees' least general generalisation, as (position in
+    ``ast.walk`` of the first tree, slot), or None when the trees differ in
+    anything the requests' numbers do not explain."""
+    walks = [list(ast.walk(tree)) for tree in trees]
+    if len({len(walk) for walk in walks}) != 1:
+        return None
+    slots: list[tuple[int, Any]] = []
+    for position, nodes in enumerate(zip(*walks, strict=True)):
+        if len({type(node) for node in nodes}) != 1:
+            return None
+        first = nodes[0]
+        if isinstance(first, ast.Constant):
+            values = [node.value for node in nodes]
+            if all(value == values[0] and type(value) is type(values[0]) for value in values):
+                continue
+            if all(isinstance(value, str) for value in values):
+                pieces = [_NUMBER.split(value) for value in values]
+                found = [_NUMBER.findall(value) for value in values]
+                if len({tuple(piece) for piece in pieces}) != 1:
+                    return None
+                if len({len(numbers_in) for numbers_in in found}) != 1:
+                    return None
+                inner: list[int | str] = []
+                for k in range(len(found[0])):
+                    column = [numbers_in[k] for numbers_in in found]
+                    if len(set(column)) == 1:
+                        inner.append(column[0])
+                        continue
+                    j = _slot([_value(value) for value in column], numbers)
+                    if j is None:
+                        return None
+                    inner.append(j)
+                slots.append((position, ("text", pieces[0], inner)))
+                continue
+            j = _slot(values, numbers)
+            if j is None:
+                return None
+            slots.append((position, ("number", j)))
+            continue
+        for name in first._fields:
+            fields = [getattr(node, name, None) for node in nodes]
+            if isinstance(fields[0], ast.AST):
+                continue  # compared at its own position in the walk
+            if isinstance(fields[0], list):
+                lists = [field for field in fields if isinstance(field, list)]
+                if len(lists) != len(fields) or len({len(field) for field in lists}) != 1:
+                    return None
+                if any(not isinstance(element, ast.AST) for field in lists for element in field):
+                    if len({repr(field) for field in lists}) != 1:
+                        return None
+                continue
+            if len({repr(field) for field in fields}) != 1:
+                return None
+    return slots
+
+
+def _instantiate(tree: ast.AST, slots: list[tuple[int, Any]], numbers: list[str]) -> ast.AST:
+    copy = deepcopy(tree)
+    nodes = list(ast.walk(copy))
+    for position, slot in slots:
+        node = nodes[position]
+        assert isinstance(node, ast.Constant)
+        if slot[0] == "number":
+            node.value = _value(numbers[slot[1]])
+        else:
+            _, pieces, inner = slot
+            text = pieces[0]
+            for index, part in enumerate(inner):
+                text += (numbers[part] if isinstance(part, int) else part) + pieces[index + 1]
+            node.value = text
+    return copy
+
+
+def _trusted(item: dict) -> bool:
+    from . import tathabbut
+
+    reliable = BetaEstimator.from_dict(item.get("posterior"), **_PRIOR).mean >= 0.5
+    # A program that printed numbers counts only once an independent program
+    # agreed with it (Tathabbut).
+    return reliable and (bool(item.get("checked")) or not tathabbut.applies(item["output"]))
+
+
+def template(store: Any, user_id: str, message: str, language: str) -> dict | None:
+    """A program for this request made from the verified programs of its form,
+    or None. Python programs only (their syntax tree is read)."""
+    if language.lower() not in {"python", "py"}:
+        return None
+    shape, numbers = _shape(message), _ordered(message)
+    if not shape or not numbers:
+        return None
+    asking = _ASKING & set(content_words(message))
+    instances = []
+    for item in _load(store, user_id):
+        if item.get("language") != language or not _trusted(item):
+            continue
+        request = item.get("request") or ""
+        if not request:
+            continue  # kept before templates: its request's numbers are not in order
+        theirs = _shape(request)
+        overlap = len(set(theirs) & set(shape)) / max(1, len(set(theirs) | set(shape)))
+        if overlap < MIN_OVERLAP or set(item.get("asking", [])) != asking:
+            continue
+        if len(_ordered(request)) != len(numbers):
+            continue
+        instances.append(item)
+    instances = sorted(instances, key=lambda item: item.get("used", 0), reverse=True)
+    seen: set[tuple[str, ...]] = set()
+    distinct = []
+    for item in instances:
+        key = tuple(_ordered(item["request"]))
+        if key not in seen:
+            seen.add(key)
+            distinct.append(item)
+    distinct = distinct[:MAX_INSTANCES]
+    if len(distinct) < 2 or tuple(numbers) in seen:
+        return None
+    try:
+        trees = [ast.parse(item["code"]) for item in distinct]
+    except SyntaxError:
+        return None
+    found = [_ordered(item["request"]) for item in distinct]
+    slots = _generalise(trees, found)
+    if not slots:
+        return None
+    # Test-guided acceptance: every instance comes back exactly.
+    for tree, numbers_of in zip(trees, found, strict=True):
+        if ast.dump(_instantiate(trees[0], slots, numbers_of)) != ast.dump(tree):
+            return None
+    bound = {slot[1] for _, slot in slots if slot[0] == "number"} | {
+        part for _, slot in slots if slot[0] == "text" for part in slot[2] if isinstance(part, int)
+    }
+    for j, number in enumerate(numbers):
+        column = {numbers_of[j] for numbers_of in found}
+        if j not in bound and (len(column) == 1 and number not in column):
+            return None  # never seen to vary, and the program may hold it as a literal
+        if j in bound:
+            types = {type(_value(numbers_of[j])) for numbers_of in found}
+            if types != {type(_value(number))}:
+                return None  # "10" was an integer in every instance; "2.5" is not
+    code = ast.unparse(_instantiate(trees[0], slots, numbers))
+    return {
+        "code": code,
+        "language": language,
+        "instances": len(distinct),
+        "slots": len(slots),
+        "requests": [item["request"][:200] for item in distinct],
+    }

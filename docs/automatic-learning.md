@@ -8,7 +8,7 @@ How often answers still need the hosted model, per kind of request and language,
 |---|---|---|---|
 | **Majlis** (`tadbir/majlis.py`) | Which agent does each kind of work best | Every result MIZAN verifies, or fails to verify (Beta posterior per agent and kind of work) | Giving each part of a request to the agent most likely to get it right (Thompson sampling) |
 | **Ta'allum** (`tadbir/taallum.py`) | Your wording for its actions | Lisan's mappings that MIZAN then verified | Understanding the same wording later with no model call |
-| **Hifz** (`tadbir/hifz.py`) | Programs it verified for you | Write-and-run results that ran cleanly and, when they print numbers, that an independent program agreed with (Tathabbut) | Re-running the same request (same words, same numbers) with no model call |
+| **Hifz** (`tadbir/hifz.py`) | Programs it verified for you | Write-and-run results that ran cleanly and, when they print numbers, that an independent program agreed with (Tathabbut) | Re-running the same request (same words, same numbers) with no model call; a request of the same form with other numbers through a template made from two or more of them |
 | **Muhasaba** (`tadbir/muhasaba.py`) | Where the model's own words were wrong | A daily re-check of the answers MIZAN did not verify | Posting a correction in that chat |
 | **Tajriba** (`tadbir/tajriba.py`) | Which change fixed which kind of error | Sandbox failures that a repair then verified | Showing Lisan the most relevant verified lessons when it writes or repairs similar code |
 | **Tajdid** (`tadbir/tajdid.py`) | Better wording of Lisan's code instructions | Every verified or failed result of code work | Replacing an instruction only when the new version proves better |
@@ -30,6 +30,18 @@ A matching request re-runs the kept program. Every reuse is a regression check: 
 - **Bounded:** at most 100 programs per user, the most recently used first.
 
 You can see and forget your kept programs in **Agents → Majlis → Learning** (`GET/DELETE /api/tadbir/programs`).
+
+### Templates: one form, any numbers
+
+Two verified programs for "the first 10 Fibonacci numbers" and "the first 20 Fibonacci numbers" usually differ only where the requests' numbers differ. When no kept program fits a request exactly, MIZAN makes one from the kept programs of its form (`hifz.template`), with no model call:
+
+1. **Instances.** Python programs this user kept for requests with the same words apart from their numbers (80% overlap), the same question words and as many numbers. Each must be reliable, and a program that printed numbers must have been confirmed by an independent program (Tathabbut). At least two instances with different numbers are needed.
+2. **Anti-unification.** MIZAN reads their syntax trees and keeps what they share. Each difference becomes a slot bound to the j-th number of the request, and only to a number the request gave. This includes numbers inside strings ("F10 =" and "F20 ="). This is Plotkin's least general generalisation. If the programs differ anywhere the requests' numbers do not explain (say `range(1, 11)` and `range(1, 21)` for "1 to 10" and "1 to 20"), there is no template.
+3. **Test-guided acceptance.** Putting each instance's numbers back into the template must give that instance's program exactly.
+4. **General only where it was seen to vary.** Suppose every instance had the same number at some position ("2 to the power 10", "2 to the power 20"). Then a request that changes it ("3 to the power 5") gets no template, since the program may hold that number as a literal. A number must also keep its kind: an integer slot does not take 2.5.
+5. **Run.** The new program runs in the sandbox. If it fails, Lisan writes a program as usual.
+
+The answer says what happened. MIZAN wrote no new code: it put the request's numbers into a program it verified for N requests of this form. The result for these numbers was not checked by an independent program, so the answer is reported as observed (`evidence_observed`), not verified. The kept programs remain the authority; a template is computed from them each time and is never stored. Each kept program now also stores its request's words, so the order of its numbers is known; programs kept before this change take part once they are kept again.
 
 ### Tathabbut: an independent derivation must agree
 

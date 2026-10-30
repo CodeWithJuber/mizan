@@ -944,6 +944,11 @@ class Tadbir:
             reused = await self._reuse_program(u, kept, store, owner)
             if reused is not None:
                 return reused
+        made = hifz.template(store, owner, task, language)
+        if made is not None:
+            reused = await self._run_template(u, made)
+            if reused is not None:
+                return reused
         await self._begin(
             [
                 "Understand the request (Fahm)",
@@ -1123,6 +1128,39 @@ class Tadbir:
             f"_{phrase('hifz_reused', u.language, runs=int(kept.get('runs', 1)) + 1)}_",
         ]
         return Outcome("\n\n".join(parts), True, {"run": _run_facts(run), "reused": True})
+
+    async def _run_template(self, u: fahm.Understanding, made: dict) -> Outcome | None:
+        """Run the program made from the verified programs of this request's
+        form, with this request's numbers (``hifz.template``). The program is
+        proven on those requests; its result for these numbers is observed,
+        not checked by an independent program, and the answer says so."""
+        language = made["language"]
+        await self._begin(
+            [
+                "Recall the verified programs of this form (Hifz)",
+                "Put this request's numbers into them",
+                "Run it in MIZAN's isolated sandbox",
+                "Reply",
+            ]
+        )
+        await self._step()
+        await self._step()
+        run = await self._run(made["code"], language)
+        await self._step()
+        worked = _ran_clean(run)
+        trace.event("learn", "hifz", template=True, worked=worked, instances=made["instances"])
+        if not worked:
+            return None  # Lisan writes the program for this request
+        parts = [
+            f"**{phrase('code', u.language)}**\n{fence(made['code'], language)}",
+            self._run_text(run, u.language),
+            f"_{phrase('hifz_template', u.language, instances=made['instances'])}_",
+        ]
+        facts = {
+            "run": _run_facts(run),
+            "template": {"instances": made["instances"], "slots": made["slots"]},
+        }
+        return Outcome("\n\n".join(parts), False, facts, succeeded=True)
 
     async def _talaqqi(
         self, task: str, u: fahm.Understanding, history: list[dict] | None

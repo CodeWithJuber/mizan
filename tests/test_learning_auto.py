@@ -204,3 +204,84 @@ async def test_muhasaba_corrects_a_misquote_once_and_respects_opt_out(tmp_path, 
     assert "MIZAN ne" in correction["content"]  # in the language the user asked in
     assert len(await memory.get_messages("s2", limit=10)) == 1  # bob opted out
     assert await muhasaba.run(memory) == {"reviewed": 0, "corrected": 0}  # reviewed once
+
+
+def summing(n: int) -> str:
+    return f"```python\nn = {n}\nprint(sum(range(1, n + 1)))\n```"
+
+
+def checking(n: int) -> str:
+    return f"```python\nprint({n} * ({n} + 1) // 2)\n```"
+
+
+async def test_programs_verified_for_two_numbers_answer_a_third_without_the_model(
+    agent, monkeypatch, alice
+):
+    """Hifz templates: the programs for "1 se 10" and "1 se 20" differ only where
+    the requests' numbers differ, so "1 se 30" is answered by putting 30 in."""
+    outputs = ["55\n", "55\n", "210\n", "210\n", "465\n"]
+    calls = []
+
+    async def run(name, params):
+        calls.append(params["command"])
+        return {"stdout": outputs.pop(0), "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", run)
+    agent.ai_client = ScriptedProvider([summing(10), checking(10), summing(20), checking(20)])
+    for n in (10, 20):
+        assert (await agent.execute(REQUEST.replace("10", str(n))))["task_verified"]
+    assert len(agent.ai_client.requests) == 4
+    third = await agent.execute(REQUEST.replace("10", "30"))
+    assert len(agent.ai_client.requests) == 4  # no model call
+    assert "n = 30" in calls[-1] and "465" in third["result"]
+    # Observed, not independently checked, and the answer says so.
+    assert not third["task_verified"] and "kisi alag program ne check nahi kiya" in third["result"]
+
+
+def keep(store, request, code, output, checked=True):
+    hifz.keep(store, "u", request, "python", code, output, checked=checked)
+
+
+def test_a_template_reproduces_every_program_it_comes_from(tmp_path):
+    from core.adaptive import AdaptiveStateStore
+
+    store = AdaptiveStateStore(str(tmp_path / "a.db"))
+
+    def fibonacci(n):
+        return f"a, b = 0, 1\nfor _ in range({n}):\n    a, b = b, a + b\nprint(f'F{n} =', a)\n"
+
+    keep(store, "Print the 10th Fibonacci number", fibonacci(10), "F10 = 55\n")
+    assert hifz.template(store, "u", "Print the 7th Fibonacci number", "python") is None  # one
+    keep(store, "Print the 20th Fibonacci number", fibonacci(20), "F20 = 6765\n")
+    made = hifz.template(store, "u", "Print the 7th Fibonacci number", "python")
+    assert made["instances"] == 2 and "range(7)" in made["code"] and "F7 =" in made["code"]
+    # Other words, another kind of number, another language: no template.
+    assert hifz.template(store, "u", "Print the 7th prime number", "python") is None
+    assert hifz.template(store, "u", "Print the 7.5th Fibonacci number", "python") is None
+    assert hifz.template(store, "u", "Print the 7th Fibonacci number", "javascript") is None
+    assert hifz.template(store, "bob", "Print the 7th Fibonacci number", "python") is None
+
+
+def test_a_template_is_general_only_where_it_was_seen_to_vary(tmp_path):
+    from core.adaptive import AdaptiveStateStore
+
+    store = AdaptiveStateStore(str(tmp_path / "a.db"))
+    for exponent in (10, 20):
+        keep(store, f"What is 2 to the power {exponent}", f"print(2 ** {exponent})", "1\n")
+    assert "2 ** 5" in hifz.template(store, "u", "What is 2 to the power 5", "python")["code"]
+    # The base was 2 in every program: a new base may be a literal there.
+    assert hifz.template(store, "u", "What is 3 to the power 5", "python") is None
+
+
+def test_a_template_needs_programs_an_independent_program_agreed_with(tmp_path):
+    from core.adaptive import AdaptiveStateStore
+
+    store = AdaptiveStateStore(str(tmp_path / "a.db"))
+    for n in (10, 20):
+        keep(store, f"Sum 1 to {n}", f"n = {n}\nprint(sum(range(1, n + 1)))", "55\n", checked=False)
+    assert hifz.template(store, "u", "Sum 1 to 30", "python") is None
+    # Programs that differ where the requests' numbers do not explain it: none.
+    store = AdaptiveStateStore(str(tmp_path / "b.db"))
+    keep(store, "Sum 1 to 10", "print(sum(range(1, 11)))", "55\n")
+    keep(store, "Sum 1 to 20", "print(sum(range(1, 21)))", "210\n")
+    assert hifz.template(store, "u", "Sum 1 to 30", "python") is None
