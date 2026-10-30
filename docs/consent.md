@@ -40,6 +40,8 @@ A choice applies from the person's next message.
 - `trains()` is true only under the person's yes (`allow_training`) and never in an evaluation or a WhatsApp run. With no choice bound, nothing is captured. The two places a chat's words become candidates check it (`agents/base.py`, `agents/khalifah.py`).
 - `barred_from_training()` is what no yes can lift: an evaluation, or a channel whose terms forbid training (WhatsApp). The training store (`learner/ruh_learner.py`) refuses these itself.
 
+MIZAN's own language reader (`tadbir/ruh_reader`, `docs/ruh-reader.md`) is the one model that trains on a person's words while MIZAN rests. It reads only messages captured under their `training: on` that a named reviewer accepted (the review hash must still match), checks `learns()`, `trains()` and `barred_from_training()` again itself, never learns a message holding the Quran's words, and keeps the SHA-256 of each learned message (no words) so that erasing the chat (Mahw) drops every version that learned from it.
+
 `consent_bindings` in `api/main.py` turns a person's saved choices into those gates, and `owner_consent` reads them for a run done for an owner. Every path that runs a person's request binds them: the web chat stream, `POST /api/chat`, the WebSocket chat and task messages, `POST /api/tasks`, the federation route, watchers, unattended runs (schedules, triggers, queue), and Telegram, WhatsApp and email turns. If the choices cannot be read, the run learns and keeps nothing.
 
 `usage.memory` on each answer reports `learning` and `training` for that run.

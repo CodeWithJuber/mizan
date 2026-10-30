@@ -43,6 +43,13 @@ against the parameters in use on their later reviews, by a margin chance does
 not reach (``memory.tadhkir.rest``). A fit that passes is reported; it is put to
 use only under ``MIZAN_TADHKIR_FIT=apply`` (``tadhkir.applies``).
 
+Then MIZAN's own language reader (``ruh_reader.rest``) learns the person's
+own words that they let it train on (``training: on``) and that a named
+reviewer accepted, with a quarter of every batch replayed from the seeds; the
+new version replaces the current one only when it is no worse on held-out
+seeds, and the previous one is kept. Nothing happens without trained weights
+or under ``MIZAN_RUH_READER=off``.
+
 The night has a budget (``LESSONS`` and ``WITNESSES`` per person, ``SECONDS`` in
 all), stops as soon as a request is running, and keeps to each person's
 choices: under ``learning: off`` nothing is changed. ``MIZAN_NAWM``: ``on``
@@ -60,7 +67,7 @@ from typing import Any
 from memory import stateless, tadhkir
 from memory.dhikr import memory_activation_weight
 
-from . import ahl_dhikr, sijill, talaqqi
+from . import ahl_dhikr, ruh_reader, sijill, talaqqi
 
 LESSONS = 5  # replayed per person per night
 WITNESSES = 5  # claims per person whose second witness is sought per night
@@ -192,14 +199,23 @@ async def night(
     """One person's night: lessons replayed, second witnesses sought, then FSRS
     fitted on the review log of their memory, which shares the store's database
     (``tadhkir.rest``: adopted only on held-out evidence, and only when fits are
-    applied; else a passing fit is counted as ``shadow``)."""
+    applied; else a passing fit is counted as ``shadow``), then the language
+    reader's night (``ruh_reader.rest``)."""
     lessons = await replay(store, user_id, deadline=deadline, idle=idle)
     witnesses = await witness(store, user_id, deadline=deadline, idle=idle)
     fit = await tadhkir.rest(getattr(store, "db_path", None), deadline=deadline, idle=idle)
     status = fit.get("status")
+    try:
+        read = await ruh_reader.rest(user_id, deadline=deadline, idle=idle)
+    except Exception:  # noqa: BLE001 - the reader's night never ends the rest of it
+        read = {"status": "failed"}
+    if read.get("status") == "promoted":
+        detail = "While resting, the language reader learned from your reviewed words"
+        sijill.note("nawm", {"detail": detail}, owner=user_id)
     return {
         **lessons,
         **witnesses,
         "fitted": int(status == "adopted"),
         "shadow": int(status == "shadow"),
+        "reader_learned": int(read.get("learned") or 0),
     }
