@@ -317,6 +317,18 @@ Supported and contradicted claims, as right / part / wrong:
   in 4 of 6 ("Gates stepped down from his CEO position…" against "founded by
   Steve Jobs").
 
+**Not measured: asking Wikipedia in the claims' own language.** These
+questions are in English or Roman Hindi/Urdu, so Wikipedia is asked in English,
+while the teacher answered in Hindi or Urdu. Asking the claims' own edition
+(`hi`, `ur`, `ar`), searched by the claims, could not be measured live: on 30
+October Wikimedia refused MIZAN's client from the development sandbox (403,
+"Please respect our robot policy"), and nothing was done to get around it.
+Offline, the Hindi and Urdu articles whose titles the answers hold supported 20
+(16/2/2) and 18 (13/5/0) claims, against 4 (3/1/0) and 0 from the questions'
+English articles, with none against another question's pages. Those articles
+were picked by title, not found by Wikipedia's search, so this is not a
+measurement of asking by the claims, and it is not wired.
+
 ## It learns
 
 - **Kept for this user.** What an outside source settled is kept in the user's
