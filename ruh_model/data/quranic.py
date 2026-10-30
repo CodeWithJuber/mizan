@@ -1,7 +1,13 @@
-"""Pinned Quranic editions and attributed training paths, without text rewriting.
+"""Pinned Quranic editions, input-only paths and an evaluation-only canary.
 
-Sources keep their own licences. Downloads are byte-identical snapshots; Unicode
-folding is used only for edition comparison and never for training targets.
+The Quran is a source MIZAN quotes by lookup from pinned editions. It is never
+a training target of Ruh or any other model in this repository
+(``ruh_model.data.scripture``). Here it is an input (``morphology``,
+``grounded_qa``: every record declares the scripture it quotes, whose bytes are
+never supervised) or an evaluation set (``canary``: what a model must fail to
+reproduce; refused as training data). Sources keep their own licences.
+Downloads are byte-identical snapshots; Unicode folding is used only for
+edition comparison and never changes the text.
 """
 
 from __future__ import annotations
@@ -395,14 +401,31 @@ def surah_groups(verses: dict[str, str]) -> dict[str, str]:
 def build_paths(
     verses: dict[str, str], translation: dict[str, str], morphology: list[dict]
 ) -> dict:
-    """Three actual objectives: original bytes, morphology labels, grounded QA."""
+    """An evaluation-only canary and two paths where scripture is only an input.
+
+    ``canary``: each ayah, ``evaluation_only``; a model must fail to reproduce
+    it, and ``tokenize_record`` refuses it as training data. ``morphology``: the
+    target is QAC's labels; the word's letters are input only. ``grounded_qa``:
+    the ayah and its translation are retrieved context; the quoted translation
+    in the answer is declared scripture and masked, so only the citation is a
+    target.
+    """
     if set(verses) != set(translation):
         raise ValueError("Translation verse identifiers do not match Quran edition")
     groups = surah_groups(verses)
-    paths: dict[str, list[dict]] = {"continuation": [], "morphology": [], "grounded_qa": []}
+    paths: dict[str, list[dict]] = {"canary": [], "morphology": [], "grounded_qa": []}
     for identity, text in verses.items():
         common = {"verse_id": identity, "group_id": groups[identity], "lang": "ar"}
-        paths["continuation"].append(dict(common, text=text, source="tanzil", task="continuation"))
+        paths["canary"].append(
+            dict(
+                common,
+                text=text,
+                source="tanzil",
+                task="canary",
+                evaluation_only=True,
+                scripture=[text],
+            )
+        )
         context = (
             f"Verse {identity}; edition: Tanzil Uthmani Hafs.\nArabic: {text}\n"
             f"Translation by Marmaduke Pickthall (1930): {translation[identity]}"
@@ -413,6 +436,7 @@ def build_paths(
                 lang="en",
                 task="grounded_translation",
                 source="pickthall",
+                scripture=[text, translation[identity]],
                 messages=[
                     {
                         "role": "system",
@@ -433,9 +457,14 @@ def build_paths(
         identity = word["verse_id"]
         # QAC v0.4 rendering is explicitly a separate edition. No claim that its
         # spelling, word boundaries or unnumbered-basmala offsets match v1.1.
+        # The target is QAC's labels; the word's own letters (Arabic and
+        # Buckwalter forms) stay in the input and are never a target.
         labels = {
             "word_id": word["word_id"],
-            "segments": word["segments"],
+            "segments": [
+                {key: value for key, value in segment.items() if key not in {"form", "form_bw"}}
+                for segment in word["segments"]
+            ],
             "source": "QAC 0.4, Kais Dukes (2011)",
         }
         paths["morphology"].append(
@@ -446,6 +475,7 @@ def build_paths(
                 "task": "morphology",
                 "source": "qac",
                 "word_id": word["word_id"],
+                "scripture": [word["form"]],
                 "messages": [
                     {
                         "role": "system",
@@ -490,6 +520,8 @@ def build_tafsir_path(verses: dict[str, str], rows: list[dict], source: dict) ->
                 "lang": row.get("lang", "ar"),
                 "task": "grounded_tafsir",
                 "source": source["attribution"],
+                # Commentary may be a target; the ayah, wherever quoted, never is.
+                "scripture": [verses[identity]],
                 "messages": [
                     {
                         "role": "system",
@@ -537,6 +569,8 @@ def prepare_quranic(cache: Path, output: Path) -> dict:
     manifest = {
         "schema_version": 1,
         "status": "verified_corpus_not_a_trained_model",
+        "scripture_policy": "Never a training target: canary is evaluation-only; "
+        "morphology and grounded_qa declare the scripture they quote and it is masked.",
         "edition": "Tanzil Uthmani Hafs, exact pinned source bytes",
         "coverage": {
             "surahs": 114,
@@ -552,7 +586,7 @@ def prepare_quranic(cache: Path, output: Path) -> dict:
         "split_policy": "Whole surah, joining repeated folded verses; shared across all objectives. Seed 42; deterministic fraction 0.1.",
         "paths": {},
         "training_text_modified": False,
-        "tafsir": "Optional separately licensed corpus; no unverified commentary in these three paths.",
+        "tafsir": "Optional separately licensed corpus; no unverified commentary in these paths.",
         "promotion": {
             "approved": False,
             "reason": "Corpus integrity and training loss do not establish religious or conversational correctness.",
@@ -566,6 +600,7 @@ def prepare_quranic(cache: Path, output: Path) -> dict:
             raise ValueError("Whole-surah split leakage")
         manifest["paths"][name] = dict(
             write_jsonl(output / f"{name}.jsonl", rows),
+            evaluation_only=name == "canary",
             train_records=len(train),
             validation_records=len(validation),
             train_surahs=sorted(train_surahs),

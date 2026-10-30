@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Generate exact held-out predictions separately from teacher-forced loss."""
+"""Generate exact held-out predictions separately from teacher-forced loss.
+
+For the evaluation-only ``canary`` path the scores are what a model must fail
+at: its exact-match rate should be no higher than a model never shown the Quran.
+"""
 
 from __future__ import annotations
 
@@ -60,7 +64,9 @@ def generate_predictions(candidate: Path, data_dir: Path, path: str, device: str
                 "expected": expected,
                 "generated": generated,
                 "generated_tokens": len(tokens),
-                "attribution": "Pickthall" if path == "grounded_qa" else "QAC 0.4",
+                "attribution": {"grounded_qa": "Pickthall", "canary": "Tanzil"}.get(
+                    path, "QAC 0.4"
+                ),
             }
         )
     return predictions
@@ -70,9 +76,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--data-dir", type=Path, required=True)
-    parser.add_argument(
-        "--path", choices=("continuation", "morphology", "grounded_qa"), required=True
-    )
+    parser.add_argument("--path", choices=("canary", "morphology", "grounded_qa"), required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--samples", type=int, default=8)

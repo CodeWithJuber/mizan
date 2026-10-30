@@ -2,6 +2,9 @@
 
 Reads JSONL files (one ``{"text": ...}`` object per line) and tokenizes
 each text into ``(root_id, pattern_id)`` sequences via :class:`BayanTokenizer`.
+Scripture is never a target: a Quran/hadith or evaluation-only record is
+refused, and a record declaring ``scripture`` spans is windowed by
+``sequence.tokenize_record`` so those bytes are masked (lossless V2 only).
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from typing import Any
 
 from torch.utils.data import Dataset
 
+from ruh_model.data.scripture import check_trainable
 from ruh_model.tokenizer.bayan import BayanTokenizer
 
 
@@ -46,6 +50,12 @@ class RuhDataset(Dataset):  # type: ignore[type-arg]
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                check_trainable(row)
+                if row.get("scripture"):
+                    from ruh_model.data.sequence import tokenize_record
+
+                    self._samples.extend(tokenize_record(row, tokenizer, max_seq_len))
                     continue
                 text = row.get("text", "")
                 if row.get("messages"):

@@ -1,15 +1,16 @@
-"""Default Quran selection, explicit source permission and lossless supervision."""
+"""Scripture sources are refused as training domains, whatever permission they claim."""
 
 from __future__ import annotations
 
 import pytest
 
 from ruh_model.data.pipeline import DEFAULT_SOURCES, RealDataPipeline
+from ruh_model.data.scripture import is_scripture_source
 from ruh_model.tokenizer.bayan import BayanTokenizer
-from ruh_model.tokenizer.root_vocab import EOS_ID
 
 
-def _source():
+def _permitted_source(**extra):
+    # Every field the removed exemption asked for, including training_permission.
     return {
         "path": "explicit-test-corpus",
         "revision": "a" * 40,
@@ -19,74 +20,64 @@ def _source():
         "training_permission": True,
         "edition": "Fixture edition",
         "verse_columns": ["surah", "ayah"],
+        **extra,
     }
 
 
-def _pipeline(rows, source=None):
-    with pytest.warns(UserWarning, match="Explicit custom quran"):
-        return RealDataPipeline(
-            BayanTokenizer(version=2),
+def test_defaults_hold_no_scripture_source():
+    assert set(DEFAULT_SOURCES) == {"arabic_wiki"}
+    assert not any(is_scripture_source(domain, spec) for domain, spec in DEFAULT_SOURCES.items())
+
+
+@pytest.mark.parametrize("domain", ["quran", "hadith"])
+@pytest.mark.parametrize("version", [1, 2])
+def test_scripture_domain_refused_even_with_explicit_permission(domain, version):
+    with pytest.raises(ValueError, match="never a training target"):
+        RealDataPipeline(
+            BayanTokenizer(version=version),
             32,
-            sources={"quran": source or _source()},
-            loader=lambda *args, **kwargs: rows,
+            sources={domain: _permitted_source()},
+            loader=lambda *args, **kwargs: [],
         )
 
 
-def test_defaults_use_verified_text_and_no_automatic_hadith():
-    assert DEFAULT_SOURCES["quran"]["kind"] == "verified_quran"
-    assert "files" not in DEFAULT_SOURCES["quran"]
-    assert "hadith" not in DEFAULT_SOURCES
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"kind": "verified_quran", "path": "Tanzil/Uthmani-Hafs", "revision": "a" * 40},
+        _permitted_source(),
+    ],
+)
+def test_scripture_source_under_another_name_is_refused(spec):
+    with pytest.raises(ValueError, match="never a training target"):
+        RealDataPipeline(BayanTokenizer(version=2), 32, sources={"tanzil": spec})
 
 
-def test_unattributed_or_unlicensed_custom_religious_source_refused():
-    for domain in ("quran", "hadith"):
-        with pytest.raises(ValueError, match="permission"):
-            RealDataPipeline(BayanTokenizer(version=2), 32, sources={domain: {"path": "unknown"}})
+def test_configured_quran_domain_with_default_weight_is_refused():
+    # Ratios default to 1.0 for every configured domain, so this fails loudly.
+    with pytest.raises(ValueError, match="never a training target"):
+        RealDataPipeline(
+            BayanTokenizer(version=2),
+            32,
+            sources={"quran": [{"text": "x"}], "corpus": [{"text": "y"}]},
+        )
 
 
-def test_legacy_root_tokenizer_cannot_discard_quran_surface():
-    with pytest.raises(ValueError, match="lossless"):
-        RealDataPipeline(BayanTokenizer(version=1), 32, mixing_ratios={"quran": 1})
+def test_zero_scripture_weight_is_allowed_and_never_streamed():
+    pipeline = RealDataPipeline(
+        BayanTokenizer(version=2),
+        32,
+        {"quran": 0.0, "corpus": 1.0},
+        sources={"quran": [{"text": "x"}], "corpus": [{"text": "ordinary"}]},
+    )
+    assert [row["domain"] for row in pipeline.stream(3)] == ["corpus"]
 
 
-def test_explicit_reciter_rows_are_deduplicated_with_provenance():
-    rows = [{"surah": 1, "ayah": 1, "text": "بِسْمِ"}] * 2
-    result = list(_pipeline(rows).stream(10))
-    assert len(result) == 1
-    assert result[0]["verse_id"] == "1:1"
-    assert result[0]["source_provenance"]["attribution"] == "Test fixture"
-    assert result[0]["text"] == "بِسْمِ"
-
-
-def test_conflicting_text_for_one_verse_is_rejected():
-    rows = [{"surah": 1, "ayah": 1, "text": "الأصل"}, {"surah": 1, "ayah": 1, "text": "تغيير"}]
-    with pytest.raises(ValueError, match="Conflicting"):
-        list(_pipeline(rows).stream(10))
-
-
-def test_custom_quran_cannot_omit_or_forge_verse_identity():
-    with pytest.raises(KeyError):
-        list(_pipeline([{"text": "نص"}]).stream(1))
-    with pytest.raises(ValueError, match="identifier"):
-        list(_pipeline([{"verse_id": "1:999", "text": "نص"}]).stream(1))
-
-
-def test_long_verse_targets_all_bytes_once_without_manufactured_eos():
-    text = "لَا تَخَفْ " * 50
-    pipeline = _pipeline([{"surah": 1, "ayah": 1, "text": text}])
-    batches = list(pipeline.get_dataloader(1, 1))
-    targets = [int(token) for batch in batches for token in batch["labels"][0] if token != 0]
-    assert pipeline.tokenizer.decode([(token, 0) for token in targets]) == text
-    assert targets.count(EOS_ID) == 1
-    assert len(batches) > 1
-
-
-def test_train_full_defaults_hadith_weight_to_zero(monkeypatch):
-    import sys
-
-    from ruh_model.train_full import _parse_args
-
-    monkeypatch.setattr(sys, "argv", ["train_full"])
-    args = _parse_args()
-    assert args.hadith_weight == 0
-    assert args.quran_weight == 0.3
+def test_evaluation_only_row_in_a_general_corpus_is_refused():
+    pipeline = RealDataPipeline(
+        BayanTokenizer(version=2),
+        32,
+        sources={"corpus": [{"text": "x", "evaluation_only": True, "task": "canary"}]},
+    )
+    with pytest.raises(ValueError, match="evaluation-only"):
+        list(pipeline.stream(1))

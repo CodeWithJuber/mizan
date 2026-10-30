@@ -7323,13 +7323,20 @@ async def get_data_stats():
                 }
             )
 
-    # Registered HuggingFace dataset slots
+    # The pipeline's own default sources (ruh_model/data/pipeline.py), equally
+    # weighted as the pipeline weighs them. The Quran and hadith are never a
+    # training target, so they are never listed as training data here.
+    try:
+        from ruh_model.data.pipeline import DEFAULT_SOURCES
+    except Exception:  # noqa: BLE001 - the Ruh package is optional at runtime
+        DEFAULT_SOURCES = {}
     hf_datasets = [
-        {"name": "quran", "weight": 0.30, "hf_id": "quran_corpus"},
-        {"name": "hadith", "weight": 0.20, "hf_id": "hadith_corpus"},
-        {"name": "arabic_wiki", "weight": 0.25, "hf_id": "wikipedia/ar"},
-        {"name": "opus", "weight": 0.15, "hf_id": "opus-100/ar-en"},
-        {"name": "tashkeela", "weight": 0.10, "hf_id": "tashkeela"},
+        {
+            "name": name,
+            "weight": round(1 / len(DEFAULT_SOURCES), 4),
+            "hf_id": "/".join(str(part) for part in (spec.get("path"), spec.get("name")) if part),
+        }
+        for name, spec in DEFAULT_SOURCES.items()
     ]
     for ds in hf_datasets:
         sources.append(
@@ -7351,6 +7358,10 @@ async def get_data_stats():
         "sources": sources,
         "total_samples": total_samples,
         "total_size_mb": round(total_size, 2),
+        "scripture_policy": (
+            "The Quran and hadith text are never a training target of Ruh; they are "
+            "inputs, retrieval sources or an evaluation set (docs/quranic_training_paths.md)."
+        ),
     }
 
 

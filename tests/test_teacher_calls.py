@@ -69,3 +69,20 @@ async def test_each_user_sees_their_own_share_and_admins_see_everyone(monkeypatc
         assert everyone.json()["lisan_tasks"] == {"answer": 3}
 
         assert (await client.get("/api/tadbir/teacher-calls")).status_code == 401
+
+
+async def test_ruh_data_stats_never_list_scripture_as_training_data(monkeypatch, tmp_path):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    from api import main
+
+    admin = main.auth.create_user("ruh-stats-owner", "pw", roles=["admin"])
+    headers = {"Authorization": f"Bearer {main.auth.create_token(admin)}"}
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        stats = await client.get("/api/ruh/data-stats", headers=headers)
+    assert stats.status_code == 200, stats.text
+    listed = {source["name"] for source in stats.json()["sources"]}
+    assert "arabic_wiki" in listed
+    assert not listed & {"quran", "hadith"}
+    assert "never a training target" in stats.json()["scripture_policy"]

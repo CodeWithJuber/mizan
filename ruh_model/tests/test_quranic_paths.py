@@ -123,19 +123,26 @@ def test_whole_surah_and_repeated_verse_groups_do_not_leak():
     assert not {row["group_id"] for row in train} & {row["group_id"] for row in validation}
 
 
-def test_three_paths_preserve_original_and_distinguish_translation():
+def test_paths_preserve_original_and_distinguish_translation():
     words, _ = read_morphology(_morphology(), {"1:1": "بِسْمِ"})
     paths = build_paths({"1:1": "بِسْمِ"}, {"1:1": "In the name"}, words)
-    assert paths["continuation"][0]["text"] == "بِسْمِ"
+    canary = paths["canary"][0]
+    assert canary["text"] == "بِسْمِ" and canary["evaluation_only"] is True
+    assert "continuation" not in paths
     qa = paths["grounded_qa"][0]
     assert "Pickthall" in qa["messages"][-1]["content"]
     assert "not original Quran" in qa["messages"][0]["content"]
-    assert paths["morphology"][0]["group_id"] == qa["group_id"]
-    assert "QAC 0.4" in paths["morphology"][0]["messages"][-1]["content"]
+    assert qa["scripture"] == ["بِسْمِ", "In the name"]
+    morphology = paths["morphology"][0]
+    assert morphology["group_id"] == qa["group_id"]
+    assert "QAC 0.4" in morphology["messages"][-1]["content"]
+    labels = json.loads(morphology["messages"][-1]["content"])
+    assert labels["segments"][1]["features"] == "STEM|POS:N|LEM:{som|ROOT:smw|M|GEN"
+    assert not any({"form", "form_bw"} & segment.keys() for segment in labels["segments"])
 
 
-def test_v2_windows_preserve_every_quranic_byte_and_only_final_eos():
-    text = "لَا تَخَفْ وَلا تَحْزَنْ " * 40
+def test_v2_windows_preserve_every_byte_and_only_final_eos():
+    text = "العِلْمُ نُورٌ وَالجَهْلُ ظَلَامٌ " * 40
     tokenizer = BayanTokenizer(version=2)
     windows = list(tokenize_record({"text": text}, tokenizer, max_seq_len=32))
     tokens = windows[0]["root_ids"] + [
