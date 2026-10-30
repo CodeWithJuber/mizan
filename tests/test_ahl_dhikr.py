@@ -534,3 +534,12 @@ async def test_a_contradiction_must_hold_both_ways_and_equations_are_computed(st
         "9.9 is larger than 9.11 when written as 9.90."
     ]
     assert findings[0].verdict == "unknown"
+
+
+def test_a_fact_question_in_hinglish_is_not_sent_to_a_scholar():
+    """Live check of 30 Oct 2026: "Pakistan ki capital kya hai?" was read as a
+    ruling and told to ask a scholar. Phrasings here are not in the seeds."""
+    for question in ("Bangladesh ki capital kya hai?", "Japan ki currency kya hai?"):
+        assert not ahl_dhikr.ruling(question), question
+    for question in ("Kya mobile par Quran bina wuzu padh sakte hain?", "Kya sood lena jaiz hai?"):
+        assert ahl_dhikr.ruling(question), question
