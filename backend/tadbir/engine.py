@@ -1148,7 +1148,7 @@ class Tadbir:
         await self._begin(
             [
                 "Recall the verified programs of this form (Hifz)",
-                "Put this request's numbers into them",
+                "Put this request's numbers or words into them",
                 "Run it in MIZAN's isolated sandbox",
                 "Reply",
             ]
