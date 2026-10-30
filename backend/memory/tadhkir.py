@@ -54,6 +54,12 @@ that log (``rest``):
   that are no better stays below α = 0.05. log E is the number of reviews
   tested times the drop in log-loss: a margin that chance does not reach.
 
+A fit that passes is put to use only under ``MIZAN_TADHKIR_FIT=apply``. By
+default (``shadow``) it is measured and reported, not adopted, because the log
+is partly written by the parameters it tests (``applies``): a restatement is
+graded Again only when R(t) under the parameters in use fell below 0.9, and
+only a memory that was recalled gets a use review.
+
 A memory's stored S and D stay valid: later reviews and R(t) use the
 parameters in use from then on. Lessons kept by Talaqqi are not memories and
 keep FSRS's defaults.
@@ -64,6 +70,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import random
 import sqlite3
 import threading
@@ -320,6 +327,7 @@ def report(conn: sqlite3.Connection) -> dict:
         "reviews_logged": int(logged),
         "defaults": list(DEFAULTS),
         "alpha": ALPHA,
+        "mode": "apply" if applies() else "shadow",
     }
 
 
@@ -517,6 +525,17 @@ def optimizer_fit(
     return fitted, "", ran
 
 
+def applies() -> bool:
+    """Whether a fit that passed its test is put to use (``MIZAN_TADHKIR_FIT``:
+    ``shadow``, the default, measures and reports it; ``apply`` adopts it). The
+    log is partly written by the parameters it tests: a restatement is graded
+    Again only when R(t) under the parameters in use fell below 0.9, and only a
+    recalled memory gets a use review. Until a grade is read independently of
+    them, a passing fit is evidence that it reproduces its own grading, not
+    that it predicts this person's forgetting better."""
+    return os.getenv("MIZAN_TADHKIR_FIT", "shadow").strip().lower() == "apply"
+
+
 def needed(test: int) -> float:
     """The e-value the ``test``-th test on a log must reach: k(k+1)/α. These
     spend α/(k(k+1)), which sums to α over every test ever made."""
@@ -533,10 +552,12 @@ def refit(
     stop: Callable[[], bool] = lambda: False,
     seconds: float | None = None,
     optimizer: bool = True,
+    apply: bool | None = None,
 ) -> dict:
     """One night's fit of this database's log: a challenger fitted on the
     earlier half, tested against the parameters in use on the later half, and
-    adopted only when its e-value reaches ``needed``. Returns what happened."""
+    adopted only when its e-value reaches ``needed`` and fits are applied
+    (``apply``, by default ``applies()``). Returns what happened."""
     ensure(conn)
     rows = conn.execute(
         "SELECT id, memory_id, rating, kind, reviewed FROM memory_reviews ORDER BY id"
@@ -606,12 +627,16 @@ def refit(
         "adopted": adopted,
         "parameters": [round(value, 6) for value in challenger],
     }
+    applied = adopted and (applies() if apply is None else apply)
+    if adopted and not applied:
+        evaluation.update(adopted=False, would_adopt=True, mode="shadow")
     record["latest"] = {**evaluation, **paced}
     record.update(tests=test, seen=seen)
-    if adopted:
+    if applied:
         record.update(parameters=challenger, fitted=challenger != DEFAULTS, evaluation=evaluation)
     _save(conn, record)
-    return {"status": "adopted" if adopted else "kept", **evaluation}
+    status = "adopted" if applied else "shadow" if adopted else "kept"
+    return {"status": status, **evaluation}
 
 
 async def rest(
@@ -701,7 +726,7 @@ def measure(
             "VALUES (?, '', ?, ?, ?)",
             rows,
         )
-        found = refit(conn, optimizer=optimizer)
+        found = refit(conn, optimizer=optimizer, apply=True)  # a simulated log is not circular
     finally:
         conn.close()
     cut = _parse(found.get("split"))

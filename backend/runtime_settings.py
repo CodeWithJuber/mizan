@@ -132,6 +132,12 @@ SETTINGS: tuple[Setting, ...] = (
             "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
             "when a page changes), quiet during salah, within a daily attention budget.",
             "on", ("on", "off")),
+    Setting("MIZAN_TADHKIR_FIT", "Model", "Memory strength fit (Tadhkir)", "choice",
+            "While MIZAN rests it fits how fast each memory database forgets (FSRS) on its "
+            "own review log and tests the fit on later reviews. shadow reports a fit that "
+            "passes without using it, because the log's repeat grades come from the "
+            "parameters in use; apply adopts it.",
+            "shadow", ("shadow", "apply")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "

@@ -49,7 +49,7 @@ A memory is "used" when the answer holds more than half of the memory's distinct
 
 ### Fitted on MIZAN's own log (`tadhkir.rest`, run by Nawm)
 
-FSRS's default parameters were fitted on flashcard reviews. Memory differs by person and by material, so MIZAN fits FSRS on its own reviews and keeps the defaults until the fit has earned its place.
+FSRS's default parameters were fitted on flashcard reviews. Memory differs by person and by material, so MIZAN fits FSRS on its own reviews and keeps the defaults until the fit has earned its place. For now a fit that passes its test is reported, not used: `MIZAN_TADHKIR_FIT` is `shadow` by default, and `apply` adopts it (see **Limits** below for why).
 
 **The log.**
 - **What is written.** Every review a memory gets is appended to `memory_reviews` in the memory's own database. Each row holds the memory id, agent id, grade, kind and time. The kind is `learn` (first writing), `use` (recalled and used) or `repeat` (said again). No words are written.
@@ -73,10 +73,11 @@ has expectation at most 1 when the parameters in use are right, because the chal
 - Tajdid halves α for each challenger instead. Here a test is made each night the log has grown, and halving would raise the bar by ln 2 every night.
 
 **In use.**
+- **Shadow by default.** Under `MIZAN_TADHKIR_FIT=shadow` (the default) a fit that reaches the bar is recorded as the night's test with `would_adopt: true` and `adopted: false`; the parameters in use do not change, and Nawm counts it as `shadow`. Under `apply` it is adopted as below. The simulations in **Measured** fit logs that the parameters in use did not grade, so they adopt either way.
 - Adopted parameters are kept in `tadhkir_parameters` with their evaluation: the held-out log-loss under the parameters in use, the defaults and the fit, the number of reviews fitted on and tested on, the e-value, the bar and the date.
 - From then on, every review, R(t) and ranking in that database uses them. A memory's stored S and D stay as they are, and later reviews start from them.
 - Nawm (`nawm.night`) fits once a night, while no request runs and within the night's time. It fits only when the log has changed since the last test. The optimizer cannot be stopped once started, so it starts only when the pace it showed on this log says it will finish in time. The light fit stops at the deadline.
-- `GET /api/memory/tadhkir` (administrators) shows the parameters in use, whether they were fitted, the test that earned them and the latest night's test.
+- `GET /api/memory/tadhkir` (administrators) shows the parameters in use, whether they were fitted, the test that earned them, the latest night's test and the `mode` (`shadow` or `apply`).
 
 **Measured.** No real log exists yet, so logs were simulated (`cd backend && python -m memory.tadhkir [--light] [seeds]`). Each simulated log has:
 - 400 memories over 360 days, written at uniform times and graded by a uniform importance;
@@ -99,7 +100,7 @@ The light fit came closer to the truth than the optimizer on these logs. It move
 
 **Limits.**
 - **The outcomes are not recall tests.** A use is always Good: a memory MIZAN failed to bring up is never observed as a failure. A repeat is graded Again only when R under the parameters in use had fallen below 0.9.
-- **What a fit therefore learns.** It learns partly when MIZAN uses memories and how it grades repeats, not only how people forget. The held-out test is graded the same way, so it cannot tell these apart.
+- **What a fit therefore learns.** It learns partly when MIZAN uses memories and how it grades repeats, not only how people forget. The held-out test is graded the same way, so it cannot tell these apart. This is why fits are shadow by default: a fit adopted on such a log would partly confirm its own threshold. A grade read independently of the parameters (for example, whether a memory that a later request needed was brought up at all) would make the test about forgetting, and then `apply` can be the default.
 - **What is kept for later.** The `kind` column keeps first writings, uses and repeats apart, so this can be revisited.
 - **Not per material.** Parameters are fitted per memory database, not per kind of material.
 
@@ -160,6 +161,6 @@ $$E = 2^{\,w+l}\cdot 2\cdot\frac{B(w+1,\,l+1)}{B(1,1)}\cdot P\!\left(q>\tfrac12 
 ## Tests
 
 - **Tadhkir:** `tests/test_tadhkir.py`. Forgetting, spacing, repetition, lapse, ranking, "said again" being repeated rather than copied, a run strengthening only the memory its answer used, and a lapsed memory said again being relearned.
-- **Tadhkir fitted:** `tests/test_tadhkir_fit.py`. Reviews logged without words and only for the used memory, none in a stateless run or under `learning: off`, rows erased with their memory (Daftar, Mahw) and a fit made from them dropped, the α spending, a different person's log fitted and adopted, a log from the defaults not adopted, the optimizer when installed and the light fit otherwise, adopted parameters used for later reviews, Nawm fitting within the person's choice, and the administrator-only endpoint.
+- **Tadhkir fitted:** `tests/test_tadhkir_fit.py`. Reviews logged without words and only for the used memory, none in a stateless run or under `learning: off`, rows erased with their memory (Daftar, Mahw) and a fit made from them dropped, the α spending, a different person's log fitted and adopted, a log from the defaults not adopted, the optimizer when installed and the light fit otherwise, adopted parameters used for later reviews, a passing fit reported but not used by default (shadow), Nawm fitting within the person's choice, and the administrator-only endpoint.
 - **Isnad:** `tests/test_ahl_dhikr.py`. One witness is not knowledge, a second site makes it sahih, a dispute is weighed by trust, a site counts once.
 - **Tajdid:** `tests/test_research_learning.py`. Promotion only at the e-value bound, α spending, and the gate's error rate under repeated looks.

@@ -38,9 +38,10 @@ given to Lisan as knowledge until an independent host agrees
 Wikipedia while MIZAN rests; a site is never its own second witness, and a
 question about the deen is never asked outside.
 
-Last, FSRS is fitted on the review log of the person's memories and adopted only
-when it predicts their later reviews better than the parameters in use, by a
-margin chance does not reach (``memory.tadhkir.rest``).
+Last, FSRS is fitted on the review log of the person's memories and tested
+against the parameters in use on their later reviews, by a margin chance does
+not reach (``memory.tadhkir.rest``). A fit that passes is reported; it is put to
+use only under ``MIZAN_TADHKIR_FIT=apply`` (``tadhkir.applies``).
 
 The night has a budget (``LESSONS`` and ``WITNESSES`` per person, ``SECONDS`` in
 all), stops as soon as a request is running, and keeps to each person's
@@ -190,8 +191,15 @@ async def night(
 ) -> dict:
     """One person's night: lessons replayed, second witnesses sought, then FSRS
     fitted on the review log of their memory, which shares the store's database
-    (``tadhkir.rest``: adopted only on held-out evidence)."""
+    (``tadhkir.rest``: adopted only on held-out evidence, and only when fits are
+    applied; else a passing fit is counted as ``shadow``)."""
     lessons = await replay(store, user_id, deadline=deadline, idle=idle)
     witnesses = await witness(store, user_id, deadline=deadline, idle=idle)
     fit = await tadhkir.rest(getattr(store, "db_path", None), deadline=deadline, idle=idle)
-    return {**lessons, **witnesses, "fitted": int(fit.get("status") == "adopted")}
+    status = fit.get("status")
+    return {
+        **lessons,
+        **witnesses,
+        "fitted": int(status == "adopted"),
+        "shadow": int(status == "shadow"),
+    }

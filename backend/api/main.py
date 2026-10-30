@@ -3506,7 +3506,8 @@ async def list_memories(
 async def memory_tadhkir(user: TokenPayload = Depends(require_auth)):
     """The FSRS parameters memory strength is computed with (Tadhkir): FSRS's
     defaults, or parameters fitted on this memory's own review log while MIZAN
-    rests, with the held-out test that earned them and the latest night's test."""
+    rests, with the held-out test that earned them and the latest night's test
+    (``mode``: ``shadow`` reports a passing fit without using it)."""
     from memory import tadhkir
 
     own = await _own_memory(user)
@@ -5673,7 +5674,10 @@ async def nawm_night() -> dict:
             for account in auth.list_users()
             if "admin" in (account.get("roles") or []) and account.get("enabled", True)
         ]
-    counted = ("replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted")
+    counted = (
+        "replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted",
+        "shadow",
+    )  # fmt: skip
     totals = {"people": 0, **dict.fromkeys(counted, 0)}
     seen: set[tuple[str, str]] = set()
     for user_id, store in people:

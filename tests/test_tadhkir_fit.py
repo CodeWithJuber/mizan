@@ -238,7 +238,10 @@ def test_without_the_optimizer_the_light_fit_is_used(monkeypatch):
     assert found["method"] == "light fit" and found["optimizer"] == "not installed"
 
 
-async def test_adopted_parameters_review_later_and_a_kept_strength_stays_valid(tmp_path):
+async def test_adopted_parameters_review_later_and_a_kept_strength_stays_valid(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MIZAN_TADHKIR_FIT", "apply")
     memory = DhikrMemorySystem(str(tmp_path / "memory.db"))
     mem_id = await memory.remember("My city is Hyderabad", importance=0.5)
     then = datetime.now(UTC) - timedelta(days=10)
@@ -270,7 +273,30 @@ async def test_adopted_parameters_review_later_and_a_kept_strength_stays_valid(t
     assert recalled.strength["stability"] != pytest.approx(by_default["stability"], rel=1e-3)
 
 
+async def test_by_default_a_passing_fit_is_reported_not_used(tmp_path, monkeypatch):
+    # The log is partly written by the parameters it tests (a restatement is
+    # Again only when R(t) under them fell below 0.9), so a fit that passes is
+    # measured and shown, and memory keeps its parameters.
+    monkeypatch.delenv("MIZAN_TADHKIR_FIT", raising=False)
+    monkeypatch.setattr(tadhkir, "optimizer_fit", lambda *a, **k: (None, "not installed", 0.0))
+    memory = DhikrMemorySystem(str(tmp_path / "memory.db"))
+    insert(memory, tadhkir.simulate(tadhkir.FASTER, memories=150, seed=0))
+    store = AdaptiveStateStore(memory.db_path)
+    night = await nawm.night(store, "u1")
+    assert night["fitted"] == 0 and night["shadow"] == 1
+    assert in_use(memory) == tadhkir.DEFAULTS
+    conn = memory._get_conn()
+    try:
+        shown = tadhkir.report(conn)
+    finally:
+        memory._release_conn(conn)
+    assert shown["mode"] == "shadow" and shown["fitted"] is False
+    assert shown["latest"]["would_adopt"] is True and shown["latest"]["adopted"] is False
+    assert shown["latest"]["e_value"] >= shown["latest"]["needed"]
+
+
 async def test_the_night_fits_the_persons_log_within_their_choice(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIZAN_TADHKIR_FIT", "apply")
     monkeypatch.setattr(tadhkir, "optimizer_fit", lambda *a, **k: (None, "not installed", 0.0))
     memory = DhikrMemorySystem(str(tmp_path / "memory.db"))
     insert(memory, tadhkir.simulate(tadhkir.FASTER, memories=150, seed=0))
