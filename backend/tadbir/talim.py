@@ -166,8 +166,11 @@ def _clear(name: str) -> None:
     from . import lughah, qasd
 
     if name == "lughah":
+        from . import ruh_reader
+
         lughah.model.cache_clear()
         lughah._word.cache_clear()
+        ruh_reader.reset()  # read again only if it was trained on the new corpus
     elif name == "qasd":
         qasd.model.cache_clear()
     else:

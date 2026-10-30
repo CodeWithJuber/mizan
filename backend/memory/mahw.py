@@ -8,7 +8,9 @@ chat's plan file, and the vectors and memory-strength reviews (Tadhkir's log)
 of erased notes. The pathway network (Masalik) cannot have one experience
 subtracted, since Hebbian updates do not reverse, so it is rebuilt from what is
 kept; FSRS parameters fitted on erased reviews go back to FSRS's defaults, and
-are fitted again on the kept log the next night.
+are fitted again on the kept log the next night. Weights cannot have one text
+subtracted either: a version of the language reader that learned from the
+chat's words is dropped, and the newest version that did not is used.
 
 Then Mahw checks its own work. It cuts each erased text into 20-character
 pieces and looks for them in every store it can read. A piece that also appears
@@ -606,6 +608,11 @@ def _erase_chat_rows(
         learner, "interaction_reviews", "interaction_id", interactions
     )
     removed["learner examples"] = _delete_in(learner, "interactions", "id", interactions)
+    # A version of the language reader that learned from these words while
+    # resting is dropped; the newest one that did not becomes current.
+    from tadbir import ruh_reader
+
+    removed["language reader versions"] = ruh_reader.forget(asked)
     removed["debug runs"] = _delete_in(folder / "debug_runs.db", "debug_runs", "prompt", asked)
     kept = [
         "Action receipts (Sakk) stay: which tool ran and how it ended, with keyed "

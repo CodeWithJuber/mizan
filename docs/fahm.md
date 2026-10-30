@@ -113,6 +113,14 @@ synthetic data raised F1 from 74.7% (a pretrained neural model) to 85.4%
 ([Benton et al. 2025, "Improving Informally Romanized Language
 Identification", arXiv 2504.21540](https://arxiv.org/abs/2504.21540)).
 
+MIZAN's own byte-level language model, the [Ruh reader](ruh-reader.md), reads
+the same words as a second opinion: P(language | words) from
+log P(words | language), multiplied into Lughah's posterior with a fitted
+weight. On held-out seeds and their first 2–3 words it made the probabilities
+better calibrated but not the decisions (99.20% and 99.42% against Lughah's
+99.38%, two seeds), so it runs in shadow (`MIZAN_RUH_READER`) and never
+changes the decision until it passes its gate.
+
 ## Qasd: what the request is for
 
 Qasd reads four kinds of evidence:

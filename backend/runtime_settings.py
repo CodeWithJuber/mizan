@@ -138,6 +138,12 @@ SETTINGS: tuple[Setting, ...] = (
             "passes without using it, because the log's repeat grades come from the "
             "parameters in use; apply adopts it.",
             "shadow", ("shadow", "apply")),
+    Setting("MIZAN_RUH_READER", "Model", "Own language reader (Ruh reader)", "choice",
+            "MIZAN's own small language model reads each message beside Lughah as a second "
+            "opinion on its language. shadow computes and logs it without changing the "
+            "decision; on weighs it in only after it beat Lughah on held-out seeds; off "
+            "never loads it. Trained with python -m tadbir.ruh_reader --train.",
+            "shadow", ("off", "shadow", "on")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "
