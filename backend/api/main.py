@@ -5723,14 +5723,33 @@ async def tadbir_teacher_calls(
     return {"days": days, "scope": scope, **teacher_share(rows)}
 
 
+@app.get("/api/tadbir/audit")
+async def tadbir_audit(
+    days: int = Query(90, ge=1, le=3650), user: TokenPayload = Depends(require_auth)
+):
+    """Tadqiq (admin): the blinded audit of answers MIZAN gave with no model call. Per
+    family: audits, agreements and disagreements with the teacher, the disagreement
+    rate with a Wilson 95 % interval, spend, and the disagreement monitor (its e-value,
+    threshold and alarm). Counts only; no content (docs/tadqiq.md)."""
+    from tadbir import tadqiq
+
+    _require_admin(user)
+    return await asyncio.to_thread(tadqiq.report, days)
+
+
 @app.get("/api/tadbir/learning/live")
 async def tadbir_learning_live(
     after: int = Query(0, ge=0), user: TokenPayload = Depends(require_auth)
 ):
-    """What MIZAN learned from your work since ``after``, as it happens (Sijill)."""
+    """What MIZAN learned from your work since ``after``, as it happens (Sijill).
+    Administrators also see the notes meant for every administrator (an audit
+    alarm, docs/tadqiq.md)."""
     from tadbir import sijill
 
     notes = sijill.since(user.user_id, after)
+    if user.has_role("admin"):
+        notes = sorted(notes + sijill.since(sijill.ADMINS, after), key=lambda note: note["seq"])
+        notes = notes[-100:]
     return {"notes": notes, "last": notes[-1]["seq"] if notes else after}
 
 

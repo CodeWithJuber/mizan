@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-302 routes in 60 areas.
+303 routes in 60 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -482,10 +482,11 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | DELETE | `/api/tadbir/answers` | user | Forget every answer MIZAN kept to give you again without the model (Talaqqi). |
+| GET | `/api/tadbir/audit` | admin | Tadqiq (admin): the blinded audit of answers MIZAN gave with no model call. Per family: audits, agreements and disagreements with the teacher, the disagreement rate with a Wilson 95 % interval, spend, and the disagreement monitor (its e-value, threshold and alarm). Counts only; no content (docs/tadqiq.md). |
 | GET | `/api/tadbir/harness` | admin | Lisan's instruction versions (Tajdid) and the models chosen for code work (Wazn), admin. |
 | DELETE | `/api/tadbir/harness/{task}` | admin | Return one kind of work to MIZAN's built-in instruction (admin). |
 | GET | `/api/tadbir/learning` | user | What MIZAN learned from its own verified work: who does which work, and your wording. |
-| GET | `/api/tadbir/learning/live` | user | What MIZAN learned from your work since ``after``, as it happens (Sijill). |
+| GET | `/api/tadbir/learning/live` | user (more for admin) | What MIZAN learned from your work since ``after``, as it happens (Sijill). Administrators also see the notes meant for every administrator (an audit alarm, docs/tadqiq.md). |
 | DELETE | `/api/tadbir/learning/wording` | user | Forget the wording MIZAN learned from this user's requests. |
 | DELETE | `/api/tadbir/lessons` | user | Forget repair lessons |
 | GET | `/api/tadbir/lessons` | user | Lessons MIZAN kept from its own verified repairs of your code (Tajriba). |

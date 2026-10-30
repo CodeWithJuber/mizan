@@ -3297,6 +3297,11 @@ Match the requested depth and self-correct errors."""
                     "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
                 },
             }
+            # Tadqiq: a sample of the answers given with no model call is asked of
+            # the teacher afterwards, blinded, in the background (docs/tadqiq.md).
+            from tadbir import tadqiq
+
+            tadqiq.schedule(task, result, provider, model, nested=bool(stack))
             return result
         except asyncio.CancelledError:
             self.state = "resting"
