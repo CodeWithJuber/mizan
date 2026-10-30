@@ -3133,7 +3133,7 @@
   "/api/memory/tadhkir": {
    "get": {
     "summary": "Memory Tadhkir",
-    "description": "The FSRS parameters memory strength is computed with (Tadhkir): FSRS's\ndefaults, or parameters fitted on this memory's own review log while MIZAN\nrests, with the held-out test that earned them and the latest night's test.",
+    "description": "The FSRS parameters memory strength is computed with (Tadhkir): FSRS's\ndefaults, or parameters fitted on this memory's own review log while MIZAN\nrests, with the held-out test that earned them and the latest night's test\n(``mode``: ``shadow`` reports a passing fit without using it).",
     "operationId": "memory_tadhkir_api_memory_tadhkir_get",
     "parameters": [
      {
@@ -8521,10 +8521,92 @@
     ]
    }
   },
+  "/api/tadbir/audit": {
+   "get": {
+    "summary": "Tadbir Audit",
+    "description": "Tadqiq (admin): the blinded audit of answers MIZAN gave with no model call. Per\nfamily: audits, agreements and disagreements with the teacher, the disagreement\nrate with a Wilson 95 % interval, spend, and the disagreement monitor (its e-value,\nthreshold and alarm). Counts only; no content (docs/tadqiq.md).",
+    "operationId": "tadbir_audit_api_tadbir_audit_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 3650,
+       "minimum": 1,
+       "default": 90,
+       "title": "Days"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/tadbir/learning/live": {
    "get": {
     "summary": "Tadbir Learning Live",
-    "description": "What MIZAN learned from your work since ``after``, as it happens (Sijill).",
+    "description": "What MIZAN learned from your work since ``after``, as it happens (Sijill).\nAdministrators also see the notes meant for every administrator (an audit\nalarm, docs/tadqiq.md).",
     "operationId": "tadbir_learning_live_api_tadbir_learning_live_get",
     "parameters": [
      {
@@ -8591,7 +8673,7 @@
       }
      }
     },
-    "x-mizan-access": "user",
+    "x-mizan-access": "user (more for admin)",
     "security": [
      {
       "bearer": []

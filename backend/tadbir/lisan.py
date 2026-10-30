@@ -208,8 +208,9 @@ class Lisan:
         *,
         task: str | None = None,
         attempt: int = 0,
+        model: Any = None,
     ) -> str:
-        model = wazn.choose(task or "", attempt, getattr(self.agent, "ai_model", None))
+        model = model or wazn.choose(task or "", attempt, getattr(self.agent, "ai_model", None))
         if task:
             self.last.setdefault(task, {})["model"] = model
         purpose = task or sys._getframe(1).f_code.co_name  # the Lisan task that asked
@@ -323,6 +324,19 @@ class Lisan:
         system = self._instruction("cross_check", INSTRUCTIONS["cross_check"], language=language)
         reply = await self.ask(system, request, task="cross_check")
         return extract_code(reply)
+
+    async def audit(self, request: str, today: str) -> str:
+        """The teacher's own answer to a request MIZAN answered without it (Tadqiq).
+        It is given the request alone, never MIZAN's answer, and asked of the run's
+        own model: it is the teacher being heard, not a cheaper stand-in (Wazn)."""
+        system = (
+            "Answer the user's request yourself, directly and briefly, in the language it "
+            "is written in. State the final result plainly; when it is a number, write the "
+            f"number. Today is {today}."
+        )
+        return await self.ask(
+            system, request, 800, task="audit", model=getattr(self.agent, "ai_model", None)
+        )
 
     async def fix_code(
         self,

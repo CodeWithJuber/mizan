@@ -20,6 +20,8 @@ from collections import deque
 from typing import Any
 
 MAX_NOTES = 200
+# Notes for every administrator rather than one user (a Tadqiq audit alarm).
+ADMINS = "@admins"
 _LOCK = threading.Lock()
 _NOTES: dict[str, deque[dict]] = {}
 _SEQUENCE = itertools.count(1)
@@ -69,7 +71,7 @@ def _summary(kind: str, attributes: dict[str, Any]) -> str:
         return str(attributes.get("detail") or "Remembered how a game level is won")
     if kind == "sidq":
         return str(attributes.get("detail") or "Corrected a claim before it was shown")
-    if kind in ("ahl_dhikr", "talaqqi", "nawm"):
+    if kind in ("ahl_dhikr", "talaqqi", "nawm", "tadqiq"):
         return str(attributes.get("detail") or kind)
     return kind
 

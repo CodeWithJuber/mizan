@@ -10,7 +10,7 @@ MIZAN learns from each person's work for that person, keeps a ledger of what it 
 | Their words as training data for MIZAN's own model | Off unless they switch it on | Built |
 | A teacher model's output as a training target | Only when MIZAN verified it and the teacher's licence allows training on its output | Built (`mizan_reply`) |
 | Minimum age | 16 or older | Built |
-| A blinded audit of MIZAN's own answers against the teacher | 2 to 5 % of answers, about $0.17 a week | Approved, not built yet |
+| A blinded audit of MIZAN's own answers against the teacher | 2 to 5 % of answers, about $0.17 a week | Built (Tadqiq, [tadqiq.md](tadqiq.md)): only runs whose person has learning on |
 | Learning shared across users | Opt-in when it is built | Not built |
 
 ## Purposes

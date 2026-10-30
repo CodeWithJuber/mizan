@@ -37,3 +37,5 @@ Answers saved before this field existed are counted by their recorded calls unde
 - Iqtisad records every paid call with its chat request and Lisan task (`spend.request_id`, `spend.task`), so cost can be split the same way.
 
 A Wilson interval needs enough answers to mean anything: about 250 to 400 answers in a family and language give a share to within ±5 points.
+
+A zero-call answer is also checked: a random sample of them is asked of the teacher afterwards, blinded, and each family is watched for a rise in disagreement ([tadqiq.md](tadqiq.md)).
