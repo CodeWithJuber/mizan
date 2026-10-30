@@ -12,8 +12,9 @@ probabilities MIZAN learned for them. They hold no utterance of the source.
 Attribution: MASSIVE, Copyright Amazon.com Inc. or its affiliates, licensed
 under CC BY 4.0. Changes: the aligned utterances were reduced to word
 translation probabilities (IBM Model 1, both directions, multiplied), with the
-values of slots the translators localised left out. No utterance is
-redistributed.
+values of slots the translators localised left out, name pairs that are not
+transliterations of each other removed, and pieces of words written apart
+removed. No utterance is redistributed.
 
 Citation:
 
@@ -23,6 +24,11 @@ Citation:
 > Tur and Prem Natarajan. 2022. MASSIVE: A 1M-Example Multilingual Natural
 > Language Understanding Dataset with 51 Typologically-Diverse Languages.
 > arXiv:2204.08582.
+
+Used to build, not shipped: [anyascii](https://github.com/anyascii/anyascii)
+0.3.2 (ISC licence, Copyright (c) 2020-2023 Hunter WB) romanises the words of
+name pairs, so the builder can test whether one is a transliteration of the
+other. The lexicon holds none of its output.
 
 Measured with, never shipped or learned from: FLORES-101 devtest
 ([gsarti/flores_101](https://huggingface.co/datasets/gsarti/flores_101) at

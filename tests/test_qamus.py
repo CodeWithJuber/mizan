@@ -107,6 +107,48 @@ def test_precision_at_1_counts_the_first_translation():
     assert qamus.precision_at_1(lexicon, gold) == {"words": 3, "held": 2, "correct": 1}
 
 
+# ── names are written, not translated ─────────────────────────────────────
+
+
+def test_a_name_and_its_transliteration_sound_alike():
+    assert qamus.skeleton("john") == "jhn"
+    assert qamus.skeleton("jon") == "jn"  # anyascii("जॉन")
+    assert qamus.skeleton("Mississippi") == "msp"
+    assert qamus.sounds_alike("jon", "john") > qamus.sounds_alike("bhrt", "pakistan")
+    assert qamus.sounds_alike("pkstn", "pakistan") == 1.0  # anyascii("پاکستان")
+    assert qamus.sounds_alike("gova", "mumbai") == 0.0  # anyascii("गोवा")
+    assert qamus.edit_distance("kitten", "sitting") == 3
+
+
+def test_the_name_cut_off_is_not_moved_by_mislabelled_pairs():
+    # Six transliterations and four other names marked as translated (a
+    # localised slot). With or without the four, the cut-off lies above every
+    # unrelated pair and keeps most transliterations.
+    transliterations = [0.9, 0.8, 1.0, 0.9, 0.75, 0.8]
+    positives = transliterations + [0.0, 0.0, 0.2, 0.0]
+    negatives = [0.0] * 8 + [0.2, 0.3]
+    for kept in (positives, transliterations):
+        sigma, j = qamus.youden(kept, negatives)
+        assert max(negatives) < sigma <= 0.8
+        assert sum(score >= sigma for score in transliterations) >= 4
+
+
+def test_a_piece_of_a_word_written_apart_is_not_a_word():
+    sentences = [
+        ["پاکستان", "کا", "وقت"],
+        ["پاکستان", "میں", "موسم"],
+        ["پا", "کستا", "ن", "میں", "ٹائمر"],
+        ["कौन", "है"],
+        ["कौन", "सा", "गाना"],
+        ["कौन", "आया"],
+        ["कौनसा", "दिन"],
+    ]
+    found = qamus.pieces(sentences)
+    assert {"پا", "کستا", "ن"} <= found
+    # "कौन" (who) stands alone more often than "कौनसा" is written closed.
+    assert "कौन" not in found and "سا" not in found
+
+
 # ── the shipped lexicon ───────────────────────────────────────────────────
 
 
@@ -123,27 +165,79 @@ def test_the_shipped_lexicon_is_small_and_records_how_it_was_measured():
         data = json.loads(gzip.decompress(path.read_bytes()))
         assert data["format"] == qamus.FORMAT
         assert data["source"]["licence"] == "CC BY 4.0"
+        assert data["source"]["romaniser"] == "anyascii 0.3.2"
+        names = data["measured"]["names"]
+        assert 0 < names["sigma"] <= 1 and names["test"]["precision"] > 0.8
         for direction, measured in data["measured"].items():
+            if direction == "names":
+                continue
             assert 0.5 < measured["precision_at_1"] <= 1.0, direction
             assert data["fit"][direction]["iterations"] >= 1
+            assert set(data["fit"][direction]["removed"]) == {"names", "pieces"}
 
 
 def test_translations_from_the_shipped_lexicon():
     assert qamus.translations("राजधानी", "hi", "en")[0][0] == "capital"
-    assert qamus.translations("भारत", "hi", "en")[0][0] == "india"
+    assert qamus.translations("शुक्रवार", "hi", "en")[0][0] == "friday"
     assert qamus.translations("capital", "en", "hi")[0][0] == "राजधानी"
     assert qamus.translations("عاصمة", "ar", "en")[0][0] == "capital"
     assert qamus.translations("no-such-word", "hi", "en") == []
     assert qamus.languages()["ur"] == "ARABIC"
+    # A pair either direction holds: "delhi" → "दिल्ली" reads "दिल्ली" as "delhi".
+    assert "delhi" in qamus.translate("दिल्ली", "en")
+    assert "chennai" in qamus.translate("चेन्नई", "en")
+
+
+# Pairs a translator's localisation put in the lexicon before names were
+# checked (one name put in another's place, or a word of the same sentence).
+SWAPS = [
+    ("pakistan", "ur", "بھارت"),
+    ("india", "ur", "پاکستان"),
+    ("japan", "ur", "پاکستان"),
+    ("japan", "ur", "ن"),
+    ("japan", "ur", "کستا"),
+    ("york", "ur", "گوجرانوالہ"),
+    ("york", "ur", "کراچی"),
+    ("york", "ur", "اسلام"),
+    ("mumbai", "ur", "شالیمار"),
+    ("china", "ur", "ووک"),
+    ("mumbai", "hi", "गोवा"),
+    ("london", "hi", "गाड़ी"),
+    ("mumbai", "ar", "المنورة"),
+    ("mumbai", "ar", "للمدينة"),
+    ("york", "ar", "سيناء"),
+    ("york", "ar", "بموعد"),
+    ("chennai", "ar", "الوضع"),
+    ("america", "ar", "تخبرنا"),
+    ("japan", "ar", "أيم"),
+    ("america", "ta", "ஓலா"),
+]
+
+
+@pytest.mark.parametrize(("english", "language", "other"), SWAPS)
+def test_a_name_put_in_another_names_place_is_not_a_translation(english, language, other):
+    assert other not in qamus.translate(english, language)
+    assert english not in qamus.translate(other, "en")
+
+
+def test_real_names_keep_their_transliterations():
+    assert "दिल्ली" in qamus.translate("delhi", "hi")
+    assert "न्यूयॉर्क" in qamus.translate("york", "hi")
+    assert "الهند" in qamus.translate("india", "ar")
+    assert "லண்டன்" in qamus.translate("london", "ta")
 
 
 def test_bridge_gives_the_words_a_text_translates_to():
     bridged = qamus.bridge("भारत की राजधानी नई दिल्ली है।", "en")
-    assert {"india", "capital", "new"} <= set(bridged)
+    assert {"capital", "new", "delhi"} <= set(bridged)
+    # "भारत" is not a transliteration of "india", so it is not given as one.
+    assert "india" not in qamus.translate("भारत", "en")
     # A word in the target's own script is matched as it is, not translated.
     assert qamus.translate("capital", "en") == []
     # A number in another script's digits is the same number.
     assert qamus.translate("१९४७", "en") == ["1947"]
+    # An invisible direction mark inside a word does not cut it in two.
+    assert qamus.tokens("جا‎ۓ گی") == ["جاۓ", "گی"]
 
 
 def test_bridge_can_be_switched_off(monkeypatch):
@@ -184,6 +278,22 @@ def test_about_reads_other_scripts_too():
     assert ahl_dhikr.about("آج موسم کیسا ہے", "What is the weather like today?")
     for sentence in UNRELATED:
         assert not ahl_dhikr.about("آج موسم کیسا ہے", sentence)
+
+
+def test_about_never_reads_one_place_as_another():
+    # A claim about India is not about a sentence on Pakistan, nor one about
+    # Mumbai about a sentence on Goa: neither name is translated as the other.
+    assert not ahl_dhikr.about(
+        "بھارت کا دارالحکومت نئی دہلی ہے", "The capital of Pakistan is Islamabad."
+    )
+    assert not ahl_dhikr.about(
+        "پاکستان کا دارالحکومت اسلام آباد ہے", "New Delhi is the capital of India."
+    )
+    assert not ahl_dhikr.about("मुंबई भारत का सबसे बड़ा शहर है", "Goa is the smallest state of India.")
+    assert not ahl_dhikr.about("मुंबई महाराष्ट्र की राजधानी है", "Panaji is the capital of Goa.")
+    # A correct pair across scripts is still read.
+    assert ahl_dhikr.about(CLAIM_HI, SOURCE)
+    assert ahl_dhikr.about("آج موسم کیسا ہے", "What is the weather like today?")
 
 
 def test_without_qamus_no_word_of_another_script_is_found(monkeypatch):

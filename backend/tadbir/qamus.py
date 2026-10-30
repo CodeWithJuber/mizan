@@ -29,6 +29,12 @@ number) that occurs once on each side, was translated rather than localised,
 and is one word on each side, pairs those two words. The test split's
 dictionary measures precision@1. A word copied unchanged into the other side
 (a name left in Latin letters) is matched as it is and not stored.
+
+Names are written, not translated: a pair with a name on either side (a word
+localisation swaps) is kept only when both words are entities and one sounds
+like the other (``sounds_alike``, cut-off by ``youden``), so "mumbai" is never
+read as "गोवा". Pieces of a word written apart ("پا کستا ن") are not words
+(``pieces``). A pair counts when either direction's lexicon holds it.
 ``scripts/build_qamus.py`` builds the files and ``--check`` rebuilds them and
 compares their SHA-256; ``scripts/qamus_eval.py`` measures ``about()`` with it
 (``docs/qamus.md``).
@@ -64,9 +70,23 @@ def enabled() -> bool:
 
 
 def tokens(text: str) -> list[str]:
-    """The words of a text, in one Unicode form (NFC), lower-cased."""
-    words: list[str] = tokenize(unicodedata.normalize("NFC", text or ""))
+    """The words of a text, in one Unicode form (NFC), lower-cased, without
+    invisible format characters (Unicode category Cf: direction marks,
+    joiners). Unicode's word boundaries ignore them inside a word, but ``\\w``
+    stops at them: "جا‎ۓ" with a left-to-right mark inside was read as "جا"
+    and "ۓ"."""
+    words: list[str] = tokenize(_visible(text))
     return words
+
+
+def _visible(text: str) -> str:
+    normal = unicodedata.normalize("NFC", text or "")
+    return "".join(char for char in normal if unicodedata.category(char) != "Cf")
+
+
+def _key(word: str) -> str:
+    """A word as the lexicon stores it."""
+    return _visible(word).lower()
 
 
 @cache
@@ -242,6 +262,115 @@ def precision_at_1(lexicon: dict[str, list[list]], gold: dict[str, set[str]]) ->
     return {"words": len(gold), "held": len(held), "correct": correct}
 
 
+# ── names: a name is written, not translated ──────────────────────────────
+#
+# A name is carried into another script by its sounds ("john", "जॉन"), so a
+# pair of names is a translation only when one is a transliteration of the
+# other. A pair learned from a sentence in which the translator put another
+# name in its place ("the time in London", "दिल्ली में समय") is not one.
+
+
+def skeleton(romanised: str) -> str:
+    """A romanised word's consonants, each run written once: transliteration
+    keeps a name's consonants and changes its vowels ("jon", "john" → "jn")."""
+    letters = "".join(char for char in romanised.lower() if "a" <= char <= "z")
+    found: list[str] = []
+    for char in letters:
+        if char not in "aeiou" and (not found or found[-1] != char):
+            found.append(char)
+    return "".join(found)
+
+
+def edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance: insertions, deletions and substitutions."""
+    previous = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        current = [i]
+        for j, y in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x != y)))
+        previous = current
+    return previous[-1]
+
+
+def sounds_alike(a: str, b: str) -> float:
+    """How alike two romanised words sound: 1 − the edit distance of their
+    consonant skeletons over the longer skeleton's length."""
+    x, y = skeleton(a), skeleton(b)
+    if not x or not y:
+        return float(x == y)
+    return 1.0 - edit_distance(x, y) / max(len(x), len(y))
+
+
+def youden(positives: Sequence[float], negatives: Sequence[float]) -> tuple[float, float]:
+    """A cut-off σ on a score by Youden's J = TPR − FPR, and its J.
+
+    When some "positives" are in truth drawn like the negatives (a slot marked
+    as translated that held another name), TPR = π·T + (1 − π)·FPR, so
+    J = π·(T − FPR): its best σ does not move with the share π, as F1's does.
+
+    With a few dozen pairs J is flat near its best, so the σ taken is the
+    highest whose J is within one standard error of the best J (the
+    one-standard-error rule): the strictest cut-off the data cannot tell from
+    the best, since keeping an unrelated name costs more than losing a name."""
+    n_pos, n_neg = max(1, len(positives)), max(1, len(negatives))
+    curve = []
+    for sigma in sorted(set(positives) | set(negatives)):
+        tpr = sum(score >= sigma for score in positives) / n_pos
+        fpr = sum(score >= sigma for score in negatives) / n_neg
+        curve.append((sigma, tpr, fpr))
+    if not curve:
+        return 1.0, 0.0
+    _sigma, tpr, fpr = max(curve, key=lambda point: (point[1] - point[2], point[0]))
+    error = math.sqrt(tpr * (1 - tpr) / n_pos + fpr * (1 - fpr) / n_neg)
+    sigma, tpr, fpr = max(
+        (point for point in curve if point[1] - point[2] >= tpr - fpr - error),
+        key=lambda point: point[0],
+    )
+    return sigma, tpr - fpr
+
+
+# ── pieces: a token that is part of a word ────────────────────────────────
+
+
+def pieces(sentences: Iterable[Sequence[str]]) -> set[str]:
+    """Tokens that are pieces of a word written apart ("پا کستا ن" for
+    "پاکستان", "what 's" for "whats"), not words of their own.
+
+    A run of adjacent tokens is joinable when, written together, it is a token
+    the corpus holds. A token is a piece when the corpus holds the whole word
+    it is most often part of more often than it holds the token standing alone
+    (outside every joinable run): "کستا" never stands alone, while "कौन" (who)
+    stands alone more often than "कौनसा" is written closed."""
+    sentences = [list(sentence) for sentence in sentences]
+    vocabulary = Counter(word for sentence in sentences for word in sentence)
+    longest = max((len(word) for word in vocabulary), default=0)
+    alone: Counter = Counter()
+    wholes: dict[str, Counter] = {}
+    for sentence in sentences:
+        inside: dict[int, str] = {}
+        for start in range(len(sentence)):
+            joined = sentence[start]
+            for end in range(start + 1, len(sentence)):
+                joined += sentence[end]
+                if len(joined) > longest:
+                    break
+                if joined in vocabulary:
+                    for position in range(start, end + 1):
+                        if len(joined) > len(inside.get(position, "")):
+                            inside[position] = joined
+        for position, word in enumerate(sentence):
+            if position in inside:
+                wholes.setdefault(word, Counter())[inside[position]] += 1
+            else:
+                alone[word] += 1
+    found = set()
+    for word, parts_of in wholes.items():
+        whole = parts_of.most_common(1)[0][0]
+        if vocabulary[whole] > alone[word]:
+            found.add(word)
+    return found
+
+
 # ── using the shipped lexicon ─────────────────────────────────────────────
 
 
@@ -266,6 +395,18 @@ def _load() -> tuple[dict[tuple[str, str], dict[str, Entry]], dict[str, str]]:
     return lexicons, scripts
 
 
+@cache
+def _reverse() -> dict[tuple[str, str], dict[str, tuple[str, ...]]]:
+    """For each direction s>t, the s-words each t-word is a translation of."""
+    found: dict[tuple[str, str], dict[str, list[str]]] = {}
+    for (source, target), entries in _load()[0].items():
+        index = found.setdefault((source, target), {})
+        for word, row in entries.items():
+            for translation, _p in row:
+                index.setdefault(translation, []).append(word)
+    return {key: {k: tuple(v) for k, v in index.items()} for key, index in found.items()}
+
+
 def languages() -> dict[str, str]:
     """Each language the lexicon reads, with its script."""
     return dict(_load()[1])
@@ -274,7 +415,7 @@ def languages() -> dict[str, str]:
 def translations(word: str, source_lang: str, target_lang: str) -> list[tuple[str, float]]:
     """A word's translations from one language into another, most probable
     first, each with P(translation | word); [] when the lexicon does not hold it."""
-    key = unicodedata.normalize("NFC", word or "").lower()
+    key = _key(word)
     return list(_load()[0].get((source_lang, target_lang), {}).get(key, ()))
 
 
@@ -287,16 +428,23 @@ def reads(text: str) -> list[str]:
 def translate(word: str, target_lang: str) -> list[str]:
     """A word's translations into a language written in another script, from
     every language written in the word's script (an Arabic-script word may be
-    Arabic or Urdu). A word in the target's own script has none."""
+    Arabic or Urdu). A word in the target's own script has none.
+
+    A pair counts when either direction's lexicon holds it: "दिल्ली" is read as
+    "delhi" because the English lexicon gives "delhi" → "दिल्ली", though the
+    Hindi one, cut where its own held-out dictionary put it, does not hold it.
+    Both directions come from one symmetrised score and passed the same name
+    and piece checks."""
     lexicons, scripts = _load()
     written = script(word)
     if not written or written == scripts.get(target_lang):
         return [_ascii_digits(word)] if _ascii_digits(word) else []
-    key = unicodedata.normalize("NFC", word).lower()
+    key = _key(word)
     found: list[str] = []
     for source, kind in scripts.items():
         if kind == written:
             found += [b for b, _p in lexicons.get((source, target_lang), {}).get(key, ())]
+            found += _reverse().get((target_lang, source), {}).get(key, ())
     return list(dict.fromkeys(found))
 
 
