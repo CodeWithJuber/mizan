@@ -53,7 +53,7 @@ import httpx
 
 from core.adaptive import BetaEstimator, bm25_scores, tokenize
 
-from . import amanah, isnad, qamus, qasd
+from . import amanah, gharib, isnad, qamus, qasd
 from .taallum import content_words
 
 logger = logging.getLogger("mizan.ahl_dhikr")
@@ -242,6 +242,33 @@ def average_information() -> float:
     return sum(count * information(word) for word, count in counts.items()) / occurrences
 
 
+# The word information ``about`` weighs by: "lughah" (in use), the inverse
+# document frequency above; or "gharib", each word's self-information in the
+# claim's own language from word frequencies (``gharib``), with a translation
+# counted when it carries more than an average word of the sentence's language.
+# "gharib" was measured on 30 Oct 2026 and not adopted: it did not make Hindi
+# and Urdu supports more precise and lost English contradictions
+# (docs/ahl-dhikr.md); ``scripts/ahl_coverage.py --information gharib`` reads it.
+WORDS = "lughah"
+
+
+def _weigher(claim: str) -> Callable[[str], float]:
+    if WORDS == "gharib":
+        language = gharib.language_of(claim)
+        return lambda word: gharib.information(word, language)
+    return information
+
+
+def _evidence(sentence: str) -> Callable[[str], bool]:
+    """Which words of the sentence are evidence when a translation finds them:
+    not function words."""
+    if WORDS == "gharib":
+        language = gharib.language_of(sentence)
+        return lambda word: gharib.informative(word, language)
+    floor = average_information()
+    return lambda word: information(word) > floor
+
+
 def about(claim: str, sentence: str) -> bool:
     """The sentence speaks of what the claim speaks of.
 
@@ -259,7 +286,8 @@ def about(claim: str, sentence: str) -> bool:
     nearly every sentence, so finding it is no evidence. As a word found as it
     is stands for itself, a word of the sentence stands for one claim word at
     most (``docs/qamus.md``)."""
-    weights = {word: information(word) for word in set(tokenize(claim))}
+    weigh = _weigher(claim)
+    weights = {word: weigh(word) for word in set(tokenize(claim))}
     if not weights:
         return False
     mean = sum(weights.values()) / len(weights)
@@ -272,8 +300,7 @@ def about(claim: str, sentence: str) -> bool:
             (word for word in distinctive if word not in present),
             key=lambda word: (-distinctive[word], word),
         )
-        floor = average_information()
-        translated = qamus.found_in(missing, sentence, lambda word: information(word) > floor)
+        translated = qamus.found_in(missing, sentence, _evidence(sentence))
         covered += sum(distinctive[word] for word in translated)
     return 2 * covered > total
 
