@@ -75,6 +75,20 @@ def _save(store: Any, user_id: str, items: list[dict]) -> None:
         pass
 
 
+def _chat() -> str:
+    """The chat this lesson is learned in, so erasing the chat erases it (Mahw)."""
+    try:
+        from workspace.context import current_chat_session
+
+        return str(current_chat_session() or "")
+    except Exception:  # noqa: BLE001 - outside a chat there is none
+        return ""
+
+
+def _tokens(sig: str, request: str) -> list[str]:
+    return list(tokenize(f"{sig} {request}"))[:80]
+
+
 def learn(
     store: Any, user_id: str, kind: str, request: str, failing: str, error: str, fixed: str
 ) -> dict | None:
@@ -83,11 +97,15 @@ def learn(
     diff = change(failing, fixed)
     if not sig or not diff:
         return None
+    chat = _chat()
     items = _load(store, user_id)
     for item in items:
         if item["kind"] == kind and item["signature"] == sig:
             item["change"] = diff  # the latest verified way of fixing it
             item["used"] = time.time()
+            chats = item.setdefault("chats", [])
+            if chat and chat not in chats:
+                chats.append(chat)
             _save(store, user_id, items)
             return item
     lesson = {
@@ -95,9 +113,10 @@ def learn(
         "kind": kind,
         "signature": sig,
         "change": diff,
-        "tokens": tokenize(f"{sig} {request}")[:80],
+        "tokens": _tokens(sig, request),
         "posterior": BetaEstimator(**_PRIOR).to_dict(),
         "used": time.time(),
+        "chats": [chat] if chat else [],
     }
     items.append(lesson)
     _save(store, user_id, items)
@@ -154,6 +173,29 @@ def summary(store: Any, user_id: str) -> dict:
             for item in items[:30]
         ],
     }
+
+
+def unlearn(store: Any, user_id: str, chat: str, requests: list[str]) -> int:
+    """Drop the lessons learned in an erased chat (Mahw): those that name it, and
+    older ones whose words are exactly one of its requests'. A lesson also used in
+    another chat goes too: its words or its repair came from the erased one."""
+
+    def came_from(item: dict) -> bool:
+        if chat and chat in (item.get("chats") or []):
+            return True
+        return any(
+            item.get("tokens") == _tokens(str(item.get("signature", "")), request)
+            for request in requests
+        )
+
+    items = _load(store, user_id)
+    kept = [item for item in items if not came_from(item)]
+    if len(kept) != len(items):
+        try:
+            store.put(_key(user_id), {"lessons": kept})
+        except Exception:  # noqa: BLE001
+            return 0
+    return len(items) - len(kept)
 
 
 def forget(store: Any, user_id: str) -> None:

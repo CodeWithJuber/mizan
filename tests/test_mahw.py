@@ -248,3 +248,55 @@ def test_only_the_owner_deletes_a_chat_and_not_while_it_runs(chat_api):
     assert client.patch("/api/chat/s-1", json={"title": title}, headers=mine).status_code == 404
     listed = client.get("/api/daftar/receipts", headers=mine).json()["receipts"]
     assert listed and listed[0]["kind"] == "chat"
+
+
+async def test_lessons_notes_and_failure_signatures_of_the_chat_go_too(stores, monkeypatch):
+    """The stores the 29 Oct audit found Mahw missed: Tajriba repair lessons,
+    the live learning record (Sijill) and the instruction harness's failure
+    signatures (Tajdid)."""
+    from tadbir import sijill, tajdid, tajriba
+    from workspace.context import bind_chat_session, reset_chat_session
+
+    chat, private, folder = stores
+    await seed_chat(chat, private, folder, "chat-secret", SECRET)
+    await seed_chat(chat, private, folder, "chat-kept", KEPT)
+    adaptive = AdaptiveStateStore(private.db_path)
+    harness = AdaptiveStateStore(str(folder / "harness.db"))
+    monkeypatch.setattr(tajdid, "store", lambda: harness)
+
+    def learn_in(session_id: str, request: str, failing: str, error: str) -> None:
+        token = bind_chat_session(session_id)
+        try:
+            tajriba.learn(adaptive, OWNER, "build_and_run", request, failing, error, "x = 1")
+            sijill.note("tajriba", {"signature": request[:40]}, owner=OWNER)
+            tajdid.record("write_code", "base", False, f"failed in {session_id}")
+        finally:
+            reset_chat_session(token)
+
+    learn_in("chat-secret", SECRET, "print(maryam_school)", "NameError: name 'm' is not defined")
+    learn_in("chat-kept", KEPT, "print(1/0)", "ZeroDivisionError: division by zero")
+    # A lesson kept before lessons named their chat: found by its request's words.
+    legacy = tajriba._load(adaptive, OWNER)
+    secret = next(lesson for lesson in legacy if lesson["chats"] == ["chat-secret"])
+    legacy.append({**secret, "id": "old", "chats": [], "change": "y = 2"})
+    adaptive.put(tajriba._key(OWNER), {"lessons": legacy})
+
+    receipt = await mahw.erase_chat(
+        chat_db=chat.db_path,
+        artifacts_db=chat.db_path,
+        private=private,
+        owner=OWNER,
+        session_id="chat-secret",
+    )
+
+    removed = receipt["removed"]
+    assert removed["learning notes"] == 1
+    assert removed["instruction failure notes"] == 1
+    lessons = tajriba._load(adaptive, OWNER)
+    assert [lesson["chats"] for lesson in lessons] == [["chat-kept"]]
+    notes = sijill.since(OWNER)
+    assert [note["chat"] for note in notes] == ["chat-kept"]
+    failures = tajdid._state("write_code")["failures"]
+    assert [tajdid._failure_text(item) for item in failures] == ["failed in chat-kept"]
+    assert SECRET not in json.dumps(receipt)
+    sijill.clear(OWNER)
