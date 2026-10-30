@@ -3130,6 +3130,76 @@
     ]
    }
   },
+  "/api/memory/tadhkir": {
+   "get": {
+    "summary": "Memory Tadhkir",
+    "description": "The FSRS parameters memory strength is computed with (Tadhkir): FSRS's\ndefaults, or parameters fitted on this memory's own review log while MIZAN\nrests, with the held-out test that earned them and the latest night's test.",
+    "operationId": "memory_tadhkir_api_memory_tadhkir_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/iqtisad": {
    "get": {
     "summary": "Spending Summary",
