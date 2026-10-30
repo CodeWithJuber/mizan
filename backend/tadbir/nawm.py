@@ -38,6 +38,10 @@ given to Lisan as knowledge until an independent host agrees
 Wikipedia while MIZAN rests; a site is never its own second witness, and a
 question about the deen is never asked outside.
 
+Last, FSRS is fitted on the review log of the person's memories and adopted only
+when it predicts their later reviews better than the parameters in use, by a
+margin chance does not reach (``memory.tadhkir.rest``).
+
 The night has a budget (``LESSONS`` and ``WITNESSES`` per person, ``SECONDS`` in
 all), stops as soon as a request is running, and keeps to each person's
 choices: under ``learning: off`` nothing is changed. ``MIZAN_NAWM``: ``on``
@@ -184,7 +188,10 @@ async def night(
     deadline: float | None = None,
     idle: Callable[[], bool] = lambda: True,
 ) -> dict:
-    """One person's night: lessons replayed, then second witnesses sought."""
+    """One person's night: lessons replayed, second witnesses sought, then FSRS
+    fitted on the review log of their memory, which shares the store's database
+    (``tadhkir.rest``: adopted only on held-out evidence)."""
     lessons = await replay(store, user_id, deadline=deadline, idle=idle)
     witnesses = await witness(store, user_id, deadline=deadline, idle=idle)
-    return {**lessons, **witnesses}
+    fit = await tadhkir.rest(getattr(store, "db_path", None), deadline=deadline, idle=idle)
+    return {**lessons, **witnesses, "fitted": int(fit.get("status") == "adopted")}

@@ -3502,6 +3502,21 @@ async def list_memories(
     return {"results": results, "total": len(results)}
 
 
+@app.get("/api/memory/tadhkir")
+async def memory_tadhkir(user: TokenPayload = Depends(require_auth)):
+    """The FSRS parameters memory strength is computed with (Tadhkir): FSRS's
+    defaults, or parameters fitted on this memory's own review log while MIZAN
+    rests, with the held-out test that earned them and the latest night's test."""
+    from memory import tadhkir
+
+    own = await _own_memory(user)
+    conn = own._get_conn()
+    try:
+        return tadhkir.report(conn)
+    finally:
+        own._release_conn(conn)
+
+
 # === IQTISAD (اقتصاد): hard spending limits on model calls ===
 
 
@@ -5658,7 +5673,7 @@ async def nawm_night() -> dict:
             for account in auth.list_users()
             if "admin" in (account.get("roles") or []) and account.get("enabled", True)
         ]
-    counted = ("replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated")
+    counted = ("replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted")
     totals = {"people": 0, **dict.fromkeys(counted, 0)}
     seen: set[tuple[str, str]] = set()
     for user_id, store in people:

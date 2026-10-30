@@ -4,9 +4,11 @@ When a user deletes a chat or forgets a note, Mahw removes it from every place
 MIZAN keeps it and from what was derived from it: the chat's messages and
 summary, the task records, wisdom, knowledge-graph entries, learned wording and
 programs built from its requests, learner rows, debug runs, held actions, the
-chat's plan file, and the vectors of erased notes. The pathway network (Masalik)
-cannot have one experience subtracted, since Hebbian updates do not reverse, so
-it is rebuilt from what is kept.
+chat's plan file, and the vectors and memory-strength reviews (Tadhkir's log)
+of erased notes. The pathway network (Masalik) cannot have one experience
+subtracted, since Hebbian updates do not reverse, so it is rebuilt from what is
+kept; FSRS parameters fitted on erased reviews go back to FSRS's defaults, and
+are fitted again on the kept log the next night.
 
 Then Mahw checks its own work. It cuts each erased text into 20-character
 pieces and looks for them in every store it can read. A piece that also appears
@@ -118,6 +120,31 @@ def _delete_in(
         sql = f"DELETE FROM {table} WHERE {column} IN ({_marks(batch)}){extra}"  # noqa: S608
         removed += _run(path, sql, (*batch, *extra_params))
     return removed
+
+
+def _forget_reviews(path: str | Path, note_ids: Sequence[str]) -> tuple[int, int]:
+    """The notes' memory-strength reviews (Tadhkir's log, no words), and FSRS
+    parameters adopted from them. Returns (reviews removed, fits dropped)."""
+    stamps = [
+        str(row[0])
+        for batch in _in_batches(list(note_ids))
+        for row in _select(
+            path,
+            f"SELECT MIN(reviewed) FROM memory_reviews WHERE memory_id IN ({_marks(batch)})",  # noqa: S608
+            batch,
+        )
+        if row[0]
+    ]
+    removed = _delete_in(path, "memory_reviews", "memory_id", note_ids)
+    conn = _connect(path) if stamps else None
+    if conn is None:
+        return removed, 0
+    try:
+        from memory import tadhkir
+
+        return removed, tadhkir.unfit(conn, min(stamps))
+    finally:
+        conn.close()
 
 
 # ── what was derived from the erased words ───────────────────────────────
@@ -532,7 +559,10 @@ def _erase_chat_rows(
             db, "SELECT content FROM memories WHERE source LIKE ?", (f"chat:{session_id}%",)
         )
     ]
+    reviews, fits = _forget_reviews(db, note_ids)
     removed["notes"] = _delete_in(db, "memories", "id", note_ids)
+    removed["memory reviews"] = reviews
+    removed["memory strength fit"] = fits
     _drop_cached(private, note_ids)
     removed["task records"] = _delete_in(db, "task_history", "task", asked) + _run(
         db,
@@ -646,7 +676,10 @@ async def erase_notes(
         ids = list(note_ids)[:500]
         query = f"SELECT content FROM memories WHERE id IN ({_marks(ids)})"  # noqa: S608
         texts = [str(row[0] or "") for row in _select(db, query, ids)] if ids else []
+        reviews, fits = await asyncio.to_thread(_forget_reviews, db, ids)
         removed = {"notes": await asyncio.to_thread(_delete_in, db, "memories", "id", ids)}
+        removed["memory reviews"] = reviews
+        removed["memory strength fit"] = fits
         _drop_cached(private, ids)
         deleted, left = await _drop_vectors(private, ids)
         removed["vectors"] = deleted
