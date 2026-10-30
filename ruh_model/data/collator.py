@@ -4,6 +4,14 @@ Pads variable-length ``(root_id, pattern_id)`` sequences and builds
 next-token labels for causal LM training: ``labels[t] = root_ids[t+1]``,
 with ``pad_id`` marking ignored positions (the loss uses
 ``ignore_index=pad_id``).
+
+Scripture is never a target. A sample may carry ``scripture_mask``, one bool
+per token, True for a token inside a scripture span (an ayah, a translation of
+one, a hadith) that its record declared (``ruh_model.data.scripture``;
+``sequence.tokenize_record`` builds it from the record's ``scripture`` strings).
+A label is ignored whenever the token it predicts is marked, whatever
+``target_mask`` says, so no supervised label ever falls inside a span. Spans a
+record does not declare are not known here.
 """
 
 from __future__ import annotations
@@ -18,6 +26,10 @@ class RuhCollator:
     Args:
         pad_id: ID used for padding and ignored label positions
             (``config.PAD_ROOT``, typically 0).
+
+    Samples may carry ``target_mask`` (False: do not supervise the token) and
+    ``scripture_mask`` (True: a scripture token, never supervised); both are
+    per token and describe the token being predicted.
     """
 
     def __init__(self, pad_id: int = 0) -> None:
@@ -50,6 +62,14 @@ class RuhCollator:
                 # A mask describes the token being predicted, so shift it with labels.
                 for position, supervised in enumerate(mask[1:]):
                     if not supervised:
+                        labels[i, position] = self.pad_id
+            if "scripture_mask" in sample:
+                protected = sample["scripture_mask"]
+                if len(protected) != len(sample["root_ids"]):
+                    raise ValueError("scripture_mask must match the token sequence length")
+                # Never supervise a scripture token, whatever target_mask says.
+                for position, inside in enumerate(protected[1:]):
+                    if inside:
                         labels[i, position] = self.pad_id
 
         result = {

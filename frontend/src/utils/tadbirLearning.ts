@@ -63,3 +63,35 @@ export function learnedCount(evidence: number): string {
   const count = Math.max(1, Math.round(evidence));
   return `${count} result${count === 1 ? "" : "s"} learned`;
 }
+
+/** One (family, language) row of /api/tadbir/teacher-calls. */
+export interface TeacherFamily {
+  family: string;
+  language: string;
+  requests: number;
+  zero_call: number;
+  zero_call_share: number | null;
+  interval: [number, number] | null;
+}
+
+export const FAMILY_LABELS: Record<string, string> = {
+  ...WORK_LABELS,
+  converse: "Conversation",
+  unplaced: "Not read by MIZAN",
+  unrecorded: "Before this was recorded",
+};
+
+/** "62% (48%–75%)": the share answered with no model call and its 95 % interval. */
+export function shareText(share: number | null, interval: [number, number] | null): string {
+  if (share === null) return "no answers yet";
+  return interval ? `${percent(share)} (${percent(interval[0])}–${percent(interval[1])})` : percent(share);
+}
+
+/** The families worth showing: most answers first, at most ``limit``. */
+export function topFamilies(rows: TeacherFamily[], limit = 8): (TeacherFamily & { label: string })[] {
+  return [...rows]
+    .sort((a, b) => b.requests - a.requests)
+    .slice(0, limit)
+    .map((row) => ({ ...row, label: FAMILY_LABELS[row.family] ?? row.family }));
+}
+

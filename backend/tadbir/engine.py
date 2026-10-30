@@ -221,6 +221,13 @@ class Tadbir:
         else:
             task, parts, understanding, example = await self._understand(task, history)
         handler = getattr(self, f"_{understanding.intent}", None)
+        # What MIZAN read, kept on the run for its usage record even when the request
+        # goes on to the language model (usage.lisan.family/language).
+        self.agent._understood = {
+            "intent": understanding.intent,
+            "language": understanding.language,
+            "by": understanding.entities.get("understood_by", "fahm"),
+        }
         trace.event(
             "understand",
             understanding.intent,
@@ -286,6 +293,7 @@ class Tadbir:
                 "plan": deepcopy(self.plan.items) if self.plan else [],
                 "verified": outcome.verified,
                 "language_model_calls": self.lisan.calls,
+                "language_model_tasks": dict(self.lisan.by_task),
                 "agents": self.workers,
             },
         }

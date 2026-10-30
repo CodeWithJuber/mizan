@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare all 114 surahs into three pinned, attributed Quranic training paths."""
+"""Prepare all 114 surahs into pinned, attributed Quranic data paths.
+
+The Quran is never a training target: ``canary`` is evaluation-only, and
+``morphology`` and ``grounded_qa`` hold it only as declared, masked input.
+"""
 
 from __future__ import annotations
 

@@ -1,8 +1,9 @@
 """Full-scale real-data training CLI for the Ruh Model.
 
-Uses the verified full Tanzil Quran text and pinned Arabic Wikipedia by default.
-Hadith and other corpora require explicit attributed/licensed source configuration.
-See docs/quranic_training_paths.md for split-aware Quranic candidate evaluation.
+Uses pinned Arabic Wikipedia by default. The Quran and hadith text are never a
+training target of Ruh or any model in this repository: their weights default
+to 0 and a positive weight is refused. Other corpora require explicit
+attributed/licensed source configuration. See docs/quranic_training_paths.md.
 
 Usage:
     # Quick: single stage with defaults
@@ -11,9 +12,9 @@ Usage:
     # Full 4-stage curriculum run
     python -m ruh_model.train_full --all-stages --samples 500000
 
-    # Custom mixing and GPU training
+    # Custom mixing (OPUS needs RUH_DATA_SOURCES) and GPU training
     python -m ruh_model.train_full --stage alaqah --samples 200000 \\
-        --device cuda --quran-weight 0.4 --hadith-weight 0.2
+        --device cuda --wiki-weight 0.8 --opus-weight 0.2
 
     # Resume from a checkpoint
     python -m ruh_model.train_full --stage mudghah --resume-from ruh_model/checkpoints/alaqah_final
@@ -40,6 +41,7 @@ import torch.nn as nn
 
 from ruh_model.config import RuhConfig
 from ruh_model.data.collator import RuhCollator
+from ruh_model.data.scripture import check_mixing_ratios
 from ruh_model.model import RuhModel
 from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.training.curriculum import VALID_STAGE_NAMES, NafsCurriculum
@@ -48,12 +50,13 @@ from ruh_model.training.scheduler import WarmupCosineScheduler
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Default data mixing ratios
+# Default data mixing ratios (the CLI defaults). Quran and hadith stay 0: they
+# are never a training target, and a positive weight is refused.
 # ---------------------------------------------------------------------------
 _DEFAULT_RATIOS: dict[str, float] = {
-    "quran": 0.30,
+    "quran": 0.0,
     "hadith": 0.0,
-    "arabic_wiki": 0.70,
+    "arabic_wiki": 1.0,
     "opus": 0.0,
     "morphology": 0.0,
 }
@@ -446,8 +449,11 @@ Examples:
   # Resume interrupted training
   python -m ruh_model.train_full --stage alaqah --resume-from ruh_model/checkpoints/nutfah_final
 
-  # Custom data mix (more Quran, less Wikipedia)
-  python -m ruh_model.train_full --stage nutfah --quran-weight 0.5 --wiki-weight 0.1
+  # Custom data mix (OPUS needs RUH_DATA_SOURCES)
+  python -m ruh_model.train_full --stage nutfah --wiki-weight 0.8 --opus-weight 0.2
+
+The Quran and hadith are never training targets: --quran-weight and
+--hadith-weight must stay 0, and a positive value is refused.
 """,
     )
 
@@ -492,27 +498,33 @@ Examples:
     # --- Mixing ratios ---
     mix = parser.add_argument_group("Data mixing weights (proportional, need not sum to 1)")
     mix.add_argument(
-        "--quran-weight", type=float, default=0.30, help="Quran weight (default: 0.30)"
+        "--quran-weight",
+        type=float,
+        default=_DEFAULT_RATIOS["quran"],
+        help="Must be 0: the Quran is never a training target; a positive value is refused",
     )
     mix.add_argument(
         "--hadith-weight",
         type=float,
-        default=0.0,
-        help="Explicit licensed/attributed Hadith source weight (default: 0; requires RUH_DATA_SOURCES)",
+        default=_DEFAULT_RATIOS["hadith"],
+        help="Must be 0: hadith text is never a training target; a positive value is refused",
     )
     mix.add_argument(
-        "--wiki-weight", type=float, default=0.70, help="Arabic Wikipedia weight (default: 0.70)"
+        "--wiki-weight",
+        type=float,
+        default=_DEFAULT_RATIOS["arabic_wiki"],
+        help="Arabic Wikipedia weight (default: 1.0)",
     )
     mix.add_argument(
         "--opus-weight",
         type=float,
-        default=0.0,
+        default=_DEFAULT_RATIOS["opus"],
         help="Custom OPUS corpus weight (default: 0; requires RUH_DATA_SOURCES)",
     )
     mix.add_argument(
         "--morpho-weight",
         type=float,
-        default=0.0,
+        default=_DEFAULT_RATIOS["morphology"],
         help="Custom morphology source weight (default: 0; requires RUH_DATA_SOURCES)",
     )
 
@@ -551,7 +563,12 @@ Examples:
     )
     log.add_argument("--verbose", action="store_true", help="Enable debug-level logging")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    try:
+        _build_mixing_ratios(args)
+    except ValueError as error:
+        parser.error(str(error))
+    return args
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -586,14 +603,20 @@ def _build_config(max_seq_len: int, device: str) -> RuhConfig:
 
 
 def _build_mixing_ratios(args: argparse.Namespace) -> dict[str, float]:
-    """Build mixing ratios dict from CLI arguments."""
-    return {
+    """Build mixing ratios dict from CLI arguments.
+
+    Raises ValueError for a positive Quran or hadith weight: neither is ever a
+    training target (``ruh_model.data.scripture.RULE``).
+    """
+    ratios = {
         "quran": args.quran_weight,
         "hadith": args.hadith_weight,
         "arabic_wiki": args.wiki_weight,
         "opus": args.opus_weight,
         "morphology": args.morpho_weight,
     }
+    check_mixing_ratios(ratios)
+    return ratios
 
 
 def _create_or_resume_model(config: RuhConfig, resume_from: str | None, device: str) -> RuhModel:

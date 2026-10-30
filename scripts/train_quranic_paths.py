@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Run one bounded V2 Quranic objective; never changes the production endpoint.
+"""Run one bounded V2 Quranic-input objective; never changes the production endpoint.
 
-Resume a private V2 candidate and sibling training_state.pt to continue model
-and AdamW state. A tiny fresh model is only an engineering smoke test.
+The Quran is never a training target: only the input-only paths train here
+(morphology: QAC labels; grounded_qa: the citation, with the quoted text
+masked). The canary is evaluation-only and is refused. Resume a private V2
+candidate and sibling training_state.pt to continue model and AdamW state. A
+tiny fresh model is only an engineering smoke test.
 """
 
 from __future__ import annotations
@@ -19,9 +22,7 @@ from ruh_model.train_sequence import run_training
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, required=True)
-    parser.add_argument(
-        "--path", choices=("continuation", "morphology", "grounded_qa"), required=True
-    )
+    parser.add_argument("--path", choices=("morphology", "grounded_qa"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume-from", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
@@ -34,6 +35,8 @@ def main():
         raise ValueError("Each run has a hard 30-minute training limit")
     manifest = json.loads((args.data_dir / "manifest.json").read_text())
     spec = manifest["paths"][args.path]
+    if spec.get("evaluation_only"):
+        raise ValueError(f"{args.path} is an evaluation-only set and is never trained on")
     data = (args.data_dir / spec["file"]).read_bytes()
     if hashlib.sha256(data).hexdigest() != spec["sha256"]:
         raise ValueError("Prepared data hash differs from the verified manifest")

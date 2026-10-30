@@ -173,10 +173,22 @@ def extract_code(reply: str) -> str:
     return reply.strip().strip("`")
 
 
+def count_lisan_task(agent: Any, task: str, calls: int) -> None:
+    """Add a Lisan task's provider calls to the run's tally (every Lisan of a run
+    shares its agent, so the run's usage counts them all)."""
+    tally = getattr(agent, "_lisan_tasks", None)
+    if not isinstance(tally, dict):
+        return
+    tally[task] = tally.get(task, 0) + calls
+
+
 class Lisan:
     def __init__(self, agent: Any):
         self.agent = agent
         self.calls = 0
+        # Calls per kind of work, so a request's usage says which of MIZAN's tasks
+        # still needed the model (usage.lisan, docs/teacher-calls.md).
+        self.by_task: dict[str, int] = {}
         # Why the model stopped its last reply ("max_tokens" means it was cut off).
         self.last_stop = ""
         # The instruction version (Tajdid) and model (Wazn) of each kind of work's
@@ -200,15 +212,22 @@ class Lisan:
         model = wazn.choose(task or "", attempt, getattr(self.agent, "ai_model", None))
         if task:
             self.last.setdefault(task, {})["model"] = model
-        if not trace.active():
-            return await self._ask(system, user, max_tokens, model)
         purpose = task or sys._getframe(1).f_code.co_name  # the Lisan task that asked
-        with trace.span(
-            "chat", f"lisan.{purpose}", system=system, user=user, model=model
-        ) as record:
-            reply = await self._ask(system, user, max_tokens, model)
-            record["attributes"]["reply"] = reply
-            return reply
+        before = self.calls
+        try:
+            if not trace.active():
+                return await self._ask(system, user, max_tokens, model)
+            with trace.span(
+                "chat", f"lisan.{purpose}", system=system, user=user, model=model
+            ) as record:
+                reply = await self._ask(system, user, max_tokens, model)
+                record["attributes"]["reply"] = reply
+                return reply
+        finally:
+            made = self.calls - before
+            if made:
+                self.by_task[purpose] = self.by_task.get(purpose, 0) + made
+                count_lisan_task(self.agent, purpose, made)
 
     def _instruction(self, task: str, template: str, **values: Any) -> str:
         """The current version of this kind of work's instruction (Tajdid)."""

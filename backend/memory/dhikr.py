@@ -650,8 +650,12 @@ class DhikrMemorySystem:
         this is real Dhikr, not just retrieval.
         """
         # ── Masalik: Spreading activation (this IS remembering) ──
-        # Side effect: strengthens the recalled pathways (Dhikr reinforcement)
-        self.masalik.recall_context(query, top_k=8)
+        # Side effect: strengthens the recalled pathways (Dhikr reinforcement),
+        # which a stateless run (an evaluation or a test chat) never does.
+        from memory import stateless
+
+        if not stateless.active():
+            self.masalik.recall_context(query, top_k=8)
 
         # ── SQLite: Record search ──
         conn = self._get_conn()
@@ -719,9 +723,12 @@ class DhikrMemorySystem:
 
         # A recalled memory is remembered: its access count and its strength grow
         # (Tadhkir: a Good review; one the same hour adds little, one after a gap
-        # more). Daftar shows when each was last used.
+        # more). Daftar shows when each was last used. A stateless run (an
+        # evaluation or a test chat) reads without strengthening anything.
         from memory import tadhkir
 
+        if stateless.active():
+            return memories
         for mem in memories:
             mem.access_count += 1
             mem.strength = tadhkir.review(mem.strength, tadhkir.GOOD)
@@ -1284,6 +1291,27 @@ class DhikrMemorySystem:
             }
             for row in selected
         ]
+
+    async def answer_usage(
+        self, owner_id: str | None, since: str, limit: int = 20000
+    ) -> list[tuple[str, str]]:
+        """``(created_at, metadata)`` of the answers saved since ``since`` (ISO time),
+        newest first: one owner's, or every owner's when ``owner_id`` is None. Read
+        only for the teacher-call share (``api.usage.teacher_share``); no content."""
+        conn = self._get_conn()
+        try:
+            self._session_table(conn)
+            rows = conn.execute(
+                """SELECT m.created_at, m.metadata
+                FROM agent_messages m JOIN chat_sessions s ON s.session_id = m.session_id
+                WHERE m.role = 'assistant' AND m.created_at >= ?
+                  AND (? IS NULL OR s.owner_id = ?)
+                ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?""",
+                (since, owner_id, owner_id, max(1, int(limit))),
+            ).fetchall()
+        finally:
+            self._release_conn(conn)
+        return [(str(row[0]), str(row[1] or "{}")) for row in rows]
 
     async def conversation_counts(self, owner_id: str) -> dict:
         conn = self._get_conn()

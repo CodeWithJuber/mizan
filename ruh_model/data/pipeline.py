@@ -1,8 +1,10 @@
 """Bounded, reproducible streaming corpus preparation and tokenized batching.
 
-Defaults are verified full Quran text and pinned Arabic Wikipedia. Custom
-religious sources require explicit permission and provenance. No dataset scripts
-execute, and audio-reciter duplication is not additional text supervision.
+The default source is pinned Arabic Wikipedia. The Quran and hadith are never a
+training domain: a positive weight for a scripture domain or source is refused
+(``ruh_model.data.scripture``), whatever permission a source claims. A row may
+declare the scripture it quotes (``scripture``: exact strings); those bytes are
+never supervised. No dataset scripts execute.
 """
 
 from __future__ import annotations
@@ -10,23 +12,15 @@ from __future__ import annotations
 import json
 import os
 import random
-import tempfile
-import warnings
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from ruh_model.data.collator import RuhCollator
+from ruh_model.data.scripture import check_mixing_ratios, check_trainable
 from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.tokenizer.conversation import serialize_messages
 
+# No scripture source: the Quran and hadith are never a training target.
 DEFAULT_SOURCES = {
-    "quran": {
-        "kind": "verified_quran",
-        "path": "Tanzil/Uthmani-Hafs",
-        "revision": "6523a9ad3b73bb7e8cb3a9cdf0ea774b8bab3123",
-        "lang": "ar",
-        "column": "text",
-    },
     "arabic_wiki": {
         "path": "wikimedia/wikipedia",
         "name": "20231101.ar",
@@ -56,6 +50,7 @@ class RealDataPipeline:
         self.ratios = mixing_ratios or {domain: 1.0 for domain in self.sources}
         if any(weight < 0 for weight in self.ratios.values()) or not any(self.ratios.values()):
             raise ValueError("Mixing ratios must be nonnegative with positive total")
+        check_mixing_ratios(self.ratios, self.sources)
         absent = [
             domain
             for domain, weight in self.ratios.items()
@@ -64,41 +59,7 @@ class RealDataPipeline:
         if absent:
             raise ValueError(
                 f"Configure corpus sources for: {', '.join(absent)}. "
-                "Hadith has no automatic source; explicitly supply licensed, attributed "
-                "sources through RUH_DATA_SOURCES. See docs/quranic_training_paths.md."
-            )
-        for domain in ("quran", "hadith"):
-            if not self.ratios.get(domain):
-                continue
-            if tokenizer.version != 2:
-                raise ValueError("Religious text training requires the lossless Bayan V2 tokenizer")
-            spec = self.sources[domain]
-            if (
-                domain == "quran"
-                and isinstance(spec, dict)
-                and spec.get("kind") == "verified_quran"
-            ):
-                continue
-            required = {"license", "attribution", "revision", "training_permission"}
-            if (
-                not isinstance(spec, dict)
-                or not required <= spec.keys()
-                or any(not spec[key] for key in required)
-                or spec["training_permission"] is not True
-            ):
-                raise ValueError(
-                    f"Custom {domain} requires explicit training permission, licence, attribution and revision"
-                )
-            if domain == "quran" and (not spec.get("edition") or not spec.get("verse_columns")):
-                raise ValueError(
-                    "Custom Quran requires its exact edition and surah/ayah verse_columns"
-                )
-            warnings.warn(
-                f"Explicit custom {domain} source selected: {spec['attribution']}; "
-                "source terms and provenance apply. Complete verse coverage and "
-                "Hadith authenticity are not inferred from sample counts.",
-                UserWarning,
-                stacklevel=2,
+                "Explicitly supply licensed, attributed sources through RUH_DATA_SOURCES."
             )
         self.loader = loader
 
@@ -106,8 +67,6 @@ class RealDataPipeline:
         spec = self.sources[domain]
         if not isinstance(spec, dict):
             return spec
-        if domain == "quran" and spec.get("kind") == "verified_quran":
-            return self._verified_quran_rows()
         column = spec.get("column", "text")
         if self.loader is not None:
             return self.loader(
@@ -118,36 +77,6 @@ class RealDataPipeline:
                 streaming=True,
             )
         return self._parquet_rows(spec, column)
-
-    @staticmethod
-    def _verified_quran_rows():
-        from ruh_model.data.quranic import SOURCES, compare_editions, fetch_sources, read_verses
-
-        cache = Path(
-            os.getenv("RUH_QURAN_CACHE", str(Path(tempfile.gettempdir()) / "ruh-verified-quran"))
-        )
-        snapshots = fetch_sources(cache)
-        primary = read_verses(snapshots["tanzil"])
-        secondary = read_verses(snapshots["qpc_hafs"])
-        comparison = compare_editions(primary, secondary)
-        if {row["verse_id"] for row in comparison["differences"]} != {
-            "2:72",
-            "15:7",
-            "27:20",
-            "36:22",
-        }:
-            raise ValueError("Unexpected Quran edition comparison; review before training")
-        for identity, text in primary.items():
-            yield {
-                "text": text,
-                "verse_id": identity,
-                "source_provenance": dict(
-                    SOURCES["tanzil"],
-                    source_verse_coverage=6236,
-                    edition="Tanzil Uthmani Hafs; exact pinned bytes",
-                    text_modified=False,
-                ),
-            }
 
     def _parquet_rows(self, spec: dict, column: str):
         # ParquetFile with synchronous decoding avoids background Arrow scanners
@@ -176,9 +105,8 @@ class RealDataPipeline:
             with filesystem.open(path, "rb") as handle:
                 reader = parquet.ParquetFile(handle, pre_buffer=False)
                 try:
-                    columns = [column, *spec.get("verse_columns", [])]
                     for batch in reader.iter_batches(
-                        batch_size=64, columns=columns, use_threads=False
+                        batch_size=64, columns=[column], use_threads=False
                     ):
                         yield from batch.to_pylist()
                 finally:
@@ -192,7 +120,6 @@ class RealDataPipeline:
             domain: iter(self._rows(domain)) for domain, weight in self.ratios.items() if weight > 0
         }
         count = 0
-        quran_seen: dict[str, str] = {}
         try:
             while streams and count < max_samples:
                 domain = rng.choices(list(streams), weights=[self.ratios[d] for d in streams])[0]
@@ -208,51 +135,11 @@ class RealDataPipeline:
                     text = serialize_messages(row["messages"], assistant_prefix=False)
                 if not isinstance(text, str) or not text.strip():
                     continue
+                check_trainable(row)
                 provenance = row.get("source_provenance")
-                identity = row.get("verse_id")
-                if domain == "quran":
-                    from ruh_model.data.quranic import CHAPTER_LENGTHS, digest
-
-                    if not identity:
-                        columns = spec.get("verse_columns")
-                        if not isinstance(columns, list) or len(columns) != 2:
-                            raise ValueError("Custom Quran requires two surah/ayah verse columns")
-                        s, v = row[columns[0]], row[columns[1]]
-                        if (
-                            type(s) is not int
-                            or type(v) is not int
-                            or not 1 <= s <= 114
-                            or not 1 <= v <= CHAPTER_LENGTHS[s - 1]
-                        ):
-                            raise ValueError("Invalid Quran surah/ayah identifier")
-                        identity = f"{s}:{v}"
-                    try:
-                        s, v = map(int, identity.split(":"))
-                    except (ValueError, AttributeError, TypeError) as error:
-                        raise ValueError("Invalid Quran verse identifier") from error
-                    if (
-                        identity != f"{s}:{v}"
-                        or not 1 <= s <= 114
-                        or not 1 <= v <= CHAPTER_LENGTHS[s - 1]
-                    ):
-                        raise ValueError("Invalid Quran verse identifier")
-                    text_hash = digest(text.encode())
-                    if identity in quran_seen:
-                        if quran_seen[identity] != text_hash:
-                            raise ValueError(f"Conflicting Quran texts for verse {identity}")
-                        continue  # Reciter duplication is not additional text supervision.
-                    quran_seen[identity] = text_hash
-                if domain in {"quran", "hadith"} and provenance is None:
-                    provenance = {
-                        key: spec[key]
-                        for key in ("path", "revision", "license", "attribution", "edition")
-                        if key in spec
-                    }
                 if len(text) > 1_000_000:
-                    if domain in {"quran", "hadith"}:
-                        raise ValueError(
-                            "Religious source record exceeds the supported size; text is never rewritten"
-                        )
+                    if row.get("scripture"):
+                        raise ValueError("A record declaring scripture is never truncated")
                     text = text[:1_000_000]
                 count += 1
                 result = {
@@ -263,8 +150,8 @@ class RealDataPipeline:
                     if isinstance(spec, dict)
                     else row.get("lang", "unknown"),
                 }
-                if identity:
-                    result["verse_id"] = identity
+                if row.get("scripture"):
+                    result["scripture"] = list(row["scripture"])
                 if provenance:
                     result["source_provenance"] = provenance
                 yield result
@@ -280,10 +167,13 @@ class RealDataPipeline:
     def get_dataloader(self, max_samples: int, batch_size: int, shuffle: bool = True):
         if batch_size < 1:
             raise ValueError("batch_size must be positive")
+        from ruh_model.data.collator import RuhCollator
+
         collator = RuhCollator()
         batch = []
         for row in self.stream(max_samples):
-            if row["domain"] in {"quran", "hadith"}:
+            if row.get("scripture"):
+                # Declared scripture spans are masked byte by byte (lossless V2 only).
                 from ruh_model.data.sequence import tokenize_record
 
                 samples = tokenize_record(row, self.tokenizer, self.max_seq_len)

@@ -8353,6 +8353,104 @@
     ]
    }
   },
+  "/api/tadbir/teacher-calls": {
+   "get": {
+    "summary": "Tadbir Teacher Calls",
+    "description": "How often MIZAN answered with no hosted-model call, the goal's measure: the\nshare overall, per day and per (family, language), each with a Wilson 95 %\ninterval, and which Lisan tasks still called the model (docs/teacher-calls.md).\nCounts and shares only; no message content.",
+    "operationId": "tadbir_teacher_calls_api_tadbir_teacher_calls_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 365,
+       "minimum": 1,
+       "default": 30,
+       "title": "Days"
+      }
+     },
+     {
+      "name": "scope",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "me",
+        "all"
+       ],
+       "type": "string",
+       "description": "Your own answers, or (administrators) every user's.",
+       "default": "me",
+       "title": "Scope"
+      },
+      "description": "Your own answers, or (administrators) every user's."
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user (more for admin)",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/tadbir/learning/live": {
    "get": {
     "summary": "Tadbir Learning Live",

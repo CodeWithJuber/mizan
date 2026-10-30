@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 
+from ruh_model.data.scripture import check_trainable, scripture_byte_mask
 from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.tokenizer.conversation import serialize_messages
 
@@ -67,7 +68,13 @@ def tokenize_record(row: dict, tokenizer: BayanTokenizer, max_seq_len: int):
 
     No manufactured EOS is added at truncation boundaries. Each continuation
     window overlaps one token so the transition is trained exactly once.
+
+    Scripture is never a target (``ruh_model.data.scripture``): an
+    evaluation-only or scripture-domain record is refused, and every byte of a
+    declared ``scripture`` span is removed from ``target_mask`` and marked in
+    ``scripture_mask``, which ``RuhCollator`` enforces again.
     """
+    check_trainable(row)
     if tokenizer.version != 2:
         raise ValueError("Sequence training requires lossless Bayan v2, not legacy root IDs")
     if max_seq_len < 2:
@@ -96,13 +103,26 @@ def tokenize_record(row: dict, tokenizer: BayanTokenizer, max_seq_len: int):
     else:
         text = row["text"]
         target_mask = [False] + [True] * (len(text.encode()) + 1)
+    quoted = row.get("scripture") or ()
+    inside = scripture_byte_mask(text, quoted)
+    # BOS, one token per UTF-8 byte, EOS: the same layout as target_mask. Where
+    # a record ends inside scripture, its end is not a target either, so a
+    # record that is only a quotation yields no window.
+    protected = [False, *inside, bool(inside) and inside[-1]]
+    target_mask = [
+        supervised and not shielded
+        for supervised, shielded in zip(target_mask, protected, strict=True)
+    ]
     tokens = tokenizer.encode(text)
     for start in range(0, len(tokens) - 1, max_seq_len - 1):
         window = tokens[start : start + max_seq_len]
         mask = target_mask[start : start + max_seq_len]
         if any(mask[1:]):
-            yield {
+            sample = {
                 "root_ids": [root for root, _ in window],
                 "pattern_ids": [pattern for _, pattern in window],
                 "target_mask": mask,
             }
+            if quoted:
+                sample["scripture_mask"] = protected[start : start + max_seq_len]
+            yield sample

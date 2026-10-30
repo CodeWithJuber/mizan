@@ -12,9 +12,12 @@ import { NOTE_LABELS, ago, mergeNotes, type LearningNote } from "../utils/sijill
 import {
   learnedCount,
   percent,
+  shareText,
+  topFamilies,
   workRows,
   WORK_LABELS,
   type RoutingRow,
+  type TeacherFamily,
   type WorkRow,
 } from "../utils/tadbirLearning.ts";
 
@@ -55,6 +58,69 @@ interface Harness {
   instructions: HarnessRow[];
   models: string[];
   routing: { task: string; model: string; success: number; evidence: number }[];
+}
+
+interface TeacherCalls {
+  days: number;
+  requests: number;
+  zero_call: number;
+  zero_call_share: number | null;
+  interval: [number, number] | null;
+  by_family: TeacherFamily[];
+  lisan_tasks: Record<string, number>;
+}
+
+/** How often MIZAN answered with no hosted-model call (docs/teacher-calls.md). */
+function OnItsOwn({ api }: { api: ApiClient }) {
+  const [data, setData] = useState<TeacherCalls | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/tadbir/teacher-calls?days=30")
+      .then((value) => setData(value as unknown as TeacherCalls))
+      .catch(() => setData(null));
+  }, [api]);
+
+  if (!data) return null;
+  const families = topFamilies(data.by_family ?? []);
+  const tasks = Object.entries(data.lisan_tasks ?? {}).slice(0, 6);
+  return (
+    <div className="card">
+      <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
+        On its own · بنفسه
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Your answers in the last {data.days} days that needed no hosted-model call, with a 95% interval. The goal is
+        for this to rise as MIZAN keeps what it verified.
+      </p>
+      <div className="text-2xl font-semibold text-brand tabular-nums">
+        {shareText(data.zero_call_share, data.interval)}
+      </div>
+      <div className="text-xs text-muted-foreground mb-3">
+        {data.zero_call} of {data.requests} answers
+      </div>
+      {families.length > 0 && (
+        <ul className="divide-y divide-border text-sm">
+          {families.map((row) => (
+            <li key={`${row.family}-${row.language}`} className="py-1.5 flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">
+                {row.label} <span className="text-muted-foreground">· {row.language}</span>
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{row.requests}</span>
+              <span className="shrink-0 w-28 text-right text-xs tabular-nums">
+                {shareText(row.zero_call_share, row.interval)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {tasks.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-3">
+          Still asked of the model: {tasks.map(([task, count]) => `${task} ${count}`).join(", ")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** What MIZAN learns from your work, as it happens (polled every few seconds). */
@@ -187,6 +253,8 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       {error && <div className="text-sm text-red-500">{error}</div>}
 
       <LiveLearning api={api} />
+
+      <OnItsOwn api={api} />
 
       <div className="card">
         <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">

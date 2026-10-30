@@ -2,7 +2,9 @@
 
 > **Experimental transformer with legacy Arabic root generation and a lossless tokenizer for new training.**
 
-Ruh is a pure-PyTorch transformer that operates in **root-space** instead of token-space. Where standard LLMs split text into BPE subwords, Ruh tokenizes text as `(root_id, pattern_id)` pairs — the same factored representation used by Arabic morphology for 1,400+ years. This yields **~7.8× embedding-param compression** over standard lookup tables (`4000×512 ÷ (4000×64 + 200×32) = 7.8×`) and is designed to enable cross-lingual understanding via shared Semitic roots (unverified — no cross-lingual benchmark has been run yet).
+Ruh is a pure-PyTorch transformer that operates in **root-space** instead of token-space. "Root-space" means a root and pattern inventory catalogued from Quranic Arabic morphology, used as lexicon ids. That catalogue is not built yet: today the inventory is a hand-authored list of 55 roots (`backend/qca/roots.py`). Where standard LLMs split text into BPE subwords, Ruh tokenizes text as `(root_id, pattern_id)` pairs — the same factored representation used by Arabic morphology for 1,400+ years. This yields **~7.8× embedding-param compression** over standard lookup tables (`4000×512 ÷ (4000×64 + 200×32) = 7.8×`) and is designed to enable cross-lingual understanding via shared Semitic roots (unverified — no cross-lingual benchmark has been run yet).
+
+**Scripture is never a training target.** The Quran is a source MIZAN quotes by lookup from pinned editions. It is never a training target of Ruh or any other model in this repository; it (and hadith text) may be an input, a retrieval source or an evaluation set. `data/scripture.py` holds the rule and `tests/test_scripture_targets.py` checks it on real batches (see `docs/quranic_training_paths.md`, including the known gap: an ayah quoted inside a general corpus row is masked only when the row declares it).
 
 **Checkpoint compatibility:** the published epoch-19 checkpoint uses Bayan v1 (62 mapped IDs) and remains a constrained root generator. Its original seed corpus does not establish sentence-level chat, English NLP accuracy, or reliable instruction following. Removing inference EOS fixes a formatting defect; it does not supply missing training.
 
@@ -69,8 +71,8 @@ python -m ruh_model.train --stage alaqah --resume-from ruh_model/checkpoints/epo
 
 # === Option B: Full real-data training from HuggingFace ===
 
-# 1. Train Stage 1 with 100K real samples (defaults: verified Quran text + Arabic Wikipedia;
-#    Hadith, OPUS and morphology need explicit RUH_DATA_SOURCES)
+# 1. Train Stage 1 with 100K real samples (default: Arabic Wikipedia; the Quran and
+#    hadith are never training targets; OPUS and morphology need explicit RUH_DATA_SOURCES)
 python -m ruh_model.train_full --stage nutfah --samples 100000 --device auto
 
 # 2. Run ALL 4 stages with 500K samples (full curriculum)
@@ -378,16 +380,16 @@ The CLI reads bounded batches from pinned public Parquet corpora using synchrono
 
 | Domain | Pinned dataset | Text column | Default weight |
 |---|---|---|---|
-| Quran | verified Tanzil Uthmani Hafs (`kind: verified_quran`, cross-checked against KFGQPC Hafs; `data/quranic.py`) | `text` | 0.30 |
-| Hadith | none by default | — | 0 |
-| Arabic Wikipedia | `wikimedia/wikipedia`, `20231101.ar` | `text` | 0.70 |
+| Quran | none: never a training target | — | 0 (a positive weight is refused) |
+| Hadith | none: never a training target | — | 0 (a positive weight is refused) |
+| Arabic Wikipedia | `wikimedia/wikipedia`, `20231101.ar` | `text` | 1.0 |
 
-Exact revisions are recorded in `data/pipeline.py` (`DEFAULT_SOURCES`). Hadith, OPUS and morphology have weight zero until explicit sources are configured. To add sources, set `RUH_DATA_SOURCES` to a JSON file mapping domain names to `path`, immutable `revision`, optional `name`, `split`, `column`, and `lang`; adjust the corresponding CLI weights. Hadith and a custom Quran source also need `license`, `attribution` and `training_permission: true` (custom Quran also `edition` and `verse_columns`), and religious text requires the Bayan v2 tokenizer (see `docs/quranic_training_paths.md`). Curate the corpus, check licenses, remove duplicates, and separate held-out examples before a large training run. Corpus stages do not automatically create grammar or instruction examples.
+Exact revisions are recorded in `data/pipeline.py` (`DEFAULT_SOURCES`). OPUS and morphology have weight zero until explicit sources are configured. To add sources, set `RUH_DATA_SOURCES` to a JSON file mapping domain names to `path`, immutable `revision`, optional `name`, `split`, `column`, and `lang`; adjust the corresponding CLI weights. A Quran or hadith source cannot be added: a positive weight for a `quran`/`hadith` domain, or for a source whose `kind` is `verified_quran`/`quran`/`hadith` or that has `verse_columns`, is refused whatever permission it claims. A source row may declare the scripture it quotes (`scripture`: exact strings); those bytes are never supervised (Bayan v2 only; see `docs/quranic_training_paths.md`). Curate the corpus, check licenses, remove duplicates, and separate held-out examples before a large training run. Corpus stages do not automatically create grammar or instruction examples.
 
 ```bash
 # Bounded preparation smoke test; no GPU or training job is started.
 python -m ruh_model.train_full --prepare-only --samples 10 \
-    --quran-weight 1 --hadith-weight 0 --wiki-weight 0 --output-dir data/real
+    --wiki-weight 1 --output-dir data/real
 
 # New training uses v2. Supply curated sentence/dialogue records for chat.
 python -m ruh_model.train_full --stage nutfah --data-dir data/real --device cuda
@@ -404,7 +406,7 @@ from ruh_model.tokenizer.bayan import BayanTokenizer
 from ruh_model.data.pipeline import RealDataPipeline
 
 pipeline = RealDataPipeline(BayanTokenizer(version=2), max_seq_len=512,
-                            mixing_ratios={"quran": 0.3, "arabic_wiki": 0.7})
+                            mixing_ratios={"arabic_wiki": 1.0})
 for batch in pipeline.get_dataloader(max_samples=5000, batch_size=8):
     print(batch["root_ids"].shape)
     break
@@ -809,7 +811,8 @@ python -m pytest ruh_model/tests/ --cov=ruh_model --cov-report=term-missing
 | `test_bayan_public_api.py` | Torch-free Bayan public API facade (loaded by file path) |
 | `test_ism.py` | ISMEmbedding, RoPE and RMSNorm |
 | `test_causality.py`, `test_generation_eos_batch.py` | Prefix invariance; batch rows stop independently at EOS |
-| `test_quranic_paths.py`, `test_quranic_pipeline.py` | Quran text integrity, annotation, split leakage; default Quran selection and explicit source permission |
+| `test_quranic_paths.py`, `test_quranic_pipeline.py` | Quran text integrity, annotation, split leakage; scripture sources refused as training domains |
+| `test_scripture_targets.py` | Scripture is never a target: no supervised label inside a declared ayah span (windows, pipeline epoch, collator, JSONL dataset); canary and positive Quran/hadith weights refused |
 | `test_sequence_training.py`, `test_training_acceleration.py`, `test_training_controller.py`, `test_review_repairs.py` | Lossless sequence training, sparse MoE / mixed precision, controller cleanup, checkpoint-compatibility regressions |
 | `test_eval_harness.py`, `test_eval_smoke.py`, `test_review_pipeline.py`, `test_sense.py`, `test_reader.py`, `test_dialect.py`, `test_scaffolds.py` | Eval harness, scholar-review queue, sense inventory, RootSpace Reader, dialect normalization, gated scaffolds |
 | `conftest.py` | Shared fixtures: `sample_config` (small RuhConfig for fast tests), `default_vocab` |
@@ -870,10 +873,11 @@ ruh_model/
 ├── data/
 │   ├── __init__.py
 │   ├── dataset.py           # RuhDataset: JSONL → tokenized samples
-│   ├── collator.py          # RuhCollator: right-padding for batches
+│   ├── collator.py          # RuhCollator: right-padding, labels, scripture masking
 │   ├── generator.py         # SeedDataGenerator: template-based data synthesis
 │   ├── pipeline.py          # RealDataPipeline: pinned Parquet sources, weighted streaming
-│   ├── quranic.py           # Pinned Quranic editions and attributed training paths
+│   ├── scripture.py         # The rule: scripture is an input, never a training target
+│   ├── quranic.py           # Pinned Quranic editions, input-only paths, evaluation-only canary
 │   ├── quranic_evaluation.py # Quran quotation, citation and annotation evaluation
 │   ├── sequence.py          # Lossless sentence windows and assistant targets (Bayan v2)
 │   └── chat_sources.py      # Pinned, licensed public conversation data

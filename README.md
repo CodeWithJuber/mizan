@@ -447,7 +447,7 @@ In SQLite and files under `$MIZAN_DATA_DIR`, per user where it concerns them. Ma
 | Topic | Documents |
 | --- | --- |
 | Architecture | [architecture](docs/architecture.md), [diagrams](docs/diagrams/README.md), [tadbir](docs/tadbir.md), [fahm](docs/fahm.md), [adaptive mathematics](docs/adaptive-mathematics.md), [Quranic algorithms](docs/quranic-algorithms.md), [al-Insān human model](docs/quranic_human_model.md) |
-| Truth and learning | [sidq](docs/sidq.md), [isnad](docs/isnad.md), [ahl-dhikr](docs/ahl-dhikr.md), [nazm](docs/nazm.md), [automatic learning](docs/automatic-learning.md), [talim](docs/talim.md) |
+| Truth and learning | [sidq](docs/sidq.md), [isnad](docs/isnad.md), [ahl-dhikr](docs/ahl-dhikr.md), [nazm](docs/nazm.md), [automatic learning](docs/automatic-learning.md), [teacher calls](docs/teacher-calls.md), [talim](docs/talim.md) |
 | Quran, hadith, Arabic | [fihris](docs/fihris.md), [sarf](docs/sarf.md), [nlp](docs/nlp.md) |
 | Safety and data | [amanah](docs/amanah.md), [hudud](docs/hudud.md), [sakk](docs/sakk.md), [iqtisad](docs/iqtisad.md), [daftar](docs/daftar.md), [mahw](docs/mahw.md) |
 | Work and channels | [agentic coding](docs/agentic-coding.md), [coding workspaces](docs/coding-workspaces.md), [shahid](docs/shahid.md), [connectors](docs/connectors.md), [agent skills](docs/agent-skills.md), [huggingface](docs/huggingface.md), [bab](docs/bab.md), [muraqabah](docs/muraqabah.md), [sama](docs/sama.md), [basar](docs/basar.md) |
