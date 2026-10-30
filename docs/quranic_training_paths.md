@@ -150,8 +150,8 @@ state. Validate a durable archive by reading it back and checking hashes. A
 successful local copy alone does not establish that a cloud backup is durable.
 The Kaggle notebook that trained the old `continuation` objective is removed.
 The `quran_morphology` and `quran_grounded_qa` notebooks pin revision
-`37cdbd8`, which predates this rule's enforcement; repin them to a revision that
-includes it before running them.
+`6546f7d`, the commit that enforces this rule (their earlier pin, `37cdbd8`,
+trained the word letters and the Pickthall translation as targets).
 
 The existing trainer stores model and optimizer continuation snapshots. Exact
 bit-for-bit future replay also needs sampler/RNG state; objective runs must

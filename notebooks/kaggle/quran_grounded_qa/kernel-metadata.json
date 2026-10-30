@@ -14,7 +14,7 @@
   "kernel_sources": [
     "zubairshaikh/ruh-full-training-repair"
   ],
-  "training_revision": "37cdbd8452f252674d8a0e8a82a2d7fe46c96817",
+  "training_revision": "6546f7d81b3703ab06bd8be25611207f6b56210a",
   "objective": "grounded_qa",
   "max_training_seconds": 900
 }
