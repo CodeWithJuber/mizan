@@ -36,12 +36,21 @@ You can see and forget your kept programs in **Agents → Majlis → Learning** 
 Two verified programs for "the first 10 Fibonacci numbers" and "the first 20 Fibonacci numbers" usually differ only where the requests' numbers differ. When no kept program fits a request exactly, MIZAN makes one from the kept programs of its form (`hifz.template`), with no model call:
 
 1. **Instances.** Python programs this user kept for requests with the same words apart from their numbers (80% overlap), the same question words and as many numbers. Each must be reliable, and a program that printed numbers must have been confirmed by an independent program (Tathabbut). At least two instances with different numbers are needed.
-2. **Anti-unification.** MIZAN reads their syntax trees and keeps what they share. Each difference becomes a slot bound to the j-th number of the request, and only to a number the request gave. This includes numbers inside strings ("F10 =" and "F20 ="). This is Plotkin's least general generalisation. If the programs differ anywhere the requests' numbers do not explain (say `range(1, 11)` and `range(1, 21)` for "1 to 10" and "1 to 20"), there is no template.
+2. **Anti-unification.** MIZAN reads their syntax trees and keeps what they share. Each difference becomes a slot bound to the j-th number of the request. This includes numbers inside strings ("F10 =" and "F20 ="). This is Plotkin's least general generalisation.
+   - A slot may be that number plus a whole-number offset (`range(1, 11)` and `range(1, 21)` for "1 to 10" and "1 to 20"), when every instance gives the same offset. The offset is one parameter measured once per instance, so their agreement tests it. An exact match is preferred.
+   - If the programs differ anywhere the requests' numbers do not explain (say `print(55)` and `print(210)`), there is no template.
 3. **Test-guided acceptance.** Putting each instance's numbers back into the template must give that instance's program exactly.
 4. **General only where it was seen to vary.** Suppose every instance had the same number at some position ("2 to the power 10", "2 to the power 20"). Then a request that changes it ("3 to the power 5") gets no template, since the program may hold that number as a literal. A number must also keep its kind: an integer slot does not take 2.5.
 5. **Run.** The new program runs in the sandbox. If it fails, Lisan writes a program as usual.
 
 The answer says what happened. MIZAN wrote no new code: it put the request's numbers into a program it verified for N requests of this form. The result for these numbers was not checked by an independent program, so the answer is reported as observed (`evidence_observed`), not verified. The kept programs remain the authority; a template is computed from them each time and is never stored. Each kept program now also stores its request's words, so the order of its numbers is known; programs kept before this change take part once they are kept again.
+
+### Cases: what Lisan sees when it must still write
+
+When neither a kept program nor a template answers, Lisan writes the program.
+- **What it is shown:** this user's four verified programs nearest the request (`hifz.cases`, BM25 over the requests' words; each program up to 2,000 characters), with an instruction to write a request of the same form the same way. Four is where Memento's case memory stopped gaining (DeepResearcher F1 59.9 → 64.5 at K = 4).
+- **Why:** programs of one form then share their shape, so the next request of that form can be answered by a template with no model call.
+- **What it is not shown to:** Tathabbut's independent program, so the two derivations stay independent.
 
 ### Tathabbut: an independent derivation must agree
 

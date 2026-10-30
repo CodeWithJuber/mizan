@@ -212,19 +212,43 @@ def _value(number: str) -> int | float:
 
 def _slot(values: list[Any], numbers: list[list[str]]) -> int | None:
     """The one position j of the requests' numbers that every value equals."""
+    fits = _fits(values, numbers)
+    exact = [j for j, offset in fits if offset == 0]
+    return exact[0] if len(exact) == 1 else None
+
+
+def _fits(values: list[Any], numbers: list[list[str]]) -> list[tuple[int, int]]:
+    """Every (j, b) with each value equal to its request's j-th number plus b,
+    the same b for all. An offset (``range(1, 11)`` for "1 to 10") is one
+    parameter that the instances measure more than once, so their agreement on
+    it is itself a test; it is allowed between whole numbers only."""
     if any(isinstance(value, bool) or not isinstance(value, int | float) for value in values):
-        return None
-    kinds = {type(value) for value in values}
-    if len(kinds) != 1:
-        return None
-    fits = [
-        j
-        for j in range(len(numbers[0]))
-        if all(
-            _value(found[j]) == value and type(_value(found[j])) is type(value)
-            for found, value in zip(numbers, values, strict=True)
-        )
-    ]
+        return []
+    if len({type(value) for value in values}) != 1:
+        return []
+    fits = []
+    for j in range(len(numbers[0])):
+        given = [_value(found[j]) for found in numbers]
+        if any(
+            type(number) is not type(value) for number, value in zip(given, values, strict=True)
+        ):
+            continue
+        offsets = {value - number for number, value in zip(given, values, strict=True)}
+        if len(offsets) == 1:
+            offset = offsets.pop()
+            if offset == 0 or isinstance(values[0], int):
+                fits.append((j, int(offset) if isinstance(values[0], int) else 0))
+    return fits
+
+
+def _number_slot(values: list[Any], numbers: list[list[str]]) -> tuple[int, int] | None:
+    """The slot a differing number fills: the request's j-th number exactly when
+    exactly one position gives it, else the one position that gives it with an
+    offset."""
+    fits = _fits(values, numbers)
+    exact = [fit for fit in fits if fit[1] == 0]
+    if exact:
+        return exact[0] if len(exact) == 1 else None
     return fits[0] if len(fits) == 1 else None
 
 
@@ -263,10 +287,10 @@ def _generalise(trees: list[ast.AST], numbers: list[list[str]]) -> list[tuple[in
                     inner.append(j)
                 slots.append((position, ("text", pieces[0], inner)))
                 continue
-            j = _slot(values, numbers)
-            if j is None:
+            fit = _number_slot(values, numbers)
+            if fit is None:
                 return None
-            slots.append((position, ("number", j)))
+            slots.append((position, ("number", *fit)))
             continue
         for name in first._fields:
             fields = [getattr(node, name, None) for node in nodes]
@@ -292,7 +316,7 @@ def _instantiate(tree: ast.AST, slots: list[tuple[int, Any]], numbers: list[str]
         node = nodes[position]
         assert isinstance(node, ast.Constant)
         if slot[0] == "number":
-            node.value = _value(numbers[slot[1]])
+            node.value = _value(numbers[slot[1]]) + slot[2]
         else:
             _, pieces, inner = slot
             text = pieces[0]
@@ -376,3 +400,46 @@ def template(store: Any, user_id: str, message: str, language: str) -> dict | No
         "slots": len(slots),
         "requests": [item["request"][:200] for item in distinct],
     }
+
+
+# ── cases: what Lisan sees when it must still write ──────────────────────
+#
+# When no kept program or template answers a request, Lisan writes one. It is
+# shown this user's verified programs nearest the request (Memento's case
+# memory: gains plateau at four cases), so a request of a known form is
+# written in the known shape, and the next one of that form can be answered
+# by a template. Tathabbut's independent program never sees them.
+
+CASES = 4
+CASE_CODE = 2000
+
+
+def cases(store: Any, user_id: str, message: str, language: str, k: int = CASES) -> list[dict]:
+    """This user's verified programs nearest the request, the nearest first."""
+    shape = _shape(message)
+    items = [
+        item
+        for item in _load(store, user_id)
+        if item.get("language") == language and _trusted(item) and item.get("request")
+    ]
+    if not shape or not items:
+        return []
+    scores = bm25_scores(shape, [_shape(item["request"]) for item in items])
+    ranked = sorted(range(len(items)), key=lambda index: -scores[index])
+    return [items[index] for index in ranked if scores[index] > 0][:k]
+
+
+def render(found: list[dict]) -> str:
+    if not found:
+        return ""
+    parts = [
+        "Programs MIZAN verified for this user's earlier requests of a similar kind. When "
+        "this request has the same form, write it the same way, changing only what the "
+        "request changes:"
+    ]
+    for item in found:
+        parts.append(
+            f"Request: {item['request'][:300]}\n```{item['language']}\n"
+            f"{item['code'][:CASE_CODE]}\n```"
+        )
+    return "\n\n".join(parts)

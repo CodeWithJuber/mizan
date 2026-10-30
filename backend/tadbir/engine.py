@@ -960,10 +960,20 @@ class Tadbir:
         )
         await self._step()
         request = str(u.entities.get("request") or task)
-        # Tajriba: verified lessons from earlier repairs of similar work.
+        # Tajriba: verified lessons from earlier repairs of similar work; Hifz:
+        # the verified programs nearest this request, so a known form is written
+        # in its known shape (and the next request of it needs no model).
         lessons = tajriba.relevant(store, owner, "build_and_run", request)
+        shown = "\n\n".join(
+            part
+            for part in (
+                tajriba.render(lessons),
+                hifz.render(hifz.cases(store, owner, task, language)),
+            )
+            if part
+        )
         try:
-            code = await self.lisan.write_code(request, language, tajriba.render(lessons))
+            code = await self.lisan.write_code(request, language, shown)
         except LisanUnavailable as exc:
             raise Defer from exc
         await self._step()

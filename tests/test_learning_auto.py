@@ -282,6 +282,45 @@ def test_a_template_needs_programs_an_independent_program_agreed_with(tmp_path):
     assert hifz.template(store, "u", "Sum 1 to 30", "python") is None
     # Programs that differ where the requests' numbers do not explain it: none.
     store = AdaptiveStateStore(str(tmp_path / "b.db"))
+    keep(store, "Sum 1 to 10", "print(55)", "55\n")
+    keep(store, "Sum 1 to 20", "print(210)", "210\n")
+    assert hifz.template(store, "u", "Sum 1 to 30", "python") is None
+
+
+def test_a_template_slot_may_be_a_number_plus_an_offset_the_instances_agree_on(tmp_path):
+    """Live, 30 Oct: the teacher wrote ``sum(range(1, 11))`` for "1 se 10".
+    The offset is one parameter both instances measure, so they test it."""
+    from core.adaptive import AdaptiveStateStore
+
+    store = AdaptiveStateStore(str(tmp_path / "a.db"))
     keep(store, "Sum 1 to 10", "print(sum(range(1, 11)))", "55\n")
     keep(store, "Sum 1 to 20", "print(sum(range(1, 21)))", "210\n")
+    assert "range(1, 31)" in hifz.template(store, "u", "Sum 1 to 30", "python")["code"]
+    # Offsets that disagree (11 for 10, 22 for 20) are no slot.
+    store = AdaptiveStateStore(str(tmp_path / "b.db"))
+    keep(store, "Sum 1 to 10", "print(sum(range(1, 11)))", "55\n")
+    keep(store, "Sum 1 to 20", "print(sum(range(1, 22)))", "231\n")
     assert hifz.template(store, "u", "Sum 1 to 30", "python") is None
+
+
+async def test_lisan_sees_the_nearest_verified_programs_and_the_check_does_not(
+    agent, monkeypatch, alice
+):
+    """Memento's case memory: a known form is written in its known shape; the
+    independent program (Tathabbut) is written without seeing any of it."""
+    outputs = ["55\n", "55\n", "210\n", "210\n"]
+
+    async def run(name, params):
+        return {"stdout": outputs.pop(0), "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", run)
+    agent.ai_client = ScriptedProvider([summing(10), checking(10), summing(20), checking(20)])
+    await agent.execute(REQUEST)
+    await agent.execute(REQUEST.replace("10", "20"))
+    write, check = agent.ai_client.requests[2], agent.ai_client.requests[3]
+    assert "n = 10" in str(write["messages"]) and "Programs MIZAN verified" in str(
+        write["messages"]
+    )
+    assert "n = 10" not in str(check["messages"])
+    # Another user sees none of them.
+    assert hifz.cases(agent.adaptive, "bob", REQUEST, "python") == []
