@@ -581,10 +581,14 @@ compares the SHA-256 of its content.
   premise's word is a name or a symbol the source writes so: "Au" would
   otherwise be read as "और" (and).
 - `ahl_dhikr.judge` gives the NLI model a claim that Lughah's own model reads
-  as Hinglish (`ahl_dhikr.roman`) in that form, in both directions of the
-  contradiction check. The claim, its finding and everything shown keep the
-  words the teacher wrote. An English claim, and a code-mixed claim that
-  Lughah reads as English, are read as written.
+  as Hinglish (`ahl_dhikr.roman`) in that form. The claim, its finding and
+  everything shown keep the words the teacher wrote. An English claim, and a
+  code-mixed claim that Lughah reads as English, are read as written.
+- A contradiction already had to hold both ways (premise against claim, and
+  claim against premise). A Roman claim must also be contradicted however it
+  is written: in Devanagari and as the teacher wrote it, both ways, four
+  readings in all. A contradiction is shown under the answer as "the source
+  says otherwise", so it must not depend on the script the model was given.
 - `MIZAN_QAMUS=off` turns all of it off.
 
 ### Measured (30 October 2026)
