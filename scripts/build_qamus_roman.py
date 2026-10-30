@@ -28,7 +28,8 @@ For Hindi and Urdu each:
    P(d) = (count + 1) / (N + |V|) (``qamus.readings``). A reading is kept when
    it is decisive, P(d | r) > ½, and the spelling is no English word (a word
    of MASSIVE's English train split outside its slots, or of Lughah's English
-   corpus: "main", "the"). For Urdu only words the lexicon translates are kept; for
+   corpus: "main", "the"), unless English writes that very word so (the
+   lexicon translates "राजधानी" as "rajdhani"). For Urdu only words the lexicon translates are kept; for
    Hindi every word, since a Roman claim is read by the NLI model in
    Devanagari (``qamus.devanagari``).
 
@@ -164,7 +165,9 @@ def build(language: str, data: Path, known_english: set[str]) -> tuple[dict, dic
         for roman, (word, p) in sorted(found.items())
         if 2 * p > 1
         and len(roman) > 1
-        and roman not in known_english
+        # An English word is not read, unless English writes this very word so
+        # (the lexicon gives "rajdhani" as a translation of "राजधानी").
+        and (roman not in known_english or roman in qamus.translate(word, "en"))
         and (language == "hi" or qamus.translate(word, "en"))
     }
 
