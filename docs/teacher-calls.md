@@ -1,6 +1,6 @@
 # Teacher calls: how often MIZAN answers on its own
 
-MIZAN's aim is to use the hosted language model as a teacher that is asked less and less: MIZAN plans, runs and checks what it understands, keeps what it verified (Hifz, Ta'allum, Qasd, Tajriba), and asks the model only for words it cannot yet produce. This page is how that is measured. Before it existed, nothing recorded which answers needed the model, so the aim could not be checked.
+MIZAN's aim is to use the hosted language model as a teacher that is asked less and less: MIZAN plans, runs and checks what it understands, keeps what it verified (Hifz, Ta'allum, Qasd, Tajriba, and answers its sources confirmed: Talaqqi), and asks the model only for words it cannot yet produce. This page is how that is measured. Before it existed, nothing recorded which answers needed the model, so the aim could not be checked.
 
 ## Per answer: `usage.lisan`
 
@@ -37,3 +37,5 @@ Answers saved before this field existed are counted by their recorded calls unde
 - Iqtisad records every paid call with its chat request and Lisan task (`spend.request_id`, `spend.task`), so cost can be split the same way.
 
 A Wilson interval needs enough answers to mean anything: about 250 to 400 answers in a family and language give a share to within ±5 points.
+
+A zero-call answer is also checked: a random sample of them is asked of the teacher afterwards, blinded, and each family is watched for a rise in disagreement ([tadqiq.md](tadqiq.md)).

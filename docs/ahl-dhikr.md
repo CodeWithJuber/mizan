@@ -39,7 +39,9 @@ MIZAN asks its sources in this order:
 2. **Outside sources:**
    - **Wikipedia**, in the question's language (English for Roman
      Hindi/Urdu), then English. It uses MediaWiki's own search (the top two
-     articles), then the article's plain text.
+     articles), then the article's plain text. When the Action API does not
+     give an article's text, its lead section comes from the REST API's
+     summary instead (a separate, cached service).
    - **A web search**, whose snippets are untrusted data: Amanah removes any
      instruction aimed at the AI.
 
@@ -57,10 +59,19 @@ of settling a claim when asked, and each answer asks them in the order of a
 Thompson sample. MIZAN stops when every claim is settled or a 20-second budget
 is spent.
 
-MIZAN identifies itself as Wikimedia's policy asks: by name, version and how
-to reach its operator (`MIZAN_CONTACT`, Settings → Developer → System settings). If a site
-refuses MIZAN, that source is skipped; nothing is done to get around the
-refusal.
+MIZAN follows Wikimedia's [robot policy](https://wikitech.wikimedia.org/wiki/Robot_policy):
+- It identifies itself by name, version and how to reach its operator. Set
+  `MIZAN_CONTACT` to an email address in Settings → Developer → System settings,
+  so Wikimedia can reach the operator instead of blocking the server.
+- It asks one request at a time, as the Action API asks of a client that does
+  not log in.
+- On 429 or 503 it waits as long as `Retry-After` says and asks once more, but
+  only if that wait is at most half the time left. The other half is for the
+  retried request and the other sources.
+- On 403 (a refusal under the policy) it stops asking Wikipedia for that
+  answer, so the web search keeps its time. Nothing is done to get around a
+  refusal. Shared cloud addresses are often refused; on 30 October every
+  Wikipedia endpoint answered 403 to the development sandbox.
 
 ## How a claim is judged
 
@@ -74,6 +85,17 @@ refusal.
    So a page that shares only common words with the claim ("the", "largest")
    is never read against it, however the NLI model would read the pair. The
    best three kept sentences go on.
+
+   A model's sentence often joins what a source says in several: "commissioned
+   by Shah Jahan in memory of Mumtaz Mahal" against "It was built by Shah
+   Jahan…" and "…for his wife, Mumtaz Mahal". No single sentence holds most of
+   its information, so none could be read against it. So each claim also gets
+   one **joined premise**:
+   - the page whose best three sentences match the claim most (summed BM25)
+     gives them, in the page's own order;
+   - the joined text must be about the claim, by the same rule as above;
+   - it is read like any sentence, and its contradiction must also hold both
+     ways (step 3).
 
    Only propositions are judged: a claim needs at least three words, the same
    unit a source sentence needs, and a lead-in ending in ":" ("Thodi
@@ -112,6 +134,52 @@ JSON), as the live benchmark of 27 October found.
 
 Without the NLI model, every claim stays unknown and nothing is guessed.
 
+### Measured (30 October 2026)
+
+`scripts/ahl_coverage.py` judges a fixed set of teacher answers offline with
+the real NLI model, against two kinds of source:
+- the questions' articles in Simple English Wikipedia (the `wikimedia/wikipedia`
+  dump of 1 Nov 2023);
+- web search results (DuckDuckGo snippets), captured once.
+
+Two sets of claims:
+- **True set:** 30 questions, 66 claims. Answers came from the production
+  teacher model, one paragraph each.
+- **False set:** 20 claims with one fact changed (a name, number or date).
+
+95% Wilson intervals in brackets:
+
+| Source | Premises | Supported (true set) | Contradicted (true set) | Talaqqi keeps | Supported (false set) | Contradicted (false set) |
+|---|---|---|---|---|---|---|
+| Wikipedia articles | One sentence each (before) | 5/66 = 7.6% [3.3, 16.5] | 1/66 | 5/30 | 0/20 | 8/20 |
+| Wikipedia articles | Plus the joined premise (now) | **17/66 = 25.8% [16.7, 37.4]** | **0/66** | **12/30** | 0/20 | **10/20** |
+| Web snippets | One sentence each (before) | 13/66 = 19.7% [11.9, 30.8] | 1/66 | 9/30 | 0/20 | 10/20 |
+| Web snippets | Plus the joined premise (now) | **15/66 = 22.7% [14.3, 34.2]** | 1/66 | **10/30** | 0/20 | 10/20 |
+
+- **Audit:** every claim the joined premise newly supported (12 from articles,
+  2 from snippets) was checked against its source by hand. All 14 are right;
+  one is right only in part (the Nile "drains … Egypt" claim's premise does
+  not name Egypt).
+- **Contradictions:** with the joined premise, 20 of 21 were right. The wrong
+  one is the NLI model misreading a pair both ways: "commissioned by Shah
+  Jahan in memory of his wife Mumtaz Mahal" against a snippet saying "built
+  by Emperor Shah Jahan to house the tomb [of] his wife". The one
+  contradiction from articles before was a misreading of the same claim; the
+  joined premise supports it.
+- **Not adopted:**
+  - **Two-sentence windows** (articles: 11/66 supported, 7/30 kept) add
+    nothing beyond the joined premise.
+  - **A larger NLI model,** `MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`
+    (MIT, int8 ONNX, 339 MB), was measured the same way (`--nli`). On the
+    false set it supported 2 of 20 and contradicted none. For example, it
+    read "stolen on August 21, 1950" as supported by "On August 21, 1911,
+    the Mona Lisa was stolen".
+
+**Not covered yet:** an answer written in a script its source does not use. On
+the five Hinglish questions the teacher answered in Devanagari, so no claim
+could be matched against English sentences. Their Wikipedia edition (`hi`) was
+not in this offline set.
+
 ## It learns
 
 - **Kept for this user.** What an outside source settled is kept in the user's
@@ -142,6 +210,8 @@ Without the NLI model, every claim stays unknown and nothing is guessed.
 - **Private.** Each user's `ilm` is their own.
 - **Erased with the chat.** Deleting a chat (Mahw) drops what that chat's
   requests taught.
+
+While MIZAN rests (Nawm, `docs/automatic-learning.md`), the claims one site settled are asked of Wikipedia again, so a second witness can make them knowledge before anyone asks.
 
 ## In the chat
 

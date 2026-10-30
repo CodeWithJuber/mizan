@@ -5,7 +5,7 @@ groups (`backend/runtime_settings.py`) are:
 
 - Model: who directs the work (`MIZAN_ORCHESTRATION`), the feature switches
   (debug mode, Ta'lim, Muhasaba, Truth Gate, Ahl al-Dhikr, Amanah, Muraqabah,
-  Tajdid), spending limits, Lisan's models, provider and default model, chat
+  Tajdid, Tadqiq and its audit rate), spending limits, Lisan's models, provider and default model, chat
   effort and output limits, owned-model-only mode, projects per user
 - API keys: Anthropic, OpenRouter, OpenAI, the hybrid base model, Hugging Face,
   ARC

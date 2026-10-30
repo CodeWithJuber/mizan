@@ -48,6 +48,8 @@ BASIS = {
 MAX_CLAIMS = 40
 _FENCE = re.compile(r"```.*?```", re.DOTALL)
 _SENTENCE = re.compile(r"(?<=[.!?۔؟])\s+")
+# A Markdown heading, or a line wholly in bold, that does not end a sentence.
+_HEADING = re.compile(r"#{1,6}\s+.*[^.!۔।]|\*\*[^*]*[^*.!۔।]\*\*:?")
 _WORD = re.compile(r"[^\W\d_]{3,}", re.UNICODE)
 _STOP = {
     "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have",
@@ -74,6 +76,8 @@ def claims(text: str) -> list[dict]:
         close_quote()
         if not line or re.fullmatch(r"_.*_", line) or line.startswith("---"):
             continue  # MIZAN's own notes and separators state no claim
+        if _HEADING.fullmatch(line):
+            continue  # a heading names what follows and states nothing itself
         line = re.sub(r"^(?:[#>*\-]+|\d+[.)])\s*", "", line).replace("**", "").strip()
         if re.fullmatch(r"\[[^\]]+\]\([^)]+\)", line):
             continue  # a source-list entry
@@ -81,6 +85,8 @@ def claims(text: str) -> list[dict]:
             continue  # a lead-in introduces what follows and states nothing itself
         for sentence in _SENTENCE.split(line):
             sentence = sentence.strip()
+            if sentence.endswith(("?", "؟")):
+                continue  # a question asks; it claims nothing a source could settle
             if len(sentence) >= 12 or _NUMBER.search(sentence):
                 units.append({"text": sentence[:600], "kind": "sentence"})
     close_quote()

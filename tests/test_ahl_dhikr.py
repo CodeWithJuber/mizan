@@ -44,7 +44,7 @@ def store(tmp_path):
 def sources(monkeypatch):
     calls = []
 
-    async def wikipedia(question, language):
+    async def wikipedia(question, language, deadline=None):
         calls.append(question)
         return [
             Passage(
@@ -295,8 +295,10 @@ async def test_a_chat_answer_shows_what_its_sources_said(agent, sources, monkeyp
     assert "SETTLED BY MIZAN FROM SOURCES" not in str(agent.ai_client.requests[0]["messages"])
     assert result["isnad"]["counts"]["hasan"] >= 1
     # That answer's claim was asked again and a second site agreed: now it is.
+    # (The same question again is answered from that confirmed answer with no
+    # model call, tests/test_talaqqi.py; this one is worded differently.)
     agent.ai_client = ScriptedProvider(["Titan."])
-    await agent.execute(QUESTION)
+    await agent.execute("Which moon of Saturn is the largest?")
     sent = str(agent.ai_client.requests[0]["messages"])
     assert "SETTLED BY MIZAN FROM SOURCES" in sent and "Titan" in sent
 
@@ -333,7 +335,7 @@ async def test_the_real_model_reads_support_and_contradiction(monkeypatch, tmp_p
 
 
 async def test_an_unreachable_source_is_not_called_a_source_that_found_nothing(store, monkeypatch):
-    async def blocked(question, language):
+    async def blocked(question, language, deadline=None):
         return []  # refused or unreachable: no text at all
 
     monkeypatch.setattr(ahl_dhikr, "nli", fake_nli)
@@ -389,7 +391,7 @@ async def always_contradicts(pairs):
 
 
 async def test_a_page_unrelated_to_the_claim_is_never_shown_as_a_source(store, monkeypatch):
-    async def junk(question, language):
+    async def junk(question, language, deadline=None):
         return JUNK
 
     monkeypatch.setattr(ahl_dhikr, "nli", always_contradicts)
@@ -514,7 +516,7 @@ async def test_a_contradiction_must_hold_both_ways_and_equations_are_computed(st
         )
     ]
 
-    async def page(question, language):
+    async def page(question, language, deadline=None):
         return agreeing
 
     monkeypatch.setattr(ahl_dhikr, "nli", one_way)
@@ -532,3 +534,129 @@ async def test_a_contradiction_must_hold_both_ways_and_equations_are_computed(st
         "9.9 is larger than 9.11 when written as 9.90."
     ]
     assert findings[0].verdict == "unknown"
+
+
+def test_a_fact_question_in_hinglish_is_not_sent_to_a_scholar():
+    """Live check of 30 Oct 2026: "Pakistan ki capital kya hai?" was read as a
+    ruling and told to ask a scholar. Phrasings here are not in the seeds."""
+    for question in ("Bangladesh ki capital kya hai?", "Japan ki currency kya hai?"):
+        assert not ahl_dhikr.ruling(question), question
+    for question in ("Kya mobile par Quran bina wuzu padh sakte hain?", "Kya sood lena jaiz hai?"):
+        assert ahl_dhikr.ruling(question), question
+
+
+TAJ = Passage(
+    "The Taj Mahal is a white marble mausoleum in Agra, India. It was built by the Mughal "
+    "emperor Shah Jahan. He built it in memory of his wife, Mumtaz Mahal. Thousands of "
+    "craftsmen worked on it for over twenty years.",
+    "Taj Mahal",
+    "https://en.wikipedia.org/wiki/Taj_Mahal",
+    "wikipedia",
+)
+TAJ_CLAIM = "The Taj Mahal was built by Shah Jahan in memory of his wife Mumtaz Mahal."
+
+
+async def entails_when_whole(pairs):
+    """Entailment only when the premise names both people the claim joins."""
+    names = ("Shah Jahan", "Mumtaz Mahal")
+    return [
+        {"entailment": 0.95, "neutral": 0.04, "contradiction": 0.01}
+        if all(name in premise for name in names)
+        else {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+        for premise, _ in pairs
+    ]
+
+
+async def test_a_claim_joining_what_a_page_says_in_several_sentences_is_supported(monkeypatch):
+    """Live check of 30 Oct 2026: "Shah Jahan commissioned it ... in memory of
+    Mumtaz Mahal" was never read, since no single sentence of the page holds
+    both; the page's best sentences, joined in its order, do."""
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_when_whole)
+    (finding,) = await ahl_dhikr.judge([TAJ_CLAIM], ahl_dhikr.sentences([TAJ]))
+    assert finding.verdict == "supported" and finding.passage is not None
+    text = finding.passage.text
+    assert text.index("Shah Jahan") < text.index("Mumtaz Mahal")  # the page's own order
+    assert finding.passage.url == TAJ.url and "Thousands" not in text
+
+
+async def test_a_joined_premise_contradicts_only_when_the_reverse_reading_agrees(monkeypatch):
+    async def one_way_on_joined(pairs):
+        return [
+            {"entailment": 0.01, "neutral": 0.04, "contradiction": 0.95}
+            if "Shah Jahan" in premise and "Mumtaz Mahal" in premise and premise != TAJ_CLAIM
+            else {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+            for premise, _ in pairs
+        ]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", one_way_on_joined)
+    (finding,) = await ahl_dhikr.judge([TAJ_CLAIM], ahl_dhikr.sentences([TAJ]))
+    assert finding.verdict == "unknown"
+
+
+def test_a_joined_premise_must_still_be_about_the_claim():
+    pool = ahl_dhikr.sentences([TAJ])
+    claim = "Rhea is the second largest moon of Saturn and was discovered in 1672."
+    scores = ahl_dhikr.bm25_scores(claim, [passage.text for passage in pool])
+    assert ahl_dhikr.joint_premise(claim, pool, scores) is None
+
+
+def mock_wikipedia(monkeypatch, handler):
+    seen: list[httpx.Request] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return handler(request)
+
+    monkeypatch.setattr(
+        ahl_dhikr, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(record))
+    )
+    return seen
+
+
+def found_titan(request: httpx.Request) -> httpx.Response:
+    if request.url.params.get("list") == "search":
+        return httpx.Response(200, json={"query": {"search": [{"title": "Titan (moon)"}]}})
+    return httpx.Response(200, json={"query": {"pages": [{"extract": TITAN}]}})
+
+
+async def test_wikipedia_waits_once_as_long_as_it_is_asked(monkeypatch):
+    calls = {"search": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("list") == "search":
+            calls["search"] += 1
+            if calls["search"] == 1:
+                return httpx.Response(429, headers={"Retry-After": "0"})
+        return found_titan(request)
+
+    mock_wikipedia(monkeypatch, handler)
+    (passage,) = await ahl_dhikr.wikipedia(QUESTION, "en")
+    assert passage.text == TITAN and calls["search"] == 2
+
+
+async def test_wikipedia_does_not_wait_longer_than_half_the_time_left(monkeypatch):
+    seen = mock_wikipedia(
+        monkeypatch, lambda request: httpx.Response(429, headers={"Retry-After": "60"})
+    )
+    assert await ahl_dhikr.wikipedia(QUESTION, "en") == []
+    assert len(seen) == 1  # one edition here; no wait of a minute, no second try
+
+
+async def test_wikipedia_that_refuses_this_client_is_not_asked_again(monkeypatch):
+    seen = mock_wikipedia(monkeypatch, lambda request: httpx.Response(403, text="robot policy"))
+    assert await ahl_dhikr.wikipedia(QUESTION, "ur") == []
+    assert [request.url.host for request in seen] == ["ur.wikipedia.org"]  # not en as well
+
+
+async def test_an_article_the_action_api_does_not_give_is_read_from_its_summary(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith("/api/rest_v1/page/summary/"):
+            return httpx.Response(200, json={"extract": TITAN})
+        if request.url.params.get("prop") == "extracts":
+            return httpx.Response(500)
+        return found_titan(request)
+
+    seen = mock_wikipedia(monkeypatch, handler)
+    (passage,) = await ahl_dhikr.wikipedia(QUESTION, "en")
+    assert passage.text == TITAN
+    assert seen[-1].url.raw_path.decode() == "/api/rest_v1/page/summary/Titan_%28moon%29"

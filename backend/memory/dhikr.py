@@ -36,12 +36,58 @@ import math
 import os
 import re
 import sqlite3
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
 logger = logging.getLogger("mizan.dhikr")
+
+# Memories an agent's run recalled, reviewed once its answer is known: only
+# those the answer used are strengthened (``settle_reviews``).
+_RECALLED: ContextVar[list | None] = ContextVar("dhikr_recalled", default=None)
+
+
+def defer_reviews() -> Token | None:
+    """Hold this run's recalls until its answer is known. None when a run is
+    already holding them (a delegated run: the outer run settles)."""
+    if _RECALLED.get() is not None:
+        return None
+    return _RECALLED.set([])
+
+
+def settle_reviews(token: Token | None, answer: str) -> int:
+    """A Good review of each memory the run recalled and its answer used: the
+    answer holds most of the memory's distinctive information (the relevance
+    test Ahl al-Dhikr applies to sources). A memory recalled but not used is
+    left as it was. Returns how many were reviewed."""
+    if token is None:
+        return 0
+    recalled = _RECALLED.get() or []
+    _RECALLED.reset(token)
+    from memory import stateless
+
+    if not answer.strip() or not recalled or not stateless.learns():
+        return 0
+    from tadbir.ahl_dhikr import about
+
+    used: dict[int, tuple[Any, list[Memory]]] = {}
+    seen: set[str] = set()
+    for system, memory in recalled:
+        if memory.id in seen:
+            continue
+        seen.add(memory.id)
+        text = memory.content if isinstance(memory.content, str) else json.dumps(memory.content)
+        try:
+            if about(str(text), answer):
+                used.setdefault(id(system), (system, []))[1].append(memory)
+        except Exception:  # noqa: BLE001 - no corpus to weigh words: nothing reviewed
+            logger.debug("Tadhkir: could not weigh a recalled memory", exc_info=True)
+    for system, memories in used.values():
+        system._strengthen(memories)
+    return sum(len(memories) for _, memories in used.values())
+
 
 CHAT_PREFERENCE_LIMITS = {
     "language": 120,
@@ -212,6 +258,10 @@ class Memory:
     expires: str = ""  # ISO time after which the memory is forgotten ("" = never)
     # Tadhkir (memory/tadhkir.py): FSRS stability, difficulty and last review.
     strength: dict | None = None
+    said: str = ""  # when it was first written (ISO)
+    # Recalled beside another statement of the same thing (``same_frame``):
+    # its date is shown, the latest first, and neither is hidden.
+    dated: bool = False
 
     def decay(self, hours_elapsed: float) -> float:
         """How strongly the memory is held after ``hours_elapsed`` without use:
@@ -222,13 +272,18 @@ class Memory:
 
 
 def rank_memories(
-    query: str, memories: list["Memory"], now: datetime | None = None
+    query: str,
+    memories: list["Memory"],
+    now: datetime | None = None,
+    *,
+    parameters: tuple[float, ...] | None = None,
 ) -> list["Memory"]:
     """Order memories by relevance × activation × importance (Mizan weighing).
 
     Relevance is BM25 over content and tags; activation is ACT-R base-level
     activation from access count and age, so repeated remembrance (dhikr)
-    keeps a memory retrievable while unused ones fade (nisyan).
+    keeps a memory retrievable while unused ones fade (nisyan). ``parameters``:
+    the FSRS parameters in use for these memories (``tadhkir.in_use``).
     """
     from core.adaptive import bm25_scores, normalise
 
@@ -244,7 +299,7 @@ def rank_memories(
     def score(index: int) -> float:
         memory = memories[index]
         # The chance MIZAN still recalls it (FSRS), or ACT-R for one kept before Tadhkir.
-        weight = tadhkir.retrievability(memory.strength, now)
+        weight = tadhkir.retrievability(memory.strength, now, parameters=parameters)
         if weight is None:
             age = max(1.0, (now - memory.recency).total_seconds())
             weight = memory_activation_weight(age, memory.access_count)
@@ -252,6 +307,80 @@ def rank_memories(
 
     order = sorted(range(len(memories)), key=score, reverse=True)
     return [memories[index] for index in order]
+
+
+def same_frame(first: str, second: str) -> bool:
+    """Two statements of one thing with different values ("my city is Delhi",
+    "my city is Mumbai"): the same words before and after one differing span in
+    each (anti-unification over words), that frame naming what they are about
+    (a word above the average information of general language, so "I like tea"
+    and "I like coffee" are not one thing), and the differing spans no longer
+    than the frame."""
+    from core.adaptive import tokenize
+    from tadbir.ahl_dhikr import average_information, information
+
+    x, y = tokenize(first), tokenize(second)
+    if x == y:
+        return False
+    head = 0
+    while head < min(len(x), len(y)) and x[head] == y[head]:
+        head += 1
+    tail = 0
+    while tail < min(len(x), len(y)) - head and x[-1 - tail] == y[-1 - tail]:
+        tail += 1
+    frame = x[:head] + x[len(x) - tail :]
+    values = (x[head : len(x) - tail], y[head : len(y) - tail])
+    if len(frame) < 2 or not all(values) or any(len(value) > len(frame) for value in values):
+        return False
+    mean = average_information()
+    return any(information(word) > mean for word in frame)
+
+
+def in_time(chosen: list["Memory"], candidates: list["Memory"]) -> list["Memory"]:
+    """The recalled memories with what was said later about the same thing:
+    a newer statement of a recalled memory's frame is brought in beside it, the
+    statements of one thing are ordered latest first and dated, and nothing is
+    hidden (an earlier one may still be true: "my son is Yusuf", "my son is
+    Ahmad"). "Allah eliminates what He wills or confirms, and with Him is the
+    Mother of the Book" (13:39): what is said later stands above what was said
+    before, which stays written."""
+
+    def text(memory: Memory) -> str:
+        return memory.content if isinstance(memory.content, str) else ""
+
+    def mates(memory: Memory, among: list[Memory]) -> list[Memory]:
+        return [
+            other
+            for other in among
+            if other.id != memory.id
+            and text(memory)
+            and text(other)
+            and same_frame(text(memory), text(other))
+        ]
+
+    result = list(chosen)
+    for memory in chosen:
+        found = mates(memory, candidates)
+        if not found:
+            continue
+        memory.dated = True
+        for mate in found:
+            if mate.said > memory.said and all(mate.id != kept.id for kept in result):
+                mate.dated = True
+                result.insert(result.index(memory), mate)
+    # Each thing's statements together, the latest first, where the first stood.
+    ordered: list[Memory] = []
+    placed: set[str] = set()
+    for memory in result:
+        if memory.id in placed:
+            continue
+        group = [memory] + [
+            other for other in mates(memory, result) if other.id not in placed and memory.dated
+        ]
+        for other in sorted(group, key=lambda item: item.said, reverse=True):
+            ordered.append(other)
+            placed.add(other.id)
+    return ordered
 
 
 def memory_activation_weight(age_seconds: float, accesses: int, decay: float = 0.5) -> float:
@@ -500,6 +629,11 @@ class DhikrMemorySystem:
         ):
             if column not in existing:
                 c.execute(f"ALTER TABLE memories ADD COLUMN {column} {kind}")
+        # Tadhkir's review log (no words), erased with its memory, and the FSRS
+        # parameters fitted on it.
+        from memory import tadhkir
+
+        tadhkir.ensure(conn)
         existing = {row[1] for row in c.execute("PRAGMA table_info(chat_preferences)").fetchall()}
         if "session_id" not in existing:
             c.execute("ALTER TABLE chat_preferences ADD COLUMN session_id TEXT DEFAULT ''")
@@ -553,7 +687,7 @@ class DhikrMemorySystem:
             tags=tags or [],
             source=source,
             expires=expires,
-            strength=tadhkir.learn(importance),
+            strength=tadhkir.learn(importance, parameters=self._tadhkir_parameters()),
         )
 
         # ── Masalik: Encode into neural pathways ──
@@ -569,6 +703,8 @@ class DhikrMemorySystem:
 
         # Persist record to database
         await self._persist(memory)
+        first = (mem_id, agent_id, tadhkir.first_grade(importance), "learn")
+        self._log_reviews([(*first, (memory.strength or {}).get("last_review") or "")])
         if self.vector_store is not None:
             await self.vector_store.store(
                 text, memory_id=mem_id, metadata={"memory_type": memory_type, "agent_id": agent_id}
@@ -581,9 +717,9 @@ class DhikrMemorySystem:
         return mem_id
 
     def _repeated(self, content: Any, memory_type: str, agent_id: str) -> str | None:
-        """The id of a live memory with the same words, reviewed as recalled and
-        used (Tadhkir), or None. Whitespace and case aside, nothing is merged
-        that the user did not say again."""
+        """The id of a live memory with the same words, reviewed (Tadhkir), or
+        None. Whitespace and case aside, nothing is merged that the user did not
+        say again."""
         from memory import tadhkir
 
         text = content if isinstance(content, str) else json.dumps(content)
@@ -592,6 +728,7 @@ class DhikrMemorySystem:
             return None
         conn = self._get_conn()
         try:
+            parameters = tadhkir.in_use(conn)
             rows = conn.execute(
                 "SELECT id, content, stability, difficulty, last_review FROM memories "
                 "WHERE memory_type = ? AND agent_id = ? "
@@ -601,10 +738,17 @@ class DhikrMemorySystem:
             for mem_id, stored, stability, difficulty, last_review in rows:
                 if " ".join(str(stored or "").split()).casefold() != wanted:
                     continue
-                state = tadhkir.review(
-                    {"stability": stability, "difficulty": difficulty, "last_review": last_review},
-                    tadhkir.GOOD,
-                )
+                held = {
+                    "stability": stability,
+                    "difficulty": difficulty,
+                    "last_review": last_review,
+                }
+                # Said again while MIZAN still held it (R ≥ FSRS's target): a Good
+                # review. Said again after its hold fell below: it had lapsed, and
+                # is relearned (Again).
+                kept = tadhkir.retrievability(held, parameters=parameters)
+                grade = tadhkir.GOOD if kept is None or kept >= tadhkir.RETENTION else tadhkir.AGAIN
+                state = tadhkir.review(held, grade, parameters=parameters)
                 conn.execute(
                     "UPDATE memories SET stability = ?, difficulty = ?, last_review = ?, "
                     "recency = ? WHERE id = ?",
@@ -616,6 +760,7 @@ class DhikrMemorySystem:
                         mem_id,
                     ),
                 )
+                tadhkir.log(conn, [(mem_id, agent_id, grade, "repeat", state["last_review"])])
                 conn.commit()
                 return str(mem_id)
         finally:
@@ -695,6 +840,9 @@ class DhikrMemorySystem:
         c.execute(sql, params)
         names = [column[0] for column in c.description]
         rows = [dict(zip(names, row, strict=True)) for row in c.fetchall()]
+        from memory import tadhkir
+
+        in_use = tadhkir.in_use(conn)
         self._release_conn(conn)
 
         memories = []
@@ -721,23 +869,39 @@ class DhikrMemorySystem:
                         "difficulty": row.get("difficulty"),
                         "last_review": row.get("last_review"),
                     },
+                    said=str(row.get("created") or ""),
                 )
             )
 
         if query and memories:
-            memories = rank_memories(query, memories)[:limit]
+            candidates = memories
+            ranked = rank_memories(query, memories, parameters=in_use)
+            memories = in_time(ranked[:limit], candidates)
 
-        # A recalled memory is remembered: its access count and its strength grow
-        # (Tadhkir: a Good review; one the same hour adds little, one after a gap
-        # more). Daftar shows when each was last used. A stateless run (an
-        # evaluation or a test chat) reads without strengthening anything.
-        from memory import tadhkir
-
+        # A recalled memory that is used is remembered: its access count and its
+        # strength grow (Tadhkir: a Good review; one the same hour adds little,
+        # one after a gap more). Within an agent's run, only the memories its
+        # answer used are reviewed, once the answer is known (``settle_reviews``);
+        # a recall outside a run (the memory API) counts as use. Daftar shows
+        # when each was last used. A stateless run (an evaluation or a test
+        # chat) reads without strengthening anything.
         if not stateless.learns():
             return memories
+        deferred = _RECALLED.get()
+        if deferred is not None:
+            deferred.extend((self, mem) for mem in memories)
+            return memories
+        self._strengthen(memories)
+        return memories
+
+    def _strengthen(self, memories: list[Memory]) -> None:
+        """A Good review of each memory, and one more use."""
+        from memory import tadhkir
+
+        parameters = self._tadhkir_parameters() if memories else None
         for mem in memories:
             mem.access_count += 1
-            mem.strength = tadhkir.review(mem.strength, tadhkir.GOOD)
+            mem.strength = tadhkir.review(mem.strength, tadhkir.GOOD, parameters=parameters)
         if memories:
             used = datetime.now(UTC).isoformat()
             conn = self._get_conn()
@@ -757,11 +921,38 @@ class DhikrMemorySystem:
                         for mem in memories
                     ],
                 )
+                reviewed = [
+                    (mem, (mem.strength or {}).get("last_review") or used) for mem in memories
+                ]
+                tadhkir.log(
+                    conn, [(mem.id, mem.agent_id, tadhkir.GOOD, "use", at) for mem, at in reviewed]
+                )
                 conn.commit()
             finally:
                 self._release_conn(conn)
 
-        return memories
+    def _tadhkir_parameters(self) -> tuple[float, ...]:
+        """The FSRS parameters this database's memories are reviewed with:
+        fitted on its own review log once they earned it (Tadhkir), else FSRS's."""
+        from memory import tadhkir
+
+        conn = self._get_conn()
+        try:
+            parameters: tuple[float, ...] = tadhkir.in_use(conn)
+        finally:
+            self._release_conn(conn)
+        return parameters
+
+    def _log_reviews(self, reviews: list[tuple[str, str, Any, str, str]]) -> None:
+        """Append reviews to Tadhkir's log (no words; none in a stateless run)."""
+        from memory import tadhkir
+
+        conn = self._get_conn()
+        try:
+            if tadhkir.log(conn, reviews):
+                conn.commit()
+        finally:
+            self._release_conn(conn)
 
     def recall_pathways(self, query: str, top_k: int = 8) -> str:
         """

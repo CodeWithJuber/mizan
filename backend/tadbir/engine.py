@@ -59,6 +59,7 @@ from . import (
     taallum,
     tajdid,
     tajriba,
+    talaqqi,
     tathabbut,
     trace,
     waqt,
@@ -240,8 +241,17 @@ class Tadbir:
             if parts is not None:
                 outcome = await self._compound(parts)
             elif understanding.intent == "converse" or handler is None:
-                # Words only: in "mizan" mode the agent answers with no tools.
-                return None
+                # An answer MIZAN learned from sources before is given again with
+                # no model call (Talaqqi); otherwise, words only: in "mizan" mode
+                # the agent answers with no tools.
+                reused = (
+                    await self._talaqqi(task, understanding, history)
+                    if understanding.intent == "converse"
+                    else None
+                )
+                if reused is None:
+                    return None
+                outcome = reused
             else:
                 outcome = await self._delegate(task, understanding)
         except Defer:
@@ -280,6 +290,12 @@ class Tadbir:
             **({"isnad": isnad.summary(outcome.isnad)} if outcome.isnad else {}),
             **({"images": outcome.images} if outcome.images else {}),
             **({"model_words": True} if outcome.model_words else {}),
+            # An answer learned from sources and given again (Talaqqi).
+            **(
+                {"talaqqi": outcome.facts["talaqqi"]}
+                if isinstance(outcome.facts, dict) and outcome.facts.get("talaqqi")
+                else {}
+            ),
             # A project made for this request: the chat is bound to it.
             **(
                 {"workspace_id": outcome.facts["workspace_id"]}
@@ -928,6 +944,11 @@ class Tadbir:
             reused = await self._reuse_program(u, kept, store, owner)
             if reused is not None:
                 return reused
+        made = hifz.template(store, owner, task, language)
+        if made is not None:
+            reused = await self._run_template(u, made)
+            if reused is not None:
+                return reused
         await self._begin(
             [
                 "Understand the request (Fahm)",
@@ -939,10 +960,20 @@ class Tadbir:
         )
         await self._step()
         request = str(u.entities.get("request") or task)
-        # Tajriba: verified lessons from earlier repairs of similar work.
+        # Tajriba: verified lessons from earlier repairs of similar work; Hifz:
+        # the verified programs nearest this request, so a known form is written
+        # in its known shape (and the next request of it needs no model).
         lessons = tajriba.relevant(store, owner, "build_and_run", request)
+        shown = "\n\n".join(
+            part
+            for part in (
+                tajriba.render(lessons),
+                hifz.render(hifz.cases(store, owner, task, language)),
+            )
+            if part
+        )
         try:
-            code = await self.lisan.write_code(request, language, tajriba.render(lessons))
+            code = await self.lisan.write_code(request, language, shown)
         except LisanUnavailable as exc:
             raise Defer from exc
         await self._step()
@@ -1107,6 +1138,120 @@ class Tadbir:
             f"_{phrase('hifz_reused', u.language, runs=int(kept.get('runs', 1)) + 1)}_",
         ]
         return Outcome("\n\n".join(parts), True, {"run": _run_facts(run), "reused": True})
+
+    async def _run_template(self, u: fahm.Understanding, made: dict) -> Outcome | None:
+        """Run the program made from the verified programs of this request's
+        form, with this request's numbers (``hifz.template``). The program is
+        proven on those requests; its result for these numbers is observed,
+        not checked by an independent program, and the answer says so."""
+        language = made["language"]
+        await self._begin(
+            [
+                "Recall the verified programs of this form (Hifz)",
+                "Put this request's numbers or words into them",
+                "Run it in MIZAN's isolated sandbox",
+                "Reply",
+            ]
+        )
+        await self._step()
+        await self._step()
+        run = await self._run(made["code"], language)
+        await self._step()
+        worked = _ran_clean(run)
+        trace.event("learn", "hifz", template=True, worked=worked, instances=made["instances"])
+        if not worked:
+            return None  # Lisan writes the program for this request
+        parts = [
+            f"**{phrase('code', u.language)}**\n{fence(made['code'], language)}",
+            self._run_text(run, u.language),
+            f"_{phrase('hifz_template', u.language, instances=made['instances'])}_",
+        ]
+        facts = {
+            "run": _run_facts(run),
+            "template": {"instances": made["instances"], "slots": made["slots"]},
+        }
+        return Outcome("\n\n".join(parts), False, facts, succeeded=True)
+
+    async def _talaqqi(
+        self, task: str, u: fahm.Understanding, history: list[dict] | None
+    ) -> Outcome | None:
+        """An answer the teacher gave once and the sources confirmed, given again
+        with no language-model call after its claims are checked (Talaqqi)."""
+        from memory import stateless
+        from security.auth import current_user_id
+
+        from . import ahl_dhikr
+
+        if stateless.active() or not talaqqi.opens_chat(history) or not ahl_dhikr.enabled():
+            return None
+        if not ahl_dhikr.factual(task) or ahl_dhikr.ruling(task) or ahl_dhikr.religious(task):
+            return None
+        store, owner = self.coordinator.adaptive, current_user_id() or ""
+        kept = talaqqi.recall(store, owner, task, u.language)
+        if kept is None:
+            return None
+
+        async def outside(query: str) -> list[ahl_dhikr.Passage]:
+            pool: list[ahl_dhikr.Passage] = []
+            try:
+                pool += await ahl_dhikr.wikipedia(query, u.language)
+            except Exception:  # noqa: BLE001 - one source unreachable settles nothing
+                pass
+            if self._allowed("web_search"):
+                pool += ahl_dhikr.web_from(await self._tool("web_search", {"query": query[:300]}))
+            return pool
+
+        status, findings = await talaqqi.recheck(kept, outside)
+        trace.event("learn", "talaqqi", status=status, reused=status in ("held", "confirmed"))
+        if status == "contradicted":
+            talaqqi.drop(store, owner, kept)
+            return None  # a source now says otherwise: the teacher is asked again
+        if status not in ("held", "confirmed"):
+            return None  # not settled now: the teacher answers this time
+        item = talaqqi.reused(store, owner, kept, findings, confirmed=status == "confirmed")
+        from . import sijill
+
+        sijill.note(
+            "talaqqi",
+            {
+                "detail": "Gave an answer it learned from sources, with no model call"
+                + (" (sources asked again)" if status == "confirmed" else "")
+            },
+        )
+        self.agent._understood = {**(self.agent._understood or {}), "by": "talaqqi"}
+        await self._begin(
+            [
+                "Recall an answer MIZAN learned from sources (Talaqqi)",
+                "Check its claims against the sources"
+                if status == "confirmed"
+                else "Check each claim still has the source that confirmed it",
+                "Reply",
+            ]
+        )
+        await self._step()
+        await self._step()
+        sources = sorted({f.passage.title for f in findings if f.passage is not None})
+        note = phrase(
+            "talaqqi_reused",
+            u.language,
+            kept=str(item.get("kept", ""))[:10],
+            sources=", ".join(sources[:3]),
+        )
+        ledger = ahl_dhikr.regrade(isnad.ledger(item["answer"]), findings)
+        return Outcome(
+            f"{item['answer']}\n\n_{note}_",
+            True,
+            {
+                "talaqqi": {
+                    "kept": item.get("kept", ""),
+                    "teacher": item.get("teacher", ""),
+                    "reused": item.get("reused", 0),
+                    "checked": "sources" if status == "confirmed" else "kept sources",
+                }
+            },
+            provenance="evidence",
+            isnad=ledger,
+        )
 
     async def _qiyas(self, task: str, u: fahm.Understanding) -> Outcome:
         """Infer the rule from the examples; accept it only if it reproduces every one."""

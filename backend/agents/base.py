@@ -294,6 +294,15 @@ class OutputBudgetExceeded(RuntimeError):
     """A terminal provider receipt consumed the budget without a visible answer."""
 
 
+class EmptyAnswer(ValueError):
+    """The model finished its turn with no text (``own_model`` when it was
+    MIZAN's own Ruh model, which cannot hold a conversation yet)."""
+
+    def __init__(self, own_model: bool) -> None:
+        super().__init__("The provider returned no answer")
+        self.own_model = own_model
+
+
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-1..IP-4) ─────────────────────
 # Flag-gated rollout: MIZAN_NLP_NATIVE_WSD=1 enables the native paths.
 # Default OFF = today's behavior, bit-for-bit. Native WSD is an accelerant,
@@ -1219,7 +1228,12 @@ class BaseAgent:
                 relevant_memories = await self.memory.recall(task, limit=3)
                 if relevant_memories:
                     memory_dicts = [
-                        {"type": m.memory_type, "content": m.content}
+                        {
+                            "type": m.memory_type,
+                            "content": m.content,
+                            # Statements of one thing are dated, the latest first.
+                            **({"said": m.said[:10]} if getattr(m, "dated", False) else {}),
+                        }
                         for m in relevant_memories
                         if hasattr(m, "content")
                     ]
@@ -1969,9 +1983,11 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - evidence is a help, never a failure
             return []
 
-    async def _ahl_dhikr(self, result: dict, task: str) -> None:
+    async def _ahl_dhikr(self, result: dict, task: str, history: list[dict] | None = None) -> None:
         """Ahl al-Dhikr: the claims of an answer in the model's own words, asked
-        of MIZAN's sources before it is shown (Quran 16:43)."""
+        of MIZAN's sources before it is shown (Quran 16:43). An answer whose
+        every claim a source supported is kept, so the same question is answered
+        with no model call next time (Talaqqi)."""
         text = result.get("result")
         if not isinstance(text, str) or not text.strip() or result.get("orchestrator") == "mizan":
             return
@@ -2024,6 +2040,51 @@ class BaseAgent:
         result["ahl"] = ahl_dhikr.report(findings, heard, ruling_question=ruling)
         if ruling:
             result["ahl"]["referral"] = phrase("ahl_ruling", language)
+        elif findings:
+            self._talaqqi_keep(result, task, text, language, findings, history)
+
+    def _talaqqi_keep(
+        self,
+        result: dict,
+        task: str,
+        text: str,
+        language: str,
+        findings: list,
+        history: list[dict] | None,
+    ) -> None:
+        """Keep what the sources confirmed of this answer (tadbir/talaqqi.py): for a
+        question that opened its chat, not about the deen, when the Truth Gate had
+        nothing to correct and no claim is fabricated."""
+        try:
+            from tadbir import ahl_dhikr, sijill, talaqqi
+            from workspace.context import current_chat_session
+
+            sidq = result.get("sidq") or {}
+            graded = (result.get("isnad") or {}).get("ledger") or []
+            if (
+                not result.get("success", True)
+                or not talaqqi.opens_chat(history)
+                or ahl_dhikr.religious(task, text)
+                or sidq.get("corrected")
+                or sidq.get("removed")
+                or any(unit.get("grade") == "mawdu" for unit in graded)
+            ):
+                return
+            teacher = str((result.get("usage") or {}).get("model") or "")
+            if talaqqi.keep(
+                self.adaptive,
+                current_user_id() or "",
+                task,
+                language,
+                findings,
+                teacher=teacher,
+                chat=current_chat_session() or "",
+            ):
+                sijill.note(
+                    "talaqqi", {"detail": "Kept an answer its sources confirmed, to give it again"}
+                )
+        except Exception:  # noqa: BLE001 - keeping never touches the answer
+            logger.debug("Talaqqi skipped", exc_info=True)
 
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
@@ -2946,6 +3007,11 @@ Match the requested depth and self-correct errors."""
         _agent_runs.set({**(_agent_runs.get() or {}), id(base): run})
         base._active_runs = getattr(base, "_active_runs", 0) + 1
         base.state, base.current_task = "acting", task
+        # Tadhkir by use: a memory this run recalls is strengthened only if the
+        # answer used it.
+        from memory.dhikr import defer_reviews, settle_reviews
+
+        reviews, answer = defer_reviews(), ""
         try:
             result: dict = await run._execute_run(
                 task,
@@ -2958,8 +3024,11 @@ Match the requested depth and self-correct errors."""
                 queued_at=queued_at,
                 stack=stack,
             )
+            if result.get("success", True):
+                answer = str(result.get("result") or "")
             return result
         finally:
+            settle_reviews(reviews, answer)
             base._finish_run(run)
 
     # Counters a run adds to; added back to the agent when the run ends.
@@ -3130,7 +3199,7 @@ Match the requested depth and self-correct errors."""
                 # The model's own words (a coding handoff's included) are checked
                 # even when MIZAN verified the files.
                 await self._truth_gate(result)
-                await self._ahl_dhikr(result, task)
+                await self._ahl_dhikr(result, task, (context or {}).get("history"))
             result.setdefault("orchestrator", "language_model")
             for key in (
                 "completion_status",
@@ -3142,6 +3211,7 @@ Match the requested depth and self-correct errors."""
                 "sidq",
                 "ahl",
                 "nazm",
+                "talaqqi",
             ):
                 if key in result:
                     result["usage"][key] = result[key]
@@ -3227,6 +3297,11 @@ Match the requested depth and self-correct errors."""
                     "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
                 },
             }
+            # Tadqiq: a sample of the answers given with no model call is asked of
+            # the teacher afterwards, blinded, in the background (docs/tadqiq.md).
+            from tadbir import tadqiq
+
+            tadqiq.schedule(task, result, provider, model, nested=bool(stack))
             return result
         except asyncio.CancelledError:
             self.state = "resting"
@@ -3301,7 +3376,8 @@ Match the requested depth and self-correct errors."""
                         await stream_callback(chunk)
                 completion = self._completion_metadata()
             if not full_response.strip() or completion["completion_status"] == "empty_response":
-                raise ValueError("The provider returned no answer")
+                own = getattr(self.ai_client, "provider_name", "") in {"ruh", "ruh-remote"}
+                raise EmptyAnswer(own)
         if completion["completion_status"] == "missing_receipt":
             raise RuntimeError("The provider returned no completion receipt")
         return full_response
@@ -3895,6 +3971,8 @@ Match the requested depth and self-correct errors."""
                     if provider_retry_delay(e, 0) is not None
                     else {"error_code": "provider_credit", "provider_status": 402}
                     if getattr(e, "status_code", None) == 402
+                    else {"error_code": "own_model_not_ready" if e.own_model else "empty_answer"}
+                    if isinstance(e, EmptyAnswer)
                     else {}
                 ),
                 "answer_delivered": False,

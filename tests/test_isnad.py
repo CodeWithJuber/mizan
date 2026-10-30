@@ -111,3 +111,19 @@ async def test_debug_mode_grades_both_answers(agent):
     assert run["checks"]["isnad"]["mizan"]["supported"] == 1.0
     base = run["checks"]["isnad"]["base"]
     assert base["counts"]["mawdu"] == 1  # "I checked it": an action with no receipt
+
+
+def test_headings_and_questions_are_not_claims():
+    """Live check of 30 Oct 2026: the heading "**Who actually built it**" was
+    judged as a claim and "supported" by a page's "Discover who built the Taj
+    Mahal". A heading names what follows and a question asks: neither claims."""
+    text = (
+        "**Who actually built it**\n## Summary\n# Why does it matter?\n"
+        "- **Patron:** Shah Jahan commissioned it.\n**Titan is the largest moon.**\n"
+        "Why does it matter? Because it is old."
+    )
+    assert [unit["text"] for unit in isnad.claims(text)] == [
+        "Patron: Shah Jahan commissioned it.",
+        "Titan is the largest moon.",
+        "Because it is old.",
+    ]

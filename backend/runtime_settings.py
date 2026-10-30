@@ -132,11 +132,29 @@ SETTINGS: tuple[Setting, ...] = (
             "Each user's watchers run on schedule (daily, around prayers, on Hijri days, or "
             "when a page changes), quiet during salah, within a daily attention budget.",
             "on", ("on", "off")),
+    Setting("MIZAN_TADHKIR_FIT", "Model", "Memory strength fit (Tadhkir)", "choice",
+            "While MIZAN rests it fits how fast each memory database forgets (FSRS) on its "
+            "own review log and tests the fit on later reviews. shadow reports a fit that "
+            "passes without using it, because the log's repeat grades come from the "
+            "parameters in use; apply adopts it.",
+            "shadow", ("shadow", "apply")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "
             "MIZAN's own checks show it is better.",
             "on", ("on", "off")),
+    Setting("MIZAN_TADQIQ", "Model", "Audit of MIZAN's own answers (Tadqiq)", "choice",
+            "on: a random sample of the answers MIZAN gave with no model call is asked of the "
+            "model afterwards, in the background, without showing it MIZAN's answer, and the "
+            "two are compared. Each family of requests has a monitor that warns "
+            "administrators when disagreement rises above its baseline.",
+            "on", ("on", "off")),
+    Setting("MIZAN_AUDIT_RATE", "Model", "Share of answers audited (Tadqiq)", "float",
+            "The probability that an answer MIZAN gave with no model call is audited. The "
+            "owner approved 0.02 to 0.05, so a value from the server's environment is held "
+            "there; a value saved here may be anything from 0 (no audits) to 1. Each audit "
+            "is one model call charged to the person whose answer it checks.",
+            "0.03", (), 0, 1),
     Setting("MIZAN_BUDGET_DAILY_USD", "Model", "Daily spending limit per user (USD)", "float",
             "Hard limit on what each user's model calls may cost per local day. Every call is "
             "checked before it is sent and its answer length capped to what is left, so no "
@@ -510,6 +528,12 @@ def _receipt(keys: list[str], actor: str) -> None:
         )
     except Exception:  # noqa: BLE001 - the change is saved; the receipt is best effort
         logging.getLogger("mizan.settings").warning("Settings change receipt not written")
+
+
+def saved(key: str) -> bool:
+    """Whether an administrator saved a value for this setting here (it then
+    wins over the server's environment)."""
+    return key in _read()
 
 
 def restart_pending() -> list[str]:

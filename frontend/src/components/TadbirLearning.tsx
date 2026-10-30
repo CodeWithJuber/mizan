@@ -32,6 +32,19 @@ interface Programs {
   items: { request: string; language: string; runs: number; reliability: number }[];
 }
 
+interface Answers {
+  answers: number;
+  reuses: number;
+  items: {
+    request: string;
+    language: string;
+    kept: string;
+    reused: number;
+    sources: string[];
+    next_check_days: number;
+  }[];
+}
+
 interface Lessons {
   lessons: number;
   items: { kind: string; signature: string; usefulness: number }[];
@@ -195,6 +208,7 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
   const [wording, setWording] = useState<Wording | null>(null);
   const [programs, setPrograms] = useState<Programs | null>(null);
   const [lessons, setLessons] = useState<Lessons | null>(null);
+  const [answers, setAnswers] = useState<Answers | null>(null);
   const [harness, setHarness] = useState<Harness | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,6 +218,7 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       const data = await api.get("/tadbir/learning");
       setRows(workRows((data.routing as RoutingRow[]) ?? []));
       setWording((data.wording as Wording) ?? null);
+      setAnswers((data.answers as Answers) ?? null);
       setPrograms((await api.get("/tadbir/programs")) as unknown as Programs);
       setLessons((await api.get("/tadbir/lessons")) as unknown as Lessons);
       setError("");
@@ -243,6 +258,19 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       await load();
     } catch {
       addToast({ type: "error", title: "Could not forget the learned wording" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forgetAnswers = async () => {
+    setBusy(true);
+    try {
+      await api.del("/tadbir/answers");
+      addToast({ type: "success", title: "MIZAN forgot the answers it kept for you" });
+      await load();
+    } catch {
+      addToast({ type: "error", title: "Could not forget the kept answers" });
     } finally {
       setBusy(false);
     }
@@ -371,6 +399,46 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
         >
           Forget my programs
         </button>
+      </div>
+
+      <div className="card">
+        <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
+          Answers MIZAN learned from sources · تلقّي
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          When the language model answers a question about the world and a source confirms every claim, MIZAN
+          keeps the answer with its sources. The same question, opening a chat, is then answered with no model
+          call. The claims are checked against the sources again on a schedule that lengthens each time they
+          hold; an answer a source contradicts is dropped.
+        </p>
+        {answers && answers.items.length > 0 ? (
+          <ul className="divide-y divide-border mb-3">
+            {answers.items.map((item, index) => (
+              <li key={index} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="min-w-0 flex-1 truncate text-foreground">{item.request}</span>
+                <span className="text-xs text-muted-foreground">{item.sources.join(", ")}</span>
+                <span className="text-xs text-muted-foreground">
+                  given again {item.reused}× · next check in {item.next_check_days} d
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground mb-3">No answers kept yet.</p>
+        )}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-foreground">
+            {answers ? `${answers.answers} kept · ${answers.reuses} given without the model` : "—"}
+          </span>
+          <span className="flex-1" />
+          <button
+            className="btn-secondary btn-sm"
+            onClick={forgetAnswers}
+            disabled={busy || !answers?.answers}
+          >
+            Forget these answers
+          </button>
+        </div>
       </div>
 
       <div className="card">

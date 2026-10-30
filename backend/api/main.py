@@ -394,6 +394,26 @@ async def lifespan(app: FastAPI):
 
     self_review_task = asyncio.create_task(self_review())
 
+    async def rest() -> None:
+        # Nawm: while no request runs, the answers MIZAN learned from a teacher
+        # are replayed by Need × Gain and asked of their sources again.
+        from tadbir import nawm
+
+        await asyncio.sleep(900)
+        while True:
+            if nawm.enabled():
+                try:
+                    await nawm_night()
+                except Exception as exc:  # noqa: BLE001 - one night's failure ends that night
+                    logger.warning("Nawm replay failed: %s", exc)
+            try:
+                interval = max(600.0, float(os.getenv("MIZAN_NAWM_SECONDS", "86400")))
+            except ValueError:
+                interval = 86400.0
+            await asyncio.sleep(interval)
+
+    rest_task = asyncio.create_task(rest())
+
     async def watch_for_users() -> None:
         # Muraqabah: each user's watchers, judged against salah and attention.
         from automation import muraqabah
@@ -491,6 +511,7 @@ async def lifespan(app: FastAPI):
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
     self_review_task.cancel()
+    rest_task.cancel()
     watch_task.cancel()
     sakk_task.cancel()
     telegram_stop.set()
@@ -1937,6 +1958,8 @@ def chat_failure_payload(result: dict) -> dict:
         "provider_unavailable": "The model provider returned an error and stayed unavailable after automatic retries and fallback models. Try again in a moment or choose another model.",
         "provider_rate_limited": "The selected model is rate-limited by its provider right now (free models are often busy). Try again in a minute, or choose another model.",
         "provider_credit": "The model provider's account has run out of credit (HTTP 402), so it refused the request before answering. An administrator needs to add credit at the provider; until then only short answers may get through.",
+        "own_model_not_ready": "MIZAN's own model (Ruh) is selected as the language model, but it cannot answer in words yet: it returned no text. An administrator can choose a hosted model again in Settings → Providers. MIZAN's own recipes (Quran, hadith, calculations, code, and answers it learned) still work.",
+        "empty_answer": "The model finished without writing an answer. Try again, or choose another model.",
     }
     code = result.get("error_code")
     if code == "provider_unavailable" and result.get("provider_status") == 429:
@@ -3477,6 +3500,22 @@ async def list_memories(
             }
         )
     return {"results": results, "total": len(results)}
+
+
+@app.get("/api/memory/tadhkir")
+async def memory_tadhkir(user: TokenPayload = Depends(require_auth)):
+    """The FSRS parameters memory strength is computed with (Tadhkir): FSRS's
+    defaults, or parameters fitted on this memory's own review log while MIZAN
+    rests, with the held-out test that earned them and the latest night's test
+    (``mode``: ``shadow`` reports a passing fit without using it)."""
+    from memory import tadhkir
+
+    own = await _own_memory(user)
+    conn = own._get_conn()
+    try:
+        return tadhkir.report(conn)
+    finally:
+        own._release_conn(conn)
 
 
 # === IQTISAD (اقتصاد): hard spending limits on model calls ===
@@ -5611,6 +5650,53 @@ async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(g
 # === TADBIR LEARNING (Majlis routing, Ta'allum wording) ===
 
 
+def _no_run_active() -> bool:
+    """No request is running on any agent, shared or private."""
+    agents = [*active_agents.values(), *_user_agents.values()]
+    return not any(getattr(agent, "_active_runs", 0) for agent in agents)
+
+
+async def nawm_night() -> dict:
+    """One night of Nawm (docs/automatic-learning.md): each person whose
+    agents this process holds, and each administrator (whose learning lives
+    with the shared agents), has their lapsed lessons replayed under their own
+    choices, while no request runs and within the night's budget."""
+    from tadbir import nawm
+
+    deadline = time.monotonic() + nawm.SECONDS
+    people: list[tuple[str, Any]] = [
+        (user_id, instance.adaptive) for (user_id, _), instance in list(_user_agents.items())
+    ]
+    template = _tadbir_coordinator()
+    if template is not None:
+        people += [
+            (account["id"], template.adaptive)
+            for account in auth.list_users()
+            if "admin" in (account.get("roles") or []) and account.get("enabled", True)
+        ]
+    counted = (
+        "replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted",
+        "shadow",
+    )  # fmt: skip
+    totals = {"people": 0, **dict.fromkeys(counted, 0)}
+    seen: set[tuple[str, str]] = set()
+    for user_id, store in people:
+        place = (user_id, str(getattr(store, "db_path", id(store))))
+        if store is None or place in seen:
+            continue
+        seen.add(place)
+        if time.monotonic() > deadline or not _no_run_active():
+            break
+        with await owner_consent(user_id):
+            report = await nawm.night(store, user_id, deadline=deadline, idle=_no_run_active)
+        totals["people"] += 1
+        for key in counted:
+            totals[key] += report[key]
+    if totals["replayed"] or totals["sought"]:
+        logger.info("Nawm: %s", totals)
+    return totals
+
+
 def _tadbir_coordinator():
     for agent in active_agents.values():
         if getattr(agent, "role", "") == "khalifah":
@@ -5621,7 +5707,7 @@ def _tadbir_coordinator():
 @app.get("/api/tadbir/learning")
 async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     """What MIZAN learned from its own verified work: who does which work, and your wording."""
-    from tadbir import majlis, taallum
+    from tadbir import majlis, taallum, talaqqi
 
     template = _tadbir_coordinator()
     if template is None:
@@ -5631,6 +5717,7 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     return {
         "routing": majlis.report(coordinator),
         "wording": taallum.summary(coordinator.adaptive, user.user_id),
+        "answers": talaqqi.summary(coordinator.adaptive, user.user_id),
     }
 
 
@@ -5655,14 +5742,33 @@ async def tadbir_teacher_calls(
     return {"days": days, "scope": scope, **teacher_share(rows)}
 
 
+@app.get("/api/tadbir/audit")
+async def tadbir_audit(
+    days: int = Query(90, ge=1, le=3650), user: TokenPayload = Depends(require_auth)
+):
+    """Tadqiq (admin): the blinded audit of answers MIZAN gave with no model call. Per
+    family: audits, agreements and disagreements with the teacher, the disagreement
+    rate with a Wilson 95 % interval, spend, and the disagreement monitor (its e-value,
+    threshold and alarm). Counts only; no content (docs/tadqiq.md)."""
+    from tadbir import tadqiq
+
+    _require_admin(user)
+    return await asyncio.to_thread(tadqiq.report, days)
+
+
 @app.get("/api/tadbir/learning/live")
 async def tadbir_learning_live(
     after: int = Query(0, ge=0), user: TokenPayload = Depends(require_auth)
 ):
-    """What MIZAN learned from your work since ``after``, as it happens (Sijill)."""
+    """What MIZAN learned from your work since ``after``, as it happens (Sijill).
+    Administrators also see the notes meant for every administrator (an audit
+    alarm, docs/tadqiq.md)."""
     from tadbir import sijill
 
     notes = sijill.since(user.user_id, after)
+    if user.has_role("admin"):
+        notes = sorted(notes + sijill.since(sijill.ADMINS, after), key=lambda note: note["seq"])
+        notes = notes[-100:]
     return {"notes": notes, "last": notes[-1]["seq"] if notes else after}
 
 
@@ -5821,6 +5927,19 @@ async def forget_programs(user: TokenPayload = Depends(require_auth)):
         raise HTTPException(503, "No agents are running")
     coordinator = await chat_agent_for(user, template)
     hifz.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
+@app.delete("/api/tadbir/answers")
+async def forget_answers(user: TokenPayload = Depends(require_auth)):
+    """Forget every answer MIZAN kept to give you again without the model (Talaqqi)."""
+    from tadbir import talaqqi
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    talaqqi.forget(coordinator.adaptive, user.user_id)
     return {"forgotten": True}
 
 

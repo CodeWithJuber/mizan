@@ -253,6 +253,20 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने पहले से सत्यापित प्रोग्राम फिर चलाया, भाषा मॉडल के बिना; आउटपुट वही है जो सत्यापित हुआ था (रन {runs})।",
         "ar": "أعاد ميزان تشغيل برنامج تحقّق منه سابقًا، دون استدعاء النموذج اللغوي؛ والناتج مطابق لما تُحقِّق منه (التشغيل {runs}).",
     },
+    "hifz_template": {
+        "en": "MIZAN wrote no new code: it put your numbers or words into the program it verified for {instances} requests of this form, with no language-model call. This result was not checked by an independent program.",
+        "hi-latn": "MIZAN ne naya code nahi likha: is tarah ki {instances} requests ke liye tasdeeq kiye hue program mein aapke numbers ya alfaaz daal kar chalaya, bina language model ke. Is result ko kisi alag program ne check nahi kiya.",
+        "ur": "میزان نے نیا کوڈ نہیں لکھا: اس طرح کی {instances} درخواستوں کے لیے تصدیق شدہ پروگرام میں آپ کے نمبر یا الفاظ ڈال کر چلایا، لینگویج ماڈل کے بغیر۔ اس نتیجے کو کسی الگ پروگرام نے نہیں جانچا۔",
+        "hi": "मीज़ान ने नया कोड नहीं लिखा: इस तरह की {instances} रिक्वेस्ट के लिए सत्यापित प्रोग्राम में आपके नंबर या शब्द डालकर चलाया, भाषा मॉडल के बिना। इस नतीजे को किसी अलग प्रोग्राम ने नहीं जाँचा।",
+        "ar": "لم يكتب ميزان شيفرة جديدة: وضع أرقامك أو كلماتك في البرنامج الذي تحقّق منه لـ{instances} طلبات من هذا النوع، دون استدعاء النموذج اللغوي. ولم يتحقّق برنامج مستقل من هذه النتيجة.",
+    },
+    "talaqqi_reused": {
+        "en": "MIZAN learned this on {kept}: the sentences of an earlier answer that its sources confirmed ({sources}). It gave them again with no language-model call.",
+        "hi-latn": "MIZAN ne yeh {kept} ko seekha: pichhle jawab ke woh jumle jinki sources ne tasdeeq ki ({sources}). Bina language model ke dobara diye.",
+        "ur": "میزان نے یہ {kept} کو سیکھا: پچھلے جواب کے وہ جملے جن کی ذرائع نے تصدیق کی ({sources})۔ لینگویج ماڈل کے بغیر دوبارہ دیے۔",
+        "hi": "मीज़ान ने यह {kept} को सीखा: पिछले जवाब के वे वाक्य जिनकी स्रोतों ने पुष्टि की ({sources})। भाषा मॉडल के बिना फिर दिए।",
+        "ar": "تعلّم ميزان هذا في {kept}: جُمَلُ جوابٍ سابق أكّدتها مصادره ({sources}). وأعادها دون استدعاء النموذج اللغوي.",
+    },
     "cross_checked": {
         "en": "Verified: the sandbox output matches MIZAN's own exact calculation.",
         "hi-latn": "Tasdeeq: sandbox ka output MIZAN ke apne exact hisab se milta hai.",
