@@ -47,6 +47,14 @@ A memory is "used" when the answer holds more than half of the memory's distinct
 - **Older memories.** Memories kept before Tadhkir have no FSRS state yet; they use ACT-R base-level activation, `B = ln(n/(1−d)) − d·ln L`.
 - **Pruning.** Consolidation keeps pruning by ACT-R activation × importance. FSRS's power-law curve is heavy-tailed, so recall probability alone never says that a memory is foam; disuse over time does.
 
+### Statements in time: what is said later stands above, what was said stays
+
+"Allah eliminates what He wills or confirms, and with Him is the Mother of the Book" ([13:39](https://quran.com/13:39), Saheeh International). A person's memories change: "my city is Delhi" becomes "my city is Mumbai". An earlier statement can also still be true beside a later one: "my son is Yusuf", "my son is Ahmad". So MIZAN never deletes or hides the earlier statement. It orders the two in time.
+
+- **One thing** (`dhikr.same_frame`). Two statements are of one thing when anti-unification over their words leaves a shared frame and one differing span in each. The frame must be at least two words, and must include a word carrying more information than an average word of general language (Lughah's corpora): "my *city* is …" counts, "I like …" does not. No span may be longer than the frame.
+- **Recall** (`dhikr.in_time`). When a recalled memory has a later statement of the same thing, the later one is brought in beside it even if it ranked lower. The statements of one thing are listed latest first, each with the date it was said, and the earlier one stays. The prompt shows them as "(said 2026-10-30) My city is Mumbai.", then the earlier one.
+- **Why not replace it.** A frame test cannot tell "my city" (one value) from "my son" (several). Hiding an earlier statement would lose a true one in the second case. Dating both loses nothing in either case.
+
 ## 2. Isnad: two witnesses before a fact becomes knowledge (`tadbir/ahl_dhikr.py`)
 
 **Principle.**

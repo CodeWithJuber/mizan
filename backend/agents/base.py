@@ -1228,7 +1228,12 @@ class BaseAgent:
                 relevant_memories = await self.memory.recall(task, limit=3)
                 if relevant_memories:
                     memory_dicts = [
-                        {"type": m.memory_type, "content": m.content}
+                        {
+                            "type": m.memory_type,
+                            "content": m.content,
+                            # Statements of one thing are dated, the latest first.
+                            **({"said": m.said[:10]} if getattr(m, "dated", False) else {}),
+                        }
                         for m in relevant_memories
                         if hasattr(m, "content")
                     ]

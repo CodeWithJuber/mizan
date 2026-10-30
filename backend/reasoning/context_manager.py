@@ -109,7 +109,10 @@ class ContextManager:
 
         memory_text = "Relevant knowledge from memory:\n"
         for mem in memories[:5]:
-            memory_text += f"- [{mem.get('type', 'general')}] {str(mem.get('content', ''))[:200]}\n"
+            said = f" (said {mem['said']})" if mem.get("said") else ""
+            memory_text += (
+                f"- [{mem.get('type', 'general')}]{said} {str(mem.get('content', ''))[:200]}\n"
+            )
 
         memory_message = {
             "role": "user",

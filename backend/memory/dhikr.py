@@ -258,6 +258,10 @@ class Memory:
     expires: str = ""  # ISO time after which the memory is forgotten ("" = never)
     # Tadhkir (memory/tadhkir.py): FSRS stability, difficulty and last review.
     strength: dict | None = None
+    said: str = ""  # when it was first written (ISO)
+    # Recalled beside another statement of the same thing (``same_frame``):
+    # its date is shown, the latest first, and neither is hidden.
+    dated: bool = False
 
     def decay(self, hours_elapsed: float) -> float:
         """How strongly the memory is held after ``hours_elapsed`` without use:
@@ -298,6 +302,80 @@ def rank_memories(
 
     order = sorted(range(len(memories)), key=score, reverse=True)
     return [memories[index] for index in order]
+
+
+def same_frame(first: str, second: str) -> bool:
+    """Two statements of one thing with different values ("my city is Delhi",
+    "my city is Mumbai"): the same words before and after one differing span in
+    each (anti-unification over words), that frame naming what they are about
+    (a word above the average information of general language, so "I like tea"
+    and "I like coffee" are not one thing), and the differing spans no longer
+    than the frame."""
+    from core.adaptive import tokenize
+    from tadbir.ahl_dhikr import average_information, information
+
+    x, y = tokenize(first), tokenize(second)
+    if x == y:
+        return False
+    head = 0
+    while head < min(len(x), len(y)) and x[head] == y[head]:
+        head += 1
+    tail = 0
+    while tail < min(len(x), len(y)) - head and x[-1 - tail] == y[-1 - tail]:
+        tail += 1
+    frame = x[:head] + x[len(x) - tail :]
+    values = (x[head : len(x) - tail], y[head : len(y) - tail])
+    if len(frame) < 2 or not all(values) or any(len(value) > len(frame) for value in values):
+        return False
+    mean = average_information()
+    return any(information(word) > mean for word in frame)
+
+
+def in_time(chosen: list["Memory"], candidates: list["Memory"]) -> list["Memory"]:
+    """The recalled memories with what was said later about the same thing:
+    a newer statement of a recalled memory's frame is brought in beside it, the
+    statements of one thing are ordered latest first and dated, and nothing is
+    hidden (an earlier one may still be true: "my son is Yusuf", "my son is
+    Ahmad"). "Allah eliminates what He wills or confirms, and with Him is the
+    Mother of the Book" (13:39): what is said later stands above what was said
+    before, which stays written."""
+
+    def text(memory: Memory) -> str:
+        return memory.content if isinstance(memory.content, str) else ""
+
+    def mates(memory: Memory, among: list[Memory]) -> list[Memory]:
+        return [
+            other
+            for other in among
+            if other.id != memory.id
+            and text(memory)
+            and text(other)
+            and same_frame(text(memory), text(other))
+        ]
+
+    result = list(chosen)
+    for memory in chosen:
+        found = mates(memory, candidates)
+        if not found:
+            continue
+        memory.dated = True
+        for mate in found:
+            if mate.said > memory.said and all(mate.id != kept.id for kept in result):
+                mate.dated = True
+                result.insert(result.index(memory), mate)
+    # Each thing's statements together, the latest first, where the first stood.
+    ordered: list[Memory] = []
+    placed: set[str] = set()
+    for memory in result:
+        if memory.id in placed:
+            continue
+        group = [memory] + [
+            other for other in mates(memory, result) if other.id not in placed and memory.dated
+        ]
+        for other in sorted(group, key=lambda item: item.said, reverse=True):
+            ordered.append(other)
+            placed.add(other.id)
+    return ordered
 
 
 def memory_activation_weight(age_seconds: float, accesses: int, decay: float = 0.5) -> float:
@@ -774,11 +852,13 @@ class DhikrMemorySystem:
                         "difficulty": row.get("difficulty"),
                         "last_review": row.get("last_review"),
                     },
+                    said=str(row.get("created") or ""),
                 )
             )
 
         if query and memories:
-            memories = rank_memories(query, memories)[:limit]
+            candidates = memories
+            memories = in_time(rank_memories(query, memories)[:limit], candidates)
 
         # A recalled memory that is used is remembered: its access count and its
         # strength grow (Tadhkir: a Good review; one the same hour adds little,
