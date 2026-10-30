@@ -228,11 +228,17 @@ class TestDoctorEndpoints:
                 assert "message" in check
                 assert check["status"] in ("pass", "warn", "fail", "fixed", "skip")
 
-    def test_doctor_fix(self, client, auth_headers):
-        resp = client.post(
-            "/api/doctor/fix",
-            headers=auth_headers,
+    def test_doctor_fix(self, client, auth_headers, tmp_path):
+        # The fix writes .env and data/ under the project root: point it at a
+        # scratch copy, so the test never creates or edits the checkout's .env.
+        (tmp_path / ".env.example").write_text(
+            (Path(__file__).resolve().parents[1] / ".env.example").read_text()
         )
+        with patch("doctor._get_project_root", return_value=tmp_path):
+            resp = client.post(
+                "/api/doctor/fix",
+                headers=auth_headers,
+            )
         assert resp.status_code in (200, 429)
         if resp.status_code == 200:
             data = resp.json()
