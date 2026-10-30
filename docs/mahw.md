@@ -8,7 +8,7 @@ Deleting a chat, or forgetting a note, removes it from every place MIZAN keeps i
 |---|---|
 | Chat | Its title, its messages, its running summary, its request receipts, Muhasaba's reviews of its answers, its artifacts (with their versions), its plan file, actions held for it, and the images attached in it (Basar), unless another of your chats still shows the same picture |
 | Your notes | Notes made from this chat (source `chat:<id>`), with their vectors |
-| What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries (with their links) for the chat's requests. Also the intents (Qasd), wording (Ta'allum), programs (Hifz), source-settled sentences (Ahl al-Dhikr's `ilm`) and repair lessons (Tajriba) learned from those requests. A repair lesson names the chats it was learned in; one also used in another chat goes too, because its words or its repair came from the erased chat |
+| What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries (with their links) for the chat's requests. Also the intents (Qasd), wording (Ta'allum), programs (Hifz), source-settled sentences (Ahl al-Dhikr's `ilm`), answers kept to give again (Talaqqi, which name their chat) and repair lessons (Tajriba) learned from those requests. A repair lesson names the chats it was learned in; one also used in another chat goes too, because its words or its repair came from the erased chat |
 | Learning record | The chat's notes in the live learning record (Sijill, Agents → Majlis → Learning now) and the failure signatures it gave the instruction harness (Tajdid) |
 | Learner | Training candidates captured from the chat, with their reviews |
 | Debug mode | Saved comparison runs of the chat's requests |

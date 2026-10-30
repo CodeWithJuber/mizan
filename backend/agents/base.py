@@ -1969,9 +1969,11 @@ class BaseAgent:
         except Exception:  # noqa: BLE001 - evidence is a help, never a failure
             return []
 
-    async def _ahl_dhikr(self, result: dict, task: str) -> None:
+    async def _ahl_dhikr(self, result: dict, task: str, history: list[dict] | None = None) -> None:
         """Ahl al-Dhikr: the claims of an answer in the model's own words, asked
-        of MIZAN's sources before it is shown (Quran 16:43)."""
+        of MIZAN's sources before it is shown (Quran 16:43). An answer whose
+        every claim a source supported is kept, so the same question is answered
+        with no model call next time (Talaqqi)."""
         text = result.get("result")
         if not isinstance(text, str) or not text.strip() or result.get("orchestrator") == "mizan":
             return
@@ -2024,6 +2026,51 @@ class BaseAgent:
         result["ahl"] = ahl_dhikr.report(findings, heard, ruling_question=ruling)
         if ruling:
             result["ahl"]["referral"] = phrase("ahl_ruling", language)
+        elif findings:
+            self._talaqqi_keep(result, task, text, language, findings, history)
+
+    def _talaqqi_keep(
+        self,
+        result: dict,
+        task: str,
+        text: str,
+        language: str,
+        findings: list,
+        history: list[dict] | None,
+    ) -> None:
+        """Keep what the sources confirmed of this answer (tadbir/talaqqi.py): for a
+        question that opened its chat, not about the deen, when the Truth Gate had
+        nothing to correct and no claim is fabricated."""
+        try:
+            from tadbir import ahl_dhikr, sijill, talaqqi
+            from workspace.context import current_chat_session
+
+            sidq = result.get("sidq") or {}
+            graded = (result.get("isnad") or {}).get("ledger") or []
+            if (
+                not result.get("success", True)
+                or not talaqqi.opens_chat(history)
+                or ahl_dhikr.religious(task, text)
+                or sidq.get("corrected")
+                or sidq.get("removed")
+                or any(unit.get("grade") == "mawdu" for unit in graded)
+            ):
+                return
+            teacher = str((result.get("usage") or {}).get("model") or "")
+            if talaqqi.keep(
+                self.adaptive,
+                current_user_id() or "",
+                task,
+                language,
+                findings,
+                teacher=teacher,
+                chat=current_chat_session() or "",
+            ):
+                sijill.note(
+                    "talaqqi", {"detail": "Kept an answer its sources confirmed, to give it again"}
+                )
+        except Exception:  # noqa: BLE001 - keeping never touches the answer
+            logger.debug("Talaqqi skipped", exc_info=True)
 
     def _add_execution_time(self, key: str, started: float) -> float:
         elapsed = max(0.0, (time.perf_counter() - started) * 1000)
@@ -3130,7 +3177,7 @@ Match the requested depth and self-correct errors."""
                 # The model's own words (a coding handoff's included) are checked
                 # even when MIZAN verified the files.
                 await self._truth_gate(result)
-                await self._ahl_dhikr(result, task)
+                await self._ahl_dhikr(result, task, (context or {}).get("history"))
             result.setdefault("orchestrator", "language_model")
             for key in (
                 "completion_status",
@@ -3142,6 +3189,7 @@ Match the requested depth and self-correct errors."""
                 "sidq",
                 "ahl",
                 "nazm",
+                "talaqqi",
             ):
                 if key in result:
                     result["usage"][key] = result[key]

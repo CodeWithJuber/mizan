@@ -295,8 +295,10 @@ async def test_a_chat_answer_shows_what_its_sources_said(agent, sources, monkeyp
     assert "SETTLED BY MIZAN FROM SOURCES" not in str(agent.ai_client.requests[0]["messages"])
     assert result["isnad"]["counts"]["hasan"] >= 1
     # That answer's claim was asked again and a second site agreed: now it is.
+    # (The same question again is answered from that confirmed answer with no
+    # model call, tests/test_talaqqi.py; this one is worded differently.)
     agent.ai_client = ScriptedProvider(["Titan."])
-    await agent.execute(QUESTION)
+    await agent.execute("Which moon of Saturn is the largest?")
     sent = str(agent.ai_client.requests[0]["messages"])
     assert "SETTLED BY MIZAN FROM SOURCES" in sent and "Titan" in sent
 

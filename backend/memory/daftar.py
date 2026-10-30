@@ -156,19 +156,26 @@ async def summaries(memory: Any, sessions: list[dict]) -> list[dict]:
 
 def learned(adaptive: Any, owner_id: str) -> list[dict]:
     """Counts of what MIZAN learned from this user's verified work (managed in Learning)."""
-    from tadbir import hifz, taallum, tajriba
+    from tadbir import hifz, taallum, tajriba, talaqqi
 
     entries = []
     for kind, label, summary in (
         ("wording", "Phrasings MIZAN understands without the model", taallum.summary),
         ("programs", "Verified programs MIZAN re-runs", hifz.summary),
         ("lessons", "Lessons from verified repairs", tajriba.summary),
+        (
+            "answers",
+            "Answers its sources confirmed, given again without the model",
+            talaqqi.summary,
+        ),
     ):
         try:
             data = summary(adaptive, owner_id)
         except Exception:  # noqa: BLE001 - a missing store is simply nothing learned
             continue
-        count = data.get("examples", data.get("programs", data.get("lessons", 0)))
+        count = next(
+            (data[key] for key in ("examples", "programs", "lessons", "answers") if key in data), 0
+        )
         if count:
             entries.append(
                 {

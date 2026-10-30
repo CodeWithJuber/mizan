@@ -5621,7 +5621,7 @@ def _tadbir_coordinator():
 @app.get("/api/tadbir/learning")
 async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     """What MIZAN learned from its own verified work: who does which work, and your wording."""
-    from tadbir import majlis, taallum
+    from tadbir import majlis, taallum, talaqqi
 
     template = _tadbir_coordinator()
     if template is None:
@@ -5631,6 +5631,7 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     return {
         "routing": majlis.report(coordinator),
         "wording": taallum.summary(coordinator.adaptive, user.user_id),
+        "answers": talaqqi.summary(coordinator.adaptive, user.user_id),
     }
 
 
@@ -5821,6 +5822,19 @@ async def forget_programs(user: TokenPayload = Depends(require_auth)):
         raise HTTPException(503, "No agents are running")
     coordinator = await chat_agent_for(user, template)
     hifz.forget(coordinator.adaptive, user.user_id)
+    return {"forgotten": True}
+
+
+@app.delete("/api/tadbir/answers")
+async def forget_answers(user: TokenPayload = Depends(require_auth)):
+    """Forget every answer MIZAN kept to give you again without the model (Talaqqi)."""
+    from tadbir import talaqqi
+
+    template = _tadbir_coordinator()
+    if template is None:
+        raise HTTPException(503, "No agents are running")
+    coordinator = await chat_agent_for(user, template)
+    talaqqi.forget(coordinator.adaptive, user.user_id)
     return {"forgotten": True}
 
 

@@ -125,27 +125,31 @@ def _delete_in(
 
 def _forget_learned(adaptive: Any, owner: str, texts: Sequence[str], chat: str = "") -> int:
     """Drop learned wording (Qasd, Ta'allum), kept programs (Hifz), what
-    sources settled (Ahl al-Dhikr) and repair lessons (Tajriba) that came from
-    these requests or this chat; the rest of what was learned stays."""
+    sources settled (Ahl al-Dhikr), answers kept to give again (Talaqqi) and
+    repair lessons (Tajriba) that came from these requests or this chat; the
+    rest of what was learned stays."""
     if adaptive is None or not (texts or chat):
         return 0
-    from tadbir import ahl_dhikr, hifz, qasd, taallum, tajriba
+    from tadbir import ahl_dhikr, hifz, qasd, taallum, tajriba, talaqqi
 
     removed = 0
     try:
         removed += tajriba.unlearn(adaptive, owner, chat, list(texts))
     except Exception:  # noqa: BLE001 - no lessons yet
         logger.debug("[MAHW] no repair lessons to drop")
-    if not texts:
-        return removed
-
     words = [taallum.content_words(text) for text in texts]
-    for module in (hifz, taallum, ahl_dhikr):
+    for module in (hifz, taallum, ahl_dhikr, talaqqi):
         try:
             items = module._load(adaptive, owner)
         except Exception:  # noqa: BLE001 - nothing learned yet
             continue
-        kept = [item for item in items if item.get("tokens") not in words]
+        # An item names its chat when it keeps one (Talaqqi); the others are
+        # found by the request's words.
+        kept = [
+            item
+            for item in items
+            if item.get("tokens") not in words and not (chat and item.get("chat") == chat)
+        ]
         if len(kept) != len(items):
             removed += len(items) - len(kept)
             module._save(adaptive, owner, kept)

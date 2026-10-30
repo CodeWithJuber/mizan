@@ -42,6 +42,10 @@ Running cleanly says a program works, not that it read the request right: in the
 
 A program kept before this check is checked once on its next reuse: if an independent program disagrees, it is forgotten and Lisan writes a new one (`hifz.drop`); if it agrees, it is marked `checked`. Two derivations that share no code rarely share a misreading; this is N-version programming, with the cost of one more Lisan call and one more sandbox run per program that prints a number.
 
+## Talaqqi: answers the sources confirmed, given again without the model
+
+A language-model answer to a question about the world, whose every claim Ahl al-Dhikr found supported by a source, is kept for that user with its sources. The same question, opening a chat, is then answered with no model call. Its claims are checked against the sources again on an FSRS schedule that lengthens each time they hold; an answer a source contradicts is dropped. Questions about the deen are never kept. See `docs/talaqqi.md`.
+
 ## Muhasaba: self-review and correction (Tawbah)
 
 Once a day (`MIZAN_MUHASABA_SECONDS`, default 86,400; first run 10 minutes after start), MIZAN re-reads the answers from the last day that the language model gave in words. Answers MIZAN verified are skipped. It checks what it can check by itself:

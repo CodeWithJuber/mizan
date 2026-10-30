@@ -253,6 +253,13 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "मीज़ान ने पहले से सत्यापित प्रोग्राम फिर चलाया, भाषा मॉडल के बिना; आउटपुट वही है जो सत्यापित हुआ था (रन {runs})।",
         "ar": "أعاد ميزان تشغيل برنامج تحقّق منه سابقًا، دون استدعاء النموذج اللغوي؛ والناتج مطابق لما تُحقِّق منه (التشغيل {runs}).",
     },
+    "talaqqi_reused": {
+        "en": "MIZAN learned this on {kept}: the sentences of an earlier answer that its sources confirmed ({sources}). It gave them again with no language-model call.",
+        "hi-latn": "MIZAN ne yeh {kept} ko seekha: pichhle jawab ke woh jumle jinki sources ne tasdeeq ki ({sources}). Bina language model ke dobara diye.",
+        "ur": "میزان نے یہ {kept} کو سیکھا: پچھلے جواب کے وہ جملے جن کی ذرائع نے تصدیق کی ({sources})۔ لینگویج ماڈل کے بغیر دوبارہ دیے۔",
+        "hi": "मीज़ान ने यह {kept} को सीखा: पिछले जवाब के वे वाक्य जिनकी स्रोतों ने पुष्टि की ({sources})। भाषा मॉडल के बिना फिर दिए।",
+        "ar": "تعلّم ميزان هذا في {kept}: جُمَلُ جوابٍ سابق أكّدتها مصادره ({sources}). وأعادها دون استدعاء النموذج اللغوي.",
+    },
     "cross_checked": {
         "en": "Verified: the sandbox output matches MIZAN's own exact calculation.",
         "hi-latn": "Tasdeeq: sandbox ka output MIZAN ke apne exact hisab se milta hai.",

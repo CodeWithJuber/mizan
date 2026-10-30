@@ -1,6 +1,6 @@
 # Teacher calls: how often MIZAN answers on its own
 
-MIZAN's aim is to use the hosted language model as a teacher that is asked less and less: MIZAN plans, runs and checks what it understands, keeps what it verified (Hifz, Ta'allum, Qasd, Tajriba), and asks the model only for words it cannot yet produce. This page is how that is measured. Before it existed, nothing recorded which answers needed the model, so the aim could not be checked.
+MIZAN's aim is to use the hosted language model as a teacher that is asked less and less: MIZAN plans, runs and checks what it understands, keeps what it verified (Hifz, Ta'allum, Qasd, Tajriba, and answers its sources confirmed: Talaqqi), and asks the model only for words it cannot yet produce. This page is how that is measured. Before it existed, nothing recorded which answers needed the model, so the aim could not be checked.
 
 ## Per answer: `usage.lisan`
 
