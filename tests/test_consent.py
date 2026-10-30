@@ -126,8 +126,11 @@ async def test_every_writer_keeps_consent_on_or_off(tmp_path):
     assert kept == {"learning": "off", "language": "Urdu"}
 
 
-def test_daftar_edits_and_forgets_of_a_choice_leave_receipts(monkeypatch):
+def test_daftar_edits_and_forgets_of_a_choice_leave_receipts(monkeypatch, tmp_path):
     from security import sakk
+
+    # A non-admin's own memory lives under the data folder.
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
 
     receipts = []
     monkeypatch.setattr(

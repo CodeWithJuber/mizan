@@ -21,8 +21,10 @@ class Silent(BaseLLMProvider):
 @pytest.mark.parametrize(
     ("provider", "code"), [("ruh", "own_model_not_ready"), ("openrouter", "empty_answer")]
 )
-async def test_an_empty_answer_names_its_cause(monkeypatch, provider, code):
+async def test_an_empty_answer_names_its_cause(monkeypatch, tmp_path, provider, code):
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "memory.db"))
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
     agent = create_agent("general", izn=IznPermission())
     agent.ai_client = Silent(provider)
