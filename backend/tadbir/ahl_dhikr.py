@@ -311,6 +311,18 @@ def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) 
     return Passage(text, first.title, first.url, first.source, first.at)
 
 
+def searched(claim: str) -> str:
+    """The words a claim's sentences are searched by: its own, and their
+    English translations in MIZAN's lexicon (Qāmūs), so a Hindi or Urdu claim
+    finds the English source sentences about it. Whether a found sentence is
+    about the claim is still decided by ``about`` on the claim itself.
+    Measured on 30 teacher answers in Hindi and 30 in Urdu against Simple
+    English Wikipedia: supported 2 → 5 of 119 and 1 → 2 of 120 claims, none
+    read against another question's article (``docs/qamus.md``)."""
+    bridged = qamus.bridge(claim, "en")
+    return claim + " " + " ".join(bridged) if bridged else claim
+
+
 async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
     """Each claim's verdict from the sentences of one source that are about it,
     one by one and, joined, the page's best of them (``joint_premise``)."""
@@ -320,7 +332,7 @@ async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
     owners: list[tuple[int, Passage]] = []
     texts = [passage.text for passage in pool]
     for index, claim in enumerate(claims):
-        scores = bm25_scores(claim, texts)
+        scores = bm25_scores(searched(claim), texts)
         ranked = sorted(range(len(pool)), key=lambda i: -scores[i])
         related = [i for i in ranked if scores[i] > 0 and about(claim, texts[i])]
         for position in related[:CANDIDATES]:
