@@ -117,6 +117,17 @@ MIZAN follows Wikimedia's [robot policy](https://wikitech.wikimedia.org/wiki/Rob
    teacher's Hindi and Urdu answers this supported 5 of 119 and 2 of 120 claims
    (from none), with none read against another question's articles.
 
+   A claim Lughah reads as Hindi or Urdu in Latin letters ("Taj Mahal Shah
+   Jahan ne banwaya tha"): Qāmūs reads each of its words as the Hindi or Urdu
+   word that most probably wrote it, so its translations count the same way.
+   The NLI model reads it in Devanagari (the words Qāmūs reads, the premise's
+   own words kept), and it is contradicted only when it is contradicted
+   however it is written, both ways. On 60 Roman answers of the production
+   teacher (158 claims), each claim read with its subject, 26 claims were
+   supported where 8 were (22 right, 2 part, 2 wrong on audit), none was
+   contradicted, and none was read against another question's articles
+   ([Qāmūs](qamus.md#roman-hindi-and-urdu)).
+
    A model's sentence often joins what a source says in several: "commissioned
    by Shah Jahan in memory of Mumtaz Mahal" against "It was built by Shah
    Jahan…" and "…for his wife, Mumtaz Mahal". No single sentence holds most of

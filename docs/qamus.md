@@ -730,6 +730,62 @@ Mumtaz Mahal ki yaad mein banwaya tha" is about it through "biwi" → wife
 supported: the Simple English page's sentences on its builder were read as
 neutral.
 
+#### With each claim read with its subject
+
+The numbers above were measured on main, before `judge()` read each claim
+with the subject it speaks of (`contexts`, [Ahl al-Dhikr](ahl-dhikr.md)).
+With both in the code, the same sets were measured again: the claims of each
+answer get the contexts `consult` gives them, and the arm before is the same
+code with the Roman reading off (the code as it was without this change):
+
+| Set | Roman reading off | Roman reading on |
+|---|---|---|
+| Roman true claims, Hindi-leaning (78), supported | 6 | 17 [14.1, 32.2%] |
+| Roman true claims, Urdu-leaning (80), supported | 2 | 9 [6.0, 20.0%] |
+| All 158: supported [95% Wilson] | 8 [2.6, 9.7%] | **26** [11.5, 23.0%] |
+| True claims contradicted | 0 | 0 [0, 2.4%] |
+| 20 false Roman claims: supported, contradicted | 0, 2 | 0, 3 |
+| Control (another question's articles) | 0, 0 | 0, 0 |
+| Hindi (Devanagari) answers, 119 claims | 4, 0 | 4, 0 |
+| Urdu answers, 120 claims | 0, 0 | 0, 0 |
+| English set, 75 claims | 17, 0 | 18, 0: the Roman claim "…duniya ka sabse bada desh Russia hai" (right) |
+| English false claims, 20 | 0, 8 | 0, 8 |
+
+Hand audit: of the 26, 22 are right, 2 part, 2 wrong (the New South Wales
+claim and "Mona Lisa ki painting Leonardo da Vinci ne banayi thi" against
+Leonardo's full name, both as above). Of the 8 with the Roman reading off, 7
+are right and 1 wrong (New South Wales). The 3 false claims contradicted are
+right (Canberra in New Zealand, Mona Lisa stolen in 1950, the telephone patent
+in 1901).
+
+Against the measurement on main (28: 24 right, 2 part, 2 wrong), reading
+each claim with its subject lost two right findings and one part:
+- "Iska nirmaan 1887 se 1889 ke beech Paris mein hua tha…" (the Eiffel
+  Tower): "It was built between 1887 and 1889 for the Exposition
+  Universelle" names none of the subject's words, so it is not about it.
+- "Yeh ek famous portrait hai jo 16th century ke shuru mein banaya gaya tha
+  aur ab Paris ke Louvre Museum mein rakha hai." was supported on main by the
+  joined premise; searched with its subject, the page's best sentences are
+  others.
+- "Woh ek Italian artist, engineer aur inventor the…" (part).
+
+It gained one part: "Unhe 1921 ka Nobel Prize photoelectric effect par mila,
+aur E=mc² wala formula unki pehchan hai." against "He received the Nobel
+Prize in Physics in 1921 for theoretical physics. In 1922, he received the
+Nobel prize for Physics for his explanation of the photoelectric effect…"
+(the formula is not in it). The false claims main contradicted by a joined
+premise (Japan's surrender in 1939, Microsoft in 1985 by Steve Jobs) are no
+longer contradicted: a joined premise never contradicts.
+
+A Roman claim's subject can hold Roman function words ("thi", "banayi",
+"ismein"): their information is counted over corpora where Roman Hindi is
+rare, so they look distinctive. They widen the search. They cannot let an
+unrelated sentence through the subject check: a sentence passes it by naming
+a subject word as written, or through a translation carrying more than
+average information, never through "was" or "in". Measured, not changed:
+these sets chose the design, and a further change would be fitted to them
+too.
+
 ### Not adopted
 
 - **A direct Roman→English lexicon from PHINC.** IBM Model 1 in both
