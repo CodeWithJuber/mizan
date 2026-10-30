@@ -47,7 +47,7 @@ BASIS = {
 }
 MAX_CLAIMS = 40
 _FENCE = re.compile(r"```.*?```", re.DOTALL)
-_SENTENCE = re.compile(r"(?<=[.!?۔؟])\s+")
+_SENTENCE = re.compile(r"(?<=[.!?۔؟।॥])\s+")  # Devanagari ends at the danda
 # A Markdown heading, or a line wholly in bold, that does not end a sentence.
 _HEADING = re.compile(r"#{1,6}\s+.*[^.!۔।]|\*\*[^*]*[^*.!۔।]\*\*:?")
 _WORD = re.compile(r"[^\W\d_]{3,}", re.UNICODE)

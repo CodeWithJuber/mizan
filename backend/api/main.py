@@ -5676,7 +5676,7 @@ async def nawm_night() -> dict:
         ]
     counted = (
         "replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted",
-        "shadow",
+        "shadow", "reader_learned",
     )  # fmt: skip
     totals = {"people": 0, **dict.fromkeys(counted, 0)}
     seen: set[tuple[str, str]] = set()

@@ -33,18 +33,46 @@ import random
 import re
 import sqlite3
 import threading
+import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from itertools import chain
 from typing import Any
 
-_WORD = re.compile(r"\w+", re.UNICODE)
+
+def _combining_marks() -> str:
+    """A regular-expression class of every combining mark (Unicode category M).
+
+    Marks live in planes 0, 1 and 14 only, so those are the planes read."""
+    ranges: list[tuple[int, int]] = []
+    for point in chain(range(0x20000), range(0xE0000, 0xE1000)):
+        if unicodedata.category(chr(point)).startswith("M"):
+            if ranges and ranges[-1][1] == point - 1:
+                ranges[-1] = (ranges[-1][0], point)
+            else:
+                ranges.append((point, point))
+    return "".join(
+        f"\\U{low:08x}" if low == high else f"\\U{low:08x}-\\U{high:08x}" for low, high in ranges
+    )
 
 
-def tokenize(text: str) -> list[str]:
-    """Lower-cased word tokens (Unicode-aware; no substring matching)."""
-    return [token.lower() for token in _WORD.findall(text or "")]
+# A word is a run of word characters with the combining marks written on them,
+# as Unicode's word boundaries keep them (UAX #29). ``\w`` alone matches no
+# mark, so Devanagari and Tamil vowel signs and viramas and Arabic harakat cut
+# a word in pieces: "राजधानी" was read as "र", "जध", "न".
+_WORD = re.compile(rf"\w[\w{_combining_marks()}]*")
+_SPLIT_AT_MARKS = re.compile(r"\w+")
+
+
+def tokenize(text: str, *, marks: bool = True) -> list[str]:
+    """Lower-cased word tokens (Unicode-aware; no substring matching).
+
+    ``marks=False`` cuts words at their combining marks, as this function did
+    before; it is kept only to find learned state stored under those pieces."""
+    pattern = _WORD if marks else _SPLIT_AT_MARKS
+    return [token.lower() for token in pattern.findall(text or "")]
 
 
 # ───── Proportions ─────

@@ -29,6 +29,13 @@ material is written in. Quoted Quran is Arabic; a name is in no language. So
 "Bukhari 1" is answered in the language of the chat, a bare ayah in Arabic,
 "Ayatul Kursi sunao" in Hinglish, and a first message of names alone in the
 first language listed, English (the app's default), where the languages tie.
+
+MIZAN's own small language model, the Ruh reader (``tadbir.ruh_reader``),
+reads the same words as a second opinion: P(language | words) from
+log P(words | language), multiplied in with a fitted weight ``b`` (a product
+of experts). It changes the posterior only under ``MIZAN_RUH_READER=on`` and
+only once it beat this model on held-out seeds; by default (``shadow``) it is
+computed and logged beside the decision, which stays this model's.
 """
 
 from __future__ import annotations
@@ -97,19 +104,21 @@ def _word(word: str) -> tuple[tuple[str, float], ...]:
     return tuple(model().posterior(word).items())
 
 
-def _own_runs(text: str) -> tuple[list[str], dict[str, float]]:
+def _own_runs(text: str, using: Tamyiz | None = None) -> tuple[list[str], dict[str, float]]:
     """The user's own words, in runs of one script, with neutral material set aside.
 
     Each word whose most probable class is ``name`` or ``quote`` is material,
     not the asker's language; the rest are joined back into runs, because a
     run of words (code-mixed Hinglish included) is read better as a whole.
-    Also counts the material's words by the language they are written in."""
+    Also counts the material's words by the language they are written in.
+    ``using`` reads with another fit of the model (a held-out evaluation)."""
     runs: list[str] = []
     current: list[str] = []
     kind = None
-    material = dict.fromkeys(languages(), 0.0)
+    known = languages() if using is None else _languages_of(using)
+    material = dict.fromkeys(known, 0.0)
     for word in letters(text).split()[:MAX_WORDS]:
-        found = dict(_word(word))
+        found = dict(_word(word)) if using is None else using.posterior(word)
         label = max(found, key=found.__getitem__)
         if label in NEUTRAL:
             written_in = NEUTRAL[label]
@@ -130,13 +139,43 @@ def _own_runs(text: str) -> tuple[list[str], dict[str, float]]:
     return runs, material
 
 
+def _languages_of(using: Tamyiz) -> tuple[str, ...]:
+    return tuple(label for label in using.labels if label not in NEUTRAL)
+
+
 def posterior(text: str, prior: list[str] | None = None) -> dict[str, float]:
-    """P(language | message), with the chat's earlier user messages as the prior."""
-    runs, material = _own_runs(text)
-    known = languages()
+    """P(language | message), with the chat's earlier user messages as the prior.
+
+    The Ruh reader's opinion of the user's own words is weighed in only when
+    it is switched on and passed its test (``ruh_reader.weigh``); otherwise
+    this is :func:`naive_posterior`."""
+    from . import ruh_reader
+
+    found, runs = _posterior(text, prior)
+    return ruh_reader.weigh(found, " ".join(runs))
+
+
+def naive_posterior(
+    text: str, prior: list[str] | None = None, using: Tamyiz | None = None
+) -> dict[str, float]:
+    """P(language | message) by this naive Bayes model alone (``using``: another
+    fit of it, for a held-out evaluation)."""
+    return _posterior(text, prior, using)[0]
+
+
+def own_words(text: str, using: Tamyiz | None = None) -> str:
+    """The user's own words as the reader reads them: neutral material set aside."""
+    return " ".join(_own_runs(text, using)[0])
+
+
+def _posterior(
+    text: str, prior: list[str] | None = None, using: Tamyiz | None = None
+) -> tuple[dict[str, float], list[str]]:
+    runs, material = _own_runs(text, using)
+    known = languages() if using is None else _languages_of(using)
     counts = {label: 1.0 for label in known}
     for earlier in (prior or [])[-12:]:
-        for label, probability in posterior(earlier).items():
+        for label, probability in naive_posterior(earlier, using=using).items():
             counts[label] = counts.get(label, 1.0) + probability
     mass = sum(material.values())
     for label in known if mass else ():
@@ -144,14 +183,14 @@ def posterior(text: str, prior: list[str] | None = None) -> dict[str, float]:
     total = sum(counts.values())
     scores = {label: math.log(counts[label] / total) for label in known}
     for run in runs:
-        found = model().posterior(run)
+        found = (model() if using is None else using).posterior(run)
         own = sum(found.get(label, 0.0) for label in known) or 1.0
         for label in known:
             scores[label] += math.log(found.get(label, 0.0) / own + 1e-12)
     top = max(scores.values())
     weights = {label: math.exp(score - top) for label, score in scores.items()}
     norm = sum(weights.values())
-    return {label: weight / norm for label, weight in weights.items()}
+    return {label: weight / norm for label, weight in weights.items()}, runs
 
 
 def language(text: str, prior: list[str] | None = None) -> str:

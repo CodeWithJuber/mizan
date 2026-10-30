@@ -86,6 +86,13 @@ MIZAN follows Wikimedia's [robot policy](https://wikitech.wikimedia.org/wiki/Rob
    is never read against it, however the NLI model would read the pair. The
    best three kept sentences go on.
 
+   A claim in Hindi, Urdu, Arabic or Tamil against an English page: BM25 also
+   searches by the claim's translations in MIZAN's own lexicon, and a
+   distinctive word counts as present when an above-average-information
+   translation of it is in the sentence ([Qāmūs](qamus.md)). On the production
+   teacher's Hindi and Urdu answers this supported 5 of 119 and 2 of 120 claims
+   (from none), with none read against another question's articles.
+
    A model's sentence often joins what a source says in several: "commissioned
    by Shah Jahan in memory of Mumtaz Mahal" against "It was built by Shah
    Jahan…" and "…for his wife, Mumtaz Mahal". No single sentence holds most of

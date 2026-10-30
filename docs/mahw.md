@@ -11,6 +11,7 @@ Deleting a chat, or forgetting a note, removes it from every place MIZAN keeps i
 | What MIZAN learned while answering | Task records, wisdom, and knowledge-graph entries (with their links) for the chat's requests. Also the intents (Qasd), wording (Ta'allum), programs (Hifz), source-settled sentences (Ahl al-Dhikr's `ilm`), answers kept to give again (Talaqqi, which name their chat) and repair lessons (Tajriba) learned from those requests. A repair lesson names the chats it was learned in; one also used in another chat goes too, because its words or its repair came from the erased chat |
 | Learning record | The chat's notes in the live learning record (Sijill, Agents → Majlis → Learning now) and the failure signatures it gave the instruction harness (Tajdid) |
 | Learner | Training candidates captured from the chat, with their reviews |
+| Language reader | A version of MIZAN's own language reader that learned the chat's reviewed words while resting is dropped, and the newest version that did not becomes the current one (weights cannot have one text subtracted; [Ruh reader](ruh-reader.md)) |
 | Debug mode | Saved comparison runs of the chat's requests |
 | Pathways (Masalik) | Rebuilt from the notes and task records you keep. A Hebbian update cannot be subtracted, so the network is rebuilt rather than edited. 5,000 records take under a second |
 
