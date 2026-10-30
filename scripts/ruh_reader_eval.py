@@ -31,6 +31,9 @@ the new slice.
     cd backend && python ../scripts/ruh_reader_eval.py --seeds 0 1 --json out.json
     # --corpus: train on the reader's corpus too ($MIZAN_DATA_DIR/corpora/ruh_reader)
     # --install 0: keep seed 0's reader as the current one in $MIZAN_DATA_DIR
+    # --save DIR: each seed's weights are written to DIR as soon as it is trained
+    #   (reader-seedN.trained.pt, then the marker seedN.trained), before it is read;
+    #   the same command run again after a stop finds them and only reads
 """
 
 from __future__ import annotations
@@ -325,7 +328,12 @@ def main() -> None:
     parser.add_argument("--evaluate", type=Path, help="measure an installed reader, no training")
     parser.add_argument("--json", type=Path, help="write every number here")
     parser.add_argument("--install", type=int, help="keep this seed's reader as the current one")
-    parser.add_argument("--save", type=Path, help="keep every seed's reader (weights) here")
+    parser.add_argument(
+        "--save",
+        type=Path,
+        help="keep every seed's reader (weights) here, the moment it is trained; "
+        "a re-run finds them and only reads",
+    )
     args = parser.parse_args()
     os.environ.setdefault("MIZAN_TALIM", "off")  # the shipped seeds only
 
@@ -354,6 +362,7 @@ def main() -> None:
             corpus=extra,
             threads=args.threads,
             log=lambda line: print(line, flush=True),
+            trained=args.save,  # weights kept the moment training ends; found again on a re-run
         )
         languages = built.manifest["languages"]
         fit = ruh_reader.Fit(**built.manifest["fit"])

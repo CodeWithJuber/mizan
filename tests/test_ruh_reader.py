@@ -694,3 +694,56 @@ def test_dev_checks_can_be_spread_over_one_long_pass():
     report = net.train(model, lines, plan, dev=lines[:8])
     assert report["steps"] == 8
     assert [item["step"] for item in report["history"]] == [2, 4, 6, 8]
+
+
+def test_trained_weights_are_kept_before_reading_and_found_again(
+    reader_home, few_seeds, tmp_path, monkeypatch
+):
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import net
+
+    kept = tmp_path / "weights"
+    settings = {
+        "config": TINY,
+        "plan": {"epochs": 1, "seconds": 30, "batch": 8},
+        "calibrate": False,
+    }
+
+    def stopped(*_args, **_kwargs):  # the container restarts while the reader reads
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ruh_reader, "score_reads", stopped)
+        with pytest.raises(KeyboardInterrupt):
+            ruh_reader.build(0, trained=kept, log=lambda _line: None, **settings)
+    marker = json.loads((kept / "seed0.trained").read_text(encoding="utf-8"))
+    assert (kept / marker["weights"]).exists() and marker["report"]["steps"] > 0
+    first = net.load(kept / marker["weights"]).state_dict()
+
+    def no_training(*_args, **_kwargs):
+        raise AssertionError("trained again")
+
+    monkeypatch.setattr(net, "train", no_training)
+    lines: list[str] = []
+    built = ruh_reader.build(0, trained=kept, log=lines.append, **settings)
+    assert any("already trained" in line for line in lines)
+    assert built.manifest["training"]["steps"] == marker["report"]["steps"]
+    assert all(torch.equal(first[k], v) for k, v in built.model.state_dict().items())
+    assert "held_out_bpb" in built.manifest
+
+    # Another seed, other settings or damaged weights are another run's: not used.
+    model = net.Reader(net.Config(**TINY))
+    assert ruh_reader.load_trained(kept, 1, marker["key"], model) is None
+    assert ruh_reader.load_trained(kept, 0, "0" * 64, model) is None
+    (kept / marker["weights"]).write_bytes(b"not the weights")
+    assert ruh_reader.load_trained(kept, 0, marker["key"], model) is None
+
+
+def test_the_trained_key_changes_with_what_training_depends_on():
+    lines, dev = [("hello there", 0)], [("kya haal hai", 1)]
+    key = ruh_reader.trained_key(0, TINY, {"epochs": 1}, lines, dev)
+    assert key == ruh_reader.trained_key(0, dict(TINY), {"epochs": 1}, list(lines), list(dev))
+    assert key != ruh_reader.trained_key(1, TINY, {"epochs": 1}, lines, dev)
+    assert key != ruh_reader.trained_key(0, TINY, {"epochs": 2}, lines, dev)
+    assert key != ruh_reader.trained_key(0, TINY, {"epochs": 1}, [("hello there", 1)], dev)
+    assert key != ruh_reader.trained_key(0, TINY, {"epochs": 1}, lines, [])

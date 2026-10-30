@@ -614,6 +614,71 @@ def _corpus_lines(
     }
 
 
+def trained_key(
+    seed: int,
+    config: dict,
+    plan: dict,
+    lines: Sequence[tuple[str, int]],
+    dev_lines: Sequence[tuple[str, int]],
+) -> str:
+    """What a training run depends on: its seed, settings and lines."""
+    digest = hashlib.sha256()
+    digest.update(json.dumps([seed, config, plan], sort_keys=True).encode("utf-8"))
+    for name, items in (("train", lines), ("dev", dev_lines)):
+        digest.update(name.encode("utf-8"))
+        for text, slot in items:
+            digest.update(f"{slot}\t{text}\n".encode())
+    return digest.hexdigest()
+
+
+def _trained_files(folder: Path, seed: int) -> tuple[Path, Path]:
+    return folder / f"reader-seed{seed}.trained.pt", folder / f"seed{seed}.trained"
+
+
+def keep_trained(folder: Path, seed: int, key: str, model: Any, report: dict) -> None:
+    """The weights first, then the marker: a marker always names weights on disk."""
+    from . import net
+
+    weights, marker = _trained_files(folder, seed)
+    net.save(model, weights)
+    temporary = marker.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "seed": seed,
+                "key": key,
+                "weights": weights.name,
+                "sha256": hashlib.sha256(weights.read_bytes()).hexdigest(),
+                "report": report,
+                "kept": datetime.now(UTC).isoformat(),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    temporary.replace(marker)
+
+
+def load_trained(folder: Path, seed: int, key: str, model: Any) -> dict | None:
+    """The training report of weights kept for this seed and key, loaded into
+    ``model``; None when there are none, or they belong to another run."""
+    import torch
+
+    weights, marker = _trained_files(folder, seed)
+    try:
+        found = json.loads(marker.read_text(encoding="utf-8"))
+        data = weights.read_bytes()
+    except (OSError, ValueError):
+        return None
+    if found.get("key") != key or found.get("sha256") != hashlib.sha256(data).hexdigest():
+        return None
+    saved = torch.load(weights, map_location="cpu", weights_only=True)
+    model.load_state_dict(saved["state"])
+    model.eval()
+    report = found.get("report")
+    return report if isinstance(report, dict) else None
+
+
 def build(
     seed: int = 0,
     *,
@@ -625,11 +690,18 @@ def build(
     log: Callable[[str], None] = logger.info,
     loss_hook: Callable | None = None,
     calibrate: bool = True,
+    trained: Path | None = None,
 ) -> Built:
     """Train a reader on the training groups of the seeds (and on the lines of
     ``corpus``, a ``corpus.Corpus``, when given), fit κ, γ and b on the
     development groups, and judge it against Lughah on the held-out ones (and,
-    reported but never deciding, on the corpus's held-out short messages)."""
+    reported but never deciding, on the corpus's held-out short messages).
+
+    With ``trained`` (a folder), the weights are written there the moment
+    training ends (``reader-seed{N}.trained.pt``, then the marker
+    ``seed{N}.trained`` with the training report), before anything is read;
+    a later build of the same seed, settings and lines finds them and does
+    not train again, so a stopped run costs only the reading."""
     import torch
 
     from .. import iqtibas
@@ -662,14 +734,28 @@ def build(
     torch.manual_seed(seed)
     model = net.Reader(net.Config(**{**CONFIG, **(config or {})}))
     settings = {**PLAN, **(plan or {})}
-    report = net.train(
-        model,
-        lines,
-        net.Plan(seed=seed, threads=threads, **settings),
-        dev=dev_lines,
-        loss_hook=loss_hook,
-    )
-    log(f"reader: trained {report['steps']} steps in {report['seconds']}s, dev {report['dev_bpb']}")
+    key = trained_key(seed, model.config.to_dict(), settings, lines, dev_lines)
+    report = load_trained(trained, seed, key, model) if trained is not None else None
+    if report is not None:
+        log(
+            f"reader: seed {seed} already trained ({report['steps']} steps in "
+            f"{report['seconds']}s, dev {report['dev_bpb']}), read from {trained}"
+        )
+    else:
+        report = net.train(
+            model,
+            lines,
+            net.Plan(seed=seed, threads=threads, **settings),
+            dev=dev_lines,
+            loss_hook=loss_hook,
+        )
+        log(
+            f"reader: trained {report['steps']} steps in {report['seconds']}s, "
+            f"dev {report['dev_bpb']}"
+        )
+        if trained is not None:
+            keep_trained(trained, seed, key, model, report)
+            log(f"reader: seed {seed}'s weights kept in {trained} before reading")
     dev = read_with_lughah(splits["dev"], languages, fold)
     held = read_with_lughah(splits["held_out"], languages, fold)
     short: list[Read] = []
