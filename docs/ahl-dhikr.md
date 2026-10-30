@@ -86,6 +86,30 @@ MIZAN follows Wikimedia's [robot policy](https://wikitech.wikimedia.org/wiki/Rob
    is never read against it, however the NLI model would read the pair. The
    best three kept sentences go on.
 
+   **A claim that does not name what it speaks of.** "यह उनका एक प्रसिद्ध
+   उपन्यास है।" ("It is a famous novel of hers") holds the words of any
+   sentence on any famous novel. MIZAN reads it with its subject, found in the
+   answer's own words and the question's, with no model call (`contexts`):
+   - the answer's subject is the distinctive words of its first sentence
+     that the question or a later sentence also holds, and the question's
+     content words (or their Qāmūs translations into the answer's script)
+     that a sentence holds. With none shared, it is the first sentence's
+     distinctive words;
+   - a sentence holding more than half of the subject's information names it
+     and stands alone;
+   - any other sentence is read with the words of the first sentence and of
+     the subject that it lacks, taken only from the question and the
+     sentences before it: the things it may refer to;
+   - its source sentences are searched by its words and these, and a source
+     sentence is about it only when it also names one of them, as it is or
+     translated. A word MIZAN cannot see in the source's script (no Qāmūs
+     translation into it) is no evidence either way;
+   - the NLI model reads the claim's own words.
+
+   Only claims that stand alone are kept, in the `ilm` and by Talaqqi. Apart
+   from its answer, "It is a famous novel of hers" says nothing, and kept it
+   would later be read as about any novel.
+
    A claim in Hindi, Urdu, Arabic or Tamil against an English page: BM25 also
    searches by the claim's translations in MIZAN's own lexicon, and a
    distinctive word counts as present when an above-average-information
@@ -101,8 +125,13 @@ MIZAN follows Wikimedia's [robot policy](https://wikitech.wikimedia.org/wiki/Rob
    - the page whose best three sentences match the claim most (summed BM25)
      gives them, in the page's own order;
    - the joined text must be about the claim, by the same rule as above;
-   - it is read like any sentence, and its contradiction must also hold both
-     ways (step 3).
+   - it may support the claim but never contradicts it. "Says otherwise" is
+     shown with the source's sentence, so it must be one sentence that
+     contradicts the claim both ways (step 3). The NLI model reads a join of
+     sentences on several things as disagreeing with a claim on one of them:
+     "Japan's army … took their capital, Beijing", joined with a sentence on
+     Australia, against "ऑस्ट्रेलिया की राजधानी कैनबरा है।" (Canberra), on
+     another question's page.
 
    Only propositions are judged: a claim needs at least three words, the same
    unit a source sentence needs, and a lead-in ending in ":" ("Thodi
@@ -186,6 +215,107 @@ Two sets of claims:
 the five Hinglish questions the teacher answered in Devanagari, so no claim
 could be matched against English sentences. Their Wikipedia edition (`hi`) was
 not in this offline set.
+
+**Since 30 October** (claims that do not name their subject, below), a joined
+premise no longer contradicts a claim. With the same script on the same sets (75 claims now: Isnad splits a
+Hindi answer at the danda), from articles: 6/75 → **17/75** supported, 0
+contradicted, Talaqqi keeps 12/30; false set 0/20 supported, **8/20**
+contradicted (10 before: "signed on September 2, 1939" and "founded by Steve
+Jobs … in 1985" were contradicted only by a joined premise). From snippets:
+16/75 → 18/75 supported, Talaqqi keeps 11/30; false set 0/20 supported, 10/20
+contradicted.
+
+### Measured: claims that do not name their subject (30 October 2026)
+
+The production teacher answered 30 questions in Hindi (119 claims) and 30 in
+Urdu (120 claims). Each answer was judged offline with the real NLI model
+against:
+- **its own language's Wikipedia:** the Hindi or Urdu articles whose titles
+  the answer holds (`wikimedia/wikipedia`, 1 Nov 2023 dumps);
+- **a control:** another question's articles (question j against j + 7).
+  Every finding there is wrong;
+- **cross-script:** the questions' Simple English Wikipedia articles, and the
+  same control;
+- the **English** sets above (true set: 75 claims; false set: 20).
+
+Every supported or contradicted claim was read against the source sentence
+shown with it and labelled right, part (only some of the claim is in the
+sentence) or wrong. Before, 12 of the 17 wrong findings in Hindi and Urdu
+(own pages and controls) were claims that do not name their subject, as the
+rule above finds them, read against a sentence on another subject: "यह उनका
+एक प्रसिद्ध उपन्यास है।" against a sentence on another writer's novel.
+
+Supported and contradicted claims, as right / part / wrong:
+
+| Set | Claims | Supported before | Contradicted before | Supported now | Contradicted now |
+|---|---|---|---|---|---|
+| Hindi, Hindi Wikipedia | 119 | 22 (14/1/7) | 2 (0/0/2) | 20 (16/2/2) | 0 |
+| Urdu, Urdu Wikipedia | 120 | 21 (12/5/4) | 2 (1/0/1) | 18 (13/5/0) | 0 |
+| Hindi, another question's pages | 119 | 1 (0/0/1) | 1 (0/0/1) | **0** | **0** |
+| Urdu, another question's pages | 120 | 1 (0/0/1) | 0 | **0** | 0 |
+| Hindi, Simple English Wikipedia | 119 | 5 (3/0/2) | 0 | 4 (3/1/0) | 0 |
+| Urdu, Simple English Wikipedia | 120 | 2 (2/0/0) | 0 | 0 | 0 |
+| Both, another question's English pages | 239 | 0 | 0 | 0 | 0 |
+| English true set, Simple English Wikipedia | 75 | 19 (18/1/0) | 0 | 17 (17/0/0) | 0 |
+| English true set, web snippets | 75 | 18 (18/0/0) | 1 (0/0/1) | 18 (18/0/0) | 1 (0/0/1) |
+| English false set, Simple English Wikipedia | 20 | 0 | 10 (10/0/0) | 0 | 8 (8/0/0) |
+| English false set, web snippets | 20 | 0 | 10 (10/0/0) | 0 | 10 (10/0/0) |
+
+- **Over all sets:** wrong findings 20 → **3**, right 88 → 85, part 7 → 8.
+  No false English claim is supported, before or now.
+- **The three still wrong** were not read with a subject:
+  - "मंगल ग्रह को लाल ग्रह कहा जाता है।" ("Mars is called the Red Planet")
+    and "इसी विशेषता के कारण इसे लाल ग्रह के नाम से जाना जाता है।" are
+    supported by a sentence that says why Mars is red, not what it is called;
+  - the snippet contradiction listed above (a one-sentence misreading, both
+    ways).
+- **What was lost:**
+  - Simple English Wikipedia's own sentences often lean on a pronoun too: "He
+    is best known for developing the theory of relativity…" and "30 जनवरी
+    1948 को उनकी हत्या कर दी गई थी।" are no longer supported (right before),
+    nor the Nile's "It flows north…" (part);
+  - two right cross-script supports in Urdu, and the one right Urdu
+    contradiction (the Taj Mahal's building years, against "یہ تقریباً 1648ء
+    میں مکمل تعمیر کیا گیا۔", "It was completed around 1648", which does not
+    name the Taj Mahal either);
+  - two right English contradictions that only a joined premise gave (above).
+    From snippets, "Pride and Prejudice was written by Charlotte Bronte" is no
+    longer contradicted and "306 bones" now is, by one sentence.
+- **Measured on the sets the design was chosen on.** About twenty variants
+  were measured on these same sets and no held-out set was kept, so the
+  numbers above flatter it. With joined premises still contradicting, the
+  variants that ask the sentence to name one of the subject words gave 4–9
+  wrong findings in Hindi and Urdu together (this rule alone: 5), and at
+  least one against another question's page.
+
+**Not adopted:**
+- **Lisan rewrites each claim to stand alone** (comparison only, never
+  shipped). The teacher rewrote the claims of all 110 answers in one call each,
+  replacing pronouns by the words they stand for (334 claims, 216 changed;
+  $0.017 in all). A rewrite was kept only when every content word it added is
+  in the question or the answer (11 claims failed this check), and the
+  rewritten claim was read with the joined-premise rule now in use:
+  - more supported: English true sets 40 (38/2/0) against 35 (35/0/0); Hindi
+    21 (17/2/2); Urdu 24 (14/7/3);
+  - more wrong: 7 against 3 over all sets, including one against another
+    question's page: Titan's "इसका व्यास लगभग 5,150 किलोमीटर है और यह बुध से
+    भी बड़ा है…", rewritten with "टाइटन", supported by the Mars page ("Mars is
+    larger than Mercury");
+  - one model call per answer. MIZAN's own rule asks no model.
+- **The subject as one more distinctive word** (the sentence must hold more
+  than half of the claim's and the subject's information together), or each
+  subject word counted as the claim's own: 7–10 wrong findings in Hindi and
+  Urdu.
+- **A page's title naming the subject** of its sentences: two more wrong Urdu
+  supports ("یہ ملک کے جنوب مشرقی حصے میں واقع ہے۔" on the Australia page,
+  "یہ شمال کی طرف بہتا ہوا بحیرہ روم میں گرتا ہے۔" on the Africa page).
+- **The NLI model reading the claim after its subject words:** the same wrong
+  findings, two more right supports in Hindi and Urdu and two fewer in
+  English.
+- **A joined premise's contradiction shown with the one of its sentences that
+  contradicts the claim both ways:** the sentence the model picked was wrong
+  in 4 of 6 ("Gates stepped down from his CEO position…" against "founded by
+  Steve Jobs").
 
 ## It learns
 

@@ -12,7 +12,9 @@ as ``repo@revision:weights:vocabulary``) under each arm:
   joint premises);
 - ``joint``: also one premise made of the page's best sentences for the claim,
   joined in the page's order, when together they are about the claim
-  (``ahl_dhikr.joint_premise``; what ``judge`` does now);
+  (``ahl_dhikr.joint_premise``), each claim read with what it speaks of when
+  it does not name it (``ahl_dhikr.contexts``, as ``consult`` gives it): what
+  ``judge`` does now;
 - ``window``: the pool also holds every two consecutive sentences, so "It is…"
   keeps its subject;
 - ``joint+window``: both.
@@ -58,6 +60,20 @@ def claims_of(answer: str) -> list[str]:
         and len(tokenize(unit["text"])) >= 3
         and not muhasaba.computable(unit["text"])
     ]
+
+
+def contexts_of(question: str, answer: str, claims: list[str]) -> list[str]:
+    """Each claim's context as ``ahl_dhikr.consult`` gives it: what it speaks of
+    when it does not name it, from the question and every sentence before it."""
+    said = [
+        unit["text"]
+        for unit in isnad.claims(answer)
+        if unit.get("kind", "sentence") == "sentence" and unit.get("text")
+    ]
+    found: dict[str, str] = {}
+    for sentence, words in zip(said, ahl_dhikr.contexts(question, said), strict=True):
+        found.setdefault(sentence, words)
+    return [found.get(claim, "") for claim in claims]
 
 
 def windows(pool: list[Passage]) -> list[Passage]:
@@ -181,11 +197,14 @@ async def main() -> None:
             else ahl_dhikr.web_from({"results": pools.get(item["question"], [])})
         )
         claims = claims_of(item["answer"])
+        context = contexts_of(item["question"], item["answer"], claims)
         single = sentences(passages)
         for arm in arms:
             pool = single + windows(single) if "window" in arm else single
-            judge = ahl_dhikr.judge if "joint" in arm else judge_single
-            verdicts[arm].append(await judge(claims, pool))
+            if "joint" in arm:
+                verdicts[arm].append(await ahl_dhikr.judge(claims, pool, context))
+            else:
+                verdicts[arm].append(await judge_single(claims, pool))
 
     report: dict[str, dict] = {}
     print(f"\n{len(items)} questions")
