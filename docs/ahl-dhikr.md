@@ -211,6 +211,8 @@ not in this offline set.
 - **Erased with the chat.** Deleting a chat (Mahw) drops what that chat's
   requests taught.
 
+While MIZAN rests (Nawm, `docs/automatic-learning.md`), the claims one site settled are asked of Wikipedia again, so a second witness can make them knowledge before anyone asks.
+
 ## In the chat
 
 Under each answer, **📚 Sources asked** lists every confirmed and

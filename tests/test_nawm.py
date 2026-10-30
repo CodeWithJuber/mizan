@@ -109,3 +109,48 @@ async def test_the_night_stops_for_a_request_and_keeps_each_persons_choice(store
     with stateless.no_learning("learning: off"):
         assert (await nawm.replay(store, "u1", outside=outside))["replayed"] == 0
     assert asked == [] and talaqqi.due(talaqqi.answers(store, "u1")[0])
+
+
+NASA = Passage(
+    "Titan is the largest moon of Saturn.", "Titan", "https://science.nasa.gov/titan", "web"
+)
+CLAIM = "The largest moon of Saturn is Titan."
+
+
+async def test_a_fact_one_site_settled_gets_its_second_witness_while_resting(store, monkeypatch):
+    """2:282: one site's word is shown but not given as knowledge; a second,
+    independent site agreeing makes it knowledge (sahih)."""
+    asked = []
+
+    async def wikipedia(question, language, deadline=None):
+        asked.append(question)
+        return [WIKI]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", moons)
+    monkeypatch.setattr(ahl_dhikr, "wikipedia", wikipedia)
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia", "web"])
+    ahl_dhikr.keep(
+        store, "u1", "Which moon of Saturn is largest?", [Finding(CLAIM, "supported", 0.9, NASA)]
+    )
+    assert ahl_dhikr.witnesses(store, "u1")[CLAIM]["grade"] == "hasan"
+    report = await nawm.witness(store, "u1")
+    assert report == {"sought": 1, "corroborated": 1} and asked
+    entry = ahl_dhikr.witnesses(store, "u1")[CLAIM]
+    assert entry["grade"] == "sahih" and entry["hosts"] == ["en.wikipedia.org", "science.nasa.gov"]
+
+
+async def test_a_site_is_not_sought_as_its_own_second_witness(store, monkeypatch):
+    asked = []
+
+    async def wikipedia(question, language, deadline=None):
+        asked.append(question)
+        return [WIKI]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", moons)
+    monkeypatch.setattr(ahl_dhikr, "wikipedia", wikipedia)
+    monkeypatch.setattr(ahl_dhikr, "order", lambda store: ["wikipedia", "web"])
+    ahl_dhikr.keep(
+        store, "u1", "Which moon of Saturn is largest?", [Finding(CLAIM, "supported", 0.9, WIKI)]
+    )
+    assert (await nawm.witness(store, "u1"))["corroborated"] == 0
+    assert asked == []  # Wikipedia is never asked to confirm Wikipedia

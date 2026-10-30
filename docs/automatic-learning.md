@@ -83,7 +83,12 @@ Once a day, while no request is running, MIZAN replays the answers a teacher tau
   - All supported: the lesson is held more firmly (a Good review), so the next person to ask is answered at once. It is not counted as given.
   - A claim contradicted: the lesson is dropped before anyone is given it.
   - Otherwise: it is left as it was, and checked again when asked.
-- **Budget:** five lessons per person and five minutes per night in all. The night stops as soon as a request starts.
+- **Second witnesses** ([2:282](https://quran.com/2:282): "And bring to witness two witnesses"). The same night takes the person's `ilm` claims that only one site settled, most recently used first. Such a claim is shown under an answer but is not given to Lisan as knowledge, and Wikipedia is asked about it again (`nawm.witness`, through `ahl_dhikr.consult`).
+  - An independent host agrees: the claim becomes sahih and is given to Lisan from then on.
+  - A site is never its own second witness, so a claim Wikipedia settled is not asked of Wikipedia.
+  - A question about the deen is never asked outside.
+  - The web search is not used at night, since it is a tool each person's permissions govern.
+- **Budget:** five lessons and five claims per person, and five minutes per night in all. The night stops as soon as a request starts.
 - **Who:** each person whose agents the server holds in memory, and each administrator. Each person's own choices are bound: under `learning: off` nothing is changed.
 - **Learning now:** each replay is noted under the Learning page's **Learning now** as "Replayed while resting". The note names no request, since it is made outside any chat and erasing a chat could not find it.
 - **Settings:** `MIZAN_NAWM` (`on` by default, or `off`); `MIZAN_NAWM_SECONDS` (default 86400, at least 600). The first night starts 15 minutes after the server starts.

@@ -30,10 +30,18 @@ model, as a reuse would (``talaqqi.recheck``):
 - otherwise (a source unreachable, a sentence not found): it is left as it was,
   and checked again when asked.
 
-The night has a budget (``LESSONS`` per person, ``SECONDS`` in all), stops as
-soon as a request is running, and keeps to each person's choices: under
-``learning: off`` nothing is changed. ``MIZAN_NAWM``: ``on`` (default) or
-``off``.
+The same night seeks a second witness for what only one site has said
+(``witness``): "And bring to witness two witnesses" (2:282). A sentence of the
+person's ``ilm`` that a single host settled is shown under an answer but is not
+given to Lisan as knowledge until an independent host agrees
+(``ahl_dhikr.evidence_for``). The most needed of these claims are asked of
+Wikipedia while MIZAN rests; a site is never its own second witness, and a
+question about the deen is never asked outside.
+
+The night has a budget (``LESSONS`` and ``WITNESSES`` per person, ``SECONDS`` in
+all), stops as soon as a request is running, and keeps to each person's
+choices: under ``learning: off`` nothing is changed. ``MIZAN_NAWM``: ``on``
+(default) or ``off``.
 """
 
 from __future__ import annotations
@@ -50,6 +58,7 @@ from memory.dhikr import memory_activation_weight
 from . import ahl_dhikr, sijill, talaqqi
 
 LESSONS = 5  # replayed per person per night
+WITNESSES = 5  # claims per person whose second witness is sought per night
 SECONDS = 300.0  # the whole night's replay, every person together
 
 
@@ -125,3 +134,57 @@ async def replay(
         else:
             report["unsettled"] += 1
     return report
+
+
+async def witness(
+    store: Any,
+    user_id: str,
+    *,
+    deadline: float | None = None,
+    idle: Callable[[], bool] = lambda: True,
+    limit: int = WITNESSES,
+) -> dict:
+    """Seek a second, independent witness for the claims one site settled,
+    the most recently used first. Returns how many were sought and found."""
+    report = {"sought": 0, "corroborated": 0}
+    if not stateless.learns():
+        return report
+    now = datetime.now(UTC)
+    lone = [
+        (claim, entry["items"][0])
+        for claim, entry in ahl_dhikr.witnesses(store, user_id).items()
+        if entry["grade"] == "hasan" and entry["items"][0].get("verdict") == "supported"
+    ]
+    lone.sort(
+        key=lambda pair: memory_activation_weight(_age_seconds(pair[1].get("used"), now), 0),
+        reverse=True,
+    )
+    for claim, _item in lone[:limit]:
+        if not idle() or (deadline is not None and time.monotonic() > deadline):
+            break
+        report["sought"] += 1
+        await ahl_dhikr.consult(
+            claim,
+            [{"text": claim, "grade": "daif", "kind": "sentence"}],
+            store=store,
+            user_id=user_id,
+            language="en",
+        )
+        if ahl_dhikr.witnesses(store, user_id).get(claim, {}).get("grade") == "sahih":
+            report["corroborated"] += 1
+            detail = "While resting, a second independent source agreed with a fact: now knowledge"
+            sijill.note("nawm", {"detail": detail}, owner=user_id)
+    return report
+
+
+async def night(
+    store: Any,
+    user_id: str,
+    *,
+    deadline: float | None = None,
+    idle: Callable[[], bool] = lambda: True,
+) -> dict:
+    """One person's night: lessons replayed, then second witnesses sought."""
+    lessons = await replay(store, user_id, deadline=deadline, idle=idle)
+    witnesses = await witness(store, user_id, deadline=deadline, idle=idle)
+    return {**lessons, **witnesses}

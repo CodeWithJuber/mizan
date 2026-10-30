@@ -5658,7 +5658,8 @@ async def nawm_night() -> dict:
             for account in auth.list_users()
             if "admin" in (account.get("roles") or []) and account.get("enabled", True)
         ]
-    totals = {"people": 0, "replayed": 0, "confirmed": 0, "dropped": 0, "unsettled": 0}
+    counted = ("replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated")
+    totals = {"people": 0, **dict.fromkeys(counted, 0)}
     seen: set[tuple[str, str]] = set()
     for user_id, store in people:
         place = (user_id, str(getattr(store, "db_path", id(store))))
@@ -5668,11 +5669,11 @@ async def nawm_night() -> dict:
         if time.monotonic() > deadline or not _no_run_active():
             break
         with await owner_consent(user_id):
-            report = await nawm.replay(store, user_id, deadline=deadline, idle=_no_run_active)
+            report = await nawm.night(store, user_id, deadline=deadline, idle=_no_run_active)
         totals["people"] += 1
-        for key in ("replayed", "confirmed", "dropped", "unsettled"):
+        for key in counted:
             totals[key] += report[key]
-    if totals["replayed"]:
+    if totals["replayed"] or totals["sought"]:
         logger.info("Nawm: %s", totals)
     return totals
 
