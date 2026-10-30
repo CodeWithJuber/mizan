@@ -477,6 +477,123 @@ The same measurement found that Isnad split sentences only at `. ! ? ۔ ؟`:
 each Hindi answer was one claim (30 claims, none checkable). Isnad now also
 splits at `।` and `॥`, which gave the 119.
 
+## Roman Hindi and Urdu
+
+### The gap
+
+Most of MIZAN's users write Hindi and Urdu in Latin letters, and the teacher
+answers them so. On 30 October 2026 production asked "Taj Mahal kisne banwaya
+tha aur kab?" and the teacher answered "Taj Mahal ko Mughal badshah Shah Jahan
+ne banwaya tha — apni begum Mumtaz Mahal ki yaad mein…". Ahl al-Dhikr asked
+its three sources, and none of 8 claims was supported. Roman words such as
+"banwaya", "badshah", "begum" and "yaad" carry most of each claim's
+distinctive information, and no English sentence holds them. Qāmūs read only
+Devanagari, Urdu, Arabic and Tamil script.
+
+Two things were missing, and both were measured:
+
+1. **The gate.** `about()` found no English sentence about a Roman claim
+   unless the names in Latin letters alone carried more than half of its
+   information.
+2. **The reading.** When the gate was opened, the NLI model misread Roman
+   claims. It called true claims contradicted by sentences that do not
+   contradict them: "Mona Lisa ki painting Leonardo da Vinci ne banayi thi"
+   against Leonardo's full name, "Zuhal ka sab se bara chand Titan hai"
+   against "Titan is Saturn's moon". The model learned Hindi from XNLI, in
+   Devanagari.
+
+### Data and licences
+
+Read and checked one by one; only the first two are used to build.
+
+| Source | Licence | Used |
+|---|---|---|
+| [Aksharantar](https://huggingface.co/datasets/ai4bharat/Aksharantar) (AI4Bharat), Hindi 1.30M and Urdu 0.70M train pairs of a native word and its spelling in Latin letters, at commit `e418c1fc` | Manually collected pairs CC BY 4.0; pairs mined from Samanantar and IndicCorp, and existing sources, CC0 | How letters are written in Latin letters. Its rows that came from Dakshina (24,727 Hindi, 73,666 Urdu) are left out: Dakshina is CC BY-SA 4.0 |
+| MASSIVE 1.1 (above) | CC BY 4.0 | Which Hindi and Urdu words there are, and how common (the prior); which words are English |
+| [Dakshina](https://github.com/google-research-datasets/dakshina) v1.0 (Google), Hindi and Urdu Wikipedia sentences romanized by native speakers, word-aligned | CC BY-SA 4.0 | Measurement only: nothing is learned from it or shipped |
+| [PHINC](https://huggingface.co/datasets/LingoIITGN/PHINC) (IIT Gandhinagar), 13,738 Hinglish tweets with human English translations | CC BY 4.0 | Measured as a direct Roman→English lexicon, not adopted (below) |
+| `findnitai/english-to-hinglish` | Card says Apache-2.0 | Rejected: it re-licenses share-alike sources (Hinglish-TOP, CMU Hinglish DoG) and holds synthetic rows of unstated origin |
+| LinCE | Each part under its own terms | Rejected: an aggregate with no single clear licence |
+| CMU Hinglish DoG | CC BY-SA 3.0 / GFDL | Not needed: PHINC covers the same use under CC BY |
+| Lughah's `hi-latn.tsv` (Hinglish-Everyday-Conversations-1M, MIT) | MIT, synthetic | Not used: it has no other side to learn a reading from |
+
+### Method
+
+**A noisy channel.** A native word d is a sequence of units: each letter with
+the combining marks written on it ("बनवाया" = ब, न, वा, या). Each unit, in its
+context, writes 0 to 4 Roman letters, in order:
+
+    P(r | d) = Σ over alignments Π_i t(chunk_i | unit_i, context_i)
+
+The context is what follows the unit. In Devanagari it is the word's end, a
+bare letter or a letter with marks: a consonant's own vowel is not spoken at
+the end of a word ("kamal") and often not before a bare consonant. In Urdu,
+whose short vowels are not written, it is the next letter itself. A context
+never seen in training falls back to the unit's chunks over all its contexts.
+
+t is learned by EM with the forward-backward algorithm. With α[i][j] the
+probability that the first i units write the first j letters, and β the same
+from the end:
+
+    E step:  c(r[j-l:j] | u_i) += α[i-1][j-l] · t(r[j-l:j] | u_i) · β[i][j] / P(r | d)
+    M step:  t(chunk | u) = c(chunk | u) / Σ c(· | u)
+
+The first E step counts every alignment once. Chunks with less than 10⁻⁴ of a
+unit's mass are dropped. 100,000 training pairs per language are drawn with a
+fixed seed. EM stops when the log-likelihood of Aksharantar's validation pairs
+(without Dakshina's rows) no longer rises.
+
+**Reading a spelling.** The vocabulary is the native words of MASSIVE's train
+split (5,747 Hindi, 5,496 Urdu) with their counts n_d. Each word's 30 most
+probable spellings are taken from a beam search over the channel. Each
+spelling r is read as the word that most probably wrote it, by Bayes' rule:
+
+    P(d | r) = P(r | d) · P(d) / Σ_d' P(r | d') · P(d'),    P(d) = (n_d + 1) / (N + |V|)
+
+A reading is kept only when it is decisive, P(d | r) > ½, as Fahm takes a
+reading only when it is decisive. On Dakshina's dev sentences the cut-off
+that maximised F1 was 0.44 for Hindi and 0.50 for Urdu, close to ½. It was
+measured, not fitted: no number is taken from Dakshina.
+
+A spelling is never read when it is an English word: a word of MASSIVE's
+English utterances outside their slots, or of Lughah's English corpus ("main",
+"the", "door", "bus"). Slot values are left out because they hold names and
+Indian words in Latin letters ("rajdhani express", "biryani"). For Urdu only
+the words the lexicon translates are kept. For Hindi every word is kept,
+because a Roman claim is read by the NLI model in Devanagari (below).
+
+**What is stored.** `backend/tadbir/data/qamus/hi-latn.json.gz` holds each
+spelling with the Devanagari and Urdu words it is read as, how EM ran, and the
+held-out measurements. `scripts/build_qamus_roman.py --check` rebuilds it and
+compares the SHA-256 of its content.
+
+### Using it
+
+- `qamus.read_roman("duniya")` gives `{"hi": "दुनिया", "ur": "دنیا"}`.
+- `qamus.translate(word, target)`: a Latin-letter word that is read gives the
+  native word for its own language and the native word's translations for any
+  other: "duniya" → world, "biwi" → wife. An English word gives none, as
+  before. So `bridge()`, `found_in()`, `about()` and `ahl_dhikr.searched()`
+  read Roman claims with no change to their rules.
+- `qamus.devanagari(claim, keep=premise)` writes a Roman claim's words in
+  Devanagari, except the premise's own words, which stay as they are. A
+  premise's word is a name or a symbol the source writes so: "Au" would
+  otherwise be read as "और" (and).
+- `ahl_dhikr.judge` gives the NLI model a claim that Lughah's own model reads
+  as Hinglish (`ahl_dhikr.roman`) in that form, in both directions of the
+  contradiction check. The claim, its finding and everything shown keep the
+  words the teacher wrote. An English claim, and a code-mixed claim that
+  Lughah reads as English, are read as written.
+- `MIZAN_QAMUS=off` turns all of it off.
+
+### Measured (30 October 2026)
+
+ROMAN_MEASURED
+
+### Not adopted
+
+ROMAN_NOT_ADOPTED
+
 ## Limits
 
 - **The vocabulary is a voice assistant's.** MASSIVE is alarms, music, weather,

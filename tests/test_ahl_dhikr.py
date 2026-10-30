@@ -721,8 +721,38 @@ async def test_a_roman_hindi_claim_is_read_in_devanagari_and_kept_as_written(mon
     assert finding.claim == claim and finding.verdict == "supported"
     hypotheses = {hypothesis for _premise, hypothesis in seen}
     assert claim not in hypotheses
-    assert all("Shah Jahan" in h and "Mumtaz Mahal" in h and "बनवाया" in h for h in hypotheses)
+    assert all("Shah Jahan" in h and "Mumtaz Mahal" in h and "याद में" in h for h in hypotheses)
     seen.clear()
     english = "The Taj Mahal was built by Shah Jahan in memory of his wife Mumtaz Mahal."
     await ahl_dhikr.judge([english], ahl_dhikr.sentences([page]))
     assert {hypothesis for _premise, hypothesis in seen} == {english}
+
+
+async def test_a_roman_claim_is_contradicted_only_however_it_is_written(monkeypatch):
+    page = Passage(
+        "It was built by the emperor Shah Jahan in memory of his wife, Mumtaz Mahal.",
+        "Taj Mahal",
+        "https://simple.wikipedia.org/wiki/Taj_Mahal",
+        "wikipedia",
+    )
+    claim = "Taj Mahal Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein banwaya tha."
+    contradicts = {"entailment": 0.02, "neutral": 0.03, "contradiction": 0.95}
+    neither = {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+
+    def reading(written: set[str]):
+        async def read(pairs):
+            return [contradicts if claim in written or premise in written else neither
+                    for premise, claim in pairs]  # fmt: skip
+
+        return read
+
+    devanagari = ahl_dhikr.hypothesis(claim, page.text, True)
+    assert devanagari != claim
+    # Contradicted in Devanagari both ways, but not as the teacher wrote it.
+    monkeypatch.setattr(ahl_dhikr, "nli", reading({devanagari}))
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "unknown"
+    # Contradicted however it is written, and both ways.
+    monkeypatch.setattr(ahl_dhikr, "nli", reading({devanagari, claim}))
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "contradicted"

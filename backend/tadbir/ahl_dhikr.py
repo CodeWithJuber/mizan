@@ -340,7 +340,8 @@ def hypothesis(claim: str, premise: str, in_roman: bool) -> str:
     symbols) left as they are: the model learned Hindi from XNLI, in
     Devanagari. Read in Latin letters, true claims were read as contradicted
     by unrelated sentences ("Mona Lisa ki painting Leonardo da Vinci ne banayi
-    thi" against Leonardo's full name) (``docs/qamus.md``)."""
+    thi" against Leonardo's full name). Measured on 60 teacher answers in
+    Roman Hindi and Urdu (``docs/qamus.md``)."""
     return qamus.devanagari(claim, keep=premise) if in_roman else claim
 
 
@@ -379,14 +380,23 @@ async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
     # Contradiction is symmetric: if the source contradicts the claim, the claim
     # contradicts the source. A one-way reading is the NLI model misreading a
     # pair (an agreeing page read as "says otherwise"), so it settles nothing.
+    # Nor does it depend on how the claim is written: a Roman claim read in
+    # Devanagari must be contradicted as written too, both ways.
     disputed = [index for index, (_, label, _, _) in best.items() if label == "contradiction"]
-    reverse = await nli([(best[index][3], best[index][2].text) for index in disputed])
-    unsettled = [
+    checks: list[tuple[int, tuple[str, str]]] = []
+    for index in disputed:
+        _decisive, _label, passage, read = best[index]
+        checks.append((index, (read, passage.text)))
+        if read != claims[index]:
+            checks.append((index, (passage.text, claims[index])))
+            checks.append((index, (claims[index], passage.text)))
+    reverse = await nli([pair for _index, pair in checks])
+    unsettled = {
         index
-        for index, reading in zip(disputed, reverse or [], strict=False)
+        for (index, _pair), reading in zip(checks, reverse or [], strict=False)
         if max(reading, key=reading.__getitem__) != "contradiction"
-    ]
-    for index in disputed if reverse is None else unsettled:
+    }
+    for index in disputed if reverse is None else sorted(unsettled):
         decisive, _label, passage, read = best[index]
         best[index] = (decisive, "neutral", passage, read)
     findings = []
