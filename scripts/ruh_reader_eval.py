@@ -229,6 +229,8 @@ def table(results: dict, languages) -> str:
             f"e={gate['e_value']} (needed {gate['needed']}) P(not better)={gate['p_not_better']} "
             f"loss {gate['log_loss_before']} -> {gate['log_loss_after']}"
         )
+        for arm, counted in (found.get("errors") or {}).items():
+            lines.append(f"mistakes on held-out, {arm}: {json.dumps(counted)}")
         if found.get("short"):
             short_bpb = found.get("short_bpb") or {}
             lines.append(
@@ -268,13 +270,16 @@ def measure_short(found: dict, short, fit, languages) -> None:
     found["short_errors"] = errors(short, fit, languages)
 
 
-def errors(reads, fit, languages) -> dict:
-    """Each arm's mistakes as 'truth -> read' counts."""
+def errors(reads, fit, languages, shipped: bool = True) -> dict:
+    """Each arm's mistakes as 'truth -> read' counts (with ``shipped``, also the
+    shipped Lughah's arms: only for messages it never saw)."""
     from collections import Counter
 
     from tadbir import ruh_reader
 
-    rows = {**ruh_reader.arms(reads, fit), **shipped_arms(reads, fit, languages)}
+    rows = ruh_reader.arms(reads, fit)
+    if shipped:
+        rows.update(shipped_arms(reads, fit, languages))
     found = {}
     for arm, values in rows.items():
         counted = Counter(
@@ -313,6 +318,8 @@ def evaluate(folder: Path, extra) -> dict:
     found = {
         "manifest": manifest,
         "slices": slices(held, fit, languages),
+        "held_out_bpb": ruh_reader.bits_per_byte(held, languages),
+        "errors": errors(held, fit, languages, shipped=False),
     }
     measure_short(found, short, fit, languages)
     return found
@@ -369,6 +376,7 @@ def main() -> None:
         found = {
             "manifest": built.manifest,
             "slices": slices(built.held_out, fit, languages),
+            "errors": errors(built.held_out, fit, languages, shipped=False),
         }
         measure_short(found, built.short, fit, languages)
         found["latency"] = latency(built.model, languages)
