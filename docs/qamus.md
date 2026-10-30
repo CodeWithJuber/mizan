@@ -559,7 +559,9 @@ number is taken from Dakshina.
 A spelling is never read when it is an English word: a word of MASSIVE's
 English utterances outside their slots, or of Lughah's English corpus ("main",
 "the", "door", "bus"). Slot values are left out because they hold names and
-Indian words in Latin letters ("rajdhani express", "biryani"). For Urdu only
+Indian words in Latin letters ("rajdhani express", "biryani"). An English
+spelling is still read when the lexicon gives that very spelling as a
+translation of the word: English writes "rajdhani" for राजधानी. For Urdu only
 the words the lexicon translates are kept. For Hindi every word is kept,
 because a Roman claim is read by the NLI model in Devanagari (below).
 
@@ -593,7 +595,140 @@ compares the SHA-256 of its content.
 
 ### Measured (30 October 2026)
 
-ROMAN_MEASURED
+**The channel, on Aksharantar's test split** (recorded in the file; Dakshina's
+rows are part of this split and are only read). The share of test pairs whose
+spelling is among the native word's k most probable spellings, and, for the
+pairs whose word is in the vocabulary, how often the most probable reading of
+the spelling (before the P > ½ cut and the English filter) is that word:
+
+| | EM iterations | spelling in top 1 / 5 / 10 / 30 | read as its word | readings shipped |
+|---|---|---|---|---|
+| Hindi | 23 (held-out likelihood stopped rising) | 0.278 / 0.575 / 0.673 / 0.779 of 10,112 | 596 / 718 = 0.830 | 149,200 |
+| Urdu | 30 (the bound; still rising slowly) | 0.071 / 0.214 / 0.299 / 0.420 of 14,878 | 743 / 1,633 = 0.455 | 87,647 |
+
+**Running text: Dakshina's romanized Wikipedia sentences**
+(`scripts/qamus_roman_eval.py`, test split; the dev split is within 0.01).
+A token is read right when it is read as the word the sentence wrote. Recall
+counts the tokens whose word the reading can give at all. Content tokens carry
+more information than an average running word:
+
+| | tokens | precision [95% Wilson] | same English | recall |
+|---|---|---|---|---|
+| Hindi, all | 87,367 | 0.872 [0.869, 0.874] | 0.874 | 0.773 |
+| Hindi, content | 59,492 | 0.830 [0.825, 0.833] | 0.832 | 0.853 |
+| Urdu, all | 85,027 | 0.835 [0.832, 0.839] | 0.865 | 0.615 |
+| Urdu, content | 55,855 | 0.796 [0.790, 0.801] | 0.797 | 0.687 |
+
+Most wrong readings are spelling variants of one word (की and कि, है and हैं,
+लिए and लिये) or two words written alike ("ki"). Some are not: "mahal" is read
+in Urdu as ماحول (environment) instead of محل (palace).
+
+**Teacher answers.** The production teacher (`deepseek/deepseek-v4.1-flash-1017`
+via OpenRouter) was asked the 30 questions of `scripts/ahl_coverage.py`'s set
+twice: in Hindi-leaning Hinglish ("Taj Mahal kisne banwaya tha aur kab?") and
+in Roman Urdu ("Taj Mahal kis ne tameer karwaya tha?"), with "answer in one
+paragraph of a few sentences, in the language of the question". 27 of the 60
+answers came back in Latin letters; the other 33 (in Devanagari or Urdu
+script) were asked again with production's own reply instruction for Hinglish
+("Hindi/Urdu in Latin letters, as the user writes"), and all came back in Latin
+letters. The answers gave 158 claims (78 and 80). Each claim was judged by
+`judge()` with the real NLI model against the question's Simple English
+Wikipedia articles, and, as a control, against another question's articles.
+The 20 false claims of the English false set were also written in Hinglish by
+hand. The arms add one change at a time:
+
+- **main**: Qāmūs as before (Roman words matched only as they are);
+- **gate**: the Roman reading in `translate`, so in `about()` and the search;
+  the NLI model reads the claim as written;
+- **Devanagari**: and the NLI model reads a Roman claim in Devanagari;
+- **adopted**: and a contradiction must hold however the claim is written.
+
+| Roman claims | supported, Hindi-leaning (78) | supported, Urdu-leaning (80) | supported, all 158 [95% Wilson] | contradicted (all true claims) | control: supported, contradicted |
+|---|---|---|---|---|---|
+| Qāmūs off | 6 | 1 | 7 [2.2, 8.9%] | 1 | 0, 0 |
+| main | 6 | 1 | 7 [2.2, 8.9%] | 1 | 0, 0 |
+| gate | 8 | 7 | 15 [5.8, 15.1%] | 5 | 0, 0 |
+| Devanagari | 18 | 10 | 28 [12.6, 24.4%] | 1 | 0, 0 |
+| **adopted** | **18** [15.1, 33.6%] | **10** [6.9, 21.5%] | **28** [12.6, 24.4%] | **0** [0, 2.4%] | 0, 0 |
+
+| 20 false Roman claims | supported | contradicted | control: supported, contradicted |
+|---|---|---|---|
+| main | 0 | 6 [14.5, 51.9%] | 0, 0 |
+| gate | 0 | 4 | 0, 0 |
+| Devanagari | 0 | 5 | 0, 0 |
+| **adopted** | **0** [0, 16.1%] | **5** [11.2, 46.9%] | 0, 0 |
+
+No other set changed:
+
+| Set | main | adopted |
+|---|---|---|
+| Hindi (Devanagari) answers, 119 claims | 5 supported, 0 contradicted | 5, 0 |
+| Urdu answers, 120 claims | 2, 0 | 2, 0 |
+| Their control (another question's articles) | 0, 0 | 0, 0 |
+| English set of `scripts/ahl_coverage.py`, 75 claims (5 of its questions in Hinglish) | 19 supported, 0 contradicted | 20, 0: the same 19, and the Roman claim "…duniya ka sabse bada desh Russia hai" (right) |
+| English false claims, 20 | 0 supported, 10 contradicted | 0, 10 |
+
+**Hand audit of every finding** (right: the sentence says it; part: it says
+part of it; wrong):
+
+| Claim (adopted arm) | Source sentence, shortened | Audit |
+|---|---|---|
+| Saturn ka sabse bada chand Titan hai. | The largest moon is Titan. | right |
+| Berlin ki deewar 9 November 1989 ko giri thi. | The Berlin Wall was taken down on November 9, 1989. | right |
+| Australia ki rajdhani Canberra hai. | Canberra is the capital city of Australia. | right |
+| Ye New South Wales mein located hai. (Canberra) | …an area… was given to the country by New South Wales to build Canberra in. | wrong: Canberra is in the ACT; also supported on main |
+| Pride and Prejudice Jane Austen ne likhi thi, aur yeh novel 1813 mein publish hui thi. | Pride and Prejudice is a book by Jane Austen. It was published in 1813. | right |
+| Mona Lisa ki painting Leonardo da Vinci ne banayi thi. | Leonardo's full name was "Leonardo di ser Piero da Vinci"… | wrong: true claim, the sentence does not say it |
+| Yeh ek famous portrait hai jo 16th century ke shuru mein banaya gaya tha aur ab Paris ke Louvre Museum mein rakha hai. | …is a 16th-century portrait. It is on permanent display in Paris at the Louvre museum. | right |
+| Penicillin ki khoj Alexander Fleming ne ki thi. | Penicillin was discovered by… Sir Alexander Fleming in 1928… | right |
+| Iske liye unhe 1945 mein Nobel Prize bhi mila (Howard Florey aur Ernst Chain ke saath). | He shared Nobel Prize… in 1945… with Howard Walter Florey and Ernst Boris Chain. | right |
+| Sone (gold) ka chemical symbol Au hai. | Its chemical symbol is Au. | right |
+| Yeh symbol Latin shabd "Aurum" se liya gaya hai, jiska matlab sona hota hai. | Its symbol is Au, from the Latin word for gold, aurum. | right |
+| Telephone ka avishkar mukhy roop se Alexander Graham Bell se joda jata hai, jinhone 1876 mein iska patent liya. | Alexander Graham Bell was the first person to patent the telephone, in 1876. | right |
+| Photosynthesis wo process hai jisme plants, algae aur kuch bacteria… glucose… oxygen… | Photosynthesis is how plants… make carbohydrates… carbon dioxide + water + light energy → glucose + oxygen | right |
+| Isaac Newton ek English physicist, mathematician aur astronomer the, jinka janm 1643 mein hua tha. | Sir Isaac Newton (25 December 1643 –…) was an English physicist, mathematician and astronomer. | right |
+| Microsoft ki sthapna Bill Gates aur Paul Allen ne ki thi. | Gates started Microsoft in 1975 with Paul Allen… | right |
+| Iska nirmaan 1887 se 1889 ke beech Paris mein hua tha aur ise 1889 ki Exposition Universelle ke liye banaya gaya tha. | It was built between 1887 and 1889 for the Exposition Universelle… | right |
+| Bharat ki rajdhani New Delhi hai. | New Delhi is the capital of India. | right |
+| Agar "bada" ka matlab kshetrafal (area) hai, to duniya ka sabse bada desh Russia hai. | Russia is the largest country in the world. | right |
+| Ye Saturn ke chaandron mein sab se bada hai aur poore solar system ka doosra sab se bada moon hai (Ganymede ke baad). | Titan is the largest moon of Saturn and the second largest in the Solar System… after Ganymede | right |
+| Ye New South Wales aur Australian Capital Territory mein waqe hai aur ise 1913 mein capital ke taur par banaya gaya tha. | …it is in the Australian Capital Territory (ACT). Canberra was started in 1913… | part: not in New South Wales |
+| Mona Lisa ki tasveer Leonardo da Vinci ne banai thi. | …Leonardo's most famous oil painting, the Mona Lisa. | right |
+| Woh ek Italian artist, engineer aur inventor the, aur yeh painting 16th century ke shuru mein bani thi. | He was also a scientist, mathematician, engineer, inventor… | part: the date is not in it |
+| Ye 20 July 1969 ko Apollo 11 mission ke dauran hua. | On July 20, 1969, Armstrong and Aldrin became the first humans to land on the moon… | right |
+| Sonay (gold) ka kimiyai alamat Au hai, jo Latin ke aurum se aaya hai. | Its symbol is Au, from the Latin word for gold, aurum. | right |
+| Iska atomic number 79 hota hai aur ye ek transition metal hai. | Its atomic number is 79… a transition metal in Group 11. | right |
+| Photosynthesis woh process hai jisme paudhe (aur kuch algae/bacteria)… | (as above) | right |
+| Isaac Newton ek mashhoor English physicist, mathematician aur astronomer thay (1643–1727). | (as above) | right |
+| Doosri Jang-e-Azeem (World War II) Europe mein 8 May 1945 ko khatam hui, jab Germany ne surrender kiya. | Germany surrendered on May 8, 1945… | right (main read it as contradicted) |
+| *False:* Canberra New Zealand ki rajdhani hai. | Canberra is the capital city of Australia. | right (contradicted) |
+| *False:* Mona Lisa 21 August 1950 ko chori hui thi. | On August 21, 1911, the Mona Lisa was stolen. | right (contradicted) |
+| *False:* Alexander Graham Bell ko telephone ka pehla patent 1901 mein mila tha. | …the first person to patent the telephone, in 1876. | right (contradicted) |
+| *False:* Japan ka formal surrender 2 September 1939 ko USS Arizona par sign hua tha. | Japan formally surrendered on September 2, 1945… on board the USS Missouri | right (contradicted) |
+| *False:* Microsoft ki sthapna Steve Jobs aur Paul Allen ne 1985 mein ki thi. | Gates started Microsoft in 1975 with Paul Allen… | right (contradicted) |
+
+So 28 true claims are supported where main supported 7: 24 right, 2 part, 2
+wrong (one of them, New South Wales, main supported too). Main's 8 findings
+had 2 wrong: the same New South Wales claim, and the Second World War claim
+read as contradicted. No claim was read against another question's articles.
+Of the false claims, main contradicted 6 and the adopted reading 5: it no
+longer contradicts "Germany ne May 1944 mein surrender kiya aur Japan ne
+August 1946 mein…" (right on main) or "Pacific Ocean duniya ka sabse chhota
+mahasagar hai" (main's sentence only said plate tectonics make the Pacific
+smaller), and newly contradicts "Canberra New Zealand ki rajdhani hai". The
+search by translations moved the page's best sentences away from the joined
+premise main found. One true claim main supported is no longer supported:
+"Africa ki sabse lambi nadi Nile hai, jo lagbhag 6,650 km lambi hai…".
+
+The production claim of the gap is still not read against "It was built in
+the 17th century by Emperor Shah Jahan in memory of his wife, Mumtaz Mahal.":
+of its 8 distinctive words, the sentence holds 3 (shah, mumtaz, mahal), and
+"badshah", "begum" and "banwaya" have no translation (Limits). The teacher's
+other wordings of the same fact are read: "Taj Mahal Shah Jahan ne apni biwi
+Mumtaz Mahal ki yaad mein banwaya tha" is about it through "biwi" → wife
+(`tests/test_qamus.py`). Neither Taj Mahal claim of the 60 answers was
+supported: the Simple English page's sentences on its builder were read as
+neutral.
 
 ### Not adopted
 
@@ -607,7 +742,22 @@ ROMAN_MEASURED
   none for Urdu. PHINC has no annotation a cut-off could be fitted on, so a
   second source and a second method were not taken for one claim.
 - **Opening the gate alone.** With the claims read by the NLI model as
-  written, the gate let the model misread them (the gate-only arm above).
+  written, 5 true claims were read as contradicted (the gate arm above).
+- **Reading in Devanagari without the agreement of writings.** One true claim
+  was read as contradicted (the Devanagari arm): "Taj Mahal ko Mughal badshah
+  Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein tameer karwaya tha"
+  against "The Taj Mahal was built for Shah Jahan's third wife, Mumtaz Mahal",
+  which the claim as written is not.
+- **Searching by the translations of distinctive words only**, the ones
+  `about()` counts, instead of every word's ("ne" → has, "mein" → in). It
+  found fewer true Roman claims supported (24 of 158 against 28), more false
+  Roman claims contradicted (7 against 5, both new ones right) and more
+  Devanagari and Urdu claims supported (5 → 8 of 119 and 2 → 3 of 120, all
+  right). But on the English set of `scripts/ahl_coverage.py` it read a true
+  Hindi claim, "उनका जन्म 2 अक्टूबर 1869 को पोरबंदर, गुजरात में हुआ था और उन्हें
+  राष्ट्रपिता कहा जाता है।", as contradicted by a joined premise that holds "He
+  was first called this in 1914 in South Africa". A false contradiction on a
+  set that had none, so the search is as before.
 - **Context for Urdu.** For Urdu, the next letter as the context was compared
   with Hindi's (the word's end, a bare letter or a marked letter) on
   Dakshina's test tokens: precision 0.846 against 0.859, recall 0.755 against
