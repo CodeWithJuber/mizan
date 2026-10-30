@@ -551,9 +551,10 @@ spelling r is read as the word that most probably wrote it, by Bayes' rule:
     P(d | r) = P(r | d) · P(d) / Σ_d' P(r | d') · P(d'),    P(d) = (n_d + 1) / (N + |V|)
 
 A reading is kept only when it is decisive, P(d | r) > ½, as Fahm takes a
-reading only when it is decisive. On Dakshina's dev sentences the cut-off
-that maximised F1 was 0.44 for Hindi and 0.50 for Urdu, close to ½. It was
-measured, not fitted: no number is taken from Dakshina.
+reading only when it is decisive. With a prototype of the channel (fewer
+iterations), the cut-off that maximised F1 on Dakshina's dev sentences was
+0.44 for Hindi and 0.50 for Urdu, close to ½. That was a check, not a fit: no
+number is taken from Dakshina.
 
 A spelling is never read when it is an English word: a word of MASSIVE's
 English utterances outside their slots, or of Lughah's English corpus ("main",
@@ -592,7 +593,22 @@ ROMAN_MEASURED
 
 ### Not adopted
 
-ROMAN_NOT_ADOPTED
+- **A direct Roman→English lexicon from PHINC.** IBM Model 1 in both
+  directions on PHINC's 13,738 tweet pairs (EM stopped after 3 iterations by
+  held-out likelihood) learned frequent words well: duniya → world (0.99),
+  biwi → wife (0.97), saal → years, likha → written. Encyclopedic words never
+  occur in it (tameer, mashhoor, rajdhani, haddiyan). In a prototype run with
+  the claims read as written, it added one supported claim to what reading
+  through Devanagari and Urdu gave (Hindi 8 → 9, by "bharat" → india) and
+  none for Urdu. PHINC has no annotation a cut-off could be fitted on, so a
+  second source and a second method were not taken for one claim.
+- **Opening the gate alone.** With the claims read by the NLI model as
+  written, the gate let the model misread them (the gate-only arm above).
+- **Context for Urdu.** For Urdu, the next letter as the context was compared
+  with Hindi's (the word's end, a bare letter or a marked letter) on
+  Dakshina's test tokens: precision 0.846 against 0.859, recall 0.755 against
+  0.713. The next letter is used. Neither reads Urdu as well as Hindi is read
+  (Limits).
 
 ## Limits
 
@@ -618,8 +634,18 @@ ROMAN_NOT_ADOPTED
   rowan.
 - **The Arabic is Saudi dialect** (MASSIVE `ar-SA`), not the Modern Standard
   Arabic of Wikipedia. This is why it has the lowest precision and coverage.
-- **Roman Hindi/Urdu is not covered.** A Hinglish word is in Latin letters, so
-  it is matched as it is, as before. MASSIVE has no Roman Hindi locale.
+- **Roman Hindi and Urdu are read through MASSIVE's words.** Only a word of
+  MASSIVE's Hindi or Urdu vocabulary (5,747 and 5,496 words) is read, and it
+  helps only when the lexicon translates it. "banwaya" (बनवाया) and "begum"
+  are not in MASSIVE; "badshah" (बादशाह) and "deewar" (दीवार) are read but have
+  no translation. A word is read only as one of the 30 spellings the channel
+  finds most probable for it.
+- **Urdu is read less well than Hindi.** Its short vowels are not written, so
+  one Urdu word has many spellings, and most of Aksharantar's Urdu pairs are
+  words run together from web text ("ہوگادوسرے", hoga dosray).
+- **A Roman word spelled like an English word is never read** ("door" for दूर,
+  "main" for मैं), nor a name that MASSIVE's English utterances use outside a
+  slot.
 - **Only English pairs.** Hindi against Urdu, or Urdu against Arabic, is not
   translated (same script, or no pair).
 - **Arabic-script spelling variants** (ي and ی, ك and ک) and optional harakat
@@ -635,3 +661,14 @@ The data folders must be new folders outside the repository; the scripts
 refuse a folder inside it. Both scripts need `pyarrow` and `huggingface_hub`,
 and the builder needs `anyascii==0.3.2`. The build takes about 40 seconds and
 the measurement about 5 minutes on one CPU.
+
+The Roman reading:
+
+    python -I scripts/build_qamus_roman.py --data /tmp/qamus_roman_data          # writes hi-latn.json.gz
+    python -I scripts/build_qamus_roman.py --data /tmp/qamus_roman_data --check  # fails if a rebuild differs
+    python -I scripts/qamus_roman_eval.py --dakshina /tmp/dakshina_dataset_v1.0
+
+The build reads Aksharantar's Hindi and Urdu archives (33 MB and 18 MB) and
+MASSIVE's train splits, and takes about 10 minutes on one CPU. The
+measurement needs Dakshina v1.0 unpacked (`dakshina_dataset_v1.0.tar` from
+Google's storage, 2 GB; only `hi/romanized` and `ur/romanized` are read).

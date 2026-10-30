@@ -70,7 +70,7 @@ DATA = Path(__file__).parent / "data" / "qamus"
 FORMAT = "mizan-qamus/1"
 ROMAN = "hi-latn.json.gz"
 ROMAN_FORMAT = "mizan-qamus-roman/1"
-_LATIN_WORD = re.compile(r"[A-Za-z]+")
+_WORD = re.compile(r"[^\W\d_]+")  # a run of letters: "Émile" is one word, not "mile"
 NULL = ""  # the empty word: no token is empty, so it never meets a real word
 Table = dict[str, dict[str, float]]
 
@@ -668,7 +668,7 @@ def devanagari(text: str, keep: str = "") -> str:
             return word
         return read_roman(word).get("hi", word)
 
-    return _LATIN_WORD.sub(spelled, text)
+    return _WORD.sub(spelled, text)
 
 
 def languages() -> dict[str, str]:
