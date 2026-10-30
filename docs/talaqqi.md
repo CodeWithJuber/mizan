@@ -29,6 +29,8 @@ Each kept answer has an FSRS-6 strength (`memory/tadhkir.py`), as a memory does.
   - Any claim contradicted: the answer is dropped and the teacher is asked again.
   - Otherwise, for example a source unreachable: the teacher answers this time, and a new answer the sources confirm replaces the kept one.
 
+Lessons that have fallen due are also replayed once a day while no request runs, the most needed first (Nawm, `docs/automatic-learning.md`). Those the sources still hold are ready again before anyone asks, and those a source now contradicts are dropped.
+
 The reused answer ends with a line saying when MIZAN learned it and which sources confirmed it. Each claim is graded hasan with its source in the Isnad ledger. `usage.lisan.calls` is 0, `usage.lisan.source` is `mizan`, and `usage.talaqqi` records when it was kept, the teacher, how often it was given, and whether the sources were asked again. The zero-call share (`docs/teacher-calls.md`) counts these answers.
 
 ## Privacy and control

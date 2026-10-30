@@ -69,7 +69,7 @@ def _summary(kind: str, attributes: dict[str, Any]) -> str:
         return str(attributes.get("detail") or "Remembered how a game level is won")
     if kind == "sidq":
         return str(attributes.get("detail") or "Corrected a claim before it was shown")
-    if kind in ("ahl_dhikr", "talaqqi"):
+    if kind in ("ahl_dhikr", "talaqqi", "nawm"):
         return str(attributes.get("detail") or kind)
     return kind
 

@@ -18,6 +18,7 @@ export const NOTE_LABELS: Record<string, string> = {
   sidq: "Truth Gate",
   ahl_dhikr: "Sources",
   talaqqi: "Learned answer",
+  nawm: "Replayed while resting",
 };
 
 /** New notes first, without duplicates, at most ``max`` of them. */

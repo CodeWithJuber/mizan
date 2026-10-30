@@ -394,6 +394,26 @@ async def lifespan(app: FastAPI):
 
     self_review_task = asyncio.create_task(self_review())
 
+    async def rest() -> None:
+        # Nawm: while no request runs, the answers MIZAN learned from a teacher
+        # are replayed by Need × Gain and asked of their sources again.
+        from tadbir import nawm
+
+        await asyncio.sleep(900)
+        while True:
+            if nawm.enabled():
+                try:
+                    await nawm_night()
+                except Exception as exc:  # noqa: BLE001 - one night's failure ends that night
+                    logger.warning("Nawm replay failed: %s", exc)
+            try:
+                interval = max(600.0, float(os.getenv("MIZAN_NAWM_SECONDS", "86400")))
+            except ValueError:
+                interval = 86400.0
+            await asyncio.sleep(interval)
+
+    rest_task = asyncio.create_task(rest())
+
     async def watch_for_users() -> None:
         # Muraqabah: each user's watchers, judged against salah and attention.
         from automation import muraqabah
@@ -491,6 +511,7 @@ async def lifespan(app: FastAPI):
     if memory_maintenance_task is not None:
         memory_maintenance_task.cancel()
     self_review_task.cancel()
+    rest_task.cancel()
     watch_task.cancel()
     sakk_task.cancel()
     telegram_stop.set()
@@ -5611,6 +5632,49 @@ async def shura_consult(req: ShuraRequest, user: TokenPayload | None = Depends(g
 
 
 # === TADBIR LEARNING (Majlis routing, Ta'allum wording) ===
+
+
+def _no_run_active() -> bool:
+    """No request is running on any agent, shared or private."""
+    agents = [*active_agents.values(), *_user_agents.values()]
+    return not any(getattr(agent, "_active_runs", 0) for agent in agents)
+
+
+async def nawm_night() -> dict:
+    """One night of Nawm (docs/automatic-learning.md): each person whose
+    agents this process holds, and each administrator (whose learning lives
+    with the shared agents), has their lapsed lessons replayed under their own
+    choices, while no request runs and within the night's budget."""
+    from tadbir import nawm
+
+    deadline = time.monotonic() + nawm.SECONDS
+    people: list[tuple[str, Any]] = [
+        (user_id, instance.adaptive) for (user_id, _), instance in list(_user_agents.items())
+    ]
+    template = _tadbir_coordinator()
+    if template is not None:
+        people += [
+            (account["id"], template.adaptive)
+            for account in auth.list_users()
+            if "admin" in (account.get("roles") or []) and account.get("enabled", True)
+        ]
+    totals = {"people": 0, "replayed": 0, "confirmed": 0, "dropped": 0, "unsettled": 0}
+    seen: set[tuple[str, str]] = set()
+    for user_id, store in people:
+        place = (user_id, str(getattr(store, "db_path", id(store))))
+        if store is None or place in seen:
+            continue
+        seen.add(place)
+        if time.monotonic() > deadline or not _no_run_active():
+            break
+        with await owner_consent(user_id):
+            report = await nawm.replay(store, user_id, deadline=deadline, idle=_no_run_active)
+        totals["people"] += 1
+        for key in ("replayed", "confirmed", "dropped", "unsettled"):
+            totals[key] += report[key]
+    if totals["replayed"]:
+        logger.info("Nawm: %s", totals)
+    return totals
 
 
 def _tadbir_coordinator():

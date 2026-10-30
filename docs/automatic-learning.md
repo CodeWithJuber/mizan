@@ -67,6 +67,27 @@ A program kept before this check is checked once on its next reuse: if an indepe
 
 A language-model answer to a question about the world, whose every claim Ahl al-Dhikr found supported by a source, is kept for that user with its sources. The same question, opening a chat, is then answered with no model call. Its claims are checked against the sources again on an FSRS schedule that lengthens each time they hold; an answer a source contradicts is dropped. Questions about the deen are never kept. See `docs/talaqqi.md`.
 
+## Nawm: what was learned is replayed while MIZAN rests
+
+"And made your sleep [a means for] rest" ([78:9](https://quran.com/78:9)); "And of His signs is your sleep by night and day and your seeking of His bounty" ([30:23](https://quran.com/30:23), Saheeh International).
+
+In sleep the brain replays what it lived, by priority. Mattar and Daw (Nature Neuroscience 21, 2018) explained the order of hippocampal replay as Need × Gain:
+- **Need:** how likely a memory is to be used soon.
+- **Gain:** how much revisiting it would change what is done with it.
+
+Once a day, while no request is running, MIZAN replays the answers a teacher taught once (Talaqqi) that way (`backend/tadbir/nawm.py`, `nawm_night` in `api/main.py`).
+
+- **Need** is the lesson's ACT-R base-level activation from how often it was given: n uses over its lifetime L, B = ln(n/(1−d)) − d·ln L.
+- **Gain** is 1 − R(t), the chance its sources no longer bear it out, from its FSRS retrievability. Only lessons whose R(t) fell below 0.9 are replayed; one above it is given on its sources anyway.
+- **Recheck:** the lessons with the highest Need × Gain have their claims asked of Wikipedia again and read by the NLI model, as a reuse would.
+  - All supported: the lesson is held more firmly (a Good review), so the next person to ask is answered at once. It is not counted as given.
+  - A claim contradicted: the lesson is dropped before anyone is given it.
+  - Otherwise: it is left as it was, and checked again when asked.
+- **Budget:** five lessons per person and five minutes per night in all. The night stops as soon as a request starts.
+- **Who:** each person whose agents the server holds in memory, and each administrator. Each person's own choices are bound: under `learning: off` nothing is changed.
+- **Learning now:** each replay is noted under the Learning page's **Learning now** as "Replayed while resting". The note names no request, since it is made outside any chat and erasing a chat could not find it.
+- **Settings:** `MIZAN_NAWM` (`on` by default, or `off`); `MIZAN_NAWM_SECONDS` (default 86400, at least 600). The first night starts 15 minutes after the server starts.
+
 ## Muhasaba: self-review and correction (Tawbah)
 
 Once a day (`MIZAN_MUHASABA_SECONDS`, default 86,400; first run 10 minutes after start), MIZAN re-reads the answers from the last day that the language model gave in words. Answers MIZAN verified are skipped. It checks what it can check by itself:

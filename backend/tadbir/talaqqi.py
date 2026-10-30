@@ -232,47 +232,67 @@ async def recheck(
     return "unsettled", findings
 
 
+def _confirm(item: dict, findings: list[Finding]) -> None:
+    """The sources confirmed the answer again: an FSRS Good review, and each
+    claim now stands on the sentence that confirmed it this time."""
+    item["strength"] = tadhkir.review(item.get("strength"), Rating.Good)
+    fresh = {f.claim: f for f in findings if f.passage is not None}
+    for claim in item.get("claims", []):
+        finding = fresh.get(claim["claim"])
+        if finding is not None and finding.passage is not None:
+            claim.update(
+                says=finding.passage.text[:600],
+                title=finding.passage.title,
+                url=finding.passage.url,
+                host=host_of(finding.passage.url),
+                source=finding.passage.source,
+                checked=finding.passage.at or _now(),
+                p=round(float(finding.probability or 0.0), 3),
+            )
+
+
+def _same(item: dict, kept: dict) -> bool:
+    return bool(
+        item.get("tokens") == kept.get("tokens") and item.get("language") == kept.get("language")
+    )
+
+
 def reused(
     store: Any, user_id: str, kept: dict, findings: list[Finding], *, confirmed: bool
 ) -> dict:
     """Record a reuse; a reuse the sources confirmed again strengthens the answer."""
     items = _load(store, user_id)
     for item in items:
-        if item.get("tokens") == kept.get("tokens") and item.get("language") == kept.get(
-            "language"
-        ):
+        if _same(item, kept):
             item["used"] = _now()
             item["reused"] = int(item.get("reused", 0)) + 1
             if confirmed:
-                item["strength"] = tadhkir.review(item.get("strength"), Rating.Good)
-                fresh = {f.claim: f for f in findings if f.passage is not None}
-                for claim in item.get("claims", []):
-                    finding = fresh.get(claim["claim"])
-                    if finding is not None and finding.passage is not None:
-                        claim.update(
-                            says=finding.passage.text[:600],
-                            title=finding.passage.title,
-                            url=finding.passage.url,
-                            host=host_of(finding.passage.url),
-                            source=finding.passage.source,
-                            checked=finding.passage.at or _now(),
-                            p=round(float(finding.probability or 0.0), 3),
-                        )
+                _confirm(item, findings)
             _save(store, user_id, items)
             return item
     return kept
 
 
+def refreshed(store: Any, user_id: str, kept: dict, findings: list[Finding]) -> None:
+    """The sources confirmed a kept answer again while no one asked for it
+    (Nawm): its strength grows, and it is not counted as given."""
+    items = _load(store, user_id)
+    for item in items:
+        if _same(item, kept):
+            _confirm(item, findings)
+            item["refreshed"] = _now()
+            _save(store, user_id, items)
+            return
+
+
+def answers(store: Any, user_id: str) -> list[dict]:
+    """Every answer kept for this user."""
+    return _load(store, user_id)
+
+
 def drop(store: Any, user_id: str, kept: dict) -> None:
     items = _load(store, user_id)
-    remaining = [
-        item
-        for item in items
-        if not (
-            item.get("tokens") == kept.get("tokens")
-            and item.get("language") == kept.get("language")
-        )
-    ]
+    remaining = [item for item in items if not _same(item, kept)]
     if len(remaining) != len(items):
         _save(store, user_id, remaining)
 
