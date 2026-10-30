@@ -242,16 +242,6 @@ def average_information() -> float:
     return sum(count * information(word) for word, count in counts.items()) / occurrences
 
 
-def distinctive_words(claim: str) -> dict[str, float]:
-    """The claim's words that carry more information than its average word,
-    with their information; all its words when none does."""
-    weights = {word: information(word) for word in set(tokenize(claim))}
-    if not weights:
-        return {}
-    mean = sum(weights.values()) / len(weights)
-    return {word: weight for word, weight in weights.items() if weight > mean} or weights
-
-
 def about(claim: str, sentence: str) -> bool:
     """The sentence speaks of what the claim speaks of.
 
@@ -269,9 +259,11 @@ def about(claim: str, sentence: str) -> bool:
     nearly every sentence, so finding it is no evidence. As a word found as it
     is stands for itself, a word of the sentence stands for one claim word at
     most (``docs/qamus.md``)."""
-    distinctive = distinctive_words(claim)
-    if not distinctive:
+    weights = {word: information(word) for word in set(tokenize(claim))}
+    if not weights:
         return False
+    mean = sum(weights.values()) / len(weights)
+    distinctive = {word: weight for word, weight in weights.items() if weight > mean} or weights
     present = set(tokenize(sentence))
     covered = sum(weight for word, weight in distinctive.items() if word in present)
     total = sum(distinctive.values())
@@ -320,18 +312,17 @@ def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) 
 
 
 def searched(claim: str) -> str:
-    """The words a claim's sentences are searched by: its own, and the English
-    translations in MIZAN's lexicon (Qāmūs) of its distinctive words that carry
-    information themselves, the translations ``about`` counts. A Hindi, Urdu
-    or Roman Hindi claim so finds the English source sentences about it;
-    whether a found sentence is about the claim is still decided by ``about``
-    on the claim itself. Translations of every word ("ne" → has, "mein" → in)
-    moved the search to other sentences: measured on 60 teacher answers in
-    Roman Hindi and Urdu, 30 in Hindi and 30 in Urdu, and 20 false Roman
-    claims, against Simple English Wikipedia (``docs/qamus.md``)."""
-    words = sorted(distinctive_words(claim))
-    floor = average_information()
-    bridged = [word for word in qamus.bridge(" ".join(words), "en") if information(word) > floor]
+    """The words a claim's sentences are searched by: its own, and their
+    English translations in MIZAN's lexicon (Qāmūs), so a Hindi or Urdu claim
+    finds the English source sentences about it. Whether a found sentence is
+    about the claim is still decided by ``about`` on the claim itself.
+    Measured on 30 teacher answers in Hindi and 30 in Urdu against Simple
+    English Wikipedia: supported 2 → 5 of 119 and 1 → 2 of 120 claims, none
+    read against another question's article (``docs/qamus.md``). A Roman
+    Hindi or Urdu word is translated through the word it spells. Searching by
+    the translations of distinctive words only was measured and not adopted:
+    it read a true Hindi claim as contradicted."""
+    bridged = qamus.bridge(claim, "en")
     return claim + " " + " ".join(bridged) if bridged else claim
 
 

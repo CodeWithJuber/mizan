@@ -382,10 +382,7 @@ TAJ_SENTENCE = "It was built by the emperor Shah Jahan in memory of his wife, Mu
 
 def test_a_roman_claim_finds_its_english_sentence():
     assert ahl_dhikr.about(TAJ_ROMAN, TAJ_SENTENCE)
-    searched = ahl_dhikr.searched(TAJ_ROMAN).split()
-    assert "wife" in searched
-    # Function words are not searched by their translations ("ne" → has, "mein" → in).
-    assert not {"has", "in", "the", "was"} & set(searched)
+    assert "wife" in ahl_dhikr.searched(TAJ_ROMAN).split()
 
 
 def test_a_roman_claim_is_not_read_against_another_subject():
