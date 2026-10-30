@@ -31,4 +31,9 @@ The same numbers for your own answers are shown under **Agents → Majlis → Le
 
 Answers saved before this field existed are counted by their recorded calls under the family `unrecorded`. Unfinished answers and evaluations (`stateless`) are left out.
 
+## In evaluations and spend
+
+- Imtihan rows keep each arm's `lisan_calls`; the report gives MIZAN's zero-call share with a Wilson interval and how many of its model calls were Lisan tasks.
+- Iqtisad records every paid call with its chat request and Lisan task (`spend.request_id`, `spend.task`), so cost can be split the same way.
+
 A Wilson interval needs enough answers to mean anything: about 250 to 400 answers in a family and language give a share to within ±5 points.

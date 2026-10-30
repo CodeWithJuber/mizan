@@ -2,6 +2,7 @@
 
 import json
 import math
+import sqlite3
 from types import SimpleNamespace
 
 import anthropic
@@ -53,6 +54,34 @@ def test_with_no_limit_calls_pass_and_are_recorded(ledger, as_user):
     summary = iqtisad.summary("alice", admin=False)
     assert summary["spent_usd"]["day"] == pytest.approx((10 * 10 + 100 * 40) / 1e6)
     assert summary["limits_usd"] == {"day": None, "month": None}
+
+
+def test_spend_names_its_chat_request_and_lisan_task(ledger, as_user):
+    as_user()
+    with iqtisad.bind_request("req-1"), iqtisad.bind_task("write_code"):
+        iqtisad.admit("test-model", 4000, "s").settle({"input": 10, "output": 100})
+    iqtisad.admit("test-model", 4000, "s").settle({"input": 10, "output": 100})
+    with sqlite3.connect(ledger.path) as conn:
+        rows = conn.execute("SELECT request_id, task FROM spend ORDER BY created").fetchall()
+    assert rows == [("req-1", "write_code"), ("", "")]
+
+
+def test_an_older_ledger_gains_the_request_and_task_columns(tmp_path):
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE spend (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, day TEXT NOT NULL, "
+            "month TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER, output_tokens "
+            "INTEGER, cost_usd REAL NOT NULL, source TEXT NOT NULL, created TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO spend VALUES ('a','alice','2026-10-30','2026-10','m',1,1,0.5,'provider','x')"
+        )
+    old = iqtisad.Ledger(str(path))
+    old.record("alice", "2026-10-30", "2026-10", "m", (1, 1), 0.25, "provider")
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT COUNT(*), SUM(cost_usd) FROM spend").fetchone() == (2, 0.75)
+        assert conn.execute("SELECT request_id FROM spend WHERE id = 'a'").fetchone() == ("",)
 
 
 def test_no_sequence_of_calls_can_overspend_the_limit(ledger, as_user, monkeypatch):

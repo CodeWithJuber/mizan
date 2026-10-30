@@ -47,13 +47,13 @@
   "/api/auth/register": {
    "post": {
     "summary": "Register",
-    "description": "Register a new user",
+    "description": "Register a new user aged 16 or older (docs/consent.md): chats with an\nIslamic assistant reveal religious belief, a special category of personal\ndata, and a younger child needs a parent's consent.",
     "operationId": "register_api_auth_register_post",
     "requestBody": {
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/LoginRequest"
+        "$ref": "#/components/schemas/RegisterRequest"
        }
       }
      },
@@ -22858,6 +22858,34 @@
     ],
     "title": "Qwen3RerankInfo",
     "description": "Provenance for the optional Qwen3 sense rerank (null when not applied)."
+   },
+   "RegisterRequest": {
+    "properties": {
+     "username": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Username"
+     },
+     "password": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Password"
+     },
+     "age_16_or_older": {
+      "type": "boolean",
+      "title": "Age 16 Or Older",
+      "description": "The person confirms they are 16 or older.",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "username",
+     "password"
+    ],
+    "title": "RegisterRequest"
    },
    "RetractionRequest": {
     "properties": {

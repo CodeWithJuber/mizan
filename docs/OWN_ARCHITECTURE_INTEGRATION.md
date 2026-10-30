@@ -134,6 +134,13 @@ support can help find sources, propose annotations and diagnose errors. Prepare
 independently reviewed human/source records with rights and provenance for
 actual weight training. Do not relabel a teacher answer as human authorship.
 
+The one exception is the owner's decision of 30 Oct 2026 (`docs/consent.md`):
+a teacher's answer that MIZAN verified, from a teacher whose licence allows
+training on its output, may be a target as a `licensed_teacher` record. It
+names the teacher, the licence and the MIZAN check that passed, still needs an
+accepted review, and is never grounded on Quran or hadith sources. Anthropic
+and OpenAI output never qualifies.
+
 ```sh
 python -m mizan_reply.cli preflight --train-data data/train.jsonl --dev-data data/dev.jsonl --sources data/sources.jsonl --config research/own_model/configs/reply_small.json --output-dir data/candidate
 python -m mizan_reply.cli train --train-data data/train.jsonl --dev-data data/dev.jsonl --sources data/sources.jsonl --config research/own_model/configs/reply_small.json --output-dir data/candidate

@@ -54,7 +54,13 @@ CHAT_PREFERENCE_LIMITS = {
     "cross_chat_recall": 8,
     # "on" shows a notice's text on the lock screen (default: only "a new notice").
     "push_preview": 8,
+    # "off" stops MIZAN learning from your work for you (docs/consent.md).
+    "learning": 8,
+    # "on" lets your chats be kept as training candidates (opt-in; docs/consent.md).
+    "training": 8,
 }
+# Consent choices are "on" or "off", whoever writes them (docs/consent.md).
+CONSENT_PREFERENCES = ("learning", "training")
 
 
 # ── Phase 2: mizan.nlp native Arabic WSD (IP-4) ──────────────────────────
@@ -654,7 +660,7 @@ class DhikrMemorySystem:
         # which a stateless run (an evaluation or a test chat) never does.
         from memory import stateless
 
-        if not stateless.active():
+        if stateless.learns():
             self.masalik.recall_context(query, top_k=8)
 
         # ── SQLite: Record search ──
@@ -727,7 +733,7 @@ class DhikrMemorySystem:
         # evaluation or a test chat) reads without strengthening anything.
         from memory import tadhkir
 
-        if stateless.active():
+        if not stateless.learns():
             return memories
         for mem in memories:
             mem.access_count += 1
@@ -1450,6 +1456,10 @@ class DhikrMemorySystem:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("Preference value must not be empty; delete it to forget it")
         value = value.strip()
+        if key in CONSENT_PREFERENCES:
+            value = value.lower()
+            if value not in {"on", "off"}:
+                raise ValueError(f"{key} is on or off")
         if len(value) > CHAT_PREFERENCE_LIMITS[key]:
             raise ValueError(f"Preference exceeds {CHAT_PREFERENCE_LIMITS[key]} characters")
         updated_at = datetime.now(UTC).isoformat()

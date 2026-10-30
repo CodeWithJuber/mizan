@@ -17,7 +17,7 @@ import sys
 import time
 from typing import Any
 
-from api.iqtisad import BudgetExhausted
+from api.iqtisad import BudgetExhausted, bind_task
 from perception import basar
 from providers import REASONING_EFFORT, effective_limits, provider_retry_delay
 
@@ -214,20 +214,22 @@ class Lisan:
             self.last.setdefault(task, {})["model"] = model
         purpose = task or sys._getframe(1).f_code.co_name  # the Lisan task that asked
         before = self.calls
-        try:
-            if not trace.active():
-                return await self._ask(system, user, max_tokens, model)
-            with trace.span(
-                "chat", f"lisan.{purpose}", system=system, user=user, model=model
-            ) as record:
-                reply = await self._ask(system, user, max_tokens, model)
-                record["attributes"]["reply"] = reply
-                return reply
-        finally:
-            made = self.calls - before
-            if made:
-                self.by_task[purpose] = self.by_task.get(purpose, 0) + made
-                count_lisan_task(self.agent, purpose, made)
+        # Iqtisad records the call's spend under this task.
+        with bind_task(purpose):
+            try:
+                if not trace.active():
+                    return await self._ask(system, user, max_tokens, model)
+                with trace.span(
+                    "chat", f"lisan.{purpose}", system=system, user=user, model=model
+                ) as record:
+                    reply = await self._ask(system, user, max_tokens, model)
+                    record["attributes"]["reply"] = reply
+                    return reply
+            finally:
+                made = self.calls - before
+                if made:
+                    self.by_task[purpose] = self.by_task.get(purpose, 0) + made
+                    count_lisan_task(self.agent, purpose, made)
 
     def _instruction(self, task: str, template: str, **values: Any) -> str:
         """The current version of this kind of work's instruction (Tajdid)."""

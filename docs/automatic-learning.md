@@ -122,7 +122,7 @@ Each signed-in user who is not an administrator gets a private instance of every
 
 Weight training of MIZAN's own model stays deliberately gated, and the gate is enforced in CI (`tests/test_mizan_owned_research.py`):
 
-- Only human-written examples count; machine-authored targets are rejected.
+- Human-written examples count. A machine-authored target counts only as a `licensed_teacher` record: MIZAN verified it, the teacher's licence allows training on its output (never Anthropic or OpenAI), and none of its sources is Quran or hadith (`docs/consent.md`).
 - Each example needs a named reviewer who is not its author.
 - Each bundle needs an approval bound to the bundle's digest.
 
@@ -137,7 +137,9 @@ Two research directions are deliberately not used for the own model:
 - **Distilling the model's own outputs into its weights** (teacher-free self-distillation).
 - **Training on machine-generated tasks** (Athanor-style curricula).
 
-Both would put machine-authored targets into training, which the CI-enforced data policy above forbids.
+Both would put unverified machine-authored targets into training, which the CI-enforced data policy above forbids.
+
+A person's own chats become training candidates only if they switch training on (`docs/consent.md`); learning for them is on unless they switch it off.
 
 ## Learning now (Sijill)
 

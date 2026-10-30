@@ -96,6 +96,8 @@ def _arm_row(
         "output_tokens": usage.get("output_tokens"),
         "cost_usd": usage.get("cost_usd"),
         "model_calls": data.get("model_calls"),
+        # Of those, the calls MIZAN's own tasks made through Lisan (docs/teacher-calls.md).
+        "lisan_calls": data.get("lisan_calls"),
         "tool_calls": data.get("tool_calls"),
     }
     if data.get("error") and not data.get("text"):

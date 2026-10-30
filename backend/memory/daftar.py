@@ -337,6 +337,12 @@ async def import_entries(
             added["skipped"] += 1  # an imported note never carries instructions to the AI
             continue
         if item.get("kind") == "preference" and item.get("key"):
+            from memory.dhikr import CONSENT_PREFERENCES
+
+            if str(item["key"]) in CONSENT_PREFERENCES:
+                # A consent choice is made here, by its owner, never carried in a file.
+                added["skipped"] += 1
+                continue
             try:
                 await memory.set_chat_preference(owner_id, str(item["key"]), content)
                 added["preference"] += 1

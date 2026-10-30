@@ -182,8 +182,12 @@ async def test_words_that_came_through_whatsapp_are_never_training_data(tmp_path
     monkeypatch.setattr(main, "_tadbir_coordinator", lambda: SimpleNamespace())
     monkeypatch.setattr(main, "chat_agent_for", AsyncMock(return_value=Agent()))
     monkeypatch.setattr(main, "chat_history", AsyncMock(return_value=[]))
-    await main._bab_turn("owner-1", "whatsapp-abc", "hello", channel="whatsapp")
+    # Training is opt-in (docs/consent.md): without the owner's yes, no channel trains.
+    await main._bab_turn("owner-1", "telegram-abc", "hello", channel="telegram")
     assert seen["trains"] is False
+    await main.memory.set_chat_preference("owner-1", "training", "on")
+    await main._bab_turn("owner-1", "whatsapp-abc", "hello", channel="whatsapp")
+    assert seen["trains"] is False  # Meta's terms win over the yes
     await main._bab_turn("owner-1", "telegram-abc", "hello", channel="telegram")
     assert seen["trains"] is True
 

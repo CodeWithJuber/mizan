@@ -16,8 +16,9 @@
   },
   {
     "path": "mizan_reply/data.py",
-    "sha256": "c35d63535c647c4e1527c6150b295dca7a3fc499631e7599c91a7db4f2dc9468",
-    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/data.py"
+    "sha256": "d9dd8c96b19df8b2c546b13189dcc8a8139db7eff2369217f15e5da2e83d13b4",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/data.py",
+    "revised": "2026-10-30: licensed_teacher origin, the owner's teacher-data decision (docs/consent.md)"
   },
   {
     "path": "mizan_reply/evaluate.py",

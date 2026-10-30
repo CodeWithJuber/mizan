@@ -148,6 +148,42 @@ def probability_better(
     return wins / draws
 
 
+def _chat() -> str:
+    try:
+        from workspace.context import current_chat_session
+
+        return str(current_chat_session() or "")
+    except Exception:  # noqa: BLE001 - outside a chat there is none
+        return ""
+
+
+def _failure_text(item: Any) -> str:
+    """A failure signature, stored as text (older) or with its chat."""
+    return str(item.get("text", "")) if isinstance(item, dict) else str(item)
+
+
+def forget_chat(chat: str) -> int:
+    """Drop the failure signatures recorded from an erased chat (Mahw)."""
+    if not chat:
+        return 0
+    removed = 0
+    for task in CONTRACTS:
+        try:
+            state = _state(task)
+        except Exception:  # noqa: BLE001
+            continue
+        kept = [
+            item
+            for item in state["failures"]
+            if not (isinstance(item, dict) and item.get("chat") == chat)
+        ]
+        if len(kept) != len(state["failures"]):
+            removed += len(state["failures"]) - len(kept)
+            state["failures"] = kept
+            _put(task, state)
+    return removed
+
+
 def record(task: str, variant: str, worked: bool, feedback: str = "") -> None:
     """One verified or failed result of work done under a version of the instruction."""
     if task not in CONTRACTS:
@@ -170,7 +206,9 @@ def record(task: str, variant: str, worked: bool, feedback: str = "") -> None:
     if not worked and target is state["incumbent"]:
         state["since"] = int(state["since"]) + 1
         if feedback:
-            state["failures"] = (state["failures"] + [feedback[:160]])[-MAX_FAILURES:]
+            # The chat it came from, so erasing the chat erases it (Mahw).
+            entry = {"text": feedback[:160], "chat": _chat()}
+            state["failures"] = (state["failures"] + [entry])[-MAX_FAILURES:]
     _decide(state)
     _put(task, state)
 
@@ -260,7 +298,9 @@ async def evolve(task: str, default: str, lisan: Any) -> bool:
         return False
     state = _state(task)
     current = state["incumbent"].get("text") or default
-    failures = "\n".join(f"- {item}" for item in state["failures"]) or "- (no detail)"
+    failures = (
+        "\n".join(f"- {_failure_text(item)}" for item in state["failures"]) or "- (no detail)"
+    )
     try:
         reply = await lisan.ask(
             "You improve an instruction that MIZAN gives its language faculty for one kind of "

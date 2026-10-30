@@ -84,12 +84,19 @@ def note(kind: str, attributes: dict[str, Any] | None = None, owner: str | None 
     details = {
         k: v for k, v in (attributes or {}).items() if isinstance(v, str | int | float | bool)
     }
+    try:
+        from workspace.context import current_chat_session
+
+        chat = str(current_chat_session() or "")
+    except Exception:  # noqa: BLE001 - outside a chat there is none
+        chat = ""
     entry = {
         "seq": next(_SEQUENCE),
         "at": time.time(),
         "kind": kind,
         "summary": _summary(kind, attributes or {}),
         "details": details,
+        "chat": chat,  # erasing the chat erases its notes (Mahw)
     }
     with _LOCK:
         _NOTES.setdefault(owner, deque(maxlen=MAX_NOTES)).append(entry)
@@ -100,6 +107,20 @@ def since(owner: str, after: int = 0, limit: int = 100) -> list[dict]:
     with _LOCK:
         notes = [dict(item) for item in _NOTES.get(owner, ()) if item["seq"] > after]
     return notes[-max(1, min(limit, MAX_NOTES)) :]
+
+
+def forget_chat(owner: str, chat: str) -> int:
+    """Drop the user's notes from an erased chat (Mahw)."""
+    if not chat:
+        return 0
+    with _LOCK:
+        notes = _NOTES.get(owner)
+        if not notes:
+            return 0
+        kept = [item for item in notes if item.get("chat") != chat]
+        removed = len(notes) - len(kept)
+        _NOTES[owner] = deque(kept, maxlen=MAX_NOTES)
+    return removed
 
 
 def clear(owner: str) -> None:

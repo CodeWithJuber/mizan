@@ -22,13 +22,14 @@ import os
 import re
 import sqlite3
 import time
+import unicodedata
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from agents.events import bind_event_sink, bounded
 
-from . import isnad, trace
+from . import isnad, quran, trace
 from .express import _ACTION_CLAIM, _NUMBER
 
 BASE_SYSTEM = "You are a helpful assistant."
@@ -44,28 +45,161 @@ _ABSTAIN = re.compile(
     r"(?:access|way)|mujhe\s+(?:nahi|nahin)\s+pata|pata\s+nahi)",
     re.IGNORECASE,
 )
-_ARABIC_MARKS = re.compile("[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]")
-_ARABIC_WORD = re.compile("[\u0621-\u064a\u0671-\u06d3\u06fa-\u06ff]+")
 _ARABIC_RUN = re.compile(
     "[\u0621-\u064a\u0671-\u06d3\u06fa-\u06ff\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]+"
 )
-# Letter forms that differ between the Uthmani and the common script. The long
-# alif is dropped because Uthmani writes it as a mark (السموت, السماوات).
-_ARABIC_FOLD = str.maketrans(
-    {
-        "\u0671": "",  # alif wasla
-        "\u0623": "",
-        "\u0625": "",
-        "\u0622": "",
-        "\u0627": "",
-        "\u0649": "\u064a",  # alif maqsura → ya
-        "\u0629": "\u0647",  # ta marbuta → ha
-        "\u0624": "\u0648",
-        "\u0626": "",  # the hamza's seat differs between the scripts (\u064a\u0626\u0648\u062f\u0647, \u064a\u0640\u0654\u0648\u062f\u0647)
-        "\u06e5": "",  # small waw
-        "\u06e6": "",  # small ya
-    }
-)
+# ── reading Arabic across scripts ────────────────────────────────────────
+#
+# The Uthmani (mushaf) script and the common script spell some words
+# differently: the long alif is a mark in one and a letter in the other
+# (ٱلسَّمَٰوَٰتِ, السَّمَاوَاتِ), hamza sits on different seats (يَسْتَهْزِءُونَ,
+# يَسْتَهْزِئُونَ), the vocative is joined (يَٰٓأَيُّهَا, يَا أَيُّهَا). A word is
+# read as its letters with these differences folded away, so a quote is
+# compared word for word in whichever script it is written. Over all 6236
+# ayahs of the Tanzil Uthmani and simple texts the folded words of 6222 are
+# the same; the other 14 differ in a word such as أَقْصَا/أَقْصَى (a final
+# alif against alif maqsura), so a quote of them in the common script is
+# read as one word changed.
+#
+# A letter, with the small waw and ya the Uthmani writes for a letter it omits.
+_LETTER = re.compile("[\u0621-\u064a\u0671-\u06d3\u06fa-\u06ff\u0640\u06e5\u06e6]")
+# Alif in every form, hamza and its seats, tatweel: never compared.
+_UNREAD = frozenset("\u0627\u0623\u0625\u0622\u0671\u0621\u0626\u0624\u0640")
+_HAMZA = frozenset("\u0621\u0623\u0625\u0626\u0624")
+_SMALL = "\u06e5\u06e6"  # small waw, small ya
+_ALIF_MARK, _SILENT, _MADDA = "\u0670", "\u06df", "\u0653"
+_YA, _LAM, _HA = "\u064a", "\u0644", "\u0647"
+_KASRA = "\u0650"
+# The vowels: fatha, damma, kasra and their tanween. Shadda and sukun are not
+# compared: the Uthmani marks idgham across words with a shadda the common
+# script does not write (مِّن رَّبِّهِمْ, مِنْ رَبِّهِمْ). Over the same texts,
+# one word in more than 77,000 has other vowels in the two (the saktah of 18:1).
+_VOWELS = frozenset("\u064b\u064c\u064d\u064e\u064f\u0650")
+# The vocative and the ha of attention: one word with the next in the Uthmani.
+_JOINED = frozenset({"\u064a\u0627", "\u0648\u064a\u0627", "\u0641\u064a\u0627", "\u0647\u0627"})
+# The mushaf's marks: alif wasla, the superscript alif and the Quranic signs
+# (pause marks, small letters, iqlab). All but the superscript alif are
+# written nowhere else; Urdu spells with it (تعالیٰ, زکوٰۃ: 315 of the 6236
+# sentences of the Jalandhry translation), so text is in the mushaf's script
+# only when it carries one of the others (``MUSHAF_ONLY``).
+MUSHAF_MARKS = re.compile("[\u0671\u0670\u06d6-\u06ed]")
+MUSHAF_ONLY = re.compile("[\u0671\u06d6-\u06ed]")
+
+
+class Word(NamedTuple):
+    folded: str  # its letters, read across scripts
+    written: str  # as the text writes it
+    # The vowels on each folded letter, one set per letter it stands for (a
+    # doubled ya or lam is read as one letter).
+    vowels: tuple[tuple[frozenset[str], ...], ...]
+
+
+def _letters(written: str) -> tuple[list[str], list[frozenset[str]]]:
+    """The letters a written word is read as, each with its vowels."""
+    units: list[tuple[str, set[str]]] = []
+    for char in written:
+        if _LETTER.match(char):
+            units.append((char, set()))
+        elif units:
+            units[-1][1].add(char)
+    # A small waw or ya at the end is a pronoun's long vowel (بِهِۦ, لَهُۥ),
+    # not a letter, unless it carries a vowel (ءَاتَىٰنِۦَ).
+    last = max(
+        (
+            index
+            for index, (base, marks) in enumerate(units)
+            if base != "\u0640" and (base not in _SMALL or marks & _VOWELS)
+        ),
+        default=-1,
+    )
+    letters: list[str] = []
+    vowels: list[frozenset[str]] = []
+    for index, (base, marks) in enumerate(units):
+        if base in _UNREAD:
+            continue
+        if base == "\u0649":  # alif maqsura, or the Uthmani's undotted final ya
+            if _SILENT in marks:
+                continue
+            if (
+                index == last
+                and index
+                and not marks & _VOWELS
+                and units[index - 1][0] in _HAMZA
+                and _KASRA not in units[index - 1][1]
+            ):
+                continue  # an alif after hamza: رَأَى in the common script, رَءَا in the mushaf
+            if _ALIF_MARK in marks and index < last:
+                continue  # ىٰ inside a word is an alif (ءَاتَىٰهُمُ, آتَاهُمُ)
+            base = _YA
+        elif base == "\u0648" and _ALIF_MARK in marks and marks <= {_ALIF_MARK, _MADDA}:
+            continue  # a waw that only seats an alif (ٱلصَّلَوٰةَ, الصَّلَاةَ)
+        elif base == _YA and _SILENT in marks:
+            continue  # a ya that is not read (مَلَإِي۟هِۦ, مَلَئِهِ)
+        elif base in _SMALL:
+            if index > last:
+                continue
+            base = "\u0648" if base == "\u06e5" else _YA  # إِبْرَٰهِۦمَ, إِبْرَاهِيمَ
+        elif base == "\u0635" and "\u06dc" in marks:
+            base = "\u0633"  # sad read as sin (يَبْصُۜطُ, يَبْسُطُ)
+        elif base == "\u0629":
+            base = _HA
+        letters.append(base)
+        vowels.append(frozenset(marks & _VOWELS))
+    return letters, vowels
+
+
+def _word(letters: list[str], vowels: list[frozenset[str]], written: str) -> Word:
+    """A doubled ya or lam is read once: one script writes both letters where
+    the other writes one (يُحْيِي, يُحْىِ; اللَّيْل, ٱلَّيْل). The lam of Allah's
+    name stays double, so الله and إله are two words."""
+    folded: list[str] = []
+    grouped: list[list[frozenset[str]]] = []
+    for index, letter in enumerate(letters):
+        after = letters[index + 1] if index + 1 < len(letters) else ""
+        if folded and folded[-1] == letter and (letter == _YA or (letter == _LAM and after != _HA)):
+            grouped[-1].append(vowels[index])
+            continue
+        folded.append(letter)
+        grouped.append([vowels[index]])
+    return Word("".join(folded), written, tuple(tuple(group) for group in grouped))
+
+
+def words(text: str) -> list[Word]:
+    """The Arabic words of a text, read across scripts. The text is read in
+    NFKC first, so the presentation forms of the letters (ﻟﻪ, ﷲ) are letters."""
+    found: list[tuple[list[str], list[frozenset[str]], str]] = []
+    pending: tuple[list[str], list[frozenset[str]], str] | None = None
+    for written in _ARABIC_RUN.findall(unicodedata.normalize("NFKC", text)):
+        letters, vowels = _letters(written)
+        if not letters:
+            continue
+        item = (letters, vowels, written)
+        if pending is not None:
+            item = (pending[0] + letters, pending[1] + vowels, f"{pending[2]} {written}")
+            pending = None
+        bare = "".join(c for c in written if _LETTER.match(c) and c not in _SMALL + "\u0640")
+        if bare in _JOINED:
+            pending = item
+            continue
+        found.append(item)
+    if pending is not None:
+        found.append(pending)
+    return [_word(letters, vowels, written) for letters, vowels, written in found]
+
+
+def _vowels_differ(source: Word, given: Word) -> bool:
+    """Whether a word given with vowels has other vowels than the source's.
+    Only letters both write a vowel on are compared: a quote written without
+    vowels, or with some of them, is not penalised for those it leaves out."""
+    for kept, said in zip(source.vowels, given.vowels, strict=False):
+        if len(kept) != len(said):
+            continue
+        for a, b in zip(kept, said, strict=True):
+            if a and b and a != b:
+                return True
+    return False
+
+
 _DIGITS = str.maketrans(
     "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
     "\u06f0\u06f1\u06f2\u06f3\u06f4\u06f5\u06f6\u06f7\u06f8\u06f9",
@@ -201,15 +335,8 @@ async def mizan_arm(agent: Any, prompt: str, context: dict) -> dict:
 
 
 def arabic_words(text: str) -> list[tuple[str, str]]:
-    """(folded, as written) for each Arabic word: marks removed and letter forms folded."""
-    words = []
-    for written in _ARABIC_RUN.findall(text):
-        folded = "".join(
-            _ARABIC_WORD.findall(_ARABIC_MARKS.sub("", written).translate(_ARABIC_FOLD))
-        )
-        if folded:
-            words.append((folded, written))
-    return words
+    """(folded, as written) for each Arabic word, read across scripts (``words``)."""
+    return [(word.folded, word.written) for word in words(text)]
 
 
 def fold_arabic(text: str) -> list[str]:
@@ -247,61 +374,154 @@ _ARABIC_SPAN = re.compile(
 )
 
 
+class Stretch(NamedTuple):
+    """A stretch of Arabic in a text, and where it stands."""
+
+    words: list[Word]
+    start: int  # offsets in the text, without trailing space
+    end: int
+    lines: tuple[int, ...]  # the text's lines it is on
+    # It is given as a passage (it opens its line, or follows a colon, a dash
+    # or a quote mark) and words of another script follow it on the same line,
+    # as its continuation.
+    continued: str
+
+
+def stretches(text: str) -> list[Stretch]:
+    """Each stretch of Arabic in the text, with its words."""
+    found = []
+    for match in _ARABIC_SPAN.finditer(text):
+        run = words(match.group())
+        if not run:
+            continue
+        start = match.start()
+        end = start + len(match.group().rstrip())
+        first, last = text.count("\n", 0, start), text.count("\n", 0, end)
+        line_end = text.find("\n", end)
+        rest = text[end : len(text) if line_end < 0 else line_end].strip()
+        before = text[text.rfind("\n", 0, start) + 1 : start].rstrip()
+        presented = first < last or not before or not before[-1].isalnum()
+        continued = (
+            rest if presented and rest[:1].isalpha() and quran.parse_reference(rest) is None else ""
+        )
+        found.append(Stretch(run, start, end, tuple(range(first, last + 1)), continued))
+    return found
+
+
+def _attempt(run: list[Word], vocabulary: set[str], size: int) -> bool:
+    """A stretch is an attempt to give the text when most of its words are the
+    text's, or when it is at least half as long as the text (a passage given
+    as the text, however different)."""
+    shared = sum(1 for word in run if word.folded in vocabulary)
+    return bool(run) and (2 * shared > len(run) or 2 * len(run) >= size)
+
+
 def quoted_runs(text: str, authentic: list[str]) -> list[tuple[str, str]]:
     """The Arabic words of the answer that are attempts to give this text.
 
-    Each stretch of Arabic is judged on its own: it is a quote of the text when
-    most of its words are the text's, or when it is at least half as long as the
-    text (a passage given as the text, however different). Arabic terms used in
-    an explanation (يوم، يوم القيامة) are neither, so they are not checked
-    against the ayah as if they were quoting it."""
+    Each stretch of Arabic is judged on its own (``_attempt``). Arabic terms
+    used in an explanation (يوم، يوم القيامة) are not attempts, so they are not
+    checked against the ayah as if they were quoting it."""
     vocabulary = set(authentic)
-    found: list[tuple[str, str]] = []
-    for span in _ARABIC_SPAN.findall(text):
-        run = arabic_words(span)
-        shared = sum(1 for folded, _ in run if folded in vocabulary)
-        if run and (2 * shared > len(run) or 2 * len(run) >= len(authentic)):
-            found.extend(run)
-    return found
+    return [
+        (word.folded, word.written)
+        for stretch in stretches(text)
+        if _attempt(stretch.words, vocabulary, len(authentic))
+        for word in stretch.words
+    ]
+
+
+def _shown(found: list[Word], limit: int = 12) -> str:
+    text = " ".join(word.written for word in found[:limit])
+    return text + (" …" if len(found) > limit else "")
 
 
 def quote_check(base: str, mizan: str) -> dict:
     """How faithfully the base answer reproduces the source text MIZAN quoted.
 
-    ``coverage`` is the share of the source's words the base answer gives in
-    order; ``precision`` is the share of words in the passage it quoted that
-    are the source's. A correct excerpt has high precision and lower coverage.
-    Only the answer's attempts to quote the text are read (``quoted_runs``).
+    Only the answer's attempts to quote the text are read (``quoted_runs``),
+    word for word across scripts (``words``). The passage it gives as the text
+    runs from the first of the source's words it gives to the last:
+
+    - ``matches``: every word of the source, in order, nothing changed, added
+      or dropped, and where both write a vowel on a letter it is the same;
+    - ``excerpt``: the same for a contiguous part of the source, which does not
+      end inside an ayah with other words given as its continuation;
+    - ``close``: anything else that is mostly the source's words (``precision``
+      at least 0.85), such as one word or one vowel changed;
+    - ``differs``: the rest.
+
+    ``coverage`` is the share of the source's words given in order;
+    ``precision`` the share of the passage's words that are the source's.
     """
-    source_words = arabic_words(_quoted(mizan))
-    authentic = [folded for folded, _ in source_words]
-    base_words = quoted_runs(base, authentic)
-    given = [folded for folded, _ in base_words]
+    quoted = _quoted(mizan)
+    source = words(quoted)
+    authentic = [word.folded for word in source]
+    # Where each ayah ends (MIZAN quotes one ayah per line).
+    ends, count = set(), 0
+    for line in quoted.splitlines():
+        count += len(words(line))
+        ends.add(count)
+    vocabulary = set(authentic)
+    attempts = [
+        stretch
+        for stretch in stretches(base)
+        if _attempt(stretch.words, vocabulary, len(authentic))
+    ]
+    given = [word for stretch in attempts for word in stretch.words]
+    owner = [stretch for stretch in attempts for _word in stretch.words]
+    lines = sorted({line for stretch in attempts for line in stretch.lines})
+    empty = {"coverage": 0.0, "precision": 0.0, "words": len(authentic), "lines": lines}
     if not given or not authentic:
-        return {"status": "missing", "coverage": 0.0, "precision": 0.0, "words": len(authentic)}
-    matcher = difflib.SequenceMatcher(None, authentic, given, autojunk=False)
-    blocks = [block for block in matcher.get_matching_blocks() if block.size]
-    matched = sum(block.size for block in blocks)
-    if not blocks:
-        return {"status": "differs", "coverage": 0.0, "precision": 0.0, "words": len(authentic)}
-    # The passage the base answer gave as the text: its matched words and any
-    # words it put in place of the source's.
-    replaced = [op for op in matcher.get_opcodes() if op[0] == "replace"]
-    first = min([blocks[0].b, *(op[3] for op in replaced)])
-    last = max([blocks[-1].b + blocks[-1].size, *(op[4] for op in replaced)])
+        return {"status": "missing", **empty}
+    matcher = difflib.SequenceMatcher(
+        None, authentic, [word.folded for word in given], autojunk=False
+    )
+    opcodes = matcher.get_opcodes()
+    equal = [index for index, op in enumerate(opcodes) if op[0] == "equal"]
+    if not equal:
+        return {"status": "differs", **empty, "changed": []}
+    changed: list[dict] = []
+    for index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
+        if tag == "equal":
+            changed += [
+                {"kind": "vowels", "source": source[i].written, "given": given[j].written}
+                for i, j in zip(range(i1, i2), range(j1, j2), strict=True)
+                if _vowels_differ(source[i], given[j])
+            ]
+        elif tag == "replace":
+            # Words put in place of the source's, inside the passage or at its edge.
+            changed.append(
+                {"kind": "changed", "source": _shown(source[i1:i2]), "given": _shown(given[j1:j2])}
+            )
+        elif equal[0] < index < equal[-1]:
+            # A word dropped from inside the passage, or one added to it.
+            kind = "dropped" if tag == "delete" else "added"
+            changed.append(
+                {"kind": kind, "source": _shown(source[i1:i2]), "given": _shown(given[j1:j2])}
+            )
+    first, last = opcodes[equal[0]], opcodes[equal[-1]]
+    stop = last[2]  # the source's word after the last one given
+    if not changed and stop < len(authentic) and stop not in ends:
+        # The passage stops inside an ayah and the answer goes on in other
+        # words on the same line: the rest is given in place of the ayah's.
+        continuation = owner[last[4] - 1].continued
+        if continuation and owner[last[4] - 1].words[-1] is given[last[4] - 1]:
+            changed.append(
+                {
+                    "kind": "continued",
+                    "source": _shown(source[stop:]),
+                    "given": continuation[:120],
+                }
+            )
+    replaced = [op for op in opcodes if op[0] == "replace"]
+    start = min([first[3], *(op[3] for op in replaced)])
+    finish = max([last[4], *(op[4] for op in replaced)])
+    matched = sum(i2 - i1 for tag, i1, i2, _j1, _j2 in opcodes if tag == "equal")
     coverage = matched / len(authentic)
-    precision = matched / max(1, last - first)
-    changed = [
-        {
-            "source": " ".join(written for _, written in source_words[i1:i2]),
-            "given": " ".join(written for _, written in base_words[j1:j2]),
-        }
-        for _tag, i1, i2, j1, j2 in replaced
-    ][:5]
-    if coverage >= 0.97 and precision >= 0.97:
-        status = "matches"
-    elif precision >= 0.97:
-        status = "excerpt"  # part of the text, word for word
+    precision = matched / max(1, finish - start)
+    if not changed:
+        status = "matches" if matched == len(authentic) else "excerpt"
     elif precision >= 0.85:
         status = "close"
     else:
@@ -311,7 +531,9 @@ def quote_check(base: str, mizan: str) -> dict:
         "coverage": round(coverage, 3),
         "precision": round(precision, 3),
         "words": len(authentic),
-        "changed": changed,
+        "matched": matched,
+        "changed": changed[:5],
+        "lines": lines,
     }
 
 

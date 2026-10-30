@@ -51,7 +51,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/auth/login` | public | Authenticate and get JWT token |
 | POST | `/api/auth/logout` | user | End this token now (it stays revoked across restarts); with ``everywhere``, every token the account was given before now. |
 | GET | `/api/auth/me` | user | Who this credential belongs to, its roles, and when the token expires. |
-| POST | `/api/auth/register` | public | Register a new user |
+| POST | `/api/auth/register` | public | Register a new user aged 16 or older (docs/consent.md): chats with an Islamic assistant reveal religious belief, a special category of personal data, and a younger child needs a parent's consent. |
 
 ## automation
 

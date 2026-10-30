@@ -24,6 +24,14 @@ ROLE_IDS = {"user": USER_ID, "assistant": ASSISTANT_ID, "system": SYSTEM_ID}
 SPLITS = {"train", "dev", "test"}
 TASKS = {"dialogue", "grounded_qa", "clarification", "abstention", "correction"}
 SOURCE_KINDS = {"quran", "tafsir", "hadith", "lexicon", "human_dialogue", "other"}
+# The owner's decision of 30 Oct 2026 (docs/consent.md): a teacher model's output
+# may be a training target when MIZAN verified it and the teacher's licence allows
+# training on its output. Anthropic's and OpenAI's terms forbid that, so their
+# output is never a target; scripture is never a target whoever wrote it.
+TEACHER_LICENCES = {"apache-2.0", "mit", "deepseek-terms-of-use", "deepseek-model-license"}
+FORBIDDEN_TEACHERS = {"anthropic", "openai"}
+MIZAN_VERIFIERS = {"tathabbut", "sandbox", "sidq", "ahl_dhikr", "fihris", "calc", "hifz", "qiyas"}
+SCRIPTURE_KINDS = {"quran", "hadith"}
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _LANG = re.compile(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*\Z")
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/@+~-]{0,255}\Z")
@@ -162,6 +170,29 @@ def _validate_roots(roots: Any, messages: list[dict[str, str]], *, allow_pending
         used[mi].append((start, end))
 
 
+def _validate_teacher(prov: dict[str, Any]) -> None:
+    """A licensed teacher's output: a named model whose licence allows training on
+    its output, verified by one of MIZAN's own checks (docs/consent.md)."""
+    teacher = prov.get("teacher")
+    _keys(teacher, {"provider", "model", "licence"}, {"terms"}, "provenance.teacher")
+    provider = _text(teacher["provider"], "provenance.teacher.provider").strip().lower()
+    model = _text(teacher["model"], "provenance.teacher.model").strip().lower()
+    # OpenRouter names a model "<vendor>/<model>"; the vendor decides, not the router.
+    vendor = model.split("/", 1)[0] if "/" in model else ""
+    if provider in FORBIDDEN_TEACHERS or vendor in FORBIDDEN_TEACHERS or "claude" in model or model.startswith("gpt-"):
+        _fail("provenance.teacher", "Anthropic and OpenAI output is for lookup only, never a training target")
+    if teacher["licence"] not in TEACHER_LICENCES:
+        _fail("provenance.teacher.licence", f"must be one of {sorted(TEACHER_LICENCES)}")
+    verification = prov.get("verification")
+    _keys(verification, {"by", "passed"}, set(), "provenance.verification")
+    if verification["by"] not in MIZAN_VERIFIERS:
+        _fail("provenance.verification.by", f"must be one of {sorted(MIZAN_VERIFIERS)}")
+    if verification["passed"] is not True:
+        _fail("provenance.verification.passed", "only output MIZAN verified may be a target")
+    if prov.get("creation_method", "machine_generation") != "machine_generation":
+        _fail("provenance.creation_method", "a teacher's output is machine_generation")
+
+
 def validate_record(record: dict[str, Any], allow_pending: bool = False) -> dict[str, Any]:
     """Validate one record; accepted review is metadata, not independently certified.
 
@@ -196,9 +227,13 @@ def validate_record(record: dict[str, Any], allow_pending: bool = False) -> dict
     if record["task"] == "grounded_qa" and target["answer_status"] == "answer" and not citation_ids:
         _fail("target.citations", "grounded answer needs at least one evidence citation")
     prov = record["provenance"]
-    _keys(prov, {"origin", "source_ids", "rights", "reviewer_ids", "review_status"}, {"author_ids", "creation_method", "lineage"}, "provenance")
-    if not isinstance(prov["origin"], str) or prov["origin"] not in {"human_original", "source_transcription", "machine_draft"}:
+    _keys(prov, {"origin", "source_ids", "rights", "reviewer_ids", "review_status"}, {"author_ids", "creation_method", "lineage", "teacher", "verification"}, "provenance")
+    if not isinstance(prov["origin"], str) or prov["origin"] not in {"human_original", "source_transcription", "machine_draft", "licensed_teacher"}:
         _fail("provenance.origin", "unsupported origin")
+    if prov["origin"] == "licensed_teacher":
+        _validate_teacher(prov)
+    elif "teacher" in prov or "verification" in prov:
+        _fail("provenance", "teacher and verification belong to licensed_teacher records only")
     if prov["origin"] == "machine_draft" and not allow_pending:
         _fail("provenance.origin", "machine-authored draft is not original-data gold, even if review_status says accepted")
     source_ids = _strings(prov["source_ids"], "provenance.source_ids", nonempty=True)
@@ -217,7 +252,7 @@ def validate_record(record: dict[str, Any], allow_pending: bool = False) -> dict
         _fail("provenance", "author and independent reviewer ids overlap")
     if "creation_method" in prov and (not isinstance(prov["creation_method"], str) or prov["creation_method"] not in {"human", "manual_transcription", "automated_transcription", "machine_generation"}):
         _fail("provenance.creation_method", "unsupported method")
-    if prov.get("creation_method") == "machine_generation" and not allow_pending:
+    if prov.get("creation_method") == "machine_generation" and not allow_pending and prov["origin"] != "licensed_teacher":
         _fail("provenance.creation_method", "machine-generated targets are outside the original-data training contract")
     if prov["origin"] == "human_original" and prov.get("creation_method", "human") != "human":
         _fail("provenance.creation_method", "human_original cannot declare transcription or machine generation")
@@ -441,11 +476,14 @@ def validate_dataset(records: Iterable[dict[str, Any]], sources: dict[str, dict[
             if turns[i]["role"] == "user" and turns[i + 1]["role"] == "assistant":
                 register("normalized user/assistant pair", sha256_text(_canonical(turns[i:i + 2])), split, rid)
         register("exact content", sha256_text(_canonical({"messages": record["messages"], "target": record["target"]["text"]})), split, rid)
+        teacher_made = record["provenance"]["origin"] == "licensed_teacher"
         for sid in record["provenance"]["source_ids"]:
             used_sources.add(sid)
             if sources is not None:
                 if sid not in sources:
                     _fail(rid, f"unresolved source_id {sid}")
+                if teacher_made and sources[sid]["kind"] in SCRIPTURE_KINDS:
+                    _fail(rid, "a teacher's output over Quran or hadith is never a training target")
                 register("source_family", sources[sid]["source_family"], split, rid)
                 source = sources[sid]
                 register("source asset/locator", _canonical([source["sha256"], source["locator"]]), split, rid)

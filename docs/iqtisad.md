@@ -72,7 +72,7 @@ The day is the user's local day. Its timezone is the place the user set for pray
 
 `$MIZAN_DATA_DIR/iqtisad.db` has four tables:
 
-- `spend`: one row per call, with the owner, local day and month, model, tokens, cost, and whether the cost came from the provider, the table or a bound;
+- `spend`: one row per call, with the owner, local day and month, model, tokens, cost, whether the cost came from the provider, the table or a bound, the chat request it was made for (`request_id`) and the Lisan task that made it (`task`, empty when the model answered in words), so spend can be split by request and by kind of work ([teacher-calls.md](teacher-calls.md));
 - `limits`
 - `zones`
 - `calibration`: the learned ratios.

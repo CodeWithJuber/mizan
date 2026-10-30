@@ -123,15 +123,22 @@ def _delete_in(
 # ── what was derived from the erased words ───────────────────────────────
 
 
-def _forget_learned(adaptive: Any, owner: str, texts: Sequence[str]) -> int:
-    """Drop learned wording (Qasd, Ta'allum), kept programs (Hifz) and what
-    sources settled (Ahl al-Dhikr) that came from these requests; the rest of
-    what was learned stays."""
-    if adaptive is None or not texts:
+def _forget_learned(adaptive: Any, owner: str, texts: Sequence[str], chat: str = "") -> int:
+    """Drop learned wording (Qasd, Ta'allum), kept programs (Hifz), what
+    sources settled (Ahl al-Dhikr) and repair lessons (Tajriba) that came from
+    these requests or this chat; the rest of what was learned stays."""
+    if adaptive is None or not (texts or chat):
         return 0
-    from tadbir import ahl_dhikr, hifz, qasd, taallum
+    from tadbir import ahl_dhikr, hifz, qasd, taallum, tajriba
 
     removed = 0
+    try:
+        removed += tajriba.unlearn(adaptive, owner, chat, list(texts))
+    except Exception:  # noqa: BLE001 - no lessons yet
+        logger.debug("[MAHW] no repair lessons to drop")
+    if not texts:
+        return removed
+
     words = [taallum.content_words(text) for text in texts]
     for module in (hifz, taallum, ahl_dhikr):
         try:
@@ -544,7 +551,15 @@ def _erase_chat_rows(
         db, "kg_relationships", "source_id", entities
     ) + _delete_in(db, "kg_relationships", "target_id", entities)
     removed["knowledge graph"] = _delete_in(db, "kg_entities", "id", entities)
-    removed["learned from requests"] = _forget_learned(_adaptive(db), owner, asked)
+    removed["learned from requests"] = _forget_learned(_adaptive(db), owner, asked, session_id)
+    # What the live learning record and the instruction harness noted from this chat.
+    from tadbir import sijill, tajdid
+
+    removed["learning notes"] = sijill.forget_chat(owner, session_id)
+    try:
+        removed["instruction failure notes"] = tajdid.forget_chat(session_id)
+    except Exception:  # noqa: BLE001 - the harness store may be absent
+        removed["instruction failure notes"] = 0
     folder = private_dir(owner)
     learner = folder / "learner.sqlite3"
     rows = _select(

@@ -21,6 +21,7 @@ texts are on disk, the factor is 1 and nothing changes.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import hashlib
 import json
 import math
@@ -85,6 +86,73 @@ class Quotes:
     keys: list[tuple[int, int]]
     positions: dict[str, int]  # view -> words (letters for transliteration) it holds
     vocabulary: dict[str, frozenset[str]]  # word views -> the words they use
+    # The Arabic text read as the Truth Gate reads a quote (``muqabala.words``,
+    # across the Uthmani and common scripts): every ayah's words in mushaf
+    # order as one run, so a quote of consecutive ayahs is held as one passage.
+    mushaf: str = ""
+    mushaf_starts: tuple[int, ...] = ()  # offset of the space before each ayah
+    mushaf_words: frozenset[str] = frozenset()
+
+    def runs(self, found: Sequence[str], least: int) -> list[tuple[int, int, int]]:
+        """Left to right, each longest run of at least ``least`` of these
+        (folded) words that the Quran holds in order: (start, end, offset)."""
+        held: list[tuple[int, int, int]] = []
+        start = 0
+        while start < len(found):
+            end, offset = start, -1
+            while end < len(found) and found[end] in self.mushaf_words:
+                at = self.mushaf.find(" " + " ".join(found[start : end + 1]) + " ")
+                if at < 0:
+                    break
+                end, offset = end + 1, at
+            if end - start >= least:
+                held.append((start, end, offset))
+                start = end
+            else:
+                start += 1
+        return held
+
+    def covered(self, found: Sequence[str], least: int) -> list[bool]:
+        """Which words are the Quran's words where they stand: all of them when
+        the Quran holds the whole in order, else those in a held run of at
+        least ``least`` words."""
+        if found and self.mushaf.find(" " + " ".join(found) + " ") >= 0:
+            return [True] * len(found)
+        mask = [False] * len(found)
+        for start, end, _offset in self.runs(found, least):
+            mask[start:end] = [True] * (end - start)
+        return mask
+
+    def _ayah_at(self, offset: int) -> int:
+        return bisect.bisect_right(self.mushaf_starts, offset) - 1
+
+    def passage(self, found: Sequence[str], least: int, near: int) -> tuple[int, int, int] | None:
+        """(surah, first ayah, last ayah) that a stretch of words quotes: the
+        ayahs of its longest held run, widened by its other held runs found
+        within ``near`` ayahs of it in the same surah. None without a run."""
+        held = self.runs(found, least)
+        if not held:
+            return None
+        start, end, offset = max(held, key=lambda run: run[1] - run[0])
+        width = len(" ".join(found[start:end]))
+        first, last = self._ayah_at(offset), self._ayah_at(offset + width)
+        surah = self.keys[first][0]
+        last = max(index for index in range(first, last + 1) if self.keys[index][0] == surah)
+        for other_start, other_end, _offset in held:
+            needle = " " + " ".join(found[other_start:other_end]) + " "
+            low = self.mushaf_starts[max(first - near, 0)]
+            high = (
+                self.mushaf_starts[last + near + 1]
+                if last + near + 1 < len(self.mushaf_starts)
+                else len(self.mushaf) - 1
+            )
+            at = self.mushaf.find(needle, low, high + 1)
+            if at < 0:
+                continue
+            a, b = self._ayah_at(at), self._ayah_at(at + len(needle) - 2)
+            if self.keys[a][0] == surah == self.keys[b][0]:
+                first, last = min(first, a), max(last, b)
+        return surah, self.keys[first][1], self.keys[last][1]
 
     def _needle(self, view: str, found: Sequence[str]) -> str:
         return _letters(found) if view == "tr" else " " + " ".join(found) + " "
@@ -137,7 +205,22 @@ def build(editions: dict[str, Sequence[Sequence]]) -> Quotes:
         positions[view] = max(held, 1)
         if view != "tr":
             vocabulary[view] = frozenset(used)
-    return Quotes(texts, starts, keys, positions, vocabulary)
+    return Quotes(texts, starts, keys, positions, vocabulary, *_mushaf(editions["ar"]))
+
+
+def _mushaf(rows: Sequence[Sequence]) -> tuple[str, tuple[int, ...], frozenset[str]]:
+    """The Arabic text's words as the Truth Gate folds them, in mushaf order."""
+    from .muqabala import words as read
+
+    parts, starts, at, used = [" "], [], 1, set()
+    for row in sorted(rows, key=lambda row: (int(row[0]), int(row[1]))):
+        folded = [word.folded for word in read(str(row[2]))]
+        used.update(folded)
+        starts.append(at - 1)  # the space before the ayah's first word
+        segment = "".join(f"{word} " for word in folded)
+        parts.append(segment)
+        at += len(segment)
+    return "".join(parts), tuple(starts), frozenset(used)
 
 
 _lock = threading.Lock()
@@ -146,6 +229,14 @@ _loading = False
 
 
 def ready() -> Quotes | None:
+    return _quotes
+
+
+def available() -> Quotes | None:
+    """The texts if they are read; otherwise they are read in the background
+    (when Iqtibas is on) and None is returned for now."""
+    if _quotes is None and enabled():
+        _load_soon()
     return _quotes
 
 

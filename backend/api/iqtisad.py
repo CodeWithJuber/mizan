@@ -38,7 +38,9 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -57,6 +59,32 @@ _Z_OUTPUT_P10 = 1.2816
 # Documented per-image token ceiling for a full-size image (Anthropic vision
 # guide); used only to bound images, never to charge them.
 _IMAGE_TOKENS = 1600
+# The chat request and the Lisan task a paid call belongs to, so spend can be
+# split by request and by MIZAN's kinds of work (docs/teacher-calls.md).
+_REQUEST: ContextVar[str] = ContextVar("iqtisad_request", default="")
+_TASK: ContextVar[str] = ContextVar("iqtisad_task", default="")
+
+
+@contextmanager
+def bind_request(request_id: str) -> Iterator[None]:
+    """Charges made inside are recorded under this chat request."""
+    token = _REQUEST.set(str(request_id or ""))
+    try:
+        yield
+    finally:
+        _REQUEST.reset(token)
+
+
+@contextmanager
+def bind_task(task: str) -> Iterator[None]:
+    """Charges made inside are recorded under this Lisan task."""
+    token = _TASK.set(str(task or ""))
+    try:
+        yield
+    finally:
+        _TASK.reset(token)
+
+
 # Anthropic prompt-cache prices relative to input (pricing page).
 CACHE_WRITE = 1.25
 CACHE_READ = 0.10
@@ -119,7 +147,8 @@ class Ledger:
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, day TEXT NOT NULL,
                     month TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER,
                     output_tokens INTEGER, cost_usd REAL NOT NULL, source TEXT NOT NULL,
-                    created TEXT NOT NULL);
+                    created TEXT NOT NULL, request_id TEXT NOT NULL DEFAULT '',
+                    task TEXT NOT NULL DEFAULT '');
                 CREATE INDEX IF NOT EXISTS spend_owner_day ON spend(owner_id, day);
                 CREATE INDEX IF NOT EXISTS spend_owner_month ON spend(owner_id, month);
                 CREATE TABLE IF NOT EXISTS limits (
@@ -132,6 +161,13 @@ class Ledger:
                     key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 """
             )
+            # Ledgers written before spend named its request and Lisan task.
+            have = {row[1] for row in conn.execute("PRAGMA table_info(spend)")}
+            for column in ("request_id", "task"):
+                if column not in have:
+                    conn.execute(
+                        f"ALTER TABLE spend ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"  # noqa: S608
+                    )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=10)
@@ -160,7 +196,9 @@ class Ledger:
     ) -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
-                "INSERT INTO spend VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO spend (id, owner_id, day, month, model, input_tokens, "
+                "output_tokens, cost_usd, source, created, request_id, task) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     uuid.uuid4().hex,
                     owner,
@@ -172,6 +210,8 @@ class Ledger:
                     float(cost),
                     source,
                     datetime.now(UTC).isoformat(),
+                    _REQUEST.get(),
+                    _TASK.get(),
                 ),
             )
 

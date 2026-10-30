@@ -49,10 +49,10 @@ When no trace is bound, recording does nothing. Ordinary chats pay nothing for i
 - **Numbers no fact supports.** Any number in an answer is checked against MIZAN's facts: the tool results, the sources it read and its computed values. Arabic-Indic digits count as numbers. This check runs only when MIZAN grounded the answer.
 - **Actions with no receipt.** The base model has no tools, so "I ran", "I checked" or "I searched" from it is unbacked.
 - **Agreement.** The share of MIZAN's verified values that the base answer states. Numbers the user wrote in the request do not count.
-- **Quote fidelity** (Quran and hadith). The base answer's Arabic is compared with the text MIZAN quoted from its source. Marks are ignored, and the letter forms that differ between the Uthmani and the common script are folded together.
+- **Quote fidelity** (Quran and hadith). The base answer's Arabic is compared with the text MIZAN quoted from its source. The spellings that differ between the Uthmani and the common script are folded together; vowels are compared where both write one on a letter (shadda and sukun are not).
   - **coverage**: the share of the source's words given, in order.
   - **precision**: the share of words in the quoted passage that are the source's.
-  - The verdict is `matches`, `excerpt` (a correct part), `close`, `differs` or `missing`. The words that differ are listed.
+  - The verdict is `matches` (every word in order, nothing changed, added or dropped, no vowel different), `excerpt` (an exact contiguous part, not followed by other words given as its continuation), `close` (mostly the source, with a word, a vowel or a continuation changed), `differs` or `missing`. The words that differ are listed ([Sidq](sidq.md#how-a-quote-is-read)).
 - **Declined or unsure.** Whether either arm abstained.
 - **Isnad.** Both answers' claims graded sahih, hasan, da'if or mawdu' ([Isnad](isnad.md)); the base model's are weighed against MIZAN's evidence.
 - A line **diff** of the two answers, and their overall similarity.

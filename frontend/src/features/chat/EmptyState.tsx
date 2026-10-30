@@ -1,5 +1,6 @@
 /** A new chat: a greeting and a few things MIZAN does well, one tap away. */
 import { BookOpen, Code2, ScrollText, Sunrise } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useChatActions } from "./ChatProvider";
 
 const SUGGESTIONS = [
@@ -55,6 +56,13 @@ export function EmptyState() {
           </button>
         ))}
       </div>
+      <p className="mt-6 max-w-2xl text-center text-xs text-balance text-muted-foreground">
+        MIZAN learns from your chats to help you, and lists all it keeps in your Daftar. Your words train no model
+        unless you allow it.{" "}
+        <Link to="/library/memory" className="font-medium text-brand underline-offset-4 hover:underline">
+          Choose in Memory
+        </Link>
+      </p>
     </div>
   );
 }
