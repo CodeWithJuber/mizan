@@ -19,4 +19,7 @@ check("headline", sidqHeadline(report) === "Truth Gate: 1 corrected, 2 removed")
 check("lines", sidqLines(report)[0] === "Arithmetic corrected: 12 * 12 = 144 (not 154)");
 check("flag mode", sidqHeadline({ ...report, corrected: [], removed: [], flagged: [{ kind: "quote", detail: "x" }] }) === "Truth Gate: 1 marked");
 
+const mushaf = { kind: "mushaf_script", detail: "“وَٱلْقَمَرُ ٱلْمُنِيرُ” is written in the mushaf's script but is not the Quran's text" };
+check("mushaf script", sidqLines({ ...report, corrected: [], removed: [], flagged: [mushaf] })[0] === `Mushaf script: ${mushaf.detail}`);
+
 console.log(`sidq: ${checks} checks passed`);

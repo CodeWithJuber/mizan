@@ -14,13 +14,16 @@ marked as MIZAN's own review. A user turns this off with the chat preference
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import calc, fahm, hadith, muqabala, quran
+from . import calc, fahm, hadith, iqtibas, muqabala, quran
 from .express import phrase
 
 logger = logging.getLogger("mizan.muhasaba")
@@ -114,41 +117,187 @@ def _cited_lines(text: str) -> list[tuple[Any, list[int]]]:
     return [(reference, lines) for reference, lines in groups if lines]
 
 
+# Consecutive words an Arabic passage given with no reference must share with
+# an ayah before it is read as a quote of that ayah.
+LEAST_SHARED = 4
+MAX_PASSAGES = 4  # unreferenced passages read against the source per answer
+_sources: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "muhasaba_sources", default=None
+)
+
+
+@contextmanager
+def sources() -> Iterator[None]:
+    """Each source text read once while bound (one answer's checks)."""
+    token = _sources.set({})
+    try:
+        yield
+    finally:
+        _sources.reset(token)
+
+
+async def _source(reference: Any) -> tuple[str, str]:
+    """(label, Arabic text) of a Quran or hadith reference from MIZAN's source."""
+    known = _sources.get()
+    key = repr(reference)
+    if known is not None and key in known:
+        cached: tuple[str, str] = known[key]
+        return cached
+    if isinstance(reference, quran.Reference):
+        data = await quran.fetch(reference, "en")
+        source = "\n".join(ayah["arabic"] for ayah in data.get("ayahs", []))
+    else:
+        data = await hadith.fetch(reference, "en")
+        source = str(data.get("arabic") or "")
+    found = (str(data.get("reference", "")), source)
+    if known is not None:
+        known[key] = found
+    return found
+
+
+def _index() -> iqtibas.Quotes | None:
+    """The Quran's text as quotes are read (Iqtibas's, from the editions Fihris
+    downloads), or None before it is read: then nothing is claimed of a
+    passage given without a reference."""
+    quotes = iqtibas.available()
+    return quotes if quotes is not None and quotes.mushaf else None
+
+
+async def _read(text: str, lines: list[int], reference: Any) -> tuple[str, str, dict] | None:
+    """The quote check of these lines of the text against the reference's source."""
+    try:
+        label, source = await _source(reference)
+    except Exception as exc:  # noqa: BLE001 - an unreachable source proves nothing
+        logger.debug("Muhasaba could not read the source: %s", exc)
+        return None
+    if not source:
+        return None
+    quoted = "\n".join(f"> {line}" for line in source.splitlines() if line.strip())
+    every = text.splitlines()
+    return label, source, muqabala.quote_check("\n".join(every[i] for i in lines), quoted)
+
+
 async def scripture(text: str) -> list[dict]:
-    """Quoted Quran or hadith text that differs from MIZAN's source, each
-    checked against the reference it is given under (not the answer's first)."""
+    """Quoted Quran or hadith text that differs from MIZAN's source.
+
+    A passage given under a reference is checked against that reference (not
+    the answer's first). An Arabic passage given with no reference that shares
+    at least ``LEAST_SHARED`` consecutive words with an ayah, and is mostly
+    that ayah (more than half of its words, and they more than half of the
+    passage), is checked against the ayah (or consecutive ayahs) it quotes;
+    MIZAN finds them in its own Quran text (``iqtibas``)."""
     if len(muqabala.fold_arabic(text)) < 4:
         return []
-    lines = text.splitlines()
     findings: list[dict] = []
+    read: set[int] = set()  # lines whose Arabic was read as a quote of a reference
     for reference, indexes in _cited_lines(text)[:4]:
-        try:
-            if isinstance(reference, quran.Reference):
-                data = await quran.fetch(reference, "en")
-                source = "\n".join(ayah["arabic"] for ayah in data.get("ayahs", []))
-            else:
-                data = await hadith.fetch(reference, "en")
-                source = str(data.get("arabic") or "")
-            label = data.get("reference", "")
-        except Exception as exc:  # noqa: BLE001 - an unreachable source proves nothing
-            logger.debug("Muhasaba could not read the source: %s", exc)
+        result = await _read(text, indexes, reference)
+        if result is None:
             continue
-        if not source:
-            continue
-        quoted = "\n".join(f"> {line}" for line in source.splitlines() if line.strip())
-        check = muqabala.quote_check("\n".join(lines[i] for i in indexes), quoted)
+        label, source, check = result
+        quoted = [indexes[i] for i in check.get("lines", []) if i < len(indexes)]
+        read.update(quoted)
         if check["status"] not in {"differs", "close"}:
             continue
-        findings.append(
-            {
-                "kind": "quote",
-                "reference": label,
-                "source": source[:3000],
-                "status": check["status"],
-                "changed": check.get("changed", []),
-                "lines": indexes,
-            }  # fmt: skip
-        )
+        findings.append(_finding(label, source, check, quoted or indexes))
+    return findings + await _unreferenced(text, read)
+
+
+def _finding(label: str, source: str, check: dict, lines: list[int], **extra: Any) -> dict:
+    return {
+        "kind": "quote",
+        "reference": label,
+        "source": source[:3000],
+        "status": check["status"],
+        "changed": check.get("changed", []),
+        "lines": lines,
+        **extra,
+    }  # fmt: skip
+
+
+def _place(stretch: muqabala.Stretch, index: iqtibas.Quotes) -> quran.Reference | None:
+    """The ayah, or consecutive ayahs, around the longest run of at least
+    ``LEAST_SHARED`` words of the stretch that MIZAN's Quran text holds."""
+    found = [word.folded for word in stretch.words]
+    place = index.passage(found, LEAST_SHARED, quran.MAX_AYAHS)
+    return None if place is None else quran.Reference(*place)
+
+
+def _mostly(check: dict, stretch: muqabala.Stretch) -> bool:
+    """A passage is a quote of the ayahs when most of its words are theirs and
+    most of their words are in it: a formula that shares a phrase with an ayah
+    (لا إله إلا الله محمد رسول الله and 37:35) is not given as that ayah."""
+    matched = int(check.get("matched", 0))
+    return 2 * matched > len(stretch.words) and 2 * matched > int(check.get("words", 0))
+
+
+async def _unreferenced(text: str, read: set[int]) -> list[dict]:
+    """Quotes of the Quran given with no reference that differ from the ayah."""
+    index = _index()
+    if index is None:
+        return []
+    findings: list[dict] = []
+    passages = 0
+    for stretch in muqabala.stretches(text):
+        if passages >= MAX_PASSAGES:
+            break
+        if read.intersection(stretch.lines) or len(stretch.words) < LEAST_SHARED:
+            continue
+        reference = _place(stretch, index)
+        if reference is None:
+            continue
+        passages += 1
+        result = await _read(text, list(stretch.lines), reference)
+        if result is None or not _mostly(result[2], stretch):
+            continue
+        read.update(stretch.lines)
+        label, source, check = result
+        if check["status"] in {"differs", "close"}:
+            findings.append(_finding(label, source, check, list(stretch.lines), unreferenced=True))
+    return findings
+
+
+async def mushaf_script(text: str, reported: Iterable[int] = ()) -> list[dict]:
+    """Arabic written in the mushaf's script that is not the Quran's text.
+
+    A stretch of Arabic carrying a mark only the mushaf writes (alif wasla,
+    the Quranic signs: ``muqabala.MUSHAF_ONLY``) looks like the Quran. Each of
+    its words with a mushaf mark (those, or the superscript alif) that is not
+    the Quran's where it stands (not in a run of ``LEAST_SHARED`` words, or a
+    whole stretch, that MIZAN's Quran text holds in order, nor part of a
+    passage that matches its source) is reported. Lines already reported as
+    an altered quote (``reported``) are not read again. Without MIZAN's Quran
+    text nothing is claimed."""
+    index = _index()
+    if index is None or not muqabala.MUSHAF_ONLY.search(text):
+        return []
+    skip = set(reported)
+    findings: list[dict] = []
+    passages = 0
+    for stretch in muqabala.stretches(text):
+        if skip.intersection(stretch.lines) or not muqabala.MUSHAF_ONLY.search(
+            text[stretch.start : stretch.end]
+        ):
+            continue
+        marked = [bool(muqabala.MUSHAF_MARKS.search(word.written)) for word in stretch.words]
+        covered = index.covered([word.folded for word in stretch.words], LEAST_SHARED)
+        loose = [i for i, word in enumerate(stretch.words) if marked[i] and not covered[i]]
+        if not loose:
+            continue
+        # A spelling the two scripts write differently (أَقْصَا, أَقْصَى) is
+        # not held by the text MIZAN searches: a passage that is the Quran's
+        # is read against its source before anything is said.
+        reference = _place(stretch, index) if passages < MAX_PASSAGES else None
+        if reference is not None:
+            passages += 1
+            result = await _read(text, list(stretch.lines), reference)
+            if result is not None and result[2]["status"] in {"matches", "excerpt"}:
+                continue
+        shown = stretch.words[loose[0] : loose[-1] + 1]
+        words = " ".join(word.written for word in shown[:12]) + (" …" if len(shown) > 12 else "")
+        findings.append({"kind": "mushaf_script", "text": words, "lines": list(stretch.lines)})
+        if len(findings) >= 5:
+            break
     return findings
 
 

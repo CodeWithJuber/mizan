@@ -253,3 +253,76 @@ def test_arabic_terms_in_an_explanation_are_not_read_as_a_quote():
     # A passage given as the ayah is still read, however different.
     wrong = muqabala.quote_check("إن ربكم الله الذي خلق الأرض في يومين", source)
     assert wrong["status"] == "differs"
+
+
+# Ayat al-Kursi (2:255) as MIZAN's source gives it (Tanzil Uthmani) and as an
+# answer writes it in the common script (Tanzil simple), both from the
+# editions MIZAN reads.
+KURSI_SOURCE = (
+    "> ٱللَّهُ لَآ إِلَٰهَ إِلَّا هُوَ ٱلْحَىُّ ٱلْقَيُّومُ ۚ لَا تَأْخُذُهُۥ سِنَةٌۭ وَلَا نَوْمٌۭ ۚ "
+    "لَّهُۥ مَا فِى ٱلسَّمَٰوَٰتِ وَمَا فِى ٱلْأَرْضِ ۗ مَن ذَا ٱلَّذِى يَشْفَعُ عِندَهُۥٓ إِلَّا "
+    "بِإِذْنِهِۦ ۚ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَىْءٍۢ "
+    "مِّنْ عِلْمِهِۦٓ إِلَّا بِمَا شَآءَ ۚ وَسِعَ كُرْسِيُّهُ ٱلسَّمَٰوَٰتِ وَٱلْأَرْضَ ۖ وَلَا "
+    "يَـُٔودُهُۥ حِفْظُهُمَا ۚ وَهُوَ ٱلْعَلِىُّ ٱلْعَظِيمُ"
+)
+KURSI = (
+    "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَهُ مَا "
+    "فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ ۗ مَنْ ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلَّا بِإِذْنِهِ ۚ "
+    "يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَيْءٍ مِنْ عِلْمِهِ إِلَّا "
+    "بِمَا شَاءَ ۚ وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ ۖ وَلَا يَئُودُهُ حِفْظُهُمَا ۚ وَهُوَ "
+    "الْعَلِيُّ الْعَظِيمُ"
+)
+DAMMA, FATHA, KASRA = chr(0x64F), chr(0x64E), chr(0x650)
+
+
+def test_an_exact_quote_in_either_script_matches_and_a_part_is_an_excerpt():
+    assert muqabala.quote_check(KURSI, KURSI_SOURCE)["status"] == "matches"
+    # Written without vowels, as most answers write it: not penalised for them.
+    bare = "".join(c for c in KURSI if not 0x64B <= ord(c) <= 0x652)
+    assert muqabala.quote_check(bare, KURSI_SOURCE)["status"] == "matches"
+    # The Uthmani text itself, and its first half word for word.
+    assert muqabala.quote_check(KURSI_SOURCE[2:], KURSI_SOURCE)["status"] == "matches"
+    half = " ".join(KURSI.split()[:20])
+    assert muqabala.quote_check(half, KURSI_SOURCE)["status"] == "excerpt"
+
+
+def test_one_changed_word_in_a_long_ayah_is_not_a_match():
+    # The audit: one of 50 words changed read as "matches" (0.98 ≥ 0.97).
+    words = KURSI.split()
+    words[3] = "الْعَلِيمُ"  # in place of إِلَّا
+    check = muqabala.quote_check(" ".join(words), KURSI_SOURCE)
+    assert check["status"] == "close" and check["coverage"] < 1
+    assert check["changed"] == [{"kind": "changed", "source": "إِلَّا", "given": "الْعَلِيمُ"}]
+    # A word dropped from inside the passage, or added to it, is no excerpt either.
+    dropped = " ".join(words[:3] + words[4:])
+    assert muqabala.quote_check(dropped, KURSI_SOURCE)["status"] == "close"
+    added = " ".join(KURSI.split()[:5] + ["حَقًّا"] + KURSI.split()[5:])
+    added_check = muqabala.quote_check(added, KURSI_SOURCE)
+    assert added_check["status"] == "close" and added_check["changed"][0]["kind"] == "added"
+
+
+def test_changed_vowels_are_not_a_match():
+    # The audit: three vowel marks changed still read as "matches".
+    words = KURSI.split()
+    words[0] = words[0][:-1] + KASRA  # اللَّهُ → اللَّهِ
+    words[5] = words[5].replace(DAMMA, FATHA)  # الْحَيُّ → الْحَيَّ
+    words[9] = words[9][:-1] + FATHA  # تَأْخُذُهُ → تَأْخُذُهَ
+    check = muqabala.quote_check(" ".join(words), KURSI_SOURCE)
+    assert check["status"] == "close" and check["coverage"] == 1.0
+    assert [change["kind"] for change in check["changed"]] == ["vowels"] * 3
+
+
+def test_half_an_ayah_with_another_continuation_is_not_an_excerpt():
+    # The audit: the first half word for word, then other words given as its
+    # continuation, read as an "excerpt".
+    half = " ".join(KURSI.split()[:20])
+    continued = muqabala.quote_check(
+        f"{half} and to Him belongs whatever is in the heavens", KURSI_SOURCE
+    )
+    assert continued["status"] == "close"
+    assert continued["changed"][0]["kind"] == "continued"
+    # A translation after a dash, or a phrase cited inside a sentence, is not.
+    translated = f"{half} — Allah, there is no deity except Him"
+    assert muqabala.quote_check(translated, KURSI_SOURCE)["status"] == "excerpt"
+    inline = "The phrase لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ says He never tires."
+    assert muqabala.quote_check(inline, KURSI_SOURCE)["status"] == "excerpt"

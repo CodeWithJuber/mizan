@@ -6,8 +6,13 @@ shown, with the same proofs and no model call:
 - **arithmetic** stated as ``expression = value``: recomputed exactly; a wrong
   value is replaced by the right one
 - **Quran and hadith quoted with a reference**: compared with the text MIZAN
-  reads from its authentic source; an altered quote is replaced by the source
-  text
+  reads from its authentic source, word for word and vowel for vowel; an
+  altered quote is replaced by the source text. An Arabic passage given with
+  no reference that is mostly an ayah (``muhasaba.scripture``) is checked
+  against that ayah the same way
+- **the mushaf's script**: Arabic written with marks only the mushaf writes
+  that is not the Quran's text (``muhasaba.mushaf_script``) is marked, never
+  rewritten
 - **fabricated claims** (mawdu' in the Isnad ledger): an action that has no
   receipt ("I ran the code") is removed, a citation to a source that does not
   exist loses its marker
@@ -68,17 +73,33 @@ async def gate(
         else:
             report["flagged"].append({"kind": "arithmetic", "detail": item})
 
-    # Last quote first, so replacing one never moves the lines of another.
-    quotes = await muhasaba.scripture(text)
-    for finding in sorted(quotes, key=lambda found: -min(found.get("lines") or [0])):
-        detail = f"{finding['reference']}: the quoted text differs from MIZAN's source"
-        if strict:
-            text = _replace_quote(
-                text, finding["source"], finding["reference"], language, finding.get("lines")
+    with muhasaba.sources():  # each source text read once for this answer
+        # Last quote first, so replacing one never moves the lines of another.
+        quotes = await muhasaba.scripture(text)
+        for finding in sorted(quotes, key=lambda found: -min(found.get("lines") or [0])):
+            detail = f"{finding['reference']}: the quoted text differs from MIZAN's source"
+            if finding.get("unreferenced"):
+                detail += " (given as the Quran without a reference)"
+            if strict:
+                text = _replace_quote(
+                    text, finding["source"], finding["reference"], language, finding.get("lines")
+                )
+                report["corrected"].append({"kind": "quote", "detail": detail})
+            else:
+                report["flagged"].append({"kind": "quote", "detail": detail})
+
+        # Arabic written with the mushaf's marks that is not the Quran's text:
+        # marked under the answer, never rewritten. A quote already reported is
+        # not read again (in strict mode it is now the source's own text).
+        reported = [] if strict else [line for found in quotes for line in found.get("lines") or []]
+        for finding in await muhasaba.mushaf_script(text, reported):
+            report["flagged"].append(
+                {
+                    "kind": "mushaf_script",
+                    "detail": f"“{finding['text']}” is written in the mushaf's script "
+                    "but is not the Quran's text",
+                }
             )
-            report["corrected"].append({"kind": "quote", "detail": detail})
-        else:
-            report["flagged"].append({"kind": "quote", "detail": detail})
 
     # A hadith quoted under books whose narrations do not say it, while another
     # of the six books does: reported with where it is (never rewritten).

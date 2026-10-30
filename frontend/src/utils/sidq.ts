@@ -22,7 +22,11 @@ const KIND_LABELS: Record<string, string> = {
   citation: "Citation",
   link: "Link",
   hadith_source: "Hadith source",
+  mushaf_script: "Mushaf script",
 };
+
+/** Marks that say where something is, not that it lacks support. */
+const STATED = new Set(["hadith_source", "mushaf_script"]);
 
 /** A report worth showing: the gate changed or marked something. */
 export function isSidq(value: unknown): value is SidqReport {
@@ -52,7 +56,7 @@ export function sidqLines(report: SidqReport): string[] {
     ...report.corrected.map(line("corrected")),
     ...report.removed.map(line("removed")),
     ...report.flagged.map((item) =>
-      item.kind === "hadith_source" ? `${KIND_LABELS[item.kind]}: ${item.detail}` : line("not backed")(item),
+      STATED.has(item.kind) ? `${KIND_LABELS[item.kind]}: ${item.detail}` : line("not backed")(item),
     ),
   ];
 }
