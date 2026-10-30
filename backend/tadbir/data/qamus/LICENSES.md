@@ -35,4 +35,34 @@ Measured with, never shipped or learned from: FLORES-101 devtest
 commit `1a45e707ea4b5ea3d6c71341f18bfca6a6e356a3`, CC BY-SA 4.0), read only by
 `scripts/qamus_eval.py`.
 
+## Roman Hindi and Urdu: `hi-latn.json.gz`
+
+`hi-latn.json.gz` reads a word of Hindi or Urdu written in Latin letters as the
+Devanagari or Urdu word it most probably spells. It holds Roman spellings and
+the native words they are read as, and how they were fitted and measured,
+computed by `scripts/build_qamus_roman.py` from the sources below. It holds no
+pair of the sources as given and no sentence.
+
+| Source | Used | Licence |
+|---|---|---|
+| [Aksharantar](https://huggingface.co/datasets/ai4bharat/Aksharantar) (AI4Bharat; Madhani et al., 2022), `hin.zip` and `urd.zip` at commit `e418c1fc928d9f5393af33268472cf20c1891be8`; the SHA-256 of each file read is recorded in the file (`source.files`). Rows whose source is Dakshina are left out | Train split (100,000 pairs per language): how native letters are written in Latin letters. Validation split: when EM stops. Test split: the accuracy recorded in the file | Manually collected pairs [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); pairs mined from Samanantar and IndicCorp, and existing sources, [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| MASSIVE 1.1 (above), locales `hi-IN`, `ur-PK` and `en-US`, train split | Which Hindi and Urdu words there are and how often each is used (the prior); English words, which are never read as Roman Hindi | CC BY 4.0 |
+
+Attribution: Aksharantar, AI4Bharat, IIT Madras. Changes: the transliteration
+pairs were reduced to a model of how each letter is written (a noisy channel
+fitted by EM), and that model to the most probable reading of each likely
+spelling of MASSIVE's words.
+
+Citation:
+
+> Yash Madhani, Sushane Parthan, Priyanka Bedekar, Ruchi Khapra, Anoop
+> Kunchukuttan, Pratyush Kumar and Mitesh Shantadevi Khapra. 2022. Aksharantar:
+> Towards Building Open Transliteration Tools for the Next Billion Users.
+> arXiv:2205.03018.
+
+Measured with, never learned from or shipped:
+[Dakshina](https://github.com/google-research-datasets/dakshina) v1.0 (Roark
+et al., 2020; CC BY-SA 4.0), its romanized Hindi and Urdu Wikipedia sentences,
+read only by `scripts/qamus_roman_eval.py`.
+
 No Quran or hadith text is used.

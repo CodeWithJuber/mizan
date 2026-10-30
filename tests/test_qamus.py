@@ -159,9 +159,12 @@ def test_the_shipped_lexicon_is_small_and_records_how_it_was_measured():
         "ur-en.json.gz",
         "ar-en.json.gz",
         "ta-en.json.gz",
+        qamus.ROMAN,
     }
     assert sum(path.stat().st_size for path in files) < 5_000_000
     for path in files:
+        if path.name == qamus.ROMAN:
+            continue
         data = json.loads(gzip.decompress(path.read_bytes()))
         assert data["format"] == qamus.FORMAT
         assert data["source"]["licence"] == "CC BY 4.0"
@@ -306,6 +309,104 @@ def test_same_language_text_is_read_as_before():
         "Saturn ka sabse bada chand Titan hai", "Titan is the largest moon of Saturn."
     )
     assert not ahl_dhikr.about("The largest moon of Saturn is Titan.", UNRELATED[0])
+
+
+# ── Roman Hindi and Urdu ──────────────────────────────────────────────────
+
+# Words and their spellings in Latin letters; no letter is paired with letters.
+ROMAN_PAIRS = [
+    ("कमल", "kamal"),
+    ("कलम", "kalam"),
+    ("मकान", "makaan"),
+    ("नमक", "namak"),
+    ("काम", "kaam"),
+    ("नाम", "naam"),
+    ("मन", "man"),
+    ("कान", "kaan"),
+    ("कल", "kal"),
+    ("लाल", "laal"),
+    ("माल", "maal"),
+    ("नल", "nal"),
+]
+
+
+def test_the_channel_learns_how_letters_are_written_in_latin():
+    pairs = [(qamus.contexts(native), roman) for native, roman in ROMAN_PAIRS]
+    table, trace = qamus.channel(pairs, pairs[:4])
+    assert len(trace) >= 2 and trace == sorted(trace)  # EM stops when held out stops rising
+    # Words it never saw are spelled as their letters are.
+    assert qamus.spellings(qamus.contexts("मलाल"), table)[0][0] == "malaal"
+    assert qamus.spellings(qamus.contexts("नकल"), table)[0][0] == "nakal"
+    assert qamus.written_as(qamus.contexts("कमल"), "kamal", table) > 0.5
+    assert qamus.written_as(qamus.contexts("कमल"), "kmla", table) == 0.0
+    # A spelling is read as the word that most probably wrote it.
+    found = qamus.readings({"कमल": 5, "कलम": 1, "नकल": 1}, table, "kind", keep=5)
+    assert found["kamal"][0] == "कमल" and found["kalam"][0] == "कलम"
+
+
+def test_units_and_contexts_are_letters_with_their_marks():
+    assert qamus.units("बनवाया") == ["ब", "न", "वा", "या"]
+    assert qamus.contexts("बनवाया") == ["ब\tc", "न\tm", "वा\tm", "या\t$"]
+    assert qamus.contexts("دنیا", "letter") == ["د\tن", "ن\tی", "ی\tا", "ا\t$"]
+    assert qamus.roman_letters("Ban'waya") == "banwaya"
+
+
+def test_the_shipped_roman_reading_records_how_it_was_measured():
+    data = json.loads(gzip.decompress((qamus.DATA / qamus.ROMAN).read_bytes()))
+    assert data["format"] == qamus.ROMAN_FORMAT
+    assert data["source"]["left_out"] == ["Dakshina"]
+    for language in ("hi", "ur"):
+        assert data["fit"][language]["iterations"] >= 2
+        assert data["measured"][language]["read_accuracy"] > 0.5
+        assert data["read"][language]
+
+
+def test_roman_hindi_and_urdu_words_are_read_and_translated():
+    assert qamus.read_roman("duniya")["hi"] == "दुनिया"
+    assert "world" in qamus.translate("duniya", "en")
+    assert "wife" in qamus.translate("biwi", "en")
+    assert "capital" in qamus.translate("rajdhani", "en")
+    assert "दुनिया" in qamus.translate("duniya", "hi")
+    # English words are not read as Roman Hindi, though some are spelled alike.
+    for english in ("main", "the", "door", "capital"):
+        assert qamus.read_roman(english) == {}
+    assert qamus.translate("capital", "en") == []
+
+
+# A claim from production (30 Oct 2026), with how the Taj Mahal's page says it.
+TAJ_ROMAN = "Taj Mahal Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein banwaya tha."
+TAJ_SENTENCE = "It was built by the emperor Shah Jahan in memory of his wife, Mumtaz Mahal."
+
+
+def test_a_roman_claim_finds_its_english_sentence():
+    assert ahl_dhikr.about(TAJ_ROMAN, TAJ_SENTENCE)
+    assert "wife" in ahl_dhikr.searched(TAJ_ROMAN).split()
+
+
+def test_a_roman_claim_is_not_read_against_another_subject():
+    berlin = "Berlin ki deewar 9 November 1989 ko giri thi."
+    china = "China ki deewar duniya ki sabse lambi deewar hai."
+    assert not ahl_dhikr.about(berlin, "The Great Wall of China is the longest wall in the world.")
+    assert not ahl_dhikr.about(china, "The Berlin Wall was taken down on November 9, 1989.")
+    assert not ahl_dhikr.about(TAJ_ROMAN, "Titan is the largest moon of Saturn.")
+
+
+def test_a_roman_claim_is_read_by_the_nli_model_in_devanagari():
+    premise = "Its chemical symbol is Au, from the Latin word for gold."
+    read = qamus.devanagari("Sone ka chemical symbol Au hai.", keep=premise)
+    # The source's own words ("Au", "chemical") stay as they are.
+    assert "Au" in read and "chemical symbol" in read
+    assert "Sone" not in read and "सोने" in read
+    assert ahl_dhikr.roman(TAJ_ROMAN)
+    assert not ahl_dhikr.roman("The Taj Mahal was built by Shah Jahan.")
+
+
+def test_without_qamus_no_roman_word_is_read(monkeypatch):
+    monkeypatch.setenv("MIZAN_QAMUS", "off")
+    assert not ahl_dhikr.about(TAJ_ROMAN, TAJ_SENTENCE)
+    assert qamus.bridge(TAJ_ROMAN, "en") == []
+    assert qamus.devanagari("Sone ka chemical symbol Au hai.") == "Sone ka chemical symbol Au hai."
+    assert not ahl_dhikr.roman(TAJ_ROMAN)
 
 
 # ── forgetting what was stored under the older reading ───────────────────

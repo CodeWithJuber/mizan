@@ -698,3 +698,31 @@ async def test_a_hindi_claim_finds_its_english_source_sentence(monkeypatch):
     other = Passage("Islamabad is the capital of Pakistan.", "Islamabad", page.url, "wikipedia")
     (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([other]))
     assert finding.verdict == "unknown"
+
+
+async def test_a_roman_hindi_claim_is_read_in_devanagari_and_kept_as_written(monkeypatch):
+    """Read in Latin letters, the NLI model called true Roman claims
+    contradicted by unrelated sentences; it learned Hindi in Devanagari."""
+    seen: list[tuple[str, str]] = []
+
+    async def reading(pairs):
+        seen.extend(pairs)
+        return [{"entailment": 0.9, "neutral": 0.05, "contradiction": 0.05} for _ in pairs]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", reading)
+    page = Passage(
+        "It was built by the emperor Shah Jahan in memory of his wife, Mumtaz Mahal.",
+        "Taj Mahal",
+        "https://simple.wikipedia.org/wiki/Taj_Mahal",
+        "wikipedia",
+    )
+    claim = "Taj Mahal Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein banwaya tha."
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.claim == claim and finding.verdict == "supported"
+    hypotheses = {hypothesis for _premise, hypothesis in seen}
+    assert claim not in hypotheses
+    assert all("Shah Jahan" in h and "Mumtaz Mahal" in h and "बनवाया" in h for h in hypotheses)
+    seen.clear()
+    english = "The Taj Mahal was built by Shah Jahan in memory of his wife Mumtaz Mahal."
+    await ahl_dhikr.judge([english], ahl_dhikr.sentences([page]))
+    assert {hypothesis for _premise, hypothesis in seen} == {english}

@@ -323,53 +323,78 @@ def searched(claim: str) -> str:
     return claim + " " + " ".join(bridged) if bridged else claim
 
 
+def roman(claim: str) -> bool:
+    """The claim is Roman Hindi or Urdu ("Taj Mahal Shah Jahan ne banwaya
+    tha"), as Lughah's own model reads it."""
+    from . import lughah
+
+    if not qamus.enabled():
+        return False
+    found = lughah.naive_posterior(claim)
+    return bool(found) and max(found, key=found.__getitem__) == "hi-latn"
+
+
+def hypothesis(claim: str, premise: str, in_roman: bool) -> str:
+    """The claim as the NLI model reads it against a premise. A Roman Hindi or
+    Urdu claim is written in Devanagari, the premise's own words (names,
+    symbols) left as they are: the model learned Hindi from XNLI, in
+    Devanagari. Read in Latin letters, true claims were read as contradicted
+    by unrelated sentences ("Mona Lisa ki painting Leonardo da Vinci ne banayi
+    thi" against Leonardo's full name) (``docs/qamus.md``)."""
+    return qamus.devanagari(claim, keep=premise) if in_roman else claim
+
+
 async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
     """Each claim's verdict from the sentences of one source that are about it,
     one by one and, joined, the page's best of them (``joint_premise``)."""
     if not pool:
         return [Finding(claim, "unknown") for claim in claims]
     pairs: list[tuple[str, str]] = []
-    owners: list[tuple[int, Passage]] = []
+    owners: list[tuple[int, Passage, str]] = []
     texts = [passage.text for passage in pool]
     for index, claim in enumerate(claims):
         scores = bm25_scores(searched(claim), texts)
         ranked = sorted(range(len(pool)), key=lambda i: -scores[i])
         related = [i for i in ranked if scores[i] > 0 and about(claim, texts[i])]
-        for position in related[:CANDIDATES]:
-            pairs.append((pool[position].text, claim))
-            owners.append((index, pool[position]))
+        premises = [pool[position] for position in related[:CANDIDATES]]
         joint = joint_premise(claim, pool, scores)
         if joint is not None:
-            pairs.append((joint.text, claim))
-            owners.append((index, joint))
+            premises.append(joint)
+        in_roman = bool(premises) and roman(claim)
+        for premise in premises:
+            read = hypothesis(claim, premise.text, in_roman)
+            pairs.append((premise.text, read))
+            owners.append((index, premise, read))
     readings = await nli(pairs)
     if readings is None:
         return [Finding(claim, "unknown") for claim in claims]
-    best: dict[int, tuple[float, str, Passage]] = {}
-    for (index, passage), reading in zip(owners, readings, strict=True):
+    best: dict[int, tuple[float, str, Passage, str]] = {}
+    for (index, passage, read), reading in zip(owners, readings, strict=True):
         # The most decisive sentence speaks for the source: the one whose
         # strongest of entailment and contradiction is highest.
         decisive = max(reading["entailment"], reading["contradiction"])
         if index not in best or decisive > best[index][0]:
             label = max(reading, key=reading.__getitem__)
-            best[index] = (decisive, label, passage)
+            best[index] = (decisive, label, passage, read)
     # Contradiction is symmetric: if the source contradicts the claim, the claim
     # contradicts the source. A one-way reading is the NLI model misreading a
     # pair (an agreeing page read as "says otherwise"), so it settles nothing.
-    disputed = [index for index, (_, label, _) in best.items() if label == "contradiction"]
-    reverse = await nli([(claims[index], best[index][2].text) for index in disputed])
-    for index, reading in zip(disputed, reverse or [], strict=False):
-        if max(reading, key=reading.__getitem__) != "contradiction":
-            best[index] = (best[index][0], "neutral", best[index][2])
-    if disputed and reverse is None:
-        for index in disputed:
-            best[index] = (best[index][0], "neutral", best[index][2])
+    disputed = [index for index, (_, label, _, _) in best.items() if label == "contradiction"]
+    reverse = await nli([(best[index][3], best[index][2].text) for index in disputed])
+    unsettled = [
+        index
+        for index, reading in zip(disputed, reverse or [], strict=False)
+        if max(reading, key=reading.__getitem__) != "contradiction"
+    ]
+    for index in disputed if reverse is None else unsettled:
+        decisive, _label, passage, read = best[index]
+        best[index] = (decisive, "neutral", passage, read)
     findings = []
     for index, claim in enumerate(claims):
         if index not in best or best[index][1] == "neutral":
             findings.append(Finding(claim, "unknown"))
             continue
-        probability, label, passage = best[index]
+        probability, label, passage, _read = best[index]
         verdict = "supported" if label == "entailment" else "contradicted"
         findings.append(Finding(claim, verdict, probability, passage))
     return findings
