@@ -387,6 +387,16 @@ async def test_arithmetic_is_answered_by_mizan_with_no_model_call(agent):
     assert result["completion_status"] == "verified_by_mizan" and result["task_verified"]
     assert result["usage"]["orchestrator"] == "mizan"
     assert result["orchestration"]["intent"] == "compute"
+    # The goal's measure: answered with no hosted-model call (usage.lisan).
+    assert result["usage"]["lisan"] == {
+        "calls": 0,
+        "zero_call": True,
+        "tasks": {},
+        "family": "compute",
+        "language": "en",
+        "source": "mizan",
+        "verified": True,
+    }
 
 
 async def test_the_working_is_shown_when_asked_and_comes_from_mizan(agent):
@@ -600,6 +610,14 @@ async def test_modes_route_unknown_requests(agent, monkeypatch):
     assert result["result"] == "Recursion is a function calling itself."
     assert not agent.ai_client.requests[0].get("tools")
     assert "no tools" in agent.ai_client.requests[0]["system"]
+    # MIZAN read it as conversation and the model answered: one teacher call.
+    lisan = result["usage"]["lisan"]
+    assert (lisan["family"], lisan["language"], lisan["source"]) == (
+        "converse",
+        "en",
+        "language_model",
+    )
+    assert lisan["tasks"] == {"answer": 1} and lisan["zero_call"] is False
     # Tadbir still runs tools itself afterwards: the flag ends with the run.
     assert agent.get_tool_schemas()
     # hybrid: what MIZAN does not recognise goes to the model-driven loop.
@@ -618,6 +636,10 @@ async def test_modes_route_unknown_requests(agent, monkeypatch):
     assert (
         len(agent.ai_client.requests) == 1 and legacy["usage"]["orchestrator"] == "language_model"
     )
+    # MIZAN did not read it (llm mode): the model answered, the family is unplaced.
+    assert legacy["usage"]["lisan"]["family"] == "unplaced"
+    assert legacy["usage"]["lisan"]["tasks"] == {"answer": 1}
+    assert legacy["usage"]["lisan"]["zero_call"] is False
 
 
 async def test_tools_mizan_may_not_use_are_left_to_the_agent_loop(agent, monkeypatch):
@@ -917,6 +939,10 @@ async def test_web_project_is_planned_saved_checked_and_repaired_by_mizan(agent,
     assert result["completion_status"] == "verified_by_mizan"
     assert "✓" in result["result"] and "✗" not in result["result"]
     assert result["orchestration"]["language_model_calls"] == 4
+    lisan = result["usage"]["lisan"]
+    assert lisan["calls"] == 4 and sum(lisan["tasks"].values()) == 4
+    assert "answer" not in lisan["tasks"]  # every call was one of MIZAN's Lisan tasks
+    assert lisan["family"] == "build_project" and lisan["source"] == "mizan"
     assert "Hinglish" in agent.ai_client.requests[0]["system"]
     assert not any(request.get("tools") for request in agent.ai_client.requests)
 

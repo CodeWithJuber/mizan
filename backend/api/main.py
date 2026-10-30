@@ -20,9 +20,9 @@ import unicodedata
 import uuid
 from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import (
     BackgroundTasks,
@@ -5545,6 +5545,27 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
         "routing": majlis.report(coordinator),
         "wording": taallum.summary(coordinator.adaptive, user.user_id),
     }
+
+
+@app.get("/api/tadbir/teacher-calls")
+async def tadbir_teacher_calls(
+    days: int = Query(30, ge=1, le=365),
+    scope: Literal["me", "all"] = Query(
+        "me", description="Your own answers, or (administrators) every user's."
+    ),
+    user: TokenPayload = Depends(require_auth),
+):
+    """How often MIZAN answered with no hosted-model call, the goal's measure: the
+    share overall, per day and per (family, language), each with a Wilson 95 %
+    interval, and which Lisan tasks still called the model (docs/teacher-calls.md).
+    Counts and shares only; no message content."""
+    from api.usage import teacher_share
+
+    if scope == "all" and not user.has_role("admin"):
+        raise HTTPException(403, "Only administrators can see every user's answers")
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    rows = await memory.answer_usage(None if scope == "all" else user.user_id, since)
+    return {"days": days, "scope": scope, **teacher_share(rows)}
 
 
 @app.get("/api/tadbir/learning/live")

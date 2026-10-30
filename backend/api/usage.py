@@ -15,8 +15,10 @@ Cost rule (highest priority first):
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from collections.abc import Iterable
 from typing import Any
 
 from api.prices import estimate_cost
@@ -148,3 +150,107 @@ def build_usage_summary(calls: list[dict]) -> dict:
         summary.pop("cost_usd", None)
         summary.pop("cost_estimated", None)
     return summary
+
+
+def teacher_calls(
+    result: dict,
+    calls: int,
+    tasks: dict[str, int] | None,
+    understood: dict | None,
+) -> dict:
+    """How much of one request the hosted model did, by MIZAN's own kinds of work.
+
+    ``calls`` is every provider call the run recorded (``usage.calls``); ``tasks``
+    the Lisan tasks among them, the rest being the model answering in words
+    ("answer"). ``zero_call`` is the goal's measure: the answer needed no hosted
+    model at all. ``family``/``language`` are what Fahm read ("unplaced" when MIZAN
+    did not read the request: ``llm`` mode or an evaluation). docs/teacher-calls.md.
+    """
+    tally = {str(k): int(v) for k, v in (tasks or {}).items() if int(v) > 0}
+    direct = calls - sum(tally.values())
+    if direct > 0:
+        tally["answer"] = tally.get("answer", 0) + direct
+    read = understood or {}
+    return {
+        "calls": int(calls),
+        "zero_call": calls == 0,
+        "tasks": tally,
+        "family": str(read.get("intent") or "unplaced"),
+        "language": str(read.get("language") or "unknown"),
+        "source": "mizan" if result.get("orchestrator") == "mizan" else "language_model",
+        "verified": bool(result.get("task_verified")),
+    }
+
+
+def _as_dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def teacher_share(rows: Iterable[tuple[str, str]]) -> dict:
+    """The goal's measure over saved answers: the share answered with no hosted-model
+    call, with a Wilson 95 % interval, overall, per day and per (family, language).
+
+    ``rows`` are ``(created_at, metadata JSON)`` of assistant messages. Answers saved
+    before ``usage.lisan`` existed count by their recorded calls under the family
+    "unrecorded"; incomplete answers and evaluations (stateless) are left out.
+    """
+    from core.adaptive import wilson_bounds
+
+    def cell() -> dict:
+        return {"requests": 0, "zero_call": 0, "calls": 0, "verified": 0}
+
+    total = cell()
+    days: dict[str, dict] = {}
+    groups: dict[tuple[str, str], dict] = {}
+    tasks: dict[str, int] = {}
+    for created_at, raw in rows:
+        try:
+            meta = json.loads(raw or "{}")
+        except ValueError:
+            continue
+        if not isinstance(meta, dict) or meta.get("status") != "complete":
+            continue
+        usage: dict = _as_dict(meta.get("usage"))
+        if meta.get("stateless") or _as_dict(usage.get("memory")).get("stateless"):
+            continue
+        lisan: dict = _as_dict(usage.get("lisan"))
+        if not lisan:
+            calls = len(usage.get("calls") or [])
+            family, language, verified = "unrecorded", "unknown", bool(usage.get("task_verified"))
+        else:
+            calls = int(lisan.get("calls") or 0)
+            family = str(lisan.get("family") or "unplaced")
+            language = str(lisan.get("language") or "unknown")
+            verified = bool(lisan.get("verified"))
+            for name, count in (lisan.get("tasks") or {}).items():
+                tasks[str(name)] = tasks.get(str(name), 0) + int(count or 0)
+        for bucket in (
+            total,
+            days.setdefault(str(created_at)[:10], cell()),
+            groups.setdefault((family, language), cell()),
+        ):
+            bucket["requests"] += 1
+            bucket["zero_call"] += calls == 0
+            bucket["calls"] += calls
+            bucket["verified"] += verified
+
+    def share(bucket: dict) -> dict:
+        n, z = bucket["requests"], bucket["zero_call"]
+        low, high = wilson_bounds(z, n)
+        return {
+            **bucket,
+            "zero_call_share": round(z / n, 4) if n else None,
+            "interval": [round(low, 4), round(high, 4)] if n else None,
+        }
+
+    return {
+        **share(total),
+        "by_day": [{"day": day, **share(days[day])} for day in sorted(days)],
+        "by_family": [
+            {"family": family, "language": language, **share(bucket)}
+            for (family, language), bucket in sorted(
+                groups.items(), key=lambda item: (-item[1]["requests"], item[0])
+            )
+        ],
+        "lisan_tasks": dict(sorted(tasks.items(), key=lambda item: -item[1])),
+    }

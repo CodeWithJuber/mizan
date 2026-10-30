@@ -2974,6 +2974,8 @@ Match the requested depth and self-correct errors."""
     # What the last finished run leaves on the agent, for diagnostics.
     _RUN_TRACES = (
         "_llm_calls",
+        "_lisan_tasks",
+        "_understood",
         "_execution_timings",
         "_last_tool_results",
         "_faculty_guidance",
@@ -3088,7 +3090,7 @@ Match the requested depth and self-correct errors."""
                 result = await self._execute_impl(
                     task, context, shown, tool_callback, thinking_callback
                 )
-            from api.usage import build_usage_summary
+            from api.usage import build_usage_summary, teacher_calls
 
             removed = 0
             if taint_record and isinstance(result.get("result"), str):
@@ -3112,6 +3114,12 @@ Match the requested depth and self-correct errors."""
             if removed:
                 result["amanah"]["removed_from_answer"] = removed
             result["usage"] = build_usage_summary(getattr(self, "_llm_calls", []))
+            result["usage"]["lisan"] = teacher_calls(
+                result,
+                len(getattr(self, "_llm_calls", []) or []),
+                getattr(self, "_lisan_tasks", None),
+                getattr(self, "_understood", None),
+            )
             if result.get("success", True) and "isnad" not in result:
                 graded = self._isnad(result.get("result"))
                 if graded:
@@ -3328,6 +3336,10 @@ Match the requested depth and self-correct errors."""
         # previous task's provider call.
         self._last_llm_call = None
         self._llm_calls = []
+        # Which of MIZAN's Lisan tasks called the model, and what Fahm read, for
+        # this request's usage.lisan (docs/teacher-calls.md).
+        self._lisan_tasks: dict[str, int] = {}
+        self._understood: dict[str, Any] | None = None
         self._last_tool_results = []
         self._tool_invocation_started = False
         self._provider_attempt_started = False
@@ -3552,8 +3564,11 @@ Match the requested depth and self-correct errors."""
 
             await self._save_task_telemetry(task, full_response, True, duration_ms)
 
-            # Knowledge Graph: Extract entities and relationships from successful tasks
-            if self.knowledge_graph:
+            # Knowledge Graph: Extract entities and relationships from successful tasks.
+            # A stateless run (an evaluation or a test chat) keeps nothing.
+            from memory import stateless
+
+            if self.knowledge_graph and not stateless.active():
                 try:
                     task_type = self._classify_task(task)
                     await self.knowledge_graph.add_entity(
@@ -3562,7 +3577,7 @@ Match the requested depth and self-correct errors."""
                         properties={"agent": self.name, "type": task_type, "success": True},
                     )
                     # Link task to tools used (from Lawh memory)
-                    for key in list(self.qca.lawh._tiers.get(3, {}).keys())[-5:]:
+                    for key in list(self.qca.lawh.tiers.get(3, {}).keys())[-5:]:
                         if key.startswith("TOOL:"):
                             tool_name = key.split(":")[1]
                             await self.knowledge_graph.add_relationship(
@@ -3901,7 +3916,11 @@ Match the requested depth and self-correct errors."""
 
         The API still owns primary conversation persistence and its failures.
         """
-        if not self.memory:
+        from memory import stateless
+
+        # A stateless run (an evaluation or a test chat) leaves no task record or
+        # pathway behind (memory/stateless.py).
+        if not self.memory or stateless.active():
             return
         from workspace.context import current_chat_session
 

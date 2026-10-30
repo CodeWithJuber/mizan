@@ -20,7 +20,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from api.prices import estimate_cost, lookup
-from api.usage import build_usage_block, build_usage_summary, extract_llm_meta
+from api.usage import (
+    build_usage_block,
+    build_usage_summary,
+    extract_llm_meta,
+    teacher_calls,
+    teacher_share,
+)
 from providers import LLMResponse, _OpenAIStreamWrapper
 
 # ── prices ──
@@ -267,3 +273,68 @@ class TestRecordLlmCall:
         agent._record_llm_call(resp, 10.5)
         assert agent._last_llm_call["response"] is resp
         assert agent._last_llm_call["latency_ms"] == 10.5
+
+
+# ── the teacher-call share (docs/teacher-calls.md) ──
+
+
+def test_teacher_calls_names_every_call():
+    result = {"orchestrator": "mizan", "task_verified": True}
+    record = teacher_calls(
+        result, 3, {"write_code": 1, "cross_check": 1}, {"intent": "run_code", "language": "ur"}
+    )
+    assert record == {
+        "calls": 3,
+        "zero_call": False,
+        "tasks": {"write_code": 1, "cross_check": 1, "answer": 1},
+        "family": "run_code",
+        "language": "ur",
+        "source": "mizan",
+        "verified": True,
+    }
+    unread = teacher_calls({}, 0, None, None)
+    assert unread["zero_call"] and unread["family"] == "unplaced"
+    assert unread["source"] == "language_model" and unread["tasks"] == {}
+
+
+def _answer(day: str, lisan: dict | None = None, **meta) -> tuple[str, str]:
+    import json
+
+    usage = {"lisan": lisan} if lisan is not None else meta.pop("usage", {})
+    return (f"{day}T10:00:00+00:00", json.dumps({"status": "complete", "usage": usage, **meta}))
+
+
+def test_teacher_share_counts_zero_call_answers_with_intervals():
+    def lisan(calls: int, family: str, language: str = "en", **tasks: int) -> dict:
+        return {"calls": calls, "family": family, "language": language, "tasks": tasks,
+                "verified": calls == 0}  # fmt: skip
+
+    rows = [
+        _answer("2026-10-29", lisan(0, "compute")),
+        _answer("2026-10-29", lisan(0, "compute")),
+        _answer("2026-10-30", lisan(1, "converse", answer=1)),
+        _answer("2026-10-30", lisan(2, "run_code", "ur", write_code=1, cross_check=1)),
+        # Saved before usage.lisan: counted by its recorded calls.
+        _answer("2026-10-30", usage={"calls": [{"model": "m"}]}),
+        _answer("2026-10-30", usage={}),
+        # Left out: an evaluation, an unfinished answer, unreadable metadata.
+        _answer("2026-10-30", lisan(0, "compute"), stateless=True),
+        ("2026-10-30T11:00:00+00:00", '{"status": "stopped", "usage": {}}'),
+        ("2026-10-30T12:00:00+00:00", "not json"),
+    ]
+    share = teacher_share(rows)
+    assert share["requests"] == 6 and share["zero_call"] == 3
+    assert share["zero_call_share"] == 0.5
+    low, high = share["interval"]
+    assert 0.18 < low < 0.5 < high < 0.82  # Wilson 95 % for 3/6
+    assert [(d["day"], d["requests"], d["zero_call"]) for d in share["by_day"]] == [
+        ("2026-10-29", 2, 2),
+        ("2026-10-30", 4, 1),
+    ]
+    families = {(f["family"], f["language"]): f for f in share["by_family"]}
+    assert families[("compute", "en")]["zero_call_share"] == 1.0
+    assert families[("unrecorded", "unknown")]["requests"] == 2
+    assert families[("run_code", "ur")]["calls"] == 2
+    assert share["lisan_tasks"] == {"answer": 1, "write_code": 1, "cross_check": 1}
+    empty = teacher_share([])
+    assert empty["requests"] == 0 and empty["zero_call_share"] is None

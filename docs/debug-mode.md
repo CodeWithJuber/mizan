@@ -84,6 +84,7 @@ When no trace is bound, recording does nothing. Ordinary chats pay nothing for i
 A comparison is an evaluation, so it is stateless (`memory/stateless.py`):
 - MIZAN's arm recalls none of your other chats;
 - it learns nothing from the run (no learned wording, routing or programs);
+- it strengthens no memory it reads (no review of a note's strength, no pathway strengthening) and leaves no task record, pathway or knowledge-graph entry;
 - it never becomes a training candidate.
 
 The same holds for a chat sent with `stateless: true`.

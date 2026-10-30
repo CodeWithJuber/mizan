@@ -2,6 +2,8 @@
 
 MIZAN learns from its own verified work, automatically and per user. No chat transcript becomes training data for any model.
 
+How often answers still need the hosted model, per kind of request and language, is measured in [teacher-calls.md](teacher-calls.md).
+
 | Part | What it learns | From | Used for |
 |---|---|---|---|
 | **Majlis** (`tadbir/majlis.py`) | Which agent does each kind of work best | Every result MIZAN verifies, or fails to verify (Beta posterior per agent and kind of work) | Giving each part of a request to the agent most likely to get it right (Thompson sampling) |
