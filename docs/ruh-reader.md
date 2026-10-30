@@ -72,6 +72,10 @@ A line is kept for training only when (in this order, each counted in the manife
 
 ## Measured
 
+Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow.
+
+### v0: the seeds only
+
 Run on 30 Oct 2026 in the development sandbox: Intel Xeon 2.8 GHz, 4 vCPU shared with other jobs (load average 2–6), torch 2.14.1+cpu. Each seed trained on 2 torch threads, the two seeds at the same time. `python ../scripts/ruh_reader_eval.py --seeds N`, default size and plan: 3,480,064 parameters, 12 passes over the training lines (1,248 steps of 32 lines, 2,267,412 tokens), **851 s and 847 s of training**, about 16 minutes each with Lughah's refit and the evaluation. The development bits per byte were still falling at the last pass (1.829 and 1.819), so the run was bounded by its budget, not by overfitting.
 
 **Held-out bits per byte**, whole messages, seed 0 / seed 1: Hindi 1.151 / 1.161 · Urdu 1.723 / 1.728 · Arabic 1.979 / 1.981 · Roman Hindi/Urdu 2.121 / 2.098 · English 2.539 / 2.524. The pilot's byte model had 12M tokens of web text and reached 1.21 / 1.61 / 1.70 / 2.01 / 2.41 on its own held-out text.
@@ -110,6 +114,51 @@ Run on 30 Oct 2026 in the development sandbox: Intel Xeon 2.8 GHz, 4 vCPU shared
 - So the reader ships in **shadow**: it is computed and logged beside Lughah, and Lughah's decision stands. Turning it `on` changes nothing until a version passes the gate.
 - The next levers are data and length, not architecture. Roman Hindi/Urdu is where it already helps, and more licence-clean Hinglish (the MIT dataset the seeds sample has 1M rows) and Tatoeba sentences would let it train past 12 passes over 200 KB. A held-out set of real short messages would test it where Lughah is weakest.
 
+### v1: its own corpus
+
+Same model and gate, trained on the seeds and its own corpus (82,577 lines: 3,264 seed lines, 46 seeds set aside as scripture, and 79,313 corpus lines; 4,391,270 bytes; ar 19,869, en 24,869, hi 11,361, hi-latn 10,445, ur 12,769 lines). One pass (2,581 steps of 32 lines, 4,656,299 tokens) in 1,540 s and 1,547 s on 2 threads per seed, the two seeds at once beside two other jobs. Development bits per byte 1.715 and 1.709, against v0's 1.829 and 1.819; they were still falling at the end of the pass. The weights of each seed are kept the moment training ends (`build(trained=…)`, `keep_trained`), so a restart repeats only the reading.
+
+**Held-out bits per byte**, seeds' held-out groups / real short messages, seed 0: Hindi 1.136 / 1.142 · Urdu 1.732 / 1.447 · Arabic 1.832 / 1.639 · Roman Hindi/Urdu 1.984 / 2.237 · English 2.226 / 2.005 (v0 on the short messages: 1.413 · 1.978 · 2.150 · 2.366 · 2.965).
+
+**The seeds' held-out groups** (the gate's set; Lughah alone is its held-out refit):
+
+| Slice | n | Lughah alone | Reader alone, seed 0 | seed 1 | Product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| all readings | 2,756 | 99.38 [99.01, 99.61] · 0.0237 | 99.35 [98.97, 99.59] · 0.0269 | 99.27 [98.88, 99.53] · 0.0269 | 99.53 [99.19, 99.72] · 0.0203 | 99.49 [99.15, 99.70] · 0.0184 |
+| whole messages | 954 | 100.00 [99.60, 100.00] · 0.0062 | 99.90 [99.41, 99.98] · 0.0082 | 99.79 [99.24, 99.94] · 0.0090 | 99.90 [99.41, 99.98] · 0.0049 | 99.90 [99.41, 99.98] · 0.0028 |
+| first 2 words | 938 | 98.83 [97.91, 99.34] · 0.0420 | 98.72 [97.78, 99.27] · 0.0498 | 98.83 [97.91, 99.34] · 0.0420 | 99.04 [98.19, 99.49] · 0.0361 | 98.93 [98.05, 99.42] · 0.0330 |
+| < 40 bytes | 2,060 | 99.17 [98.68, 99.48] · 0.0308 | 99.13 [98.62, 99.45] · 0.0360 | 99.03 [98.51, 99.37] · 0.0360 | 99.37 [98.92, 99.63] · 0.0271 | 99.32 [98.86, 99.59] · 0.0246 |
+| English | 567 | 99.47 [98.46, 99.82] · 0.0412 | 99.12 [97.95, 99.62] · 0.0283 | 97.88 [96.34, 98.79] · 0.0582 | 99.47 [98.46, 99.82] · 0.0197 | 99.29 [98.20, 99.73] · 0.0273 |
+| Roman Hindi/Urdu | 584 | 98.12 [96.66, 98.95] · 0.0548 | 98.29 [96.88, 99.07] · 0.0777 | 98.80 [97.55, 99.42] · 0.0586 | 98.46 [97.10, 99.19] · 0.0669 | 98.46 [97.10, 99.19] · 0.0506 |
+| Arabic script (ar, ur) | 1,110 | 99.82 [99.35, 99.95] · 0.0067 | 99.73 [99.21, 99.91] · 0.0115 | 99.91 [99.49, 99.98] · 0.0063 | 99.91 [99.49, 99.98] · 0.0051 | 99.91 [99.49, 99.98] · 0.0046 |
+
+**The gate refused both seeds again**, now with the product ahead in accuracy but too few groups changed to reach the bar:
+
+| Seed | log-loss, Lughah → product | P(not better) | wins / losses (groups) | e-value (needed) | accuracy, Lughah → product | adopted |
+|---|---|---|---|---|---|---|
+| 0 | 0.0237 → 0.0203 | 0.270 | 5 / 2 | 1.30 (40) | 99.38% → 99.53% | no |
+| 1 | 0.0237 → 0.0184 | 0.155 | 6 / 3 | 1.01 (40) | 99.38% → 99.49% | no |
+
+**The real short messages** (9,808 held-out MASSIVE test requests of 3–8 words and Roman Hindi/Urdu rows; reported only, the gate stays the seeds' groups):
+
+| Slice | n | Lughah alone | Reader alone, seed 0 | seed 1 | Product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| all short messages | 9,808 | 98.54 [98.29, 98.76] · 0.0549 | 98.94 [98.72, 99.12] · 0.1215 | 98.95 [98.73, 99.13] · 0.1070 | 98.93 [98.71, 99.11] · 0.1175 | 98.92 [98.69, 99.11] · 0.0937 |
+| MASSIVE (en, hi, ur, ar) | 7,808 | 99.42 [99.23, 99.57] · 0.0259 | 99.81 [99.68, 99.88] · 0.0064 | 99.72 [99.57, 99.81] · 0.0101 | 99.83 [99.72, 99.90] · 0.0058 | 99.76 [99.62, 99.84] · 0.0071 |
+| English | 2,090 | 97.89 [97.19, 98.43] · 0.0921 | 99.33 [98.88, 99.60] · 0.0181 | 99.14 [98.64, 99.45] · 0.0314 | 99.43 [99.00, 99.67] · 0.0160 | 99.14 [98.64, 99.45] · 0.0224 |
+| Roman Hindi/Urdu | 2,000 | 95.10 [94.06, 95.96] · 0.1682 | 95.55 [94.56, 96.37] · 0.5710 | 95.95 [94.99, 96.73] · 0.4854 | 95.40 [94.39, 96.23] · 0.5535 | 95.65 [94.67, 96.46] · 0.4321 |
+| Hindi / Urdu / Arabic | 5,718 | 100.00 / 99.94 / 100.00 | 100.00 / 99.94 / 100.00 | 100.00 / 99.89 / 99.91 | 100.00 / 99.94 / 100.00 | 100.00 / 99.94 / 100.00 |
+
+On these messages the gate's own paired test on accuracy gives e-values of 6.3·10⁵ and 2.0·10⁵ (wins 46 / losses 8 and 46 / 9 over 4,616 groups), far past 40; against Lughah as shipped, 2.8·10⁴ and 3.0·10⁴. The log-loss, however, is worse (0.055 → 0.118 and 0.094): when the product is wrong it is confidently wrong, nearly all of it on Roman Hindi/Urdu read as English (89–92 of the ~105 mistakes). The v0 reader, trained on the seeds only, lost on the same messages (wins 29–30, losses 34–45). Mistakes on the short messages, seed 0: Lughah 98 Roman read as English and 44 English read as Roman; the product 92 and 12.
+
+**Cost.** fp32 reading of one message under all five languages, 2 threads: 20–22 ms (100 bytes), 6.7 ms (24 bytes); int8 14–15 ms with 99.85% / 99.93% of decisions the same. The evaluation process peaked at 2.1 GB resident (it holds every slice's readings); serving loads only the weights.
+
+**What v1 says.**
+- More of the right data helped where it was missing: English on real requests 97.9% (Lughah) → 99.1–99.3% (reader), and the product is ahead of Lughah on the seeds' held-out groups too. Part of the English gain is that MASSIVE's train partition is the same kind of text as its test partition; Lughah has seen no MASSIVE text.
+- The gate still refuses: on the seeds' held-out groups Lughah is wrong only 17 times in 2,756, so too few groups can change, and on the real short messages the reader's confidence on Roman Hindi/Urdu is badly calibrated (κ and b are fitted on the seeds' development groups, not on such messages).
+- The gate was not moved to the short messages after seeing them. The next test, decided before it is run: fit κ and b on MASSIVE's **validation** partition and held-out Roman Hindi/Urdu development rows, and gate on short messages the reader has never been measured on (MASSIVE validation rows not used for the fit, and fresh Roman rows), with the same two conditions.
+- The reader stays in **shadow**.
+
 ## Learning while MIZAN rests
 
 Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was-learned-is-replayed-while-mizan-rests)) calls `ruh_reader.rest` for each person once a day, while no request runs:
@@ -136,7 +185,7 @@ Without weights nothing is loaded and torch is never imported: the default deplo
 
 ## Limits
 
-- **Small data.** The reader learns from about 200 KB of seed text (3,305 lines). The pilot's byte model had 12M tokens of web text and reached 1.2–2.4 bits per byte. Here the held-out bits per byte are higher (see the table), and Roman Hindi/Urdu (982 seeds) and English are the weakest.
+- **Small data.** v0 learned from about 200 KB of seed text (3,305 lines); v1 adds 4.4 MB of its own corpus and is still one pass from its budget. The pilot's byte model had 12M tokens of web text and reached 1.2–2.4 bits per byte. Here the held-out bits per byte are higher (see the table), and Roman Hindi/Urdu (982 seeds) and English are the weakest.
 - **Easy test, hard ceiling.** On whole held-out sentences Lughah is already 100% right, so only shorter readings can show a gain. The short readings are cut from whole sentences, which is not the same as messages people actually send.
 - **Labels at night come from the models themselves.** A message is learned under the language both read it in. The night can adapt the reader to how people write, but cannot teach it a language Lughah misreads.
 - **Memory.** Weights cannot have one message subtracted. Forgetting falls back to an earlier version, which also loses what later nights learned from other messages.
