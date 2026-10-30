@@ -137,7 +137,11 @@ def _forget_learned(adaptive: Any, owner: str, texts: Sequence[str], chat: str =
         removed += tajriba.unlearn(adaptive, owner, chat, list(texts))
     except Exception:  # noqa: BLE001 - no lessons yet
         logger.debug("[MAHW] no repair lessons to drop")
+    # Learned items keep the content words of the request that taught them;
+    # items stored before words kept their combining marks (Devanagari, Tamil,
+    # vowelled Arabic) hold the older pieces, so both readings are erased.
     words = [taallum.content_words(text) for text in texts]
+    words += [taallum.content_words(text, marks=False) for text in texts]
     for module in (hifz, taallum, ahl_dhikr, talaqqi):
         try:
             items = module._load(adaptive, owner)

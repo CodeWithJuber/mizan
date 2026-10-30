@@ -37,8 +37,10 @@ _ASKING = {
 }  # fmt: skip
 
 
-def content_words(text: str) -> list[str]:
-    return [word for word in tokenize(text) if word not in _STOP and len(word) > 1]
+def content_words(text: str, *, marks: bool = True) -> list[str]:
+    """The words that carry a message's content. ``marks=False`` reads them as
+    they were stored before words kept their combining marks (Mahw erases both)."""
+    return [word for word in tokenize(text, marks=marks) if word not in _STOP and len(word) > 1]
 
 
 _PRIOR = {"alpha": 2.0, "beta": 1.0, "prior_alpha": 2.0, "prior_beta": 1.0, "forgetting": 0.98}
