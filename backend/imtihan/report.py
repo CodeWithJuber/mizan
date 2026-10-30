@@ -39,6 +39,24 @@ def weighted(blocks: dict) -> dict:
     return index
 
 
+def _zero_call(rows: list[dict]) -> dict:
+    """How many answered rows needed no model call, with a Wilson 95 % interval.
+    Rows that did not record their calls are left out."""
+    counted = [r for r in rows if r.get("model_calls") is not None and not r.get("error")]
+    zero = sum(1 for r in counted if r["model_calls"] == 0)
+    if not counted:
+        return {"zero_call": {"answers": 0, "count": 0, "share": None, "interval": None}}
+    low, high = wilson(zero, len(counted))
+    return {
+        "zero_call": {
+            "answers": len(counted),
+            "count": zero,
+            "share": round(zero / len(counted), 4),
+            "interval": [round(low, 4), round(high, 4)],
+        }
+    }
+
+
 def wilson(passed: float, total: int, z: float = 1.96) -> tuple[float, float]:
     if total == 0:
         return (0.0, 0.0)
@@ -179,7 +197,10 @@ def summarize(results: list[dict], tasks: list[dict]) -> dict[str, Any]:
             "cost_usd": round(sum(priced), 6) if priced else None,
             "latency_ms": round(sum(r.get("latency_ms") or 0 for r in rows), 1),
             "model_calls": sum(r.get("model_calls") or 0 for r in rows),
+            "lisan_calls": sum(r.get("lisan_calls") or 0 for r in rows),
             "tool_calls": sum(r.get("tool_calls") or 0 for r in rows),
+            # Answers given with no hosted-model call at all, the goal's measure.
+            **_zero_call(rows),
         }
     isnad = {}
     for arm in ARMS:
@@ -250,9 +271,17 @@ def markdown(report: dict, title: str = "MIZAN Imtihan") -> str:
     ]
     cost = report["cost"]
     lines.append(
-        f"Model calls: base {cost['base']['model_calls']}, MIZAN {cost['mizan']['model_calls']}; "
+        f"Model calls: base {cost['base']['model_calls']}, MIZAN {cost['mizan']['model_calls']} "
+        f"({cost['mizan'].get('lisan_calls', 0)} by Lisan tasks); "
         f"tool calls by MIZAN {cost['mizan']['tool_calls']}"
     )
+    zero = cost["mizan"].get("zero_call") or {}
+    if zero.get("answers"):
+        low, high = zero["interval"]
+        lines.append(
+            f"MIZAN answered {zero['count']} of {zero['answers']} with no model call "
+            f"({_pct(zero['share'])}, 95% {_pct(low)}–{_pct(high)})"
+        )
     return "\n".join(lines) + "\n"
 
 

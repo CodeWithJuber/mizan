@@ -2194,6 +2194,10 @@ async def stream_chat(
         )
         # Delete and restore wait while this run works in the project.
         busy = contextlib.ExitStack()
+        from api import iqtisad
+
+        # Every paid call of this run is recorded under its request.
+        busy.enter_context(iqtisad.bind_request(request_id))
         if workspace_context:
             busy.enter_context(workspace_context.running_in(user.user_id, workspace_id))
         turn_checkpoint: dict | None = None

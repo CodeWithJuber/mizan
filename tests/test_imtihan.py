@@ -190,6 +190,40 @@ def test_report_rates_intervals_calibration_and_consistency():
     assert "| knowledge |" in report.markdown(found)
 
 
+def test_report_counts_mizan_answers_with_no_model_call():
+    tasks = [{"id": t, "block": "knowledge"} for t in "abcd"]
+    rows = [
+        {"task_id": "a", "block": "knowledge", "arm": "mizan", "attempt": 1, "pass": True,
+         "model_calls": 0, "lisan_calls": 0},
+        {"task_id": "b", "block": "knowledge", "arm": "mizan", "attempt": 1, "pass": True,
+         "model_calls": 0, "lisan_calls": 0},
+        {"task_id": "c", "block": "knowledge", "arm": "mizan", "attempt": 1, "pass": True,
+         "model_calls": 3, "lisan_calls": 2},
+        # Not counted: an error, and a row that did not record its calls.
+        {"task_id": "d", "block": "knowledge", "arm": "mizan", "attempt": 1, "pass": False,
+         "model_calls": 0, "error": "Timeout"},
+        {"task_id": "d", "block": "knowledge", "arm": "mizan", "attempt": 2, "pass": True},
+        {"task_id": "a", "block": "knowledge", "arm": "base", "attempt": 1, "pass": True,
+         "model_calls": 1},
+    ]  # fmt: skip
+    found = report.summarize(rows, tasks)
+    zero = found["cost"]["mizan"]["zero_call"]
+    assert (zero["answers"], zero["count"], zero["share"]) == (3, 2, 0.6667)
+    assert zero["interval"][0] < 0.6667 < zero["interval"][1]
+    assert found["cost"]["mizan"]["lisan_calls"] == 2
+    assert found["cost"]["base"]["zero_call"]["count"] == 0
+    text = report.markdown(found)
+    assert "(2 by Lisan tasks)" in text and "MIZAN answered 2 of 3 with no model call" in text
+    row = runner._arm_row(
+        {"id": "a", "block": "knowledge", "score": {"kind": "number", "expected": "4"}},
+        1,
+        "mizan",
+        {"text": "4", "model_calls": 2, "lisan_calls": 2, "tool_calls": 1},
+        None,
+    )
+    assert row["lisan_calls"] == 2
+
+
 # ── Qiyas: a rule proven on every example ────────────────────────────────
 
 PUZZLE = {
