@@ -12,9 +12,12 @@ answer is shown:
    first is learned: each has a Beta posterior of settling a claim when asked,
    and the order is a Thompson sample.
 
-A source's sentences are ranked by BM25 against the claim, and a multilingual
-NLI model (``MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli``, MIT, run with
-ONNX Runtime on the CPU) reads the best of them against the claim. The verdict
+A claim that does not name what it speaks of ("It is a famous novel of hers")
+is read with the words of the question and of the claims before it that name
+it (``contexts``; no model is asked). A source's sentences are ranked by BM25
+against the claim, and a multilingual NLI model
+(``MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli``, MIT, run with ONNX
+Runtime on the CPU) reads the best of them against the claim. The verdict
 is the most probable label of the most decisive sentence: entailment
 (supported), contradiction, or neither, which leaves the claim unknown. There is
 no threshold. A supported claim becomes hasan with its source; a contradicted
