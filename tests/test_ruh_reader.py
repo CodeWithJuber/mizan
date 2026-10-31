@@ -321,6 +321,35 @@ def test_on_without_a_passed_gate_is_factor_one(reader_home, monkeypatch):
     assert lughah.posterior("kal milte hain") == lughah.naive_posterior("kal milte hain")
 
 
+def test_a_language_taught_on_one_server_keeps_its_share_and_is_not_the_readers(
+    reader_home, monkeypatch
+):
+    """Production taught Lughah Tamil (Ta'lim, MASSIVE): the reader's corpus is
+    still the shipped seeds, so weights trained elsewhere are found, and Tamil's
+    probability is left as Lughah gives it while the reader weighs the rest."""
+    pytest.importorskip("torch")
+    from tadbir import talim
+
+    before = ruh_reader.corpus_digest(ruh_reader.seeds())
+    monkeypatch.setattr(
+        talim, "rows", lambda model: [("நான் நாளை வருகிறேன்", "ta", "b1")] if model == "lughah" else []
+    )
+    assert ("நான் நாளை வருகிறேன்", "ta") in lughah.corpus()
+    assert ruh_reader.corpus_digest(ruh_reader.seeds()) == before
+    languages = tuple(dict.fromkeys(label for _t, label in ruh_reader.seeds()))
+    ruh_reader.install(_tiny_reader(languages, b=1.0, adopted=True))
+    assert ruh_reader.load() is not None
+    found = {code: 0.6 / len(languages) for code in languages} | {"ta": 0.4}
+    monkeypatch.setenv("MIZAN_RUH_READER", "on")
+    weighed = ruh_reader.weigh(found, "kal milte hain")
+    assert weighed["ta"] == found["ta"]
+    assert sum(weighed.values()) == pytest.approx(1.0)
+    assert sum(weighed[code] for code in languages) == pytest.approx(0.6)
+    assert weighed != found
+    monkeypatch.setenv("MIZAN_RUH_READER", "shadow")
+    assert ruh_reader.weigh(found, "kal milte hain") == found
+
+
 def test_a_reader_of_another_corpus_is_not_loaded(reader_home):
     pytest.importorskip("torch")
     built = _tiny_reader(("en", "ar"), b=1.0, adopted=True)

@@ -3133,7 +3133,7 @@
   "/api/memory/tadhkir": {
    "get": {
     "summary": "Memory Tadhkir",
-    "description": "The FSRS parameters memory strength is computed with (Tadhkir): FSRS's\ndefaults, or parameters fitted on this memory's own review log while MIZAN\nrests, with the held-out test that earned them and the latest night's test\n(``mode``: ``shadow`` reports a passing fit without using it).",
+    "description": "The FSRS parameters memory strength is computed with (Tadhkir): FSRS's\ndefaults, or parameters fitted on this memory's own review log while MIZAN\nrests, with the held-out test that earned them and the latest night's test\n(``mode``: ``shadow`` reports a passing fit without using it). ``episodes``\npools every person's episodes (no words): whether their strength says which\nepisode is needed (docs/episodic-memory.md, \"Before recall\").",
     "operationId": "memory_tadhkir_api_memory_tadhkir_get",
     "parameters": [
      {

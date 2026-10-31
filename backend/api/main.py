@@ -3516,15 +3516,22 @@ async def memory_tadhkir(user: TokenPayload = Depends(require_auth)):
     """The FSRS parameters memory strength is computed with (Tadhkir): FSRS's
     defaults, or parameters fitted on this memory's own review log while MIZAN
     rests, with the held-out test that earned them and the latest night's test
-    (``mode``: ``shadow`` reports a passing fit without using it)."""
-    from memory import tadhkir
+    (``mode``: ``shadow`` reports a passing fit without using it). ``episodes``
+    pools every person's episodes (no words): whether their strength says which
+    episode is needed (docs/episodic-memory.md, "Before recall")."""
+    from memory import episodic, tadhkir
 
     own = await _own_memory(user)
     conn = own._get_conn()
     try:
-        return tadhkir.report(conn)
+        found = tadhkir.report(conn)
     finally:
         own._release_conn(conn)
+    try:
+        found["episodes"] = await asyncio.to_thread(episodic.strength_report)
+    except Exception as exc:  # noqa: BLE001 - the report never hides Tadhkir's
+        found["episodes"] = {"status": f"failed: {type(exc).__name__}"}
+    return found
 
 
 # === IQTISAD (اقتصاد): hard spending limits on model calls ===

@@ -285,7 +285,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/memory/list` | admin | List this user's recent memories without search filtering. |
 | POST | `/api/memory/query` | admin | Query memory |
 | POST | `/api/memory/store` | admin | Save a note to this user's own memory, which their agents recall. |
-| GET | `/api/memory/tadhkir` | admin | The FSRS parameters memory strength is computed with (Tadhkir): FSRS's defaults, or parameters fitted on this memory's own review log while MIZAN rests, with the held-out test that earned them and the latest night's test (``mode``: ``shadow`` reports a passing fit without using it). |
+| GET | `/api/memory/tadhkir` | admin | The FSRS parameters memory strength is computed with (Tadhkir): FSRS's defaults, or parameters fitted on this memory's own review log while MIZAN rests, with the held-out test that earned them and the latest night's test (``mode``: ``shadow`` reports a passing fit without using it). ``episodes`` pools every person's episodes (no words): whether their strength says which episode is needed (docs/episodic-memory.md, "Before recall"). |
 
 ## middleware
 

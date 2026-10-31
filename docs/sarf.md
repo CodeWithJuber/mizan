@@ -118,6 +118,10 @@ questions and 10 everyday requests per language as `no`.
 With 20 or more `no` rows, held-out Arabic-script recall fell (0.75 and
 lower). The full grid is in the commit that wrote the rows.
 
+**Confirmed on production** (31 Oct 2026, after #163 deployed; a stateless chat): the
+question that was answered with a root is now answered in words ("کراچی"), and its
+claims are asked of Wikipedia and the web.
+
 ## The API
 
 `POST /api/v1/root-analyze {"text": "..."}` (public, at most 2000 characters;

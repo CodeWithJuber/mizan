@@ -425,6 +425,12 @@ def _owner_places(
             "SELECT COUNT(*) FROM lessons WHERE instr(text, ?) > 0",
             (),
         ),
+        (
+            "episodes",
+            str(Path(learner).parent / "episodes.sqlite3") if learner else "",
+            "SELECT COUNT(*) FROM episodes WHERE instr(text, ?) > 0",
+            (),
+        ),
     ]
 
 
@@ -626,6 +632,13 @@ def _erase_chat_rows(
     forgotten = tadrib.forget_chat(owner, session_id, asked)
     removed["language lessons"] = forgotten["lessons"]
     removed["language reader versions"] = forgotten["versions"]
+    # The chat's episodes, and every earlier episode it brought up again, lose
+    # what this chat gave them (docs/episodic-memory.md).
+    from memory import episodic
+
+    erased = episodic.forget_chat(owner, session_id)
+    removed["episodes"] = erased["episodes"]
+    removed["episode repeats"] = erased["repeats"]
     removed["debug runs"] = _delete_in(folder / "debug_runs.db", "debug_runs", "prompt", asked)
     kept = [
         "Action receipts (Sakk) stay: which tool ran and how it ended, with keyed "

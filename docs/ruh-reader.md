@@ -476,7 +476,11 @@ A server does not train. A version trained and gated on another machine is insta
 
 `MIZAN_RUH_READER` is not changed. In `shadow` the reader is read and logged and never decides. The source, the commit, the SHA-256 and who installed it are kept in the manifest's `installed`.
 
-**Production.** The owner approved installing reader v2 seed 0 in shadow on 31 Oct 2026; it is installed through this route once the route is deployed.
+**Languages taught on one server.** The reader's corpus is Lughah's *shipped* seeds (`lughah.shipped()`). What an administrator taught on one server (Ta'lim) is left out, because it differs per server and can be undone. A version trained elsewhere still finds the very corpus it was trained on.
+
+A language Ta'lim adds is outside the reader. `weigh` leaves Lughah's probability for that language alone. Within the reader's own languages it weighs only the share m that Lughah gives them: P(l) = m · P_mixed(l | the reader's languages). So the reader is evidence among its own languages and never about the others.
+
+**Production.** The owner approved installing reader v2 seed 0 in shadow on 31 Oct 2026. The first install, after #164 deployed, was refused (422: "trained on other seeds than this server's"). The reason: production's Lughah carries a kept Ta'lim batch, Tamil from MASSIVE, so its seeds' digest was not v2's. The two rules above came with #165. The install is repeated once #165 deploys.
 
 Without weights nothing is loaded and torch is never imported: the default deployment is unchanged until an operator trains a reader. Once weights exist, shadow mode loads torch into the server process (a few hundred MB of resident memory on the 2 GB production machine) in a background thread. The message in hand is read without the reader until it is loaded.
 

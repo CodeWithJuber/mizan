@@ -197,10 +197,14 @@ def part(group: str) -> str:
 
 
 def seeds() -> list[tuple[str, str]]:
-    """Lughah's examples of the asker's languages (not the neutral names and quotes)."""
+    """Lughah's shipped examples of the asker's languages (not the neutral names
+    and quotes). What an administrator taught on one server (Ta'lim) is left
+    out: it differs per server and can be undone, while a reader trained and
+    gated elsewhere must find the very corpus it was trained on (its digest).
+    A language Ta'lim adds is outside the reader (``weigh``)."""
     from .. import lughah
 
-    return [(text, label) for text, label in lughah.corpus() if label not in lughah.NEUTRAL]
+    return [(text, label) for text, label in lughah.shipped() if label not in lughah.NEUTRAL]
 
 
 @cache
@@ -1300,18 +1304,26 @@ def available() -> Loaded | None:
 def weigh(found: dict[str, float], own: str) -> dict[str, float]:
     """Lughah's posterior with the reader's opinion multiplied in, when the
     reader is on and passed its gate; otherwise Lughah's posterior unchanged
-    (in shadow the reader's verdict is computed and logged)."""
+    (in shadow the reader's verdict is computed and logged).
+
+    A language the reader does not read (one Ta'lim taught on this server)
+    keeps Lughah's probability: the reader weighs only the share Lughah gives
+    its own languages, P(l) = m · P_mixed(l | the reader's languages), m that
+    share, so it is evidence among them and never about the others."""
     if mode() == "off" or not found or not own.strip():
         return found
     loaded = available()
-    if loaded is None or set(found) != set(loaded.languages):
+    if loaded is None or not set(loaded.languages) <= set(found):
+        return found
+    share = sum(found[code] for code in loaded.languages)
+    if share <= 0:
         return found
     try:
         reader = loaded.posterior(own)
     except Exception as exc:  # noqa: BLE001 - the reader never stops a message
         logger.warning("Ruh reader failed: %s", exc)
         return found
-    lughah = [math.log(max(found[code], 1e-300)) for code in loaded.languages]
+    lughah = [math.log(max(found[code] / share, 1e-300)) for code in loaded.languages]
     mixed = combined_log_posterior(lughah, reader, loaded.fit.b)
     alone, joint = _argmax(lughah), _argmax(mixed)
     _shadow["read"] += 1
@@ -1326,7 +1338,10 @@ def weigh(found: dict[str, float], own: str) -> dict[str, float]:
             loaded.languages[joint],
         )
     if mode() == "on" and loaded.adopted:
-        return {code: math.exp(value) for code, value in zip(loaded.languages, mixed, strict=True)}
+        weighed = dict(found)
+        for code, value in zip(loaded.languages, mixed, strict=True):
+            weighed[code] = share * math.exp(value)
+        return weighed
     return found
 
 

@@ -209,6 +209,28 @@ def learned(adaptive: Any, owner_id: str) -> list[dict]:
                 "editable": False,
             }
         )
+    try:
+        from memory import episodic
+
+        held = episodic.counts(owner_id)
+    except Exception:  # noqa: BLE001 - a missing store is simply nothing kept
+        held = {"episodes": 0, "lasting": 0}
+    if held["episodes"]:
+        entries.append(
+            {
+                "id": "learned:episodes",
+                "kind": "learned",
+                "content": (
+                    f"Things you said that MIZAN keeps as episodes: {held['episodes']}, "
+                    f"of which {held['lasting']} came up again (not yet used in answers)"
+                ),
+                "source": {"kind": "chat", "label": "your chats (learning: on)"},
+                "created": "",
+                "last_used": "",
+                "expires": "",
+                "editable": False,
+            }
+        )
     return entries
 
 
