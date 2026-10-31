@@ -154,3 +154,53 @@ async def test_a_site_is_not_sought_as_its_own_second_witness(store, monkeypatch
     )
     assert (await nawm.witness(store, "u1"))["corroborated"] == 0
     assert asked == []  # Wikipedia is never asked to confirm Wikipedia
+
+
+async def test_a_night_reaches_people_whose_agents_have_not_run_since_a_restart(
+    tmp_path, monkeypatch
+):
+    import contextlib
+
+    import api.main as main
+
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    accounts = [
+        {"id": "away", "roles": ["user"], "enabled": True},
+        {"id": "held", "roles": ["user"], "enabled": True},
+        {"id": "new", "roles": ["user"], "enabled": True},
+        {"id": "gone", "roles": ["user"], "enabled": False},
+    ]
+    for person in ("away", "held", "gone"):
+        main._private_dir(person).mkdir(parents=True)
+        AdaptiveStateStore(str(main._private_dir(person) / "memory.db"))
+
+    class Held:
+        adaptive = AdaptiveStateStore(str(main._private_dir("held") / "memory.db"))
+
+    nights = []
+
+    async def night(store, user_id, **_):
+        nights.append((user_id, store.db_path))
+        return dict.fromkeys(
+            ("replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated",
+             "fitted", "shadow", "reader_learned"),
+            0,
+        )  # fmt: skip
+
+    async def consent(owner_id):
+        return contextlib.ExitStack()
+
+    monkeypatch.setattr(main.auth, "list_users", lambda: accounts)
+    monkeypatch.setattr(main, "_user_agents", {("held", "agent-1"): Held()})
+    monkeypatch.setattr(main, "_tadbir_coordinator", lambda: None)
+    monkeypatch.setattr(main, "_no_run_active", lambda: True)
+    monkeypatch.setattr(main, "owner_consent", consent)
+    monkeypatch.setattr(nawm, "night", night)
+
+    totals = await main.nawm_night()
+    # One night each: the held agent's store once (the file on disk is the same),
+    # the person away from their agents by their file; no file, no night; a
+    # disabled account, none.
+    assert sorted(user for user, _ in nights) == ["away", "held"]
+    assert dict(nights)["away"] == str(main._private_dir("away") / "memory.db")
+    assert totals["people"] == 2
