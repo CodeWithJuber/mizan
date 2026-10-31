@@ -77,6 +77,38 @@ The answer gives, for each word:
 It ends naming the corpus. Isnad grades it sahih ("read by MIZAN from the
 Quranic Arabic Corpus").
 
+### Known false positives (measured 31 Oct 2026)
+
+On production, "پاکستان کا سب سے بڑا شہر کون سا ہے؟" was answered with the root
+of "ستان". This predates the deen facet's rebuild.
+
+`scripts/facet_eval.py --sarf` measures the facet on everyday questions and
+requests people wrote (MASSIVE 1.1, CC BY 4.0). These rates matter only in
+Urdu and Arabic, because only Arabic-script words can become targets.
+
+Read as about roots, held out (`test`, 300 each):
+
+| Language | Questions | Requests |
+|---|---|---|
+| Urdu | 8.3% | 2.7% |
+| Arabic | 2% | 2% |
+
+The facet's own `yes` seeds are recalled 0.875 by leave-one-out.
+
+Adding everyday Urdu and Arabic messages as `no` rows removes the false
+positives (0% at every count). It also lowers that recall:
+
+| `no` rows per language and kind | 10 | 20 | 40 | 80 |
+|---|---|---|---|---|
+| Recall of the `yes` seeds | 0.71 | 0.63 | 0.50 | 0.46 |
+
+Ta'lim's check refuses every count (P(worse) 0.95–0.998). So nothing is
+changed yet.
+
+The facet needs more `yes` examples first, as the deen facet did
+(`docs/fahm.md`): a held-out set of sarf questions, written before any seed,
+then new seeds, then the same grid.
+
 ## The API
 
 `POST /api/v1/root-analyze {"text": "..."}` (public, at most 2000 characters;
