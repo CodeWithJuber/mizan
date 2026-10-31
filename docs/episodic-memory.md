@@ -177,3 +177,21 @@ Both bars hold on both splits. What came up again in a conversation was needed i
 - **If a bar fails:** the failure is written here. Recall from episodes is not built on this rule; the shadow store keeps counting, which changes no answer.
 
 `python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 4 --split train`
+
+### Test 3 result (31 Oct 2026): passed
+
+`session_4/train`, 1,001 conversations, 38,504 statements, read once:
+
+| Rule | Comes up again | N precision (chance), lift | P(not better) | N recall | S precision / recall |
+|---|---|---|---|---|---|
+| **production's: own later words** (judges) | **3.7%** | **0.171 (0.023), 7.4×** | 0.0 | 0.27 | 0.434 / 0.037 |
+| test 2's: either speaker (reported) | 6.7% | 0.143 (0.023), 6.2× | 0.0 | 0.42 | 0.414 / 0.065 |
+
+Both bars hold, so the shadow store's rule stays.
+
+**What it means:**
+- **The production rule is more precise and catches less.** What a person says again themselves is needed later about seven times as often as chance. But it marks only about a quarter of what will be needed, against two fifths when the other speaker's words also count.
+- **Weak traces carry most of the need.** This is why every statement is kept as a weak trace rather than dropped. Whether recall should read weak traces, and how long Nawm should let them last, is what the need test on real use must answer.
+- **A person's later words are only part of the picture.** In MSC the other speaker is a person. In MIZAN it is MIZAN, whose reply was left out on purpose (see "In production: shadow"). What MIZAN says back could be counted only when it is the person's own fact echoed, which no test has measured.
+
+`python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 4 --split train`
