@@ -1,0 +1,45 @@
+# Held out to measure Qasd's sarf facet (scripts/facet_eval.py --sarf); never a seed.
+# Written by MIZAN's coding assistant (a language model) on 31 Oct 2026, as for the deen facet at the
+# owner's request, before the training questions and before any result. Its Arabic words (نور مسجد
+# يعلمون قلم الصابرين شكر هدى رسول) appear in no seed. Questions only, no Quran text. CC0.
+# label<TAB>script<TAB>text   (yes: asks for an Arabic word's root, pattern or part of speech)
+yes	latin	What is the root of نور?
+yes	latin	Give me the wazn of مسجد
+yes	latin	Which root does يعلمون come from?
+yes	latin	Is قلم a noun or a verb?
+yes	latin	What part of speech is الصابرين?
+yes	latin	What are the root letters of شكر?
+yes	latin	مسجد ka root kya hai?
+yes	latin	يعلمون ka wazn kya hai?
+yes	latin	نور kis maadde se bana hai?
+yes	latin	شكر ism hai ya fel?
+yes	latin	Is lafz ka root batao: هدى
+yes	latin	الصابرين ka maadda aur wazn batao
+yes	deva	مسجد का रूट क्या है?
+yes	deva	قلم शब्द का वज़न बताओ
+yes	deva	يعلمون किस मूल से बना है?
+yes	deva	شكر संज्ञा है या क्रिया?
+yes	deva	الصابرين का मादा क्या है?
+yes	deva	رسول शब्द का रूट और वज़न बताइए
+yes	arab	نور کا مادہ کیا ہے؟
+yes	arab	مسجد کا وزن بتائیں
+yes	arab	لفظ يعلمون کس مادے سے ہے؟
+yes	arab	قلم اسم ہے یا فعل؟
+yes	arab	الصابرين کا مادہ اور وزن بتائیں
+yes	arab	ما جذر كلمة نور؟
+yes	arab	ما وزن كلمة مسجد؟
+yes	arab	ما أصل كلمة يعلمون؟
+yes	arab	هل كلمة قلم اسم أم فعل؟
+yes	arab	ما جذر ووزن كلمة الصابرين؟
+yes	arab	من أي جذر كلمة رسول؟
+yes	arab	ما نوع كلمة شكر؟
+no	arab	پاکستان کا سب سے بڑا شہر کون سا ہے؟
+no	arab	اسلام آباد کی آبادی کتنی ہے؟
+no	arab	کل کراچی میں بارش ہوگی؟
+no	arab	مجھے اردو میں ایک کہانی سنائیں
+no	arab	لاہور سے ملتان کا فاصلہ کتنا ہے؟
+no	arab	ما هي أطول مدينة في العالم؟
+no	arab	كم عدد سكان القاهرة؟
+no	arab	اكتب رسالة شكر لصديقي
+no	latin	Translate مسجد to English
+no	latin	Quote ayah 24:35 in Arabic

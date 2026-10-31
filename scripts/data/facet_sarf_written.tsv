@@ -1,0 +1,56 @@
+# Requests for an Arabic word's root, pattern or part of speech, for Qasd's sarf facet
+# (scripts/facet_eval.py --sarf --write). Written by MIZAN's coding assistant (a language model) on
+# 31 Oct 2026, as for the deen facet at the owner's request: the facet had 24 such seeds, so everyday
+# Urdu could not be taught as "no" without losing them. Its Arabic words are none of the held-out
+# set's (scripts/data/facet_sarf_heldout.tsv). Questions only, no Quran text. CC0.
+# script<TAB>text
+latin	What is the root of صلاة?
+latin	What is the root of the word جنة?
+latin	Give me the root and pattern of مؤمن
+latin	What is the wazn of ذكر?
+latin	Analyze the morphology of الحمد
+latin	Which root does the word ساجد come from?
+latin	Root and pattern of the Arabic word عبادة
+latin	Is خالق a noun or a verb?
+latin	What part of speech is كريم in Arabic?
+latin	What are the root letters of رحيم?
+latin	Break down the word ملك into root and pattern
+latin	Morphology of the word السماء please
+latin	صلاة ka root kya hai?
+latin	جنة ka wazn batao
+latin	مؤمن kis root se bana hai?
+latin	ذكر ism hai ya fel?
+latin	Is lafz ka maadda batao: عبادة
+latin	خالق ka maadda aur wazn kya hai?
+latin	كريم kis maadde se hai?
+latin	رحيم ka root aur wazn batao
+latin	ملك lafz ka maadda kya hai?
+latin	تقوى ka root kya hota hai?
+deva	صلاة का रूट क्या है?
+deva	جنة शब्द का वज़न बताओ
+deva	مؤمن किस मूल से बना है?
+deva	ذكر संज्ञा है या क्रिया?
+deva	عبادة का मादा क्या है?
+deva	خالق शब्द का रूट और वज़न बताइए
+deva	كريم का मूल अक्षर क्या हैं?
+deva	تقوى का वज़न क्या है?
+arab	صلاة کا مادہ کیا ہے؟
+arab	جنة کا وزن بتائیں
+arab	لفظ مؤمن کس مادے سے ہے؟
+arab	ذكر اسم ہے یا فعل؟
+arab	عبادة کا مادہ اور وزن بتائیں
+arab	خالق کا مادہ کیا ہے؟
+arab	كريم کس مادے سے بنا ہے؟
+arab	رحيم کا وزن کیا ہے؟
+arab	ملك کا مادہ بتائیں
+arab	تقوى کا مادہ اور وزن کیا ہے؟
+arab	ما جذر كلمة صلاة؟
+arab	ما وزن كلمة جنة؟
+arab	ما أصل كلمة مؤمن؟
+arab	هل كلمة ذكر اسم أم فعل؟
+arab	ما جذر ووزن كلمة عبادة؟
+arab	من أي جذر كلمة خالق؟
+arab	ما نوع كلمة كريم؟
+arab	ما الجذر الثلاثي لكلمة رحيم؟
+arab	ما وزن كلمة ملك وما جذرها؟
+arab	أعرب كلمة تقوى صرفيا

@@ -317,20 +317,35 @@ SARF_LOCALES = {"ur-PK": "ur", "ar-SA": "ar"}
 SARF_COUNTS = (10, 20, 40, 80)
 
 
-def _sarf_extra(questions: dict, commands: dict, count: int) -> list[tuple[str, str]]:
-    return [
+SARF_WRITTEN = ROOT / "scripts" / "data" / "facet_sarf_written.tsv"
+SARF_HELD_OUT = ROOT / "scripts" / "data" / "facet_sarf_heldout.tsv"
+
+
+def _sarf_extra(
+    questions: dict, commands: dict, count: int, with_written: bool
+) -> list[tuple[str, str]]:
+    rows = [
         (text, "no")
-        for rows in (questions, commands)
+        for found in (questions, commands)
         for language in SARF_LOCALES.values()
-        for _key, text in rows[language][:count]
+        for _key, text in found[language][:count]
     ]
+    if with_written:
+        rows += [(text, "yes") for _script, text in _tsv(SARF_WRITTEN)]
+    return rows
 
 
 def measure_sarf(massive: Path) -> dict:
-    """Sarf's facet with N everyday questions and N everyday commands per language
-    (Urdu, Arabic; MASSIVE train) as ``no`` rows. N is chosen on ``dev`` (the
-    fewest false positives on Urdu questions whose leave-one-out recall of the
-    facet's own ``yes`` seeds is no lower than before) and ``test`` is reported."""
+    """Sarf's facet with N everyday questions and N everyday requests per
+    language (Urdu, Arabic; MASSIVE train) as ``no`` rows, with and without
+    the written ``yes`` requests (``facet_sarf_written.tsv``).
+
+    Chosen before any result (31 Oct 2026): among the settings Ta'lim keeps
+    (P(worse) < 0.95), whose leave-one-out recall of the facet's own 24 ``yes``
+    seeds is no lower than before and whose recall of the held-out ``yes``
+    requests (``facet_sarf_heldout.tsv``) is no lower than before, the one
+    with the fewest false positives on ``dev`` Urdu questions (ties: fewer
+    rows). ``test`` and the held-out ``no`` messages are reported."""
     from core.tamyiz import Tamyiz
     from tadbir import qasd, talim
 
@@ -338,42 +353,59 @@ def measure_sarf(massive: Path) -> dict:
     commands = everyday(massive, EVERYDAY, SARF_LOCALES)
     seeds = qasd.facet_examples("sarf")
     yes = [row for row in seeds if row[1] == "yes"]
+    held = _tsv(SARF_HELD_OUT)
     report: dict = {"seeds_yes": len(yes), "seeds_no": len(seeds) - len(yes)}
-    for count in (0, *SARF_COUNTS):
-        extra = _sarf_extra(asked["train"], commands["train"], count)
-        model = Tamyiz(qasd._features).fit([*seeds, *extra])
-        held = model.held_out_correct(yes)
-        entry: dict = {
-            "recall_yes_loo": round(sum(held) / max(1, len(held)), 4),
-            **{
-                f"false_positive_{part}": {
-                    f"{language}_{kind}": rate(model, [t for _k, t in rows[part][language][:300]])
-                    for language in SARF_LOCALES.values()
-                    for kind, rows in (("questions", asked), ("commands", commands))
+    for with_written in (False, True):
+        for count in (0, *SARF_COUNTS):
+            extra = _sarf_extra(asked["train"], commands["train"], count, with_written)
+            model = Tamyiz(qasd._features).fit([*seeds, *extra])
+            correct = model.held_out_correct(yes)
+            entry: dict = {
+                "rows": len(extra),
+                "recall_yes_loo": round(sum(correct) / max(1, len(correct)), 4),
+                "recall_held_out": {
+                    script: rate(model, [t for lab, s, t in held if lab == "yes" and s == script])
+                    for script in ("latin", "deva", "arab")
+                },
+                "false_positive_held_out": rate(model, [t for lab, _s, t in held if lab == "no"]),
+                **{
+                    f"false_positive_{part}": {
+                        f"{language}_{kind}": rate(
+                            model, [t for _k, t in found[part][language][:300]]
+                        )
+                        for language in SARF_LOCALES.values()
+                        for kind, found in (("questions", asked), ("commands", commands))
+                    }
+                    for part in ("dev", "test")
+                },
+            }
+            if extra:
+                verdict = talim.judge("qasd.sarf", extra)
+                entry["talim"] = {
+                    key: verdict[key] for key in ("before", "after", "p_worse", "kept")
                 }
-                for part in ("dev", "test")
-            },
-        }
-        if extra:
-            verdict = talim.judge("qasd.sarf", extra)
-            entry["talim"] = {key: verdict[key] for key in ("before", "after", "p_worse", "kept")}
-        report[str(count)] = entry
-        print("sarf", count, json.dumps(entry), flush=True)
+            key = f"{count}{'+written' if with_written else ''}"
+            report[key] = entry
+            print("sarf", key, json.dumps(entry), flush=True)
     return report
 
 
 def write_sarf(massive: Path, count: int) -> int:
-    """Append ``count`` everyday Urdu and Arabic questions and commands each
-    (MASSIVE 1.1 train, CC BY 4.0) to the sarf facet as ``no`` rows."""
+    """Append ``count`` everyday Urdu and Arabic questions and requests each
+    (MASSIVE 1.1 train, CC BY 4.0) as ``no`` rows and the written requests as
+    ``yes`` rows to the sarf facet."""
     extra = _sarf_extra(
         everyday(massive, QUESTIONS, SARF_LOCALES)["train"],
         everyday(massive, EVERYDAY, SARF_LOCALES)["train"],
         count,
+        True,
     )
     lines = [
         "# sarf: everyday questions and requests people wrote in Urdu and Arabic (MASSIVE 1.1 train,",
-        "# CC BY 4.0) ask for no root or pattern (scripts/facet_eval.py --sarf --write N).",
-        *(f"sarf\tno\t{text}" for text, _label in extra),
+        "# CC BY 4.0) ask for no root or pattern; requests for one written for the facet",
+        "# (scripts/data/facet_sarf_written.tsv, by a language model, marked there) do",
+        "# (scripts/facet_eval.py --sarf --write N).",
+        *(f"sarf\t{label}\t{text}" for text, label in extra),
     ]
     with SEEDS.open("a", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
