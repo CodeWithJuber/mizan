@@ -51,6 +51,13 @@ a calibration half (κ and b are fitted there) and a gate half (the gate is
 run there): ``validation.tsv`` (source, label, group, half, text) and
 ``validation.json``.
 
+**Fresh slices** (``build_fresh``, test 3): English requests from CLINC150
+(CC BY 3.0, not MASSIVE) and Roman Hindi/Urdu rows never read, none of them a
+seen text's words or near them (``Near``), the Roman rows kept only where
+Qamus reads a Hindi or Urdu word in them (``roman_words``): ``fresh.tsv``
+(source, label, group, part, text), ``fresh.json``, and ``labels.tsv``, the
+never-read rows labelled by hand to check that rule before it is used.
+
     cd backend && python -m tadbir.ruh_reader --corpus
 """
 
@@ -60,15 +67,17 @@ import bz2
 import csv
 import hashlib
 import io
+import itertools
 import json
 import logging
 import os
 import tarfile
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("mizan.ruh_reader.corpus")
 
@@ -815,6 +824,422 @@ def load_validation(where: Path | None = None) -> list[tuple[str, str, str, str]
         or manifest.get("seeds_sha256") != corpus_digest(seeds())
     ):
         logger.warning("Ruh reader validation slices: not built beside this corpus; not used")
+        return None
+    rows = []
+    for row in body.splitlines():
+        _source, label, group, name, text = row.split("\t", 4)
+        rows.append((text, label, group, name))
+    return rows
+
+
+# ── test 3: fresh messages, the Roman rows checked by Qamus ──────────────
+
+FRESH_SALT = "ruh-reader-test3"
+LABELLED = 200  # never-read Roman rows labelled by hand, to check the rule first
+EDITS = 2  # a message this many character edits from a seen text is near it
+CLINC150_COMMIT = "828f8093932c8fe6ca7936c3d2e52903b1c523de"
+# Not a training source: its requests are only ever measured.
+CLINC150 = Source(
+    "clinc150",
+    f"https://raw.githubusercontent.com/clinc/oos-eval/{CLINC150_COMMIT}/data/data_full.json",
+    "CC BY 3.0 (CLINC150, Larson et al. 2019; clinc/oos-eval)",
+    "data_full.json",
+    "36923c3705a59e08fe9c3883d8bc2dd966ef93e22cb78ac41171782a698d56e0",
+    ("en",),
+)
+
+
+def clinc(path: Path) -> Iterator[Line]:
+    """Every query of CLINC150's ``data_full.json`` (all six splits; English),
+    its split as ``kind``."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for split in sorted(data):
+        for number, item in enumerate(data[split]):
+            yield Line(f"clinc150:{split}:{number}", "en", _clean(str(item[0])), split)
+
+
+def roman_words(text: str) -> bool:
+    """Whether Qamus reads one of the words as a Hindi or Urdu word written in
+    Latin letters (``qamus.read_roman``: P > ½, not an English word). A
+    Hinglish-1M row counts as Roman Hindi/Urdu only then: the dataset labels
+    every utterance so, and many are written in English alone."""
+    from .. import qamus
+
+    return any(qamus.read_roman(word) for word in qamus.tokens(text))
+
+
+def within(a: str, b: str, limit: int = EDITS) -> bool:
+    """Whether the Levenshtein distance of two strings is at most ``limit``
+    (their common prefix and suffix are set aside first: they change nothing)."""
+    if abs(len(a) - len(b)) > limit:
+        return False
+    start = 0
+    while start < min(len(a), len(b)) and a[start] == b[start]:
+        start += 1
+    a, b = a[start:], b[start:]
+    end = 0
+    while end < min(len(a), len(b)) and a[-1 - end] == b[-1 - end]:
+        end += 1
+    a, b = a[: len(a) - end], b[: len(b) - end]
+    if max(len(a), len(b)) <= limit:
+        return True
+    previous = list(range(len(b) + 1))
+    for i, char in enumerate(a, 1):
+        current = [i]
+        for j, other in enumerate(b, 1):
+            current.append(
+                min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (char != other))
+            )
+        if min(current) > limit:
+            return False
+        previous = current
+    return previous[-1] <= limit
+
+
+def _thirds(size: int) -> tuple[tuple[int, int], ...]:
+    return ((0, size // 3), (size // 3, 2 * size // 3), (2 * size // 3, size))
+
+
+class Near:
+    """Whether a message is a near copy of one of a set of texts, both read as
+    words (``reading``): within ``EDITS`` character edits (Levenshtein, spaces
+    counted), or the same words with one word more or one fewer. The same
+    words are near too. Only texts that can be near a message of ``words``
+    words are indexed. Candidates for the edit distance are found by the
+    pigeonhole principle: two edits leave one of a text's three thirds
+    untouched, shifted by at most two letters; each is then confirmed."""
+
+    def __init__(self, texts: Iterable[str], words: tuple[int, int] = SHORT_WORDS) -> None:
+        from . import reading
+
+        low, high = words
+        self.pieces: dict[tuple[int, int, str], set[str]] = defaultdict(set)
+        self.same: set[tuple[str, ...]] = set()
+        self.fewer: set[tuple[str, ...]] = set()
+        for text in texts:
+            said = reading(text)
+            split = tuple(said.split())
+            if low - EDITS <= len(split) <= high + EDITS and len(said) >= 3:
+                for index, (start, end) in enumerate(_thirds(len(said))):
+                    self.pieces[(len(said), index, said[start:end])].add(said)
+            if low - 1 <= len(split) <= high + 1:
+                self.same.add(split)
+                self.fewer.update(split[:i] + split[i + 1 :] for i in range(len(split)))
+
+    def __contains__(self, text: object) -> bool:
+        from . import reading
+
+        said = reading(str(text))
+        split = tuple(said.split())
+        if split in self.same or split in self.fewer:
+            return True
+        if any(split[:i] + split[i + 1 :] in self.same for i in range(len(split))):
+            return True
+        size = len(said)
+        tried: set[str] = set()
+        for length in range(max(3, size - EDITS), size + EDITS + 1):
+            for index, (start, end) in enumerate(_thirds(length)):
+                for shift in range(-EDITS, EDITS + 1):
+                    at = start + shift
+                    if at < 0 or at + end - start > size:
+                        continue
+                    for other in self.pieces.get((length, index, said[at : at + end - start]), ()):
+                        if other not in tried:
+                            tried.add(other)
+                            if within(said, other):
+                                return True
+        return False
+
+
+def label_order(source: str) -> str:
+    """The order the rows to label by hand are drawn in (not v1's ``rank``)."""
+    return hashlib.sha256(f"{FRESH_SALT}:label:{source}".encode()).hexdigest()
+
+
+def _conversation(source: str) -> str:
+    return source.rsplit(":", 1)[0]  # hinglish-1m:<row>:<column> → hinglish-1m:<row>
+
+
+def roman_pool(
+    candidates: Sequence[Line],
+    seen: set[str],
+    near: Container[str],
+    used: set[str],
+    order: Callable[[Line], Any],
+    counts: Counter | None = None,
+) -> Iterator[tuple[Line, str]]:
+    """Never-read Roman rows of 3 to 8 words (``candidates``) that may be
+    measured, in ``order``, each with its group: Latin script, a group the
+    seeds' rule holds out, words no seen text's, a conversation not ``used``,
+    not near a seen text, once per words."""
+    from . import group_of, part
+
+    counts = counts if counts is not None else Counter()
+    chosen: set[str] = set()
+    for line in sorted(candidates, key=order):
+        if not own_script(line.text, line.label):
+            counts["roman: script"] += 1
+            continue
+        group = group_of(line.text)
+        if part(group) != "held_out":
+            counts["roman: not a held-out group"] += 1
+            continue
+        if group in seen:
+            counts["roman: seen words"] += 1
+            continue
+        if _conversation(line.source) in used:
+            counts["roman: conversation measured or a seed's"] += 1
+            continue
+        if line.text in near:
+            counts["roman: near a seen text"] += 1
+            continue
+        if group in chosen:
+            counts["roman: duplicate"] += 1
+            continue
+        chosen.add(group)
+        yield line, group
+
+
+def fresh_candidates(
+    hinglish_lines: Iterable[Line],
+    read_share: float = KEEP["hinglish-1m"],
+    words: tuple[int, int] = SHORT_WORDS,
+) -> list[Line]:
+    """Roman utterances v1's build never read (outside ``read_share`` of
+    Hinglish-1M, in its order), of ``words`` words."""
+    low, high = words
+    return [
+        line
+        for line in hinglish_lines
+        if not _kept(line.source, read_share) and low <= len(line.text.split()) <= high
+    ]
+
+
+def label_sample(
+    candidates: Sequence[Line],
+    seen: set[str],
+    near: Container[str],
+    used: set[str],
+    size: int = LABELLED,
+) -> list[Line]:
+    """The never-read rows to label by hand: the first ``size`` of the Roman
+    pool in ``label_order`` (the rule is not asked)."""
+    pool = roman_pool(candidates, seen, near, used, lambda line: label_order(line.source))
+    return [line for line, _group in itertools.islice(pool, size)]
+
+
+def pick_fresh(
+    clinc_lines: Iterable[Line],
+    candidates: Sequence[Line],
+    seen: set[str],
+    near: Container[str],
+    used: set[str],
+    labelled: set[str],
+    *,
+    words: tuple[int, int] = SHORT_WORDS,
+    rule: Callable[[str], bool] = roman_words,
+    counts: Counter | None = None,
+) -> list[tuple[Line, str, str]]:
+    """(line, group, part) of test 3's fresh messages. English: every CLINC150
+    query of ``words`` words, Latin script, not seen or near, once per words
+    (part ``gate``). Roman: the pool in v1's rank order, the hand-labelled
+    rows' words (``labelled``, groups) left out; a row the rule holds is ``gate``
+    until the gate holds as many Roman rows as English ones, a row it does
+    not is ``rule`` (left out by the rule, reported only)."""
+    from . import group_of
+
+    low, high = words
+    counts = counts if counts is not None else Counter()
+    rows: list[tuple[Line, str, str]] = []
+    taken: set[str] = set()
+    for line in sorted(clinc_lines, key=lambda item: rank(item.source)):
+        if not low <= len(line.text.split()) <= high:
+            counts["clinc150: words"] += 1
+            continue
+        if not own_script(line.text, line.label):
+            counts["clinc150: script"] += 1
+            continue
+        group = group_of(line.text)
+        if group in seen:
+            counts["clinc150: seen words"] += 1
+            continue
+        if line.text in near:
+            counts["clinc150: near a seen text"] += 1
+            continue
+        if group in taken:
+            counts["clinc150: duplicate"] += 1
+            continue
+        taken.add(group)
+        rows.append((line, group, "gate"))
+    english = len(rows)
+    roman = 0
+    pool = roman_pool(candidates, seen, near, used, lambda line: rank(line.source), counts)
+    for line, group in pool:
+        if roman >= english:
+            break
+        if group in labelled:
+            counts["roman: labelled by hand"] += 1
+            continue
+        if rule(line.text):
+            roman += 1
+            rows.append((line, group, "gate"))
+        else:
+            counts["roman: left out by the rule"] += 1
+            rows.append((line, group, "rule"))
+    return rows
+
+
+def _sources(path: Path) -> set[str]:
+    return {row.split("\t", 1)[0] for row in path.read_text(encoding="utf-8").splitlines()}
+
+
+def build_fresh(
+    where: Path | None = None,
+    *,
+    paths: dict[str, Path] | None = None,
+    labels_only: bool = False,
+    rule: Callable[[str], bool] = roman_words,
+    log: Callable[[str], None] = logger.info,
+) -> dict:
+    """Test 3's fresh slices beside a built corpus with its validation slices
+    (``where``), from the corpus's downloads and CLINC150 (fetched into
+    ``sources/clinc150`` when absent; every pin checked) unless ``paths`` are
+    given. Writes ``labels.tsv`` (source, text: the rows to label by hand,
+    drawn without the rule) and, unless ``labels_only``, ``fresh.tsv``
+    (source, label, group, part, text) and ``fresh.json``. Returns the manifest."""
+    from .. import lughah
+    from . import corpus_digest, group_of, seeds
+
+    where = where or folder()
+    found = load(where)
+    validation = load_validation(where)
+    if found is None or validation is None:
+        raise RuntimeError("no corpus with validation slices to build the fresh slices beside")
+    pinned = {source.name: source for source in (*SOURCES, CLINC150)}
+    own = paths is None
+    if paths is None:
+        paths = {
+            name: where / "sources" / name / pinned[name].file
+            for name in ("massive", "hinglish-1m", "clinc150")
+        }
+        if not paths["clinc150"].exists():
+            download(CLINC150, paths["clinc150"].parent)
+    digests = {name: _sha256(paths[name]) for name in ("massive", "hinglish-1m", "clinc150")}
+    for name, digest in digests.items():
+        expected = pinned[name].sha256
+        if own and expected is not None and digest != expected:
+            raise Mismatch(f"{name}: SHA-256 {digest} is not the pinned {expected}")
+    massive_lines = list(massive(paths["massive"]))
+    seen_texts = [text for text, _label in lughah.corpus()]
+    seen_texts += [text for text, _label in found.train]
+    seen_texts += [text for text, _label, _group in found.short]
+    seen_texts += [text for text, *_rest in validation]
+    seen_texts += [line.text for line in massive_lines]
+    seen = {group_of(text) for text in seen_texts}
+    near = Near(seen_texts)
+    log(f"fresh: {len(seen):,} seen texts' words indexed")
+    share = float(
+        ((found.manifest.get("settings") or {}).get("keep") or {}).get("hinglish-1m", 1.0)
+    )
+    hinglish_lines = list(hinglish(paths["hinglish-1m"]))
+    seed_groups = {group_of(text) for text, _label in lughah.corpus()}
+    # Conversations with an utterance already measured (v1's short slice,
+    # v1.1's slices, by source) or a seed's words (the seeds number another file).
+    used = {_conversation(s) for s in _sources(where / "short.tsv") if s.startswith("hinglish")}
+    used |= {
+        _conversation(s) for s in _sources(where / "validation.tsv") if s.startswith("hinglish")
+    }
+    used |= {_conversation(x.source) for x in hinglish_lines if group_of(x.text) in seed_groups}
+    candidates = fresh_candidates(hinglish_lines, share)
+    labels = label_sample(candidates, seen, near, used, size=LABELLED)
+    label_body = "".join(f"{line.source}\t{line.text}\n" for line in labels)
+    (where / "labels.tsv").write_text(label_body, encoding="utf-8")
+    log(f"fresh: {len(labels)} rows to label by hand in {where / 'labels.tsv'}")
+    label_sha = hashlib.sha256(label_body.encode("utf-8")).hexdigest()
+    if labels_only:
+        return {"labels": len(labels), "labels_sha256": label_sha}
+    counts: Counter = Counter()
+    clinc_lines = list(clinc(paths["clinc150"]))
+    rows = pick_fresh(
+        clinc_lines,
+        candidates,
+        seen,
+        near,
+        used,
+        {group_of(line.text) for line in labels},
+        rule=rule,
+        counts=counts,
+    )
+    low, high = SHORT_WORDS
+    short_queries = [line for line in clinc_lines if low <= len(line.text.split()) <= high]
+    massive_groups = {group_of(line.text) for line in massive_lines}
+    copies = sum(1 for line in short_queries if group_of(line.text) in massive_groups)
+    body = "".join(
+        f"{line.source}\t{line.label}\t{group}\t{name}\t{line.text}\n" for line, group, name in rows
+    )
+    (where / "fresh.tsv").write_text(body, encoding="utf-8")
+    sizes: dict[str, dict[str, int]] = {}
+    for line, _group, name in rows:
+        sizes.setdefault(name, {})
+        sizes[name][line.label] = sizes[name].get(line.label, 0) + 1
+    manifest = {
+        "version": 1,
+        "created": datetime.now(UTC).isoformat(),
+        "seeds_sha256": corpus_digest(seeds()),
+        "train_sha256": found.manifest["train"]["sha256"],
+        "short_sha256": found.manifest["short"]["sha256"],
+        "validation_sha256": _sha256(where / "validation.tsv"),
+        "labels_sha256": label_sha,
+        "sources": {
+            name: {"sha256": digests[name], "licence": pinned[name].licence, "pin_checked": True}
+            for name in digests
+        },
+        "settings": {
+            "salt": FRESH_SALT,
+            "words": list(SHORT_WORDS),
+            "edits": EDITS,
+            "hinglish_read_share": share,
+            "labelled": LABELLED,
+            "clinc150_commit": CLINC150_COMMIT,
+        },
+        "seen_texts": len(seen),
+        "clinc150": {
+            "queries": len(clinc_lines),
+            "of_3_to_8_words": len(short_queries),
+            "exact_massive_copies": copies,
+        },
+        "lines": len(rows),
+        "per_part": sizes,
+        "dropped": dict(sorted(counts.items())),
+        "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+    }
+    (where / "fresh.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    log(f"fresh: {len(rows)} messages in {where / 'fresh.tsv'}: {json.dumps(sizes)}")
+    return manifest
+
+
+def load_fresh(where: Path | None = None) -> list[tuple[str, str, str, str]] | None:
+    """(text, label, group, part) of the fresh slices, when the file is whole
+    and was built beside this corpus, its validation slices and these seeds."""
+    from . import corpus_digest, seeds
+
+    where = where or folder()
+    found = load(where)
+    try:
+        manifest = json.loads((where / "fresh.json").read_text(encoding="utf-8"))
+        body = (where / "fresh.tsv").read_text(encoding="utf-8")
+        validation = _sha256(where / "validation.tsv")
+    except (OSError, ValueError):
+        return None
+    if (
+        found is None
+        or hashlib.sha256(body.encode("utf-8")).hexdigest() != manifest.get("sha256")
+        or manifest.get("train_sha256") != found.manifest["train"]["sha256"]
+        or manifest.get("short_sha256") != found.manifest["short"]["sha256"]
+        or manifest.get("validation_sha256") != validation
+        or manifest.get("seeds_sha256") != corpus_digest(seeds())
+    ):
+        logger.warning("Ruh reader fresh slices: not built beside this corpus; not used")
         return None
     rows = []
     for row in body.splitlines():

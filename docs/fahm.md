@@ -118,8 +118,10 @@ the same words as a second opinion: P(language | words) from
 log P(words | language), multiplied into Lughah's posterior with a fitted
 weight. On held-out seeds and their first 2–3 words it made the probabilities
 better calibrated but not the decisions (99.20% and 99.42% against Lughah's
-99.38%, two seeds), so it runs in shadow (`MIZAN_RUH_READER`) and never
-changes the decision until it passes its gate.
+99.38%, two seeds). Its third test (31 Oct 2026, fresh CLINC150 English
+requests and never-read Roman rows) passed for both seeds, the gain on
+English; it still runs in shadow (`MIZAN_RUH_READER`) and never changes the
+decision until the owner turns it on.
 
 ## Qasd: what the request is for
 
