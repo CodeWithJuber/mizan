@@ -137,9 +137,40 @@ If all four bars hold, `MIZAN_TADRIB` defaults to `on`. If not, it stays `off`.
 
 `scripts/tadrib_eval.py --stream-v3 WORK`, then `--test-v3 WORK`.
 
+## Third test (v3): refused at the test stage (31 Oct 2026)
+
+The stream was read once, by both readers at the same time. Bars 1 and 3 failed, so Tadrib for the reader was not adopted and `MIZAN_TADRIB` stays `off`.
+
+| Bar | Seed 0 (judged) | Seed 1 (replication) |
+|---|---|---|
+| 1 it learns: prequential log-loss, frozen → online | 0.2677 → 0.2977, P(not better) 1.000: **fails** | 0.1845 → 0.2169, P(not better) 1.000 |
+| 2 no evidence worse on the seeds' held-out reads | 0.0632 → 0.0620 (P(worse) 0.46): holds | 0.0612 → 0.0642 (P(worse) 0.55, P(loss higher) 0.91): no evidence worse |
+| 3 speed and memory | p95 0.81 s, but +188 MB: **fails** | p95 0.82 s, +187 MB |
+| 4 erasure exact | 244 of 2,552 lessons erased, rebuilt bit for bit: holds | — |
+
+- **The third witness worked as meant.** Of the 800 Roman Hindi/Urdu lines, 22 were still learned as English. In v2 the number was 33 to 40, out of a stream that held more such lines.
+- **Accuracy did not move.** The product was 98.87% → 98.87%, and the lesson labels matched the dataset 99.2% of the time.
+- **Memory rose because the lines are longer.** Tatoeba's Arabic sentences and Dakshina's Wikipedia sentences run longer than v2's stream, and a longer line holds more activations in one micro-batch.
+
+**What the loss was made of (looked at after the verdict, so it decides nothing).** The frozen reader read 35 Roman lines as English with 5 to 55 nats of loss each. Those 35 lines hold 864 of the stream's 871 nats of Roman loss. All of them are PHINC tweets, and reading them shows they are written in English with no Hindi word: "who else is excited to see the boys on startalk tomorrow ? ? ?". PHINC labels every tweet as code-mixed. On these lines the online reader grew surer of the right answer, English, and the dataset's label scored that as worse.
+
+Without PHINC (2,860 lines), the change is within noise either way:
+
+| Seed | All lines without PHINC | Dakshina alone |
+|---|---|---|
+| 0 | 0.00251 → 0.00234 | 0.0137 → 0.0115 |
+| 1 | 0.00169 → 0.00197 | 0.0017 → 0.0029 |
+
+**What the three tests show.**
+- **Clean text leaves almost nothing to learn.** Where labels are clean, the reader's loss was already about 0.002 nats a line.
+- **Agreement can only confirm what the reader already reads.** It cannot see the lines both readers get wrong, and when they agree on a mistake it teaches that mistake.
+- **A learner needs a teacher for what it does not know** ("We have knowledge only of what You have taught us", [2:32](https://quran.com/2:32)). Learning by its own agreement gives the reader no measurable gain. So the reader's online learning stops here: the code stays, and `MIZAN_TADRIB` stays `off`.
+- **What does carry a teacher's signal is phase 2.** There, verified Lisan outputs teach a student. For the reader, the same idea means learning only the lines its witnesses disagree on, labelled by someone who knows: the person, or a hand-labelled set.
+- **A fourth test would need two things first.** Roman test lines must be labelled by hand (as v2's gate was), not by a dataset that labels English tweets as code-mixed. And the memory bound must hold for long lines.
+
 ## Settings, routes and files
 
-- `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default stays `off` until the measurement above passes.
+- `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default is `off`: three pre-registered tests refused it (above).
 - `GET /api/tadrib` (admins): status, lessons per day, prequential log-loss of both copies, the safety check, and the last night.
 - `GET /api/tadrib/lessons` (the person's own, paged) and `DELETE /api/tadrib/lessons/{digest}` (reject, which forgets it).
 - Files in the reader's folder (`$MIZAN_DATA_DIR/models/ruh_reader/`): `fast.pt` and `fast.json` (the fast copy and the digests it learned, written atomically every few lessons so a restart keeps the day), and `nights/` (the last 7 replaced versions with their digests).
