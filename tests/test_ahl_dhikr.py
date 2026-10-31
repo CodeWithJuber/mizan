@@ -864,3 +864,45 @@ async def test_a_roman_claim_is_contradicted_only_however_it_is_written(monkeypa
     monkeypatch.setattr(ahl_dhikr, "nli", reading({devanagari, claim}))
     (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
     assert finding.verdict == "contradicted"
+
+
+async def test_a_code_mixed_claim_read_as_english_is_contradicted_only_however_written(
+    monkeypatch,
+):
+    # Lughah reads it as English, so the NLI model reads it as written; its
+    # Hindi words make it a claim of another writing too (held-out, 31 Oct).
+    page = Passage(
+        "Orville and Wilbur Wright, the Wright brothers, built and flew the world's "
+        "first controlled, powered and sustained airplane.",
+        "Wright brothers",
+        "https://simple.wikipedia.org/wiki/Wright_brothers",
+        "wikipedia",
+    )
+    claim = (
+        "Duniya ka pehla controlled, powered aur sustained hawai jahaz "
+        "Orville aur Wilbur Wright (Wright Brothers) ne udaya tha."
+    )
+    assert not ahl_dhikr.roman(claim)
+    (devanagari,) = ahl_dhikr.writings(claim, page.text, claim) - {claim}
+    assert "Wright Brothers" in devanagari and "Duniya" in devanagari
+    contradicts = {"entailment": 0.02, "neutral": 0.03, "contradiction": 0.95}
+    neither = {"entailment": 0.05, "neutral": 0.9, "contradiction": 0.05}
+
+    def reading(written: set[str]):
+        async def read(pairs):
+            return [contradicts if claim in written or premise in written else neither
+                    for premise, claim in pairs]  # fmt: skip
+
+        return read
+
+    monkeypatch.setattr(ahl_dhikr, "nli", reading({claim}))
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "unknown"
+    monkeypatch.setattr(ahl_dhikr, "nli", reading({claim, devanagari}))
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "contradicted"
+
+
+def test_an_english_claims_names_are_one_writing():
+    claim = "The largest moon of Saturn is Rhea."
+    assert ahl_dhikr.writings(claim, "Titan is the largest moon of Saturn.", claim) == {claim}

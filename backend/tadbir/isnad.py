@@ -48,6 +48,24 @@ BASIS = {
 MAX_CLAIMS = 40
 _FENCE = re.compile(r"```.*?```", re.DOTALL)
 _SENTENCE = re.compile(r"(?<=[.!?۔؟।॥])\s+")  # Devanagari ends at the danda
+# Letters each followed by a full stop ("p.m.", "e.g.", "U.S."): an abbreviation.
+_ABBREVIATION = re.compile(r"(?:\b[^\W\d_]\.){2,}$")
+
+
+def sentences(line: str) -> list[str]:
+    """A line's sentences. A full stop that ends an abbreviation ends no
+    sentence when the next word goes on in lower case ("at 11:40 p.m. ship's
+    time, and sank"): split there, a fragment was judged as a claim of its own
+    (held-out set, 31 Oct 2026)."""
+    pieces: list[str] = []
+    for piece in _SENTENCE.split(line):
+        if pieces and _ABBREVIATION.search(pieces[-1]) and piece[:1].islower():
+            pieces[-1] = f"{pieces[-1]} {piece}"
+        else:
+            pieces.append(piece)
+    return pieces
+
+
 # A Markdown heading, or a line wholly in bold, that does not end a sentence.
 _HEADING = re.compile(r"#{1,6}\s+.*[^.!۔।]|\*\*[^*]*[^*.!۔।]\*\*:?")
 _WORD = re.compile(r"[^\W\d_]{3,}", re.UNICODE)
@@ -83,7 +101,7 @@ def claims(text: str) -> list[dict]:
             continue  # a source-list entry
         if line.endswith(":"):
             continue  # a lead-in introduces what follows and states nothing itself
-        for sentence in _SENTENCE.split(line):
+        for sentence in sentences(line):
             sentence = sentence.strip()
             if sentence.endswith(("?", "؟")):
                 continue  # a question asks; it claims nothing a source could settle
