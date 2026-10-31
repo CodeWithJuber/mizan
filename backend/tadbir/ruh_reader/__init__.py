@@ -1302,6 +1302,14 @@ def main() -> None:
     parser.add_argument(
         "--validation", action="store_true", help="build the validation slices beside the corpus"
     )
+    parser.add_argument(
+        "--fresh-labels",
+        action="store_true",
+        help="test 3: write the never-read Roman rows to label by hand (labels.tsv)",
+    )
+    parser.add_argument(
+        "--fresh", action="store_true", help="test 3: build the fresh slices beside the corpus"
+    )
     parser.add_argument("--train", action="store_true", help="train and install as current")
     parser.add_argument("--seeds-only", action="store_true", help="train without the corpus")
     parser.add_argument("--seed", type=int, default=0)
@@ -1319,8 +1327,11 @@ def main() -> None:
         print(
             json.dumps({k: made[k] for k in ("lines", "per_half", "dropped", "sha256")}, indent=1)
         )
+    if args.fresh or args.fresh_labels:
+        made = reader_corpus.build_fresh(labels_only=not args.fresh, log=print)
+        print(json.dumps({k: v for k, v in made.items() if k != "created"}, indent=1))
     if not args.train:
-        if not args.corpus and not args.validation:
+        if not (args.corpus or args.validation or args.fresh or args.fresh_labels):
             print(json.dumps(status(), indent=1))
         return
     extra = None if args.seeds_only else reader_corpus.load()

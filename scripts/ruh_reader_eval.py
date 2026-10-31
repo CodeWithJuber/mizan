@@ -30,6 +30,13 @@ calibrated on the calibration half (γ and ñ held at the development fit) and
 the gate is run on the gate half as the ``--test``-th test of this reader
 (default: its tests + 1). Every other slice is reported under that fit.
 
+With ``--fresh`` too (test 3): the calibration half's Roman rows count only
+where Qamus reads a Hindi or Urdu word in them (``corpus.roman_words``), and
+the gate is run on the fresh slices instead (``corpus.build_fresh``: CLINC150
+English requests and never-read Roman rows the rule holds, none seen or near
+a seen text); v1.1's calibration, the rows the rule left out and v1.1's gate
+half are reported under it.
+
 ``--evaluate DIR`` reads an existing reader (``current.pt`` and
 ``current.json`` in DIR, with the fit it was installed with) on the same
 slices, without training: the reader trained on the seeds alone, measured on
@@ -177,6 +184,16 @@ def validation_reads(built, rows, languages) -> dict:
     return halves
 
 
+def paired(reads, fit, test: int) -> dict:
+    """The gate's test of the product against the held-out Lughah on these reads."""
+    from tadbir import ruh_reader
+
+    rows = ruh_reader.arms(reads, fit)
+    return ruh_reader.gate(
+        [r.truth for r in reads], [r.group for r in reads], rows["lughah"], rows["combined"], test
+    )
+
+
 def validate(built, halves, languages, test: int | None = None) -> dict:
     """v1.1: κ and b calibrated on the calibration half (γ and ñ held at the
     development fit), the gate run on the gate half as the ``test``-th test of
@@ -190,19 +207,16 @@ def validate(built, halves, languages, test: int | None = None) -> dict:
     fit = ruh_reader.fit_on(halves["calibration"], before.ref, gamma=before.gamma)
     k = test if test is not None else int(built.manifest.get("tests") or 1) + 1
     gated = halves["gate"]
-
-    def paired(reads, chosen_fit) -> dict:
-        rows = ruh_reader.arms(reads, chosen_fit)
-        return ruh_reader.gate(
-            [r.truth for r in reads], [r.group for r in reads], rows["lughah"], rows["combined"], k
-        )
-
-    verdict = paired(gated, fit)
+    verdict = paired(gated, fit, k)
     parts = {
         "MASSIVE (en, hi, ur, ar)": [r for r in gated if r.group.startswith("massive:")],
+        "English, not MASSIVE": [
+            r for r in gated if languages[r.truth] == "en" and not r.group.startswith("massive:")
+        ],
         "Roman Hindi/Urdu": [r for r in gated if languages[r.truth] == "hi-latn"],
     }
     return {
+        "name": "v1.1: calibrated on the calibration half, gated on the gate half",
         "test": k,
         "development_fit": before.to_dict(),
         "fit": fit.to_dict(),
@@ -213,20 +227,20 @@ def validate(built, halves, languages, test: int | None = None) -> dict:
         "gate": verdict,
         "adopted": verdict["adopted"] and fit.b > 0,
         "gate_slices": short_slices(gated, fit, languages, "gate half"),
-        "gate_parts": {name: paired(reads, fit) for name, reads in parts.items() if reads},
+        "gate_parts": {name: paired(reads, fit, k) for name, reads in parts.items() if reads},
         "gate_shipped": short_check(gated, fit, languages, k)["shipped Lughah"],
         "gate_errors": errors(gated, fit, languages),
         "gate_bpb": ruh_reader.bits_per_byte(gated, languages),
         "gate_development_fit": {
             "slices": short_slices(gated, before, languages, "gate half"),
-            "check": paired(gated, before),
+            "check": paired(gated, before, k),
         },
         "calibration_slices": short_slices(
             halves["calibration"], fit, languages, "calibration half (in sample)"
         ),
         "held_out_seeds": {
             "slices": slices(built.held_out, fit, languages),
-            "check": paired(built.held_out, fit),
+            "check": paired(built.held_out, fit, k),
         },
         "short_v1": {
             "slices": short_slices(built.short, fit, languages),
@@ -234,6 +248,61 @@ def validate(built, halves, languages, test: int | None = None) -> dict:
             "errors": errors(built.short, fit, languages),
         },
     }
+
+
+def fresh_reads(built, rows, languages) -> dict:
+    """Test 3's fresh slices by part (``gate``, ``rule``), read by the held-out
+    Lughah and scored by the reader."""
+    from tadbir import ruh_reader
+
+    found = {}
+    for name in ("gate", "rule"):
+        chosen = [row for row in rows if row[3] == name and row[1] in languages]
+        reads = ruh_reader.read_with_lughah(
+            [(text, label) for text, label, _group, _part in chosen], languages, built.lughah, ()
+        )
+        for read, (_text, _label, group, _part) in zip(reads, chosen, strict=True):
+            read.group = group
+        found[name] = reads
+    ruh_reader.score_reads(built.model, found["gate"] + found["rule"], languages)
+    return found
+
+
+def test3(built, halves, fresh, languages, test: int | None = None) -> dict:
+    """Test 3: κ and b calibrated on v1.1's calibration half with its Roman
+    rows kept only where Qamus reads a Hindi or Urdu word (``roman_words``),
+    the gate run on the fresh slice (CLINC150 English and never-read Roman
+    rows the rule holds) as the ``test``-th test; v1.1's calibration (no
+    rule), the Roman rows the rule left out and v1.1's gate half reported."""
+    from tadbir import ruh_reader
+    from tadbir.ruh_reader import corpus
+
+    roman = languages.index("hi-latn")
+    calibration = [
+        r for r in halves["calibration"] if r.truth != roman or corpus.roman_words(r.text)
+    ]
+    found = validate(built, {"calibration": calibration, "gate": fresh["gate"]}, languages, test)
+    found["name"] = "test 3: calibrated with the Roman rule, gated on fresh messages"
+    found["calibration_left_out_by_rule"] = len(halves["calibration"]) - len(calibration)
+    k = found["test"]
+    fit = ruh_reader.Fit(**found["fit"])
+    before = ruh_reader.Fit(**built.manifest["fit"])
+    unfiltered = ruh_reader.fit_on(halves["calibration"], before.ref, gamma=before.gamma)
+    found["gate_v11_fit"] = {
+        "fit": unfiltered.to_dict(),
+        "slices": short_slices(fresh["gate"], unfiltered, languages, "gate slice"),
+        "check": paired(fresh["gate"], unfiltered, k),
+    }
+    if fresh["rule"]:
+        found["left_out_by_rule"] = {
+            "slices": short_slices(fresh["rule"], fit, languages, "left out by the rule"),
+            "errors": errors(fresh["rule"], fit, languages),
+        }
+    found["v11_gate_half"] = {
+        "slices": short_slices(halves["gate"], fit, languages, "v1.1 gate half"),
+        "check": paired(halves["gate"], fit, k),
+    }
+    return found
 
 
 def latency(model, languages) -> dict:
@@ -357,7 +426,7 @@ def _check_line(name: str, check: dict) -> str:
 def validation_table(found: dict) -> list[str]:
     shown = ("lughah", "reader", "combined", "lughah (shipped)", "shipped × reader")
     lines = [
-        f"\n### v1.1: calibrated on the calibration half, gated on the gate half (test {found['test']})",
+        f"\n### {found.get('name', 'v1.1')} (test {found['test']})",
         f"sizes: {json.dumps(found['sizes'])}; groups {json.dumps(found['groups'])}",
         "development fit: "
         + json.dumps({k: round(v, 4) for k, v in found["development_fit"].items()}),
@@ -388,6 +457,25 @@ def validation_table(found: dict) -> list[str]:
         lines.append(_check_line(f"v1 short, {name}", check))
     for arm, counted in found["short_v1"]["errors"].items():
         lines.append(f"mistakes on v1 short, {arm}: {json.dumps(counted)}")
+    if "gate_v11_fit" in found:  # test 3
+        extra = found["gate_v11_fit"]
+        lines.append(
+            "\ngate slice under v1.1's calibration (no rule), fit "
+            + json.dumps({k: round(v, 4) for k, v in extra["fit"].items()})
+        )
+        lines += _table(extra["slices"], shown)
+        lines.append(_check_line("v1.1's calibration on the gate slice", extra["check"]))
+        lines.append(
+            f"calibration rows left out by the rule: {found['calibration_left_out_by_rule']}"
+        )
+        if "left_out_by_rule" in found:
+            lines.append("\nRoman rows the rule left out (reported):")
+            lines += _table(found["left_out_by_rule"]["slices"], shown)
+            for arm, counted in found["left_out_by_rule"]["errors"].items():
+                lines.append(f"mistakes on rows the rule left out, {arm}: {json.dumps(counted)}")
+        lines.append("\nv1.1's gate half under the new fit (reported):")
+        lines += _table(found["v11_gate_half"]["slices"], shown)
+        lines.append(_check_line("v1.1's gate half", found["v11_gate_half"]["check"]))
     return lines
 
 
@@ -480,6 +568,12 @@ def main() -> None:
         "slices and gate on the gate half (needs --corpus)",
     )
     parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="test 3: calibrate on the calibration half with the Roman rule and gate on the "
+        "fresh slices (needs --corpus and --validation)",
+    )
+    parser.add_argument(
         "--test", type=int, help="the k-th test of this reader (default: its tests + 1)"
     )
     args = parser.parse_args()
@@ -499,6 +593,14 @@ def main() -> None:
         if extra is None or held_back is None:
             raise SystemExit(
                 "no validation slices: build them with python -m tadbir.ruh_reader --validation"
+            )
+    fresh_rows = None
+    if args.fresh:
+        fresh_rows = reader_corpus.load_fresh(Path(args.corpus) if args.corpus else None)
+        if held_back is None or fresh_rows is None:
+            raise SystemExit(
+                "no fresh slices: build them with python -m tadbir.ruh_reader --fresh "
+                "(and run with --validation)"
             )
     if args.evaluate:
         found = evaluate(args.evaluate, extra)
@@ -529,7 +631,11 @@ def main() -> None:
         measure_short(found, built.short, fit, languages)
         if held_back is not None:
             halves = validation_reads(built, held_back, languages)
-            found["validation"] = validate(built, halves, languages, args.test)
+            if fresh_rows is not None:
+                fresh = fresh_reads(built, fresh_rows, languages)
+                found["validation"] = test3(built, halves, fresh, languages, args.test)
+            else:
+                found["validation"] = validate(built, halves, languages, args.test)
         found["latency"] = latency(built.model, languages)
         found["int8"] = int8_agreement(built.model, built.held_out, fit, languages)
         found["wall_seconds"] = round(time.monotonic() - began, 1)
