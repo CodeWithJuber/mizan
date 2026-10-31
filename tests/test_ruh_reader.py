@@ -1464,3 +1464,112 @@ def test_the_v2_rule_asks_two_hindi_or_urdu_words(monkeypatch):
     assert corpus.roman_words("my bank kya", 1)
     assert not corpus.roman_words("my bank kya", corpus.V2_LEAST)
     assert not corpus.roman_words("kya kya kya", corpus.V2_LEAST)  # distinct words
+
+
+# ── installing a version trained and gated elsewhere ─────────────────────
+
+
+def _report(languages, digest, fit, gate):
+    return {
+        "seed 0": {
+            "manifest": {
+                "created": "2026-10-31T06:16:27+00:00",
+                "corpus_sha256": digest,
+                "languages": list(languages),
+                "fit": {"kappa": 1.0, "gamma": 0.0, "ref": 20.0, "b": 1.0},
+                "gate": {"adopted": False},  # the seeds' gate, under the development fit
+                "adopted": False,
+                "learned": [],
+                "tests": 1,
+            },
+            "v2": {"fit": fit, "gate": gate, "adopted": gate["adopted"]},
+        }
+    }
+
+
+def test_a_reader_gated_elsewhere_installs_with_its_gate_and_is_read(
+    reader_home, few_seeds, tmp_path, monkeypatch
+):
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import net
+
+    monkeypatch.setenv("MIZAN_RUH_READER", "shadow")
+    languages = list(dict.fromkeys(label for _text, label in few_seeds))
+    torch.manual_seed(5)
+    weights = tmp_path / "reader-seed0.pt"
+    net.save(net.Reader(net.Config(**TINY)).eval(), weights)
+    fit = {"kappa": 0.4, "gamma": 0.0, "ref": 47.0, "b": 0.67}
+    report = _report(languages, ruh_reader.corpus_digest(few_seeds), fit, {"adopted": True})
+    found = ruh_reader.install_trained(weights, report, {"repo": "owner/reader"})
+    assert found["fit"] == fit and found["adopted"] is True
+    assert found["dev"] > 0 and found["held_out"] > 0
+    current = ruh_reader.manifest("current")
+    assert current["fit"] == fit and current["gate"] == {"adopted": True}
+    assert current["installed"]["repo"] == "owner/reader"
+    assert ruh_reader.manifest("base")["installed"] == current["installed"]
+    assert (reader_home / "current.reads.json").exists()  # what a night compares against
+    loaded = ruh_reader.load()
+    assert loaded is not None and loaded.fit.b == pytest.approx(0.67)
+
+
+def test_a_reader_trained_on_other_seeds_is_not_installed(reader_home, few_seeds, tmp_path):
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import net
+
+    languages = list(dict.fromkeys(label for _text, label in few_seeds))
+    torch.manual_seed(5)
+    weights = tmp_path / "reader-seed0.pt"
+    net.save(net.Reader(net.Config(**TINY)).eval(), weights)
+    fit = {"kappa": 1.0, "gamma": 0.0, "ref": 20.0, "b": 0.5}
+    with pytest.raises(ValueError, match="other seeds"):
+        ruh_reader.install_trained(weights, _report(languages, "0" * 64, fit, {"adopted": True}))
+    with pytest.raises(ValueError, match="other languages"):
+        ruh_reader.install_trained(
+            weights,
+            _report(languages[::-1], ruh_reader.corpus_digest(few_seeds), fit, {"adopted": True}),
+        )
+    assert ruh_reader.manifest("current") is None
+
+
+def test_only_an_administrator_installs_a_reader_and_only_the_weights_pinned(
+    reader_home, monkeypatch
+):
+    import hashlib
+
+    from fastapi.testclient import TestClient
+
+    import api.main as main
+    from knowledge import hf_hub
+
+    pytest.importorskip("torch")
+    blob = b"weights"
+    served = {"reader-seed0.pt": blob, "seed0.json": json.dumps({"seed 0": {}}).encode()}
+
+    async def fetch(repo, path, kind="datasets", revision="main", max_bytes=0):
+        assert kind == "models" and revision == "a" * 40
+        return {"bytes": served[path], "sampled": False}
+
+    installed: list = []
+
+    def install(weights, report, source):
+        installed.append((weights.read_bytes(), report, source))
+        return {"fit": {"b": 0.67}, "adopted": True}
+
+    monkeypatch.setattr(hf_hub, "fetch", fetch)
+    monkeypatch.setattr(ruh_reader, "install_trained", install)
+    body = {"repo": "owner/reader", "revision": "a" * 40, "sha256": "0" * 64}
+    client = TestClient(main.app)
+    member = main.auth.create_token(main.auth.create_user("readeruser", "pw", roles=["user"]))
+    denied = client.post(
+        "/api/tadrib/reader", json=body, headers={"Authorization": f"Bearer {member}"}
+    )
+    assert denied.status_code == 403 and not installed
+    admin = main.auth.create_token(main.auth.create_user("readeradmin", "pw", roles=["admin"]))
+    headers = {"Authorization": f"Bearer {admin}"}
+    wrong = client.post("/api/tadrib/reader", json=body, headers=headers)
+    assert wrong.status_code == 422 and not installed  # not the weights pinned
+    body["sha256"] = hashlib.sha256(blob).hexdigest()
+    done = client.post("/api/tadrib/reader", json=body, headers=headers)
+    assert done.status_code == 200 and done.json()["adopted"] is True
+    assert installed[0][0] == blob and installed[0][2]["repo"] == "owner/reader"
+    assert not list(reader_home.glob("incoming-*"))  # the download is not left behind

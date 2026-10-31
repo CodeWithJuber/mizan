@@ -457,6 +457,27 @@ Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was
 - **v1.1's validation slices:** `cd backend && python -m tadbir.ruh_reader --validation` writes `validation.tsv` and `validation.json` beside the corpus, from its own downloads (pins checked). `python ../scripts/ruh_reader_eval.py --corpus --validation [--test K] …` calibrates κ and b on the calibration half (γ held, `fit_on(…, gamma=…)`) and runs the gate on the gate half as the K-th test (by default the reader's tests + 1).
 - **Test 3's fresh slices:** `cd backend && python -m tadbir.ruh_reader --fresh-labels` writes `labels.tsv` (the rows to label by hand, drawn without the rule); `--fresh` downloads CLINC150 into `sources/clinc150/` (pinned) and writes `fresh.tsv` and `fresh.json` beside the validation slices. `python ../scripts/ruh_reader_eval.py --corpus --validation --fresh --test 3 …` calibrates with the Roman rule and gates on the fresh slice.
 
+### Installing a version on a server
+
+A server does not train. A version trained and gated on another machine is installed from a Hugging Face model repository at a pinned commit.
+
+`POST /api/tadrib/reader` (admins) takes this body:
+
+```json
+{"repo": "Zubairshaikh/mizan-ruh-reader", "revision": "<commit>", "weights": "reader-seed0.pt", "report": "seed0.json", "sha256": "<weights SHA-256>"}
+```
+
+`ruh_reader.install_trained` then does five things, in order:
+1. **Fetches.** The server reads both files through `knowledge/hf_hub` with the owner's token, which is used for administrators only.
+2. **Checks.** It refuses weights whose SHA-256 is not the one given, weights that do not load, and a report whose corpus digest or languages are not this server's seeds.
+3. **Takes the gate's fit.** It keeps the fit and gate of the report's gated test (v2's: κ 0.405, b 0.672, e ≈ 8·10²²), not the development fit.
+4. **Makes the readings.** It builds the development and held-out readings a night compares against, as a build makes them (about 40 s on 2 threads).
+5. **Installs.** It writes everything as `base` and `current`.
+
+`MIZAN_RUH_READER` is not changed. In `shadow` the reader is read and logged and never decides. The source, the commit, the SHA-256 and who installed it are kept in the manifest's `installed`.
+
+**Production.** The owner approved installing reader v2 seed 0 in shadow on 31 Oct 2026; it is installed through this route once the route is deployed.
+
 Without weights nothing is loaded and torch is never imported: the default deployment is unchanged until an operator trains a reader. Once weights exist, shadow mode loads torch into the server process (a few hundred MB of resident memory on the 2 GB production machine) in a background thread. The message in hand is read without the reader until it is loaded.
 
 ## Limits

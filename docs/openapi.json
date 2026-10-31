@@ -8845,6 +8845,86 @@
     ]
    }
   },
+  "/api/tadrib/reader": {
+   "post": {
+    "summary": "Tadrib Reader Install",
+    "description": "Install (admin) a reader version trained and gated elsewhere as the base and\ncurrent version: its weights and report are read from Hugging Face on the server\n(the owner's token), the weights must have the SHA-256 given and have been trained\non this server's seeds, and the gate's fit is kept. ``MIZAN_RUH_READER`` is not\nchanged: in ``shadow`` the reader is read and logged and never decides\n(docs/ruh-reader.md, \"Installing a version on a server\").",
+    "operationId": "tadrib_reader_install_api_tadrib_reader_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReaderInstall"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "admin",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/tadbir/learning/live": {
    "get": {
     "summary": "Tadbir Learning Live",
@@ -23322,6 +23402,48 @@
     ],
     "title": "Qwen3RerankInfo",
     "description": "Provenance for the optional Qwen3 sense rerank (null when not applied)."
+   },
+   "ReaderInstall": {
+    "properties": {
+     "repo": {
+      "type": "string",
+      "maxLength": 120,
+      "minLength": 3,
+      "title": "Repo"
+     },
+     "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Revision"
+     },
+     "weights": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Weights",
+      "default": "reader-seed0.pt"
+     },
+     "report": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Report",
+      "default": "seed0.json"
+     },
+     "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256"
+     }
+    },
+    "type": "object",
+    "required": [
+     "repo",
+     "revision",
+     "sha256"
+    ],
+    "title": "ReaderInstall",
+    "description": "A version of MIZAN's own reader trained and gated elsewhere, read from a\nHugging Face model repository at a pinned commit."
    },
    "RegisterRequest": {
     "properties": {

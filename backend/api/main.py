@@ -5823,6 +5823,70 @@ async def tadrib_reject(digest: str, user: TokenPayload = Depends(require_auth))
     return {"rejected": digest}
 
 
+class ReaderInstall(BaseModel):
+    """A version of MIZAN's own reader trained and gated elsewhere, read from a
+    Hugging Face model repository at a pinned commit."""
+
+    repo: str = Field(..., min_length=3, max_length=120)
+    revision: str = Field(..., pattern=r"^[0-9a-f]{40}$")
+    weights: str = Field("reader-seed0.pt", min_length=1, max_length=200)
+    report: str = Field("seed0.json", min_length=1, max_length=200)
+    sha256: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+
+
+@app.post("/api/tadrib/reader")
+async def tadrib_reader_install(req: ReaderInstall, user: TokenPayload = Depends(require_auth)):
+    """Install (admin) a reader version trained and gated elsewhere as the base and
+    current version: its weights and report are read from Hugging Face on the server
+    (the owner's token), the weights must have the SHA-256 given and have been trained
+    on this server's seeds, and the gate's fit is kept. ``MIZAN_RUH_READER`` is not
+    changed: in ``shadow`` the reader is read and logged and never decides
+    (docs/ruh-reader.md, "Installing a version on a server")."""
+    import hashlib
+
+    from knowledge import hf_hub
+    from tadbir import ruh_reader
+
+    _require_admin(user)
+    if not ruh_reader.has_torch():
+        raise HTTPException(503, "This server has no torch, so it cannot read with a reader")
+    try:
+        weights = await hf_hub.fetch(
+            req.repo, req.weights, kind="models", revision=req.revision, max_bytes=64 << 20
+        )
+        report = await hf_hub.fetch(
+            req.repo, req.report, kind="models", revision=req.revision, max_bytes=8 << 20
+        )
+    except hf_hub.HubError as exc:
+        raise HTTPException(502, str(exc)) from None
+    if hashlib.sha256(weights["bytes"]).hexdigest() != req.sha256:
+        raise HTTPException(422, "The weights' SHA-256 is not the one given")
+    if report.get("sampled"):
+        raise HTTPException(422, "The report is larger than 8 MB")
+    try:
+        parsed = json.loads(report["bytes"])
+    except ValueError:
+        raise HTTPException(422, "The report is not JSON") from None
+    folder = ruh_reader.home()
+    folder.mkdir(parents=True, exist_ok=True)
+    incoming = folder / f"incoming-{req.sha256[:16]}.pt"
+    incoming.write_bytes(weights["bytes"])
+    source = {
+        "repo": req.repo,
+        "revision": req.revision,
+        "weights": req.weights,
+        "report": req.report,
+        "by": user.username or user.user_id,
+    }
+    try:
+        installed = await asyncio.to_thread(ruh_reader.install_trained, incoming, parsed, source)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(422, f"Not installed: {exc}") from None
+    finally:
+        incoming.unlink(missing_ok=True)
+    return {**installed, "mode": ruh_reader.mode()}
+
+
 @app.get("/api/tadbir/learning/live")
 async def tadbir_learning_live(
     after: int = Query(0, ge=0), user: TokenPayload = Depends(require_auth)
