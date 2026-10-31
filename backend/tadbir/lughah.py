@@ -72,18 +72,23 @@ def _features(text: str):
     return char_ngrams(letters(text))
 
 
-def corpus() -> list[tuple[str, str]]:
-    """The seeds that ship with MIZAN, then what an administrator taught (Ta'lim),
-    including languages it adds."""
-    from . import talim
-
+def shipped() -> list[tuple[str, str]]:
+    """The seeds that ship with MIZAN: the same on every server."""
     examples = []
     for label in LABELS:
         for line in (CORPUS / f"{label}.tsv").read_text(encoding="utf-8").splitlines():
             _source, _, text = line.partition("\t")
             if text.strip():
                 examples.append((text, label))
-    return examples + [(text, label) for text, label, _ in talim.rows("lughah")]
+    return examples
+
+
+def corpus() -> list[tuple[str, str]]:
+    """The seeds that ship with MIZAN, then what an administrator taught (Ta'lim),
+    including languages it adds."""
+    from . import talim
+
+    return shipped() + [(text, label) for text, label, _ in talim.rows("lughah")]
 
 
 def languages() -> tuple[str, ...]:
