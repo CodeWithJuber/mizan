@@ -72,7 +72,7 @@ A line is kept for training only when (in this order, each counted in the manife
 
 ## Measured
 
-Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow.
+Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow. On 31 Oct, **v1.1** recalibrated v1's weights on real short messages and gated them on others ([v1.1](#v11-calibrated-on-real-short-messages)). It was refused too.
 
 ### v0: the seeds only
 
@@ -171,7 +171,60 @@ The test v1 wrote down, run on v1's weights (no new training). The protocol belo
 
 **Reported, never deciding:** the gate half by part and per language with every arm (Lughah as shipped too), the calibration half (in sample), the gate half under v1's development fit, the seeds' held-out groups and v1's 9,808 short messages under the new fit, latency and peak memory.
 
-*Results: not yet computed.*
+**The slices** (`validation.tsv`, SHA-256 `ac9423b0…5f29`, fixed and checked before anything was scored: no group in both halves, no message's words a seed's, a training line's or a v1 short message's):
+
+| Half | messages | groups | en | hi | ur | ar | Roman Hindi/Urdu |
+|---|---|---|---|---|---|---|---|
+| calibration | 3,220 | 1,525 | 699 | 598 | 561 | 718 | 644 |
+| gate | 3,184 | 1,513 | 709 | 600 | 562 | 676 | 637 |
+
+Both seeds' kept weights matched their key, so nothing was retrained: these are v1's readers.
+
+**Calibration.** Both seeds' development fits had γ = 0, so κ acts as a temperature on the reader's likelihoods.
+
+| Seed | κ, development → calibrated | b, development → calibrated |
+|---|---|---|
+| 0 | 0.945 → 0.229 | 0.723 → 0.082 |
+| 1 | 1.000 → 0.332 | 0.604 → 0.074 |
+
+**The gate refused both seeds.** The log-loss condition held; the accuracy condition did not.
+
+| Seed | log-loss, Lughah → product | P(not better) | wins / losses (groups) | e-value (needed) | accuracy, Lughah → product | adopted |
+|---|---|---|---|---|---|---|
+| 0 | 0.0545 → 0.0527 | 0.004 | 2 / 0 | 2.33 (120) | 98.59% → 98.65% | no |
+| 1 | 0.0545 → 0.0525 | 0.0035 | 2 / 0 | 2.33 (120) | 98.59% → 98.65% | no |
+
+With no losses, 10 won groups would have reached 120. Calibrated, the product changes too few decisions to get there.
+
+**The gate half** (accuracy in % [95% Wilson interval] · mean log-loss; Lughah alone is the held-out refit):
+
+| Slice | n | Lughah alone | Reader alone, seed 0 | seed 1 | Product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| gate half | 3,184 | 98.59 [98.11, 98.94] · 0.0545 | 98.96 [98.55, 99.26] · 0.0527 | 98.87 [98.44, 99.18] · 0.0574 | 98.65 [98.19, 99.00] · 0.0527 | 98.65 [98.19, 99.00] · 0.0525 |
+| MASSIVE (en, hi, ur, ar) | 2,547 | 99.45 [99.08, 99.67] · 0.0240 | 99.76 [99.49, 99.89] · 0.0244 | 99.69 [99.38, 99.84] · 0.0252 | 99.53 [99.18, 99.73] · 0.0199 | 99.53 [99.18, 99.73] · 0.0195 |
+| English | 709 | 98.03 [96.71, 98.82] · 0.0835 | 99.29 [98.36, 99.70] · 0.0792 | 99.01 [97.98, 99.52] · 0.0497 | 98.31 [97.07, 99.03] · 0.0697 | 98.31 [97.07, 99.03] · 0.0683 |
+| Roman Hindi/Urdu | 637 | 95.13 [93.18, 96.55] · 0.1764 | 95.76 [93.90, 97.07] · 0.1657 | 95.60 [93.72, 96.94] · 0.1862 | 95.13 [93.18, 96.55] · 0.1841 | 95.13 [93.18, 96.55] · 0.1846 |
+| Hindi / Urdu / Arabic | 600 / 562 / 676 | 100 / 100 / 100 | 100 / 99.82 / 100 | 99.83 / 100 / 100 | 100 / 100 / 100 | 100 / 100 / 100 |
+
+Lughah as shipped reads the gate half 98.81% [98.37, 99.13] · 0.0496, and shipped × reader 98.87% · 0.0483 / 0.0484 (wins 2, losses 0 for both seeds). Bits per byte on the gate half, seed 0 / seed 1: Hindi 1.154 / 1.158 · Urdu 1.463 / 1.485 · Arabic 1.643 / 1.678 · English 2.015 / 1.994 · Roman Hindi/Urdu 2.227 / 2.216. Mistakes: Lughah reads 31 Roman messages as English and 14 English as Roman; the calibrated product 31 and 12 (both seeds).
+
+**What the calibration changed** (the gate half again, reported only). Under v1's development fit the product is right on 98.99% (wins 13, losses 0, e-value 1,170), but its log-loss is 0.120 / 0.099 (P(not better) 1.0 / 0.9995). Calibrated, the log-loss falls below Lughah's and the decisions barely move. One weight on the reader cannot give both: each condition holds under one fit and fails under the other.
+
+**Other slices under the calibrated fit (reported, never deciding):**
+- The seeds' held-out groups (v1's gate set): the product's decisions are Lughah's (99.38%, no group won or lost), log-loss 0.0237 → 0.0220 / 0.0217.
+- v1's 9,808 short messages: 98.66% / 98.64% against Lughah's 98.54%, log-loss 0.0549 → 0.0530 / 0.0525; wins / losses 13 / 1 and 12 / 2 (e-values 156 and 23.9), against Lughah as shipped 12 / 1 and 11 / 0 (90 and 341). This is not a gate and was not one: these messages were measured in v1, and their numbers are why this test was chosen.
+
+**Cost.** One 100-byte message under all five languages, fp32 on 2 threads, the reader alone in its process (beside one other single-threaded job on the machine): 24.8 / 27.8 ms median (p90 34–36 ms); 24 bytes 6.4–7.0 ms; int8 22.9–24.2 ms. Loading took 1.2–1.4 s and 263 MB resident (306 MB after reading). Within the evaluations, run two at once: 30.6 / 20.8 ms. The evaluation process peaked at 1,044 / 1,064 MB (v1's: 2.1 GB, before the reading passes were bounded).
+
+**Looked at after the test (exploratory, not part of it).** Of the 31 gate-half Roman messages Lughah reads as English, 24 are written entirely in English ("what are you doing tonight?", "are you going to the party?", "i have a question about inheritance law."; one more holds only "chai"), and 7 mix in Hindi words ("chalo, i'm up for it.", "neighbour se mang le!"); read by hand. Hinglish-1M labels every utterance Roman Hindi/Urdu, so much of the reader's "confident mistake" on Roman rows is the reader reading English as English, and that is the loss that pulls κ and b down. The reader's gain is the other way: of the 14 English requests Lughah reads as Roman ("book me a plane ticket", "activate robot vacuum"), the reader under v1's fit reads 12 right. Lughah's own 900 Roman seeds come from the same dataset; whether they hold such rows was not checked here.
+
+**Verdict.** Refused for both seeds, as the second test of v1's weights. The reader stays in **shadow**.
+
+**The next test, written down before it is run:**
+1. **Labels checked by a rule neither model uses.** A Hinglish-1M row counts as Roman Hindi/Urdu only when at least one of its words reads as a Hindi or Urdu word in Qamus's Roman reading (`qamus.read_roman`: P > ½, not an English word); rows with none are left out, not relabelled. The rule's agreement with a hand-labelled sample of 200 never-read rows is reported before it is used.
+2. **Calibration** as here (κ and b, γ held), on this test's calibration half with its Roman rows filtered by that rule. That half was only ever used to fit.
+3. **The gate on messages never measured**: fresh Hinglish-1M rows (never read, passing the rule) and real English short requests not drawn from MASSIVE, where Lughah errs most. MASSIVE's en, hi, ur and ar partitions are all spent now (train trained on, test measured in v1, dev here). CLINC150's queries (CC BY 3.0) are one candidate, once their licence and overlap with MASSIVE are checked.
+4. **The same gate** as the third test of these weights: e-value 3·4/0.05 = 240.
 
 ## Learning while MIZAN rests
 
@@ -194,6 +247,7 @@ Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was
 - **Corpus:** `cd backend && python -m tadbir.ruh_reader --corpus [--bytes-per-language 900000] [--workers 3]` downloads the sources (about 250 MB, kept in `$MIZAN_DATA_DIR/corpora/ruh_reader/sources/`), fetches the Quran's texts if they are not on disk, and writes `train.tsv`, `short.tsv` and `manifest.json` (4 minutes with 4 workers on the development sandbox). A corpus whose files changed, or that was built against other seeds, is not used.
 - **Train and install:** `cd backend && python -m tadbir.ruh_reader --train [--seed N] [--threads 2] [--seeds-only]`. It trains on the corpus when one is built (`--seeds-only` ignores it). Without `--train` it prints the status.
 - **Measure:** `cd backend && python ../scripts/ruh_reader_eval.py --seeds 0 1 [--corpus] --json out.json [--install 0] [--save DIR]`; `--evaluate DIR` reads an installed reader (`current.pt`, `current.json`) on the same slices without training.
+- **v1.1's validation slices:** `cd backend && python -m tadbir.ruh_reader --validation` writes `validation.tsv` and `validation.json` beside the corpus, from its own downloads (pins checked). `python ../scripts/ruh_reader_eval.py --corpus --validation [--test K] …` calibrates κ and b on the calibration half (γ held, `fit_on(…, gamma=…)`) and runs the gate on the gate half as the K-th test (by default the reader's tests + 1).
 
 Without weights nothing is loaded and torch is never imported: the default deployment is unchanged until an operator trains a reader. Once weights exist, shadow mode loads torch into the server process (a few hundred MB of resident memory on the 2 GB production machine) in a background thread. The message in hand is read without the reader until it is loaded.
 
@@ -201,6 +255,7 @@ Without weights nothing is loaded and torch is never imported: the default deplo
 
 - **Small data.** v0 learned from about 200 KB of seed text (3,305 lines); v1 adds 4.4 MB of its own corpus and is still one pass from its budget. The pilot's byte model had 12M tokens of web text and reached 1.2–2.4 bits per byte. Here the held-out bits per byte are higher (see the table), and Roman Hindi/Urdu (982 seeds) and English are the weakest.
 - **Easy test, hard ceiling.** On whole held-out sentences Lughah is already 100% right, so only shorter readings can show a gain. The short readings are cut from whole sentences, which is not the same as messages people actually send.
+- **Synthetic Roman labels.** Hinglish-1M labels every utterance Roman Hindi/Urdu, including many written entirely in English (24 of the 31 that v1.1's gate half has Lughah read as English). Measured accuracy on those rows is a floor set by the labels, and their log-loss weighs most in the calibration.
 - **Labels at night come from the models themselves.** A message is learned under the language both read it in. The night can adapt the reader to how people write, but cannot teach it a language Lughah misreads.
 - **Memory.** Weights cannot have one message subtracted. Forgetting falls back to an earlier version, which also loses what later nights learned from other messages.
 - **Shadow cost.** Reading every message costs CPU (see latency) and torch's memory, for no change in the decision until the gate passes.
