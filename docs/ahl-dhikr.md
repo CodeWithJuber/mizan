@@ -340,6 +340,163 @@ English articles, with none against another question's pages. Those articles
 were picked by title, not found by Wikipedia's search, so this is not a
 measurement of asking by the claims, and it is not wired.
 
+### Held-out (31 October 2026)
+
+Three designs were chosen on the 30 questions above, with about twenty
+variants measured on them: claims read across scripts through
+[Qāmūs](qamus.md), each claim read with its subject, and Roman Hindi and Urdu
+read through Qāmūs ([Roman Hindi and Urdu](qamus.md#roman-hindi-and-urdu)). So
+they were measured again on a new set, with no change to the code and nothing
+tuned on it.
+
+**The set.**
+- 30 new fact questions, none of the 30 above and on none of their articles:
+  science 6, geography 5, history 5, people 4, inventions 4, sport 3, nature 3
+  (Marie Curie, the Sahara, the Titanic, Nelson Mandela, the World Wide Web,
+  the first modern Olympics, the cheetah, …). None is about the deen. Each has
+  1–3 articles in the same Simple English Wikipedia dump.
+- Five wordings of each, written by hand: English, Hindi in Devanagari, Urdu in
+  Urdu script, Hindi-leaning Roman ("Polio ka pehla teeka kisne banaya tha?")
+  and Roman Urdu ("Polio ki pehli vaccine kis ne banai thi?"). The questions
+  were frozen (SHA-256 recorded) before the teacher was asked.
+- The production teacher answered all 150 with the call and instruction used
+  above ("one paragraph of a few sentences, in the language of the
+  question"). The 27 Roman questions answered in Devanagari or Urdu script (16
+  Hindi-leaning, 11 Urdu-leaning) were asked once more with production's reply
+  instruction for Hinglish, and all 60 then were in Latin letters. 177 calls,
+  10,970 prompt and 40,668 completion tokens, $0.0092 as OpenRouter reported
+  it.
+- 20 false claims written by hand, 4 in each form, each one sentence with one
+  fact changed (a year, a place, a number or a name), with the article sentence
+  that contradicts it. They were frozen before any measurement was read.
+- Judged offline by the real NLI model as above: English with
+  `scripts/ahl_coverage.py`, the others by the same `judge()` with the same
+  contexts. Each set was read against its own articles and, as a control,
+  against another question's (j against j + 7). The Hindi and Urdu answers
+  were also read against the Hindi and Urdu articles whose titles they hold,
+  as above. Those are often a general page (मनुष्य "human", मीटर "metre").
+- Every supported or contradicted claim was read against its source sentence
+  and labelled right, part or wrong.
+
+The current code, with 95% Wilson intervals, and the audit as right/part/wrong:
+
+| Set | Claims | Supported | Audit | Contradicted | Audit | Control: supported, contradicted |
+|---|---|---|---|---|---|---|
+| English, Simple English Wikipedia | 72 | 17 = 23.6% [15.3, 34.6] | 12/4/1 | 0 [0, 5.1] | | 0, 0 |
+| Hindi, Simple English Wikipedia | 80 | 2 = 2.5% [0.7, 8.7] | 2/0/0 | 0 [0, 4.6] | | 0, 0 |
+| Urdu, Simple English Wikipedia | 72 | 1 = 1.4% [0.2, 7.5] | 0/1/0 | 0 [0, 5.1] | | 0, 0 |
+| Roman, Hindi-leaning | 85 | 9 = 10.6% [5.7, 18.9] | 5/3/1 | 1 [0.2, 6.4] | 0/0/1 | 0, 0 |
+| Roman Urdu | 75 | 9 = 12.0% [6.4, 21.3] | 5/3/1 | 0 [0, 4.9] | | 0, 0 |
+| Hindi, Hindi Wikipedia | 80 | 8 = 10.0% [5.2, 18.5] | 5/3/0 | 0 [0, 4.6] | | 0, 0 |
+| Urdu, Urdu Wikipedia | 72 | 8 = 11.1% [5.7, 20.4] | 6/2/0 | 1 [0.2, 7.5] | 0/0/1 | 0, 0 |
+| False claims, English | 4 | 0 | | 2 | 2/0/0 | 0, 0 |
+| False claims, Hindi and Urdu script | 8 | 0 | | 0 | | 0, 0 |
+| False claims, Roman | 8 | 1 | 0/0/1 | 2 | 2/0/0 | 0, 0 |
+
+- **Controls:** no claim of 556 was read against another question's articles
+  (404 against Simple English pages, 152 against Hindi and Urdu ones; 0
+  [0, 0.7%]).
+- **No false English claim was supported.** Talaqqi would keep 14 of the 30
+  English answers.
+- **Part** (11 of 44 findings against Simple English pages): a claim with one
+  detail its source does not hold ("licensed in 1955", "dormant volcano",
+  "Unhe 27 saal jail mein rakhna pada…").
+- **Wrong** (5 of 44 against Simple English pages, 1 of 17 against Hindi and
+  Urdu ones):
+  - a **false Roman Urdu claim supported**: "Marie Curie 7 November 1867 ko
+    Berlin mein paida hui thin." against "Skłodowska-Curie was born on 7
+    November 1867 in Warsaw, Poland." joined with two other sentences of the
+    page (entailment 0.61). It is read in Devanagari as "Marie Curie 7 November
+    1867 को Berlin में पैदा हुई तीन." "Berlin" has no reading and stays in Latin
+    letters. "thin" (Urdu تھیں, "were") is read as Hindi तीन ("three"), which
+    also puts "three" into the search and brings "The three found radium in
+    1898" into the joined premise. Written "…paida hui thi.", the claim is still
+    supported, by the one sentence (0.77), while "Marie Curie was born on 7
+    November 1867 in Berlin." is contradicted (0.98). A Roman claim is
+    contradicted only when every writing of it is, but supported when its
+    Devanagari writing is. By Talaqqi's rule the answer would be kept;
+  - a **true Roman claim contradicted**: "Duniya ka pehla controlled, powered
+    aur sustained hawai jahaz Orville aur Wilbur Wright (Wright Brothers) ne
+    udaya tha." against the Wright brothers article's first sentence (0.74,
+    both ways). Lughah reads the claim as English, so the NLI model reads it as
+    written, and the agreement of writings does not apply;
+  - a **true Urdu claim contradicted by Urdu Wikipedia**: "ماچو پیچو پیرو کے
+    جنوبی امریکی ملک میں، اینڈیز پہاڑوں کے سلسلے میں واقع ہے۔" against "ماچو پیچو
+    جنوبی امریکا میں پیرو کے کاسکو علاقے میں واقع ہے۔", the NLI model misreading
+    a pair both ways;
+  - **true claims supported by joined premises that do not say them**: "The
+    biggest animal alive today is the blue whale." against three sentences on
+    the blue whale, none of them saying it is the biggest animal (the dump
+    drops the lengths: "The biggest blue whale found was  and measured
+    long."), and "World Wide Web ko Tim Berners-Lee ne banaya tha." (in both
+    Roman sets) against three sentences on the World Wide Web Consortium and
+    his birth.
+
+**Each design on and off**, against Simple English Wikipedia unless named
+(supported, contradicted; wrong findings in the audit). "Without subjects" is
+the code with every claim's context empty; a joined premise still never
+contradicts:
+
+| Set | Current code | Without subjects | Roman reading off | Qāmūs off |
+|---|---|---|---|---|
+| English (72) | 17, 0 (1 wrong) | 17, 0 (1 wrong) | 17, 0 (1 wrong) | 17, 0 (1 wrong) |
+| Hindi (80) | 2, 0 | 2, 0 | 2, 0 | 1, 0 |
+| Urdu (72) | 1, 0 | 2, 0 (1 wrong) | 1, 0 | 0, 0 |
+| Roman (160) | 18, 1 (3 wrong) | 17, 1 (3 wrong) | 5, 2 (2 wrong) | 5, 2 (2 wrong) |
+| False claims (20) | 1, 4 (1 wrong) | 1, 4 (1 wrong) | 0, 4 | 0, 4 |
+| Hindi and Urdu, own Wikipedia (152) | 16, 1 (1 wrong) | 20, 1 (2 wrong) | | |
+| Controls | 0, 0 | 0, 0 | 0, 0 | 0, 0 |
+
+The claim each subject check took away is one that does not name its
+subject, read against a sentence on something else: "یہ ان کی سب سے مشہور تصاویر
+میں شمار ہوتی ہے۔" (The Starry Night) against The Potato Eaters, and
+"इसे प्राचीन मिस्र के शासकों द्वारा कराए गए विशाल निर्माणों में सबसे प्रसिद्ध माना
+जाता है।" (the Great Pyramid) against a sentence on the Badari culture. With
+the Roman reading off, "Unhone 1789 se 1797 tak United States ke pehle
+President ke roop mein kaam kiya." is contradicted by "On January 7, 1789,
+Washington was elected president…"; with it on, it is supported (right).
+
+**Against the design set**, the current code on both:
+
+| | Design set (30 October) | Held-out (31 October) |
+|---|---|---|
+| English supported | 18/75 = 24.0% [15.8, 34.8] | 17/72 = 23.6% [15.3, 34.6] |
+| English answers Talaqqi keeps | 14/30 | 14/30 |
+| Hindi and Urdu supported by Simple English pages | 4/239 = 1.7% [0.7, 4.2] | 3/152 = 2.0% [0.7, 5.6] |
+| Hindi and Urdu supported by their own Wikipedia | 38/239 = 15.9% [11.8, 21.1] | 16/152 = 10.5% [6.6, 16.4] |
+| Roman supported | 26/158 = 16.5% [11.5, 23.0] | 18/160 = 11.2% [7.2, 17.1] |
+| Roman supported with the Roman reading off | 8/158 | 5/160 |
+| True claims contradicted (Simple English; own Wikipedia) | 0/472; 0/239 | 1/384; 1/152, both wrong |
+| False claims supported | 0/40 | 1/20 (Roman Urdu) |
+| False claims contradicted | English 8/20, Roman 3/20 | English 2/4, Roman 2/8, Hindi and Urdu script 0/8 |
+| Findings against Simple English pages: right/part/wrong | 54/3/2 of 59 | 28/11/5 of 44 |
+| Findings against another question's articles | 0 | 0 of 556 |
+
+- **English held.** The same share of claims was supported, none was
+  contradicted, and Talaqqi would keep as many answers. One support in 17 is
+  wrong, against none in 18.
+- **Roman fell**, from 16.5% to 11.2% supported (the intervals overlap). The
+  Roman reading still gives most of it (5 → 18 claims here, 8 → 26 there), but
+  here it also gave the first false claim supported in any set, and one true
+  Roman claim is read as contradicted.
+- **Reading a claim with its subject changed little here.** It took away one
+  wrong support against Simple English pages and one against Hindi and Urdu
+  ones. Against Hindi and Urdu pages it also took away three right or part
+  supports (20 → 16); against Simple English pages as many claims are
+  supported with it as without (39), a few of them others. On the design set,
+  12 of 17 wrong findings in Hindi and Urdu were claims that do not name their
+  subject; here 2 of the 8 distinct wrong findings over all arms are.
+- **Across scripts** (Hindi and Urdu answers against English pages) as few
+  claims were supported as on the design set, about 2%.
+- **No finding against another question's articles,** in any arm, as on the
+  design set.
+- **Wrong findings were more common**: 5 of 44 [5.0, 24.0%] against 2 of 59
+  [0.9, 11.5%]. The audit was made by a different hand from the design set's
+  and marked part more often (11 of 44 against 3 of 59).
+- The Hindi and Urdu answers here answer questions written in Hindi and Urdu;
+  on the design set they answered English or Roman questions. Answers here hold
+  fewer claims (2.4 to 2.8 each, against 4 in Hindi and Urdu there).
+
 ## It learns
 
 - **Kept for this user.** What an outside source settled is kept in the user's

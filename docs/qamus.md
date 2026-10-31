@@ -786,6 +786,50 @@ average information, never through "was" or "in". Measured, not changed:
 these sets chose the design, and a further change would be fitted to them
 too.
 
+#### Held-out (31 October 2026)
+
+The sets above chose this reading. It was measured again, with no change, on
+the held-out set of [Ahl al-Dhikr](ahl-dhikr.md#held-out-31-october-2026): 30
+new questions, each worded once in Hindi-leaning Roman and once in Roman Urdu
+by hand, answered by the production teacher (all 60 answers in Latin letters,
+27 after the second ask), 160 claims, against the questions' Simple English
+Wikipedia articles and, as a control, another question's:
+
+| Roman claims | Roman reading off | Roman reading on |
+|---|---|---|
+| Hindi-leaning (85), supported | 2 | 9 [5.7, 18.9%] |
+| Urdu-leaning (75), supported | 3 | 9 [6.4, 21.3%] |
+| All 160: supported [95% Wilson] | 5 [1.3, 7.1%] | **18** [7.2, 17.1%] |
+| Audit of the supported (right/part/wrong) | 4/1/0 | 10/6/2 |
+| True claims contradicted | 2, both wrong | 1, wrong |
+| 8 false Roman claims: supported, contradicted | 0, 2 | 1 (wrong), 2 |
+| Control (another question's articles) | 0, 0 | 0, 0 |
+
+On the design sets the reading took 8 supported claims of 158 to 26 [11.5,
+23.0%]; here it took 5 of 160 to 18. Fewer, though the intervals overlap.
+
+- **A false claim supported.** "Marie Curie 7 November 1867 ko Berlin mein
+  paida hui thin." is written in Devanagari through each word's Hindi
+  reading, as "Marie Curie 7 November 1867 को Berlin में पैदा हुई तीन.": "thin"
+  (Urdu تھیں, "were") is read as तीन ("three"), "Berlin" has no reading, and
+  "Marie", where the source does not write it, is read as मेरी ("my"). Read
+  so, the claim is supported by a
+  joined premise holding "born on 7 November 1867 in Warsaw" (0.61), and
+  written "…thi." by that one sentence (0.77). As written, it is not supported;
+  in English it is contradicted. A Roman claim must be contradicted in every
+  writing, but one writing is enough to support it.
+- **Supported, wrong:** "World Wide Web ko Tim Berners-Lee ne banaya tha." (in
+  both sets) against three sentences on the World Wide Web Consortium and his
+  birth.
+- **Contradicted, wrong:** "Duniya ka pehla controlled, powered aur sustained
+  hawai jahaz Orville aur Wilbur Wright (Wright Brothers) ne udaya tha." Lughah
+  reads it as English, so it is read as written in both arms. The reading on
+  removed the other one: "Unhone 1789 se 1797 tak United States ke pehle
+  President ke roop mein kaam kiya." was contradicted by "On January 7, 1789,
+  Washington was elected president…" and is now supported (right).
+- **Part** (6): a claim with one detail the sentence lacks ("Unhe 27 saal jail
+  mein rakhna pada…", "…aur ek dormant volcano hai").
+
 ### Not adopted
 
 - **A direct Roman→English lexicon from PHINC.** IBM Model 1 in both
