@@ -318,12 +318,12 @@ No language was proven, so the teacher still answers `plan_steps`.
 - **Too few sure answers to bet on.** The e-process's estimate starts at ½ and weighs outcomes with a half-life of 50. It bets only once that estimate passes p0, which takes far more sure answers than 7–51. In English and Hindi the sure answers agreed more often than p0, but too seldom to count.
 - **Urdu was sure and wrong early.** Its 16 wrong sure answers were all `converse` where the teacher chose an action: `use_tool` 9, `web_search` 4, `watch` 2, `compute` 1. Most came in the first third, where Urdu coverage was 9.4%; later it fell to 1.1%.
 - **The lessons differ from phase 2's.** The teacher chose `use_tool` 1,901 times and `converse` 1,371 times (phase 2: 1,708 and 2,367), so phase 2's lessons taught a prior these messages did not follow.
-- **Overall agreement stayed below the byte student's.** It was 0.43–0.67, against about 0.58 for the student. Qasd's features tell a request for a connected tool from conversation no better than the bytes did; the teacher itself repeats that choice only 80–88% of the time.
+- **Overall agreement was no better than the byte student's.** It was 0.43–0.67, against about 0.58 for the student. Qasd's features tell an action from conversation no better than the bytes did; the teacher itself repeats that choice only 80–88% of the time.
 
 **What it says.**
 - Choosing between MIZAN's actions from a teacher's labels is not learned well enough here, by bytes or by evidence.
-- The disagreement is mostly `use_tool` against `converse`. That choice depends on which tools a person has connected, which neither learner sees.
-- The next attempt should give the choice that context, or take labels from verified outcomes (did the tool run, was it what the person wanted) rather than from the teacher's plans.
+- The disagreement is mostly `use_tool` against `converse`. `plan_steps` shows the teacher no list of the person's tools: `use_tool` is "any other action, such as a connected app, a skill or memory". So for everyday requests (music, lights, alarms) the boundary between an action and conversation is the prompt's vague one, and the teacher does not hold it steadily either.
+- The next attempt should take labels from verified outcomes (a tool that served the request ran, and the person kept the result) rather than from the teacher's plans, or show both the teacher and the learner the person's connected tools.
 
 
 
