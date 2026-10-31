@@ -12,7 +12,7 @@ The owner asked for this on 31 Oct 2026: MIZAN should train and learn from its t
 ## Phases
 
 1. **The reader (this page, built).** The Ruh reader ([ruh-reader.md](ruh-reader.md)) learns each consented message's language as soon as the message arrives. Before, it learned only at night, and only from messages a person had reviewed.
-2. **Teacher to student (being measured).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
+2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
 3. **The speaker on a GPU.** The same loop runs on the 125M speaker ([ruh-speaker.md](ruh-speaker.md)) once RunPod access exists.
 
 ## The design: two speeds, as in the brain
@@ -218,6 +218,30 @@ Also reported, deciding nothing:
 **What follows.** For a language where all three bars hold, phase 2b is built: the student answers `plan_steps` first in production, behind a setting, shadow first. MIZAN checks every answer, and the teacher answers when the check fails; that answer becomes a lesson. The student's words in free-text fields are used only where they are copied from the message. For a language where the bars do not hold, the student is not used.
 
 `scripts/tadrib_lisan.py --lessons WORK`, `--again WORK`, then `--run WORK --weights reader-seed0.pt --erase`.
+
+### Phase 2 result (31 Oct 2026): not proven in any language
+
+**The teacher.** It was asked 5,100 times and 4,485 of its plans were lessons: English 1,455, Hindi 1,481, Urdu 1,549. All of them were served by `deepseek/deepseek-chat-v3-0324`, at $1.35 including the second asking. Its agreement with itself (`p0`) was English 0.877, Hindi 0.783 and Urdu 0.800, each on about 65 messages. Its plans were mostly `converse` (2,367) and `use_tool` (1,708), then `watch` (198), `web_search` (138), `compute` (41) and `build_and_run` (22).
+
+| Bar | English | Hindi | Urdu |
+|---|---|---|---|
+| 1 proven (e-process reaches 20) | e = 1.0: **no** | e = 1.0: **no** | e = 1.0: **no** |
+| Agreement in the last third | 0.581 (p0 0.877) | 0.546 (p0 0.783) | 0.636 (p0 0.800) |
+| 2 speed (2 threads) | answer p95 0.22 s, learn p95 0.72 s: holds | same | same |
+| 3 exact forgetting | 19 of 300 forgotten, bit for bit: holds | same | same |
+
+No language was proven, so phase 2b is not built and the teacher still answers `plan_steps`.
+
+**What the stream showed** (read after the verdict, so it decides nothing):
+- **The form is learned at once, the decision is not.** Answers passing MIZAN's checks rose from 78% to 99% within 1,000 lessons. Agreement rose from 40% to about 58–61% by lesson 2,500 and then stayed there.
+- **Different but valid.** About 40% of the student's answers were valid plans that differed from the teacher's. Served, they would have been the wrong actions.
+- **Agreement by kind of plan** (last third): `converse` 0.78 and `use_tool` 0.47. Every `watch`, `web_search`, `compute` and `build_and_run` lesson disagreed (62, 44, 17 and 9 of them). The student learned the common choice and not the rare ones.
+- **Answering only when sure would not have helped.** Its most confident 10% of answers agreed 80% of the time, which is still below English's p0.
+
+**What it says.** A 3.48M-parameter byte model learns the shape of a plan from a few hundred lessons. Within 4,500 lessons it does not learn the teacher's choice of action, and that choice is a judgement about meaning that the teacher itself repeats only 78–88% of the time. Learning from a teacher works where the student can hold the knowledge: the learning, forgetting and speed machinery all held. Two roads remain:
+- a larger student (phase 3, the 125M speaker on a GPU);
+- splitting the task, so that the choice of action is learned as a classification from the teacher's verified labels (as Qasd already learns from verified requests) and only the copying of the user's words is generated.
+
 
 ## Settings, routes and files
 
