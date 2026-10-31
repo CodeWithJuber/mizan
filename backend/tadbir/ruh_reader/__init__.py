@@ -186,6 +186,32 @@ def seeds() -> list[tuple[str, str]]:
     return [(text, label) for text, label in lughah.corpus() if label not in lughah.NEUTRAL]
 
 
+@cache
+def written_by_a_model() -> frozenset[str]:
+    """The groups (words as read) of Lughah's seeds that a language model
+    wrote (their source is in ``corpus.MODEL_WRITTEN``: 900 of the 982 Roman
+    Hindi/Urdu seeds are Hinglish-1M rows). Since v2 the reader never trains
+    on them, never checks its checkpoints or fits κ, γ, b on them, and never
+    replays them at night; they are only ever measured (the seeds' held-out
+    groups, reported). Lughah still counts them: that is Lughah's corpus."""
+    from .. import lughah
+    from .corpus import MODEL_WRITTEN
+
+    found: set[str] = set()
+    for path in sorted(lughah.CORPUS.glob("*.tsv")):
+        for row in path.read_text(encoding="utf-8").splitlines():
+            source, _, text = row.partition("\t")
+            if text.strip() and source.split(":", 1)[0] in MODEL_WRITTEN:
+                found.add(group_of(text))
+    return frozenset(found)
+
+
+def trainable(rows: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The rows the reader may learn from or be developed on: not model-written."""
+    written = written_by_a_model()
+    return [row for row in rows if group_of(row[0]) not in written]
+
+
 def corpus_digest(rows: Sequence[tuple[str, str]]) -> str:
     from core.tamyiz_cache import digest
 
@@ -727,17 +753,22 @@ def build(
         splits[part(group_of(row[0]))].append(row)
     if iqtibas.enabled() and iqtibas.ready() is None:
         iqtibas.load()  # the Quran's texts, when on disk: the full scripture check
-    lines, dropped = training_lines(splits["train"], languages)
-    dev_lines, _ = training_lines(splits["dev"], languages)
+    # Model-written seeds are never learned from nor developed on (v2).
+    learnable = {name: trainable(splits[name]) for name in ("train", "dev")}
+    left_out = {name: len(splits[name]) - len(learnable[name]) for name in learnable}
+    lines, dropped = training_lines(learnable["train"], languages)
+    dev_lines, _ = training_lines(learnable["dev"], languages)
     extra: dict | None = None
     if corpus is not None:
         guarded = {group_of(text) for text, _label in [*splits["dev"], *splits["held_out"]]}
         more, extra = _corpus_lines(corpus, languages, guarded)
         lines = [*lines, *more]
     log(
-        f"reader: {len(lines)} training lines ({dropped} seeds set aside as scripture"
+        f"reader: {len(lines)} training lines ({dropped} seeds set aside as scripture, "
+        f"{left_out['train']} model-written left out"
         + (f", {extra['lines']} from the corpus" if extra else "")
-        + f"), {len(splits['dev'])} dev, {len(splits['held_out'])} held out"
+        + f"), {len(learnable['dev'])} dev ({left_out['dev']} model-written left out), "
+        f"{len(splits['held_out'])} held out"
     )
     began = time.monotonic()
     fold = held_out_lughah(rows, calibrate)
@@ -767,7 +798,7 @@ def build(
         if trained is not None:
             keep_trained(trained, seed, key, model, report)
             log(f"reader: seed {seed}'s weights kept in {trained} before reading")
-    dev = read_with_lughah(splits["dev"], languages, fold)
+    dev = read_with_lughah(learnable["dev"], languages, fold)
     held = read_with_lughah(splits["held_out"], languages, fold)
     short: list[Read] = []
     if corpus is not None:
@@ -800,6 +831,7 @@ def build(
         "scripture_set_aside": dropped,
         "scripture_mushaf": iqtibas.ready() is not None,
         "split": {name: len(items) for name, items in splits.items()},
+        "model_written_left_out": left_out,  # seeds: never trained or developed on
         "corpus": extra,
         "fit": fit.to_dict(),
         "held_out_bpb": bits_per_byte(held, languages),
@@ -1204,7 +1236,7 @@ def learn(
         return report
     dev, held = _read_reads(_files("current")[2])
     seed_lines, _ = training_lines(
-        [row for row in rows if part(group_of(row[0])) == "train"], languages
+        trainable(row for row in rows if part(group_of(row[0])) == "train"), languages
     )
     dev_lines = [(r.own, r.truth) for r in dev if r.own and r.kind == "whole"]
     challenger = copy.deepcopy(model)
@@ -1310,6 +1342,21 @@ def main() -> None:
     parser.add_argument(
         "--fresh", action="store_true", help="test 3: build the fresh slices beside the corpus"
     )
+    parser.add_argument(
+        "--old",
+        type=Path,
+        help="v1's corpus folder (its slices are never trained on; v2's slices read what it saw)",
+    )
+    parser.add_argument(
+        "--hadith",
+        action="store_true",
+        help="with --corpus: also leave out runs of the six books (the speaker's rule)",
+    )
+    parser.add_argument(
+        "--v2-labels", action="store_true", help="v2: write the rows to label by hand"
+    )
+    parser.add_argument("--v2", action="store_true", help="v2: build its slices (before --corpus)")
+    parser.add_argument("--dakshina", type=Path, help="v2: folder of Dakshina's romanized files")
     parser.add_argument("--train", action="store_true", help="train and install as current")
     parser.add_argument("--seeds-only", action="store_true", help="train without the corpus")
     parser.add_argument("--seed", type=int, default=0)
@@ -1317,9 +1364,26 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # signed download links stay out
+    if args.v2 or args.v2_labels:
+        if args.old is None or args.dakshina is None:
+            parser.error("--v2 needs --old (v1's corpus) and --dakshina")
+        reader_corpus.folder().mkdir(parents=True, exist_ok=True)
+        made = reader_corpus.build_v2(
+            old=args.old, dakshina_folder=args.dakshina, labels_only=not args.v2, log=print
+        )
+        print(json.dumps({k: v for k, v in made.items() if k != "created"}, indent=1))
     if args.corpus:
+        hadith = None
+        if args.hadith:
+            from .speaker import Hadith, hadith_editions
+
+            hadith = Hadith(*hadith_editions())
         found = reader_corpus.build(
-            bytes_per_language=args.bytes_per_language, workers=args.workers, log=print
+            bytes_per_language=args.bytes_per_language,
+            workers=args.workers,
+            hadith=hadith,
+            measured=reader_corpus.measured_texts(args.old),
+            log=print,
         )
         print(json.dumps({k: found[k] for k in ("train", "short", "kept", "dropped")}, indent=1))
     if args.validation:
@@ -1331,7 +1395,14 @@ def main() -> None:
         made = reader_corpus.build_fresh(labels_only=not args.fresh, log=print)
         print(json.dumps({k: v for k, v in made.items() if k != "created"}, indent=1))
     if not args.train:
-        if not (args.corpus or args.validation or args.fresh or args.fresh_labels):
+        if not (
+            args.corpus
+            or args.validation
+            or args.fresh
+            or args.fresh_labels
+            or args.v2
+            or args.v2_labels
+        ):
             print(json.dumps(status(), indent=1))
         return
     extra = None if args.seeds_only else reader_corpus.load()
