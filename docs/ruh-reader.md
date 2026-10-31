@@ -2,7 +2,7 @@
 
 "And of His signs is the creation of the heavens and the earth and the diversity of your languages and your colors" ([30:22](https://quran.com/30:22)); "And We did not send any messenger except [speaking] in the language of his people to state clearly for them" ([14:4](https://quran.com/14:4)); "if there comes to you a disobedient one with information, investigate" ([49:6](https://quran.com/49:6), Saheeh International).
 
-Lughah (`tadbir/lughah.py`, [Fahm](fahm.md)) decides which language a message is written in by counting letter n-grams with naive Bayes. The Ruh reader (`backend/tadbir/ruh_reader/`) is the first slice of MIZAN's own small transformer: a byte-level language model that learns how each language goes on from one letter to the next, and gives a second reading of the same words. Its word is taken only once it has been measured against Lughah on messages neither has seen, and so far it has not earned that (see **Measured**): it runs in shadow, computed and logged, and never changes the decision.
+Lughah (`tadbir/lughah.py`, [Fahm](fahm.md)) decides which language a message is written in by counting letter n-grams with naive Bayes. The Ruh reader (`backend/tadbir/ruh_reader/`) is the first slice of MIZAN's own small transformer: a byte-level language model that learns how each language goes on from one letter to the next, and gives a second reading of the same words. Its word is taken only once it has been measured against Lughah on messages neither has seen. Two tests refused it; the third, on 31 Oct 2026, passed for both seeds (see **Measured**). It still runs in shadow, computed and logged, never changing the decision, until the owner decides to turn it on.
 
 ## The model
 
@@ -65,6 +65,7 @@ Lughah's seeds stay Lughah's. The reader may also learn from text that is not th
 | Tatoeba per-language exports (eng, hin, urd, ara); every sentence id the seeds use left out | CC BY 2.0 FR | no (weekly exports; SHA-256 recorded) | training |
 | MASSIVE 1.1 (Amazon; localised from SLURP), en-US, hi-IN, ur-PK, ar-SA | CC BY 4.0 | SHA-256 | `train` partition: training; `test` partition, 3–8 words: held out |
 | Abhishekcr448/Hinglish-Everyday-Conversations-1M (synthetic, written by GPT-4o-mini per its card) | MIT | commit + SHA-256 | training; held-out rows: held out |
+| CLINC150 (clinc/oos-eval; crowd-written requests, Larson et al. 2019) | CC BY 3.0 | commit + SHA-256 | never trained on: test 3's English gate rows |
 
 A line is kept for training only when (in this order, each counted in the manifest): more than half of its letters are in its language's script (MASSIVE's ar-SA has utterances written in English only); it has 3 letters or more and at most 192 bytes of words; it is not a seed by its Tatoeba id; its words as read (`group_of`) are no seed's in any split, so nothing in Lughah's held-out or development groups is trained on; it is not a held-out short message; it is the first of its group; and it is not scripture, with Iqtibas's texts in memory (the build refuses to write a corpus without them). Lines are taken in an order fixed by SHA-256 of their source id, round robin over a language's sources, until the language holds 900,000 bytes of words: the training time, not the data, is the bound, so each language gets the same share. `build` checks the corpus again (dev and held-out seed groups, held-out short messages, the first two scripture checks) and records its SHA-256 and sources in the reader's manifest.
 
@@ -72,7 +73,7 @@ A line is kept for training only when (in this order, each counted in the manife
 
 ## Measured
 
-Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow. On 31 Oct, **v1.1** recalibrated v1's weights on real short messages and gated them on others ([v1.1](#v11-calibrated-on-real-short-messages)). It was refused too.
+Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow. On 31 Oct, **v1.1** recalibrated v1's weights on real short messages and gated them on others ([v1.1](#v11-calibrated-on-real-short-messages)). It was refused too. **Test 3** recalibrated them once more with the Roman rows Qāmūs reads Hindi or Urdu in, and gated them on fresh CLINC150 English requests and never-read Roman rows ([test 3](#test-3-roman-labels-checked-by-qāmūs-gated-on-fresh-messages)): both seeds passed. The default stays shadow; the owner decides.
 
 ### v0: the seeds only
 
@@ -245,7 +246,68 @@ The test v1.1 wrote down, run on v1's weights again. The protocol below was fixe
 
 **Reported, never deciding:** the gate slice by part and language with every arm; the Roman rows the rule left out; the gate slice under v1's development fit and under v1.1's calibration (no rule); the calibration half (in sample), v1.1's gate half, the seeds' held-out groups and v1's short messages under the new fit; latency and memory.
 
-*Results: to come, once the slices are fixed and both seeds are read.*
+**The rule against a reader** (measured 04:49 UTC, before the rule was used; the 200 labels were written, and their SHA-256 recorded, before the rule was computed on any of them):
+
+| 200 never-read rows | rule: Roman Hindi/Urdu | rule: not |
+|---|---|---|
+| by hand: Roman Hindi/Urdu (198) | 198 | 0 |
+| by hand: English (2) | 1 | 1 |
+
+Agreement 199/200 = 99.5% [97.2, 99.9]; precision 198/199 = 99.5% [97.2, 99.9]; recall 198/198 = 100% [98.1, 100]; specificity 1/2 [9.5, 90.6]; Cohen's κ 0.66. The one disagreement is "yes, i agree, they're growing as an artist.", where Qāmūs reads "artist" as the Urdu آرٹسٹ. Only 2 of 200 random rows are English (1.0% [0.3, 3.6]), so the sample says little about how the rule treats English rows (see below).
+
+**The slices** (`fresh.tsv`, SHA-256 `0dfd50b8…bf79`, fixed and checked before anything was scored: no repeated group, no group a seen text's or a labelled row's, every Roman row never read, in a held-out group and in an unmeasured conversation, the rule holding on every gate Roman row and on no row it left out; a brute-force check of 300 gate rows found none near-exact to a seen text). The seeds' Hinglish ids number another file, so a conversation holding a seed was found by its words.
+
+| Part | messages | of which | left out before |
+|---|---|---|---|
+| gate | 17,580 (17,580 groups) | en (CLINC150) 12,534 · Roman Hindi/Urdu 5,046 | CLINC150: not 3–8 words 10,447, seen words 209, near-exact 422, repeated 88; Roman: not a held-out group 35,949, seen words 2,972, near-exact 351, conversation measured or a seed's 317, repeated 210, labelled by hand 200, script 4 |
+| left out by the rule (reported) | 157 | Roman Hindi/Urdu | |
+
+CLINC150 passed its checks: CC BY 3.0 on the official repository, 185 of its 13,253 queries of 3–8 words (1.4%) are exact MASSIVE utterances, 12,534 remain. The never-read Roman pool ran out at 5,046 rows (the protocol's "or the pool ends"): few Hinglish-1M utterances have 3–8 words, one in five is a held-out group, and many repeat seen words. So English weighs 71% of the gate. Of v1.1's 644 calibration Roman rows the rule left out 25.
+
+Both seeds' kept weights matched their key, so nothing was retrained: these are v1's readers.
+
+**Calibration** (γ = 0 for both, so κ is a temperature):
+
+| Seed | κ: development → v1.1 → test 3 | b: development → v1.1 → test 3 |
+|---|---|---|
+| 0 | 0.945 → 0.229 → 0.283 | 0.723 → 0.082 → 0.269 |
+| 1 | 1.000 → 0.332 → 0.401 | 0.604 → 0.074 → 0.233 |
+
+**The gate passed for both seeds.** Both conditions held.
+
+| Seed | log-loss, Lughah → product | P(not better) | wins / losses (groups) | e-value (needed) | accuracy, Lughah → product | adopted |
+|---|---|---|---|---|---|---|
+| 0 | 0.0672 → 0.0525 | < 0.0005 (0 of 2,000) | 54 / 8 | 4.3·10⁷ (240) | 98.61% → 98.87% | **yes** |
+| 1 | 0.0672 → 0.0505 | < 0.0005 (0 of 2,000) | 61 / 9 | 5.1·10⁸ (240) | 98.61% → 98.90% | **yes** |
+
+**The default stays `shadow`.** A pass is reported; the owner decides whether `on` may use it.
+
+**The gate slice** (accuracy in % [95% Wilson interval] · mean log-loss; Lughah alone is the held-out refit):
+
+| Slice | n | Lughah alone | Reader alone, seed 0 | seed 1 | Product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| gate slice | 17,580 | 98.61 [98.42, 98.77] · 0.0672 | 98.52 [98.33, 98.69] · 0.0677 | 98.62 [98.44, 98.79] · 0.0579 | 98.87 [98.70, 99.01] · 0.0525 | 98.90 [98.74, 99.05] · 0.0505 |
+| English (CLINC150) | 12,534 | 99.15 [98.98, 99.30] · 0.0553 | 98.89 [98.69, 99.06] · 0.0538 | 98.88 [98.67, 99.05] · 0.0393 | 99.43 [99.28, 99.54] · 0.0298 | 99.43 [99.28, 99.54] · 0.0283 |
+| Roman Hindi/Urdu | 5,046 | 97.25 [96.76, 97.66] · 0.0966 | 97.60 [97.14, 97.99] · 0.1022 | 98.00 [97.57, 98.35] · 0.1042 | 97.48 [97.01, 97.88] · 0.1088 | 97.60 [97.14, 97.99] · 0.1057 |
+
+- **By part** (reported; the gate is the whole slice): on English the product wins 40 / 6 and 42 / 8 groups (e 3.2·10⁵ and 8.2·10⁴) and halves the log-loss. On Roman Hindi/Urdu it wins 14 / 2 and 19 / 1 (e 64 and 5.0·10³), but its log-loss is **worse** (0.097 → 0.109 and 0.106, P(not better) 1.0): there it is more often right and, when wrong, more sure.
+- **Mistakes**, held-out Lughah → product, seed 0 / seed 1: Roman read as English 134 → 123 / 117, English read as Roman 106 → 72 / 72, Roman read as Hindi 5 → 4 / 4.
+- **Against Lughah as shipped** (what MIZAN runs; it never saw these messages): shipped 98.82% · 0.0595, shipped × reader 98.92% · 0.0498 and 98.96% · 0.0481; wins / losses 25 / 7 (e 77) and 36 / 10 (e 735), P(not better) < 0.0005 for both. Seed 0 would not reach 240 against it; seed 1 would. Reported only: the gate is against the held-out refit, as in every test.
+- **What the rule changed.** Under v1.1's calibration (the same half without the rule; b 0.08 / 0.07) the product on this slice: 98.69% / 98.73% · 0.0611 / 0.0597, wins / losses 18 / 3 and 26 / 4 (e 143 and 2,528). Under v1's development fit: 98.90% / 98.96% but log-loss 0.095 / 0.076 (P(not better) 1.0 / 0.95). Leaving out the 25 calibration rows the rule left out (all 25 written in English, read after the test) let b rise to about a quarter, and one weight now holds both conditions.
+- **Bits per byte** on the gate slice, seed 0 / seed 1: English 2.294 / 2.257 · Roman Hindi/Urdu 2.239 / 2.219.
+
+**Other slices under the test-3 fit (reported, never deciding):**
+- The 157 Roman rows the rule left out: every arm reads about 94% of them as English (Lughah right on 5.7%, the product on 5.1%): they are English rows under Hinglish-1M's label, as the rule says.
+- v1.1's gate half: 98.59% → 98.78% / 98.81%, log-loss 0.0545 → 0.0526 / 0.0527, wins / losses 6 / 0 and 7 / 0 (P(not better) 0.18 / 0.20).
+- The seeds' held-out groups: 99.38% → 99.38% / 99.46%, log-loss 0.0237 → 0.0188 / 0.0183 (wins / losses 0 / 0 and 2 / 0).
+- v1's 9,808 short messages (measured in v1): 98.54% → 98.77% (both), log-loss 0.0549 → 0.0523 / 0.0516, wins / losses 25 / 3 (e 5,651) for both.
+- The calibration half (in sample): 98.97% → 99.06% (both), log-loss 0.0465 → 0.0409 / 0.0406.
+
+**Cost.** One 100-byte message under all five languages, fp32 on 2 threads, the reader alone in its process: 27.0 / 28.1 ms median (p90 31.9 / 36.1 ms); 24 bytes 6.1 / 6.3 ms; int8 22.5 / 24.3 ms. Loading took 1.2 s and 263 MB resident (307 MB after reading). Within the evaluations, run two at once: 18.6 / 20.1 ms. The int8 model makes the same decision on 99.85% / 99.93% of the seeds' held-out readings. Each evaluation (25,000 messages read under five languages besides v1.1's slices) took 741 / 755 s and peaked at 1,111 / 1,214 MB.
+
+**Looked at after the test (exploratory, not part of it).** Of the 141 gate Roman rows that held-out Lughah or the seed-0 product misreads, 75 are written entirely in English by hand ("i need to buy a new power bank!", "did you watch the match?", "my internet is down!"). The rule keeps them because Qāmūs reads an English word that MASSIVE's translators wrote in Devanagari or Urdu letters as Roman Hindi: "bank" → बैंक, "team" → टीम, "match" → میچ, "dinner" → डिनर, "artist" → آرٹسٹ. The 200-row sample, with 2 English rows, could not show this. So the Roman part's measured accuracy, and its worse log-loss, are still in part the labels'. The English mistakes are terse commands ("credit limit change", "check my bank balance", "schedule a mechanic"): of Lughah's 106, the seed-0 product fixed 40 and made 6 new ones.
+
+**Verdict.** The gate passed for both seeds as the third test of v1's weights (e ≥ 240; the e-values and the log-loss bootstrap far past it). The gain is on English requests; on Roman Hindi/Urdu the product is more often right but worse calibrated. The reader stays in **shadow** until the owner decides. Using it `on` would also need a version installed with this fit and verdict: `install` writes the development fit and the seeds' gate, which refused it.
 
 ## Learning while MIZAN rests
 
@@ -269,6 +331,7 @@ Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was
 - **Train and install:** `cd backend && python -m tadbir.ruh_reader --train [--seed N] [--threads 2] [--seeds-only]`. It trains on the corpus when one is built (`--seeds-only` ignores it). Without `--train` it prints the status.
 - **Measure:** `cd backend && python ../scripts/ruh_reader_eval.py --seeds 0 1 [--corpus] --json out.json [--install 0] [--save DIR]`; `--evaluate DIR` reads an installed reader (`current.pt`, `current.json`) on the same slices without training.
 - **v1.1's validation slices:** `cd backend && python -m tadbir.ruh_reader --validation` writes `validation.tsv` and `validation.json` beside the corpus, from its own downloads (pins checked). `python ../scripts/ruh_reader_eval.py --corpus --validation [--test K] …` calibrates κ and b on the calibration half (γ held, `fit_on(…, gamma=…)`) and runs the gate on the gate half as the K-th test (by default the reader's tests + 1).
+- **Test 3's fresh slices:** `cd backend && python -m tadbir.ruh_reader --fresh-labels` writes `labels.tsv` (the rows to label by hand, drawn without the rule); `--fresh` downloads CLINC150 into `sources/clinc150/` (pinned) and writes `fresh.tsv` and `fresh.json` beside the validation slices. `python ../scripts/ruh_reader_eval.py --corpus --validation --fresh --test 3 …` calibrates with the Roman rule and gates on the fresh slice.
 
 Without weights nothing is loaded and torch is never imported: the default deployment is unchanged until an operator trains a reader. Once weights exist, shadow mode loads torch into the server process (a few hundred MB of resident memory on the 2 GB production machine) in a background thread. The message in hand is read without the reader until it is loaded.
 
@@ -276,7 +339,8 @@ Without weights nothing is loaded and torch is never imported: the default deplo
 
 - **Small data.** v0 learned from about 200 KB of seed text (3,305 lines); v1 adds 4.4 MB of its own corpus and is still one pass from its budget. The pilot's byte model had 12M tokens of web text and reached 1.2–2.4 bits per byte. Here the held-out bits per byte are higher (see the table), and Roman Hindi/Urdu (982 seeds) and English are the weakest.
 - **Easy test, hard ceiling.** On whole held-out sentences Lughah is already 100% right, so only shorter readings can show a gain. The short readings are cut from whole sentences, which is not the same as messages people actually send.
-- **Synthetic Roman labels.** Hinglish-1M labels every utterance Roman Hindi/Urdu, including many written entirely in English (24 of the 31 that v1.1's gate half has Lughah read as English). Measured accuracy on those rows is a floor set by the labels, and their log-loss weighs most in the calibration.
+- **Synthetic Roman labels.** Hinglish-1M labels every utterance Roman Hindi/Urdu, including many written entirely in English (24 of the 31 that v1.1's gate half has Lughah read as English). Measured accuracy on those rows is a floor set by the labels, and their log-loss weighs most in the calibration. Test 3's rule (a word Qāmūs reads as Hindi or Urdu) leaves out some of them, but keeps English rows holding a loanword MASSIVE writes in Devanagari or Urdu ("bank", "team", "match"): 75 of the 141 Roman rows misread in test 3 are English.
+- **Where test 3's gain is.** It is on English requests (CLINC150, 71% of its gate). On Roman Hindi/Urdu the product was more often right but its log-loss worse than Lughah's.
 - **Labels at night come from the models themselves.** A message is learned under the language both read it in. The night can adapt the reader to how people write, but cannot teach it a language Lughah misreads.
 - **Memory.** Weights cannot have one message subtracted. Forgetting falls back to an earlier version, which also loses what later nights learned from other messages.
 - **Shadow cost.** Reading every message costs CPU (see latency) and torch's memory, for no change in the decision until the gate passes.
