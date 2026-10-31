@@ -12,7 +12,7 @@ The owner asked for this on 31 Oct 2026: MIZAN should train and learn from its t
 ## Phases
 
 1. **The reader (this page, built).** The Ruh reader ([ruh-reader.md](ruh-reader.md)) learns each consented message's language as soon as the message arrives. Before, it learned only at night, and only from messages a person had reviewed.
-2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language; phase 2b, MIZAN choosing the action itself when sure, [pre-registered](#phase-2b-mizan-chooses-the-action-itself-when-it-is-sure-pre-registered-31-oct-2026)).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
+2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language; phase 2b, MIZAN choosing the action itself when sure, [measured 31 Oct: not proven either](#phase-2b-result-31-oct-2026-not-proven-in-any-language)).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
 3. **The speaker on a GPU.** The same loop runs on the 125M speaker ([ruh-speaker.md](ruh-speaker.md)) once RunPod access exists.
 
 ## The design: two speeds, as in the brain
@@ -296,6 +296,35 @@ For a language that is not proven, the teacher still answers.
   - The 64 messages of the batch that stopped were asked again.
   - A plan MIZAN's check cannot read is now recorded as an error, not a lesson, instead of stopping the run.
 - **Nothing else changed:** the lessons before and after use the same check.
+
+### Phase 2b result (31 Oct 2026): not proven in any language
+
+**The lessons.**
+- The teacher was asked 4,500 times; 3,882 of its plans were lessons (English 1,304, Hindi 1,271, Urdu 1,307), at $1.18. One plan could not be checked.
+- The reader first learned 4,303 of phase 2's lessons; 182 were dropped as now read as about the deen.
+
+| Bar | English | Hindi | Urdu |
+|---|---|---|---|
+| 1 proven (e-process reaches 40) | e = 1.0: **no** | e = 1.0: **no** | e = 1.0: **no** |
+| Sure (P ≥ 0.9): share of messages | 15 of 1,304 (1.2%) | 7 of 1,271 (0.6%) | 51 of 1,307 (3.9%) |
+| Agreement when sure (p0) | 0.93 (0.877) | 1.00 (0.797) | 0.69 (0.800) |
+| Sure and wrong | 1 | 0 | 16 |
+| Agreement on every message | 0.65 | 0.67 | 0.43 |
+| 2 fast enough (p95) | 0.0015 s: holds | same | same |
+
+No language was proven, so the teacher still answers `plan_steps`.
+
+**What the stream showed** (read after the verdict, so it decides nothing):
+- **Too few sure answers to bet on.** The e-process's estimate starts at ½ and weighs outcomes with a half-life of 50. It bets only once that estimate passes p0, which takes far more sure answers than 7–51. In English and Hindi the sure answers agreed more often than p0, but too seldom to count.
+- **Urdu was sure and wrong early.** Its 16 wrong sure answers were all `converse` where the teacher chose an action: `use_tool` 9, `web_search` 4, `watch` 2, `compute` 1. Most came in the first third, where Urdu coverage was 9.4%; later it fell to 1.1%.
+- **The lessons differ from phase 2's.** The teacher chose `use_tool` 1,901 times and `converse` 1,371 times (phase 2: 1,708 and 2,367), so phase 2's lessons taught a prior these messages did not follow.
+- **Overall agreement stayed below the byte student's.** It was 0.43–0.67, against about 0.58 for the student. Qasd's features tell a request for a connected tool from conversation no better than the bytes did; the teacher itself repeats that choice only 80–88% of the time.
+
+**What it says.**
+- Choosing between MIZAN's actions from a teacher's labels is not learned well enough here, by bytes or by evidence.
+- The disagreement is mostly `use_tool` against `converse`. That choice depends on which tools a person has connected, which neither learner sees.
+- The next attempt should give the choice that context, or take labels from verified outcomes (did the tool run, was it what the person wanted) rather than from the teacher's plans.
+
 
 
 ## Settings, routes and files
