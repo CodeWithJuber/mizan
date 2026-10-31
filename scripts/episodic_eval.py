@@ -34,11 +34,11 @@ def _records(path: Path, name: str) -> list[dict]:
         return [json.loads(line) for line in member.read().decode("utf-8").splitlines() if line]
 
 
-def conversations(path: Path, split: str) -> list[dict]:
+def conversations(path: Path, split: str, session: int = 4) -> list[dict]:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != MSC_SHA256:
         raise SystemExit(f"{path}: SHA-256 {digest}, not the pinned release")
-    return _records(path, f"msc/msc_dialogue/session_4/{split}.txt")
+    return _records(path, f"msc/msc_dialogue/session_{session}/{split}.txt")
 
 
 def background(path: Path):
@@ -125,33 +125,43 @@ def bootstrap(rows: list[dict], seed: int = 0) -> float:
     return worse / RESAMPLES
 
 
-def run(path: Path, split: str, policies: list[str]) -> dict:
-    from memory.episodic import keep
+def run(path: Path, split: str, policies: list[str], session: int = 4) -> dict:
+    from memory.episodic import came_up_again, keep
 
-    records = conversations(path, split)
+    records = conversations(path, split, session)
     known = background(path)
     prepared = []
     for index, record in enumerate(records):
         for unit in units(record):
             worth, needed = labelled(unit)
             prepared.append((index, unit, worth, needed))
-    report: dict = {"split": split, "conversations": len(records), "background_turns": known.turns}
+    report: dict = {
+        "split": split,
+        "session": session,
+        "conversations": len(records),
+        "background_turns": known.turns,
+    }
     for policy in policies:
         began = time.monotonic()
         rows = []
         for index, unit, worth, needed in prepared:
-            kept = keep([text for text, _ in unit["statements"]], policy, known)
+            texts = [text for text, _ in unit["statements"]]
+            if policy == "repeated":
+                kept = came_up_again(texts, unit["after"])
+            else:
+                kept = keep(texts, policy, known)
             rows.append({"conversation": index, "kept": kept, "worth": worth, "needed": needed})
         seconds = time.monotonic() - began
         entry = score(rows)
         entry["seconds_per_statement"] = round(seconds / max(1, entry["statements"]), 5)
-        if split == "test":
+        if split == "test" or session == 5:
             entry["p_not_better"] = bootstrap(rows)
             entry["bars"] = {
                 "needed_better_than_chance": entry["p_not_better"] < BARS["p_not_better"],
-                "recall_worth": entry["worth"]["recall"] >= BARS["recall_s"],
                 "keeps_less": entry["keep_rate"] <= BARS["keep_rate"],
             }
+            if session == 4:  # test 1 also asked to keep most of what people summarised
+                entry["bars"]["recall_worth"] = entry["worth"]["recall"] >= BARS["recall_s"]
             entry["passed"] = all(entry["bars"].values())
         report[policy] = entry
         print(policy, json.dumps(entry), flush=True)
@@ -164,13 +174,18 @@ def main() -> None:
     )
     parser.add_argument("--msc", type=Path, required=True)
     parser.add_argument("--split", choices=("valid", "test"), required=True)
-    parser.add_argument("--policy", choices=("informative", "novel"))
+    parser.add_argument("--policy", choices=("informative", "novel", "repeated"))
+    parser.add_argument("--session", type=int, choices=(4, 5), default=4)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    if args.split == "test" and not args.policy:
+    if args.session == 5:
+        # test 2: one rule, fixed beforehand, read once on each split of session 5
+        policies = ["all", "repeated"]
+    elif args.split == "test" and not args.policy:
         raise SystemExit("the test split is read once, with the policy chosen on valid")
-    policies = ["all", args.policy] if args.split == "test" else ["all", "informative", "novel"]
-    report = run(args.msc, args.split, policies)
+    else:
+        policies = ["all", args.policy] if args.split == "test" else ["all", "informative", "novel"]
+    report = run(args.msc, args.split, policies, args.session)
     text = json.dumps(report, indent=1)
     if args.out:
         args.out.write_text(text, encoding="utf-8")

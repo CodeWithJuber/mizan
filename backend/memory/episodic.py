@@ -33,6 +33,23 @@ from dataclasses import dataclass
 POLICIES = ("all", "informative", "novel")
 
 
+def came_up_again(statements: Sequence[str], later: Sequence[Sequence[str]]) -> list[bool]:
+    """Test 2's rule (docs/episodic-memory.md): a statement becomes a lasting
+    memory when it came up again, that is when some later turn of the
+    conversation, by either speaker, holds most of its distinctive information
+    (``ahl_dhikr.about``). ``later[i]`` is every turn after statement ``i`` that
+    MIZAN has heard. A thing that came up once stays a weak trace that Nawm lets
+    fade; one that came up again is strengthened, as Tadhkir's repeat review
+    strengthens a note said again (Anderson & Schooler 1991: past frequency
+    predicts need)."""
+    from tadbir.ahl_dhikr import about
+
+    return [
+        any(about(statement, turn) for turn in after)
+        for statement, after in zip(statements, later, strict=True)
+    ]
+
+
 @dataclass
 class Background:
     """How many turns of conversation each word appears in."""

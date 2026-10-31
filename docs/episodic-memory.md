@@ -85,3 +85,22 @@ Nothing is built for production.
 - **This is Anderson & Schooler's (1991) finding about memory and the environment.** How often a thing has come up predicts whether it is needed again. Its newness does not.
 - **The idea to test next.** Every informative statement goes into a weak episodic trace at low stability. Saying it again, a repeat that Tadhkir already grades, strengthens it into long-term memory. Nawm lets the traces that were never repeated fade. The selection happens at consolidation, by repetition, not at encoding by novelty.
 - **Testing it needs data no test has read.** MSC's `session_5` split has four earlier sessions and has not been read.
+
+## Test 2: what came up again (pre-registered 31 Oct 2026, before any reading of session 5)
+
+**The rule** (`episodic.came_up_again`). Every statement of a person stays at first a weak trace. It becomes a lasting memory when it **came up again**: some later turn MIZAN heard, by either speaker, holds most of its distinctive information (`ahl_dhikr.about`). In production this would be a Good review that raises the trace's FSRS stability, as Tadhkir's repeat review already does for a note said again. A trace that never came up again is left to fade by Nawm. There is one rule, fixed now, with nothing chosen on data.
+
+**Data.** MSC's `session_5` (`valid` 500 and `test` 501 conversations), which no test has read. The statements are a speaker's turns in sessions 1–4. "Came up again" looks only at turns of sessions 1–4. **Needed (N)** is as in test 1: some turn of session 5 holds most of the statement's distinctive information.
+
+**Bars, on each split** (`test` judges, `valid` is reported beside it):
+1. **It keeps what is needed later better than chance.** Precision for N exceeds N's share of all statements; bootstrap over conversations, P(not better) < 0.05.
+2. **It keeps less than everything.** At most 60% of statements become lasting memories.
+
+**Reported, deciding nothing:**
+- recall for N, which is what a fading trace could lose;
+- precision and recall for S;
+- N precision over N's prevalence (the lift).
+
+**What follows if both bars hold on `test`:** the production change described above, in shadow, under the owner's decision. Otherwise nothing is built.
+
+`python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 5 --split test` (and `--split valid`).

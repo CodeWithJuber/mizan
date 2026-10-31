@@ -54,3 +54,12 @@ def test_a_thing_said_again_is_not_written_twice():
     assert kept == [False, True, False, False, True]
     # what was kept before counts as known
     assert episodic.keep(TALK[3:4], "novel", BACKGROUND, known=TALK[1:2]) == [False]
+
+
+def test_a_statement_that_came_up_again_becomes_a_lasting_memory():
+    statements = ["My daughter Amina starts school in Lahore next week.", "I like tea."]
+    later = [
+        ["How is Amina finding her school in Lahore?", "Fine"],
+        ["Do you watch cricket?"],
+    ]
+    assert episodic.came_up_again(statements, later) == [True, False]
