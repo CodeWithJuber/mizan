@@ -906,3 +906,89 @@ async def test_a_code_mixed_claim_read_as_english_is_contradicted_only_however_w
 def test_an_english_claims_names_are_one_writing():
     claim = "The largest moon of Saturn is Rhea."
     assert ahl_dhikr.writings(claim, "Titan is the largest moon of Saturn.", claim) == {claim}
+
+
+# ── a support names what the claim names ─────────────────────────────────
+
+WARSAW = Passage(
+    "Skłodowska-Curie was born on 7 November 1867 in Warsaw, Poland.",
+    "Marie Curie",
+    "https://simple.wikipedia.org/wiki/Marie_Curie",
+    "wikipedia",
+)
+
+
+def test_a_claims_names_are_its_capitalised_words_inside_the_sentence():
+    assert ahl_dhikr.names("Marie Curie 7 November 1867 ko Berlin mein paida hui thi.") == (
+        ("marie", "curie"),
+        ("november",),
+        ("berlin",),
+    )
+    # Every sentence starts with a capital, so a lone first word is no name by it.
+    assert ahl_dhikr.names("Paris is the capital of France.") == (("france",),)
+    # A name in parentheses is another writing of the name right before it.
+    assert ahl_dhikr.names("Doosri Jang-e-Azeem (World War II) Europe mein khatam hui.") == (
+        ("doosri", "jang", "e", "azeem", "world", "war", "ii"),
+        ("europe",),
+    )
+    assert ahl_dhikr.names("Isne inactivated vaccine (IPV) banayi.") == ()
+    # In Devanagari or Urdu script the names are the words in Latin letters.
+    assert ahl_dhikr.names("मैरी क्यूरी का जन्म Berlin में हुआ था।") == (("berlin",),)
+    assert ahl_dhikr.names("भारत की राजधानी नई दिल्ली है।") == ()
+
+
+async def test_a_support_on_another_name_is_refused(monkeypatch):
+    """Held-out set, 31 Oct 2026: "Marie Curie 7 November 1867 ko Berlin mein
+    paida hui thin." was supported by the page's sentence on her birth in
+    Warsaw (0.61). A sentence on another place speaks for nothing the claim
+    says, however the NLI model reads it."""
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_everything)
+    pool = ahl_dhikr.sentences([WARSAW])
+    for claim in (
+        "Marie Curie was born on 7 November 1867 in Berlin.",
+        "Marie Curie 7 November 1867 ko Berlin mein paida hui thi.",
+    ):
+        (finding,) = await ahl_dhikr.judge([claim], pool)
+        assert finding.verdict == "unknown"
+    (finding,) = await ahl_dhikr.judge(["Marie Curie was born on 7 November 1867 in Warsaw."], pool)
+    assert finding.verdict == "supported"
+
+
+async def test_a_support_naming_the_same_one_otherwise_written_is_kept(monkeypatch):
+    monkeypatch.setattr(ahl_dhikr, "nli", entails_everything)
+    page = Passage(
+        "Wilhelm Conrad Rontgen was a German physicist who discovered X-rays.",
+        "Wilhelm Röntgen",
+        "https://simple.wikipedia.org/wiki/Wilhelm_R%C3%B6ntgen",
+        "wikipedia",
+    )
+    claim = "Wilhelm Röntgen was a German physicist."
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([page]))
+    assert finding.verdict == "supported"  # the same name, its accent dropped
+    # The same consonant skeleton, and a name's form with an ending.
+    assert ahl_dhikr.named(
+        "The tomb is in Agra and was built for Mumtaaz.", "The tomb was built for Mumtaz in Agra."
+    )
+    assert ahl_dhikr.named(
+        "The first modern Olympic Games were held in Athens.",
+        "The first modern Olympics took place in Athens.",
+    )
+    # A gloss: either writing of the name is enough.
+    assert ahl_dhikr.named(
+        "Doosri Jang-e-Azeem (World War II) Europe mein khatam hui.",
+        "World War II ended in Europe in May 1945.",
+    )
+    # Across scripts, through Qāmūs's translation of the name.
+    assert ahl_dhikr.named("Yeh imarat Paris mein hai.", "यह इमारत पेरिस में है।")
+    assert not ahl_dhikr.named("Yeh imarat Japan mein hai.", "यह इमारत चीन में है।")
+
+
+async def test_the_names_check_leaves_contradiction_as_it_was(monkeypatch):
+    async def contradicts(pairs):
+        return [{"entailment": 0.01, "neutral": 0.04, "contradiction": 0.95} for _ in pairs]
+
+    monkeypatch.setattr(ahl_dhikr, "nli", contradicts)
+    claim = "Marie Curie was born on 7 November 1867 in Berlin."
+    assert not ahl_dhikr.named(claim, WARSAW.text)
+    (finding,) = await ahl_dhikr.judge([claim], ahl_dhikr.sentences([WARSAW]))
+    assert finding.verdict == "contradicted" and finding.passage.text == WARSAW.text

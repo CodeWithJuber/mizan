@@ -43,6 +43,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -442,6 +443,111 @@ def writings(claim: str, premise: str, read: str) -> set[str]:
     return {claim, qamus.devanagari(claim, keep=f"{premise} {names}")}
 
 
+_WORDS = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")  # letters, joined by hyphens: "Jang-e-Azeem"
+_SAID = re.compile(r"[^\W_]")  # a letter or a digit
+_SPACE = re.compile(r"\s*")
+
+
+@lru_cache(maxsize=4096)
+def names(claim: str) -> tuple[tuple[str, ...], ...]:
+    """The claim's names, each as its words in lower case.
+
+    In Latin letters (English, Roman Hindi and Urdu) a name is a run of
+    capitalised words standing apart only by spaces ("Marie Curie",
+    "Skłodowska-Curie", "Doosri Jang-e-Azeem"). Case marks a name only inside
+    a sentence: the first word of every sentence is capitalised, so a lone
+    first word ("The", "Yeh", "Paris") is not known to be a name by its case.
+    A run that goes on past it ("Marie Curie 7 November…", "The Taj Mahal")
+    is one. In Devanagari or Urdu script the names are the words written in
+    Latin letters ("DNA", "Berlin"), in runs as above: words written in the
+    claim's own script carry no case, and none is taken for a name.
+
+    A name in parentheses is a gloss, another writing of the name right before
+    it ("Doosri Jang-e-Azeem (World War II)", "ورلڈ وائڈ ویب (WWW)"): it is one
+    name with it, held when either writing is, and is not asked for alone.
+    Nothing is read from a list."""
+    text = unicodedata.normalize("NFC", claim or "")
+    latin = qamus.script_of(text) == "LATIN"
+    runs: list[tuple[int, int, list[str], bool]] = []  # start, end, words, inside the sentence
+    for match in _WORDS.finditer(text):
+        word = match.group(0)
+        if latin:
+            marked = word[:1].isupper()
+            within = _SAID.search(text, 0, match.start()) is not None
+        else:
+            marked = within = qamus.script(word) == "LATIN"
+        if not marked:
+            continue
+        if runs and _SPACE.fullmatch(text, runs[-1][1], match.start()):
+            start, _end, words, inside = runs[-1]
+            runs[-1] = (start, match.end(), words + tokenize(word), inside or within)
+        else:
+            runs.append((match.start(), match.end(), tokenize(word), within))
+    found: list[tuple[int, list[str]]] = []  # each name's end and words
+    for start, end, words, inside in runs:
+        if not inside:
+            continue
+        opened = text.rfind("(", 0, start)
+        if opened > text.rfind(")", 0, start):
+            if found and _SPACE.fullmatch(text, found[-1][0], opened):
+                found[-1] = (found[-1][0], found[-1][1] + words)
+            continue
+        found.append((end, words))
+    return tuple(dict.fromkeys(tuple(dict.fromkeys(words)) for _end, words in found))
+
+
+def _bare(word: str) -> str:
+    """A word without its combining marks: "röntgen" → "rontgen"."""
+    decomposed = unicodedata.normalize("NFKD", word)
+    return "".join(char for char in decomposed if not unicodedata.category(char).startswith("M"))
+
+
+def named(claim: str, premise: str) -> bool:
+    """The premise holds each of the claim's names (``names``), so it can speak
+    for the claim and not for another person or place: "born … in Warsaw" is
+    no support for "paida hui … Berlin mein", however the NLI model reads it.
+
+    A name of several words is held when the premise holds one of its words
+    that carries more than an average word's information (a person is named
+    by any part of their name, "Curie"; "The" of "The Taj Mahal" is no
+    evidence). A word is held by a premise word that carries more than an
+    average word's information too:
+    - the same word; in the same script, the same word with its accents
+      dropped ("Röntgen", "Rontgen"), with the consonant skeleton Qāmūs
+      compares names by (``qamus.skeleton``: "Mumtaz", "Mumtaaz"), or one that
+      begins it or that it begins (English writes a name's forms with endings:
+      "Olympic", "Olympics"; "Japan", "Japanese");
+    - across scripts, a Qāmūs translation or Roman reading of it into the
+      premise's language.
+    A name in Latin letters is never held through a Roman reading of it into
+    English: names are written, not translated ("Marie" is not मेरी, "my")."""
+    wanted = names(claim)
+    if not wanted:
+        return True
+    floor = average_information()
+    present = {word for word in tokenize(premise) if information(word) > floor}
+    written = qamus.script_of(premise)
+    forms = {_bare(word) for word in present}
+    shapes = {qamus.skeleton(form) for form in forms} - {""}
+    targets = qamus.reads(premise) if qamus.enabled() else []
+
+    def held(word: str) -> bool:
+        if word in present:
+            return True
+        if qamus.script(word) == written:
+            form = _bare(word)
+            return qamus.skeleton(form) in shapes or any(
+                other.startswith(form) or form.startswith(other) for other in forms
+            )
+        return any(t in present for target in targets for t in qamus.translate(word, target))
+
+    for name in wanted:
+        weighty = [word for word in name if information(word) > floor]
+        if weighty and not any(held(word) for word in weighty):
+            return False
+    return True
+
+
 def hypothesis(claim: str, premise: str, in_roman: bool) -> str:
     """The claim as the NLI model reads it against a premise. A Roman Hindi or
     Urdu claim is written in Devanagari, the premise's own words (names,
@@ -526,6 +632,12 @@ async def judge(
     for index in disputed if reverse is None else sorted(unsettled):
         decisive, _label, passage, read = best[index]
         best[index] = (decisive, "neutral", passage, read)
+    # A premise speaks for a claim only when it names what the claim names: an
+    # entailment read from a sentence on another place or person settles
+    # nothing, as a one-way contradiction does not (``named``).
+    for index, (decisive, label, passage, read) in list(best.items()):
+        if label == "entailment" and not named(claims[index], passage.text):
+            best[index] = (decisive, "neutral", passage, read)
     findings = []
     for index, claim in enumerate(claims):
         if index not in best or best[index][1] == "neutral":
