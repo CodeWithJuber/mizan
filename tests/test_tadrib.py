@@ -322,3 +322,15 @@ async def test_a_lesson_erased_while_the_night_trained_is_not_promoted(
         report = await ruh_reader.rest("u1")
     assert report["status"] == "erased while learning"
     assert ruh_reader.manifest("current") == before
+
+
+def test_the_daftar_counts_the_messages_the_reader_learned_from(home):
+    from memory import daftar
+
+    assert not [e for e in daftar.learned(None, "u1") if e["id"] == "learned:reader"]
+    store.add("u1", "d1", "c", "reader", "first words", "agreement")
+    store.add("u1", "d2", "c", "reader", "second words", "agreement")
+    store.settle("u1", "d1", "learned", "en")
+    store.settle("u1", "d2", "held_out", "en")
+    entry = next(e for e in daftar.learned(None, "u1") if e["id"] == "learned:reader")
+    assert entry["content"].endswith(": 2") and entry["editable"] is False

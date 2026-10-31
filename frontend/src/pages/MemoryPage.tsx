@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import DaftarPanel from "../components/DaftarPanel";
 import { ConversationMemorySummary } from "../components/ConversationMemorySummary";
 import { LearningConsent } from "../components/LearningConsent";
+import { ReaderLessons } from "../components/ReaderLessons";
 import { addToast } from "../components/Toast";
 import { useApi } from "../hooks/useApi";
 import { config } from "../config";
@@ -77,6 +78,7 @@ export default function MemoryPage() {
     <div className="page-body">
       <DaftarPanel api={api} />
       <LearningConsent />
+      <ReaderLessons />
       <ConversationMemorySummary />
 
       <section className="space-y-3">

@@ -189,6 +189,26 @@ def learned(adaptive: Any, owner_id: str) -> list[dict]:
                     "editable": False,
                 }
             )
+    try:
+        from tadbir.tadrib import store as lessons
+
+        found = lessons.counts(owner_id)
+        count = found.get("learned", 0) + found.get("held_out", 0)
+    except Exception:  # noqa: BLE001 - a missing store is simply nothing learned
+        count = 0
+    if count:
+        entries.append(
+            {
+                "id": "learned:reader",
+                "kind": "learned",
+                "content": f"Your messages MIZAN's own language reader learned from: {count}",
+                "source": {"kind": "verified_work", "label": "your messages (training: on)"},
+                "created": "",
+                "last_used": "",
+                "expires": "",
+                "editable": False,
+            }
+        )
     return entries
 
 

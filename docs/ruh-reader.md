@@ -421,16 +421,27 @@ v1 against Lughah on this half: wins / losses 48 / 6 and 55 / 6. v2's product ag
 
 **Verdict.** Reader v2, trained without any text a language model wrote, passed its first gate for both seeds (e ≥ 40; the e-values and the log-loss bootstrap far past it), and is better than v1 on the same messages. The gain is on Roman Hindi/Urdu people wrote, sources it never trained on included; English requests improve a little. On Hinglish-1M's synthetic rows it is worse calibrated than v1. The reader stays in **shadow** until the owner decides.
 
+## Learning while MIZAN works (Tadrib)
+
+Since 31 Oct 2026 the reader does not wait for the night ([tadrib.md](tadrib.md)). Each message of a person who switched `training: on` becomes a **lesson** as soon as it is answered: their own words (pasted text set aside), when Amanah finds no instruction aimed at an AI and no scripture is in it. A background trainer:
+
+1. scores the lesson with the fast copy and with the current (slow) version, before learning anything;
+2. keeps it only where Lughah and the serving reader read the same language (the owner's decision: this check by MIZAN stands in for a person's review);
+3. holds one lesson in five out as test, and learns the rest in a few steps (replay of seeds and recent lessons, an L2 pull toward the slow weights);
+4. swaps the fast weights into the loaded reader, and keeps them on disk (`fast.pt`, `fast.json`) every few lessons.
+
+On the held-out lessons a paired sign test watches the fast copy: once the slow version reads them better with e-value ≥ 20, the fast copy starts again from it. Lessons are listed per person (`GET /api/tadrib/lessons`) and can be taken back (`DELETE /api/tadrib/lessons/{digest}`).
+
 ## Learning while MIZAN rests
 
 Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was-learned-is-replayed-while-mizan-rests)) calls `ruh_reader.rest` for each person once a day, while no request runs:
 
 1. **Consent.** Nothing happens unless the reader is not `off`, its weights exist, and the person's choices bound for the night say `learning` is on and `training: on` (`stateless.learns()` and `stateless.trains()`; never in an evaluation or a WhatsApp run, `barred_from_training()`). See [Consent](consent.md).
-2. **Verified words only.** The person's messages captured as training candidates (only under `training: on`) that a named reviewer accepted, with the review hash still matching the content (`reviewed_words`, the learner store). A message holding the Quran's words is never learned, nor one already learned.
+2. **Verified words only.** The day's lessons (Tadrib), each under the language MIZAN checked when it was given, and the person's messages captured as training candidates (only under `training: on`) that a named reviewer accepted, with the review hash still matching the content (`reviewed_words`, the learner store). A message holding the Quran's words is never learned, nor one already learned.
 3. **Labels.** A message is learned under the language Lughah and the reader both read it in. Where they disagree it is not learned, because a label the two contest is not verified.
 4. **Training.** The current weights continue training within the night's time (about 60% of what is left), 3 passes at most at a learning rate of 5·10⁻⁴. A quarter of every batch is replayed from the seeds' training groups (never a model-written seed: `ruh_reader.trainable`): in the pilot (`research_notes`, 3.8M parameters, three sequential languages), 25% replay held the earlier languages with no forgetting, where EWC alone did not.
-5. **Promotion.** The new version replaces the current one only when, on the held-out seeds, its log-loss is not higher and Ta'lim's paired bootstrap does not find it less accurate (P(worse) < 0.95, `no_worse`). The current one is kept as `previous` for `rollback()`. The gate is then run again as the next test (needing k(k+1)/α), and decides whether `on` may use the new version.
-6. **Forgetting.** Each version records the SHA-256 of every message it learned, and no words. Erasing a chat (Mahw) drops every version that learned from its messages, and the newest version that did not becomes current. The seed-only `base` version is never dropped.
+5. **Promotion.** The new version replaces the current one only when, on the held-out seeds, its log-loss is not higher and Ta'lim's paired bootstrap does not find it less accurate (P(worse) < 0.95, `no_worse`), and none of what it learned was erased while it trained (checked under the lock just before). The current one is kept as `previous` for `rollback()` and in `nights/` (the last 7). The lessons it learned are marked consolidated, and the fast copy starts again from it. The gate is then run again as the next test (needing k(k+1)/α), and decides whether `on` may use the new version.
+6. **Forgetting.** Each version records the SHA-256 of every message it learned, and no words; so does the fast copy. Erasing a chat (Mahw) or rejecting a lesson drops every version that learned it, the fast copy and the kept nights included, and the newest version that did not becomes current; the fast copy is rebuilt from it with the lessons that remain. The seed-only `base` version is never dropped. One lock (`disk_lock`, an `flock` beside the weights) covers learning, saving and forgetting.
 
 ## Settings and files
 

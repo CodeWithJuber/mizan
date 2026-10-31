@@ -21,7 +21,7 @@ const CHOICES = [
     initial: false,
     title: "Let my words help train MIZAN's own model",
     detail:
-      "Off unless you turn it on. When on, your messages may become reviewed training examples. Quran and hadith text is never a training target.",
+      "Off unless you turn it on. When on, MIZAN's own language reader learns from each of your messages within seconds (each one is listed below and you can take it back), and your messages may become reviewed training examples. Quran and hadith text is never a training target.",
   },
 ] as const;
 
