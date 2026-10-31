@@ -10,6 +10,7 @@ Personal agents remember things about their users. Few let the user see all of i
 | **Preference** | How MIZAN should answer (language, greeting, custom instructions, self-review) | The chat you set it in | Edit, forget |
 | **Chat summary** | MIZAN's running summary of a long chat | That chat | Read (it follows the chat) |
 | **Learned** | Phrasings, verified programs and repair lessons from your verified work | Your verified requests | Manage in **Agents → Majlis → Learning** |
+| **Episodes** (a count) | How many things you said MIZAN keeps as episodes, and how many came up again; not yet used in answers ([episodic memory](episodic-memory.md)) | Your chats, while learning is on | Delete the chat to erase its episodes (Mahw) |
 
 Every entry shows:
 - where it came from (a chat by its title, "you added it", "imported", or a knowledge source)

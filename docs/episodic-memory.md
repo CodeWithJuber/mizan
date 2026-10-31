@@ -1,6 +1,6 @@
 # Episodic memory: what MIZAN remembers without being asked
 
-**Status: pre-registered 31 Oct 2026, before any measurement.** The owner's decision of 31 Oct: "Haan, test karke". Encode episodes from ordinary conversation, test first, then shadow.
+**Status (31 Oct 2026): test 1 refused, test 2 passed; kept in production in shadow** (below). The tests were pre-registered before any measurement. The owner's decision of 31 Oct: "Haan, test karke". Encode episodes from ordinary conversation, test first, then shadow.
 
 ## Why
 
@@ -124,3 +124,31 @@ Both bars hold on both splits. What came up again in a conversation was needed i
 - A statement that comes up again is strengthened, by a Good review in Tadhkir.
 - Nawm lets unrepeated traces fade.
 - In shadow they are kept and counted but **not yet used in recall**. Real use is then measured by `tadhkir.need_test` before recall uses them.
+
+## In production: shadow (built 31 Oct 2026)
+
+`memory/episodic.py` keeps the traces; nothing reads them in an answer yet.
+
+**What is kept.** After each chat turn (`BaseAgent.execute`, beside Tadrib's lesson), the person's own words of the turn become one **episode** in their own store, `private/<sha256(owner)>/episodes.sqlite3` (`hear`). The words are what `tadrib.lesson_text` leaves: pasted text is set aside. Nothing is kept when any of these holds (`gate`, the verdict in `usage.memory.episode`):
+
+| Verdict | When |
+|---|---|
+| `off` | `MIZAN_EPISODIC=off` (tests set it) |
+| `no consent` | a stateless run, or `learning: off` |
+| `replayed` | an unattended run that replays a task the person wrote earlier: a schedule, a trigger, the queue or a watcher. Saying the same task each day is not the person speaking, and would count as coming up again. A message on Telegram, email or WhatsApp is the person speaking and is kept |
+| `injection` | Amanah finds an instruction in pasted text (`amanah.scan_message`; the person's own words are never flagged) |
+| `no words` | only pasted text |
+| `scripture` | the words are the Quran's (`ruh_reader.scripture`) |
+
+**Coming up again.** Before the new episode is written, it is read against the person's 500 most recent episodes. Each earlier episode whose distinctive information the new words mostly hold (`ahl_dhikr.about`, the rule test 2 measured) gets a **repeat** row, naming the chat that brought it up. An episode with a repeat is a *lasting* memory; the others stay weak traces. One difference from test 2: there either speaker's later turn counted, while here only the person's own later words do. MIZAN's reply often restates the message it answers, so counting it would make nearly every episode lasting. Whether this person-only rule still marks what is needed is what the need test on real use reads. Reading 500 episodes takes about 40 ms (measured on the cloud container, in a worker thread).
+
+**Erasing.** Deleting a chat (Mahw) deletes its episodes and every repeat it gave an episode of another chat, so that episode is weak again. Mahw's trace search also looks in the episode store (`episodes` in the receipt).
+
+**Seen by the person.** Daftar lists "Things you said that MIZAN keeps as episodes: N, of which M came up again (not yet used in answers)".
+
+**Not built yet** (they matter only once recall uses the traces):
+- an FSRS stability per episode, raised by a repeat as Tadhkir's Good review does;
+- Nawm letting weak traces fade;
+- recall from episodes. Before it, `tadhkir.need_test` reads real use: whether the episodes that came up again are the ones the person needs later, as test 2 found on MSC.
+
+`MIZAN_EPISODIC` = `shadow` (default) | `off`, in Settings → Developer → System settings.

@@ -151,6 +151,13 @@ SETTINGS: tuple[Setting, ...] = (
             "and can be taken back, and the night consolidates the day. off keeps no lessons. "
             "Off by default: three pre-registered tests found no measurable gain (docs/tadrib.md).",
             "off", ("on", "off")),
+    Setting("MIZAN_EPISODIC", "Model", "Episodic memory (shadow)", "choice",
+            "shadow: each statement of a person whose learning is on is kept as a weak "
+            "episode in their own memory, and an earlier episode that comes up again is "
+            "strengthened; kept and counted, never used in answers yet, erased with its chat "
+            "(Mahw). Never pasted text, an injection or scripture. off keeps nothing "
+            "(docs/episodic-memory.md).",
+            "shadow", ("shadow", "off")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "

@@ -300,3 +300,34 @@ async def test_lessons_notes_and_failure_signatures_of_the_chat_go_too(stores, m
     assert [tajdid._failure_text(item) for item in failures] == ["failed in chat-kept"]
     assert SECRET not in json.dumps(receipt)
     sijill.clear(OWNER)
+
+
+async def test_the_chats_episodes_and_the_repeats_it_gave_go_too(stores, monkeypatch):
+    """Episodic memory (docs/episodic-memory.md): the erased chat's episodes and
+    every strengthening it gave an earlier episode are deleted, and no piece of
+    its words is left in the episode store."""
+    from memory import episodic
+
+    monkeypatch.setenv("MIZAN_EPISODIC", "shadow")
+    chat, private, folder = stores
+    await seed_chat(chat, private, folder, "chat-secret", SECRET)
+    await seed_chat(chat, private, folder, "chat-kept", KEPT)
+    episodic.hear_now(OWNER, "chat-kept", KEPT)
+    assert episodic.hear_now(OWNER, "chat-secret", SECRET)["kept"]
+    assert episodic.hear_now(OWNER, "chat-secret", "Asr in Hyderabad today, what time is it?")[
+        "came_up_again"
+    ]
+    assert episodic.counts(OWNER) == {"episodes": 3, "lasting": 1}
+
+    receipt = await mahw.erase_chat(
+        chat_db=chat.db_path,
+        artifacts_db=chat.db_path,
+        private=private,
+        owner=OWNER,
+        session_id="chat-secret",
+    )
+
+    assert receipt["removed"]["episodes"] == 2
+    assert receipt["removed"]["episode repeats"] == 1
+    assert receipt["traces"] == 0
+    assert episodic.counts(OWNER) == {"episodes": 1, "lasting": 0}

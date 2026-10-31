@@ -3285,6 +3285,22 @@ Match the requested depth and self-correct errors."""
                         )
                     except Exception:
                         logger.warning("Tadrib lesson unavailable")
+            # Episodic memory (docs/episodic-memory.md): the person's own words of
+            # the turn are kept as a weak episode, and earlier episodes they bring
+            # up again are strengthened. Shadow: kept and counted, never recalled.
+            if (context or {}).get("session_id") and stateless.learns():
+                from security.auth import current_user_id
+
+                hearer = current_user_id()
+                if hearer:
+                    try:
+                        from memory import episodic
+
+                        result["usage"]["memory"]["episode"] = await episodic.hear(
+                            hearer, str((context or {})["session_id"]), task
+                        )
+                    except Exception:
+                        logger.warning("Episodic memory unavailable")
             finished = time.perf_counter()
             execution_ms = (finished - execution_started) * 1000
             measured = self._execution_timings
