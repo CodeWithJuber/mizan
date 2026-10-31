@@ -299,34 +299,43 @@ def _golden(loss: Callable[[float], float], low: float, high: float) -> float:
 
 
 def fit_reader(
-    lm: Sequence[Sequence[float]], tokens: Sequence[int], truths: Sequence[int], ref: float
+    lm: Sequence[Sequence[float]],
+    tokens: Sequence[int],
+    truths: Sequence[int],
+    ref: float,
+    gamma: float | None = None,
 ) -> tuple[float, float, float]:
     """κ ∈ (0, 1] and γ ∈ [0, 1] with the lowest log-loss (coordinate descent
     on log κ and γ, the ends of the ranges candidates too, as Tamyiz fits its
     weights). On messages the reader never gets wrong the log-loss falls
-    without end as κ grows; Bayes' own exponent, 1, is the most it is given."""
+    without end as κ grows; Bayes' own exponent, 1, is the most it is given.
+    With ``gamma`` given, γ is held there and only κ is searched (its step of
+    the descent): a calibration of κ on other messages, γ as fitted before."""
 
-    def loss(log_kappa: float, gamma: float) -> float:
+    def loss(log_kappa: float, power: float) -> float:
         kappa = math.exp(log_kappa)
         rows = [
-            reader_log_posterior(r, m, kappa, gamma, ref) for r, m in zip(lm, tokens, strict=True)
+            reader_log_posterior(r, m, kappa, power, ref) for r, m in zip(lm, tokens, strict=True)
         ]
         return log_loss(rows, truths)
 
-    log_kappa, gamma = 0.0, 0.0
-    for _ in range(3):
+    held = gamma is not None
+    log_kappa, power = 0.0, gamma if gamma is not None else 0.0
+    for _ in range(1 if held else 3):
 
-        def along_kappa(x: float, g: float = gamma) -> float:
+        def along_kappa(x: float, g: float = power) -> float:
             return loss(x, g)
 
         log_kappa = min((_golden(along_kappa, math.log(1e-3), 0.0), 0.0), key=along_kappa)
+        if held:
+            break
 
         def along_gamma(g: float, x: float = log_kappa) -> float:
             return loss(x, g)
 
         # The search's ends are candidates too: γ = 0 is plain Bayes.
-        gamma = min((0.0, _golden(along_gamma, 0.0, 1.0), 1.0), key=along_gamma)
-    return math.exp(log_kappa), gamma, loss(log_kappa, gamma)
+        power = min((0.0, _golden(along_gamma, 0.0, 1.0), 1.0), key=along_gamma)
+    return math.exp(log_kappa), power, loss(log_kappa, power)
 
 
 def fit_b(
@@ -532,14 +541,16 @@ def arms(reads: Sequence[Read], fit: Fit) -> dict[str, list[list[float]]]:
     }
 
 
-def fit_on(reads: Sequence[Read], ref: float) -> Fit:
-    """κ and γ for the reader alone, then b for the product, on these reads."""
+def fit_on(reads: Sequence[Read], ref: float, gamma: float | None = None) -> Fit:
+    """κ and γ for the reader alone, then b for the product, on these reads
+    (with ``gamma`` given, γ is held and only κ and b are fitted)."""
     scored = [read for read in reads if read.own]
     kappa, gamma, _loss = fit_reader(
         [read.lm for read in scored],
         [read.tokens for read in scored],
         [r.truth for r in scored],
         ref,
+        gamma,
     )
     fit = Fit(kappa=kappa, gamma=gamma, ref=ref)
     b, _before, _after = fit_b(
@@ -1288,6 +1299,9 @@ def main() -> None:
     parser.add_argument("--corpus", action="store_true", help="download and build its corpus")
     parser.add_argument("--bytes-per-language", type=int, default=reader_corpus.BYTES_PER_LANGUAGE)
     parser.add_argument("--workers", type=int, default=1, help="processes for the scripture check")
+    parser.add_argument(
+        "--validation", action="store_true", help="build the validation slices beside the corpus"
+    )
     parser.add_argument("--train", action="store_true", help="train and install as current")
     parser.add_argument("--seeds-only", action="store_true", help="train without the corpus")
     parser.add_argument("--seed", type=int, default=0)
@@ -1300,8 +1314,13 @@ def main() -> None:
             bytes_per_language=args.bytes_per_language, workers=args.workers, log=print
         )
         print(json.dumps({k: found[k] for k in ("train", "short", "kept", "dropped")}, indent=1))
+    if args.validation:
+        made = reader_corpus.build_validation(log=print)
+        print(
+            json.dumps({k: made[k] for k in ("lines", "per_half", "dropped", "sha256")}, indent=1)
+        )
     if not args.train:
-        if not args.corpus:
+        if not args.corpus and not args.validation:
             print(json.dumps(status(), indent=1))
         return
     extra = None if args.seeds_only else reader_corpus.load()

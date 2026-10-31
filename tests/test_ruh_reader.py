@@ -747,3 +747,191 @@ def test_the_trained_key_changes_with_what_training_depends_on():
     assert key != ruh_reader.trained_key(0, TINY, {"epochs": 2}, lines, dev)
     assert key != ruh_reader.trained_key(0, TINY, {"epochs": 1}, [("hello there", 1)], dev)
     assert key != ruh_reader.trained_key(0, TINY, {"epochs": 1}, lines, [])
+
+
+# ── v1.1: calibrated on one half of real short messages, gated on the other ─
+
+
+def test_kappa_alone_is_calibrated_when_gamma_is_held():
+    # Sure of itself and wrong twice in twenty: a smaller κ is better calibrated.
+    lm = [[-10.0, -30.0]] * 18 + [[-30.0, -10.0]] * 2
+    truths, tokens = [0] * 20, [40] * 20
+
+    def loss(kappa: float) -> float:
+        rows = [
+            ruh_reader.reader_log_posterior(r, m, kappa, 0.5, 20.0)
+            for r, m in zip(lm, tokens, strict=True)
+        ]
+        return ruh_reader.log_loss(rows, truths)
+
+    kappa, gamma, fitted = ruh_reader.fit_reader(lm, tokens, truths, ref=20.0, gamma=0.5)
+    assert gamma == 0.5 and kappa < 1.0
+    best = min((math.exp(x / 200) for x in range(-1381, 1)), key=loss)
+    assert kappa == pytest.approx(best, rel=0.01) and fitted == pytest.approx(loss(kappa))
+    reads = [
+        ruh_reader.Read(
+            text="x",
+            truth=t,
+            group=f"g{i}",
+            own="x",
+            lughah=[math.log(0.6), math.log(0.4)],
+            lm=row,
+            tokens=m,
+        )
+        for i, (row, m, t) in enumerate(zip(lm, tokens, truths, strict=True))
+    ]
+    fit = ruh_reader.fit_on(reads, 20.0, gamma=0.5)
+    assert (fit.gamma, fit.ref) == (0.5, 20.0) and fit.kappa == pytest.approx(kappa)
+
+
+def test_the_validation_slices_are_fresh_and_their_halves_fixed():
+    from tadbir.ruh_reader import corpus
+
+    seen = "set an alarm for six tomorrow"
+    dev = [
+        corpus.Line(f"massive:en-US:{n}", "en", f"please play the song {_word(n)} now", "dev")
+        for n in range(60)
+    ]
+    dev += [
+        corpus.Line(f"massive:hi-IN:{n}", "hi", f"गाना {_word(n)} चलाओ अभी", "dev")
+        for n in range(60)
+    ]
+    dev += [
+        corpus.Line("massive:en-US:900", "en", seen.title(), "dev"),  # words already seen
+        corpus.Line("massive:en-US:901", "en", "stop", "dev"),  # not 3 to 8 words
+        corpus.Line("massive:ar-SA:902", "ar", "reggae music please now", "dev"),  # not Arabic
+        corpus.Line("massive:en-US:903", "en", f"please play the song {_word(1)} now!", "dev"),
+    ]
+    roman = [
+        corpus.Line(f"hinglish-1m:{n}:{column}", "hi-latn", f"{column} kal milte hain {_word(n)}")
+        for n in range(600)
+        for column in ("input", "output")
+    ]
+    excluded = {ruh_reader.group_of(seen)}
+    chosen = corpus.pick_validation(dev, roman, excluded)
+    assert chosen == corpus.pick_validation(list(reversed(dev)), list(reversed(roman)), excluded)
+    texts = {line.text for line, _group, _half in chosen}
+    assert not texts & {seen.title(), "stop", "reggae music please now"}
+    twice = {f"please play the song {_word(1)} now", f"please play the song {_word(1)} now!"}
+    assert len(texts & twice) == 1  # the same words are one message
+    massive = [(line, group, where) for line, group, where in chosen if line.label != "hi-latn"]
+    for line, group, where in massive:
+        request = line.source.rsplit(":", 1)[1]
+        assert group == f"massive:{request}" and where == corpus.half(group)
+    assert {where for _l, _g, where in massive} == set(corpus.HALVES)
+    fresh = [(line, group, where) for line, group, where in chosen if line.label == "hi-latn"]
+    assert fresh
+    for line, group, where in fresh:
+        assert not corpus._kept(line.source, corpus.KEEP["hinglish-1m"])  # v1 never read it
+        assert ruh_reader.part(group) == "held_out" and group == ruh_reader.group_of(line.text)
+        assert where == corpus.half(line.source.rsplit(":", 1)[0])  # the conversation's half
+    for name in corpus.HALVES:  # Roman Hindi/Urdu weighs as one language of the half
+        per_language = [
+            sum(1 for line, _g, h in massive if h == name and line.label == label)
+            for label in ("en", "hi")
+        ]
+        assert sum(1 for _l, _g, h in fresh if h == name) == round(sum(per_language) / 2)
+
+
+def test_validation_slices_are_built_beside_the_corpus_and_checked(tmp_path, monkeypatch):
+    from tadbir.ruh_reader import corpus
+
+    monkeypatch.setenv("MIZAN_TALIM", "off")
+    measured = "wake me up at seven tomorrow"
+    paths = _fake_sources(
+        tmp_path,
+        tatoeba={"eng": [("900000010", "The library opens early on weekdays.")]},
+        massive={
+            "en-US": [
+                {"id": "1", "partition": "train", "utt": "set an alarm for six please"},
+                {"id": "2", "partition": "test", "utt": measured},
+                {"id": "3", "partition": "dev", "utt": "what is on my calendar today"},
+                {"id": "4", "partition": "dev", "utt": "Set an alarm for six, please!"},
+                {"id": "5", "partition": "dev", "utt": measured.upper()},
+            ],
+        },
+        hinglish=[
+            (f"kal milte hain {_word(n)}", f"haan yaar zaroor {_word(n)}") for n in range(400)
+        ],
+    )
+    out = tmp_path / "corpus"
+
+    def built(count: int) -> None:
+        corpus.build(
+            paths=paths,
+            out=out,
+            scripture=ruh_reader.scripture,
+            hinglish_count=count,
+            log=lambda _line: None,
+        )
+
+    built(20)
+    made = corpus.build_validation(out, paths=paths, log=lambda _line: None)
+    assert made["settings"]["hinglish_read_share"] == corpus.KEEP["hinglish-1m"]
+    assert made["dropped"]["massive: other partitions"] == 2
+    assert made["dropped"]["massive: seen words"] == 2  # trained on, or measured in v1
+    rows = corpus.load_validation(out)
+    assert rows is not None and len(rows) == made["lines"]
+    english = [(text, group) for text, label, group, _half in rows if label == "en"]
+    assert english == [("what is on my calendar today", "massive:3")]
+    found = corpus.load(out)
+    assert found is not None
+    trained = {ruh_reader.group_of(text) for text, _label in found.train}
+    short = {ruh_reader.group_of(text) for text, _label, _group in found.short}
+    assert not {ruh_reader.group_of(text) for text, *_ in rows} & (trained | short)
+    assert all(name in corpus.HALVES for *_, name in rows)
+    # A file changed since, or a corpus rebuilt under it, and the slices are not used.
+    body = (out / "validation.tsv").read_text(encoding="utf-8")
+    (out / "validation.tsv").write_text(body.replace("calendar", "diary"), encoding="utf-8")
+    assert corpus.load_validation(out) is None
+    (out / "validation.tsv").write_text(body, encoding="utf-8")
+    assert corpus.load_validation(out) is not None
+    built(5)
+    assert corpus.load_validation(out) is None
+
+
+def _eval_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "ruh_reader_eval.py"
+    spec = importlib.util.spec_from_file_location("ruh_reader_eval", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_v11_fits_on_the_calibration_half_and_gates_on_the_other(reader_home, few_seeds):
+    pytest.importorskip("torch")
+    evaluation = _eval_script()
+    built = ruh_reader.build(
+        0,
+        config=TINY,
+        plan={"epochs": 1, "seconds": 30, "batch": 8},
+        calibrate=False,
+        log=lambda _line: None,
+    )
+    languages = built.manifest["languages"]
+    rows = [
+        ("kal subah jaldi uthana hai", "hi-latn", "r1", "calibration"),
+        ("wake me up at seven", "en", "massive:1", "calibration"),
+        ("مجھے سات بجے جگا دو", "ur", "massive:1", "calibration"),
+        ("please turn the lights off", "en", "massive:2", "gate"),
+        ("mujhe kal yaad dila dena", "hi-latn", "r2", "gate"),
+        ("बत्ती बंद कर दो", "hi", "massive:2", "gate"),
+    ]
+    halves = evaluation.validation_reads(built, rows, languages)
+    assert [len(halves[name]) for name in ("calibration", "gate")] == [3, 3]
+    development = ruh_reader.Fit(**built.manifest["fit"])
+    found = evaluation.validate(built, halves, languages)
+    expected = ruh_reader.fit_on(halves["calibration"], development.ref, gamma=development.gamma)
+    assert found["fit"] == expected.to_dict()  # the calibration half only, γ and ñ held
+    assert found["test"] == 2 and found["gate"]["needed"] == pytest.approx(120)
+    assert found["gate"]["n"] == 3 and found["gate"]["groups"] == 2  # the gate half only
+    assert found["groups"] == {"calibration": 2, "gate": 2}
+    assert found["adopted"] == (found["gate"]["adopted"] and found["fit"]["b"] > 0)
+    assert found["held_out_seeds"]["check"]["n"] == len(built.held_out)
+    again = evaluation.validate(built, halves, languages, test=3)
+    assert again["gate"]["needed"] == pytest.approx(240)
+    assert any(line.startswith("GATE") for line in evaluation.validation_table(found))

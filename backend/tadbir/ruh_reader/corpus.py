@@ -44,6 +44,13 @@ label, text), ``short.tsv`` (source id, label, group, text), and
 SHA-256 the corpus was built against, what was kept and dropped by each rule).
 Downloads go to ``sources/<name>/`` there. Nothing of it is in git.
 
+**Validation slices** (``build_validation``, v1.1): MASSIVE's ``dev``
+partition and Roman Hindi/Urdu rows v1's build never read, none of them a
+seed's, a training line's or a short message's words, split by SHA-256 into
+a calibration half (κ and b are fitted there) and a gate half (the gate is
+run there): ``validation.tsv`` (source, label, group, half, text) and
+``validation.json``.
+
     cd backend && python -m tadbir.ruh_reader --corpus
 """
 
@@ -614,6 +621,206 @@ class Corpus:
     train: list[tuple[str, str]]  # (text, label)
     short: list[tuple[str, str, str]]  # (text, label, group)
     manifest: dict
+
+
+# ── the validation slices: calibrated on one half, gated on the other ────
+
+VALIDATION_SALT = "ruh-reader-v1.1"
+HALVES = ("calibration", "gate")
+
+
+def half(key: str) -> str:
+    """``calibration`` or ``gate``, fixed by SHA-256 of the key (a MASSIVE
+    request ``massive:<id>``, a Hinglish conversation ``hinglish-1m:<row>``)."""
+    value = int(hashlib.sha256(f"{VALIDATION_SALT}:{key}".encode()).hexdigest()[:16], 16)
+    return HALVES[value % 2]
+
+
+def pick_validation(
+    dev: Iterable[Line],
+    hinglish_lines: Iterable[Line],
+    excluded: set[str],
+    *,
+    words: tuple[int, int] = SHORT_WORDS,
+    read_share: float = KEEP["hinglish-1m"],
+    counts: Counter | None = None,
+) -> list[tuple[Line, str, str]]:
+    """(line, group, half) of messages neither model was trained on or
+    measured on: MASSIVE's ``dev`` partition (one id is one group and lies in
+    one half), and Roman Hindi/Urdu utterances v1's build never read (outside
+    ``read_share`` of Hinglish-1M, in its order) whose group the seeds' rule
+    holds out. ``excluded``: the words (``group_of``) of every seed, every
+    training line and every message already measured. Each half takes as
+    many Roman rows as the mean per-language count of its MASSIVE rows."""
+    from . import group_of, part
+
+    low, high = words
+    counts = counts if counts is not None else Counter()
+    chosen: list[tuple[Line, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in sorted(dev, key=lambda item: rank(item.source)):
+        if not low <= len(line.text.split()) <= high:
+            counts["massive: words"] += 1
+            continue
+        if not own_script(line.text, line.label):
+            counts["massive: script"] += 1
+            continue
+        group = group_of(line.text)
+        if group in excluded:
+            counts["massive: seen words"] += 1
+            continue
+        if (line.label, group) in seen:
+            counts["massive: duplicate"] += 1
+            continue
+        seen.add((line.label, group))
+        key = "massive:" + line.source.rsplit(":", 1)[1]
+        chosen.append((line, key, half(key)))
+    want = {}
+    for name in HALVES:
+        per_language = Counter(line.label for line, _g, h in chosen if h == name)
+        want[name] = round(sum(per_language.values()) / len(per_language)) if per_language else 0
+    candidates = [
+        line
+        for line in hinglish_lines
+        if not _kept(line.source, read_share) and low <= len(line.text.split()) <= high
+    ]
+    have = Counter[str]()
+    for line in sorted(candidates, key=lambda item: rank(item.source)):
+        if all(have[name] >= want[name] for name in HALVES):
+            break
+        where = half(line.source.rsplit(":", 1)[0])  # the conversation: hinglish-1m:<row>
+        if have[where] >= want[where]:
+            continue
+        if not own_script(line.text, line.label):
+            counts["roman: script"] += 1
+            continue
+        group = group_of(line.text)
+        if part(group) != "held_out":
+            counts["roman: not a held-out group"] += 1
+            continue
+        if group in excluded:
+            counts["roman: seen words"] += 1
+            continue
+        if (line.label, group) in seen:
+            counts["roman: duplicate"] += 1
+            continue
+        seen.add((line.label, group))
+        have[where] += 1
+        chosen.append((line, group, where))
+    return chosen
+
+
+def _validation_body(rows: Sequence[tuple[Line, str, str]]) -> str:
+    return "".join(
+        f"{line.source}\t{line.label}\t{group}\t{where}\t{line.text}\n"
+        for line, group, where in rows
+    )
+
+
+def build_validation(
+    where: Path | None = None,
+    *,
+    paths: dict[str, Path] | None = None,
+    log: Callable[[str], None] = logger.info,
+) -> dict:
+    """The validation slices beside a built corpus (``where``): MASSIVE's
+    ``dev`` partition and fresh Roman Hindi/Urdu rows, from the corpus's own
+    downloads (``sources/``, SHA-256 checked against the pins) unless
+    ``paths`` are given. Written to ``validation.tsv`` (source, label, group,
+    half, text) and ``validation.json``. Returns that manifest."""
+    from .. import lughah
+    from . import corpus_digest, group_of, seeds
+
+    where = where or folder()
+    found = load(where)
+    if found is None:
+        raise RuntimeError("no corpus to build the validation slices beside")
+    pinned = {source.name: source for source in SOURCES}
+    own = paths is None
+    if paths is None:
+        paths = {
+            name: where / "sources" / name / pinned[name].file
+            for name in ("massive", "hinglish-1m")
+        }
+    digests = {}
+    for name in ("massive", "hinglish-1m"):
+        digests[name] = _sha256(paths[name])
+        expected = pinned[name].sha256
+        if own and expected is not None and digests[name] != expected:
+            raise Mismatch(f"{name}: SHA-256 {digests[name]} is not the pinned {expected}")
+    excluded = {group_of(text) for text, _label in lughah.corpus()}
+    excluded |= {group_of(text) for text, _label in found.train}
+    excluded |= {group_of(text) for text, _label, _group in found.short}
+    labels = set(found.manifest.get("languages") or MASSIVE_LOCALES)
+    dev = list(massive(paths["massive"], [x for x in MASSIVE_LOCALES if x in labels]))
+    counts: Counter = Counter()
+    counts["massive: other partitions"] = sum(1 for line in dev if line.kind != "dev")
+    dev = [line for line in dev if line.kind == "dev"]
+    # The share of Hinglish-1M the corpus build read (its rows may be trained on).
+    share = float(
+        ((found.manifest.get("settings") or {}).get("keep") or {}).get("hinglish-1m", 1.0)
+    )
+    rows = pick_validation(
+        dev, hinglish(paths["hinglish-1m"]), excluded, read_share=share, counts=counts
+    )
+    body = _validation_body(rows)
+    (where / "validation.tsv").write_text(body, encoding="utf-8")
+    sizes: dict[str, dict[str, int]] = {name: {} for name in HALVES}
+    for line, _group, name in rows:
+        sizes[name][line.label] = sizes[name].get(line.label, 0) + 1
+    manifest = {
+        "version": 1,
+        "created": datetime.now(UTC).isoformat(),
+        "seeds_sha256": corpus_digest(seeds()),
+        "train_sha256": found.manifest["train"]["sha256"],
+        "short_sha256": found.manifest["short"]["sha256"],
+        "sources": {
+            name: {"sha256": digests[name], "licence": pinned[name].licence, "pin_checked": own}
+            for name in digests
+        },
+        "settings": {
+            "salt": VALIDATION_SALT,
+            "words": list(SHORT_WORDS),
+            "hinglish_read_share": share,
+            "massive_partition": "dev",
+        },
+        "excluded_groups": len(excluded),
+        "lines": len(rows),
+        "per_half": sizes,
+        "dropped": dict(sorted(counts.items())),
+        "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+    }
+    (where / "validation.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    log(f"validation: {len(rows)} messages in {where / 'validation.tsv'}: {json.dumps(sizes)}")
+    return manifest
+
+
+def load_validation(where: Path | None = None) -> list[tuple[str, str, str, str]] | None:
+    """(text, label, group, half) of the validation slices, when the file is
+    whole and was built beside this corpus and these seeds; otherwise None."""
+    from . import corpus_digest, seeds
+
+    where = where or folder()
+    found = load(where)
+    try:
+        manifest = json.loads((where / "validation.json").read_text(encoding="utf-8"))
+        body = (where / "validation.tsv").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    if (
+        found is None
+        or hashlib.sha256(body.encode("utf-8")).hexdigest() != manifest.get("sha256")
+        or manifest.get("train_sha256") != found.manifest["train"]["sha256"]
+        or manifest.get("short_sha256") != found.manifest["short"]["sha256"]
+        or manifest.get("seeds_sha256") != corpus_digest(seeds())
+    ):
+        logger.warning("Ruh reader validation slices: not built beside this corpus; not used")
+        return None
+    rows = []
+    for row in body.splitlines():
+        _source, label, group, name, text = row.split("\t", 4)
+        rows.append((text, label, group, name))
+    return rows
 
 
 def load(where: Path | None = None) -> Corpus | None:

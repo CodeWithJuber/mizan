@@ -23,6 +23,13 @@ the shipped Lughah (fitted on every seed; it never saw these messages either)
 and the shipped Lughah times the reader. The same paired test the gate uses
 is run on them and reported; it never decides.
 
+With ``--validation`` (and ``--corpus``; v1.1): the corpus's validation
+slices (``corpus.build_validation``: MASSIVE's ``dev`` partition and fresh
+Roman Hindi/Urdu rows, split in halves by SHA-256) are read too; κ and b are
+calibrated on the calibration half (γ and ñ held at the development fit) and
+the gate is run on the gate half as the ``--test``-th test of this reader
+(default: its tests + 1). Every other slice is reported under that fit.
+
 ``--evaluate DIR`` reads an existing reader (``current.pt`` and
 ``current.json`` in DIR, with the fit it was installed with) on the same
 slices, without training: the reader trained on the seeds alone, measured on
@@ -114,12 +121,12 @@ def shipped_arms(reads, fit, languages) -> dict[str, list[list[float]]]:
     }
 
 
-def short_slices(reads, fit, languages) -> dict:
+def short_slices(reads, fit, languages, everything: str = "all short") -> dict:
     """The held-out short messages: overall, per language, MASSIVE and Roman."""
     from tadbir import ruh_reader
 
     chosen = {
-        "all short": lambda r: True,
+        everything: lambda r: True,
         "MASSIVE (en, hi, ur, ar)": lambda r: r.group.startswith("massive:"),
         **{code: (lambda r, code=code: languages[r.truth] == code) for code in languages},
     }
@@ -136,7 +143,7 @@ def short_slices(reads, fit, languages) -> dict:
     return found
 
 
-def short_check(reads, fit, languages) -> dict:
+def short_check(reads, fit, languages, test: int = 1) -> dict:
     """The gate's paired test on the short slice, against the held-out Lughah
     and against the shipped one (reported; the gate is the seeds')."""
     from tadbir import ruh_reader
@@ -146,10 +153,86 @@ def short_check(reads, fit, languages) -> dict:
     rows = ruh_reader.arms(reads, fit)
     shipped = shipped_arms(reads, fit, languages)
     return {
-        "held-out Lughah": ruh_reader.gate(truths, groups, rows["lughah"], rows["combined"]),
+        "held-out Lughah": ruh_reader.gate(truths, groups, rows["lughah"], rows["combined"], test),
         "shipped Lughah": ruh_reader.gate(
-            truths, groups, shipped["lughah (shipped)"], shipped["shipped × reader"]
+            truths, groups, shipped["lughah (shipped)"], shipped["shipped × reader"], test
         ),
+    }
+
+
+def validation_reads(built, rows, languages) -> dict:
+    """The validation halves read by the held-out Lughah and scored by the reader."""
+    from tadbir import ruh_reader
+
+    halves = {}
+    for name in ("calibration", "gate"):
+        chosen = [row for row in rows if row[3] == name and row[1] in languages]
+        reads = ruh_reader.read_with_lughah(
+            [(text, label) for text, label, _group, _half in chosen], languages, built.lughah, ()
+        )
+        for read, (_text, _label, group, _half) in zip(reads, chosen, strict=True):
+            read.group = group  # a MASSIVE request in every language is one group
+        halves[name] = reads
+    ruh_reader.score_reads(built.model, halves["calibration"] + halves["gate"], languages)
+    return halves
+
+
+def validate(built, halves, languages, test: int | None = None) -> dict:
+    """v1.1: κ and b calibrated on the calibration half (γ and ñ held at the
+    development fit), the gate run on the gate half as the ``test``-th test of
+    this reader (by default the manifest's tests + 1, as a night counts), and
+    every other slice reported under the calibrated fit, never deciding."""
+    from collections import Counter
+
+    from tadbir import ruh_reader
+
+    before = ruh_reader.Fit(**built.manifest["fit"])
+    fit = ruh_reader.fit_on(halves["calibration"], before.ref, gamma=before.gamma)
+    k = test if test is not None else int(built.manifest.get("tests") or 1) + 1
+    gated = halves["gate"]
+
+    def paired(reads, chosen_fit) -> dict:
+        rows = ruh_reader.arms(reads, chosen_fit)
+        return ruh_reader.gate(
+            [r.truth for r in reads], [r.group for r in reads], rows["lughah"], rows["combined"], k
+        )
+
+    verdict = paired(gated, fit)
+    parts = {
+        "MASSIVE (en, hi, ur, ar)": [r for r in gated if r.group.startswith("massive:")],
+        "Roman Hindi/Urdu": [r for r in gated if languages[r.truth] == "hi-latn"],
+    }
+    return {
+        "test": k,
+        "development_fit": before.to_dict(),
+        "fit": fit.to_dict(),
+        "sizes": {
+            name: dict(Counter(languages[r.truth] for r in reads)) for name, reads in halves.items()
+        },
+        "groups": {name: len({r.group for r in reads}) for name, reads in halves.items()},
+        "gate": verdict,
+        "adopted": verdict["adopted"] and fit.b > 0,
+        "gate_slices": short_slices(gated, fit, languages, "gate half"),
+        "gate_parts": {name: paired(reads, fit) for name, reads in parts.items() if reads},
+        "gate_shipped": short_check(gated, fit, languages, k)["shipped Lughah"],
+        "gate_errors": errors(gated, fit, languages),
+        "gate_bpb": ruh_reader.bits_per_byte(gated, languages),
+        "gate_development_fit": {
+            "slices": short_slices(gated, before, languages, "gate half"),
+            "check": paired(gated, before),
+        },
+        "calibration_slices": short_slices(
+            halves["calibration"], fit, languages, "calibration half (in sample)"
+        ),
+        "held_out_seeds": {
+            "slices": slices(built.held_out, fit, languages),
+            "check": paired(built.held_out, fit),
+        },
+        "short_v1": {
+            "slices": short_slices(built.short, fit, languages),
+            "check": short_check(built.short, fit, languages, k),
+            "errors": errors(built.short, fit, languages),
+        },
     }
 
 
@@ -250,6 +333,8 @@ def table(results: dict, languages) -> str:
                 )
             for arm, counted in (found.get("short_errors") or {}).items():
                 lines.append(f"mistakes on short, {arm}: {json.dumps(counted)}")
+        if found.get("validation"):
+            lines += validation_table(found["validation"])
         if "latency" in found:
             lines.append(f"latency (every language, 2 threads): {json.dumps(found['latency'])}")
         if "int8" in found:
@@ -257,6 +342,53 @@ def table(results: dict, languages) -> str:
         if "peak_rss_mb" in found:
             lines.append(f"peak RSS of this process: {found['peak_rss_mb']} MB")
     return "\n".join(lines)
+
+
+def _check_line(name: str, check: dict) -> str:
+    return (
+        f"{name}: adopted={check['adopted']} wins={check['wins']} losses={check['losses']} "
+        f"e={check['e_value']} (needed {check['needed']}) P(not better)={check['p_not_better']} "
+        f"loss {check['log_loss_before']} -> {check['log_loss_after']} "
+        f"acc {check['accuracy_before']} -> {check['accuracy_after']} "
+        f"(n {check['n']}, {check['groups']} groups)"
+    )
+
+
+def validation_table(found: dict) -> list[str]:
+    shown = ("lughah", "reader", "combined", "lughah (shipped)", "shipped × reader")
+    lines = [
+        f"\n### v1.1: calibrated on the calibration half, gated on the gate half (test {found['test']})",
+        f"sizes: {json.dumps(found['sizes'])}; groups {json.dumps(found['groups'])}",
+        "development fit: "
+        + json.dumps({k: round(v, 4) for k, v in found["development_fit"].items()}),
+        "calibrated fit: " + json.dumps({k: round(v, 4) for k, v in found["fit"].items()}),
+        _check_line("GATE", found["gate"]) + f"; b > 0: {found['fit']['b'] > 0}",
+        f"adopted: {found['adopted']}",
+    ]
+    lines += _table(found["gate_slices"], shown)
+    for name, check in found["gate_parts"].items():
+        lines.append(_check_line(f"gate half, {name} (reported)", check))
+    lines.append(_check_line("gate half, shipped Lughah (reported)", found["gate_shipped"]))
+    lines.append(f"gate half bits per byte: {json.dumps(found['gate_bpb'])}")
+    for arm, counted in found["gate_errors"].items():
+        lines.append(f"mistakes on the gate half, {arm}: {json.dumps(counted)}")
+    lines.append("\ngate half under the development fit (reported):")
+    lines += _table(found["gate_development_fit"]["slices"], shown)
+    lines.append(
+        _check_line("development fit on the gate half", found["gate_development_fit"]["check"])
+    )
+    lines.append("\ncalibration half (in sample):")
+    lines += _table(found["calibration_slices"], shown)
+    lines.append("\nseeds' held-out groups under the calibrated fit (reported):")
+    lines += _table(found["held_out_seeds"]["slices"], ("lughah", "reader", "combined"))
+    lines.append(_check_line("seeds' held-out groups", found["held_out_seeds"]["check"]))
+    lines.append("\nv1's short messages under the calibrated fit (reported):")
+    lines += _table(found["short_v1"]["slices"], shown)
+    for name, check in found["short_v1"]["check"].items():
+        lines.append(_check_line(f"v1 short, {name}", check))
+    for arm, counted in found["short_v1"]["errors"].items():
+        lines.append(f"mistakes on v1 short, {arm}: {json.dumps(counted)}")
+    return lines
 
 
 def measure_short(found: dict, short, fit, languages) -> None:
@@ -341,6 +473,15 @@ def main() -> None:
         help="keep every seed's reader (weights) here, the moment it is trained; "
         "a re-run finds them and only reads",
     )
+    parser.add_argument(
+        "--validation",
+        action="store_true",
+        help="v1.1: calibrate κ and b on the calibration half of the corpus's validation "
+        "slices and gate on the gate half (needs --corpus)",
+    )
+    parser.add_argument(
+        "--test", type=int, help="the k-th test of this reader (default: its tests + 1)"
+    )
     args = parser.parse_args()
     os.environ.setdefault("MIZAN_TALIM", "off")  # the shipped seeds only
 
@@ -348,10 +489,17 @@ def main() -> None:
     from tadbir.ruh_reader import corpus as reader_corpus
 
     extra = None
+    held_back = None
     if args.corpus is not None:
         extra = reader_corpus.load(Path(args.corpus) if args.corpus else None)
         if extra is None:
             raise SystemExit("no corpus: build it with python -m tadbir.ruh_reader --corpus")
+    if args.validation:
+        held_back = reader_corpus.load_validation(Path(args.corpus) if args.corpus else None)
+        if extra is None or held_back is None:
+            raise SystemExit(
+                "no validation slices: build them with python -m tadbir.ruh_reader --validation"
+            )
     if args.evaluate:
         found = evaluate(args.evaluate, extra)
         found["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
@@ -379,6 +527,9 @@ def main() -> None:
             "errors": errors(built.held_out, fit, languages, shipped=False),
         }
         measure_short(found, built.short, fit, languages)
+        if held_back is not None:
+            halves = validation_reads(built, held_back, languages)
+            found["validation"] = validate(built, halves, languages, args.test)
         found["latency"] = latency(built.model, languages)
         found["int8"] = int8_agreement(built.model, built.held_out, fit, languages)
         found["wall_seconds"] = round(time.monotonic() - began, 1)
