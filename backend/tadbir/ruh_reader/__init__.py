@@ -968,6 +968,70 @@ def install(built: Built) -> None:
         save(built, "current")
 
 
+def install_trained(weights: Path, report: dict, source: dict | None = None) -> dict:
+    """Install a reader trained and gated elsewhere (``scripts/ruh_reader_eval.py``
+    writes ``report``: one ``"seed N"`` section holding its ``manifest`` and,
+    for a gated version, the gate's ``fit`` and ``gate`` under a test key such
+    as ``"v2"``) as the base and current version, so a server needs no training.
+
+    Refused unless the weights load and were trained on these very seeds (the
+    corpus digest and the languages, as :func:`load` asks). The dev and
+    held-out readings a night compares against are made here, as a build makes
+    them. The setting (``MIZAN_RUH_READER``) is not changed: in ``shadow`` the
+    reader is read and logged, and never decides."""
+    from . import net
+
+    sections = [value for key, value in report.items() if key.startswith("seed")]
+    if len(sections) != 1 or not isinstance(sections[0], dict):
+        raise ValueError("the report must hold exactly one seed's section")
+    section = sections[0]
+    found = dict(section.get("manifest") or {})
+    gated = next(
+        (
+            value
+            for key, value in section.items()
+            if key != "manifest" and isinstance(value, dict) and {"fit", "gate"} <= value.keys()
+        ),
+        None,
+    )
+    rows = seeds()
+    languages = list(dict.fromkeys(label for _text, label in rows))
+    if found.get("corpus_sha256") != corpus_digest(rows):
+        raise ValueError("these weights were trained on other seeds than this server's")
+    if list(found.get("languages") or ()) != languages:
+        raise ValueError("these weights read other languages than this server's seeds")
+    model = net.load(weights)
+    fit = Fit(**(gated["fit"] if gated else found["fit"]))
+    splits: dict[str, list[tuple[str, str]]] = {"train": [], "dev": [], "held_out": []}
+    for row in rows:
+        splits[part(group_of(row[0]))].append(row)
+    fold = held_out_lughah(rows)
+    dev = read_with_lughah(trainable(splits["dev"]), languages, fold)
+    held = read_with_lughah(splits["held_out"], languages, fold)
+    score_reads(model, dev + held, languages)
+    manifest = {
+        **found,
+        "fit": fit.to_dict(),
+        "gate": gated["gate"] if gated else found.get("gate"),
+        "adopted": bool(gated["gate"].get("adopted")) if gated else found.get("adopted", False),
+        "installed": {
+            "at": datetime.now(UTC).isoformat(),
+            "sha256": hashlib.sha256(weights.read_bytes()).hexdigest(),
+            **(source or {}),
+        },
+    }
+    install(Built(model=model, manifest=manifest, dev=dev, held_out=held, lughah=fold))
+    return {
+        "created": manifest.get("created"),
+        "parameters": manifest.get("parameters"),
+        "fit": manifest["fit"],
+        "adopted": manifest["adopted"],
+        "installed": manifest["installed"],
+        "dev": len(dev),
+        "held_out": len(held),
+    }
+
+
 def manifest(name: str = "current") -> dict | None:
     try:
         data = json.loads(_files(name)[1].read_text(encoding="utf-8"))
