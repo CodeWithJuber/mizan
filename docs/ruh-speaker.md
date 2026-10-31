@@ -212,6 +212,18 @@ The launcher writes `ruh-speaker-launch/pod-recovery.json` (pod id, deadline, bu
 
 Locally, without a GPU: `cd backend && python -m tadbir.ruh_reader.speaker prepare --plan tiny --tsv docs.tsv --out /tmp/s` and `… train --shards /tmp/s --out /tmp/r`.
 
+**On a Mac with Apple silicon** (the owner's M5 Max, 64 GB), training runs on its GPU through Metal (`--device mps`; chosen by default when there is no CUDA). It runs in fp32, without autocast, and `torch.compile` is used only on CUDA. Each call trains for `--seconds` and then stops, writing a checkpoint every 20 minutes. The next call resumes from the newest whole checkpoint, so the pilot can run over several nights:
+
+```bash
+pip install -e ".[ml]"                                    # torch with Metal (MPS) on macOS
+cd backend
+python -c "import torch; print(torch.backends.mps.is_available())"   # must print True
+python -m tadbir.ruh_reader.speaker prepare --plan pilot --out ~/ruh/shards   # downloads the pinned sources
+python -m tadbir.ruh_reader.speaker train --shards ~/ruh/shards --out ~/ruh/run --device mps --seconds 28800
+```
+
+The pilot's numbers in §3 are for an A100 or H100 (about 2·10¹⁸ FLOPs, ≈ 19.5 GB of downloads); the Mac's speed is not measured yet. Read it from the first call's report (`tokens`, `elapsed`) before planning the nights.
+
 ## 8. Limits
 
 - Not measured here: the GPU's share of peak, the real bytes per token of web text, how long preparing takes on web documents, how many documents each rule drops, and the quality of FineWeb-2's Roman subsets. All are in the run's report.

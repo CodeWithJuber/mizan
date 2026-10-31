@@ -407,3 +407,16 @@ def test_the_pod_commands_are_valid_python_and_carry_no_key():
     assert "end()" in runpod_speaker.SMOKE and "execv" not in runpod_speaker.SMOKE
     budget = runpod_speaker.lifetime(25, 1.79)
     assert (1.79 + runpod_speaker.disk_hourly()) * budget / 3600 <= 25 - runpod_speaker.safety(25)
+
+
+def test_training_picks_cuda_then_apples_gpu_then_the_cpu(monkeypatch):
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import speaker_net
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    assert speaker_net.default_device() == "mps"
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+    assert speaker_net.default_device() == "cpu"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert speaker_net.default_device() == "cuda"

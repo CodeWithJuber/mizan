@@ -1086,6 +1086,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     training.add_argument("--out", type=Path, required=True)
     training.add_argument("--plan", choices=sorted(PLANS), default=None)
     training.add_argument("--seconds", type=float, default=math.inf)
+    training.add_argument(
+        "--device",
+        choices=("cuda", "mps", "cpu"),
+        default=None,
+        help="default: CUDA, else Apple silicon's GPU (mps), else the CPU",
+    )
     checking = commands.add_parser("verify", help="check the shards' SHA-256")
     checking.add_argument("--shards", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1122,6 +1128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             CONFIGS[manifest["plan"]],
             PLANS[args.plan or manifest["plan"]],
             seconds=args.seconds,
+            device=args.device,
             log=print,
         )
         print(json.dumps({k: v for k, v in report.items() if k != "history"}, indent=1))
