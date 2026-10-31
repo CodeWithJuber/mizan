@@ -195,3 +195,36 @@ Both bars hold, so the shadow store's rule stays.
 - **A person's later words are only part of the picture.** In MSC the other speaker is a person. In MIZAN it is MIZAN, whose reply was left out on purpose (see "In production: shadow"). What MIZAN says back could be counted only when it is the person's own fact echoed, which no test has measured.
 
 `python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 4 --split train`
+
+## Before recall: does strength say which episode is needed? (pre-registered 31 Oct 2026, before any real use is read)
+
+Recall from episodes would rank them by FSRS retrievability R(t), counting each time an episode came up again as a Good review (Tadhkir's repeat review). Tests 2 and 3 showed on MSC that repetition marks what is needed. This rule decides whether real use in MIZAN shows the same, before recall may use it.
+
+**Why not Tadhkir's `need_test`.** That test asks whether the need *rate* follows λ·R(u). Simulated, it cannot tell a world that does from one with a flat rate: after a few Good reviews FSRS stabilities are long, R stays near 1, and the two models predict nearly the same rate. Its log e-value was 0.3–1.1 with about 8,000 needs, where it needs 3.0. What recall needs is a *ranking*, so this rule tests the ranking.
+
+**The rule** (`episodic.strength`, `strength_report`). Each moment some of a person's episodes come up again (a **need**) is read as a draw from that person's episodes alive then: the 500 latest, as `hear_now` reads them. The draw is compared under three laws:
+
+| Law | P(episode k is the one needed) |
+|---|---|
+| strength | R_k / Σ R, R with every earlier repeat as a Good review, first written Hard (a weak trace) |
+| recency (null 1) | R0_k / Σ R0, R0 as written, never strengthened |
+| uniform (null 2) | 1 / n |
+
+- **The e-value.** The product over needs of P_strength(k) / P_null(k) is a test martingale under that null: given the past, its expected factor is Σ_k P_null(k) · P_strength(k) / P_null(k) = 1. So it may be read at any time, and Ville's inequality bounds by α the chance that it ever reaches 1/α under the null.
+- **Several episodes at one moment.** When one message brings up more than one episode, their ratios are averaged; an average of e-values is an e-value.
+- **Pooling.** People are pooled by multiplying their e-processes.
+- **Which e-value decides.** Strength must beat both nulls, so the smaller of the two e-values decides. It is valid against either null.
+
+**Simulated before any real data** (`episodic.simulate`; 300 episodes, 360 days, λ = 0.3 a day, seeds 0 and 1):
+
+| World the needs came from | log e vs recency | log e vs uniform | Decides (needs log e ≥ 3.0) |
+|---|---|---|---|
+| strength | 243, 209 | 10.4, 8.5 | yes |
+| recency | −107, −140 | −30, −32 | no |
+| uniform | **175, 182** | −7.4, −4.5 | no |
+
+The uniform row is why both nulls are needed. A world where every episode is equally likely makes recency look wrong (log e 175) without strength being right.
+
+**Decision rule** (fixed now, before real use is read). Recall from episodes is **proposed to the owner** only when the pooled e-value, the smaller of the two, reaches **1/α = 20** (α = 0.05). Until then episodes stay in shadow. The report never turns recall on by itself.
+
+**How to read it.** `GET /api/memory/tadhkir` (admins) under `episodes`. It holds people, episodes, needs, both e-values, `e` and `strength_says_need`, and never any words. With production's traffic of 2 to 17 messages a day, expect weeks before a verdict. On 200 simulated episodes it took about 1,500 needs to decide.

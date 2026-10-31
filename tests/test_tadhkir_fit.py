@@ -395,6 +395,7 @@ def test_only_an_administrator_reads_the_parameters_in_use(api):
     body = response.json()
     assert body["fitted"] is False and body["evaluation"] is None
     assert body["parameters"] == pytest.approx(list(tadhkir.DEFAULTS))
+    assert body["episodes"]["needs"] == 0 and body["episodes"]["strength_says_need"] is False
     assert client.get("/api/memory/tadhkir", headers=user).status_code == 403
     assert client.get("/api/memory/tadhkir").status_code == 401
 

@@ -140,3 +140,37 @@ def test_the_evaluation_gives_each_statement_what_was_heard_after_it_and_its_own
     assert first["own"] == [["a2", "a3"], ["a3"], []]
     assert second["own"] == [["b2"], []]
     assert second["after"][0] == ["a2", "a3", "b2"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "says_need"), [("strength", True), ("recency", False), ("uniform", False)]
+)
+def test_strength_is_believed_only_in_a_world_where_it_says_which_episode_is_needed(
+    kind, says_need
+):
+    """Simulated needs (docs/episodic-memory.md, "Before recall"): drawn by
+    strength with repeats, the smaller e-value reaches 1/α; drawn by recency
+    as written, or uniformly, it does not."""
+    import math
+
+    found = episodic.strength(*episodic.simulate(kind, episodes=200, days=360, seed=0))
+    smaller = min(found["log_e"].values())
+    assert found["needs"] > 1000
+    assert (smaller >= math.log(1 / episodic.ALPHA)) is says_need
+
+
+def test_the_report_reads_every_persons_needs_without_words(shadow):
+    episodic.hear_now(shadow, "chat-a", "My daughter Amina starts school in Lahore.")
+    episodic.hear_now(shadow, "chat-a", "We moved to a new flat near the canal.")
+    episodic.hear_now(shadow, "chat-b", "Amina's school in Lahore starts on Monday.")
+    episodic.hear_now("someone-else", "chat-c", "I am learning Arabic grammar this year.")
+    report = episodic.strength_report()
+    assert report["people"] == 2 and report["episodes"] == 4
+    assert report["needs"] == 1
+    assert report["strength_says_need"] is False  # one need is never enough
+    assert "Amina" not in str(report)
+
+
+def test_a_simulated_world_must_be_named():
+    with pytest.raises(ValueError):
+        episodic.simulate("random")

@@ -271,3 +271,185 @@ def counts(owner: str) -> dict:
     finally:
         conn.close()
     return {"episodes": int(episodes), "lasting": int(lasting)}
+
+
+# ── does strength say which episode is needed? (read before recall uses it) ──
+#
+# Recall from episodes would rank them by FSRS retrievability R(t), with each
+# time an episode came up again counted as a Good review. Before it may, real
+# use must show that R says which episode a person needs. Each moment some
+# episodes come up again (a "need") is read as a draw from the person's episodes
+# that were alive then (the RECENT latest, as ``hear_now`` reads them):
+#
+#   strength:  P(k) = R_k / Σ R          (repeats strengthen, Nawm's model)
+#   recency:   P(k) = R0_k / Σ R0        (R0: as written, never strengthened)
+#   uniform:   P(k) = 1 / n
+#
+# The product over needs of P_strength(k) / P_null(k) is a test martingale under
+# that null (its expectation given the past is Σ_k P_null(k)·P_s(k)/P_null(k) = 1),
+# so it may be read at any time: Ville's inequality bounds the chance it ever
+# reaches 1/α under the null by α. Strength must beat both nulls; the smaller
+# e-value is valid against either (a uniform world can make recency look wrong
+# without strength being right, which the simulation in docs/episodic-memory.md
+# shows). When several episodes come up at one moment, their ratios are averaged
+# (an average of e-values is an e-value).
+
+ALPHA = 0.05
+
+
+def _weights(state: dict, alive: list, at) -> tuple[dict, dict]:
+    from memory import tadhkir
+
+    decay, factor = tadhkir._curve(tadhkir.DEFAULTS)
+    strong, written = {}, {}
+    for key in alive:
+        card, last, first, created = state[key]
+        days = (at - last).total_seconds() / 86400.0
+        strong[key] = (1.0 + factor * days / float(card.stability)) ** decay
+        days = (at - created).total_seconds() / 86400.0
+        written[key] = (1.0 + factor * days / first) ** decay
+    return strong, written
+
+
+def strength(episodes, repeats, recent: int = RECENT) -> dict:
+    """One person's needs read against strength: ``episodes`` as (key, created)
+    and ``repeats`` as (key, at), datetimes. Returns the needs read and the log
+    e-values against recency and against uniform."""
+    from fsrs import Card, Rating
+
+    from memory import tadhkir
+
+    scheduler = tadhkir._scheduler(tadhkir.DEFAULTS)
+    # at one moment, needs are read before the episode written then (it was not
+    # among those read against) and before any of them is strengthened
+    events = sorted(
+        [(at, 0, key) for key, at in repeats] + [(at, 1, key) for key, at in episodes],
+        key=lambda event: (event[0], event[1]),
+    )
+    state: dict = {}
+    order: list = []
+    against_recency = against_uniform = 0.0
+    needs = index = 0
+    while index < len(events):
+        at, kind, key = events[index]
+        if kind == 1:
+            card, _log = scheduler.review_card(Card(card_id=1), Rating.Hard, at)
+            state[key] = [card, at, float(card.stability), at]
+            order.append(key)
+            index += 1
+            continue
+        moment = []
+        while index < len(events) and events[index][:2] == (at, 0):
+            moment.append(events[index][2])
+            index += 1
+        alive = order[-recent:]
+        needed = [key for key in dict.fromkeys(moment) if key in state and key in alive]
+        if needed and len(alive) >= 2:
+            strong, written = _weights(state, alive, at)
+            total, total_written = sum(strong.values()), sum(written.values())
+            ratios = [(strong[k] / total) / (written[k] / total_written) for k in needed]
+            uniform = [strong[k] / total * len(alive) for k in needed]
+            against_recency += math.log(sum(ratios) / len(ratios))
+            against_uniform += math.log(sum(uniform) / len(uniform))
+            needs += 1
+        for key in needed:
+            card, _log = scheduler.review_card(state[key][0], tadhkir.GOOD, at)
+            state[key][0], state[key][1] = card, at
+    return {"needs": needs, "log_e": {"recency": against_recency, "uniform": against_uniform}}
+
+
+def _histories():
+    """Every person's episodes and repeats (no words), one person at a time."""
+    import sqlite3
+    from datetime import datetime
+
+    from memory.mahw import private_dir
+
+    root = private_dir("x").parent
+    for path in sorted(root.glob(f"*/{FILE}")) if root.exists() else []:
+        conn = sqlite3.connect(path)
+        try:
+            episodes = [
+                (key, datetime.fromisoformat(created))
+                for key, created in conn.execute("SELECT id, created FROM episodes")
+            ]
+            repeats = [
+                (key, datetime.fromisoformat(at))
+                for key, at in conn.execute("SELECT episode, at FROM repeats")
+            ]
+        except sqlite3.Error:
+            continue
+        finally:
+            conn.close()
+        yield episodes, repeats
+
+
+def strength_report() -> dict:
+    """Every person's needs, pooled (one person's e-process times another's):
+    the e-value against each null, the smaller one deciding. Recall from
+    episodes is proposed to the owner only when it reaches 1/α (it is never
+    turned on by this report)."""
+    people = needs = episodes = 0
+    recency = uniform = 0.0
+    for kept, repeats in _histories():
+        found = strength(kept, repeats)
+        people += 1
+        episodes += len(kept)
+        needs += found["needs"]
+        recency += found["log_e"]["recency"]
+        uniform += found["log_e"]["uniform"]
+
+    def e(log: float) -> float:
+        return math.exp(min(log, 700.0))
+
+    smaller = min(recency, uniform)
+    return {
+        "people": people,
+        "episodes": episodes,
+        "needs": needs,
+        "e_value": {"against_recency": e(recency), "against_uniform": e(uniform)},
+        "e": e(smaller),
+        "needed": 1 / ALPHA,
+        "strength_says_need": smaller >= math.log(1 / ALPHA),
+    }
+
+
+def simulate(kind: str, *, episodes: int = 300, days: int = 360, rate: float = 0.3, seed: int = 0):
+    """(episodes, repeats) drawn by thinning a rate-``rate`` proposal: each episode
+    needed at λ·R with its repeats as Good reviews (``strength``), at λ·R0 as
+    written (``recency``), or at λ (``uniform``)."""
+    import random
+    from datetime import UTC, datetime, timedelta
+
+    from fsrs import Card, Rating
+
+    from memory import tadhkir
+
+    if kind not in ("strength", "recency", "uniform"):
+        raise ValueError("kind is strength, recency or uniform")
+    rng = random.Random(seed)
+    scheduler = tadhkir._scheduler(tadhkir.DEFAULTS)
+    decay, factor = tadhkir._curve(tadhkir.DEFAULTS)
+    origin = datetime(2026, 1, 1, tzinfo=UTC)
+    finish = origin + timedelta(days=days)
+    kept, repeats = [], []
+    for number in range(episodes):
+        created = origin + timedelta(days=rng.uniform(0, days))
+        card, _log = scheduler.review_card(Card(card_id=1), Rating.Hard, created)
+        first, last, proposal = float(card.stability), created, created
+        kept.append((number, created))
+        while True:
+            proposal += timedelta(days=rng.expovariate(rate))
+            if proposal >= finish:
+                break
+            if kind == "strength":
+                days_since, stability = (proposal - last).total_seconds() / 86400.0, card.stability
+            else:
+                days_since, stability = (proposal - created).total_seconds() / 86400.0, first
+            held = (1.0 + factor * days_since / float(stability)) ** decay
+            if kind == "uniform" or rng.random() < held:
+                repeats.append((number, proposal))
+                if kind == "strength":
+                    card, _log = scheduler.review_card(card, tadhkir.GOOD, proposal)
+                    last = proposal
+    return kept, repeats
