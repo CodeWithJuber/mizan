@@ -1971,7 +1971,8 @@ def load(where: Path | None = None) -> Corpus | None:
     if manifest.get("seeds_sha256") != corpus_digest(seeds()):
         logger.info("Ruh reader corpus: built against other seeds; rebuild it")
         return None
-    train, written = [], []
+    train: list[tuple[str, str]] = []
+    written: list[tuple[str, str]] = []
     for row in train_body.splitlines():
         source, label, text = row.split("\t", 2)
         (written if model_written(source) else train).append((text, label))

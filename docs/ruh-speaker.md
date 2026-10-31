@@ -68,7 +68,7 @@ Rejected (`speaker.REJECTED`):
 
 | Source | Why |
 |---|---|
-| Abhishekcr448/Hinglish-Everyday-Conversations-1M | MIT, but written by GPT-4o-mini (its card). OpenAI's terms forbid using output to build competing models; MIZAN's rule is that Anthropic and OpenAI output is for lookup only ([consent.md](consent.md)). **The reader v1 trained on it** (`corpus.py`); whether to rebuild the reader without it is the owner's decision, not changed here |
+| Abhishekcr448/Hinglish-Everyday-Conversations-1M | MIT, but written by GPT-4o-mini (its card). OpenAI's terms forbid using output to build competing models; MIZAN's rule is that Anthropic and OpenAI output is for lookup only ([consent.md](consent.md)). **The reader v1 trained on it**; the owner decided on 31 Oct 2026 that the reader is retrained without it ([v2](ruh-reader.md#v2-without-model-written-text)) |
 | ai4bharat/sangraha | Card CC BY 4.0, but "Synthetic" is English Wikipedia (CC BY-SA) machine-translated, i.e. share-alike re-licensed, and "Verified" holds OCR'd PDFs and transcribed "videos, podcasts, movies" with no source per row |
 | ai4bharat/IndicCorpV2 | "Released under a CC-0 license" (card): packaging of crawled news AI4Bharat does not own, plain text with no source per line, so no removal request could ever be honoured |
 | statmt/cc100 (has `hi_rom`, `ur_rom`) | Licence "unknown" on its card; "no claims of intellectual property", Common Crawl terms only; no source per paragraph |

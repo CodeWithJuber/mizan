@@ -268,7 +268,7 @@ SOURCES: tuple[Source, ...] = (
 REJECTED: dict[str, str] = {
     "Abhishekcr448/Hinglish-Everyday-Conversations-1M": (
         "MIT, but written by GPT-4o-mini (its card): OpenAI's terms forbid using output "
-        "to develop competing models (docs/consent.md); the reader v1 trained on it"
+        "to develop competing models (docs/consent.md); the reader v1 trained on it, v2 does not"
     ),
     "ai4bharat/sangraha": (
         "card CC BY 4.0, but Synthetic is English Wikipedia (CC BY-SA) translated, i.e. "

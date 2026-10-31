@@ -71,12 +71,18 @@ corpus (its SHA-256 differs from the seeds'), changes nothing.
 
 **Its own corpus** (``corpus``): Lughah's seeds stay Lughah's; the reader may
 also learn from licence-clean text that is not theirs (Tatoeba sentences the
-seeds do not use, MASSIVE 1.1's training utterances, Hinglish-1M rows), built
-at train time into ``$MIZAN_DATA_DIR`` with every line checked: its own
-script, not a seed's words in any split, not a held-out short message, once,
-never scripture. Its held-out slice of short requests (MASSIVE test
+seeds do not use, MASSIVE 1.1's training utterances, and since v2 lines of
+FineWeb-2's Roman Hindi/Urdu web pages), built at train time into
+``$MIZAN_DATA_DIR`` with every line checked: its own script, not a seed's
+words in any split, not the words of (or near) any measured message, once,
+never scripture or hadith. Its held-out slice of short requests (MASSIVE test
 utterances of 3 to 8 words, held-out Roman Hindi/Urdu rows) is read and
-reported beside the seeds' held-out groups; the gate stays the seeds'.
+reported beside the seeds' held-out groups.
+
+**Never text a language model wrote** (v2, the owner's decision of 31 Oct
+2026): Hinglish-1M, which GPT-4o-mini wrote, is measured only; Lughah's seeds
+from it (``written_by_a_model``) are never the reader's training or
+development lines nor replayed at night (``trainable``).
 
 **Scripture is never a target** (``scripture``): a line is not trained on when
 Lughah reads any piece of it as quoted Quran, when it shares
