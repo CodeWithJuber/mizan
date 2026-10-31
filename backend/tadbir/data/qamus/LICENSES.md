@@ -30,6 +30,20 @@ Used to build, not shipped: [anyascii](https://github.com/anyascii/anyascii)
 name pairs, so the builder can test whether one is a transliteration of the
 other. The lexicon holds none of its output.
 
+Learned from in a measured variant that is **not shipped** (`docs/qamus.md`,
+"Wider Hindi: PMIndia"): [PMIndia](https://data.statmt.org/pmindia/) v1
+(Haddow and Kirefu, 2020, arXiv:2001.09907; CC BY 4.0), `pmindia.v1.hi-en.tsv`
+(Last-Modified 27 January 2020, SHA-256
+`bfa9fe6c994f492a79c288cbd8ba95a3b0c9407997f453b59e6dc4b13bd2029f`), read only
+by `scripts/build_qamus.py --extra` and `scripts/build_qamus_roman.py --extra`.
+No file here holds anything of it. Considered and rejected:
+[Samanantar](https://huggingface.co/datasets/ai4bharat/samanantar) at commit
+`ead34c5b22a0354d350e7dfdd6aece7df5a48f37` (its card says CC BY-NC 4.0; it
+collates Tanzil, JW300, IITB and other corpora with no source per row) and
+[BPCC](https://huggingface.co/datasets/ai4bharat/BPCC) at commit
+`5bde309374f21c39e7c3d505f28ae11f58f2a220` (Wikipedia text re-licensed, mined
+parts with no source per row).
+
 Measured with, never shipped or learned from: FLORES-101 devtest
 ([gsarti/flores_101](https://huggingface.co/datasets/gsarti/flores_101) at
 commit `1a45e707ea4b5ea3d6c71341f18bfca6a6e356a3`, CC BY-SA 4.0), read only by

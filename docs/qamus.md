@@ -871,6 +871,231 @@ held-out set").
   0.713. The next letter is used. Neither reads Urdu as well as Hindi is read
   (Limits).
 
+## Wider Hindi: PMIndia
+
+Measured on 31 October 2026 and **not adopted**: the shipped Hindi lexicon and
+Roman reading are still learned from MASSIVE alone. PMIndia widened them a
+great deal (FLORES Hindi claims read 29 → 247 of 1,012), and on a fresh
+held-out set more claims were supported with no new wrong finding, but on the
+existing sets a true Hindi claim was newly contradicted and three findings
+were newly wrong, which the bar set beforehand does not allow.
+
+### The gap
+
+A production Roman claim, "Taj Mahal ko Mughal badshah Shah Jahan ne apni
+begum Mumtaz Mahal ki yaad mein banwaya tha", is not read against "It was
+built in the 17th century by Emperor Shah Jahan in memory of his wife, Mumtaz
+Mahal.": "badshah", "begum" and "banwaya" have no translation. Devanagari
+Hindi claims are supported 4 or 5 of 119 against English pages for the same
+reason. MASSIVE is a voice assistant's vocabulary.
+
+### Data and licence
+
+Read and checked one by one; only PMIndia is used.
+
+| Source | Licence | Decision |
+|---|---|---|
+| [PMIndia](https://data.statmt.org/pmindia/) v1 (Haddow and Kirefu, 2020), `pmindia.v1.hi-en.tsv`, 56,831 sentence pairs from the news updates of the Prime Minister of India's website, SHA-256 `bfa9fe6c…2029f` (Last-Modified 27 January 2020) | CC BY 4.0 (its README and paper); one provider, which made the content available for re-distribution | Used to build the measured lexicon, as extra Hindi–English training pairs; nothing of it is shipped |
+| [Samanantar](https://huggingface.co/datasets/ai4bharat/samanantar) (AI4Bharat), at commit `ead34c5b` | The Hugging Face card says CC BY-NC 4.0, against the CC0 given for its mined part elsewhere. It collates existing corpora with their own terms: Tanzil (translations of the Quran), JW300, the Bible, OpenSubtitles, IITB (CC BY-NC 4.0) | Rejected: non-commercial on its card, and Quran text inside. Its rows carry no source (the files hold only `idx`, `src`, `tgt`), so no part can be left out |
+| [BPCC](https://huggingface.co/datasets/ai4bharat/BPCC) (AI4Bharat, IndicTrans2), at commit `5bde3093` | BPCC-H-Wiki CC BY 4.0, but it is English Wikipedia sentences (CC BY-SA) and their translations; the mined parts are CC0 "packaging" of text AI4Bharat does not own, from Wikipedia dumps, the Internet Archive and religious and CC BY-SA sites, with no source per row | Rejected: share-alike re-licensed, and sub-sources that cannot be left out. Gated besides. BPCC-H-Daily (CC BY 4.0) is app requests, MASSIVE's domain |
+
+Urdu has no such source here: PMIndia also has an English–Urdu file
+(3.5 MB), which was not used (Limits).
+
+### Method
+
+The builder and its rules are unchanged; PMIndia's pairs are added to
+MASSIVE's train pairs for Hindi only:
+
+- the subset, fixed before any result was seen: every pair whose two sides
+  have words, at most 40 words a side (IndicTrans2's mining cut-off), exact
+  duplicates dropped, in the file's order: 53,656 pairs, all of PMIndia that
+  fits (one EM iteration on 5,000 of them takes 2 seconds);
+- EM stops by MASSIVE's validation log-likelihood, τ is fitted by F1 on the
+  same validation slot dictionary, precision@1 is measured on the same test
+  dictionary, names are judged on MASSIVE's slots, as before;
+- pieces are judged over all the training text, and the Wilson bound counts
+  every training sentence that holds a word;
+- the Urdu, Arabic and Tamil files are rebuilt byte for byte.
+
+The Roman reading is rebuilt with the same channel (same pairs, seed and
+stopping rule), over a vocabulary of MASSIVE's Hindi words and PMIndia's
+Devanagari words, their counts summed. The English filter is unchanged
+(PMIndia's English is not added: it holds Indian words in Latin letters).
+Every Hindi word's readings are kept, as before: the files then take 4.0 MB
+in all, under the 5 MB the tests allow (a fallback, decided on size alone, was
+not needed).
+
+`build_qamus.py --extra` and `build_qamus_roman.py --extra` build this variant
+(Rebuild and measure); without `--extra` both rebuild the shipped files byte
+for byte.
+
+### Pre-registered bar
+
+Written before the new lexicon was measured. It is adopted only if all hold:
+
+1. On a fresh held-out set of teacher answers, pooled non-English supported
+   claims (Hindi, Urdu, Roman Hindi, Roman Urdu) rise.
+2. Its control (another question's articles) stays at 0 supported and 0
+   contradicted.
+3. No true claim is newly contradicted.
+4. On the existing sets (Hindi and Urdu answers, Roman answers, Roman false
+   claims, the English true and false sets), wrong findings do not rise and
+   the controls stay at 0.
+
+### Measured (31 October 2026)
+
+**The lexicon.** EM stopped after 3 iterations in both directions, as before.
+On MASSIVE's test dictionary (its own domain), more words are held and the
+first translation is right less often:
+
+| Direction | precision@1 [95% Wilson] | right / held | coverage | words | shipped (MASSIVE alone) |
+|---|---|---|---|---|---|
+| hi→en | 0.750 [0.682, 0.808] | 135 / 180 | 0.73 of 248 | 11,662 | 0.812 [0.743, 0.866], 125 / 154, 0.62, 2,480 |
+| en→hi | 0.625 [0.552, 0.693] | 110 / 176 | 0.78 of 226 | 20,902 | 0.700 [0.625, 0.766], 112 / 160, 0.71, 3,064 |
+
+Words MASSIVE never held are now translated: "हालांकि" → however, "राज्य" →
+state, "सम्राट" → emperor, "स्वतंत्रता" → independence, "वैज्ञानिक" →
+scientist; "कारण" only as "due". Some translations are noise from PMIndia's
+own phrasing: "सरकार" → govt, and "ने", the particle of "प्रधानमंत्री ने" (the
+Prime Minister has), also → prime, minister. Names are still not swapped:
+none of the 20 swaps of `tests/test_qamus.py` came back, and "भारत" is still
+not read as india (nor "india" as anything Hindi).
+
+**`about()` across scripts** (`scripts/qamus_eval.py`, Hindi):
+
+| | shipped | with PMIndia |
+|---|---|---|
+| FLORES claims accepted | 29 / 1012 (2.9% [2.0, 4.1]) | 247 / 1012 (24.4% [21.9, 27.1]) |
+| FLORES, through `judge()` | 18 | 76 |
+| FLORES false accepts, random / hard | 0 / 20240, 0 / 3036 | 0 / 20240, 0 / 3036 |
+| MASSIVE claims accepted | 64.3% of 2249 | 65.4% |
+| MASSIVE false accepts, hard (English claim) | 13.1% (11.7%) | 12.4% (10.5%) |
+
+**The Roman reading.** The Hindi vocabulary grew from 5,747 to 30,053 words
+and its readings from 149,200 to 746,766. On Dakshina's test sentences,
+Hindi content tokens: 45,776 read against 33,727, precision 0.870
+[0.867, 0.873] against 0.830, recall 0.838 against 0.853. On Aksharantar's test
+split, a spelling is read as its word 1,862 of 2,484 times (0.750), against
+596 of 718 (0.830): far more of its words are now in the vocabulary. Urdu is
+unchanged.
+
+**The Taj Mahal claim is still not read.** Of its 8 distinctive words, the
+sentence holds 3 (shah, mumtaz, mahal) as before. PMIndia never writes
+"बादशाह" or "बेगम", and "बनवाया" once, so none of the three is translated.
+The teacher's other wording, "Taj Mahal Shah Jahan ne apni biwi Mumtaz Mahal
+ki yaad mein banwaya tha", is now *supported* by that sentence (below).
+
+**Teacher answers, the existing sets**, each claim read with its subject,
+against the question's Simple English Wikipedia articles and, as a control,
+another question's:
+
+| Set | shipped: supported, contradicted | with PMIndia | changed findings: newly wrong, wrong no longer found |
+|---|---|---|---|
+| Roman true claims, 158 | 26 [11.5, 23.0%], 0 | 33 [15.3, 27.9%], 0 | 0, 0 |
+| Roman false claims, 20 | 0, 3 | 1, 3 | 1, 0 |
+| Hindi (Devanagari) answers, 119 | 4, 0 | 6, 1 | 2, 0 |
+| Urdu answers, 120 | 0, 0 | 0, 0 | 0, 0 |
+| English set, 75 | 18, 0 | 19, 0 | 0, 0 |
+| English false claims, 20 | 0, 8 | 0, 8 | 0, 0 |
+| Controls of the non-English sets | 0, 0 | 0, 0 | |
+
+**The fresh held-out set**: 30 other questions on other articles, the
+teacher's answers in English, Hindi, Urdu, Roman Hindi and Roman Urdu, and 20
+false claims, written and frozen before either lexicon was measured on them:
+
+| Set | shipped: supported, contradicted | with PMIndia |
+|---|---|---|
+| Hindi, 80 claims | 2, 0 | 4, 0 |
+| Urdu, 72 | 1, 0 | 1, 0 |
+| Roman Hindi, 85 | 9, 1 | 11, 1 (the same claim) |
+| Roman Urdu, 75 | 9, 0 | 11, 0 |
+| **Pooled, 312** | **21** [4.4, 10.1%], 1 | **27** [6.0, 12.3%], 1 |
+| English, 72 | 17, 0 | 17, 0 |
+| False claims, 16 non-English and 4 English | 1, 2 and 0, 2 | 1, 2 and 0, 3 |
+| Every control | 0, 0 | 0, 0 |
+
+**Hand audit of every changed finding** (right: the sentence says it; part:
+it says part of it; wrong). On the existing sets:
+
+| Claim | Source sentence, shortened | Audit |
+|---|---|---|
+| + क्षेत्रफल की दृष्टि से दुनिया का सबसे बड़ा देश रूस है, जो यूरोप और एशिया दोनों महाद्वीपों में फैला है। | Russia has land borders… in both Europe and Asia. …Russia is the largest country in the world. | right |
+| + जनसंख्या की दृष्टि से अब भारत दुनिया का सबसे बड़ा देश है। | …Russia is also the world's eighth most populous nation… It is the largest country in the world. | **wrong**: Russia's page; "भारत" has no translation (Limits), and population, world, most and largest carry more than half of the claim |
+| + स्वर्ण का रासायनिक प्रतीक Au है। | Its chemical symbol is Au. | right |
+| + *contradicted:* यह सौरमंडल का दूसरा सबसे बड़ा चंद्रमा है। (Titan) | Titan is the largest moon of Saturn and the second largest in the Solar System. | **wrong**: a true claim; the NLI model read it as contradicted both ways |
+| − यह पुनर्जागरण काल का एक प्रसिद्ध चित्र है। | Salai was the owner of Leonardo's most famous oil painting, the Mona Lisa. | part (no longer found) |
+| + Albert Einstein ek mashhoor German-born theoretical physicist the, jinhon ne relativity ke theory (special aur general) di… | …a German-born American scientist. …Einstein's general theory of relativity… | part |
+| + Chand par sabse pehle insaan Neil Armstrong ne qadam rakha tha — 20 July 1969 ko Apollo 11 mission ke dauran. | On July 20, 1969, Armstrong and Aldrin became the first humans to land on the moon… | right |
+| + DNA (Deoxyribonucleic Acid) ek molecule hai jo hamare cells ke andar genetic information store karta hai… (both Roman sets) | DNA… is the molecule that contains the genetic code of organisms. …DNA carries genetic information. | right, twice |
+| + Iska nirmaan 1887 se 1889 ke beech Paris mein hua tha aur ise 1889 ki Exposition Universelle ke liye banaya gaya tha. | It was built between 1887 and 1889 for the Exposition Universelle… | right |
+| + Unhe laws of motion aur universal gravitation ke liye jaana jaata hai, aur unki book Principia ne physics ki neev rakhi. | He is well known for his work on the laws of motion, optics, gravity… In 1687, Newton published… Principia… | right |
+| + Taj Mahal Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein banwaya tha. | It was built in the 17th century by Emperor Shah Jahan in memory of his wife, Mumtaz Mahal. | right |
+| + Taj Mahal ko Mughal badshah Shah Jahan ne apni biwi Mumtaz Mahal ki yaad mein tameer karwaya tha. | The Taj Mahal was built for Shah Jahan's third wife, Mumtaz Mahal… | part: not "in her memory" |
+| + Darya-e-Amazon South America mein hai — yeh Andes pahadon se nikal kar Peru, Colombia aur Brazil se guzarta hua Atlantic Ocean mein girta hai. | Its headwaters are in the Andes Mountains in Peru… flows eastward into the Atlantic Ocean… across Brazil | part: not Colombia |
+| + Microsoft ki bunyad Bill Gates aur Paul Allen ne rakhi thi. | Gates started Microsoft in 1975 with Paul Allen… | right |
+| − Unhe 1921 ka Nobel Prize photoelectric effect par mila, aur E=mc² wala formula unki pehchan hai. | (as before) | part (no longer found) |
+| − Saturn ka sabse bada chand Titan hai. | The largest moon is Titan. | right (no longer found) |
+| − Iska atomic number 79 hota hai aur ye ek transition metal hai. | Its atomic number is 79… | right (no longer found) |
+| + *False, supported:* Mona Lisa ki painting Michelangelo ne Rome mein banayi thi. | Michelangelo did not finish his painting either, because the Pope called him to Rome. Mona Lisa's eyes… Leonardo's most famous oil painting, the Mona Lisa. (joined) | **wrong**: a false claim supported by a joined premise |
+| + *False, contradicted:* Sone ka chemical symbol Ag hai, jo Latin shabd argentum se aaya hai. | Its symbol is Au, from the Latin word for gold, aurum. | right |
+| − *False, contradicted:* Alexander Graham Bell ko telephone ka pehla patent 1901 mein mila tha. | …the first person to patent the telephone, in 1876. | right (no longer found) |
+| + 30 जनवरी 1948 को उनकी हत्या कर दी गई थी। (English set) | On 30 January 1948, he was shot to death by… Nathuram Godse… | right |
+
+Eight more findings kept their verdict with another sentence of the same
+page, right as before (Microsoft, the Nobel Prize of 1945, Photosynthesis
+twice, Pride and Prejudice, the telephone, the Mona Lisa, Titan in Urdu).
+The two wrong findings of the shipped lexicon (the New South Wales claim, and
+"Mona Lisa ki painting Leonardo da Vinci ne banayi thi" against Leonardo's
+full name) are unchanged.
+
+On the held-out set:
+
+| Claim | Source sentence, shortened | Audit |
+|---|---|---|
+| + पहले आधुनिक ओलंपिक खेल 1896 में ग्रीस की राजधानी एथेंस में हुए थे। | The first "modern" Olympics took place in 1896 in Athens, Greece. | right |
+| + फ्रांसीसी क्रांति 1789 में शुरू हुई थी। | It began with the Estates General of 1789… | right |
+| + Unhe America ke founding fathers mein se ek maana jata hai. | …one of the Founding Fathers of the United States. | right |
+| + America ke pehle sadr George Washington thay. | George Washington… was the first president of the United States… | right |
+| + Yeh chaar chambers mil kar khoon ko poore jism mein pump karne ka kaam karte hain. | It pumps blood throughout the body. In humans, the four chambers are… | right |
+| + Us samay 14 deshon ke lagbhag 241 athletes ne hissa liya tha. | These Games brought 14 nations and 241 athletes… | right |
+| + Pehli dafa kamyab powered hawai jahaz (airplane) Orville Wright ne 17 December 1903 ko Kitty Hawk, North Carolina mein uraya tha… | …flew the first controlled, powered, heavier-than-air airplane on December 17, 1903… first test flight was in Kitty Hawk, North Carolina. | right |
+| + Agar sirf zameen (land) par sabse gehra sthan poocha jaye to woh alag hota hai, lekin "Earth ka sabse gehra point" aam taur par Challenger Deep ko hi kaha jata hai. | It is also the deepest known location on Earth itself. The deepest part of the trench is known as the Challenger Deep. | part |
+| + Zameen ka sab se gehra maqam Challenger Deep hai, jo Mariana Trench ke andar Pacific Ocean mein, Guam ke qareeb hai. | It is also the deepest known location on Earth itself. The western end of the trench is near Guam. | part: does not name it |
+| − Unhe 27 saal jail mein rakhna pada, aur baad mein 1994 mein South Africa ke pehle Black president bane. (both Roman sets) | …the first black President of his country, South Africa. | part, twice (no longer found) |
+| − Inhe first Modern Olympic Games kaha jata hai, aur yeh International Olympic Committee ke dwara organize kiye gaye the. | It was the first international Olympic Games held in the Modern era. The International Olympic Committee (IOC) was also instituted… | part (no longer found) |
+| + *False, contradicted:* The first modern Olympic Games were held in Paris, France, in 1896. | The 1896 Summer Olympics… were held at Athens in Greece. | right |
+
+Seven more kept their verdict with another sentence: Kilimanjaro, Brazil,
+the Titanic twice and the Athens Olympics, right as before, and "World Wide
+Web ko Tim Berners-Lee ne banaya tha" twice, wrong as before (now "Berners-Lee
+now leads the World Wide Web Consortium."). The false claim "Marie Curie 7
+November 1867 ko Berlin mein paida hui thin" is supported in both arms
+(wrong), and the one true claim contradicted is the same in both (the Wright
+brothers, read as English).
+
+**The bar.** On the held-out set, items 1 to 3 hold: pooled supported claims
+rise from 21 to 27 of 312, the control stays at 0 and 0, and no true claim is
+newly contradicted. On the existing sets, items 3 and 4 fail: the Hindi Titan
+claim is newly contradicted, and three findings are newly wrong while none
+that was wrong is gone. **Not adopted.**
+
+All three new wrong findings come from sentences the shipped lexicon never
+let through, not from wrong translations:
+
+- the NLI model reads a true Hindi claim against the sentence that says it as
+  a contradiction, both ways ("दूसरा सबसे बड़ा", second largest, against "the
+  largest moon of Saturn and the second largest in the Solar System");
+- a claim's name is not translated ("भारत", India, Limits), so its other
+  words carry more than half of its information on a page about another
+  country;
+- searched by more translations, a page's best sentences changed, and three
+  of them joined name Michelangelo, Rome and the Mona Lisa for a false claim
+  `about()` already accepted.
+
+A wider lexicon brings more such sentences to the NLI model; these three
+checks would need to hold before it is shipped.
+
 ## Limits
 
 - **The vocabulary is a voice assistant's.** MASSIVE is alarms, music, weather,
@@ -878,8 +1103,11 @@ held-out set").
   distinctive information is in words MASSIVE never holds ("हालाँकि" however,
   "कारण" reason, "राज्य" state). Another third is in a form or synonym the
   sentence does not use: "use" against "used", "multiple" against "many".
-  More licence-clean parallel text is the next step, for example Tatoeba
-  (CC BY 2.0 FR, already the Lughah source) or Samanantar (CC0, English–Indic).
+  PMIndia (CC BY 4.0) widens Hindi a great deal and was not adopted, for the
+  wrong findings it let through (Wider Hindi: PMIndia); Samanantar and BPCC
+  are not licence-clean. Tatoeba (CC BY 2.0 FR, already the Lughah source) is
+  untried. PMIndia's English–Urdu file was not tried, so Urdu has no wider
+  source.
 - **Names are rarely translated.** A name is transliterated ("एहुड उर" for
   "Ehud Ur"), and only names seen in MASSIVE are known. A transliteration
   model learned from the name pairs would cover the rest.
@@ -899,7 +1127,8 @@ held-out set").
   MASSIVE's Hindi or Urdu vocabulary (5,747 and 5,496 words) is read, and it
   helps only when the lexicon translates it. "banwaya" (बनवाया) and "begum"
   are not in MASSIVE; "badshah" (बादशाह) and "deewar" (दीवार) are read but have
-  no translation. A word is read only as one of the 30 spellings the channel
+  no translation. PMIndia would not change this for the Taj Mahal claim: it
+  never writes "बादशाह" or "बेगम", and "बनवाया" once. A word is read only as one of the 30 spellings the channel
   finds most probable for it.
 - **Urdu is read less well than Hindi.** Its short vowels are not written, so
   one Urdu word has many spellings, and most of Aksharantar's Urdu pairs are
@@ -933,3 +1162,13 @@ The build reads Aksharantar's Hindi and Urdu archives (33 MB and 18 MB) and
 MASSIVE's train splits, and takes about 10 minutes on one CPU. The
 measurement needs Dakshina v1.0 unpacked (`dakshina_dataset_v1.0.tar` from
 Google's storage, 2 GB; only `hi/romanized` and `ur/romanized` are read).
+
+The measured variant with PMIndia (not adopted), in place of the shipped Hindi
+files (`git checkout` restores them):
+
+    python -I scripts/build_qamus.py --data /tmp/qamus_data --extra --languages hi   # hi-en.json.gz, content SHA-256 488fe6eb13db9834…
+    python -I scripts/build_qamus_roman.py --data /tmp/qamus_roman_data --extra      # hi-latn.json.gz, content SHA-256 4faea1ed98d3e110…
+
+Each downloads PMIndia's `pmindia.v1.hi-en.tsv` (23 MB) into its data folder
+once and refuses it if its SHA-256 is not the pinned one. The lexicon build
+then takes about 3 minutes, the Roman reading about 10.
