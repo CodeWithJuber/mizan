@@ -54,19 +54,25 @@ def background(path: Path):
 
 
 def units(record: dict) -> list[dict]:
-    """One per speaker: their statements in sessions 1-3 with the facts written
-    for them after each session, and every turn of session 4."""
+    """One per speaker: their statements in the earlier sessions with the facts
+    written for them after each session, every turn of the last session, and,
+    for each statement, every turn MIZAN heard after it before the last session."""
     later = [turn["text"] for turn in record["dialog"]]
+    heard = [turn["text"] for session in record["previous_dialogs"] for turn in session["dialog"]]
     found = []
     for speaker in (0, 1):
         statements: list[tuple[str, list[str]]] = []
+        after: list[list[str]] = []
+        position = 0
         for session in record["previous_dialogs"]:
             facts = list((session.get("personas") or [[], []])[speaker])
             turns = [turn["text"] for turn in session["dialog"]]
-            statements += [
-                (text, facts) for index, text in enumerate(turns) if index % 2 == speaker
-            ]
-        found.append({"statements": statements, "later": later})
+            for index, text in enumerate(turns):
+                if index % 2 == speaker:
+                    statements.append((text, facts))
+                    after.append(heard[position + index + 1 :])
+            position += len(turns)
+        found.append({"statements": statements, "later": later, "after": after})
     return found
 
 
