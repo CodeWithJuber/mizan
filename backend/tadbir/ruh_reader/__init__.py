@@ -1320,7 +1320,31 @@ def agreed_language(text: str, model: Any, fit: Fit, languages: Sequence[str]) -
     own = reading(lughah.own_words(text))
     scored, counts = net.score(model, [own], list(range(len(languages))))
     second = _argmax(reader_log_posterior(scored[0], counts[0], fit.kappa, fit.gamma, fit.ref))
-    return first if first == second else None
+    if first != second or contradicted(text, languages[first]):
+        return None
+    return first
+
+
+def contradicted(text: str, code: str) -> bool:
+    """Whether Qāmūs, a third witness, says otherwise: Lughah and the reader
+    both read the text as English, but Qāmūs reads two Hindi or Urdu words in
+    it written in Latin letters (the count the Roman slices use,
+    ``corpus.V2_LEAST``). A word English writes the same way ("meeting",
+    "alarm": Qāmūs reads them as मीटिंग, अलार्म) is no witness for either.
+    Two readers that make the same mistake agree on it, and a lesson learned
+    from that agreement teaches the mistake (Tadrib's second test,
+    docs/tadrib.md), so a lesson is kept only when no witness says otherwise."""
+    if code != "en":
+        return False
+    from .. import qamus
+    from .corpus import V2_LEAST
+
+    hindi = set()
+    for word in qamus.tokens(text):
+        read = qamus.read_roman(word)
+        if read and not any(word in qamus.translate(native, "en") for native in read.values()):
+            hindi.add(word)
+    return len(hindi) >= V2_LEAST
 
 
 def no_worse(

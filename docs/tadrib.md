@@ -19,7 +19,7 @@ The owner asked for this on 31 Oct 2026: MIZAN should train and learn from its t
 
 This follows complementary learning systems (McClelland, McNaughton & O'Reilly 1995). One store learns quickly from single experiences, and a slower one integrates them by interleaved replay during sleep, so the old is not overwritten:
 
-- **Fast weights.** A copy of the gated version (the **slow** weights) learns each lesson at once: k steps of AdamW on a small batch made of the lesson, a quarter of lines replayed from the reader's seeds, and the rest recent lessons drawn by reservoir sampling. The learning rate is constant, and an elastic anchor pulls toward the slow weights:
+- **Fast weights.** A copy of the gated version (the **slow** weights) learns each lesson at once: k steps of AdamW (k = 1) on a batch of 16 made of the lesson, 8 lines replayed from the reader's seeds, and the rest recent lessons drawn by reservoir sampling. The learning rate is constant, and an elastic anchor pulls toward the slow weights:
 
   ```
   L(θ) = CE(batch; θ) + (λ/2) · Σ_i F_i · (θ_i − θ_slow,i)²
@@ -36,7 +36,7 @@ A lesson is the person's own words from a chat turn (`lughah.own_words` after `a
 - `learns()` and `trains()` are true (`training: on`, [consent.md](consent.md)), the run is not barred from training (`barred_from_training()`: evaluations, WhatsApp), and the run is not stateless.
 - Amanah finds no instruction aimed at an AI in the message.
 - It is not scripture (`ruh_reader.scripture`) and not text a language model wrote: the reader never learns teacher output.
-- Lughah and the reader read it as the same language (`ruh_reader.agreed_language`). That agreement is MIZAN's check for this lesson, and the agreed language is its label.
+- Lughah and the reader read it as the same language (`ruh_reader.agreed_language`), and no third witness says otherwise: a line both read as English is not a lesson when Qāmūs reads two Hindi or Urdu words in it written in Latin letters (`ruh_reader.contradicted`, added after the second test). That agreement is MIZAN's check for this lesson, and the agreed language is its label.
 
 Lessons are stored per person in `private/<sha256(owner)>/tadrib.sqlite3`: the digest, chat, kind, language, words, check, time and status (`learned`, `held_out`, `rejected`). Erasing a chat (Mahw) deletes its lessons. Rejecting a lesson (`DELETE /api/tadrib/lessons/{digest}`) deletes it too.
 
@@ -99,6 +99,43 @@ The test stream (3,514 messages) has still not been read. What changes, and why:
 - **The bars on the test stream** (seed 0; seed 1 reported): 1 and 4 as in v1; 2 is the rule above on the seeds' **held-out** reads; 3 as in v1.
 
 `scripts/tadrib_eval.py --grid-v2 WORK`, then `--test-v2 WORK`.
+
+## Second test (v2): refused at the test stage (31 Oct 2026)
+
+On the dev stream, 7 of the 16 settings qualified. The choice was one step per lesson, learning rate 1e-4, λ = 0.03 and 8 seed lines per batch. Its dev results:
+- prequential log-loss 0.2335 → 0.2103 (P(not better) 0.018);
+- seeds' dev reads 0.00446 → 0.00445;
+- 0.82 s per lesson at the 95th percentile;
+- +147 MB.
+
+The test stream was then read once. Bar 1 failed for both readers, so Tadrib for the reader was not adopted and `MIZAN_TADRIB` stays `off`.
+
+| Bar | Seed 0 (judged) | Seed 1 (replication) |
+|---|---|---|
+| 1 it learns: prequential log-loss, frozen → online | 0.2643 → 0.2711, P(not better) 0.893: **fails** | 0.1867 → 0.2238, P(not better) 1.000 |
+| 2 no evidence worse on the seeds' held-out reads | 0.0632 → 0.0542 (P(worse) 0.035, P(loss higher) 0.003): holds | 0.0612 → 0.0591: holds |
+| 3 speed and memory | p95 1.13 s, +144 MB: holds | p95 1.11 s, +144 MB |
+| 4 erasure exact | 285 of 2,780 lessons erased, rebuilt bit for bit: holds | — |
+
+By language (seed 0), the loss fell on English (0.00003 → 0.000003) and Urdu, and rose on Roman Hindi/Urdu (1.160 → 1.189; seed 1: 0.820 → 0.983). Roman Hindi/Urdu carries almost all of the stream's loss. The held-out lessons read worse as well (0.246 → 0.250). The product's accuracy hardly moved (98.72% → 98.78%).
+
+**Why (looked at after the verdict, so it decides nothing).** We read the test stream again with the frozen readers. Of its 800 Roman Hindi/Urdu lines, Lughah and the reader **both** read 33 to 40 as English. The dev stream had 14 to 15 of 300. Each such line became a lesson labelled English, so the reader learned to read Roman Hindi as English. Its few hard lines dominate the mean, and they got harder. A check made of two readers that make the same mistake agrees on that mistake: agreement alone is not enough. The lesson labels were right 98.9 to 99.0% of the time, and the 1% that were wrong were enough to undo the learning.
+
+## Third test (v3), fixed 31 Oct 2026 after v2's verdict, before any reader reads its stream
+
+What changes, and why:
+
+- **A third witness.** A line that Lughah and the reader both read as English is not a lesson when Qāmūs reads two Hindi or Urdu words in it written in Latin letters (`ruh_reader.contradicted`; two is the count the Roman slices already use, `corpus.V2_LEAST`, not tuned here). A word English writes the same way is no witness for either side: Qāmūs reads "meeting" and "alarm" as मीटिंग and अलार्म, and plain English requests would otherwise be turned down (the tests showed it before any stream was read). On v2's already-read streams this witness turns down 22 of 800 English lines (mostly names such as "el paso" and "carlos") and none of the dev stream's 300: at that cost they are left unlearned, never mislabelled. A lesson is kept only when no witness says otherwise. This holds in production too: in `ruh_reader.agreed_language` (and so at night) and in Tadrib's trainer. "Leave what makes you in doubt for what does not make you in doubt" (Jami' at-Tirmidhi 2518, graded sahih): a line the witnesses disagree on is left unlearned.
+- **No new choice.** The setting is v2's: one step, learning rate 1e-4, λ = 0.03, 8 seed lines (now `online.Setting`'s defaults). No dev stream and no grid are run.
+- **A fresh test stream whose labels are not Qāmūs's.** v2's Roman lines were kept only where Qāmūs read two Hindi or Urdu words, so on them the new witness would remove the wrong lessons by construction. The third stream (`--stream-v3`) is therefore built from text that no build, gate or earlier Tadrib stream read and that is not near any of it (`corpus.Near`). Each line is labelled by its dataset:
+  - English, Hindi, Urdu and Arabic: Tatoeba sentences of at least 3 words that no reader has trained or been measured on (CC BY 2.0 FR).
+  - Roman Hindi/Urdu: half Dakshina's romanized Wikipedia sentences (CC BY-SA 4.0) and half PHINC's code-mixed tweets (CC BY 4.0), with no Qāmūs filter.
+  - At most 800 lines per language, ordered by SHA-256. Built: 3,262 lines (SHA-256 `d36381a5…`): English, Hindi and Arabic 800 each, Roman Hindi/Urdu 400 + 400, and Urdu only 62, because Tatoeba holds few Urdu sentences no reader has seen.
+- **Bars** (seed 0 judged, seed 1 reported; both read the stream at the same time): as in v2, except that bar 1 needs P(not better) < 0.025. This is the second test stream to ask "does it learn", so α = 0.05 is split between the two attempts (Bonferroni).
+
+If all four bars hold, `MIZAN_TADRIB` defaults to `on`. If not, it stays `off`.
+
+`scripts/tadrib_eval.py --stream-v3 WORK`, then `--test-v3 WORK`.
 
 ## Settings, routes and files
 

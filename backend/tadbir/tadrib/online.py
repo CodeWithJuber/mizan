@@ -8,8 +8,9 @@ slow (gated) weights (EWC, Kirkpatrick et al. 2017):
 
     L(θ) = CE(batch; θ) + (λ/2) · Σ_i F_i (θ_i − θ_slow,i)²
 
-F is the slow weights' diagonal Fisher, normalised to mean 1, or 1 for every
-parameter until a night has estimated it. Everything random in a lesson is
+F is 1 for every parameter (a plain L2 pull, L2-SP): ``fisher`` estimates the
+slow weights' diagonal Fisher, normalised to mean 1, but it is not used, since
+replay held the reader's old languages where EWC did not. Everything random in a lesson is
 seeded by the lesson's digest, so a model rebuilt from the same lessons in
 the same order is the same, bit for bit.
 """
@@ -32,11 +33,12 @@ from ..ruh_reader import net
 
 @dataclass(frozen=True)
 class Setting:
-    steps: int = 3  # AdamW steps per lesson
-    lr: float = 3e-4
-    anchor: float = 1.0  # λ
+    # The setting chosen on the dev stream of Tadrib's second test (docs/tadrib.md).
+    steps: int = 1  # AdamW steps per lesson
+    lr: float = 1e-4
+    anchor: float = 0.03  # λ
     batch: int = 16
-    seeds: int = 4  # seed lines in every batch
+    seeds: int = 8  # seed lines in every batch
     recent: int = 512  # lessons kept for replay
     micro: int = 4  # rows per forward pass; gradients accumulate (same step, less memory)
 
@@ -121,7 +123,7 @@ class Online:
             pieces += [
                 self.seed_lines[rng.randrange(len(self.seed_lines))] for _ in range(setting.seeds)
             ]
-            room = setting.batch - len(pieces)
+            room = max(0, setting.batch - len(pieces))
             recent = rng.sample(self.recent, min(room, len(self.recent)))
             pieces += recent
             pieces += [

@@ -150,6 +150,7 @@ class _Trainer:
             "learned": 0,
             "held_out": 0,
             "disagreed": 0,
+            "contradicted": 0,
             "resets": 0,
             "rebuilds": 0,
             "prequential": {
@@ -348,6 +349,10 @@ class _Trainer:
             self.stats["disagreed"] += 1
             return
         code = self.languages[alone]
+        if ruh_reader.contradicted(lesson.text, code):  # and no third witness says otherwise
+            store.drop_at(path, digest)
+            self.stats["contradicted"] += 1
+            return
         held = held_out(digest)
         part = self.stats["prequential"]["held_out" if held else "learned"]
         part["n"] += 1

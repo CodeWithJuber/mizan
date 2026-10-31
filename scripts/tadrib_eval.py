@@ -12,6 +12,8 @@ is held out, and the dataset's label is used only to score.
   --run WORK       one stream with one setting and seed -> WORK/runs/<name>.json
   --grid WORK      the dev grid (12 settings, in parallel) and the chosen setting
   --test WORK      the test stream with the chosen setting, seeds 0 and 1, judged
+  --grid-v2 WORK, --test-v2 WORK      the second test
+  --stream-v3 WORK, --test-v3 WORK    the third test (a fresh stream; Qāmūs a witness)
 
 Run with MIZAN_DATA_DIR pointing at the data folder the reader was built in.
 """
@@ -45,6 +47,13 @@ MORE_THAN = 8  # words: the gates' short slices took 3 to 8
 PER_DOCUMENT = 3  # lines a never-read FineWeb-2 document gives at most
 ERASE = 10  # one learned lesson in ten is erased for the exactness check
 ALPHA = 0.05
+# The third test (docs/tadrib.md, "v3"): the second test's setting, Qāmūs as a
+# third witness, a stream no test has read, labels that are not Qāmūs's.
+SALT_V3 = "tadrib-reader-3"
+SETTING_V3 = {"steps": 1, "lr": 1e-4, "anchor": 0.03, "seeds": 8}
+ALPHA_V3 = ALPHA / 2  # the second test of "it learns" on a test stream
+PER_LANGUAGE_V3 = 800
+LEAST_WORDS = 3
 
 
 def _order(key: str, purpose: str = "order") -> str:
@@ -172,6 +181,92 @@ def build_streams(work: Path, old: Path, v2: Path, clinc_path: Path) -> dict:
     return report
 
 
+def build_stream_v3(work: Path, old: Path, v2: Path, dakshina_folder: Path, before: Path) -> dict:
+    """The third test's stream (WORK/test.tsv; docs/tadrib.md): Tatoeba
+    sentences no reader has read (en, hi, ur, ar) and Roman Hindi/Urdu, half
+    Dakshina's romanized Wikipedia sentences, half PHINC's code-mixed tweets,
+    labelled by their datasets, not by Qāmūs. Nothing any build, gate or
+    earlier Tadrib stream (``before``) read, nor near it."""
+    from tadbir import lughah
+    from tadbir.ruh_reader import corpus as C
+
+    v1 = C.load(old)
+    v2_corpus = C.load(v2)
+    if v1 is None or v2_corpus is None:
+        raise SystemExit("the v1 and v2 corpora are needed to know what was seen")
+    used: set[str] = set()
+    seen_texts = [text for text, _label in lughah.corpus()]
+    seen_texts += [text for text, _label in [*v1.train, *v1.written]]
+    seen_texts += [text for text, _label in [*v2_corpus.train, *v2_corpus.written]]
+    for base, names in (
+        (old, ("train.tsv", *C.OLD_SLICES)),
+        (v2, ("train.tsv", "short.tsv", *C.V2_SLICES)),
+        (before, ("dev.tsv", "test.tsv")),
+    ):
+        for name in names:
+            path = base / name
+            if path.exists():
+                for row in path.read_text(encoding="utf-8").splitlines():
+                    if row.strip():
+                        used.add(row.split("\t", 1)[0])
+                        seen_texts.append(row.rsplit("\t", 1)[-1])
+    massive_path = (
+        old / "sources" / "massive" / C.SOURCES[[s.name for s in C.SOURCES].index("massive")].file
+    )
+    seen_texts += [line.text for line in C.massive(massive_path)]
+    seen = {C._group(text) for text in seen_texts}
+    near = C.Near(seen_texts, words=(3, 64))
+    print(f"seen: {len(seen):,} texts' words, {len(used):,} source ids", flush=True)
+    counts: dict[str, int] = {}
+
+    def order(key: str) -> str:
+        return hashlib.sha256(f"{SALT_V3}:order:{key}".encode()).hexdigest()
+
+    def take(lines, label: str, cap: int) -> list[tuple[str, str, str, str]]:
+        """The first ``cap`` fresh lines in SHA-256 order."""
+        kept: list[tuple[str, str, str, str]] = []
+        for line in sorted(
+            (x for x in lines if x.source not in used), key=lambda x: order(x.source)
+        ):
+            if len(kept) >= cap:
+                break
+            text = line.text
+            if len(text.split()) < LEAST_WORDS or not C.own_script(text, label):
+                counts["short or script"] = counts.get("short or script", 0) + 1
+                continue
+            if C._group(text) in seen or text in near:
+                counts["seen or near"] = counts.get("seen or near", 0) + 1
+                continue
+            seen.add(C._group(text))
+            kept.append((line.source, label, line.source, text))
+        return kept
+
+    rows: list[tuple[str, str, str, str]] = []
+    for label, code in C.TATOEBA.items():
+        path = v2 / "sources" / f"tatoeba-{code}" / f"{code}_sentences.tsv.bz2"
+        rows += take(C.tatoeba(path, label), label, PER_LANGUAGE_V3)
+    half = PER_LANGUAGE_V3 // 2
+    rows += take(C.dakshina(dakshina_folder), "hi-latn", half)
+    rows += take(C.phinc(v2 / "sources" / "phinc" / "PHINC.csv"), "hi-latn", half)
+    rows.sort(key=lambda row: order(row[0]))
+    body = "".join("\t".join(row) + "\n" for row in rows)
+    (work / "test.tsv").write_text(body, encoding="utf-8")
+    per: dict[str, int] = {}
+    for source, label, _group, _text in rows:
+        key = f"{label} {source.split(':', 1)[0]}"
+        per[key] = per.get(key, 0) + 1
+    report = {
+        "test": {
+            "n": len(rows),
+            "per_source": per,
+            "sha256": hashlib.sha256(body.encode()).hexdigest(),
+        },
+        "dropped": counts,
+    }
+    (work / "streams.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    return report
+
+
 def read_stream(work: Path, stream: str) -> list[tuple[str, str, str, str]]:
     rows = []
     for line in (work / f"{stream}.tsv").read_text(encoding="utf-8").splitlines():
@@ -233,7 +328,11 @@ def run(
     report: Path,
     erase: bool = False,
     limit: int = 0,
+    witness: bool = False,
+    rows_out: Path | None = None,
 ) -> dict:
+    """One stream with one setting. ``witness`` (the third test): Qāmūs is a
+    third witness, as in production (``ruh_reader.contradicted``)."""
     import torch
 
     from tadbir import lughah, tadrib
@@ -274,6 +373,8 @@ def run(
         lug = [math.log(max(found.get(code, 0.0), 1e-300)) for code in languages]
         alone = R._argmax(lug)
         agreed = alone if R._argmax(reader_online) == alone else None
+        if agreed is not None and witness and R.contradicted(text, languages[agreed]):
+            agreed = None
         digest = R.text_digest(text)
         held = tadrib.held_out(digest)
         learned = agreed is not None and not held and not R.scripture(text)
@@ -299,9 +400,12 @@ def run(
                 "held": held,
                 "learned": learned,
                 "agreed_right": agreed == truth if agreed is not None else None,
+                "agreed": languages[agreed] if agreed is not None else None,
             }
         )
     after = _rss_mb()
+    if rows_out is not None:
+        rows_out.write_text("".join(json.dumps(row) + "\n" for row in per), encoding="utf-8")
     out = summarise(per, timings)
     out.update(
         {
@@ -512,7 +616,13 @@ def _name(stream: str, seed: int, setting: dict) -> str:
 
 
 def launch(
-    work: Path, stream: str, seed: int, settings: list[dict], args, erase: bool
+    work: Path,
+    stream: str,
+    seed: int,
+    settings: list[dict],
+    args,
+    erase: bool,
+    witness: bool = False,
 ) -> list[dict]:
     """Each setting in its own process (1 torch thread), ``args.jobs`` at once."""
     (work / "runs").mkdir(exist_ok=True)
@@ -544,7 +654,9 @@ def launch(
                 args.report.format(seed=seed),
                 "--out",
                 str(out),
-            ] + (["--erase"] if erase else [])
+            ]
+            command += ["--erase"] if erase else []
+            command += ["--witness"] if witness else []
             running.append(
                 (subprocess.Popen(command, env={**os.environ, "OMP_NUM_THREADS": "1"}), out)
             )
@@ -634,6 +746,31 @@ def judge_v2(work: Path, args) -> dict:
     return verdict
 
 
+def judge_v3(work: Path, args) -> dict:
+    """The third test: the second test's setting with Qāmūs as a third
+    witness, seeds 0 (with the erasure check) and 1 at once, judged once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(2) as pool:
+        futures = {
+            seed: pool.submit(launch, work, "test", seed, [SETTING_V3], args, seed == 0, True)
+            for seed in (0, 1)
+        }
+        results = {seed: future.result()[0] for seed, future in futures.items()}
+    main = results[0]
+    bars = {
+        "1 it learns": main["log_loss"]["online"] < main["log_loss"]["frozen"]
+        and main["p_not_better"] < ALPHA_V3,
+        "2 it does not forget": main["forgetting"]["no_evidence_worse"],
+        "3 fast enough": (main["seconds_per_lesson"]["p95"] or 0) <= 2.0
+        and main["memory_mb"] <= 150,
+        "4 forgetting is exact": main["erasure"]["bit_for_bit"],
+    }
+    verdict = {"setting": SETTING_V3, "bars": bars, "passed": all(bars.values()), "seeds": results}
+    (work / "verdict_v3.json").write_text(json.dumps(verdict, indent=1), encoding="utf-8")
+    return verdict
+
+
 def judge(work: Path, args) -> dict:
     chosen = json.loads((work / "chosen.json").read_text())["chosen"]
     if chosen is None:
@@ -669,6 +806,11 @@ def main() -> None:
     parser.add_argument("--test", type=Path)
     parser.add_argument("--grid-v2", type=Path, dest="grid_v2")
     parser.add_argument("--test-v2", type=Path, dest="test_v2")
+    parser.add_argument("--stream-v3", type=Path, dest="stream_v3")
+    parser.add_argument("--test-v3", type=Path, dest="test_v3")
+    parser.add_argument("--dakshina", type=Path, help="Dakshina's romanized files")
+    parser.add_argument("--before", type=Path, help="the earlier Tadrib streams' folder")
+    parser.add_argument("--witness", action="store_true", help="Qāmūs as a third witness")
     parser.add_argument("--stream", default="dev")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--setting", default="{}")
@@ -693,6 +835,8 @@ def main() -> None:
             Path(args.report),
             args.erase,
             args.limit,
+            args.witness,
+            args.out.with_suffix(".rows.jsonl") if args.out else None,
         )
         text = json.dumps(found, indent=1)
         if args.out:
@@ -707,6 +851,11 @@ def main() -> None:
         print(json.dumps(grid_v2(args.grid_v2, args), indent=1))
     elif args.test_v2:
         print(json.dumps(judge_v2(args.test_v2, args), indent=1))
+    elif args.stream_v3:
+        found = build_stream_v3(args.stream_v3, args.old, args.v2, args.dakshina, args.before)
+        print(json.dumps(found, indent=1))
+    elif args.test_v3:
+        print(json.dumps(judge_v3(args.test_v3, args), indent=1))
     else:
         parser.print_help()
 

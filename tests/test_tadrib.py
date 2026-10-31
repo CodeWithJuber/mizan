@@ -280,6 +280,49 @@ async def test_a_disagreed_message_is_not_kept(installed, monkeypatch):
     assert tadrib._trainer.stats["disagreed"] == 2
 
 
+def test_a_third_witness_turns_down_roman_hindi_read_as_english():
+    # Lughah and the reader both reading these as English would teach the
+    # reader that Roman Hindi is English (the second test); Qāmūs reads
+    # Hindi words in them, so they are not lessons.
+    assert ruh_reader.contradicted("mujhe kal office jana hai please remind me", "en")
+    assert ruh_reader.contradicted("Sir iss picture se gaane hata kar", "en")
+    assert not ruh_reader.contradicted("mujhe kal office jana hai please remind me", "hi-latn")
+    assert not ruh_reader.contradicted("I will meet you tomorrow at the office", "en")
+
+
+async def test_a_lesson_a_third_witness_contradicts_is_not_kept(installed, monkeypatch):
+    monkeypatch.setattr(tadrib._Trainer, "start", lambda self: None)
+    languages = ruh_reader.manifest("current")["languages"]
+    if "en" not in languages:
+        pytest.skip("the tiny reader has no English")
+    english = languages.index("en")
+    monkeypatch.setattr(
+        lughah,
+        "naive_posterior",
+        lambda text, prior=None, using=None: {
+            code: (0.96 if i == english else 0.01) for i, code in enumerate(languages)
+        },
+    )
+    monkeypatch.setattr(
+        tadrib._Trainer,
+        "_posterior",
+        lambda self, model, own: [0.0 if i == english else -9.0 for i in range(len(languages))],
+    )
+    roman = _not_held(
+        [
+            "mujhe kal office jana hai please remind me",
+            "aap kaise ho please tell me today",
+            "Sir iss picture se gaane hata kar",
+        ]
+    )
+    english_words = _not_held(WORDS)[:1]
+    await _offer_all(roman + english_words)
+    _drain()
+    kept = {lesson.text for lesson in store.listing("u1")[0]}
+    assert kept == set(english_words)
+    assert tadrib._trainer.stats["contradicted"] == len(roman)
+
+
 async def test_the_night_consolidates_the_days_lessons(installed, agreeing, monkeypatch):
     monkeypatch.setattr(tadrib._Trainer, "start", lambda self: None)
     monkeypatch.setattr(ruh_reader, "no_worse", lambda old, new, truths: (True, 0.0, 0.2, 0.1))
