@@ -419,6 +419,12 @@ def _owner_places(
             (),
         ),
         ("debug runs", debug, "SELECT COUNT(*) FROM debug_runs WHERE instr(prompt, ?) > 0", ()),
+        (
+            "language lessons",
+            str(Path(learner).parent / "tadrib.sqlite3") if learner else "",
+            "SELECT COUNT(*) FROM lessons WHERE instr(text, ?) > 0",
+            (),
+        ),
     ]
 
 
@@ -612,11 +618,14 @@ def _erase_chat_rows(
         learner, "interaction_reviews", "interaction_id", interactions
     )
     removed["learner examples"] = _delete_in(learner, "interactions", "id", interactions)
-    # A version of the language reader that learned from these words while
-    # resting is dropped; the newest one that did not becomes current.
-    from tadbir import ruh_reader
+    # The chat's lessons (Tadrib) are deleted, and every version of the
+    # language reader that learned them or these words, the fast copy too, is
+    # dropped; the newest one that did not becomes current.
+    from tadbir import tadrib
 
-    removed["language reader versions"] = ruh_reader.forget(asked)
+    forgotten = tadrib.forget_chat(owner, session_id, asked)
+    removed["language lessons"] = forgotten["lessons"]
+    removed["language reader versions"] = forgotten["versions"]
     removed["debug runs"] = _delete_in(folder / "debug_runs.db", "debug_runs", "prompt", asked)
     kept = [
         "Action receipts (Sakk) stay: which tool ran and how it ended, with keyed "

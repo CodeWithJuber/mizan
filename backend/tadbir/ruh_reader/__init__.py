@@ -90,15 +90,23 @@ Lughah reads any piece of it as quoted Quran, when it shares
 or, once Iqtibas has the Quran's texts, when the mushaf holds such a run of it
 or a span of it is more likely a quote than ordinary speech.
 
-**While MIZAN rests** (``rest``, called by Nawm): a person's own words that
-they let MIZAN train on (``training: on``) and that a named reviewer accepted
-(the learner store) are learned under the language both Lughah and the reader
-read them in (never where they disagree), with a quarter of every batch replayed
-from the seeds (25% replay held a 3.8M byte model's old languages where EWC did
-not). The new version replaces the current one only when it is not worse on
-the held-out seeds (Ta'lim's paired bootstrap), the previous one is kept for
-rollback, and the gate is run again. Erasing a chat (Mahw) drops every version
-that learned from its words (``forget``).
+**While MIZAN works** (Tadrib, ``tadbir/tadrib``, docs/tadrib.md): each
+consented message is a lesson the loaded reader learns within seconds, in a
+fast copy of the current version that serves at once (``swap``) and is kept
+on disk (``fast.pt``, ``fast.json``) so a restart keeps the day.
+
+**While MIZAN rests** (``rest``, called by Nawm): the day's lessons, and a
+person's own words that a named reviewer accepted (the learner store), are
+learned by a challenger trained from the current version, each under the
+language both Lughah and the reader read it in (never where they disagree),
+with a quarter of every batch replayed from the seeds (25% replay held a 3.8M
+byte model's old languages where EWC did not). The challenger replaces the
+current one only when it is not worse on the held-out seeds (Ta'lim's paired
+bootstrap) and none of what it learned was erased while it trained; the
+replaced version is kept for rollback and in ``nights/`` (the last
+``NIGHTS``), and the gate is run again. Erasing a chat (Mahw) drops every
+version that learned from its words, the fast copy too (``forget``); one lock
+(``disk_lock``) covers learning, saving and forgetting.
 
 ``MIZAN_RUH_READER``: ``off``; ``shadow`` (default: computed and logged beside
 Lughah's decision, which it never changes); ``on`` (weighed in once the gate
@@ -110,7 +118,9 @@ passed). Weights and fit: ``$MIZAN_DATA_DIR/models/ruh_reader/``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -123,7 +133,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import cache
@@ -149,6 +159,7 @@ CONFIG = {"d_model": 256, "layers": 4, "heads": 4, "d_ff": 768, "context": 192, 
 PLAN = {"epochs": 12.0, "seconds": 1500.0, "batch": 32, "lr": 2e-3}
 NIGHT = {"epochs": 3.0, "lr": 5e-4, "warmup": 10}
 VERSIONS = ("current", "previous", "base")
+NIGHTS = 7  # replaced versions kept in ``nights/``, newest first, for forgetting
 
 
 def mode() -> str:
@@ -870,6 +881,36 @@ def _files(name: str) -> tuple[Path, Path, Path]:
     return folder / f"{name}.pt", folder / f"{name}.json", folder / f"{name}.reads.json"
 
 
+_held = threading.local()
+_thread_lock = threading.RLock()
+
+
+@contextlib.contextmanager
+def disk_lock() -> Iterator[None]:
+    """The one lock over the reader's files: learning (a lesson or a night),
+    saving and forgetting. Re-entrant within a thread; across processes an
+    ``flock`` on ``.lock`` in the reader's folder."""
+    with _thread_lock:
+        depth = getattr(_held, "depth", 0)
+        if depth:
+            _held.depth = depth + 1
+            try:
+                yield
+            finally:
+                _held.depth = depth
+            return
+        folder = home()
+        folder.mkdir(parents=True, exist_ok=True)
+        with (folder / ".lock").open("a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            _held.depth = 1
+            try:
+                yield
+            finally:
+                _held.depth = 0
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def _write_reads(path: Path, dev: Sequence[Read], held: Sequence[Read]) -> None:
     """The dev and held-out messages as Lughah read them (they do not change
     while the corpus does not), so a night re-scores only the reader."""
@@ -887,7 +928,7 @@ def _write_reads(path: Path, dev: Sequence[Read], held: Sequence[Read]) -> None:
             for r in reads
         ]
 
-    path.write_text(json.dumps({"dev": plain(dev), "held_out": plain(held)}), encoding="utf-8")
+    _replace_text(path, json.dumps({"dev": plain(dev), "held_out": plain(held)}))
 
 
 def _read_reads(path: Path) -> tuple[list[Read], list[Read]]:
@@ -895,24 +936,36 @@ def _read_reads(path: Path) -> tuple[list[Read], list[Read]]:
     return [Read(**item) for item in data["dev"]], [Read(**item) for item in data["held_out"]]
 
 
+def _replace_text(path: Path, text: str) -> None:
+    """Write a whole file or nothing: a temporary file, then a rename."""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def save(built: Built, name: str = "current") -> None:
     from . import net
 
     weights, manifest, reads = _files(name)
-    weights.parent.mkdir(parents=True, exist_ok=True)
-    net.save(built.model, weights)
-    _write_reads(reads, built.dev, built.held_out)
-    manifest.write_text(json.dumps(built.manifest, indent=1), encoding="utf-8")
+    with disk_lock():
+        weights.parent.mkdir(parents=True, exist_ok=True)
+        net.save(built.model, weights)
+        _write_reads(reads, built.dev, built.held_out)
+        _replace_text(manifest, json.dumps(built.manifest, indent=1))
     reset()
 
 
 def install(built: Built) -> None:
     """A reader built from the seeds becomes the base and the current version."""
-    for name in ("current", "previous"):
-        for path in _files(name):
-            path.unlink(missing_ok=True)
-    save(built, "base")
-    save(built, "current")
+    with disk_lock():
+        for name in ("current", "previous"):
+            for path in _files(name):
+                path.unlink(missing_ok=True)
+        drop_fast()
+        for path in _nights():
+            _remove_night(path)
+        save(built, "base")
+        save(built, "current")
 
 
 def manifest(name: str = "current") -> dict | None:
@@ -926,7 +979,9 @@ def manifest(name: str = "current") -> dict | None:
 def _copy(source: str, target: str) -> None:
     for frm, to in zip(_files(source), _files(target), strict=True):
         if frm.exists():
-            shutil.copyfile(frm, to)
+            temporary = to.with_name(to.name + ".tmp")
+            shutil.copyfile(frm, temporary)
+            os.replace(temporary, to)
 
 
 def _remove(name: str) -> None:
@@ -936,33 +991,119 @@ def _remove(name: str) -> None:
 
 def rollback() -> bool:
     """The previous version becomes the current one again."""
-    if manifest("previous") is None:
-        return False
-    _copy("previous", "current")
-    _remove("previous")
+    with disk_lock():
+        if manifest("previous") is None:
+            return False
+        _copy("previous", "current")
+        _remove("previous")
+        drop_fast()
     reset()
     return True
 
 
-def forget(texts: Iterable[str]) -> int:
-    """Drop every version that learned from any of these texts (Mahw): the
-    newest version that did not becomes the current one. Returns how many
-    versions were dropped."""
-    digests = {text_digest(text) for text in texts if text and text.strip()}
-    if not digests:
+# ── the fast copy (Tadrib) and the replaced versions (nights/) ──────────
+
+
+def fast_files() -> tuple[Path, Path]:
+    folder = home()
+    return folder / "fast.pt", folder / "fast.json"
+
+
+def fast_manifest() -> dict | None:
+    """What the fast copy on disk learned, if it belongs to the current version."""
+    try:
+        data = json.loads(fast_files()[1].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    current = manifest("current")
+    if not isinstance(data, dict) or current is None or data.get("slow") != current.get("created"):
+        return None
+    return data if fast_files()[0].exists() else None
+
+
+def drop_fast() -> None:
+    for path in fast_files():
+        path.unlink(missing_ok=True)
+
+
+def _nights() -> list[Path]:
+    """The replaced versions' manifests, newest first."""
+    folder = home() / "nights"
+    return sorted(folder.glob("*.json"), reverse=True) if folder.is_dir() else []
+
+
+def _remove_night(path: Path) -> None:
+    for suffix in (".pt", ".json", ".reads.json"):
+        path.with_name(path.name.removesuffix(".json") + suffix).unlink(missing_ok=True)
+
+
+def _keep_night(name: str) -> None:
+    """Keep a version in ``nights/`` before it is replaced; the oldest beyond ``NIGHTS`` go."""
+    found = manifest(name)
+    if found is None:
+        return
+    folder = home() / "nights"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = str(found.get("created") or datetime.now(UTC).isoformat()).replace(":", "")
+    for frm, suffix in zip(_files(name), (".pt", ".json", ".reads.json"), strict=True):
+        if frm.exists():
+            shutil.copyfile(frm, folder / f"{stamp}{suffix}")
+    for old in _nights()[NIGHTS:]:
+        _remove_night(old)
+
+
+def _night_manifest(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def forget(texts: Iterable[str] = (), digests: Iterable[str] = ()) -> int:
+    """Drop every version that learned from any of these texts or lesson
+    digests (Mahw, a rejected lesson): the fast copy, the current version,
+    the previous one and the kept nights; the newest version that did not
+    learn them becomes the current one (the seed-only base at worst).
+    Returns how many versions were dropped."""
+    erased = {text_digest(text) for text in texts if text and text.strip()} | set(digests)
+    if not erased:
         return 0
     dropped = 0
-    for name in ("current", "previous"):
-        found = manifest(name)
-        if found is not None and digests & set(found.get("learned") or []):
-            _remove(name)
+    with disk_lock():
+        fast = fast_manifest()
+        if fast is not None and erased & set(fast.get("learned") or []):
+            drop_fast()
             dropped += 1
-    if dropped and manifest("current") is None:
-        if manifest("previous") is not None:
-            _copy("previous", "current")
-            _remove("previous")
-        elif manifest("base") is not None:
-            _copy("base", "current")
+        current_dropped = False
+        for name in ("current", "previous"):
+            found = manifest(name)
+            if found is not None and erased & set(found.get("learned") or []):
+                _remove(name)
+                dropped += 1
+                current_dropped = current_dropped or name == "current"
+        kept_nights = []
+        for path in _nights():
+            found = _night_manifest(path)
+            if found is not None and erased & set(found.get("learned") or []):
+                _remove_night(path)
+                dropped += 1
+            elif found is not None:
+                kept_nights.append(path)
+        if current_dropped:
+            drop_fast()
+            if manifest("previous") is not None:
+                _copy("previous", "current")
+                _remove("previous")
+            elif kept_nights:
+                newest = kept_nights[0]
+                stem = newest.name.removesuffix(".json")
+                for to, suffix in zip(
+                    _files("current"), (".pt", ".json", ".reads.json"), strict=True
+                ):
+                    shutil.copyfile(newest.with_name(stem + suffix), to)
+            elif manifest("base") is not None:
+                _copy("base", "current")
     if dropped:
         reset()
     return dropped
@@ -1047,7 +1188,9 @@ def load() -> Loaded | None:
         from . import net
 
         torch.set_num_threads(max(1, min(2, os.cpu_count() or 1)))
-        model = net.load(_files("current")[0])
+        with disk_lock():
+            fast = fast_manifest()
+            model = net.load(fast_files()[0] if fast is not None else _files("current")[0])
         fit = Fit(**found["fit"])
         loaded = Loaded(model, found, fit, languages)
         with _lock:
@@ -1059,6 +1202,18 @@ def load() -> Loaded | None:
         return None
     finally:
         _loading = False
+
+
+def swap(model: Any, slow: str) -> bool:
+    """Serve these weights (the fast copy Tadrib trained from the version
+    created at ``slow``) from now on; False when that version is not the one
+    loaded (it was replaced or forgotten in the meantime)."""
+    global _loaded
+    with _lock:
+        if _loaded is None or _loaded.manifest.get("created") != slow:
+            return False
+        _loaded = Loaded(model, _loaded.manifest, _loaded.fit, _loaded.languages)
+        return True
 
 
 def available() -> Loaded | None:
@@ -1191,12 +1346,20 @@ def learn(
     stop: Callable[[], bool] = lambda: False,
     seed: int = 0,
     threads: int = 2,
+    labelled: Sequence[tuple[str, str]] = (),
+    still: Callable[[set[str]], set[str]] | None = None,
 ) -> dict:
     """Continue training the current reader on these texts (consented and
     verified), with a quarter of every batch replayed from the seeds; the new
     version replaces the current one only when it is not worse on the
     held-out seeds. Never under ``learning: off``, without ``training: on``,
-    or in an evaluation."""
+    or in an evaluation.
+
+    ``labelled``: (text, language) lessons whose language MIZAN already
+    checked when they were given (Tadrib: Lughah and the reader agreed then),
+    learned under that language. ``still``: which of the learned digests may
+    still be kept, asked under the lock just before promoting; if any was
+    erased while the challenger trained, nothing is promoted."""
     from memory import stateless
 
     if not stateless.learns() or not stateless.trains() or stateless.barred_from_training():
@@ -1236,6 +1399,19 @@ def learn(
             counted["disagreed"] += 1  # learned only where both read the same language
             continue
         new.append((own, slot))
+        digests.append(digest)
+    for text, code in labelled:
+        digest = text_digest(text)
+        if digest in learned or digest in digests:
+            counted["seen"] += 1
+            continue
+        if scripture(text):
+            counted["scripture"] += 1
+            continue
+        own = reading(lughah.own_words(text))
+        if not own or code not in languages:
+            continue
+        new.append((own, languages.index(code)))
         digests.append(digest)
     report: dict[str, Any] = {"status": "nothing new", "learned": 0, **counted}
     if not new:
@@ -1280,21 +1456,65 @@ def learn(
         gate=verdict,
     )
     if promoted:
-        manifest_new = {
-            **current,
-            "created": datetime.now(UTC).isoformat(),
-            "fit": new_fit.to_dict(),
-            "held_out_bpb": bits_per_byte(challenger_held, languages),
-            "gate": verdict,
-            "adopted": verdict["adopted"] and new_fit.b > 0,
-            "tests": test,
-            "learned": sorted(learned | set(digests)),
-            "parent": current.get("created"),
-            "night": {k: v for k, v in report.items() if k != "gate"},
-        }
-        _copy("current", "previous")
-        save(Built(challenger, manifest_new, dev, held, None), "current")
+        with disk_lock():
+            now = manifest("current")
+            if now is None or now.get("created") != current.get("created"):
+                return {
+                    **report,
+                    "status": "stale",
+                    "learned": 0,
+                }  # replaced or forgotten meanwhile
+            if still is not None and still(set(digests)) != set(digests):
+                return {**report, "status": "erased while learning", "learned": 0}
+            _promote(
+                current,
+                challenger,
+                dev,
+                held,
+                new_fit,
+                challenger_held,
+                languages,
+                verdict,
+                test,
+                learned,
+                digests,
+                report,
+            )
+        report["digests"] = digests
     return report
+
+
+def _promote(
+    current: dict,
+    challenger: Any,
+    dev: list[Read],
+    held: list[Read],
+    new_fit: Fit,
+    challenger_held: list[Read],
+    languages: list[str],
+    verdict: dict,
+    test: int,
+    learned: set[str],
+    digests: list[str],
+    report: dict,
+) -> None:
+    """The challenger becomes the current version (called under ``disk_lock``)."""
+    manifest_new = {
+        **current,
+        "created": datetime.now(UTC).isoformat(),
+        "fit": new_fit.to_dict(),
+        "held_out_bpb": bits_per_byte(challenger_held, languages),
+        "gate": verdict,
+        "adopted": verdict["adopted"] and new_fit.b > 0,
+        "tests": test,
+        "learned": sorted(learned | set(digests)),
+        "parent": current.get("created"),
+        "night": {k: v for k, v in report.items() if k != "gate"},
+    }
+    _keep_night("current")
+    _copy("current", "previous")
+    drop_fast()  # the fast copy learned on the replaced version
+    save(Built(challenger, manifest_new, dev, held, None), "current")
 
 
 async def rest(
@@ -1303,9 +1523,9 @@ async def rest(
     deadline: float | None = None,
     idle: Callable[[], bool] = lambda: True,
 ) -> dict:
-    """Nawm's part: the person's reviewed words learned while no request
-    runs, within the night's time, under their own choices. Skipped when the
-    reader is off or absent."""
+    """Nawm's part: the person's lessons of the day (Tadrib) and reviewed
+    words learned while no request runs, within the night's time, under their
+    own choices. Skipped when the reader is off or absent."""
     if mode() == "off":
         return {"status": "off"}
     from memory import stateless
@@ -1317,15 +1537,43 @@ async def rest(
     seconds = None if deadline is None else deadline - time.monotonic()
     if seconds is not None and seconds <= 0:
         return {"status": "skipped"}
+    from .. import tadrib
+    from ..tadrib import store
+
     texts = await asyncio.to_thread(reviewed_words, owner)
-    if not texts:
+    lessons = (
+        await asyncio.to_thread(store.unconsolidated, owner, "reader")
+        if tadrib.mode() == "on"
+        else []
+    )
+    if not texts and not lessons:
         return {"status": "nothing new"}
 
     def stop() -> bool:
         return not idle() or (deadline is not None and time.monotonic() > deadline)
 
+    def still(digests: set[str]) -> set[str]:
+        """What may still be kept: reviewed words and lessons not erased since."""
+        allowed = {text_digest(text) for text in reviewed_words(owner)}
+        allowed |= store.learned_digests(owner, "reader")
+        return digests & allowed
+
     budget = seconds if seconds is not None else 300.0
-    return await asyncio.to_thread(learn, texts, seconds=budget, stop=stop)
+    report = await asyncio.to_thread(
+        learn,
+        texts,
+        seconds=budget,
+        stop=stop,
+        labelled=[(lesson.text, lesson.language) for lesson in lessons],
+        still=still,
+    )
+    if report.get("status") == "promoted":
+        mine = {lesson.digest for lesson in lessons}
+        await asyncio.to_thread(
+            store.consolidate, owner, [d for d in report.get("digests", []) if d in mine]
+        )
+        tadrib.slow_changed()
+    return report
 
 
 def main() -> None:

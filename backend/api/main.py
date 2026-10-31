@@ -413,6 +413,10 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(interval)
 
     rest_task = asyncio.create_task(rest())
+    # Tadrib: the reader learns each lesson while no request runs.
+    from tadbir import tadrib
+
+    tadrib.configure(_no_run_active)
 
     async def watch_for_users() -> None:
         # Muraqabah: each user's watchers, judged against salah and attention.
@@ -5771,6 +5775,52 @@ async def tadbir_audit(
 
     _require_admin(user)
     return await asyncio.to_thread(tadqiq.report, days)
+
+
+@app.get("/api/tadrib")
+async def tadrib_status(user: TokenPayload = Depends(require_auth)):
+    """Tadrib (admin): MIZAN's own reader learning each consented message while it
+    works: lessons learned, held out and turned down, the prequential log-loss of
+    the fast and the slow copy, the safety check, seconds per lesson. Counts only;
+    no words (docs/tadrib.md)."""
+    from tadbir import tadrib
+
+    _require_admin(user)
+    return await asyncio.to_thread(tadrib.status)
+
+
+@app.get("/api/tadrib/lessons")
+async def tadrib_lessons(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: TokenPayload = Depends(require_auth),
+):
+    """Your lessons: the words of yours MIZAN's own reader learned or holds out as
+    test, newest first (docs/tadrib.md)."""
+    from tadbir.tadrib import store
+
+    found, total = await asyncio.to_thread(store.listing, user.user_id, limit, offset)
+    return {
+        "lessons": [lesson.view() for lesson in found],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.delete("/api/tadrib/lessons/{digest}")
+async def tadrib_reject(digest: str, user: TokenPayload = Depends(require_auth)):
+    """Take one of your lessons back: it is deleted, and every version of the
+    reader that learned it is dropped (the fast copy is rebuilt without it)."""
+    import re
+
+    from tadbir import tadrib
+
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise HTTPException(422, "A lesson is named by its SHA-256 (64 hex digits)")
+    if not await asyncio.to_thread(tadrib.reject, user.user_id, digest):
+        raise HTTPException(404, "No such lesson")
+    return {"rejected": digest}
 
 
 @app.get("/api/tadbir/learning/live")
