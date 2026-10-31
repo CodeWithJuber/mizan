@@ -820,6 +820,68 @@ too.
   0.713. The next letter is used. Neither reads Urdu as well as Hindi is read
   (Limits).
 
+## Wider Hindi: PMIndia
+
+### The gap
+
+A production Roman claim, "Taj Mahal ko Mughal badshah Shah Jahan ne apni
+begum Mumtaz Mahal ki yaad mein banwaya tha", is not read against "It was
+built in the 17th century by Emperor Shah Jahan in memory of his wife, Mumtaz
+Mahal.": "badshah", "begum" and "banwaya" have no translation. Devanagari
+Hindi claims are supported 4 or 5 of 119 against English pages for the same
+reason. MASSIVE is a voice assistant's vocabulary.
+
+### Data and licence
+
+Read and checked one by one; only PMIndia is used.
+
+| Source | Licence | Decision |
+|---|---|---|
+| [PMIndia](https://data.statmt.org/pmindia/) v1 (Haddow and Kirefu, 2020), `pmindia.v1.hi-en.tsv`, 56,831 sentence pairs from the news updates of the Prime Minister of India's website, SHA-256 `bfa9fe6c…2029f` (Last-Modified 27 January 2020) | CC BY 4.0 (its README and paper); one provider, which made the content available for re-distribution | Used: extra Hindi–English training pairs |
+| [Samanantar](https://huggingface.co/datasets/ai4bharat/samanantar) (AI4Bharat), at commit `ead34c5b` | The Hugging Face card says CC BY-NC 4.0, against the CC0 given for its mined part elsewhere. It collates existing corpora with their own terms: Tanzil (translations of the Quran), JW300, the Bible, OpenSubtitles, IITB (CC BY-NC 4.0) | Rejected: non-commercial on its card, and Quran text inside. Its rows carry no source (the files hold only `idx`, `src`, `tgt`), so no part can be left out |
+| [BPCC](https://huggingface.co/datasets/ai4bharat/BPCC) (AI4Bharat, IndicTrans2), at commit `5bde3093` | BPCC-H-Wiki CC BY 4.0, but it is English Wikipedia sentences (CC BY-SA) and their translations; the mined parts are CC0 "packaging" of text AI4Bharat does not own, from Wikipedia dumps, the Internet Archive and religious and CC BY-SA sites, with no source per row | Rejected: share-alike re-licensed, and sub-sources that cannot be left out. Gated besides. BPCC-H-Daily (CC BY 4.0) is app requests, MASSIVE's domain |
+
+Urdu has no such source here: PMIndia also has an English–Urdu file
+(3.5 MB), which was not used (Limits).
+
+### Method
+
+The builder and its rules are unchanged; PMIndia's pairs are added to
+MASSIVE's train pairs for Hindi only:
+
+- the subset, fixed before any result was seen: every pair whose two sides
+  have words, at most 40 words a side (IndicTrans2's mining cut-off), exact
+  duplicates dropped, in the file's order: 53,656 pairs, all of PMIndia that
+  fits (one EM iteration on 5,000 of them takes 2 seconds);
+- EM stops by MASSIVE's validation log-likelihood, τ is fitted by F1 on the
+  same validation slot dictionary, precision@1 is measured on the same test
+  dictionary, names are judged on MASSIVE's slots, as before;
+- pieces are judged over all the training text, and the Wilson bound counts
+  every training sentence that holds a word;
+- the Urdu, Arabic and Tamil files are rebuilt byte for byte.
+
+The Roman reading is rebuilt with the same channel (same pairs, seed and
+stopping rule), over a vocabulary of MASSIVE's Hindi words and PMIndia's
+Devanagari words, their counts summed. The English filter is unchanged
+(PMIndia's English is not added: it holds Indian words in Latin letters).
+
+### Pre-registered bar
+
+Written before the new lexicon was measured. It is adopted only if all hold:
+
+1. On a fresh held-out set of teacher answers, pooled non-English supported
+   claims (Hindi, Urdu, Roman Hindi, Roman Urdu) rise.
+2. Its control (another question's articles) stays at 0 supported and 0
+   contradicted.
+3. No true claim is newly contradicted.
+4. On the existing sets (Hindi and Urdu answers, Roman answers, Roman false
+   claims, the English true and false sets), wrong findings do not rise and
+   the controls stay at 0.
+
+### Measured (31 October 2026)
+
+PENDING
+
 ## Limits
 
 - **The vocabulary is a voice assistant's.** MASSIVE is alarms, music, weather,
