@@ -70,3 +70,47 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
 AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Speaker (planned)
+
+The Ruh speaker (`speaker.py`, `docs/ruh-speaker.md`) is a pilot prepared on
+31 October 2026 and not yet run: nothing below has been downloaded for it.
+`python -m tadbir.ruh_reader.speaker prepare --plan pilot` would fetch the
+pinned files into its own folder on the training pod and record each file's
+SHA-256 in `shards.json`. Each card was read on 31 Oct 2026 at the commit
+given.
+
+**Accepted** (pinned in `speaker.SOURCES`):
+
+| Prefix | Source | Licence | Used for |
+|---|---|---|---|
+| `fineweb-edu:<id>` | [HuggingFaceFW/fineweb-edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) at commit `87f09149ef4734204d70ed1d046ddc9ca3f2b8f9`, `sample/10BT/000_00000.parquet` (SHA-256 `b1ba7b2c…e871`) and `001_00000.parquet` (`3fcf2dc6…5693`); the id is the Common Crawl record id | ODC-By 1.0, "also subject to CommonCrawl's Terms of Use" (card, Licensing Information). Its pages were chosen by a classifier trained on Llama-3-70B-Instruct's scores; the text is web text, no model's output | English training text, 4.5 GB |
+| `fineweb-2-<subset>:<id>` | [HuggingFaceFW/fineweb-2](https://huggingface.co/datasets/HuggingFaceFW/fineweb-2) at commit `af9c13333eb981300149d5ca60a8e9d659b276b9`: `data/hin_Deva/train/000_00000.parquet` (`071a6d4c…adad`), `data/urd_Arab/train/000_00000.parquet` (`a3e64b92…338d`), `data/arb_Arab/train/000_00000.parquet` (`814460aa…0583`), `data/hin_Latn/train/000_00000.parquet` (`e26effec…97ea`), `data/urd_Latn/train/000_00000.parquet` (`82937843…73bd`) | ODC-By 1.0, and Common Crawl's terms of use (card, Licensing Information); a URL and crawl per document, and an opt-out form | Hindi 4 GB, Urdu 3 GB, Arabic 3 GB, Roman Hindi/Urdu (both Latin subsets, all of them) |
+| `tatoeba:<id>` | Tatoeba per-language exports, as above | CC BY 2.0 FR | training |
+| `massive:<locale>:<id>` | MASSIVE 1.1, as above, **train partition only** (dev and test are the reader's measured slices) | CC BY 4.0 | training |
+
+Changes made to the material: documents are selected (script, not a seed's
+words, once, held out by SHA-256, never Quran text by `ruh_reader.scripture`,
+never a run of 8 words of the six books of hadith), and tokenised; the
+weights hold no document. The kept documents' ids are recorded so a removal
+request can be honoured.
+
+**Rejected** (`speaker.REJECTED`):
+
+| Source | Card or paper | Why |
+|---|---|---|
+| [Abhishekcr448/Hinglish-Everyday-Conversations-1M](https://huggingface.co/datasets/Abhishekcr448/Hinglish-Everyday-Conversations-1M) | MIT | Written by GPT-4o-mini (its card): OpenAI's terms forbid using output to develop competing models (`docs/consent.md`). The reader v1 above trains on it; changing that is the owner's decision |
+| [ai4bharat/sangraha](https://huggingface.co/datasets/ai4bharat/sangraha) at `8b813c3f` | CC BY 4.0 | "Synthetic" is WikiMedia English translated (share-alike re-licensed); "Verified" holds OCR'd PDFs and transcribed "videos, podcasts, movies" with no source per row |
+| [ai4bharat/IndicCorpV2](https://huggingface.co/datasets/ai4bharat/IndicCorpV2) | "released under a CC-0 license" | Crawled text AI4Bharat does not own, with no source per line |
+| [statmt/cc100](https://huggingface.co/datasets/statmt/cc100) (`hi_rom`, `ur_rom`) | licence "unknown"; "no claims of intellectual property", Common Crawl terms | No licence of its own, no source per paragraph |
+| Samanantar, BPCC | see `backend/tadbir/data/qamus/LICENSES.md` | NC with Quran translations inside; share-alike re-licensed |
+| [LingoIITGN/PHINC](https://huggingface.co/datasets/LingoIITGN/PHINC) | CC BY 4.0 | Tweets its authors do not own: evaluation only, as Qamus uses it |
+| Dakshina | CC BY-SA 4.0 | Evaluation only, as Qamus uses it |
+| Wikipedia | CC BY-SA 4.0 | Share-alike: not in the first run, the owner's decision |
+
+### ODC-By 1.0 (FineWeb-Edu, FineWeb-2)
+
+FineWeb-Edu and FineWeb-2 by Hugging Face are made available under the Open
+Data Commons Attribution License, <https://opendatacommons.org/licenses/by/1-0/>.
+Their use is also subject to Common Crawl's terms of use,
+<https://commoncrawl.org/terms-of-use>.

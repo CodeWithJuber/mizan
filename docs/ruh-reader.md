@@ -4,6 +4,8 @@
 
 Lughah (`tadbir/lughah.py`, [Fahm](fahm.md)) decides which language a message is written in by counting letter n-grams with naive Bayes. The Ruh reader (`backend/tadbir/ruh_reader/`) is the first slice of MIZAN's own small transformer: a byte-level language model that learns how each language goes on from one letter to the next, and gives a second reading of the same words. Its word is taken only once it has been measured against Lughah on messages neither has seen. Two tests refused it; the third, on 31 Oct 2026, passed for both seeds (see **Measured**). It still runs in shadow, computed and logged, never changing the decision, until the owner decides to turn it on.
 
+A larger model of the same family, the **Ruh speaker** (about 125M parameters, trained on a GPU), is prepared as a pre-registered pilot and has not been run: [ruh-speaker.md](ruh-speaker.md).
+
 ## The model
 
 `tadbir/ruh_reader/net.py` (torch; imported only to train or score, so nothing at MIZAN's import time needs torch):
