@@ -56,3 +56,32 @@ There are no word lists and no thresholds. "Informative" means above the backgro
 - **If a bar fails:** nothing is built, and the failure is written here.
 
 `python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --split valid` (dev), then `--split test --policy <chosen>`.
+
+## Result (31 Oct 2026): not proven
+
+**Dev (`valid`, 500 conversations, 19,555 statements).** The conversation background holds 93,679 turns of MSC's `train` split.
+
+| Policy | Keeps | S precision / recall / F1 | N precision (chance) / recall |
+|---|---|---|---|
+| `all` | 100% | 0.437 / 1.000 / 0.608 | 0.024 (0.024) / 1.000 |
+| `informative` | 99.6% | 0.438 / 1.000 / **0.610** | 0.023 (0.024) / 0.930 |
+| `novel` | 93.8% | 0.440 / 0.946 / 0.601 | 0.020 (0.024) / 0.773 |
+
+So `informative` was chosen (S-F1), as registered.
+
+**Test (`test`, 501 conversations, 18,435 statements), read once:**
+
+| Bar | `informative` |
+|---|---|
+| 1 N precision above chance | 0.0200 vs 0.0215, P(not better) = 1.0: **fails** |
+| 2 S recall ≥ 0.8 | 0.9999: holds |
+| 3 keeps ≤ 60% | 99.5%: **fails** |
+
+Nothing is built for production.
+
+**What the data showed** (read on dev after the verdict, so it decides nothing):
+- **People's turns in MSC nearly all carry a word that is rare in conversation.** So "informative" separates almost nothing.
+- **What was needed later was mostly what had already been said.** Statements `novel` turned down, nearly all repeats of something already kept, were needed in session 4 at **8.9%** (107 of 1,208). New statements were needed at **2.0%** (365 of 18,347).
+- **This is Anderson & Schooler's (1991) finding about memory and the environment.** How often a thing has come up predicts whether it is needed again. Its newness does not.
+- **The idea to test next.** Every informative statement goes into a weak episodic trace at low stability. Saying it again, a repeat that Tadhkir already grades, strengthens it into long-term memory. Nawm lets the traces that were never repeated fade. The selection happens at consolidation, by repetition, not at encoding by novelty.
+- **Testing it needs data no test has read.** MSC's `session_5` split has four earlier sessions and has not been read.
