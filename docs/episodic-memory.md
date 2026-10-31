@@ -152,3 +152,28 @@ Both bars hold on both splits. What came up again in a conversation was needed i
 - recall from episodes. Before it, `tadhkir.need_test` reads real use: whether the episodes that came up again are the ones the person needs later, as test 2 found on MSC.
 
 `MIZAN_EPISODIC` = `shadow` (default) | `off`, in Settings → Developer → System settings.
+
+## Test 3: the production rule (pre-registered 31 Oct 2026, before `session_4/train` is read)
+
+**Why.** Production counts a repeat only when the person's *own* later words hold most of an episode's information. Test 2 counted either speaker's later turn. The shadow store was built on the production rule, which no test has measured. Recall must not be built on it unless it holds.
+
+**Data.** MSC's `session_4/train`: 1,001 conversations. Their session-4 turns, the N labels, have never been read. Their earlier sessions are in MSC's `session_3/train`, which test 1 read only as the background's word counts: no labels, and this rule does not use the background.
+
+**Unit.** One speaker of one conversation. The statements are that speaker's turns in sessions 1–3, as in test 1.
+
+**The rule** (fixed now, production's): `came_up_again(statements, own)`, where `own[i]` holds only the **same speaker's** turns after statement `i`, before session 4. Needed (N) is as in tests 1 and 2: some session-4 turn, by either speaker, holds most of the statement's distinctive information.
+
+**Bars** (read once, on this split):
+1. **Better than chance.** Precision for N exceeds N's share of all statements. The difference is bootstrapped over conversations (10,000 resamples, seed 0) and must have P(not better) < 0.05.
+2. **Keeps less than everything.** At most 60% of statements come up again.
+
+**Reported, deciding nothing:**
+- N recall and the lift;
+- S precision and recall;
+- test 2's both-speaker rule on the same split.
+
+**What follows.**
+- **If both bars hold:** the shadow store's rule stays.
+- **If a bar fails:** the failure is written here. Recall from episodes is not built on this rule; the shadow store keeps counting, which changes no answer.
+
+`python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 4 --split train`

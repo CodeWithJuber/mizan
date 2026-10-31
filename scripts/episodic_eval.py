@@ -3,6 +3,8 @@
 
   python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --split valid
   python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --split test --policy novel
+  python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 5 --split test   # test 2
+  python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 4 --split train  # test 3
 
 MSC (pinned by SHA-256 below) is read for measurement only: never trained on,
 never shipped, never quoted in the repository.
@@ -56,13 +58,19 @@ def background(path: Path):
 def units(record: dict) -> list[dict]:
     """One per speaker: their statements in the earlier sessions with the facts
     written for them after each session, every turn of the last session, and,
-    for each statement, every turn MIZAN heard after it before the last session."""
+    for each statement, every turn MIZAN heard after it before the last session
+    (``after``) and only the same speaker's (``own``, test 3: production's rule)."""
     later = [turn["text"] for turn in record["dialog"]]
-    heard = [turn["text"] for session in record["previous_dialogs"] for turn in session["dialog"]]
+    heard = [
+        (index % 2, turn["text"])
+        for session in record["previous_dialogs"]
+        for index, turn in enumerate(session["dialog"])
+    ]
     found = []
     for speaker in (0, 1):
         statements: list[tuple[str, list[str]]] = []
         after: list[list[str]] = []
+        own: list[list[str]] = []
         position = 0
         for session in record["previous_dialogs"]:
             facts = list((session.get("personas") or [[], []])[speaker])
@@ -70,9 +78,11 @@ def units(record: dict) -> list[dict]:
             for index, text in enumerate(turns):
                 if index % 2 == speaker:
                     statements.append((text, facts))
-                    after.append(heard[position + index + 1 :])
+                    rest = heard[position + index + 1 :]
+                    after.append([words for _, words in rest])
+                    own.append([words for who, words in rest if who == speaker])
             position += len(turns)
-        found.append({"statements": statements, "later": later, "after": after})
+        found.append({"statements": statements, "later": later, "after": after, "own": own})
     return found
 
 
@@ -154,19 +164,21 @@ def run(path: Path, split: str, policies: list[str], session: int = 4) -> dict:
             texts = [text for text, _ in unit["statements"]]
             if policy == "repeated":
                 kept = came_up_again(texts, unit["after"])
+            elif policy == "repeated_own":
+                kept = came_up_again(texts, unit["own"])
             else:
                 kept = keep(texts, policy, known)
             rows.append({"conversation": index, "kept": kept, "worth": worth, "needed": needed})
         seconds = time.monotonic() - began
         entry = score(rows)
         entry["seconds_per_statement"] = round(seconds / max(1, entry["statements"]), 5)
-        if split == "test" or session == 5:
+        if split in ("test", "train") or session == 5:
             entry["p_not_better"] = bootstrap(rows)
             entry["bars"] = {
                 "needed_better_than_chance": entry["p_not_better"] < BARS["p_not_better"],
                 "keeps_less": entry["keep_rate"] <= BARS["keep_rate"],
             }
-            if session == 4:  # test 1 also asked to keep most of what people summarised
+            if session == 4 and split == "test":  # test 1 also asked for most of S
                 entry["bars"]["recall_worth"] = entry["worth"]["recall"] >= BARS["recall_s"]
             entry["passed"] = all(entry["bars"].values())
         report[policy] = entry
@@ -179,12 +191,18 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--msc", type=Path, required=True)
-    parser.add_argument("--split", choices=("valid", "test"), required=True)
-    parser.add_argument("--policy", choices=("informative", "novel", "repeated"))
+    parser.add_argument("--split", choices=("valid", "test", "train"), required=True)
+    parser.add_argument("--policy", choices=("informative", "novel", "repeated", "repeated_own"))
     parser.add_argument("--session", type=int, choices=(4, 5), default=4)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    if args.session == 5:
+    if args.split == "train":
+        # test 3: production's rule (own later words), read once on session_4/train;
+        # test 2's rule is reported beside it and decides nothing
+        if args.session != 4:
+            raise SystemExit("test 3 reads session_4/train")
+        policies = ["all", "repeated_own", "repeated"]
+    elif args.session == 5:
         # test 2: one rule, fixed beforehand, read once on each split of session 5
         policies = ["all", "repeated"]
     elif args.split == "test" and not args.policy:

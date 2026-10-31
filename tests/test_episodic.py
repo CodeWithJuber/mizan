@@ -114,3 +114,29 @@ def test_erasing_a_chat_removes_its_episodes_and_the_repeats_it_gave(shadow):
     assert episodic.counts(shadow) == {"episodes": 1, "lasting": 0}
     assert episodic.forget_chat(shadow, "chat-a") == {"episodes": 1, "repeats": 0}
     assert episodic.counts(shadow) == {"episodes": 0, "lasting": 0}
+
+
+def test_the_evaluation_gives_each_statement_what_was_heard_after_it_and_its_own_words():
+    """Test 2 reads every later turn; test 3 (production's rule) only the same
+    speaker's (docs/episodic-memory.md)."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "episodic_eval.py"
+    spec = importlib.util.spec_from_file_location("episodic_eval", path)
+    assert spec and spec.loader
+    evaluation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(evaluation)
+    record = {
+        "previous_dialogs": [
+            {"dialog": [{"text": "a1"}, {"text": "b1"}, {"text": "a2"}], "personas": [[], []]},
+            {"dialog": [{"text": "a3"}, {"text": "b2"}], "personas": [[], []]},
+        ],
+        "dialog": [{"text": "later"}],
+    }
+    first, second = evaluation.units(record)
+    assert [text for text, _ in first["statements"]] == ["a1", "a2", "a3"]
+    assert first["after"][0] == ["b1", "a2", "a3", "b2"]
+    assert first["own"] == [["a2", "a3"], ["a3"], []]
+    assert second["own"] == [["b2"], []]
+    assert second["after"][0] == ["a2", "a3", "b2"]
