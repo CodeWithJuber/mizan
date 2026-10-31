@@ -497,6 +497,51 @@ Washington was elected president…"; with it on, it is supported (right).
   on the design set they answered English or Roman questions. Answers here hold
   fewer claims (2.4 to 2.8 each, against 4 in Hindi and Urdu there).
 
+#### What changed after the held-out set
+
+The set was read once, to measure; three of its findings then changed the
+code, and two rules were measured and not adopted. From here on it is no
+longer untouched: the next comparison needs a set of its own. Each change was
+measured on the design sets and on this one; nothing else changed.
+
+- **A code-mixed claim is contradicted only however it is written**
+  (`writings`). "Duniya ka pehla controlled, powered aur sustained hawai jahaz
+  Orville aur Wilbur Wright (Wright Brothers) ne udaya tha." is read by Lughah
+  as English, so the rule that a Roman claim must be contradicted as written
+  and in Devanagari, both ways, never applied: it was contradicted as written.
+  Now every disputed claim is checked as written, as the NLI model read it, and
+  in Devanagari wherever Qāmūs reads its words as Roman Hindi or Urdu; a
+  capitalised word of a claim read as English is a name and stays as written
+  ("Rhea" is the moon, not रिया). Held-out Roman: 1 true claim contradicted → 0.
+  On the design sets and the other held-out sets no finding changed (English
+  false claims contradicted: 8/20 and 2/4, as before).
+- **An abbreviation ends no sentence** when the next word goes on in lower
+  case (Isnad): "…at about 11:40 p.m. ship's time, and sank…" was two claims,
+  the second a fragment. Held-out English: 72 claims → 71, the fragment's
+  support gone and the whole claim supported; no other set changed.
+- **Not adopted: a Roman claim supported only when its writings agree.** The
+  false claim "Marie Curie 7 November 1867 ko Berlin mein paida hui thin." is
+  supported because its Devanagari writing alone is read as entailed: Qāmūs
+  reads "thin" (Urdu "were") as तीन (three) and "Marie" as मेरी, the search then
+  finds "The three found radium in 1898", and with "thi" the sentence on her
+  birth in Warsaw is read as entailing it. Two symmetric rules were measured:
+
+  | Supported (true Roman claims) | Current | Not contradicted as written | Entailed as written too |
+  |---|---|---|---|
+  | Design set, 158 claims | 26 | 21 | 11 |
+  | Held-out, 160 claims | 18 | 13 | 8 |
+  | The false Marie Curie claim | supported | supported | not supported |
+
+  The first removes wrong and right supports alike (of the design set's five,
+  one wrong, one part, three right) and keeps the false claim; the second
+  removes it at the cost of more than half of all Roman supports. Read as
+  written, the NLI model misreads Roman Hindi (the reason it reads Devanagari
+  at all), so neither writing is a witness on its own. The false claim stays a
+  known failure: a Roman claim can be kept (`ilm`, Talaqqi) on one misread
+  writing. What would address it is a reading that does not misspell ("thin"
+  is not Hindi) and a check that a claim's names are its source's (Berlin is
+  not Warsaw), both to be measured on a set not yet seen.
+
 ## It learns
 
 - **Kept for this user.** What an outside source settled is kept in the user's

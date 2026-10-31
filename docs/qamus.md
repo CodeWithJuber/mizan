@@ -830,6 +830,13 @@ On the design sets the reading took 8 supported claims of 158 to 26 [11.5,
 - **Part** (6): a claim with one detail the sentence lacks ("Unhe 27 saal jail
   mein rakhna pada…", "…aur ek dormant volcano hai").
 
+
+After this set, a claim Lughah reads as English but that writes Hindi in Latin
+letters is also contradicted only however it is written, and a Roman claim's
+support from its Devanagari writing alone was measured against two stricter
+rules and kept as it is ([Ahl al-Dhikr](ahl-dhikr.md), "What changed after the
+held-out set").
+
 ### Not adopted
 
 - **A direct Roman→English lexicon from PHINC.** IBM Model 1 in both
