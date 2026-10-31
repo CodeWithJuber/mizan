@@ -1554,3 +1554,97 @@ deen	no	ہلکے رنگ کو سبز میں تبدیل کریں
 deen	no	تمام اشیائے خوردونوش جن کا بلا ڈرائر ہے فہرست سے ہٹا دیا جائے
 deen	no	آپ اس موسیقی کو کیسے محفوظ کریں گے
 deen	no	ریل گاڑی کے اوقات کی جگہ
+# sarf: everyday questions and requests people wrote in Urdu and Arabic (MASSIVE 1.1 train,
+# CC BY 4.0) ask for no root or pattern; requests for one written for the facet
+# (scripts/data/facet_sarf_written.tsv, by a language model, marked there) do
+# (scripts/facet_eval.py --sarf --write N).
+sarf	no	میرے قریب کون سی ریل کمپنیاں ہیں
+sarf	no	آئی فون سیون کی قیمت کیا ہے
+sarf	no	درست پیمائش اور ضروری آلات کے ساتھ کھانا پکانے کے لیے درکار تمام اجزاء جمع کریں
+sarf	no	باٹا کمپنی کی اسٹاک بند ہونے کی قیمت کیا ہے
+sarf	no	برائے مہربانی ہنڈا کے افتتاحی اسٹاک کی قیمت بتاؤ
+sarf	no	میں یہاں خریداری کے لیے کہاں جا سکتا ہوں
+sarf	no	گیند کی شکل کیا ہے
+sarf	no	علی قریبی پارک کہاں ہے جہاں میں دوڑ کر جا سکتا ہوں
+sarf	no	کیا یہ سچ ہے کہ جم سات میل دور ہے
+sarf	no	مجھے اسمارٹ فون سافٹ ویئر کی تفصیل بتاؤ
+sarf	no	وش الفعاليات اللي قاعدة تصير في خميس مشيط
+sarf	no	وريني ايش المحلات القريبة مني
+sarf	no	ترتيب الريال السعودي الآن
+sarf	no	وين ممكن ألحق أشياء حلوة أسويها الليلة
+sarf	no	عرف اقتصاد
+sarf	no	أخبرني عن باراك أوباما
+sarf	no	افتح الأسهم
+sarf	no	وش هي أعلى سلسلة جبال في السعودية
+sarf	no	الأكل حلو
+sarf	no	أين يقع أكبر شلال في العالم
+sarf	no	google کی طرف سے کوئی نئی الیکٹرانک میل چیک کریں
+sarf	no	بغیر پڑھی ہوئی ای میل چیک کریں
+sarf	no	ایک صفر تین عشاریہ تین پر میں ھنر گھر شو سننا چاہتا ہوں
+sarf	no	دس مارچ بو بجکر سترہ پر کے لیے الارم منسوخ کریں
+sarf	no	راولپنڈی میں کیا موسم ہے
+sarf	no	مجھے پاکستانی موسیقی سننا پسند ہے
+sarf	no	باورچی خانہ کی روشنی کو نیلے رنگ میں تبدیل کریں
+sarf	no	کیا آپ مجھے کچھ کافی بنا سکتے ہیں
+sarf	no	ویمو پلگ کو بند کر دیں
+sarf	no	دس ہونے پر مجھے بتائیں
+sarf	no	لو سمحت ارسل email لأختي
+sarf	no	خلني اعرف موعد قطار كاليفورنيا
+sarf	no	حط منبه بعد أربعين دقيقة من الحين
+sarf	no	كيف هي حركة المرور اليوم
+sarf	no	اكتم الصوت
+sarf	no	عرض قائمة
+sarf	no	قطار الرياض
+sarf	no	أبغى أسمع لعبد المجيد
+sarf	no	سوف تمطر يوم السبت
+sarf	no	شغل قايمة موسيقى حفلة
+sarf	yes	What is the root of صلاة?
+sarf	yes	What is the root of the word جنة?
+sarf	yes	Give me the root and pattern of مؤمن
+sarf	yes	What is the wazn of ذكر?
+sarf	yes	Analyze the morphology of الحمد
+sarf	yes	Which root does the word ساجد come from?
+sarf	yes	Root and pattern of the Arabic word عبادة
+sarf	yes	Is خالق a noun or a verb?
+sarf	yes	What part of speech is كريم in Arabic?
+sarf	yes	What are the root letters of رحيم?
+sarf	yes	Break down the word ملك into root and pattern
+sarf	yes	Morphology of the word السماء please
+sarf	yes	صلاة ka root kya hai?
+sarf	yes	جنة ka wazn batao
+sarf	yes	مؤمن kis root se bana hai?
+sarf	yes	ذكر ism hai ya fel?
+sarf	yes	Is lafz ka maadda batao: عبادة
+sarf	yes	خالق ka maadda aur wazn kya hai?
+sarf	yes	كريم kis maadde se hai?
+sarf	yes	رحيم ka root aur wazn batao
+sarf	yes	ملك lafz ka maadda kya hai?
+sarf	yes	تقوى ka root kya hota hai?
+sarf	yes	صلاة का रूट क्या है?
+sarf	yes	جنة शब्द का वज़न बताओ
+sarf	yes	مؤمن किस मूल से बना है?
+sarf	yes	ذكر संज्ञा है या क्रिया?
+sarf	yes	عبادة का मादा क्या है?
+sarf	yes	خالق शब्द का रूट और वज़न बताइए
+sarf	yes	كريم का मूल अक्षर क्या हैं?
+sarf	yes	تقوى का वज़न क्या है?
+sarf	yes	صلاة کا مادہ کیا ہے؟
+sarf	yes	جنة کا وزن بتائیں
+sarf	yes	لفظ مؤمن کس مادے سے ہے؟
+sarf	yes	ذكر اسم ہے یا فعل؟
+sarf	yes	عبادة کا مادہ اور وزن بتائیں
+sarf	yes	خالق کا مادہ کیا ہے؟
+sarf	yes	كريم کس مادے سے بنا ہے؟
+sarf	yes	رحيم کا وزن کیا ہے؟
+sarf	yes	ملك کا مادہ بتائیں
+sarf	yes	تقوى کا مادہ اور وزن کیا ہے؟
+sarf	yes	ما جذر كلمة صلاة؟
+sarf	yes	ما وزن كلمة جنة؟
+sarf	yes	ما أصل كلمة مؤمن؟
+sarf	yes	هل كلمة ذكر اسم أم فعل؟
+sarf	yes	ما جذر ووزن كلمة عبادة؟
+sarf	yes	من أي جذر كلمة خالق؟
+sarf	yes	ما نوع كلمة كريم؟
+sarf	yes	ما الجذر الثلاثي لكلمة رحيم؟
+sarf	yes	ما وزن كلمة ملك وما جذرها؟
+sarf	yes	أعرب كلمة تقوى صرفيا

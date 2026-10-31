@@ -77,7 +77,7 @@ The answer gives, for each word:
 It ends naming the corpus. Isnad grades it sahih ("read by MIZAN from the
 Quranic Arabic Corpus").
 
-### Known false positives (measured 31 Oct 2026)
+### Everyday Urdu is not a request for a root (31 Oct 2026)
 
 On production, "پاکستان کا سب سے بڑا شہر کون سا ہے؟" was answered with the root
 of "ستان". This predates the deen facet's rebuild.
@@ -86,28 +86,37 @@ of "ستان". This predates the deen facet's rebuild.
 requests people wrote (MASSIVE 1.1, CC BY 4.0). These rates matter only in
 Urdu and Arabic, because only Arabic-script words can become targets.
 
-Read as about roots, held out (`test`, 300 each):
+**`no` rows alone did not work.** Adding everyday Urdu and Arabic messages as
+`no` rows removed the false positives. But it lowered the leave-one-out
+recall of the facet's 24 `yes` seeds from 0.875 to 0.46–0.71, and Ta'lim's
+check refused every count.
 
-| Language | Questions | Requests |
+**What was added.** As for the deen facet:
+- First, a held-out set was written and is never a seed (`scripts/data/facet_sarf_heldout.tsv`). It has 30 requests for a root or pattern in Latin, Devanagari and Arabic script, with Arabic words no seed uses, and 10 messages that are not.
+- Then 52 requests with other words were written as `yes` seeds (`scripts/data/facet_sarf_written.tsv`).
+- Both were written by a language model and are marked so.
+
+**How the setting was chosen.** The rule was committed before any result
+(`measure_sarf`):
+1. Ta'lim keeps the change.
+2. The seeds' recall and the held-out recall are no lower than before.
+3. Among those, the setting with the fewest false positives on `dev` Urdu questions wins.
+
+Only one setting met the rule: the 52 written requests plus 10 everyday
+questions and 10 everyday requests per language as `no`.
+
+| Held out (`test`, 300 each) | Before | After |
 |---|---|---|
-| Urdu | 8.3% | 2.7% |
-| Arabic | 2% | 2% |
+| Urdu questions read as asking for a root | 8.3% | 0.7% |
+| Urdu requests | 2.7% | 0% |
+| Arabic questions | 2% | 1% |
+| Arabic requests | 2% | **3%** |
+| The held-out messages that are not requests (the production question among them) | 1 of 10 | 0 of 10 |
+| Recall of the 24 seeds (leave-one-out) | 0.875 | 1.0 |
+| Recall of the held-out requests (Latin / Devanagari / Arabic script) | 1.0 / 1.0 / 1.0 | 1.0 / 1.0 / 1.0 |
 
-The facet's own `yes` seeds are recalled 0.875 by leave-one-out.
-
-Adding everyday Urdu and Arabic messages as `no` rows removes the false
-positives (0% at every count). It also lowers that recall:
-
-| `no` rows per language and kind | 10 | 20 | 40 | 80 |
-|---|---|---|---|---|
-| Recall of the `yes` seeds | 0.71 | 0.63 | 0.50 | 0.46 |
-
-Ta'lim's check refuses every count (P(worse) 0.95–0.998). So nothing is
-changed yet.
-
-The facet needs more `yes` examples first, as the deen facet did
-(`docs/fahm.md`): a held-out set of sarf questions, written before any seed,
-then new seeds, then the same grid.
+With 20 or more `no` rows, held-out Arabic-script recall fell (0.75 and
+lower). The full grid is in the commit that wrote the rows.
 
 ## The API
 
