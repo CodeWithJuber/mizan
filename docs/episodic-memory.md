@@ -149,7 +149,7 @@ Both bars hold on both splits. What came up again in a conversation was needed i
 **Not built yet** (they matter only once recall uses the traces):
 - an FSRS stability per episode, raised by a repeat as Tadhkir's Good review does;
 - Nawm letting weak traces fade;
-- recall from episodes. Before it, `tadhkir.need_test` reads real use: whether the episodes that came up again are the ones the person needs later, as test 2 found on MSC.
+- recall from episodes. Before it, real use must show that strength says which episode is needed ("Before recall" below). The tests above first named `tadhkir.need_test` for this; simulated, it cannot tell, so a ranking test replaces it.
 
 `MIZAN_EPISODIC` = `shadow` (default) | `off`, in Settings → Developer → System settings.
 
