@@ -104,3 +104,23 @@ Nothing is built for production.
 **What follows if both bars hold on `test`:** the production change described above, in shadow, under the owner's decision. Otherwise nothing is built.
 
 `python scripts/episodic_eval.py --msc msc_v0.1.tar.gz --session 5 --split test` (and `--split valid`).
+
+### Test 2 result (31 Oct 2026): passed
+
+| `session_5` | Lasting memories | N precision (chance), lift | N recall | S precision / recall |
+|---|---|---|---|---|
+| **`test`** (judges; 501 conversations, 24,375 statements) | **5.6%** | **0.152 (0.019), 8.1×**; P(not better) 0.0 | 0.457 | 0.398 / 0.053 |
+| `valid` (reported; 500 conversations, 25,459 statements) | 6.5% | 0.128 (0.018), 7.0×; P(not better) 0.0 | 0.448 | 0.436 / 0.066 |
+
+Both bars hold on both splits. What came up again in a conversation was needed in the next session about **eight times** as often as a statement chosen at random, and only about one statement in seventeen came up again. The first run of the script stopped before the rule was read: a `KeyError`, because the change giving each statement what was heard after it had not been applied. It was fixed and rerun. Only the `all` baseline had printed, and nothing was changed after it.
+
+**What it means:**
+- **Repetition, not newness, marks what lasts.** This holds for these people's conversations, as it does for the environment Anderson & Schooler (1991) measured.
+- **Repetition alone keeps only about half of what will be needed** (N recall 0.46). That is why every statement starts as a weak trace rather than nothing: a weak trace can still be recalled while it lasts.
+- **Strengthening is not people's notion of "important".** S recall is 0.05: the summaries crowdworkers wrote are mostly things said once.
+
+**What follows** (the owner's decision: shadow first):
+- Under `learning: on`, a person's statements are kept as weak episodic traces. They are never pasted text, Amanah findings, scripture or stateless runs, and Mahw erases them with their chat.
+- A statement that comes up again is strengthened, by a Good review in Tadhkir.
+- Nawm lets unrepeated traces fade.
+- In shadow they are kept and counted but **not yet used in recall**. Real use is then measured by `tadhkir.need_test` before recall uses them.
