@@ -739,9 +739,10 @@ def simulate_needs(
         last, proposal = at, at
         while True:
             proposal = proposal + timedelta(days=rng.expovariate(rate))
-            if proposal >= finish:
+            stability = float(card.stability or 0.0)
+            if proposal >= finish or stability <= 0:
                 break
-            held = (1.0 + factor * _days(last, proposal) / float(card.stability)) ** decay
+            held = (1.0 + factor * _days(last, proposal) / stability) ** decay
             if rng.random() < held:
                 card, _log = scheduler.review_card(card, GOOD, proposal)
                 rows.append((f"m{number}", int(GOOD), "use", proposal.isoformat()))
