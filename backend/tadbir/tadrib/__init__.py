@@ -17,8 +17,9 @@ fast weights into the reader that serves (``ruh_reader.swap``). On the held-out
 lessons a paired sign test watches the fast copy; when its e-value reaches
 1/α the fast copy starts again from the slow weights.
 
-``MIZAN_TADRIB``: ``on`` (default) | ``off`` (nothing is kept; the reader
-learns at night from reviewed messages only, as before).
+``MIZAN_TADRIB``: ``on`` | ``off`` (default until the pre-registered
+measurement in docs/tadrib.md passes: nothing is kept, and the reader learns
+at night from reviewed messages only, as before).
 """
 
 from __future__ import annotations
@@ -47,8 +48,8 @@ TIMINGS = 200  # the last lessons' seconds kept for the status
 
 
 def mode() -> str:
-    found = os.getenv("MIZAN_TADRIB", "on").strip().lower()
-    return found if found in MODES else "on"
+    found = os.getenv("MIZAN_TADRIB", "off").strip().lower()
+    return found if found in MODES else "off"
 
 
 def held_out(digest: str) -> bool:

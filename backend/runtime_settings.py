@@ -149,7 +149,7 @@ SETTINGS: tuple[Setting, ...] = (
             "MIZAN's own language reader learns within seconds, where Lughah and the reader "
             "read the same language; one in five is held out as test, every lesson is listed "
             "and can be taken back, and the night consolidates the day. off keeps no lessons.",
-            "on", ("on", "off")),
+            "off", ("on", "off")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "

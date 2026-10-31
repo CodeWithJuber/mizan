@@ -70,7 +70,7 @@ The prequential log-loss and accuracy of the product P_L · P_R^b are reported, 
 
 ## Settings, routes and files
 
-- `MIZAN_TADRIB` (`on` | `off`, default `on`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before.
+- `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default stays `off` until the measurement above passes.
 - `GET /api/tadrib` (admins): status, lessons per day, prequential log-loss of both copies, the safety check, and the last night.
 - `GET /api/tadrib/lessons` (the person's own, paged) and `DELETE /api/tadrib/lessons/{digest}` (reject, which forgets it).
 - Files in the reader's folder (`$MIZAN_DATA_DIR/models/ruh_reader/`): `fast.pt` and `fast.json` (the fast copy and the digests it learned, written atomically every few lessons so a restart keeps the day), and `nights/` (the last 7 replaced versions with their digests).
