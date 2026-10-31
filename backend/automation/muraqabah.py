@@ -284,8 +284,8 @@ def validate_trigger(trigger: dict) -> dict:
     """A trigger MIZAN can schedule, or ValueError."""
     kind = trigger.get("kind")
     if kind == "daily":
-        _clock(str(trigger.get("time", "")))
-        return {"kind": "daily", "time": _clock(str(trigger["time"])).strftime("%H:%M")}
+        # A daily watcher with no time is due at 08:00, as a Hijri one is.
+        return {"kind": "daily", "time": _clock(str(trigger.get("time") or "")).strftime("%H:%M")}
     if kind == "prayer":
         prayer = str(trigger.get("prayer", "")).lower()
         if prayer not in PRAYERS:

@@ -70,6 +70,15 @@ def test_triggers_find_their_next_moment():
         muraqabah.validate_trigger({"kind": "prayer", "prayer": "lunch"})
 
 
+def test_a_daily_watcher_without_a_time_is_due_at_eight_as_a_hijri_one_is():
+    # A plan with {"kind": "daily"} and no time raised KeyError, which no
+    # caller expects (31 Oct 2026: it stopped a Tadrib lesson collection).
+    assert muraqabah.validate_trigger({"kind": "daily"}) == {"kind": "daily", "time": "08:00"}
+    assert muraqabah.validate_trigger({"kind": "daily", "time": "7:5"})["time"] == "07:05"
+    with pytest.raises(ValueError):
+        muraqabah.validate_trigger({"kind": "daily", "time": "noon"})
+
+
 def test_the_ayah_of_the_day_walks_the_whole_quran_in_order():
     first = date(2026, 1, 1)
     assert muraqabah.ayah_of_the_day(first) == (1, 1)

@@ -289,6 +289,14 @@ For a language that is not proven, the teacher still answers.
 
 `scripts/tadrib_choice.py --lessons WORK --before P2 --massive …`, then `--run WORK --before P2`.
 
+**A change during collection** (31 Oct, written before any result was read):
+- **What happened.** Collection stopped at 2,176 asked. A teacher plan held a daily watch with no time, and `muraqabah.validate_trigger` raised `KeyError` instead of refusing or defaulting.
+- **The fix.** That bug, which a chat could hit too, was fixed: a daily watch with no time is due at 08:00, as a Hijri one already was.
+  - Such a plan is now a lesson when its other checks pass.
+  - The 64 messages of the batch that stopped were asked again.
+  - A plan MIZAN's check cannot read is now recorded as an error, not a lesson, instead of stopping the run.
+- **Nothing else changed:** the lessons before and after use the same check.
+
 
 ## Settings, routes and files
 

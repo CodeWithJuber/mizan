@@ -166,7 +166,11 @@ def collect(
                 return {"source": source, "language": language, "text": text, "error": str(exc)}
             usd = agent.input_tokens * price[0] + agent.output_tokens * price[1]
             spent += usd
-            target = plans.target(steps, text, language)
+            try:
+                target = plans.target(steps, text, language)
+            except Exception as exc:  # noqa: BLE001 - a plan MIZAN cannot check is no lesson
+                return {"source": source, "language": language, "text": text, "usd": usd,
+                        "error": f"check: {exc!r}"}  # fmt: skip
             return {
                 "source": source,
                 "language": language,
