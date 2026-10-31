@@ -12,7 +12,7 @@ The owner asked for this on 31 Oct 2026: MIZAN should train and learn from its t
 ## Phases
 
 1. **The reader (this page, built).** The Ruh reader ([ruh-reader.md](ruh-reader.md)) learns each consented message's language as soon as the message arrives. Before, it learned only at night, and only from messages a person had reviewed.
-2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
+2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language; phase 2b, MIZAN choosing the action itself when sure, [pre-registered](#phase-2b-mizan-chooses-the-action-itself-when-it-is-sure-pre-registered-31-oct-2026)).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
 3. **The speaker on a GPU.** The same loop runs on the 125M speaker ([ruh-speaker.md](ruh-speaker.md)) once RunPod access exists.
 
 ## The design: two speeds, as in the brain
@@ -241,6 +241,53 @@ No language was proven, so phase 2b is not built and the teacher still answers `
 **What it says.** A 3.48M-parameter byte model learns the shape of a plan from a few hundred lessons. Within 4,500 lessons it does not learn the teacher's choice of action, and that choice is a judgement about meaning that the teacher itself repeats only 78–88% of the time. Learning from a teacher works where the student can hold the knowledge: the learning, forgetting and speed machinery all held. Two roads remain:
 - a larger student (phase 3, the 125M speaker on a GPU);
 - splitting the task, so that the choice of action is learned as a classification from the teacher's verified labels (as Qasd already learns from verified requests) and only the copying of the user's words is generated.
+
+## Phase 2b: MIZAN chooses the action itself, when it is sure (pre-registered 31 Oct 2026)
+
+This takes the second road. Phase 2 showed the student learns the form of a plan but not the choice of action, and choosing between labels is what MIZAN's own Tamyiz already does by evidence.
+
+**What was seen before this was written.** An exploratory run that decides nothing. Tamyiz was fitted on half of phase 2's 4,485 lessons and read the other half. Overall agreement was 0.63 / 0.69 / 0.71 (en/hi/ur). Where its posterior was at least 0.9, agreement was 0.93 on 15 English messages, 1.00 on 8 Hindi and 0.92 on 150 Urdu (19% of Urdu). The threshold below was chosen from that run. The test is on lessons none of it saw.
+
+**The task.** Only the choice of action (`tadrib.choice.action_of`): the plan's actions joined by `+`, such as `converse`, `use_tool`, `watch`, `web_search`, `compute` or `web_search+compute`. The fields of each step, such as a tool's `need` or a search's `query`, are not part of this test. In production they would still be the teacher's, or copied from the person's words.
+
+**The reader** (`tadrib.choice.Choice`): a Tamyiz model over Qasd's own features (`qasd._features`).
+- It is fitted on every phase-2 lesson. Smoothing, weights and the length exponent come from leave-one-out, and are then fixed.
+- It drops lessons Qasd now reads as about the deen or a ruling, because the facet changed after those lessons were collected. It never learns a message about the deen.
+- It answers only when its posterior for the action is at least **`SURE = 0.9`**. Below that the teacher is asked, as now.
+
+**Fresh lessons.** MASSIVE 1.1 `train` utterances in English, Hindi and Urdu that phase 2 never used: the next 1,500 per language in SHA-256 order. Messages Qasd reads as about the deen are skipped. The teacher (`deepseek/deepseek-chat-v3-0324`, MIT), MIZAN's checks (`plans.target`) and the $3 cap are the same as in phase 2.
+
+**The stream.** Fresh lessons go in SHA-256 order. For each:
+1. The reader reads the message before it has seen the lesson.
+2. If it is sure, its action is compared with the teacher's, and the language's `BettingEProcess(p0)` is updated with 1 for agreement and 0 otherwise. The e-process sees only the messages it answered.
+3. It learns the lesson, whether it answered or not.
+
+The choice to answer is made from the message and the past alone, before the teacher's action is known. So the e-process over the answered messages is still a nonnegative supermartingale under "it agrees at most p0 of the time when it answers", and Ville's inequality holds however often it is read.
+
+**`p0`, per language.** The teacher's agreement with itself on the action alone, from phase 2's second asking (`scripts/tadrib_choice.py` `teacher_bar`): English 0.877, Hindi 0.797, Urdu 0.800.
+
+**Bars, per language:**
+1. **Proven.** The e-process reaches **40** within the stream. This is the second attempt at "MIZAN's own model answers `plan_steps`" (phase 2 was the first), so α = 0.05 is split between the two attempts (Bonferroni), as in reader v3.
+2. **Fast enough.** Reading and learning one message take at most 0.2 s at the 95th percentile.
+
+Also reported, deciding nothing:
+- coverage: the share of messages it was sure of;
+- agreement on the answered messages and on all of them;
+- answers it was sure of and got wrong (these would be served wrongly);
+- where the e-process crossed 40;
+- the cost.
+
+**Expected before running.** English coverage was about 2% in the exploratory run. 1,500 English messages may give too few sure answers to reach 40: each agreement multiplies the e-value by at most 1 + 0.5·(1 − p0)/p0 ≈ 1.07, so at least 55 agreements in a row are needed. A language that is not proven here is not proven, whatever the reason.
+
+**What follows.** For a proven language, phase 2b is built for serving only after the owner decides:
+- the reader answers the choice of action first, behind a setting, shadow first;
+- MIZAN checks every plan, and the teacher answers when the reader is not sure or the check fails;
+- the teacher's answer becomes a lesson;
+- forgetting a lesson rebuilds the reader from the lessons kept (the fit is deterministic).
+
+For a language that is not proven, the teacher still answers.
+
+`scripts/tadrib_choice.py --lessons WORK --before P2 --massive …`, then `--run WORK --before P2`.
 
 
 ## Settings, routes and files

@@ -86,7 +86,9 @@ def price_of(model: str) -> tuple[float, float]:
     raise SystemExit(f"{model}: not listed by OpenRouter")
 
 
-def utterances(massive_path: Path) -> list[tuple[str, str, str]]:
+def utterances(
+    massive_path: Path, skip: frozenset[str] = frozenset(), per_language: int = PER_LANGUAGE
+) -> list[tuple[str, str, str]]:
     """(source, language, text) of MASSIVE's train utterances in en, hi, ur,
     the first ``PER_LANGUAGE`` of each in SHA-256 order that is not about the
     deen as MIZAN reads it (``plans.about_the_deen``: such a message is never
@@ -106,9 +108,9 @@ def utterances(massive_path: Path) -> list[tuple[str, str, str]]:
     for found in by_language.values():
         taken = []
         for row in sorted(found, key=lambda row: _order(row[0])):
-            if len(taken) >= PER_LANGUAGE:
+            if len(taken) >= per_language:
                 break
-            if not plans.about_the_deen(row[2]):
+            if row[0] not in skip and not plans.about_the_deen(row[2]):
                 taken.append(row)
         rows += taken
     return sorted(rows, key=lambda row: _order(row[0], "stream"))
@@ -123,7 +125,14 @@ async def ask_teacher(lisan, text: str) -> tuple[str, list[dict]]:
     return reply, steps
 
 
-def collect(work: Path, massive_path: Path, model: str, limit: int = 0) -> dict:
+def collect(
+    work: Path,
+    massive_path: Path,
+    model: str,
+    limit: int = 0,
+    skip: frozenset[str] = frozenset(),
+    per_language: int = PER_LANGUAGE,
+) -> dict:
     """Ask the teacher for every utterance; keep the steps MIZAN's checks pass."""
     from providers import create_provider
     from tadbir.lisan import Lisan
@@ -132,7 +141,7 @@ def collect(work: Path, massive_path: Path, model: str, limit: int = 0) -> dict:
     if not licence.allowed(model):
         raise SystemExit(f"{model}: no licence on record that allows training on its output")
     price = price_of(model)
-    rows = utterances(massive_path)
+    rows = utterances(massive_path, skip, per_language)
     if limit:
         rows = rows[:limit]
     out = work / "lessons.jsonl"
