@@ -12,9 +12,12 @@ answer is shown:
    first is learned: each has a Beta posterior of settling a claim when asked,
    and the order is a Thompson sample.
 
-A source's sentences are ranked by BM25 against the claim, and a multilingual
-NLI model (``MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli``, MIT, run with
-ONNX Runtime on the CPU) reads the best of them against the claim. The verdict
+A claim that does not name what it speaks of ("It is a famous novel of hers")
+is read with the words of the question and of the claims before it that name
+it (``contexts``; no model is asked). A source's sentences are ranked by BM25
+against the claim, and a multilingual NLI model
+(``MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli``, MIT, run with ONNX
+Runtime on the CPU) reads the best of them against the claim. The verdict
 is the most probable label of the most decisive sentence: entailment
 (supported), contradiction, or neither, which leaves the claim unknown. There is
 no threshold. A supported claim becomes hasan with its source; a contradicted
@@ -96,6 +99,10 @@ class Finding:
     verdict: str  # "supported", "contradicted" or "unknown"
     probability: float = 0.0
     passage: Passage | None = None
+    # The words naming what the claim speaks of when it does not name it itself
+    # (``contexts``): "" for a claim that stands alone. Only a claim that stands
+    # alone is kept (ilm, Talaqqi): its own words say what it is about.
+    context: str = ""
 
     def to_dict(self) -> dict:
         found: dict[str, Any] = {
@@ -242,7 +249,27 @@ def average_information() -> float:
     return sum(count * information(word) for word, count in counts.items()) / occurrences
 
 
-def about(claim: str, sentence: str) -> bool:
+def distinctive(text: str) -> dict[str, float]:
+    """A text's distinctive words with their information: those carrying more
+    than its average word (names, numbers, terms: never "is", "the", "hai")."""
+    weights = {word: information(word) for word in dict.fromkeys(tokenize(text))}
+    if not weights:
+        return {}
+    mean = sum(weights.values()) / len(weights)
+    return {word: weight for word, weight in weights.items() if weight > mean} or weights
+
+
+def readable(word: str, text: str) -> bool:
+    """Whether MIZAN could see the word in the text if it were there: the text
+    is written in the word's script (or the word has no letters: a number), or
+    Qāmūs translates the word into a language written in the text's script."""
+    written = qamus.script(word)
+    if not written or written == qamus.script_of(text):
+        return True
+    return qamus.enabled() and any(qamus.translate(word, lang) for lang in qamus.reads(text))
+
+
+def about(claim: str, sentence: str, context: str = "") -> bool:
     """The sentence speaks of what the claim speaks of.
 
     The claim's distinctive words are those carrying more information than its
@@ -258,27 +285,89 @@ def about(claim: str, sentence: str) -> bool:
     that is not a function word: a translation such as "the" or "is" is in
     nearly every sentence, so finding it is no evidence. As a word found as it
     is stands for itself, a word of the sentence stands for one claim word at
-    most (``docs/qamus.md``)."""
-    weights = {word: information(word) for word in set(tokenize(claim))}
+    most (``docs/qamus.md``).
+
+    ``context``: the words naming what the claim speaks of when it does not name
+    it itself (``contexts``). Such a claim ("It is a famous novel of hers") is
+    also about a sentence on another novel by another writer, so the sentence
+    must besides name one of them, as it is or translated: one thing the claim
+    may refer to. A context word MIZAN could not see in the sentence's script
+    (no translation into it) is no evidence either way."""
+    weights = distinctive(claim)
     if not weights:
         return False
-    mean = sum(weights.values()) / len(weights)
-    distinctive = {word: weight for word, weight in weights.items() if weight > mean} or weights
     present = set(tokenize(sentence))
-    covered = sum(weight for word, weight in distinctive.items() if word in present)
-    total = sum(distinctive.values())
+    covered = sum(weight for word, weight in weights.items() if word in present)
+    total = sum(weights.values())
+    floor = average_information()
+
+    def counts(word: str) -> bool:
+        return information(word) > floor
+
     if 2 * covered <= total:
         missing = sorted(
-            (word for word in distinctive if word not in present),
-            key=lambda word: (-distinctive[word], word),
+            (word for word in weights if word not in present),
+            key=lambda word: (-weights[word], word),
         )
-        floor = average_information()
-        translated = qamus.found_in(missing, sentence, lambda word: information(word) > floor)
-        covered += sum(distinctive[word] for word in translated)
-    return 2 * covered > total
+        covered += sum(weights[word] for word in qamus.found_in(missing, sentence, counts))
+        if 2 * covered <= total:
+            return False
+    named = [
+        word
+        for word in dict.fromkeys(tokenize(context))
+        if word not in weights and readable(word, sentence)
+    ]
+    if not named or any(word in present for word in named):
+        return True
+    return bool(qamus.found_in(named, sentence, counts))
 
 
-def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) -> Passage | None:
+def contexts(question: str, claims: Sequence[str]) -> list[str]:
+    """Each claim's context: the words naming what it speaks of that it does not
+    name itself ("It is a famous novel of hers" after "Pride and Prejudice was
+    written by Jane Austen"), or "" when it stands alone.
+
+    What an answer speaks of is found in its own words and the question's, not
+    in a list of pronouns: the distinctive words of its first claim that the
+    question or a later claim also holds (what the answer keeps speaking of),
+    and the question's content words, or their translations into the claims'
+    script (Qāmūs), that a claim holds (what was asked and answered); with none
+    shared, the first claim's distinctive words. A claim holding more than half
+    of that subject's information names it and stands alone. Any other claim is
+    read with the words of the first claim and of the subject that it lacks,
+    taken only from the question and the claims before it: the things it may
+    refer to. Nothing is asked of a model."""
+    if not claims:
+        return []
+    floor = average_information()
+    units = [set(tokenize(claim)) for claim in claims]
+    asked = list(dict.fromkeys(tokenize(question)))
+    for language in qamus.reads(" ".join(claims)):
+        asked += [word for word in qamus.bridge(question, language) if word not in asked]
+    said = set().union(*units)
+    later = set().union(*units[1:])
+    first = list(distinctive(claims[0]))
+    subject = [word for word in first if word in later or word in asked]
+    subject += [
+        word for word in asked if word not in subject and word in said and information(word) > floor
+    ]
+    subject = subject or first
+    weights = {word: information(word) for word in subject}
+    total = sum(weights.values())
+    given = list(dict.fromkeys(first + subject))
+    before = set(asked)
+    found = []
+    for own in units:
+        holds = sum(weight for word, weight in weights.items() if word in own)
+        lacking = [word for word in given if word not in own and word in before]
+        found.append(" ".join(lacking) if 2 * holds <= total else "")
+        before |= own
+    return found
+
+
+def joint_premise(
+    claim: str, pool: Sequence[Passage], scores: Sequence[float], context: str = ""
+) -> Passage | None:
     """One page's best sentences for the claim, joined in the page's order.
 
     A model's sentence often joins what a source says in several ("commissioned
@@ -290,7 +379,8 @@ def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) 
     claim. Measured on 30 teacher answers (``scripts/ahl_coverage.py``):
     supported claims 5 → 17 of 66 against Simple English Wikipedia and 13 → 15
     against web snippets, every new one right on audit; none of 20 false
-    claims supported (``docs/ahl-dhikr.md``)."""
+    claims supported (``docs/ahl-dhikr.md``). A joined premise may support a
+    claim but never contradicts it (``judge``)."""
     by_page: dict[str, list[int]] = {}
     for position, passage in enumerate(pool):
         if scores[position] > 0:
@@ -305,73 +395,130 @@ def joint_premise(claim: str, pool: Sequence[Passage], scores: Sequence[float]) 
     if len(best) < 2:
         return None
     text = " ".join(pool[i].text for i in sorted(best))
-    if not about(claim, text):
+    if not about(claim, text, context):
         return None
     first = pool[best[0]]
     return Passage(text, first.title, first.url, first.source, first.at)
 
 
-def searched(claim: str) -> str:
-    """The words a claim's sentences are searched by: its own, and their
-    English translations in MIZAN's lexicon (Qāmūs), so a Hindi or Urdu claim
-    finds the English source sentences about it. Whether a found sentence is
-    about the claim is still decided by ``about`` on the claim itself.
+def searched(claim: str, context: str = "") -> str:
+    """The words a claim's sentences are searched by: its own and its context's
+    (``contexts``), and their English translations in MIZAN's lexicon (Qāmūs),
+    so a Hindi or Urdu claim finds the English source sentences about it.
+    Whether a found sentence is about the claim is still decided by ``about``.
     Measured on 30 teacher answers in Hindi and 30 in Urdu against Simple
     English Wikipedia: supported 2 → 5 of 119 and 1 → 2 of 120 claims, none
-    read against another question's article (``docs/qamus.md``)."""
-    bridged = qamus.bridge(claim, "en")
-    return claim + " " + " ".join(bridged) if bridged else claim
+    read against another question's article (``docs/qamus.md``). A Roman
+    Hindi or Urdu word is translated through the word it spells. Searching by
+    the translations of distinctive words only was measured and not adopted:
+    it read a true Hindi claim as contradicted."""
+    words = f"{claim} {context}" if context else claim
+    bridged = qamus.bridge(words, "en")
+    return words + " " + " ".join(bridged) if bridged else words
 
 
-async def judge(claims: list[str], pool: list[Passage]) -> list[Finding]:
+def roman(claim: str) -> bool:
+    """The claim is Roman Hindi or Urdu ("Taj Mahal Shah Jahan ne banwaya
+    tha"), as Lughah's own model reads it."""
+    from . import lughah
+
+    if not qamus.enabled():
+        return False
+    found = lughah.naive_posterior(claim)
+    return bool(found) and max(found, key=found.__getitem__) == "hi-latn"
+
+
+def hypothesis(claim: str, premise: str, in_roman: bool) -> str:
+    """The claim as the NLI model reads it against a premise. A Roman Hindi or
+    Urdu claim is written in Devanagari, the premise's own words (names,
+    symbols) left as they are: the model learned Hindi from XNLI, in
+    Devanagari. Read in Latin letters, true claims were read as contradicted
+    by unrelated sentences ("Mona Lisa ki painting Leonardo da Vinci ne banayi
+    thi" against Leonardo's full name). Measured on 60 teacher answers in
+    Roman Hindi and Urdu (``docs/qamus.md``)."""
+    return qamus.devanagari(claim, keep=premise) if in_roman else claim
+
+
+async def judge(
+    claims: list[str], pool: list[Passage], contexts: Sequence[str] = ()
+) -> list[Finding]:
     """Each claim's verdict from the sentences of one source that are about it,
-    one by one and, joined, the page's best of them (``joint_premise``)."""
+    one by one and, joined, the page's best of them (``joint_premise``).
+    ``contexts``: each claim's context (``contexts``), "" for one that stands
+    alone; the NLI model reads the claim's own words.
+
+    "Says otherwise" is shown with the source's sentence, so a contradiction
+    must be one sentence of the source that, read alone, contradicts the claim
+    both ways. A joined premise may support a claim but not contradict it: the
+    model reads a join of sentences on several things as disagreeing with a
+    claim on one of them ("Japan's army took their capital, Beijing" joined
+    with a sentence on Australia, against "Canberra is Australia's capital").
+    Measured 30 Oct 2026: joined contradictions were right in 3 of 3 English
+    false claims and 0 of 4 in Hindi and Urdu, one of them against another
+    question's page (``docs/ahl-dhikr.md``)."""
     if not pool:
         return [Finding(claim, "unknown") for claim in claims]
+    context = list(contexts)[: len(claims)]
+    context += [""] * (len(claims) - len(context))
     pairs: list[tuple[str, str]] = []
-    owners: list[tuple[int, Passage]] = []
+    owners: list[tuple[int, Passage, str, bool]] = []
     texts = [passage.text for passage in pool]
     for index, claim in enumerate(claims):
-        scores = bm25_scores(searched(claim), texts)
+        scores = bm25_scores(searched(claim, context[index]), texts)
         ranked = sorted(range(len(pool)), key=lambda i: -scores[i])
-        related = [i for i in ranked if scores[i] > 0 and about(claim, texts[i])]
-        for position in related[:CANDIDATES]:
-            pairs.append((pool[position].text, claim))
-            owners.append((index, pool[position]))
-        joint = joint_premise(claim, pool, scores)
+        related = [i for i in ranked if scores[i] > 0 and about(claim, texts[i], context[index])]
+        premises = [(pool[position], False) for position in related[:CANDIDATES]]
+        joint = joint_premise(claim, pool, scores, context[index])
         if joint is not None:
-            pairs.append((joint.text, claim))
-            owners.append((index, joint))
+            premises.append((joint, True))
+        in_roman = bool(premises) and roman(claim)
+        for premise, joined in premises:
+            read = hypothesis(claim, premise.text, in_roman)
+            pairs.append((premise.text, read))
+            owners.append((index, premise, read, joined))
     readings = await nli(pairs)
     if readings is None:
-        return [Finding(claim, "unknown") for claim in claims]
-    best: dict[int, tuple[float, str, Passage]] = {}
-    for (index, passage), reading in zip(owners, readings, strict=True):
+        return [Finding(claim, "unknown", context=context[i]) for i, claim in enumerate(claims)]
+    best: dict[int, tuple[float, str, Passage, str]] = {}
+    for (index, passage, read, joined), reading in zip(owners, readings, strict=True):
+        label = max(reading, key=reading.__getitem__)
+        if joined and label == "contradiction":
+            continue
         # The most decisive sentence speaks for the source: the one whose
         # strongest of entailment and contradiction is highest.
         decisive = max(reading["entailment"], reading["contradiction"])
         if index not in best or decisive > best[index][0]:
-            label = max(reading, key=reading.__getitem__)
-            best[index] = (decisive, label, passage)
+            best[index] = (decisive, label, passage, read)
     # Contradiction is symmetric: if the source contradicts the claim, the claim
     # contradicts the source. A one-way reading is the NLI model misreading a
     # pair (an agreeing page read as "says otherwise"), so it settles nothing.
-    disputed = [index for index, (_, label, _) in best.items() if label == "contradiction"]
-    reverse = await nli([(claims[index], best[index][2].text) for index in disputed])
-    for index, reading in zip(disputed, reverse or [], strict=False):
-        if max(reading, key=reading.__getitem__) != "contradiction":
-            best[index] = (best[index][0], "neutral", best[index][2])
-    if disputed and reverse is None:
-        for index in disputed:
-            best[index] = (best[index][0], "neutral", best[index][2])
+    # Nor does it depend on how the claim is written: a Roman claim read in
+    # Devanagari must be contradicted as written too, both ways.
+    disputed = [index for index, (_, label, _, _) in best.items() if label == "contradiction"]
+    checks: list[tuple[int, tuple[str, str]]] = []
+    for index in disputed:
+        _decisive, _label, passage, read = best[index]
+        checks.append((index, (read, passage.text)))
+        if read != claims[index]:
+            checks.append((index, (passage.text, claims[index])))
+            checks.append((index, (claims[index], passage.text)))
+    reverse = await nli([pair for _index, pair in checks])
+    unsettled = {
+        index
+        for (index, _pair), reading in zip(checks, reverse or [], strict=False)
+        if max(reading, key=reading.__getitem__) != "contradiction"
+    }
+    for index in disputed if reverse is None else sorted(unsettled):
+        decisive, _label, passage, read = best[index]
+        best[index] = (decisive, "neutral", passage, read)
     findings = []
     for index, claim in enumerate(claims):
         if index not in best or best[index][1] == "neutral":
-            findings.append(Finding(claim, "unknown"))
+            findings.append(Finding(claim, "unknown", context=context[index]))
             continue
-        probability, label, passage = best[index]
+        probability, label, passage, _read = best[index]
         verdict = "supported" if label == "entailment" else "contradicted"
-        findings.append(Finding(claim, verdict, probability, passage))
+        findings.append(Finding(claim, verdict, probability, passage, context[index]))
     return findings
 
 
@@ -563,9 +710,10 @@ def known(store: Any, user_id: str) -> list[Passage]:
 
 
 def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> int:
-    """Keep what an outside source settled, tied to the question that asked it,
-    with the host it came from; a host gains or loses trust as other, independent
-    hosts agree or disagree with it on the same claim."""
+    """Keep what an outside source settled about a claim that stands alone, tied
+    to the question that asked it, with the host it came from; a host gains or
+    loses trust as other, independent hosts agree or disagree with it on the
+    same claim."""
     now = datetime.now(UTC).isoformat(timespec="seconds")
     stored = _load(store, user_id)
     items = [item for item in stored if _settled(item)]
@@ -573,7 +721,9 @@ def keep(store: Any, user_id: str, question: str, findings: list[Finding]) -> in
     added = 0
     for finding in findings:
         passage = finding.passage
-        if finding.verdict == "unknown" or passage is None:
+        # A claim that does not name what it speaks of ("It is a famous novel of
+        # hers") would be read later as about anything its words fit.
+        if finding.verdict == "unknown" or passage is None or finding.context:
             continue
         # A claim MIZAN's ilm settled in new words is kept under those words
         # too, with the site that said it: that site is its first witness.
@@ -818,6 +968,17 @@ async def consult(
     ]
     if not claims:
         return [], []
+    # What each claim speaks of when it does not name it, from the question and
+    # the answer's sentences before it (any grade): "It is a famous novel of
+    # hers" is read only against sentences naming the novel or its writer.
+    said = [
+        str(unit.get("text", ""))
+        for unit in ledger
+        if unit.get("kind", "sentence") == "sentence" and unit.get("text")
+    ]
+    context: dict[str, str] = {}
+    for sentence, words in zip(said, contexts(question, said), strict=True):
+        context.setdefault(sentence, words)
     verdicts = {claim: Finding(claim, "unknown") for claim in claims}
     heard: list[str] = []
     # Claims MIZAN's ilm settled from one host only: a second, independent
@@ -835,7 +996,10 @@ async def consult(
             if found.verdict == "unknown" or claim in seeking
         ]
         settled = 0
-        for finding in await judge(open_claims, sentences(pool)):
+        found = await judge(
+            open_claims, sentences(pool), [context.get(claim, "") for claim in open_claims]
+        )
+        for finding in found:
             if finding.verdict == "unknown" or finding.passage is None:
                 continue
             claim = finding.claim

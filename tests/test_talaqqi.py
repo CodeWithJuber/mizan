@@ -272,3 +272,22 @@ async def test_an_answer_whose_claim_a_page_confirms_across_sentences_is_kept(st
     assert talaqqi.keep(store, "u1", "Who built the Taj Mahal?", "en", findings, teacher="t")
     kept = talaqqi.recall(store, "u1", "Who built the Taj Mahal?", "en")
     assert kept is not None and kept["answer"] == claim + ("" if claim.endswith(".") else ".")
+
+
+def test_a_confirmed_claim_that_does_not_name_its_subject_is_not_kept(store):
+    """ "It is one of her most famous novels" was read with what it refers to
+    (``ahl_dhikr.contexts``); kept apart from its answer it says nothing."""
+    page = Passage(
+        "Pride and Prejudice is a novel by Jane Austen. It is one of the most famous novels.",
+        "Pride and Prejudice",
+        "https://en.wikipedia.org/wiki/Pride_and_Prejudice",
+        "wikipedia",
+    )
+    findings = [
+        Finding("Pride and Prejudice was written by Jane Austen.", "supported", 0.9, page),
+        Finding("It is one of her most famous novels.", "supported", 0.9, page, "pride prejudice"),
+    ]
+    assert talaqqi.lesson(findings) == "Pride and Prejudice was written by Jane Austen."
+    assert talaqqi.keep(store, "u1", "Who wrote Pride and Prejudice?", "en", findings)
+    (kept,) = talaqqi.answers(store, "u1")
+    assert [claim["claim"] for claim in kept["claims"]] == [findings[0].claim]

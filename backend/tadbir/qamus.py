@@ -39,6 +39,15 @@ read as "गोवा". Pieces of a word written apart ("پا کستا ن") are 
 compares their SHA-256; ``scripts/qamus_eval.py`` measures ``about()`` with it
 (``docs/qamus.md``).
 
+Roman Hindi and Urdu ("duniya ka sabse bada desh") is read as the Devanagari
+and Urdu words it spells (``read_roman``), then translated. How a native word
+is written in Latin letters is a noisy channel learned by EM from Aksharantar's
+transliteration pairs (``channel``); each spelling among MASSIVE's words' most
+probable ones is read as the word that most probably wrote it, by Bayes' rule
+with the words' frequencies as the prior, when that reading is decisive
+(P > ½) and the spelling is no English word (``readings``,
+``scripts/build_qamus_roman.py``, ``scripts/qamus_roman_eval.py``).
+
 ``MIZAN_QAMUS``: ``on`` (default) or ``off``.
 """
 
@@ -48,6 +57,7 @@ import gzip
 import json
 import math
 import os
+import re
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -58,6 +68,9 @@ from core.adaptive import tokenize, wilson_bounds
 
 DATA = Path(__file__).parent / "data" / "qamus"
 FORMAT = "mizan-qamus/1"
+ROMAN = "hi-latn.json.gz"
+ROMAN_FORMAT = "mizan-qamus-roman/1"
+_WORD = re.compile(r"[^\W\d_]+")  # a run of letters: "Émile" is one word, not "mile"
 NULL = ""  # the empty word: no token is empty, so it never meets a real word
 Table = dict[str, dict[str, float]]
 
@@ -371,6 +384,214 @@ def pieces(sentences: Iterable[Sequence[str]]) -> set[str]:
     return found
 
 
+# ── Roman Hindi and Urdu: learning how a word is written in Latin letters ──
+#
+# Most people write Hindi and Urdu online in Latin letters ("duniya ka sabse
+# bada desh"). Such a word is read as the Devanagari or Urdu word it most
+# probably spells, and that word is translated by the lexicon above. How a
+# native word is written in Latin letters is learned as a noisy channel from
+# transliteration pairs: each native letter, with the marks written on it,
+# writes 0 to CHUNK Roman letters, monotonically, and
+#
+#     P(r | d) = Σ over alignments Π_i t(chunk_i | unit_i in its context)
+#
+# t is fitted by EM (forward-backward), stopped by held-out log-likelihood.
+
+CHUNK = 4  # the most Roman letters one native letter is written with
+Channel = dict[str, dict[str, float]]
+
+
+def units(word: str) -> list[str]:
+    """A native word's letters, each with the combining marks written on it
+    (a Devanagari consonant with its vowel sign, nukta or virama)."""
+    found: list[str] = []
+    for char in _visible(word):
+        if found and unicodedata.category(char).startswith("M"):
+            found[-1] += char
+        else:
+            found.append(char)
+    return found
+
+
+def contexts(word: str, follow: str = "kind") -> list[str]:
+    """Each unit with what follows it, the context its Roman letters depend on.
+
+    ``follow="kind"`` (Devanagari): the word's end ($), a bare letter (c) or a
+    letter with marks on it (m). A Hindi consonant's own vowel is not spoken at
+    the end of a word and often not before a bare consonant ("kamal", "banwaya").
+    ``follow="letter"`` (Urdu, whose short vowels are not written): the next
+    letter itself, or $."""
+    found = []
+    letters = units(word)
+    for i, unit in enumerate(letters):
+        if i + 1 == len(letters):
+            kind = "$"
+        elif follow == "letter":
+            kind = letters[i + 1]
+        else:
+            kind = "c" if len(letters[i + 1]) == 1 else "m"
+        found.append(f"{unit}\t{kind}")
+    return found
+
+
+def roman_letters(word: str) -> str:
+    """A Latin-letter word as the channel reads it: lower case, a to z only."""
+    return "".join(char for char in _visible(word).lower() if "a" <= char <= "z")
+
+
+def _row(table: Channel, unit: str) -> dict[str, float]:
+    """A unit's chunks in its context, or over all its contexts when this one
+    was never seen in training."""
+    return table.get(unit) or table.get(unit.split("\t")[0] + "\t*", {})
+
+
+def _forward(
+    letters: Sequence[str], roman: str, table: Channel, floor: float = 0.0
+) -> list[list[float]]:
+    """α[i][j] = P(the first i units write the first j letters)."""
+    alpha = [[0.0] * (len(roman) + 1) for _ in range(len(letters) + 1)]
+    alpha[0][0] = 1.0
+    for i, unit in enumerate(letters, 1):
+        row, before, here = _row(table, unit), alpha[i - 1], alpha[i]
+        for j in range(len(roman) + 1):
+            total = 0.0
+            for size in range(min(CHUNK, j) + 1):
+                if before[j - size]:
+                    total += before[j - size] * row.get(roman[j - size : j], floor)
+            here[j] = total
+    return alpha
+
+
+def _backward(
+    letters: Sequence[str], roman: str, table: Channel, floor: float = 0.0
+) -> list[list[float]]:
+    """β[i][j] = P(units i+1… write letters j+1…)."""
+    n = len(roman)
+    beta = [[0.0] * (n + 1) for _ in range(len(letters) + 1)]
+    beta[len(letters)][n] = 1.0
+    for i in range(len(letters), 0, -1):
+        row, after, here = _row(table, letters[i - 1]), beta[i], beta[i - 1]
+        for j in range(n + 1):
+            total = 0.0
+            for size in range(min(CHUNK, n - j) + 1):
+                if after[j + size]:
+                    total += row.get(roman[j : j + size], floor) * after[j + size]
+            here[j] = total
+    return beta
+
+
+def written_as(letters: Sequence[str], roman: str, table: Channel) -> float:
+    """P(roman | native word), the native word given as its ``contexts``."""
+    return _forward(letters, roman, table)[len(letters)][len(roman)]
+
+
+def channel(
+    pairs: Sequence[tuple[Sequence[str], str]],
+    heldout: Sequence[tuple[Sequence[str], str]],
+    *,
+    limit: int = 12,
+    prune: float = 1e-4,
+) -> tuple[Channel, list[float]]:
+    """t(chunk | unit) learned by EM from (native contexts, Roman letters) pairs,
+    and the held-out log-likelihood after each iteration.
+
+    E step: c(chunk, u_i) += α[i-1][j-l] · t(chunk | u_i) · β[i][j] / P(r | d)
+    for chunk = r[j-l:j]; M step: t = c / Σ c. The first E step counts every
+    alignment once (t = 1). Chunks below ``prune`` are dropped. Each unit's
+    counts over all its contexts are also kept, under "unit\\t*", for a
+    context never seen. EM stops when the held-out log-likelihood no longer
+    increases, and the best table is returned."""
+    table: Channel = {}
+    trace: list[float] = []
+    best: Channel = {}
+    for iteration in range(limit):
+        floor = 1.0 if iteration == 0 else 0.0
+        counts: dict[str, dict[str, float]] = {}
+        for letters, roman in pairs:
+            alpha = _forward(letters, roman, table, floor)
+            z = alpha[len(letters)][len(roman)]
+            if z <= 0:
+                continue
+            beta = _backward(letters, roman, table, floor)
+            for i, unit in enumerate(letters, 1):
+                row, found = _row(table, unit), counts.setdefault(unit, {})
+                before, after = alpha[i - 1], beta[i]
+                for j in range(len(roman) + 1):
+                    if not after[j]:
+                        continue
+                    for size in range(min(CHUNK, j) + 1):
+                        if before[j - size]:
+                            chunk = roman[j - size : j]
+                            share = before[j - size] * row.get(chunk, floor) * after[j] / z
+                            if share:
+                                found[chunk] = found.get(chunk, 0.0) + share
+        pooled: dict[str, dict[str, float]] = {}
+        for unit, found in counts.items():
+            pool = pooled.setdefault(unit.split("\t")[0] + "\t*", {})
+            for chunk, count in found.items():
+                pool[chunk] = pool.get(chunk, 0.0) + count
+        table = {}
+        for unit, found in {**counts, **pooled}.items():
+            total = sum(found.values())
+            kept = {
+                chunk: count / total for chunk, count in found.items() if count >= prune * total
+            }
+            norm = sum(kept.values())
+            table[unit] = {chunk: share / norm for chunk, share in kept.items()}
+        score = sum(
+            math.log(p)
+            for letters, roman in heldout
+            if (p := written_as(letters, roman, table)) > 0
+        )
+        if trace and score <= trace[-1]:
+            break
+        trace.append(score)
+        best = table
+    return best, trace
+
+
+def spellings(
+    letters: Sequence[str], table: Channel, *, beam: int = 64, keep: int = 30, width: int = 12
+) -> list[tuple[str, float]]:
+    """The ``keep`` most probable Roman spellings of a native word (given as
+    its ``contexts``) with P(spelling | word), summed over the alignments a
+    beam of ``beam`` prefixes keeps, each unit writing one of its ``width``
+    most probable chunks."""
+    states: dict[str, float] = {"": 1.0}
+    for unit in letters:
+        row = sorted(_row(table, unit).items(), key=lambda item: (-item[1], item[0]))[:width]
+        grown: dict[str, float] = {}
+        for prefix, p in states.items():
+            for chunk, q in row:
+                grown[prefix + chunk] = grown.get(prefix + chunk, 0.0) + p * q
+        states = dict(sorted(grown.items(), key=lambda item: (-item[1], item[0]))[:beam])
+    return [(roman, p) for roman, p in states.items() if roman][:keep]
+
+
+def readings(
+    vocabulary: Mapping[str, int], table: Channel, follow: str, *, keep: int = 30
+) -> dict[str, tuple[str, float]]:
+    """For each Roman spelling among the ``keep`` most probable spellings of
+    the vocabulary's words, the word it most probably spells and P(word |
+    spelling), by Bayes' rule over the vocabulary:
+
+        P(d | r) = P(r | d) · P(d) / Σ_d' P(r | d') · P(d'),   P(d) = (n_d + 1) / (N + |V|)
+
+    with n_d the word's count in the corpus the vocabulary was read from."""
+    total = sum(vocabulary.values()) + len(vocabulary)
+    scores: dict[str, dict[str, float]] = {}
+    for word in sorted(vocabulary):
+        prior = (vocabulary[word] + 1) / total
+        for roman, p in spellings(contexts(word, follow), table, keep=keep):
+            row = scores.setdefault(roman, {})
+            row[word] = row.get(word, 0.0) + p * prior
+    found = {}
+    for roman, row in scores.items():
+        word = max(sorted(row), key=row.__getitem__)
+        found[roman] = (word, row[word] / sum(row.values()))
+    return found
+
+
 # ── using the shipped lexicon ─────────────────────────────────────────────
 
 
@@ -407,6 +628,49 @@ def _reverse() -> dict[tuple[str, str], dict[str, tuple[str, ...]]]:
     return {key: {k: tuple(v) for k, v in index.items()} for key, index in found.items()}
 
 
+@cache
+def _roman() -> dict[str, dict[str, str]]:
+    """For Hindi and Urdu, the native word each Roman spelling is read as
+    (``scripts/build_qamus_roman.py``)."""
+    path = DATA / ROMAN
+    if not path.exists():
+        return {}
+    data = json.loads(gzip.decompress(path.read_bytes()))
+    if data.get("format") != ROMAN_FORMAT:
+        return {}
+    return {language: dict(table) for language, table in (data.get("read") or {}).items()}
+
+
+def read_roman(word: str) -> dict[str, str]:
+    """The Hindi (Devanagari) and Urdu words a Roman Hindi or Urdu word most
+    probably spells, by language: "duniya" → {"hi": "दुनिया", "ur": "دنیا"}.
+    An English word is never read so ("main", "door" and "the" are English
+    words as well as Roman Hindi ones), nor a spelling no shipped reading
+    holds."""
+    key = roman_letters(word)
+    if key != _key(word):
+        return {}
+    return {language: table[key] for language, table in _roman().items() if key in table}
+
+
+def devanagari(text: str, keep: str = "") -> str:
+    """The text with each Roman Hindi or Urdu word written in Devanagari, the
+    words of ``keep`` (a source sentence) left as they are: the NLI model was
+    trained on Hindi in Devanagari (XNLI), not in Latin letters, and a word the
+    source writes as it is (a name, a symbol: "Au") is the source's word."""
+    if not enabled():
+        return text
+    kept = set(tokens(keep))
+
+    def spelled(match: re.Match[str]) -> str:
+        word = match.group(0)
+        if _key(word) in kept:
+            return word
+        return read_roman(word).get("hi", word)
+
+    return _WORD.sub(spelled, text)
+
+
 def languages() -> dict[str, str]:
     """Each language the lexicon reads, with its script."""
     return dict(_load()[1])
@@ -434,13 +698,22 @@ def translate(word: str, target_lang: str) -> list[str]:
     "delhi" because the English lexicon gives "delhi" → "दिल्ली", though the
     Hindi one, cut where its own held-out dictionary put it, does not hold it.
     Both directions come from one symmetrised score and passed the same name
-    and piece checks."""
+    and piece checks.
+
+    A word in Latin letters that is no English word but Roman Hindi or Urdu
+    ("duniya") is read as the Devanagari and Urdu words it spells
+    (``read_roman``): such a word is itself the answer for its own language,
+    and its translations for any other."""
     lexicons, scripts = _load()
     written = script(word)
-    if not written or written == scripts.get(target_lang):
-        return [_ascii_digits(word)] if _ascii_digits(word) else []
-    key = _key(word)
     found: list[str] = []
+    if written == "LATIN":
+        for language, native in read_roman(word).items():
+            found += [native] if language == target_lang else translate(native, target_lang)
+    if not written or written == scripts.get(target_lang):
+        digits = _ascii_digits(word)
+        return list(dict.fromkeys(found + [digits] if digits else found))
+    key = _key(word)
     for source, kind in scripts.items():
         if kind == written:
             found += [b for b, _p in lexicons.get((source, target_lang), {}).get(key, ())]

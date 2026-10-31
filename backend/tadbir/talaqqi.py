@@ -8,7 +8,10 @@ When the language model answers a question about the world, Ahl al-Dhikr asks
 MIZAN's sources about each of its claims. What a source confirmed is kept, for
 that user, as the teacher's lesson: the confirmed sentences of the answer, in
 their order, and only these ("if a disobedient one brings you news, verify it",
-49:6: what no source confirmed is never repeated without the teacher). It is
+49:6: what no source confirmed is never repeated without the teacher). A
+confirmed sentence that does not name what it speaks of ("It is a famous novel
+of hers", read with its subject, ``ahl_dhikr.contexts``) is not kept: apart
+from its answer it says nothing, and it is re-checked alone. It is
 kept only when no claim was contradicted and the confirmed sentences answer the
 question (they hold most of its distinctive information, ``ahl_dhikr.about``).
 Each lesson keeps its sanad: the question's words, the teacher (the model that
@@ -91,12 +94,22 @@ def opens_chat(history: list[dict] | None) -> bool:
     return not any(isinstance(turn, dict) and turn.get("role") == "user" for turn in history or [])
 
 
+def standing(findings: list[Finding]) -> list[Finding]:
+    """The confirmed claims that stand alone: a claim read with what it refers
+    to ("It is a famous novel of hers", ``ahl_dhikr.contexts``) says nothing
+    once kept apart from the answer, so it is not kept."""
+    return [
+        finding
+        for finding in findings
+        if finding.verdict == "supported" and finding.passage is not None and not finding.context
+    ]
+
+
 def lesson(findings: list[Finding]) -> str:
-    """The confirmed sentences of an answer, in their order, as one text."""
+    """The confirmed sentences of an answer that stand alone, in their order,
+    as one text."""
     parts = []
-    for finding in findings:
-        if finding.verdict != "supported" or finding.passage is None:
-            continue
+    for finding in standing(findings):
         sentence = finding.claim.strip()
         if sentence and not sentence.endswith((".", "!", "?", "۔", "؟", "।")):
             sentence += "."
@@ -114,9 +127,10 @@ def keep(
     teacher: str = "",
     chat: str = "",
 ) -> bool:
-    """Keep what the sources confirmed of an answer, when nothing was
-    contradicted and the confirmed part answers the question."""
-    supported = [f for f in findings if f.verdict == "supported" and f.passage is not None]
+    """Keep what the sources confirmed of an answer, the claims that stand
+    alone, when nothing was contradicted and the confirmed part answers the
+    question."""
+    supported = standing(findings)
     tokens = content_words(question)
     if not supported or not tokens or any(f.verdict == "contradicted" for f in findings):
         return False
