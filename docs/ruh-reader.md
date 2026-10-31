@@ -226,6 +226,27 @@ Lughah as shipped reads the gate half 98.81% [98.37, 99.13] · 0.0496, and shipp
 3. **The gate on messages never measured**: fresh Hinglish-1M rows (never read, passing the rule) and real English short requests not drawn from MASSIVE, where Lughah errs most. MASSIVE's en, hi, ur and ar partitions are all spent now (train trained on, test measured in v1, dev here). CLINC150's queries (CC BY 3.0) are one candidate, once their licence and overlap with MASSIVE are checked.
 4. **The same gate** as the third test of these weights: e-value 3·4/0.05 = 240.
 
+### Test 3: Roman labels checked by Qāmūs, gated on fresh messages
+
+The test v1.1 wrote down, run on v1's weights again. The protocol below was fixed on 31 Oct 2026 (04:39 UTC) before any of its numbers were computed.
+
+**Readers.** v1's kept weights, seed 0 and seed 1, loaded only when their training key matches (else that seed is retrained with v1's settings, and it is said). Lughah alone is the held-out refit, as before; Lughah as shipped is reported only.
+
+**1. The rule, and how far it agrees with a reader.** A Hinglish-1M row counts as Roman Hindi/Urdu only when at least one of its words (`qamus.tokens`) has a reading in `qamus.read_roman` (a Hindi or Urdu word with P > ½ that is not an English word); rows with none are left out, never relabelled (`corpus.roman_words`). Before the rule is used, its agreement is measured on 200 never-read rows of the gate's Roman pool (every condition below but the rule; the first 200 by SHA-256 of `ruh-reader-test3:label:<source>`), labelled by hand, text only, before the rule is computed on them. A row is *Roman Hindi/Urdu* when at least one word is Hindi or Urdu used as such (code-mixed rows too), *English* when every word is English, names and loanwords English dictionaries hold ("chai", "yoga", "namaste") aside. Reported: the confusion table, precision and recall with Wilson intervals, Cohen's κ. The rule is used as written whatever the agreement; the 200 rows are not in the gate.
+
+**2. Calibration.** v1.1's calibration half (only ever used to fit): its MASSIVE rows as they are, its Roman rows only where the rule holds. γ and ñ held at the development fit; κ, then b, as in v1.1 (`fit_on(…, gamma=…)`).
+
+**3. The gate slice** (fixed, its SHA-256 recorded, before anything is scored). *Seen* texts are every line of Lughah's corpus, every training line of the reader, v1's short slice, both halves of v1.1's slices, and every MASSIVE 1.1 utterance in en-US, hi-IN, ur-PK and ar-SA (all partitions). A message is left out when its words as read are a seen text's, or *near-exact* to one: within 2 character edits, or the same words with one word more or one fewer (`corpus.Near`).
+- **English**: [CLINC150](https://github.com/clinc/oos-eval) (Larson et al., EMNLP 2019; crowd-written requests to a task assistant, 23,700 queries in six splits, all used), commit `828f8093932c8fe6ca7936c3d2e52903b1c523de`, `data/data_full.json` SHA-256 `36923c37…56e0`, licence read in that commit's LICENSE: Creative Commons Attribution 3.0 Unported. Every query of 3–8 words, mostly Latin letters, not seen or near-exact, once per words. It is set aside for another source if its licence were not CC BY 3.0, more than 10% of its 3–8-word queries were exact MASSIVE utterances, or fewer than 1,000 queries remained.
+- **Roman Hindi/Urdu**: Hinglish-1M utterances v1's build never read, in v1's order: 3–8 words, Latin script, a group the seeds' rule holds out, not seen or near-exact, in a conversation none of whose utterances is a seed, a v1 short message or a v1.1 row, not one of the 200 labelled; then the rule. Rows the rule holds go to the gate until it holds as many Roman rows as English ones; rows it does not are kept aside and reported. Synthetic, as before.
+- One message is one group. `corpus.build_fresh` writes `fresh.tsv` and `fresh.json`.
+
+**4. The gate** (the fresh slice only): `ruh_reader.gate` unchanged, both conditions, as the **third** test of these weights: e-value k(k+1)/α = 3·4/0.05 = **240**. Each seed on its own. A pass does not change the default (`shadow`); the owner decides.
+
+**Reported, never deciding:** the gate slice by part and language with every arm; the Roman rows the rule left out; the gate slice under v1's development fit and under v1.1's calibration (no rule); the calibration half (in sample), v1.1's gate half, the seeds' held-out groups and v1's short messages under the new fit; latency and memory.
+
+*Results: to come, once the slices are fixed and both seeds are read.*
+
 ## Learning while MIZAN rests
 
 Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was-learned-is-replayed-while-mizan-rests)) calls `ruh_reader.rest` for each person once a day, while no request runs:
