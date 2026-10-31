@@ -2,7 +2,7 @@
 
 "And of His signs is the creation of the heavens and the earth and the diversity of your languages and your colors" ([30:22](https://quran.com/30:22)); "And We did not send any messenger except [speaking] in the language of his people to state clearly for them" ([14:4](https://quran.com/14:4)); "if there comes to you a disobedient one with information, investigate" ([49:6](https://quran.com/49:6), Saheeh International).
 
-Lughah (`tadbir/lughah.py`, [Fahm](fahm.md)) decides which language a message is written in by counting letter n-grams with naive Bayes. The Ruh reader (`backend/tadbir/ruh_reader/`) is the first slice of MIZAN's own small transformer: a byte-level language model that learns how each language goes on from one letter to the next, and gives a second reading of the same words. Its word is taken only once it has been measured against Lughah on messages neither has seen. Two tests refused it; the third, on 31 Oct 2026, passed for both seeds (see **Measured**). It still runs in shadow, computed and logged, never changing the decision, until the owner decides to turn it on.
+Lughah (`tadbir/lughah.py`, [Fahm](fahm.md)) decides which language a message is written in by counting letter n-grams with naive Bayes. The Ruh reader (`backend/tadbir/ruh_reader/`) is the first slice of MIZAN's own small transformer: a byte-level language model that learns how each language goes on from one letter to the next, and gives a second reading of the same words. Its word is taken only once it has been measured against Lughah on messages neither has seen. Two tests refused it; the third, on 31 Oct 2026, passed for both seeds. The same day the owner decided it must not learn from text a language model wrote, and **v2**, retrained without it, passed its own first test for both seeds and beat v1 on the same messages (see **Measured**). It still runs in shadow, computed and logged, never changing the decision, until the owner decides to turn it on.
 
 A larger model of the same family, the **Ruh speaker** (about 125M parameters, trained on a GPU), is prepared as a pre-registered pilot and has not been run: [ruh-speaker.md](ruh-speaker.md).
 
@@ -78,7 +78,7 @@ A line is kept for training only when (in this order, each counted in the manife
 
 ## Measured
 
-Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow. On 31 Oct, **v1.1** recalibrated v1's weights on real short messages and gated them on others ([v1.1](#v11-calibrated-on-real-short-messages)). It was refused too. **Test 3** recalibrated them once more with the Roman rows Qāmūs reads Hindi or Urdu in, and gated them on fresh CLINC150 English requests and never-read Roman rows ([test 3](#test-3-roman-labels-checked-by-qāmūs-gated-on-fresh-messages)): both seeds passed. The default stays shadow; the owner decides.
+Two versions were measured on 30 Oct 2026: **v0**, trained on Lughah's seeds only (this section), and **v1**, trained on its own corpus as well ([v1](#v1-its-own-corpus) below). Both were refused by the gate and run in shadow. On 31 Oct, **v1.1** recalibrated v1's weights on real short messages and gated them on others ([v1.1](#v11-calibrated-on-real-short-messages)). It was refused too. **Test 3** recalibrated them once more with the Roman rows Qāmūs reads Hindi or Urdu in, and gated them on fresh CLINC150 English requests and never-read Roman rows ([test 3](#test-3-roman-labels-checked-by-qāmūs-gated-on-fresh-messages)): both seeds passed. **v2** is a new reader trained without Hinglish-1M (written by GPT-4o-mini) and with Roman Hindi/Urdu web text people wrote; gated on fresh messages people wrote, it passed for both seeds ([v2](#v2-without-model-written-text)). The default stays shadow; the owner decides.
 
 ### v0: the seeds only
 
@@ -335,6 +335,91 @@ On 31 Oct 2026 the owner decided that the reader must be retrained without Hingl
 **The gate** on the gate half (English and Roman together): `ruh_reader.gate` unchanged, both conditions, as the **first** test of these weights: e-value 1·2/0.05 = **40**. Each seed on its own. A pass does not change the default (`shadow`); the owner decides.
 
 **Reported, never deciding:** the gate half by part (English; Roman by source) with every arm, Lughah as shipped too; the rows the rule left out; the gate half under the development fit; the calibration half in sample; under v2's fit, the seeds' held-out groups, v1's short slice, v1.1's gate half and test 3's fresh slice (their Hinglish-1M rows for comparison only); **v1 on the same slices** (its kept weights, calibrated the same way on v2's calibration half, read on v2's gate half; not a test of v1), and v2's product against v1's; latency and memory.
+
+**The rule against a reader** (05:49 UTC: the 200 rows were drawn at 05:48 without the rule; their labels, read by hand row by row, were written and their SHA-256 recorded before the rule was computed on any of them). 79 PHINC rows and 121 FineWeb-2 lines; 161 Roman Hindi/Urdu, 33 English, 6 other (two Roman Gujarati rows, four of names or a citation only).
+
+| 200 rows | two words (used) | one word (test 3's; reported) |
+|---|---|---|
+| Roman Hindi/Urdu (161): counted / not | 153 / 8 | 160 / 1 |
+| English (33): counted / not | 4 / 29 | 21 / 12 |
+| other (6): counted / not | 2 / 4 | 4 / 2 |
+| precision | 96.2% [92.0, 98.3] | 86.5% [80.8, 90.7] |
+| recall | 95.0% [90.5, 97.5] | 99.4% [96.6, 99.9] |
+| specificity | 84.6% [70.3, 92.8] | 35.9% [22.7, 51.6] |
+| Cohen's κ | 0.78 | 0.46 |
+
+The two-word rule still counts three FineWeb-2 headers of a news site ("Breaking » Monday, April 22, 2013"), one English line and the two Gujarati rows; the one-word rule would have counted 21 of the 33 English rows. Reading the rows by hand also showed that FineWeb-2's Latin subsets hold sexually explicit pages: they are web text people wrote, and the reader learns which language a line is in, not what it says.
+
+**The slices** (`v2.tsv`, SHA-256 `356948c3…84e7`, fixed and checked before anything was scored: each group in one half, no words repeated, none a seen text's, none of a hand-labelled row's group, every FineWeb-2 row from a held-out document, the rule holding on every counted web or tweet row and on no row kept apart; a brute-force check of 300 rows found none near a seen text):
+
+| Half | English (BANKING77) | Dakshina | PHINC | FineWeb-2 (hin / urd) | messages (groups) | kept apart by the rule (PHINC / FineWeb-2) |
+|---|---|---|---|---|---|---|
+| calibration | 2,524 | 842 | 842 | 842 (525 / 317) | 5,050 (4,607) | 157 / 842 |
+| gate | 2,440 | 814 | 814 | 814 (505 / 309) | 4,882 (4,458) | 180 / 814 |
+
+**The corpus** (`train.tsv` SHA-256 `b5698b93…f96a`, 77,101 lines; built after the slices): Roman Hindi/Urdu 8,989 FineWeb-2 lines (hin 4,756, urd 4,233), 893,812 bytes of words (0.7% under the budget: 1,336 lines of the window fell with documents that hold scripture or hadith, 854 of them Roman Urdu); no line from Hinglish-1M. The rule against measured messages also took 1,892 MASSIVE training utterances that are near a test or dev utterance (MASSIVE's requests share templates), so English, Hindi, Urdu and Arabic take a little more Tatoeba than in v1. `short.tsv` is v1's byte for byte (`aa47199e…`). A brute-force check of 3,000 training lines found none near a measured message. The reader then trains on 79,729 lines: 2,628 seed lines (636 Hinglish-1M seeds left out) and the corpus; its development set is 366 seeds (86 Hinglish-1M seeds left out).
+
+**Training.** One seed at a time, alone on the machine (2 threads; the evaluation of seed 0 ran beside seed 1's training): both finished the pass, 2,492 steps of 32 lines (4,584,428 tokens), in 936 s and 929 s. Development bits per byte 1.688 and 1.645 (v1: 1.715 and 1.709), still falling at the last check. Each seed's weights were kept the moment training ended, and its evaluation found them by their key. Before that, a smoke run of the evaluation with a tiny untrained model (b = 0) printed Lughah's own numbers on the gate half; the protocol was already committed, and nothing in it changed.
+
+**Calibration** (γ = 0 for both, so κ is a temperature; ñ = 47 bytes):
+
+| Seed | κ: development → calibrated | b: development → calibrated |
+|---|---|---|
+| 0 | 1.000 → 0.405 | 1.000 → 0.672 |
+| 1 | 0.802 → 0.481 | 0.592 → 0.696 |
+
+**The gate passed for both seeds.** Both conditions held, far past the bar.
+
+| Seed | log-loss, Lughah → product | P(not better) | wins / losses (groups) | e-value (needed) | accuracy, Lughah → product | adopted |
+|---|---|---|---|---|---|---|
+| 0 | 0.1187 → 0.0708 | < 0.0005 (0 of 2,000) | 96 / 3 | 8.1·10²² (40) | 95.92% → 97.87% | **yes** |
+| 1 | 0.1187 → 0.0641 | < 0.0005 (0 of 2,000) | 110 / 3 | 7.8·10²⁶ (40) | 95.92% → 98.16% | **yes** |
+
+**The default stays `shadow`.** A pass is reported; the owner decides. Using it `on` would also need v2 installed with this fit and this verdict: `install` writes the development fit and the seeds' gate (which, under the development fit, it does not pass: see below).
+
+**The gate half** (accuracy in % [95% Wilson interval] · mean log-loss; Lughah alone is the held-out refit):
+
+| Slice | n | Lughah alone | Reader, seed 0 | seed 1 | Product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| gate half | 4,882 | 95.92 [95.33, 96.44] · 0.1187 | 98.53 [98.15, 98.83] · 0.0487 | 98.65 [98.28, 98.94] · 0.0459 | 97.87 [97.43, 98.24] · 0.0708 | 98.16 [97.74, 98.50] · 0.0641 |
+| English (BANKING77) | 2,440 | 99.71 [99.41, 99.86] · 0.0376 | 99.88 [99.64, 99.96] · 0.0099 | 99.51 [99.14, 99.72] · 0.0171 | 99.92 [99.70, 99.98] · 0.0035 | 99.88 [99.64, 99.96] · 0.0051 |
+| Roman Hindi/Urdu | 2,442 | 92.14 [91.00, 93.14] · 0.1996 | 97.17 [96.44, 97.76] · 0.0874 | 97.79 [97.13, 98.30] · 0.0747 | 95.82 [94.95, 96.55] · 0.1380 | 96.44 [95.63, 97.10] · 0.1231 |
+| Dakshina | 814 | 86.98 [84.49, 89.12] · 0.2810 | 95.70 [94.08, 96.89] · 0.1117 | 96.93 [95.51, 97.91] · 0.0795 | 94.10 [92.27, 95.52] · 0.1561 | 95.45 [93.80, 96.68] · 0.1208 |
+| PHINC | 814 | 98.16 [96.98, 98.88] · 0.0631 | 99.26 [98.40, 99.66] · 0.0316 | 99.39 [98.57, 99.74] · 0.0237 | 98.89 [97.91, 99.42] · 0.0426 | 98.89 [97.91, 99.42] · 0.0341 |
+| FineWeb-2 (held-out pages) | 814 | 91.28 [89.14, 93.03] · 0.2546 | 96.56 [95.07, 97.61] · 0.1188 | 97.05 [95.65, 98.01] · 0.1209 | 94.47 [92.68, 95.84] · 0.2153 | 94.96 [93.24, 96.27] · 0.2145 |
+
+- **By part** (reported; the gate is the whole half), wins / losses, seed 0 · seed 1: English 6 / 1 · 6 / 2 (log-loss 0.038 → 0.004 · 0.005); Dakshina 60 / 2 · 70 / 1; PHINC 6 / 0 · 6 / 0; FineWeb-2 24 / 0 · 28 / 0. The log-loss falls on every part, Roman Hindi/Urdu included (0.200 → 0.138 · 0.123): unlike test 3, the product is not worse calibrated on Roman rows. Most of the gain is on sources the reader never learned from: Dakshina's and PHINC's rows are not FineWeb-2's style, and Dakshina alone holds 60 of seed 0's 96 groups won and 70 of seed 1's 110.
+- **Mistakes**, held-out Lughah → product, seed 0 / seed 1: Roman read as English 192 → 101 / 85; English read as Roman 7 → 2 / 3.
+- **Against Lughah as shipped** (what MIZAN runs; it never saw these messages): 96.42% · 0.1138 → 97.87% · 0.0749 and 98.20% · 0.0684; wins / losses 76 / 6 and 90 / 4.
+- **Under the development fit** (κ, b fitted on the 366 development seeds): more decisions change (98.28% / 98.32%, wins 120 / 8 and 118 / 3), but seed 0's log-loss gain is not beyond chance there (0.119 → 0.107, P(not better) 0.19); seed 1's is (0.119 → 0.066, P(not better) < 0.0005). Calibrating on real short messages is what makes both conditions hold, as in test 3.
+- **The rows the rule left out** (994: 180 PHINC, 814 FineWeb-2; reported): every arm reads most of them as English, which most are (Lughah right on 38%, the product on 46% / 47%), and the product's log-loss on them is worse (1.82 → 2.56 / 2.57): it is surer than Lughah that English lines are English.
+- **Bits per byte** on the gate half, seed 0 / seed 1 (v1's in brackets): BANKING77 2.47 / 2.48 (2.39 / 2.35), Dakshina 3.26 / 3.26 (3.83 / 3.86), PHINC 3.03 / 3.02 (3.18 / 3.18), FineWeb-2 3.04 / 3.01 (3.42 / 3.42).
+
+**v1 on the same slices** (its kept weights, calibrated the same way on v2's calibration half: κ 0.366 / 0.374, b 0.404 / 0.430; reported, not a test of v1):
+
+| Slice | n | Lughah alone | v1 product, seed 0 | seed 1 | v2 product, seed 0 | seed 1 |
+|---|---|---|---|---|---|---|
+| gate half | 4,882 | 95.92 · 0.1187 | 96.80 · 0.0976 | 96.95 · 0.0940 | 97.87 · 0.0708 | 98.16 · 0.0641 |
+| English (BANKING77) | 2,440 | 99.71 · 0.0376 | 99.71 · 0.0104 | 99.84 · 0.0101 | 99.92 · 0.0035 | 99.88 · 0.0051 |
+| Roman Hindi/Urdu | 2,442 | 92.14 · 0.1996 | 93.90 · 0.1847 | 94.06 · 0.1778 | 95.82 · 0.1380 | 96.44 · 0.1231 |
+| Dakshina | 814 | 86.98 · 0.2810 | 90.91 · 0.2160 | 91.15 · 0.2068 | 94.10 · 0.1561 | 95.45 · 0.1208 |
+| PHINC | 814 | 98.16 · 0.0631 | 98.03 · 0.0555 | 98.28 · 0.0462 | 98.89 · 0.0426 | 98.89 · 0.0341 |
+| FineWeb-2 | 814 | 91.28 · 0.2546 | 92.75 · 0.2826 | 92.75 · 0.2804 | 94.47 · 0.2153 | 94.96 · 0.2145 |
+
+v1 against Lughah on this half: wins / losses 48 / 6 and 55 / 6. v2's product against v1's, the same seed, on the same messages: wins / losses 57 / 5 and 65 / 7, log-loss 0.098 → 0.071 and 0.094 → 0.064 (P(not better) < 0.0005 for both). Without a line a model wrote, the reader is better on people's Roman Hindi/Urdu than v1 was, and no worse on English requests.
+
+**The old slices under v2's calibrated fit** (reported, never deciding), Lughah alone → product, seed 0 / seed 1:
+- The seeds' held-out groups (their Hinglish-1M seeds too): 99.38% → 99.38% / 99.49%, log-loss 0.0237 → 0.0196 / 0.0191 (wins / losses 4 / 4 and 5 / 3). v1 under the same calibration: 99.46% / 99.49%.
+- v1's short slice, MASSIVE (en, hi, ur, ar; 7,808): 99.42% → 99.86% (both), log-loss 0.026 → 0.005 / 0.006. Its 2,000 Hinglish-1M rows (comparison only): 95.10% → 94.95% / 95.20%, log-loss 0.168 → 0.346 / 0.353 (v1's seed 0 under the same calibration: 95.25% · 0.239).
+- v1.1's gate half: 98.59% → 98.93% (both), log-loss 0.0545 → 0.078 / 0.081, wins / losses 11 / 0 (both).
+- Test 3's gate slice: CLINC150 English (12,534) 99.15% → 99.71% / 99.59%, log-loss 0.055 → 0.011 / 0.013, wins / losses 77 / 7 and 74 / 20; its Hinglish-1M rows (5,046, comparison only) 97.25% → 97.46% / 97.30%, log-loss 0.097 → 0.174 / 0.182.
+- On Hinglish-1M's own rows v2 is worse calibrated than v1 (its log-loss there about doubles, as v1's did not): those rows are a language model's style, and many are English under a Roman label (test 3); v2 never saw that style.
+
+**Cost.** One 100-byte message under all five languages, fp32 on 2 threads, the reader alone in its process: 27.5 / 32.0 ms median (p90 31.3 / 36.6); 24 bytes 6.8 / 7.5 ms; int8 25.0 / 26.9 ms. Loading took 1.4–1.5 s and 263 MB resident (303–308 MB after reading), as v1. The int8 model makes the same decision on 99.56% / 99.64% of the seeds' held-out readings. Each evaluation (the v2 reader and v1 on about 47,000 messages under five languages) took 1,244 / 1,300 s and peaked at 1,158 / 1,092 MB.
+
+**Looked at after the test (exploratory, not part of it).** Of the gate rows the seed-0 product still misreads, most are not Roman Hindi/Urdu in any sense a reader could find: Dakshina's romanized Wikipedia sentences include place names and English titles ("Fairmount Township, Butler County, Kansas", "Lake Wood, Washington", "Catholic encyclopedia: Cana"), and the FineWeb-2 lines the two-word rule kept include page furniture ("Breaking » Friday, April 19, 2019", "Submitted by Kumar on 19 Aug 2013", "WhatsApp Dark Mode"). The product loses 3 groups per seed (seed 0: "Visa or Mastercard?" read as Roman Hindi/Urdu, and two Dakshina rows).
+
+**Verdict.** Reader v2, trained without any text a language model wrote, passed its first gate for both seeds (e ≥ 40; the e-values and the log-loss bootstrap far past it), and is better than v1 on the same messages. The gain is on Roman Hindi/Urdu people wrote, sources it never trained on included; English requests improve a little. On Hinglish-1M's synthetic rows it is worse calibrated than v1. The reader stays in **shadow** until the owner decides.
 
 ## Learning while MIZAN rests
 
