@@ -22,7 +22,9 @@ For Hindi and Urdu each:
    seed, stopped by the log-likelihood of the validation pairs (at most 30
    iterations).
 2. The vocabulary: the native words of MASSIVE's train split for the locale,
-   with their counts.
+   with their counts. With ``--extra``, also those of the parallel text the
+   lexicon learns from with ``build_qamus.py --extra`` (PMIndia for Hindi),
+   the counts summed: measured, not adopted (``docs/qamus.md``).
 3. Each vocabulary word's 30 most probable spellings; each spelling is read
    as the word it most probably spells, P(d | r) ∝ P(r | d) · P(d), with
    P(d) = (count + 1) / (N + |V|) (``qamus.readings``). A reading is kept when
@@ -55,6 +57,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import build_qamus  # noqa: E402  (the extra parallel text the lexicon learned from)
 
 from tadbir import qamus  # noqa: E402
 
@@ -148,7 +153,9 @@ def rate(hits: int, total: int) -> float:
     return round(hits / total, 4) if total else 0.0
 
 
-def build(language: str, data: Path, known_english: set[str]) -> tuple[dict, dict, dict]:
+def build(
+    language: str, data: Path, known_english: set[str], with_extra: bool = False
+) -> tuple[dict, dict, dict]:
     name, locale, written, follow = LANGUAGES[language]
     archive = fetch(data, DATASET, f"{name}.zip", REVISION)
     massive = fetch(data, MASSIVE, f"{locale}/train/0000.parquet", MASSIVE_REVISION)
@@ -159,6 +166,9 @@ def build(language: str, data: Path, known_english: set[str]) -> tuple[dict, dic
     table, trace = qamus.channel(learned, heldout, limit=ITERATIONS)
 
     vocabulary = words(massive, written)
+    from_massive = len(vocabulary)
+    added, added_from = build_qamus.extra_pairs(data, language) if with_extra else ([], {})
+    vocabulary.update(word for _e, x in added for word in x if qamus.script(word) == written)
     found = qamus.readings(vocabulary, table, follow, keep=SPELLINGS)
     read = {
         roman: word
@@ -199,9 +209,12 @@ def build(language: str, data: Path, known_english: set[str]) -> tuple[dict, dic
         "heldout_log_likelihood": [round(value, 2) for value in trace],
         "units": sum(1 for unit in table if not unit.endswith("\t*")),
         "vocabulary": len(vocabulary),
+        **({"vocabulary_massive": from_massive} if added else {}),
         "readings": len(read),
     }
     files = {f"{name}.zip": sha256(archive), f"{locale}/train/0000.parquet": sha256(massive)}
+    if added:
+        files[build_qamus.EXTRA[language]["file"]] = added_from["sha256"]
     return {"fit": fit, "measured": measured, "files": files}, read, files
 
 
@@ -214,6 +227,11 @@ def main() -> int:
     parser.add_argument("--data", required=True, help="a folder outside the repository")
     parser.add_argument(
         "--check", action="store_true", help="fail if the shipped file differs from a rebuild"
+    )
+    parser.add_argument(
+        "--extra",
+        action="store_true",
+        help="read the words of build_qamus.py's EXTRA text too: measured, not adopted",
     )
     args = parser.parse_args()
     data = Path(args.data).resolve()
@@ -238,8 +256,14 @@ def main() -> int:
         "measured": {},
         "read": {},
     }
+    if args.extra:
+        built["source"]["vocabulary"]["extra"] = {
+            language: {key: source[key] for key in ("dataset", "url", "licence")}
+            for language, source in build_qamus.EXTRA.items()
+            if language in LANGUAGES
+        }
     for language in LANGUAGES:
-        report, read, files = build(language, data, known_english)
+        report, read, files = build(language, data, known_english, with_extra=args.extra)
         built["fit"][language] = report["fit"]
         built["measured"][language] = report["measured"]
         built["source"]["files"].update(files)
