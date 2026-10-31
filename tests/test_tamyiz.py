@@ -195,3 +195,36 @@ def test_a_verified_wording_is_learned_for_that_user_only():
     assert mine["web_search"] > shared["web_search"]
     assert qasd.summary(store, "u1")["by_intent"] == {"web_search": 1}
     assert not qasd.learn(store, "u1", "anything", "no_such_intent", False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "क्या अभी बारिश हो रही है",
+        "मुझे कल सुबह सात बजे जगा देना",
+        "wake me up at 7 tomorrow",
+        "Pakistan ki capital kya hai?",
+        "Ek python program likho jo 1 se 10 tak ka sum print kare aur run karo",
+    ],
+)
+def test_the_script_alone_is_no_evidence_of_the_deen(text):
+    # Everyday Hindi and Urdu requests were read as about the deen because the
+    # facet's few Devanagari and Arabic-script seeds were religious.
+    assert not qasd.facet("deen", text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Quran mein sabr ke baare mein kya aaya hai?",
+        "Surah Yaseen ki pehli 5 ayat dikhao",
+        "مسلم شریف کی حدیث نمبر 8",
+        "क़ुरआन में कितनी सूरह हैं?",
+        "What does the Quran say about patience?",
+        "Is the hadith about seeking knowledge in China authentic?",
+        "Zakat ka nisab kitna hai?",
+        "روزہ کن چیزوں سے ٹوٹ جاتا ہے؟",
+    ],
+)
+def test_a_question_about_the_quran_or_hadith_is_about_the_deen(text):
+    assert qasd.facet("deen", text)

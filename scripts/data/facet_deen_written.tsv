@@ -1,0 +1,149 @@
+# Questions about worship and belief, for Qasd's deen facet (scripts/facet_eval.py --write).
+# Written by MIZAN's coding assistant (a language model) on 31 Oct 2026 at the owner's request:
+# the facet's own seeds held almost none, so such questions in Hindi/Urdu were read as about the
+# deen only by their script. Questions only, no Quran text; never the held-out set's. CC0.
+# script<TAB>text
+latin	How do I perform wudu?
+latin	What breaks wudu?
+latin	How many rakats are in Fajr prayer?
+latin	When does the time for Asr prayer begin?
+latin	How do I pray Witr?
+latin	What do I say in sujood?
+latin	How is the Janazah prayer performed?
+latin	What are the conditions of a valid salah?
+latin	What invalidates the fast?
+latin	Who is exempt from fasting in Ramadan?
+latin	How is fidya paid for missed fasts?
+latin	What is the nisab for zakat?
+latin	On which wealth is zakat due?
+latin	Who can receive zakat?
+latin	How much is zakat al-fitr?
+latin	What are the pillars of Hajj?
+latin	What is the difference between Hajj and Umrah?
+latin	What is done on the day of Arafah?
+latin	What is ihram?
+latin	What are the six articles of faith?
+latin	What does tawheed mean?
+latin	What is shirk?
+latin	What happens in the grave according to Islam?
+latin	What are the major signs of the Day of Judgement?
+latin	Which dua is read before sleeping?
+latin	How do I perform ghusl?
+latin	What is the meaning of ihsan?
+latin	When is Laylat al-Qadr?
+latin	How is the Eid prayer performed?
+latin	What are the sunnahs of Friday?
+latin	Who was Abu Bakr as-Siddiq?
+latin	How many rakats is Taraweeh?
+latin	Wuzu karne ka sahi tareeqa kya hai?
+latin	Wuzu kin cheezon se toot jaata hai?
+latin	Fajr ki namaz mein kitni rakat hoti hain?
+latin	Asr ki namaz ka waqt kab shuru hota hai?
+latin	Witr ki namaz kaise padhte hain?
+latin	Sajde mein kya padhna chahiye?
+latin	Janaze ki namaz ka tareeqa batao
+latin	Namaz sahi hone ki sharten kya hain?
+latin	Roza kin cheezon se toot jaata hai?
+latin	Ramzan mein kin logon ko roze ki chhoot hai?
+latin	Sehri ki dua kya hai?
+latin	Qaza roze ka fidya kaise dete hain?
+latin	Zakat ka nisab kitna hai?
+latin	Kis maal par zakat farz hoti hai?
+latin	Zakat kisko de sakte hain?
+latin	Sadqa-e-fitr kitna dena hota hai?
+latin	Hajj ke farz kya hain?
+latin	Hajj aur Umrah mein kya farq hai?
+latin	Arafah ke din kya kiya jaata hai?
+latin	Ehram kya hota hai?
+latin	Iman ke chhe arkaan kaun se hain?
+latin	Tauheed ka matlab kya hai?
+latin	Shirk kya hota hai?
+latin	Qabr mein kya sawal poochhe jaate hain?
+latin	Qayamat ki badi nishaniyan kya hain?
+latin	Sone se pehle kaunsi dua padhte hain?
+latin	Namaz ke baad kya padhna sunnat hai?
+latin	Ghusl ka tareeqa kya hai?
+latin	Ihsan ka matlab kya hai?
+latin	Shab-e-Qadr kab hoti hai?
+latin	Eid ki namaz kaise padhte hain?
+latin	Jumma ke din ki sunnatein kya hain?
+latin	Hazrat Abu Bakr Siddiq kaun the?
+latin	Taraweeh kitni rakat hoti hai?
+deva	वुज़ू करने का सही तरीक़ा क्या है?
+deva	वुज़ू किन चीज़ों से टूट जाता है?
+deva	फ़ज्र की नमाज़ में कितनी रकात होती हैं?
+deva	अस्र की नमाज़ का वक़्त कब शुरू होता है?
+deva	वित्र की नमाज़ कैसे पढ़ते हैं?
+deva	जनाज़े की नमाज़ का तरीक़ा बताओ
+deva	नमाज़ सही होने की शर्तें क्या हैं?
+deva	रोज़ा किन चीज़ों से टूट जाता है?
+deva	सहरी की दुआ क्या है?
+deva	ज़कात का निसाब कितना है?
+deva	ज़कात किसको दे सकते हैं?
+deva	सदक़ा-ए-फ़ित्र कितना देना होता है?
+deva	हज के फ़र्ज़ क्या हैं?
+deva	हज और उमरा में क्या फ़र्क़ है?
+deva	एहराम क्या होता है?
+deva	ईमान के छह अरकान कौन से हैं?
+deva	तौहीद का मतलब क्या है?
+deva	शिर्क क्या होता है?
+deva	क़ब्र में क्या सवाल पूछे जाते हैं?
+deva	क़यामत की बड़ी निशानियाँ क्या हैं?
+deva	सोने से पहले कौन सी दुआ पढ़ते हैं?
+deva	ग़ुस्ल का तरीक़ा क्या है?
+deva	शब-ए-क़द्र कब होती है?
+deva	ईद की नमाज़ कैसे पढ़ते हैं?
+deva	जुमे के दिन की सुन्नतें क्या हैं?
+deva	हज़रत अबू बक्र सिद्दीक़ कौन थे?
+deva	तहज्जुद की नमाज़ कितनी रकात है?
+deva	नमाज़ में कितने फ़र्ज़ हैं?
+deva	रमज़ान में तरावीह कितनी रकात है?
+arab	وضو کرنے کا صحیح طریقہ کیا ہے؟
+arab	وضو کن چیزوں سے ٹوٹ جاتا ہے؟
+arab	فجر کی نماز میں کتنی رکعتیں ہوتی ہیں؟
+arab	عصر کی نماز کا وقت کب شروع ہوتا ہے؟
+arab	وتر کی نماز کیسے پڑھتے ہیں؟
+arab	نماز جنازہ کا طریقہ بتائیں
+arab	نماز صحیح ہونے کی شرائط کیا ہیں؟
+arab	روزہ کن چیزوں سے ٹوٹ جاتا ہے؟
+arab	سحری کی دعا کیا ہے؟
+arab	زکوٰۃ کا نصاب کتنا ہے؟
+arab	زکوٰۃ کس کو دی جا سکتی ہے؟
+arab	صدقۂ فطر کتنا دینا ہوتا ہے؟
+arab	حج کے فرائض کیا ہیں؟
+arab	حج اور عمرہ میں کیا فرق ہے؟
+arab	احرام کیا ہوتا ہے؟
+arab	ایمان کے چھ ارکان کون سے ہیں؟
+arab	توحید کا مطلب کیا ہے؟
+arab	شرک کیا ہوتا ہے؟
+arab	قبر میں کیا سوال پوچھے جاتے ہیں؟
+arab	قیامت کی بڑی نشانیاں کیا ہیں؟
+arab	سونے سے پہلے کون سی دعا پڑھتے ہیں؟
+arab	غسل کا طریقہ کیا ہے؟
+arab	شب قدر کب ہوتی ہے؟
+arab	عید کی نماز کیسے پڑھتے ہیں؟
+arab	جمعہ کے دن کی سنتیں کیا ہیں؟
+arab	حضرت ابوبکر صدیق کون تھے؟
+arab	تہجد کی نماز کتنی رکعت ہے؟
+arab	نماز میں کتنے فرائض ہیں؟
+arab	رمضان میں تراویح کتنی رکعت ہے؟
+arab	ما هي فرائض الوضوء؟
+arab	ما هي نواقض الوضوء؟
+arab	كم ركعة في صلاة الفجر؟
+arab	كيف تصلى صلاة الوتر؟
+arab	ما هي شروط صحة الصلاة؟
+arab	ما هي مفطرات الصيام؟
+arab	ما هو نصاب الزكاة؟
+arab	من هم مستحقو الزكاة؟
+arab	ما هي أركان الحج؟
+arab	ما الفرق بين الحج والعمرة؟
+arab	ما هي أركان الإيمان الستة؟
+arab	ما معنى التوحيد؟
+arab	ما هو الشرك؟
+arab	ما هي علامات الساعة الكبرى؟
+arab	ما هو دعاء النوم؟
+arab	كيف يكون الغسل؟
+arab	متى تكون ليلة القدر؟
+arab	كيف تصلى صلاة العيد؟
+arab	من هو أبو بكر الصديق؟
+arab	ما هي سنن يوم الجمعة؟
