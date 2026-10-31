@@ -194,6 +194,10 @@ class Lisan:
         # The instruction version (Tajdid) and model (Wazn) of each kind of work's
         # last call, so MIZAN can credit them with the verified outcome.
         self.last: dict[str, dict] = {}
+        # Each kind of work's last exchange (what was asked, what the teacher
+        # said, which model): a lesson for MIZAN's own student once MIZAN's
+        # checks pass it (Tadrib, docs/tadrib.md).
+        self.exchange: dict[str, dict] = {}
 
     @property
     def available(self) -> bool:
@@ -219,13 +223,19 @@ class Lisan:
         with bind_task(purpose):
             try:
                 if not trace.active():
-                    return await self._ask(system, user, max_tokens, model)
-                with trace.span(
-                    "chat", f"lisan.{purpose}", system=system, user=user, model=model
-                ) as record:
                     reply = await self._ask(system, user, max_tokens, model)
-                    record["attributes"]["reply"] = reply
-                    return reply
+                else:
+                    with trace.span(
+                        "chat", f"lisan.{purpose}", system=system, user=user, model=model
+                    ) as record:
+                        reply = await self._ask(system, user, max_tokens, model)
+                        record["attributes"]["reply"] = reply
+                self.exchange[purpose] = {
+                    "user": user,
+                    "reply": reply,
+                    "model": str(model or getattr(self.agent, "ai_model", "") or ""),
+                }
+                return reply
             finally:
                 made = self.calls - before
                 if made:
