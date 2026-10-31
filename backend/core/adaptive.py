@@ -232,6 +232,48 @@ def paired_e_value(wins: int, losses: int, prior: float = 1.0) -> float:
     return math.exp(min(log_e, 700.0))
 
 
+@dataclass
+class BettingEProcess:
+    """Evidence that a rate is above ``p0``, safe under any stopping.
+
+    Testing by betting (Waudby-Smith & Ramdas 2024): before each outcome
+    x ∈ [0, 1] a stake λ is chosen from the earlier outcomes only, and
+
+        E_t = Π_{i ≤ t} (1 + λ_i (x_i − p0)).
+
+    If the true rate is at most ``p0``, each factor has expectation at most 1,
+    so E is a nonnegative supermartingale and Ville's inequality bounds the
+    chance it ever reaches 1/α by α, however often it is read. The stake is
+    aGRAPA's, (μ̂ − p0) / (σ̂² + (μ̂ − p0)²), kept in [0, cap/p0] so no factor
+    reaches 0. μ̂ and σ̂² weigh recent outcomes more (half-life ``memory``
+    outcomes, starting from ½ and ¼), so a learner that improves is bet on soon
+    after it does; any stake chosen from the past keeps the test valid.
+    """
+
+    p0: float
+    cap: float = 0.5
+    memory: float = 50.0
+    value: float = 1.0
+    n: int = 0
+    mean: float = 0.5
+    variance: float = 0.25
+
+    def stake(self) -> float:
+        edge = self.mean - self.p0
+        spread = self.variance + edge * edge
+        bet = edge / spread if spread > 0 else 0.0
+        return min(max(bet, 0.0), self.cap / max(self.p0, 1e-9))
+
+    def update(self, x: float) -> float:
+        x = min(max(float(x), 0.0), 1.0)
+        self.value *= 1.0 + self.stake() * (x - self.p0)
+        keep = 0.5 ** (1.0 / self.memory)
+        self.variance = keep * self.variance + (1 - keep) * (x - self.mean) ** 2
+        self.mean = keep * self.mean + (1 - keep) * x
+        self.n += 1
+        return self.value
+
+
 def thompson_choice(
     options: Sequence[str], posteriors: dict[str, BetaEstimator], rng: random.Random | None = None
 ) -> str:

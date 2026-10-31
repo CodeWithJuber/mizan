@@ -12,7 +12,7 @@ The owner asked for this on 31 Oct 2026: MIZAN should train and learn from its t
 ## Phases
 
 1. **The reader (this page, built).** The Ruh reader ([ruh-reader.md](ruh-reader.md)) learns each consented message's language as soon as the message arrives. Before, it learned only at night, and only from messages a person had reviewed.
-2. **Teacher to student (next).** Lisan's verified outputs (the wording Furqan accepted, plans Fahm validated and that then worked) train a small own generator of the same family, `ruh_reader/speaker_net.Speaker`. Per task and language, it answers once its test passes.
+2. **Teacher to student (measured 31 Oct: the `plan_steps` student was not proven in any language).** Lisan's verified outputs train a small student of the same family, starting with `plan_steps` (mapping a message to MIZAN's actions; [below](#phase-2-teacher-to-student-plan_steps-pre-registered-31-oct-2026)). Per task and language, it answers once its test passes.
 3. **The speaker on a GPU.** The same loop runs on the 125M speaker ([ruh-speaker.md](ruh-speaker.md)) once RunPod access exists.
 
 ## The design: two speeds, as in the brain
@@ -137,9 +137,115 @@ If all four bars hold, `MIZAN_TADRIB` defaults to `on`. If not, it stays `off`.
 
 `scripts/tadrib_eval.py --stream-v3 WORK`, then `--test-v3 WORK`.
 
+## Third test (v3): refused at the test stage (31 Oct 2026)
+
+The stream was read once, by both readers at the same time. Bars 1 and 3 failed, so Tadrib for the reader was not adopted and `MIZAN_TADRIB` stays `off`.
+
+| Bar | Seed 0 (judged) | Seed 1 (replication) |
+|---|---|---|
+| 1 it learns: prequential log-loss, frozen → online | 0.2677 → 0.2977, P(not better) 1.000: **fails** | 0.1845 → 0.2169, P(not better) 1.000 |
+| 2 no evidence worse on the seeds' held-out reads | 0.0632 → 0.0620 (P(worse) 0.46): holds | 0.0612 → 0.0642 (P(worse) 0.55, P(loss higher) 0.91): no evidence worse |
+| 3 speed and memory | p95 0.81 s, but +188 MB: **fails** | p95 0.82 s, +187 MB |
+| 4 erasure exact | 244 of 2,552 lessons erased, rebuilt bit for bit: holds | — |
+
+- **The third witness worked as meant.** Of the 800 Roman Hindi/Urdu lines, 22 were still learned as English. In v2 the number was 33 to 40, out of a stream that held more such lines.
+- **Accuracy did not move.** The product was 98.87% → 98.87%, and the lesson labels matched the dataset 99.2% of the time.
+- **Memory rose because the lines are longer.** Tatoeba's Arabic sentences and Dakshina's Wikipedia sentences run longer than v2's stream, and a longer line holds more activations in one micro-batch.
+
+**What the loss was made of (looked at after the verdict, so it decides nothing).** The frozen reader read 35 Roman lines as English with 5 to 55 nats of loss each. Those 35 lines hold 864 of the stream's 871 nats of Roman loss. All of them are PHINC tweets, and reading them shows they are written in English with no Hindi word: "who else is excited to see the boys on startalk tomorrow ? ? ?". PHINC labels every tweet as code-mixed. On these lines the online reader grew surer of the right answer, English, and the dataset's label scored that as worse.
+
+Without PHINC (2,860 lines), the change is within noise either way:
+
+| Seed | All lines without PHINC | Dakshina alone |
+|---|---|---|
+| 0 | 0.00251 → 0.00234 | 0.0137 → 0.0115 |
+| 1 | 0.00169 → 0.00197 | 0.0017 → 0.0029 |
+
+**What the three tests show.**
+- **Clean text leaves almost nothing to learn.** Where labels are clean, the reader's loss was already about 0.002 nats a line.
+- **Agreement can only confirm what the reader already reads.** It cannot see the lines both readers get wrong, and when they agree on a mistake it teaches that mistake.
+- **A learner needs a teacher for what it does not know** ("We have knowledge only of what You have taught us", [2:32](https://quran.com/2:32)). Learning by its own agreement gives the reader no measurable gain. So the reader's online learning stops here: the code stays, and `MIZAN_TADRIB` stays `off`.
+- **What does carry a teacher's signal is phase 2.** There, verified Lisan outputs teach a student. For the reader, the same idea means learning only the lines its witnesses disagree on, labelled by someone who knows: the person, or a hand-labelled set.
+- **A fourth test would need two things first.** Roman test lines must be labelled by hand (as v2's gate was), not by a dataset that labels English tweets as code-mixed. And the memory bound must hold for long lines.
+
+## Phase 2: teacher to student, `plan_steps` (pre-registered 31 Oct 2026)
+
+The owner chose this after the reader's third test. What the reader showed is that agreement with itself is no teacher. Here the teacher is the language model MIZAN already asks, and only what MIZAN's own checks pass is learned.
+
+**The task.** `Lisan.plan_steps` maps a message to MIZAN's actions as one JSON object, `{"steps": [...]}`. It is asked when Fahm cannot build the request by itself. The teacher's answer is a **lesson** (`tadrib.plans.target`) only when every step passes `fahm.validate_parsed`, or when it is a lone `converse`. The lesson is the plan in a fixed form: each action with only the fields its schema has, and the words it covers only when there are several actions.
+
+Three kinds of plan are never lessons:
+- a plan with a Quran or hadith step;
+- a plan for a message Qasd reads as about the deen or a ruling (`plans.about_the_deen`);
+- a plan that mixes `converse` with actions.
+
+**The teacher.** `deepseek/deepseek-chat-v3-0324`, the model production uses. It is MIT-licensed (its card was read 31 Oct 2026, `tadrib.licence`). Anthropic and OpenAI output never teaches (`licence.forbidden`), and the licence table is the one `mizan_reply.data` enforces. It is asked exactly as Tadbir asks it (`Lisan.plan_steps`, with no earlier messages), through OpenRouter, with spending capped at $3. Each answer is kept with its model id (`Lisan.exchange`).
+
+**The messages.** MASSIVE 1.1 `train` utterances (CC BY 4.0, written by people) in English, Hindi and Urdu: at most 1,700 per language, in SHA-256 order. Messages Qasd reads as about the deen are skipped before the teacher is asked, since no lesson can come from them. That facet reads 63–71% of these everyday Hindi/Urdu requests as about the deen; this is a separate bug, recorded and not fixed here.
+
+**The teacher against itself.** The first 200 lessons are asked a second time. For each language, `p0` is the share of second answers that `agree` with the first. A student that reaches `p0` agrees with the teacher as often as the teacher agrees with itself.
+
+**The student** (`tadrib.student.Student`): the reader's network (`ruh_reader.net.Reader`, 3.48M parameters), with a context of 544 positions, started from Ruh reader v2 seed 0.
+- A lesson is `[TASK] message [SEP] answer [END]`, and only the answer and its end are learned.
+- Each lesson takes 2 AdamW steps (learning rate 1e-3) on the lesson plus 7 recent lessons replayed (reservoir sampling), in micro-batches of 4, on 2 torch threads.
+- Everything is seeded by the lesson's digest.
+- This setting is fixed now. A smoke run on the first 11 lessons checked only the mechanics and the speed (learning 0.5 s, answering 0.1 s). There is no dev stream and no grid.
+
+**Agreement** (`plans.agree`).
+- *Agree:* the student's answer parses, every step passes MIZAN's checks, and it has the teacher's actions in the teacher's order with the same structured values: the arithmetic's value, the link, the schedule, the project kind, the code language.
+- *Same word for word:* free-text fields (a tool `need`, a search `query`) are compared too (`plans.same`). This is reported, not judged.
+
+**The stream.** Lessons go in SHA-256 order. For each lesson:
+1. The student answers first (greedy), before it has seen the lesson.
+2. The answer is scored by `agree`.
+3. The language's betting e-process (`core.adaptive.BettingEProcess(p0)`) is updated. Its stakes follow aGRAPA, computed from exponentially weighted estimates with a half-life of 50 outcomes, so that a student who improves is bet on soon, and they are capped at 0.5/p0.
+4. The student learns the lesson.
+
+Under "the student agrees with the teacher at most p0 of the time", the e-process is a nonnegative supermartingale. By Ville's inequality, the chance it ever reaches 20 is at most 5%, however often it is read.
+
+**Bars, per language** (the owner's rule: per task and language):
+1. **Proven.** The language's e-process reaches 20 within the stream.
+2. **Fast enough.** On 2 threads, answering takes at most 1.0 s at the 95th percentile, and learning a lesson at most 2.0 s.
+3. **Forgetting is exact.** Over the first 300 lessons, a student that learned them all and then forgot one in ten (rebuilt without them) equals, bit for bit, one that never learned those.
+
+Also reported, deciding nothing:
+- agreement in the first and last thirds;
+- where each language's e-process crossed 20;
+- answers that pass MIZAN's checks but differ from the teacher (these would be served wrongly);
+- word-for-word agreement;
+- the cost.
+
+**What follows.** For a language where all three bars hold, phase 2b is built: the student answers `plan_steps` first in production, behind a setting, shadow first. MIZAN checks every answer, and the teacher answers when the check fails; that answer becomes a lesson. The student's words in free-text fields are used only where they are copied from the message. For a language where the bars do not hold, the student is not used.
+
+`scripts/tadrib_lisan.py --lessons WORK`, `--again WORK`, then `--run WORK --weights reader-seed0.pt --erase`.
+
+### Phase 2 result (31 Oct 2026): not proven in any language
+
+**The teacher.** It was asked 5,100 times and 4,485 of its plans were lessons: English 1,455, Hindi 1,481, Urdu 1,549. All of them were served by `deepseek/deepseek-chat-v3-0324`, at $1.35 including the second asking. Its agreement with itself (`p0`) was English 0.877, Hindi 0.783 and Urdu 0.800, each on about 65 messages. Its plans were mostly `converse` (2,367) and `use_tool` (1,708), then `watch` (198), `web_search` (138), `compute` (41) and `build_and_run` (22).
+
+| Bar | English | Hindi | Urdu |
+|---|---|---|---|
+| 1 proven (e-process reaches 20) | e = 1.0: **no** | e = 1.0: **no** | e = 1.0: **no** |
+| Agreement in the last third | 0.581 (p0 0.877) | 0.546 (p0 0.783) | 0.636 (p0 0.800) |
+| 2 speed (2 threads) | answer p95 0.22 s, learn p95 0.72 s: holds | same | same |
+| 3 exact forgetting | 19 of 300 forgotten, bit for bit: holds | same | same |
+
+No language was proven, so phase 2b is not built and the teacher still answers `plan_steps`.
+
+**What the stream showed** (read after the verdict, so it decides nothing):
+- **The form is learned at once, the decision is not.** Answers passing MIZAN's checks rose from 78% to 99% within 1,000 lessons. Agreement rose from 40% to about 58–61% by lesson 2,500 and then stayed there.
+- **Different but valid.** About 40% of the student's answers were valid plans that differed from the teacher's. Served, they would have been the wrong actions.
+- **Agreement by kind of plan** (last third): `converse` 0.78 and `use_tool` 0.47. Every `watch`, `web_search`, `compute` and `build_and_run` lesson disagreed (62, 44, 17 and 9 of them). The student learned the common choice and not the rare ones.
+- **Answering only when sure would not have helped.** Its most confident 10% of answers agreed 80% of the time, which is still below English's p0.
+
+**What it says.** A 3.48M-parameter byte model learns the shape of a plan from a few hundred lessons. Within 4,500 lessons it does not learn the teacher's choice of action, and that choice is a judgement about meaning that the teacher itself repeats only 78–88% of the time. Learning from a teacher works where the student can hold the knowledge: the learning, forgetting and speed machinery all held. Two roads remain:
+- a larger student (phase 3, the 125M speaker on a GPU);
+- splitting the task, so that the choice of action is learned as a classification from the teacher's verified labels (as Qasd already learns from verified requests) and only the copying of the user's words is generated.
+
+
 ## Settings, routes and files
 
-- `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default stays `off` until the measurement above passes.
+- `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default is `off`: three pre-registered tests refused it (above).
 - `GET /api/tadrib` (admins): status, lessons per day, prequential log-loss of both copies, the safety check, and the last night.
 - `GET /api/tadrib/lessons` (the person's own, paged) and `DELETE /api/tadrib/lessons/{digest}` (reject, which forgets it).
 - Files in the reader's folder (`$MIZAN_DATA_DIR/models/ruh_reader/`): `fast.pt` and `fast.json` (the fast copy and the digests it learned, written atomically every few lessons so a restart keeps the day), and `nights/` (the last 7 replaced versions with their digests).

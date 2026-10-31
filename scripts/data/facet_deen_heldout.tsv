@@ -1,0 +1,79 @@
+# Held out to measure Qasd's deen facet (scripts/facet_eval.py); never a seed.
+# Written by MIZAN's coding assistant (a language model) on 31 Oct 2026 at the owner's request,
+# before the training questions and before any result: questions only, no Quran text. CC0.
+# label<TAB>script<TAB>text   (yes: about the deen; no: an everyday question in the same forms)
+yes	latin	How do I make up a missed prayer?
+yes	latin	Is the Quran the speech of Allah?
+yes	latin	What is the reward of fasting six days of Shawwal?
+yes	latin	How do I pray Salat al-Istikhara?
+yes	latin	What is tayammum and when is it allowed?
+yes	latin	What are the names of the angels mentioned in Islam?
+yes	latin	What is the significance of Ashura?
+yes	latin	What are the conditions of tawbah?
+yes	latin	What is the purpose of life according to Islam?
+yes	latin	Qaza namaz kaise ada karein?
+yes	latin	Istikhara ki namaz ka tareeqa kya hai?
+yes	latin	Tayammum kab jaiz hai?
+yes	latin	Shawwal ke chhe roze ka kya sawab hai?
+yes	latin	Farishton ke naam kya hain?
+yes	latin	Ashura ke din ki kya ahmiyat hai?
+yes	latin	Tauba qabool hone ki sharten kya hain?
+yes	latin	Musafir ki namaz kitni rakat hoti hai?
+yes	latin	Itikaf kya hota hai?
+yes	latin	Islam mein zindagi ka maqsad kya hai?
+yes	deva	क़ज़ा नमाज़ कैसे अदा करें?
+yes	deva	इस्तिख़ारा की नमाज़ का तरीक़ा क्या है?
+yes	deva	तयम्मुम कब जायज़ है?
+yes	deva	शव्वाल के छह रोज़ों का क्या सवाब है?
+yes	deva	फ़रिश्तों के नाम क्या हैं?
+yes	deva	आशूरा के दिन की क्या अहमियत है?
+yes	deva	तौबा क़बूल होने की शर्तें क्या हैं?
+yes	deva	मुसाफ़िर की नमाज़ कितनी रकात होती है?
+yes	deva	एतिकाफ़ क्या होता है?
+yes	deva	इस्लाम में ज़िंदगी का मक़सद क्या है?
+yes	arab	قضا نماز کیسے ادا کریں؟
+yes	arab	استخارہ کی نماز کا طریقہ کیا ہے؟
+yes	arab	تیمم کب جائز ہے؟
+yes	arab	شوال کے چھ روزوں کا کیا ثواب ہے؟
+yes	arab	فرشتوں کے نام کیا ہیں؟
+yes	arab	عاشورہ کے دن کی کیا اہمیت ہے؟
+yes	arab	توبہ قبول ہونے کی شرائط کیا ہیں؟
+yes	arab	مسافر کی نماز کتنی رکعت ہوتی ہے؟
+yes	arab	اعتکاف کیا ہوتا ہے؟
+yes	arab	اسلام میں زندگی کا مقصد کیا ہے؟
+yes	arab	كيف أقضي الصلاة الفائتة؟
+yes	arab	ما هي صلاة الاستخارة؟
+yes	arab	متى يجوز التيمم؟
+yes	arab	ما فضل صيام ست من شوال؟
+yes	arab	ما هي شروط التوبة؟
+yes	arab	كم ركعة صلاة المسافر؟
+no	latin	How do I make a cup of tea?
+no	latin	What is the boiling point of water?
+no	latin	Which is the longest river in the world?
+no	latin	How do I charge my phone faster?
+no	latin	Chai banane ka tareeqa kya hai?
+no	latin	Bharat ki rajdhani kya hai?
+no	latin	Cricket ka world cup kisne jeeta?
+no	latin	Mobile ki battery jaldi kyun khatam hoti hai?
+no	latin	Kal mausam kaisa rahega?
+no	latin	Pyaz ke daam kya chal rahe hain?
+no	latin	Python mein list kaise banate hain?
+no	latin	Paani ka boiling point kya hai?
+no	latin	Sabse lamba darya kaunsa hai?
+no	latin	Aloo paratha kaise banate hain?
+no	latin	Train ka time table kahan milega?
+no	latin	Sir dard ka gharelu ilaj kya hai?
+no	deva	चाय बनाने का तरीक़ा क्या है?
+no	deva	भारत की राजधानी क्या है?
+no	deva	मोबाइल की बैटरी जल्दी क्यों ख़त्म होती है?
+no	deva	सबसे लंबी नदी कौन सी है?
+no	deva	आलू पराठा कैसे बनाते हैं?
+no	deva	सिर दर्द का घरेलू इलाज क्या है?
+no	arab	چائے بنانے کا طریقہ کیا ہے؟
+no	arab	پاکستان کا دارالحکومت کیا ہے؟
+no	arab	موبائل کی بیٹری جلدی کیوں ختم ہوتی ہے؟
+no	arab	سب سے لمبا دریا کون سا ہے؟
+no	arab	آلو پراٹھا کیسے بناتے ہیں؟
+no	arab	سر درد کا گھریلو علاج کیا ہے؟
+no	arab	كيف أصنع كوبا من الشاي؟
+no	arab	ما هي عاصمة اليابان؟

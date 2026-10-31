@@ -423,11 +423,11 @@ v1 against Lughah on this half: wins / losses 48 / 6 and 55 / 6. v2's product ag
 
 ## Learning while MIZAN works (Tadrib)
 
-Since 31 Oct 2026 the reader does not wait for the night ([tadrib.md](tadrib.md)). Each message of a person who switched `training: on` becomes a **lesson** as soon as it is answered: their own words (pasted text set aside), when Amanah finds no instruction aimed at an AI and no scripture is in it. A background trainer:
+With `MIZAN_TADRIB=on` the reader does not wait for the night ([tadrib.md](tadrib.md); `off` by default, since three pre-registered tests on 31 Oct 2026 refused it: learning from its own agreement with Lughah gave no measurable gain). Each message of a person who switched `training: on` becomes a **lesson** as soon as it is answered: their own words (pasted text set aside), when Amanah finds no instruction aimed at an AI and no scripture is in it. A background trainer:
 
 1. scores the lesson with the fast copy and with the current (slow) version, before learning anything;
-2. keeps it only where Lughah and the serving reader read the same language (the owner's decision: this check by MIZAN stands in for a person's review);
-3. holds one lesson in five out as test, and learns the rest in a few steps (replay of seeds and recent lessons, an L2 pull toward the slow weights);
+2. keeps it only where Lughah and the serving reader read the same language and Qāmūs does not read two Hindi or Urdu words in a line both call English (the owner's decision: this check by MIZAN stands in for a person's review);
+3. holds one lesson in five out as test, and learns the rest in one step (replay of seeds and recent lessons, an L2 pull toward the slow weights);
 4. swaps the fast weights into the loaded reader, and keeps them on disk (`fast.pt`, `fast.json`) every few lessons.
 
 On the held-out lessons a paired sign test watches the fast copy: once the slow version reads them better with e-value ≥ 20, the fast copy starts again from it. Lessons are listed per person (`GET /api/tadrib/lessons`) and can be taken back (`DELETE /api/tadrib/lessons/{digest}`).

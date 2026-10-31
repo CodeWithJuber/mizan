@@ -499,6 +499,16 @@ def load_final(folder: Path) -> tuple[Speaker, Any]:
     return model, codec
 
 
+def default_device() -> str:
+    """CUDA, then Apple silicon's GPU (Metal, ``mps``), then the CPU."""
+    if torch.cuda.is_available():
+        return "cuda"
+    metal = getattr(torch.backends, "mps", None)
+    if metal is not None and metal.is_available():
+        return "mps"
+    return "cpu"
+
+
 def train(
     shards: Path,
     out: Path,
@@ -518,7 +528,7 @@ def train(
     time it ends. Returns the report."""
     manifest = speaker.verify_shards(shards)
     model_config = Config.of(config)
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = device or default_device()
     torch.manual_seed(plan["seed"])
     model = Speaker(model_config).to(device)
     optimizer = _optimizer(model, plan, device)

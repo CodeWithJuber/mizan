@@ -223,6 +223,7 @@ end asks for the next term.
 - `ruling`: the question asks for a religious ruling, which a scholar gives
 - `deen`: the question is about the Quran, a hadith, belief or worship, so
   Ahl al-Dhikr asks only the user's own `ilm`, never Wikipedia or the web
+  (and Tadqiq, Talaqqi and Tadrib leave it alone). Its seeds are [below](#the-deen-facet-31-oct-2026)
 - `sarf`: the user asks for the root, wazn or part of speech of an Arabic word
   ([Sarf](sarf.md)); asked only when no request was decisive
 - `form`: the request asks for a form of answer MIZAN can count
@@ -329,7 +330,7 @@ that never saw it.
 | Facet `explain` | 2 | 40 | 90.0% |
 | Facet `fact` | 2 | 98 | 87.8% |
 | Facet `ruling` | 2 | 179 | 87.2% |
-| Facet `deen` | 2 | 110 | 88.2% |
+| Facet `deen` | 2 | 794 | 91.8% |
 | Facet `sarf` | 2 | 54 | 88.9% |
 | Facet `form` | 2 | 159 | 86.8% |
 
@@ -342,6 +343,36 @@ points on the earlier seeds (594 of 778 against 599). The trade is deliberate:
 the lost cases are capability questions now answered by Lisan in words, and
 the gained ones are questions that used to get the fixed tool list. With the
 `run_follow` and `quran_search` seeds too, the earlier seeds score 593 of 778.
+
+## The deen facet (31 Oct 2026)
+
+**What was wrong.** The facet had 110 seeds, and most of its few Devanagari and Arabic-script seeds were about the deen, so the script itself became evidence. Measured with `scripts/facet_eval.py` on MASSIVE 1.1 everyday requests (300 per language, never seeds):
+- **Everyday requests read as about the deen:** Hindi 72%, Urdu 61%. "क्या अभी बारिश हो रही है" ("is it raining now") was one of them, and such questions were never asked of Wikipedia.
+- **Quran and hadith requests missed:** only 63% of Qasd's own Roman and English ones were read as about the deen.
+- **Worship and belief questions missed:** 32% Roman, 80% Devanagari, 25% Urdu/Arabic.
+
+**What was added** (`scripts/facet_eval.py --write 40`; 683 rows):
+- **About the deen (yes):** half of Qasd's own Quran and hadith request seeds (by SHA-256; the other half is held out).
+- **Not about the deen (no):** half of Qasd's seeds for MIZAN's own actions (computing, programs, searches, pages, in every script, Roman Hindi/Urdu included).
+- **Not about the deen (no):** 40 everyday requests per language from MASSIVE 1.1 train (en, hi, ur; CC BY 4.0, written by people).
+- **About the deen (yes):** 143 questions about worship and belief in five scripts (`scripts/data/facet_deen_written.tsv`). Questions only, no Quran text. Since the seeds held almost none, they were **written by a language model at the owner's request** and are marked as such. Their held-out counterparts (`scripts/data/facet_deen_heldout.tsv`) were written first and are never seeds.
+
+**The owner's decision: deen safety first.** Reading a question about the deen as worldly would send it to Wikipedia. Reading an everyday question as about the deen only keeps it to the person's `ilm`. Where the two pulled apart, recall on the deen came first.
+
+| Read as about the deen (held out) | Before | After |
+|---|---|---|
+| Everyday commands, MASSIVE test: en / hi / ur | 0.3% / 72% / 61% | 0.7% / 2.3% / 3.7% |
+| Everyday questions, MASSIVE test (qa, cooking, recommendations): en / hi / ur | 2.3% / 76% / 62% | 2.7% / 7.7% / 19% |
+| Qasd's held-out action requests: Latin / Devanagari / Arabic script | 8% / 44% / 45% | 0.4% / 11% / 25% |
+| Held-out everyday questions written for the test: Latin / Devanagari / Arabic script | 6% / 83% / 12.5% (16 / 6 / 8) | 25% / 17% / 50% |
+| **Recall**, held-out Quran/hadith requests: Latin / Devanagari / Arabic script | 63% / 100% / 88% (71 / 8 / 17) | 99% / 87.5% / 100% |
+| **Recall**, held-out worship and belief questions: Latin / Devanagari / Arabic script | 32% / 80% / 25% (19 / 10 / 16) | 79% / 80% / 94% |
+
+- **Ta'lim's check** on the facet's own earlier seeds kept the batch: "yes" 0.83 → 0.90, "no" 0.91 → 0.82.
+- **Measured and not chosen:**
+  - Everyday "no" rows alone removed every false positive, but Hindi recall fell 100% → 0%.
+  - Adding MASSIVE's everyday questions as well lowered Urdu false positives (19% → 2%), but Devanagari worship recall fell to 40–50%.
+- **What is left.** Everyday "how do I…" questions in Roman Hindi and Urdu ("Chai banane ka tareeqa kya hai?") still read as about the deen 25–50% of the time on small sets. The `ruling` facet is unchanged: every "no" count tried lowered its recall.
 
 ## What is still written by hand, and why
 

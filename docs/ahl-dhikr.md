@@ -50,7 +50,10 @@ quotes the Quran and hadith from their own sources, and a ruling is a
 scholar's. A question counts as being about the deen when any of these holds:
 - Qasd's `deen` facet says so (the Quran, a hadith, belief, worship, a word of
   the Quran). This is a yes/no model learned from seeds in five languages;
-  "When did the Ottoman Empire end?" is not about the deen;
+  "When did the Ottoman Empire end?" is not about the deen. Until 31 Oct 2026 it
+  read 72% of everyday Hindi and 61% of everyday Urdu requests as about the deen
+  by their script alone, so their claims were never asked of Wikipedia; its
+  seeds were rebuilt with the deen's recall first ([fahm.md](fahm.md#the-deen-facet-31-oct-2026));
 - the `ruling` facet says so;
 - the answer cites a Quran or hadith reference (`2:153`, `Sahih al-Bukhari 1`).
 
