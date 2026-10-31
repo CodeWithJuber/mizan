@@ -348,5 +348,7 @@ def test_micro_batches_take_the_same_step_with_less_memory(installed):
     for learner in (whole, split):
         for text in WORDS[:3]:
             learner.learn(text, 0, ruh_reader.text_digest(text))
-    for a, b in zip(whole.fast.state_dict().values(), split.fast.state_dict().values(), strict=True):
+    for a, b in zip(
+        whole.fast.state_dict().values(), split.fast.state_dict().values(), strict=True
+    ):
         assert torch.allclose(a, b, atol=1e-5)
