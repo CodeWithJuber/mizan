@@ -538,11 +538,12 @@ def test_the_corpus_records_its_sources_and_never_holds_what_is_held_out(tmp_pat
     assert set(sources) == {"tatoeba-eng", "tatoeba-ara", "massive", "hinglish-1m"}
     assert sources["massive"]["licence"].startswith("CC BY 4.0")
     assert sources["hinglish-1m"]["licence"].startswith("MIT")
+    assert sources["hinglish-1m"]["trained_on"] is False  # GPT-4o-mini wrote it: measured only
     assert sources["tatoeba-eng"]["licence"].startswith("CC BY 2.0 FR")
     assert all(len(item["sha256"]) == 64 for item in sources.values())
     assert manifest["seeds_sha256"] == ruh_reader.corpus_digest(ruh_reader.seeds())
     rows = (out / "train.tsv").read_text(encoding="utf-8").splitlines()
-    assert rows and all(row.split(":")[0] in {"tatoeba", "massive", "hinglish-1m"} for row in rows)
+    assert rows and all(row.split(":")[0] in {"tatoeba", "massive"} for row in rows)
     found = corpus.load(out)
     assert found is not None
     texts = {text for text, _label in found.train}
@@ -1140,3 +1141,326 @@ def test_test3_calibrates_with_the_rule_and_gates_on_the_fresh_slice(
     assert found["v11_gate_half"]["check"]["n"] == 2
     assert found["adopted"] == (found["gate"]["adopted"] and found["fit"]["b"] > 0)
     assert any(line.startswith("GATE") for line in evaluation.validation_table(found))
+
+
+# ── v2: no model-written text; FineWeb-2 Roman Hindi/Urdu ────────────────
+
+
+def test_model_written_text_is_never_a_training_source():
+    from tadbir.ruh_reader import corpus, speaker
+
+    names = {source.name for source in corpus.SOURCES}
+    assert "hinglish-1m" not in names and corpus.MODEL_WRITTEN == {"hinglish-1m"}
+    assert corpus.HINGLISH_1M in corpus.MEASURED and "GPT-4o-mini" in corpus.HINGLISH_1M.licence
+    assert any("Hinglish" in name for name in speaker.REJECTED)
+    assert {"fineweb-2-hin_Latn", "fineweb-2-urd_Latn"} <= names
+    pinned = {item.name: item.files[0][1] for item in speaker.SOURCES if item.kind == "parquet"}
+    for name in corpus.FINEWEB_LATIN:  # pinned in one place: where the speaker pins them
+        source = next(item for item in corpus.SOURCES if item.name == name)
+        assert source.sha256 == pinned[name] and speaker.FINEWEB_2 in source.url
+    assert corpus.model_written("hinglish-1m:12:input")
+    assert not corpus.model_written("fineweb-2-hin_Latn:<urn:uuid:1>:0")
+    written = ruh_reader.written_by_a_model()
+    roman = (lughah.CORPUS / "hi-latn.tsv").read_text(encoding="utf-8").splitlines()
+    from_model = [row.partition("\t")[2] for row in roman if row.startswith("hinglish-1m:")]
+    assert from_model and all(ruh_reader.group_of(text) in written for text in from_model)
+    kept = ruh_reader.trainable([(row.partition("\t")[2], "hi-latn") for row in roman])
+    assert kept and all(ruh_reader.group_of(text) not in written for text, _label in kept)
+
+
+def test_model_written_seeds_never_reach_the_loss_nor_the_development_set(reader_home, few_seeds):
+    pytest.importorskip("torch")
+    written = ruh_reader.written_by_a_model()
+    assert any(ruh_reader.group_of(text) in written for text, _l in few_seeds)
+    rows: set[bytes] = set()
+
+    def hook(labels, mask):
+        for row, keep in zip(labels.tolist(), mask.tolist(), strict=True):
+            rows.add(bytes(t for t, k in zip(row, keep, strict=True) if k and t < 256))
+
+    built = ruh_reader.build(
+        0,
+        config=TINY,
+        plan={"epochs": 1, "seconds": 30, "batch": 8},
+        loss_hook=hook,
+        calibrate=False,
+        log=lambda _line: None,
+    )
+    context = TINY["context"]
+    for text, _label in few_seeds:
+        if ruh_reader.group_of(text) in written:
+            assert ruh_reader.reading(text).encode()[:context] not in rows
+    assert built.manifest["model_written_left_out"]["train"] > 0
+    assert not any(read.group in written for read in built.dev)
+    assert any(read.group in written for read in built.held_out)  # measured, reported only
+
+
+def test_an_older_corpus_never_trains_its_model_written_lines(tmp_path):
+    import hashlib
+
+    from tadbir.ruh_reader import corpus
+
+    train = (
+        "tatoeba:1\ten\tThe river runs past the old mill.\n"
+        "hinglish-1m:5:input\thi-latn\tkal milte hain yaar\n"
+    )
+    short = "massive:en-US:2\ten\tmassive:2\twake me up at seven\n"
+    manifest = {
+        "seeds_sha256": ruh_reader.corpus_digest(ruh_reader.seeds()),
+        "train": {"sha256": hashlib.sha256(train.encode()).hexdigest()},
+        "short": {"sha256": hashlib.sha256(short.encode()).hexdigest()},
+    }
+    (tmp_path / "train.tsv").write_text(train, encoding="utf-8")
+    (tmp_path / "short.tsv").write_text(short, encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    found = corpus.load(tmp_path)
+    assert found is not None
+    assert found.train == [("The river runs past the old mill.", "en")]
+    assert found.written == [("kal milte hain yaar", "hi-latn")]
+
+
+def test_a_web_document_is_cut_into_short_lines():
+    from tadbir.ruh_reader import corpus
+
+    long = " ".join(f"shabd{n}" for n in range(80))
+    found = corpus.lines_of(f"Yeh pehli line hai. Aur doosri?\n\n  \n{long}")
+    assert found[:2] == ["Yeh pehli line hai.", "Aur doosri?"]
+    rest = found[2:]
+    assert len(rest) > 1 and " ".join(rest) == long
+    assert all(len(ruh_reader.reading(line).encode()) <= corpus.MAX_BYTES for line in rest)
+    sizes = [len(line.split()) for line in rest]
+    assert max(sizes) - min(sizes) <= 1  # the fewest equal runs
+
+
+def _fineweb_rows(texts: dict[str, str], held: bool) -> list[tuple[str, str]]:
+    """(id, text) rows whose documents are (or are not) held out by v2's rule."""
+    from tadbir.ruh_reader import corpus
+
+    rows, n = [], 0
+    for text in texts.values():
+        while True:
+            n += 1
+            identifier = f"<urn:uuid:{n}>"
+            if corpus.held_document(f"fineweb-2-hin_Latn:{identifier}") == held:
+                rows.append((identifier, text))
+                break
+    return rows
+
+
+def test_fineweb_lines_pass_every_rule_the_other_sources_pass(tmp_path, monkeypatch):
+    from tadbir.ruh_reader import corpus
+
+    monkeypatch.setenv("MIZAN_TALIM", "off")
+    monkeypatch.setattr(corpus, "KEEP", {})  # every document of the small fake files
+    seed = next(t for t, label in ruh_reader.seeds() if label == "hi-latn" and len(t.split()) > 3)
+    measured = "kal subah saat baje uthana hai"
+    documents = {
+        "ordinary": "Aaj mausam bahut accha hai.\nHum kal bazaar jayenge.\nYeh lamba din tha.",
+        "with a seed": f"Pehli baat yeh hai.\n{seed}",
+        "with the quran": "Yeh ek dua hai.\n" + _quote() + "\nIska matlab samjho.",
+        "measured": f"{measured.upper()}!\nkal subah saat baje uthana hain\nBaaki sab theek hai.",
+        "other script": "Hindi mein likha hai.\nयह देवनागरी में लिखा है।",
+        "long": "\n".join(f"line number {_word(n)} hai" for n in range(40)),
+        "twice": "Aaj mausam bahut accha hai.\nNaya din hai yaar.",
+    }
+    trained = _fineweb_rows(documents, held=False)
+    held = _fineweb_rows({"held": "Yeh document kabhi seekha nahi jayega."}, held=True)
+    paths = _fake_sources(
+        tmp_path,
+        tatoeba={"eng": [("900000010", "The library opens early on weekdays.")]},
+        massive={"en-US": [{"id": "1", "partition": "train", "utt": "set an alarm for six"}]},
+        hinglish=[(f"kal milte hain {_word(n)}", f"haan yaar {_word(n)}") for n in range(30)],
+    )
+    paths["fineweb-2-hin_Latn"] = tmp_path / "fineweb.parquet"  # read through rows_of
+    paths["fineweb-2-hin_Latn"].write_bytes(b"")
+    out = tmp_path / "corpus"
+    manifest = corpus.build(
+        paths=paths,
+        out=out,
+        scripture=ruh_reader.scripture,
+        measured=[measured],
+        rows_of=lambda _path: [*trained, *held],
+        hinglish_count=10,
+        log=lambda _line: None,
+    )
+    found = corpus.load(out)
+    assert found is not None and not found.written
+    assert "hinglish-1m" not in (out / "train.tsv").read_text(encoding="utf-8")
+    texts = {text for text, label in found.train if label == "hi-latn"}
+    assert {"Aaj mausam bahut accha hai.", "Hum kal bazaar jayenge.", "Naya din hai yaar."} <= texts
+    assert not any("kabhi seekha" in text for text in texts)  # a held-out document
+    assert not any("dua" in text or "matlab" in text for text in texts)  # the Quran's document
+    assert seed not in texts and "Pehli baat yeh hai." in texts
+    assert not any("saat baje" in text for text in texts)  # measured, and near it
+    assert "Baaki sab theek hai." in texts
+    assert "Hindi mein likha hai." in texts and not any("देवनागरी" in t for t in texts)
+    assert sum(1 for text in texts if text.startswith("line number")) == corpus.PER_DOCUMENT
+    dropped = manifest["dropped"]["fineweb-2-hin_Latn"]
+    assert dropped["duplicate"] == 1 and dropped["seed words"] == 1
+    assert dropped["held out here"] == 1 and dropped["near a measured message"] == 1
+    # The ayah's own line is not Latin (the script rule), yet its document is
+    # read whole for scripture: the lines around it are never trained on.
+    assert dropped["script"] >= 2 and dropped["document holds scripture or hadith"] == 2
+    roman_short = [text for text, label, _group in found.short if label == "hi-latn"]
+    assert roman_short and all(text.startswith(("kal", "haan")) for text in roman_short)
+    assert manifest["measured"]["messages"] == 1
+
+
+def test_a_document_holding_hadith_gives_no_line(tmp_path, monkeypatch):
+    from tadbir.ruh_reader import corpus, speaker
+
+    monkeypatch.setenv("MIZAN_TALIM", "off")
+    monkeypatch.setattr(corpus, "KEEP", {})
+    narration = "actions are judged by intentions and every person will get what they intended"
+    documents = {
+        "narrated": "Yeh ek kahani hai.\nPeople say " + narration + " always.",
+        "ordinary": "Aaj mausam bahut accha hai.",
+    }
+    paths = _fake_sources(
+        tmp_path,
+        tatoeba={"eng": [("900000010", "The library opens early on weekdays.")]},
+        massive={"en-US": [{"id": "1", "partition": "train", "utt": "set an alarm for six"}]},
+        hinglish=[],
+    )
+    paths["fineweb-2-hin_Latn"] = tmp_path / "fineweb.parquet"
+    paths["fineweb-2-hin_Latn"].write_bytes(b"")
+    corpus.build(
+        paths=paths,
+        out=tmp_path / "corpus",
+        scripture=ruh_reader.scripture,
+        hadith=speaker.Hadith(english=[narration]),
+        rows_of=lambda _path: _fineweb_rows(documents, held=False),
+        log=lambda _line: None,
+    )
+    found = corpus.load(tmp_path / "corpus")
+    assert found is not None
+    assert {text for text, label in found.train if label == "hi-latn"} == {
+        "Aaj mausam bahut accha hai."
+    }
+
+
+def _v2_rule(text: str) -> bool:
+    return "kya" in text or "ghar" in text
+
+
+def test_v2_slices_take_a_third_of_each_half_from_each_roman_source():
+    from tadbir.ruh_reader import corpus
+
+    english = [
+        corpus.Line(f"banking77:train:{n}", "en", f"where is my new card {_word(n)}", "train")
+        for n in range(90)
+    ]
+    roman = {
+        "dakshina": [
+            corpus.Line(f"dakshina:hi:dev:{n}", "hi-latn", f"yah ek gaon hai {_word(n)}", "dev")
+            for n in range(80)
+        ],
+        "phinc": [
+            corpus.Line(
+                f"phinc:{n}", "hi-latn", f"{'kya baat' if n % 2 else 'so true'} {_word(n)}", "t"
+            )
+            for n in range(80)
+        ],
+        "fineweb-2": [
+            corpus.Line(
+                f"fineweb-2-hin_Latn:<d{n // 5}>:{n % 5}",
+                "hi-latn",
+                f"mera ghar {_word(n)}",
+                "held",
+            )
+            for n in range(200)
+        ],
+    }
+    labelled = [roman["phinc"][1], roman["fineweb-2"][0]]
+    seen = {ruh_reader.group_of(english[0].text)}
+    rows = corpus.pick_v2(english, roman, seen, (), labelled, rule=_v2_rule)
+    again = corpus.pick_v2(list(reversed(english)), roman, seen, (), labelled, rule=_v2_rule)
+    assert [(line.source, part) for line, _g, _w, part in rows] == [
+        (line.source, part) for line, _g, _w, part in again
+    ]
+    counted = [(line, group, where) for line, group, where, part in rows if part == "in"]
+    english_rows = [item for item in counted if item[0].label == "en"]
+    assert len(english_rows) == 89  # the seen query is left out
+    for name in corpus.HALVES:
+        cap = -(-sum(1 for _l, _g, w in english_rows if w == name) // 3)
+        for source in ("dakshina", "phinc", "fineweb-2"):
+            have = [
+                line for line, _g, w in counted if w == name and corpus._source_of(line) == source
+            ]
+            assert 0 < len(have) <= cap
+    for line, group, where, part in rows:
+        assert group == corpus.unit_of(line) and where == corpus.v2_half(group)
+        if corpus._source_of(line) == "phinc":
+            assert (part == "in") == ("kya" in line.text)
+    documents = [group for _line, group, _w, _p in rows if group.startswith("fineweb")]
+    assert max(documents.count(name) for name in set(documents)) <= corpus.V2_PER_DOCUMENT
+    left_out = {corpus.unit_of(line) for line in labelled}
+    assert not left_out & {group for _l, group, _w, _p in rows}
+    sample = corpus.v2_label_sample(roman, seen, ())
+    assert {line.origin for line in sample} <= {"phinc", "fineweb-2-hin_Latn"}
+    assert len({corpus.unit_of(line) for line in sample}) == len(sample)
+
+
+def test_v2_calibrates_on_one_half_and_gates_on_the_other(reader_home, few_seeds):
+    pytest.importorskip("torch")
+    evaluation = _eval_script()
+    built = ruh_reader.build(
+        0,
+        config=TINY,
+        plan={"epochs": 1, "seconds": 30, "batch": 8},
+        calibrate=False,
+        log=lambda _line: None,
+    )
+    languages = built.manifest["languages"]
+
+    def row(text, label, group, source):
+        return {"text": text, "label": label, "group": group, "source": source}
+
+    calibration = [
+        row("where is my new card", "en", "banking77:train:1", "banking77"),
+        row("kal subah jaldi uthana hai", "hi-latn", "phinc:1", "phinc"),
+        row("yah ek chhota gaon hai", "hi-latn", "dakshina:hi:dev:1", "dakshina"),
+    ]
+    gate = [
+        row("how do i top up my card", "en", "banking77:test:2", "banking77"),
+        row(
+            "mera ghar yahan se door hai",
+            "hi-latn",
+            "fineweb-2-hin_Latn:<d1>",
+            "fineweb-2-hin_Latn",
+        ),
+        row(
+            "woh bahut accha aadmi hai", "hi-latn", "fineweb-2-hin_Latn:<d1>", "fineweb-2-hin_Latn"
+        ),
+    ]
+    sets = {
+        "calibration in": evaluation.read_rows(built, calibration, languages),
+        "gate in": evaluation.read_rows(built, gate, languages),
+        "gate rule": evaluation.read_rows(
+            built, [row("did you watch the match", "hi-latn", "phinc:9", "phinc")], languages
+        ),
+        "seeds held out": (built.held_out, ["seeds"] * len(built.held_out)),
+    }
+    assert sets["gate in"][1] == ["banking77", "fineweb-2", "fineweb-2"]
+    development = ruh_reader.Fit(**built.manifest["fit"])
+    found = evaluation.measure_v2(built.model, development, sets, languages, test=1)
+    expected = ruh_reader.fit_on(sets["calibration in"][0], development.ref, development.gamma)
+    assert found["fit"] == expected.to_dict()
+    assert found["gate"]["n"] == 3 and found["gate"]["groups"] == 2  # a document is one group
+    assert found["gate"]["needed"] == pytest.approx(40)
+    assert set(found["gate_parts"]) == {"banking77", "fineweb-2", "Roman Hindi/Urdu"}
+    assert found["reported"]["gate rule"]["check"]["n"] == 1
+    assert len(found.pop("gate_combined")) == 3
+    assert any(line.startswith("GATE") for line in evaluation.v2_table(found, "v2"))
+
+
+def test_the_v2_rule_asks_two_hindi_or_urdu_words(monkeypatch):
+    from tadbir import qamus
+    from tadbir.ruh_reader import corpus
+
+    monkeypatch.setattr(qamus, "read_roman", lambda word: word in {"kya", "hai", "yaar"})
+    assert corpus.roman_words("kya baat hai")
+    assert corpus.roman_words("kya baat hai", corpus.V2_LEAST)
+    assert corpus.roman_words("my bank kya", 1)
+    assert not corpus.roman_words("my bank kya", corpus.V2_LEAST)
+    assert not corpus.roman_words("kya kya kya", corpus.V2_LEAST)  # distinct words

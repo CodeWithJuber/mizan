@@ -58,6 +58,7 @@ import os
 import resource
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
@@ -303,6 +304,230 @@ def test3(built, halves, fresh, languages, test: int | None = None) -> dict:
         "check": paired(halves["gate"], fit, k),
     }
     return found
+
+
+V2_PARTS = ("banking77", "dakshina", "phinc", "fineweb-2")
+
+
+def _source(name: str) -> str:
+    return "fineweb-2" if name.startswith("fineweb-2") else name
+
+
+def read_rows(built, rows, languages) -> tuple[list, list[str]]:
+    """Rows (dicts with text, label, group, source) read by the held-out
+    Lughah, each read in its row's group; and each row's source."""
+    from tadbir import ruh_reader
+
+    chosen = [row for row in rows if row["label"] in languages]
+    reads = ruh_reader.read_with_lughah(
+        [(row["text"], row["label"]) for row in chosen], languages, built.lughah, ()
+    )
+    for read, row in zip(reads, chosen, strict=True):
+        read.group = row["group"]
+    return reads, [_source(row.get("source", "")) for row in chosen]
+
+
+def v2_sets(built, rows, old: Path, languages) -> dict:
+    """Everything v2 is read on: its calibration and gate halves (counted
+    rows, and the rows the rule left out), and the old slices: the seeds'
+    held-out groups, v1's short slice, v1.1's gate half, test 3's gate slice."""
+    from tadbir.ruh_reader import corpus
+
+    sets: dict = {}
+    for half in ("calibration", "gate"):
+        for part in ("in", "rule"):
+            picked = [row for row in rows if row["half"] == half and row["part"] == part]
+            sets[f"{half} {part}"] = read_rows(built, picked, languages)
+    validation = corpus.load_validation(old) or []
+    sets["v1.1 gate half"] = read_rows(
+        built,
+        [
+            {"text": t, "label": lab, "group": g, "source": "v1.1"}
+            for t, lab, g, h in validation
+            if h == "gate"
+        ],
+        languages,
+    )
+    fresh = corpus.load_fresh(old) or []
+    sets["test 3 gate slice"] = read_rows(
+        built,
+        [
+            {
+                "text": t,
+                "label": lab,
+                "group": g,
+                "source": "clinc150" if lab == "en" else "hinglish-1m",
+            }
+            for t, lab, g, p in fresh
+            if p == "gate"
+        ],
+        languages,
+    )
+    sets["seeds held out"] = (built.held_out, ["seeds"] * len(built.held_out))
+    sets["v1 short slice"] = (
+        built.short,
+        ["massive" if r.group.startswith("massive:") else "hinglish-1m" for r in built.short],
+    )
+    return sets
+
+
+def _by_source(reads, sources, fit, languages, everything: str) -> dict:
+    """short_slices by source, every arm with the shipped Lughah's."""
+    from tadbir import ruh_reader
+
+    chosen = {everything: lambda i: True}
+    for name in dict.fromkeys(sources):
+        chosen[name] = lambda i, name=name: sources[i] == name
+    if any(languages[r.truth] == "hi-latn" for r in reads) and len(set(sources)) > 1:
+        chosen["Roman Hindi/Urdu"] = lambda i: languages[reads[i].truth] == "hi-latn"
+    shipped = shipped_arms(reads, fit, languages)
+    found = {}
+    for name, keep in chosen.items():
+        index = [i for i in range(len(reads)) if keep(i)]
+        if not index:
+            continue
+        picked = [reads[i] for i in index]
+        arms_ = ruh_reader.arms(picked, fit)
+        arms_.update({arm: [values[i] for i in index] for arm, values in shipped.items()})
+        found[name] = {arm: _metrics(picked, values) for arm, values in arms_.items()}
+    return found
+
+
+def _paired_by_source(reads, sources, fit, test, languages) -> dict:
+    found = {}
+    names = list(dict.fromkeys(sources))
+    if len(names) > 1 and any(languages[r.truth] == "hi-latn" for r in reads):
+        names.append("Roman Hindi/Urdu")
+    for name in names:
+        picked = [
+            r
+            for r, s in zip(reads, sources, strict=True)
+            if s == name or (name == "Roman Hindi/Urdu" and languages[r.truth] == "hi-latn")
+        ]
+        if picked:
+            found[name] = paired(picked, fit, test)
+    return found
+
+
+def _bpb_by_source(reads, sources) -> dict:
+    import math
+
+    nats: dict[str, float] = {}
+    count: dict[str, int] = {}
+    for read, name in zip(reads, sources, strict=True):
+        if read.own and read.lm:
+            nats[name] = nats.get(name, 0.0) - read.lm[read.truth]
+            count[name] = count.get(name, 0) + read.tokens
+    return {name: round(nats[name] / count[name] / math.log(2), 4) for name in nats}
+
+
+def measure_v2(model, development, sets, languages, test: int = 1) -> dict:
+    """One reader on every set: κ and b calibrated on v2's calibration half
+    (γ and ñ held at ``development``, its development fit), the gate on v2's
+    gate half as the ``test``-th test, everything else reported."""
+    from tadbir import ruh_reader
+
+    every = [read for reads, _sources in sets.values() for read in reads]
+    ruh_reader.score_reads(model, every, languages)
+    calibration, _ = sets["calibration in"]
+    gated, sources = sets["gate in"]
+    fit = ruh_reader.fit_on(calibration, development.ref, gamma=development.gamma)
+    verdict = paired(gated, fit, test)
+    found = {
+        "test": test,
+        "development_fit": development.to_dict(),
+        "fit": fit.to_dict(),
+        "sizes": {
+            name: {
+                "n": len(reads),
+                "groups": len({r.group for r in reads}),
+                "per_source": dict(Counter(srcs)),
+            }
+            for name, (reads, srcs) in sets.items()
+        },
+        "gate": verdict,
+        "adopted": verdict["adopted"] and fit.b > 0,
+        "gate_slices": _by_source(gated, sources, fit, languages, "gate half"),
+        "gate_parts": _paired_by_source(gated, sources, fit, test, languages),
+        "gate_shipped": short_check(gated, fit, languages, test)["shipped Lughah"],
+        "gate_errors": errors(gated, fit, languages),
+        "gate_bpb": _bpb_by_source(gated, sources),
+        "gate_development_fit": {
+            "slices": _by_source(gated, sources, development, languages, "gate half"),
+            "check": paired(gated, development, test),
+        },
+        "calibration_slices": _by_source(
+            calibration, sets["calibration in"][1], fit, languages, "calibration half (in sample)"
+        ),
+        "reported": {},
+        "gate_combined": [r.combined(fit) for r in gated],  # for the head-to-head
+    }
+    for name in (
+        "gate rule",
+        "seeds held out",
+        "v1 short slice",
+        "v1.1 gate half",
+        "test 3 gate slice",
+    ):
+        reads, srcs = sets.get(name, ([], []))
+        if not reads:
+            continue
+        found["reported"][name] = {
+            "slices": _by_source(reads, srcs, fit, languages, name),
+            "check": paired(reads, fit, test),
+            "parts": _paired_by_source(reads, srcs, fit, test, languages),
+            "errors": errors(reads, fit, languages, shipped=name != "seeds held out"),
+            "bpb": _bpb_by_source(reads, srcs),
+        }
+    return found
+
+
+def v1_reader(weights: Path, development: Path):
+    """v1's kept weights and its development fit (the eval's JSON of v1)."""
+    from tadbir import ruh_reader
+    from tadbir.ruh_reader import net
+
+    model = net.load(weights)
+    data = json.loads(development.read_text(encoding="utf-8"))
+    manifest = next(iter(data.values()))["manifest"]
+    return model, ruh_reader.Fit(**manifest["fit"])
+
+
+def v2_table(found: dict, name: str) -> list[str]:
+    shown = ("lughah", "reader", "combined", "lughah (shipped)", "shipped × reader")
+    lines = [
+        f"\n### {name} (test {found['test']})",
+        "development fit: "
+        + json.dumps({k: round(v, 4) for k, v in found["development_fit"].items()}),
+        "calibrated fit: " + json.dumps({k: round(v, 4) for k, v in found["fit"].items()}),
+        _check_line("GATE", found["gate"]) + f"; b > 0: {found['fit']['b'] > 0}",
+        f"adopted: {found['adopted']}",
+    ]
+    lines += _table(found["gate_slices"], shown)
+    for part, check in found["gate_parts"].items():
+        lines.append(_check_line(f"gate half, {part} (reported)", check))
+    lines.append(_check_line("gate half, shipped Lughah (reported)", found["gate_shipped"]))
+    lines.append(f"gate half bits per byte: {json.dumps(found['gate_bpb'])}")
+    for arm, counted in found["gate_errors"].items():
+        lines.append(f"mistakes on the gate half, {arm}: {json.dumps(counted)}")
+    lines.append("\ngate half under the development fit (reported):")
+    lines += _table(found["gate_development_fit"]["slices"], shown)
+    lines.append(
+        _check_line("development fit on the gate half", found["gate_development_fit"]["check"])
+    )
+    lines.append("\ncalibration half (in sample):")
+    lines += _table(found["calibration_slices"], shown)
+    for name, item in found["reported"].items():
+        lines.append(f"\n{name} under the calibrated fit (reported):")
+        arms_shown = shown if name != "seeds held out" else ("lughah", "reader", "combined")
+        lines += _table(item["slices"], arms_shown)
+        lines.append(_check_line(name, item["check"]))
+        for part, check in item["parts"].items():
+            lines.append(_check_line(f"{name}, {part}", check))
+        lines.append(f"{name} bits per byte: {json.dumps(item['bpb'])}")
+        for arm, counted in item["errors"].items():
+            lines.append(f"mistakes on {name}, {arm}: {json.dumps(counted)}")
+    return lines
 
 
 def latency(model, languages) -> dict:
@@ -576,6 +801,24 @@ def main() -> None:
     parser.add_argument(
         "--test", type=int, help="the k-th test of this reader (default: its tests + 1)"
     )
+    parser.add_argument(
+        "--v2",
+        type=Path,
+        metavar="OLD",
+        help="v2: calibrate on v2's calibration half and gate on its gate half (needs --corpus, "
+        "v2's corpus with v2.tsv); OLD is v1's corpus folder with the old slices, reported",
+    )
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        metavar="V1_WEIGHTS",
+        help="with --v2: also read v1's kept weights (reader-seedN.trained.pt here) on the same "
+        "slices, calibrated the same way (reported, not a test of v1); needs --compare-fit",
+    )
+    parser.add_argument(
+        "--compare-fit",
+        help="v1's eval JSON with its development fit; {seed} is replaced by the seed",
+    )
     args = parser.parse_args()
     os.environ.setdefault("MIZAN_TALIM", "off")  # the shipped seeds only
 
@@ -629,6 +872,30 @@ def main() -> None:
             "errors": errors(built.held_out, fit, languages, shipped=False),
         }
         measure_short(found, built.short, fit, languages)
+        if args.v2 is not None:
+            v2_rows = reader_corpus.load_v2(Path(args.corpus) if args.corpus else None)
+            if v2_rows is None:
+                raise SystemExit("no v2 slices: build them with python -m tadbir.ruh_reader --v2")
+            found["latency"] = latency(built.model, languages)
+            found["int8"] = int8_agreement(built.model, built.held_out, fit, languages)
+            sets = v2_sets(built, v2_rows, args.v2, languages)
+            k = args.test or 1
+            found["v2"] = measure_v2(built.model, fit, sets, languages, k)
+            mine = found["v2"].pop("gate_combined")
+            print("\n".join(v2_table(found["v2"], f"seed {seed}: v2")), flush=True)
+            if args.compare is not None:
+                v1_model, v1_fit = v1_reader(
+                    args.compare / f"reader-seed{seed}.trained.pt",
+                    Path(str(args.compare_fit).format(seed=seed)),
+                )
+                found["v1_same_slices"] = measure_v2(v1_model, v1_fit, sets, languages, k)
+                theirs = found["v1_same_slices"].pop("gate_combined")
+                gated = sets["gate in"][0]
+                found["v2_against_v1"] = ruh_reader.gate(
+                    [r.truth for r in gated], [r.group for r in gated], theirs, mine, k
+                )
+                print("\n".join(v2_table(found["v1_same_slices"], f"seed {seed}: v1, same slices")))
+                print(_check_line("v2's product against v1's (reported)", found["v2_against_v1"]))
         if held_back is not None:
             halves = validation_reads(built, held_back, languages)
             if fresh_rows is not None:
@@ -636,8 +903,9 @@ def main() -> None:
                 found["validation"] = test3(built, halves, fresh, languages, args.test)
             else:
                 found["validation"] = validate(built, halves, languages, args.test)
-        found["latency"] = latency(built.model, languages)
-        found["int8"] = int8_agreement(built.model, built.held_out, fit, languages)
+        if args.v2 is None:
+            found["latency"] = latency(built.model, languages)
+            found["int8"] = int8_agreement(built.model, built.held_out, fit, languages)
         found["wall_seconds"] = round(time.monotonic() - began, 1)
         found["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
         results[f"seed {seed}"] = found
