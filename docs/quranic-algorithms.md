@@ -100,9 +100,47 @@ The light fit came closer to the truth than the optimizer on these logs. It move
 
 **Limits.**
 - **The outcomes are not recall tests.** A use is always Good: a memory MIZAN failed to bring up is never observed as a failure. A repeat is graded Again only when R under the parameters in use had fallen below 0.9.
-- **What a fit therefore learns.** It learns partly when MIZAN uses memories and how it grades repeats, not only how people forget. The held-out test is graded the same way, so it cannot tell these apart. This is why fits are shadow by default: a fit adopted on such a log would partly confirm its own threshold. A grade read independently of the parameters (for example, whether a memory that a later request needed was brought up at all) would make the test about forgetting, and then `apply` can be the default.
+- **What a fit therefore learns.** It learns partly when MIZAN uses memories and how it grades repeats, not only how people forget. The held-out test is graded the same way, so it cannot tell these apart. This is why fits are shadow by default: a fit adopted on such a log would partly confirm its own threshold. The need test below reads the same log by a label the parameters did not write.
 - **What is kept for later.** The `kind` column keeps first writings, uses and repeats apart, so this can be revisited.
 - **Not per material.** Parameters are fitted per memory database, not per kind of material.
+
+### A second test: when each memory was needed (`tadhkir.need_test`)
+
+A memory is **needed** when the person's request or MIZAN's answer holds it: it was recalled and used (`use`), or the person said it again (`repeat`). *When* that happened is the person's doing. Only its grade (Good or Again) was written by the parameters in use, and this test does not read the grade.
+
+**The model.** The rational analysis of memory (Anderson & Schooler 1991, "Reflections of the environment in memory", *Psychological Science* 2:396) found that the odds an item is needed fall with the time since it was last needed, as human recall does. So R(u) is read as the shape of that need:
+- **The rate.** A memory last needed u days ago is needed again at the rate λ·R(u). λ is the person's own rate, and each need is a Good review that moves S as FSRS does.
+- **The likelihood.** For the needs in a window, it is a point process with that intensity:
+
+$$\log L = \sum_j \log\big(\lambda R(u_j)\big) - \lambda \int R(u)\,du,$$
+
+  where the integral runs over the time each memory was held in the window.
+- **The integral.** It has a closed form, $\int_a^b (1+fu/S)^{d}\,du = \frac{S}{f(d+1)}\big[(1+fb/S)^{d+1}-(1+fa/S)^{d+1}\big]$.
+- **The best rate.** λ's best value is n / ∫R.
+
+**The test.**
+- **The challenger.** The earlier half of the needs fits a challenger over w1–w3, w8 and w20 (w11 plays no part: a need is never a lapse), by the same compass search.
+- **The e-value.** It is the likelihood of the later needs given everything before them: the challenger with the rate it fitted on the earlier half, over the parameters in use at the rate best for the later half itself. Giving the null its own best rate makes the test conservative (universal inference).
+- **The bar.** The k-th test needs E ≥ k(k+1)/α, with its own count of tests.
+- **What it does.** It runs every night beside the review test and is reported in the night's evaluation as `need`, with `would_adopt`. It never changes the parameters in use.
+
+**Measured** on logs drawn from the model itself (`tadhkir.simulate_needs`: 400 memories over 360 days, five seeds per row, parameters in use = FSRS's defaults):
+
+| Needs drawn from | Rate λ | Needs logged | Held-out log-likelihood per need: defaults → fitted (truth) | E (bar: 40) | Would adopt |
+|---|---|---|---|---|---|
+| a different person | 0.05 a day | 2,981–3,187 | −4.0812 → −4.0752 (−4.0742) | 2.6 – 4.3·10⁵ | 4 of 5 |
+| FSRS's defaults | 0.05 a day | 3,218–3,430 | −4.0392 → −4.0400 (−4.0392) | 0.050 – 0.63 | 0 of 5 |
+| a different person | 0.02 a day | 934–1,066 | −5.1928 → −5.1772 (−5.1703) | 2.8 – 1.7·10⁵ | 4 of 5 |
+| FSRS's defaults | 0.02 a day | 1,161–1,279 | −5.0567 → −5.0631 (−5.0567) | 0.00067 – 0.83 | 0 of 5 |
+
+- **It tells a different person's forgetting from the defaults' on most logs and was never fooled.** In 10 logs drawn from the defaults no fit would have been adopted, and the largest E was 0.83.
+- **The parameters themselves are poorly fixed.** A fit comes close to the truth's likelihood with values far from the truth's: when needs are this rare, few of their times say how fast a hold falls.
+- **When needs come often, it tells little.** At 0.3 a day, R stays near 1 between needs, and the test could not tell the two people apart (E < 1 for both).
+
+**Its own limit.**
+- **Unseen needs.** A need is observed only when MIZAN brought the memory up and the answer used it, or when the person said it again. A need recall missed and the person did not repeat is not seen, and recall ranks by R.
+- **Why it stays report-only.** The observation is therefore still partly MIZAN's doing, though much less than a grade.
+- **What `apply` should mean.** Once real logs show the two tests agreeing, it can adopt only fits that pass both.
 
 ### Statements in time: what is said later stands above, what was said stays
 
