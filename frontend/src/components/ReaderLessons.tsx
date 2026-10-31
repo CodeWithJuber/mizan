@@ -31,7 +31,11 @@ const LANGUAGES: Record<string, string> = {
 async function fetchLessons(from: number, signal?: AbortSignal): Promise<{ lessons: Lesson[]; total: number }> {
   const response = await authFetch(`${config.API_URL}/tadrib/lessons?limit=${PAGE}&offset=${from}`, { signal });
   if (!response.ok) throw new Error("unavailable");
-  return (await response.json()) as { lessons: Lesson[]; total: number };
+  const data = (await response.json()) as { lessons?: unknown; total?: unknown };
+  return {
+    lessons: Array.isArray(data.lessons) ? (data.lessons as Lesson[]) : [],
+    total: typeof data.total === "number" ? data.total : 0,
+  };
 }
 
 export function ReaderLessons() {
