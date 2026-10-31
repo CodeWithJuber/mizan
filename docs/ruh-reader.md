@@ -159,6 +159,20 @@ On these messages the gate's own paired test on accuracy gives e-values of 6.3·
 - The gate was not moved to the short messages after seeing them. The next test, decided before it is run: fit κ and b on MASSIVE's **validation** partition and held-out Roman Hindi/Urdu development rows, and gate on short messages the reader has never been measured on (MASSIVE validation rows not used for the fit, and fresh Roman rows), with the same two conditions.
 - The reader stays in **shadow**.
 
+### v1.1: calibrated on real short messages
+
+The test v1 wrote down, run on v1's weights (no new training). The protocol below was fixed on 31 Oct 2026 before any of its numbers were computed.
+
+**Slices.** MASSIVE 1.1's `dev` partition (its validation set; the corpus build never trains on it) in en-US, hi-IN, ur-PK and ar-SA: utterances of 3–8 words, more than half of their letters in their language's script, whose words as read are no line of Lughah's corpus, no line the reader trained on and no message of v1's short slice, once per language and words. One MASSIVE id is one group, and lies in one half: the **calibration** half when the SHA-256 of `ruh-reader-v1.1:massive:<id>` is even, else the **gate** half. Roman Hindi/Urdu: Hinglish-1M utterances v1's build never read (outside the quarter it read, in its order), 3–8 words, Latin script, a group the seeds' rule holds out, words no seed's, no training line's and no v1 short message's; a conversation's two utterances lie in one half (`ruh-reader-v1.1:hinglish-1m:<row>`), and each half takes as many as the mean per-language count of its MASSIVE rows, so Roman Hindi/Urdu weighs as one language of five, as in v1's slice. The Roman rows are synthetic, as v1's were. `corpus.build_validation` writes them to `validation.tsv` with their SHA-256 in `validation.json`.
+
+**Calibration** (the calibration half only). γ stays at each seed's development fit and ñ at 49 bytes. κ ∈ (0, 1] is `fit_reader`'s κ step with γ held, on the reader's own log-loss; then b ∈ [0, 1] by `fit_b` unchanged, on the product's log-loss with the held-out Lughah. Nothing else is fitted.
+
+**The gate** (the gate half only, MASSIVE and Roman together): `ruh_reader.gate` as it is, both conditions (grouped paired bootstrap on log-loss, P(not better) < 0.05; paired e-value on accuracy), as the **second** test of these weights: v1's gate was the first, so the e-value needed is k(k+1)/α = 2·3/0.05 = **120**. Each seed is judged on its own. A pass does not change the default (`shadow`); the owner decides.
+
+**Reported, never deciding:** the gate half by part and per language with every arm (Lughah as shipped too), the calibration half (in sample), the gate half under v1's development fit, the seeds' held-out groups and v1's 9,808 short messages under the new fit, latency and peak memory.
+
+*Results: not yet computed.*
+
 ## Learning while MIZAN rests
 
 Nawm (`tadbir/nawm.py`, [automatic learning](automatic-learning.md#nawm-what-was-learned-is-replayed-while-mizan-rests)) calls `ruh_reader.rest` for each person once a day, while no request runs:
