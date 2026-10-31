@@ -540,7 +540,188 @@ measured on the design sets and on this one; nothing else changed.
   known failure: a Roman claim can be kept (`ilm`, Talaqqi) on one misread
   writing. What would address it is a reading that does not misspell ("thin"
   is not Hindi) and a check that a claim's names are its source's (Berlin is
-  not Warsaw), both to be measured on a set not yet seen.
+  not Warsaw), both to be measured on a set not yet seen. The second was
+  measured on a new set and not adopted ([Names](#names-31-october-2026)).
+
+### Names (31 October 2026)
+
+**Not adopted.** A check that a supporting sentence names what the claim names
+removed wrong supports on the design sets, but on a fresh held-out set it
+removed none, so it did not meet its bar. The code was reverted; the measured
+version is commit `9b3df51`.
+
+**The failure it was for.** "Marie Curie 7 November 1867 ko Berlin mein paida
+hui thin." was supported by "Skłodowska-Curie was born on 7 November 1867 in
+Warsaw, Poland." The NLI model can read a sentence about another place or
+person as agreeing with a claim.
+
+**The rule.** A source sentence or joined premise may **support** a claim only
+when it holds each of the claim's names. When the most decisive premise is an
+entailment that does not hold them, the claim is left unknown, as a one-way
+contradiction is. No other premise takes its place, so the rule cannot make a
+claim contradicted, and contradiction is not affected.
+
+- **A claim's names, in Latin letters** (English, Roman Hindi and Urdu): runs
+  of capitalised words standing apart only by spaces ("Marie Curie",
+  "Skłodowska-Curie", "Doosri Jang-e-Azeem"). The first word of every sentence
+  is capitalised, so a lone first word ("The", "Yeh", "Paris") is not taken
+  for a name. A run that goes on past it ("Marie Curie 7 November…") is one.
+- **In Devanagari or Urdu script**: the words written in Latin letters only.
+  Words in the claim's own script carry no case.
+- **A name in parentheses** is another writing of the name right before it
+  ("Doosri Jang-e-Azeem (World War II)", "ورلڈ وائڈ ویب (WWW)"). Either
+  writing is enough, and the gloss is not asked for on its own.
+- **When a name is held.** A name of several words is held when the sentence
+  holds any one of its words that carries more than an average word's
+  information ("Curie" names Marie Curie; "The" of "The Taj Mahal" is no
+  evidence). A word is held by a sentence word that also carries more than
+  average information, when that word is:
+  - the same word, or the same with its accents dropped ("Röntgen", "Rontgen");
+  - a word with the same consonant skeleton, the one Qāmūs compares names by
+    ("Mumtaz", "Mumtaaz");
+  - a word that begins it or that it begins ("Olympic", "Olympics";
+    "Japan", "Japanese");
+  - in another script, a Qāmūs translation of it.
+
+  A Latin-letter name is never held through a Roman reading of it into English:
+  "Marie" is not मेरी ("my").
+- **No runtime romaniser.** anyascii, which the Qāmūs builder romanises names
+  with, is not a runtime dependency (not in `pyproject.toml`). The check used
+  only Unicode decomposition and Qāmūs's shipped data.
+
+**The bar, set before measuring.** On the design sets, with the rule against
+without it:
+- wrong supports fall;
+- right supports fall by at most 10% of the right supports;
+- no finding against another question's articles;
+- no claim newly contradicted;
+- no false English claim supported.
+
+If these held, a fresh held-out set (v2) decided: false claims supported must
+not rise and wrong supports must fall.
+
+**Two versions.** The first version also counted a Devanagari or Urdu word as
+a name when Qāmūs translated it into an English word that its Roman reading
+reads back as the word ("जापान" → "japan"). It had no gloss rule and no
+endings. It met the bar on the design sets: wrong supports 5 → 2, right 90 →
+89. On the earlier held-out set (31 October, above) it removed 5 of 34 right
+supports, which would fail the bar (14.7%):
+- the read-back test took cognates and homographs for names: नाम ("name"),
+  बार ("times", read back from "bar"), ڈرامہ ("drama", which the source spells
+  ڈراما);
+- glosses were asked for on their own: "(WWW)", "(IPV)";
+- "Olympic" was not found in "Olympics".
+
+That set had already been used to change code (above), and no result of v2
+existed yet, so the rule was revised to the version above before v2 was
+measured. On the design sets the revised rule met the bar again. On the
+earlier held-out set it refused the false Marie Curie claim (false supports
+1 → 0) and one part support ("…HTML-based system…"), with no right support
+lost (right/part/wrong 34/16/4 → 34/15/3).
+
+**Design sets** (the sets above; each against its own sources and, as the
+control, against question j + 7's). Supported claims as right / part / wrong:
+
+| Set | Claims | Supported, without the rule | With it | Talaqqi keeps |
+|---|---|---|---|---|
+| English, Simple English Wikipedia | 75 | 18 (18/0/0) | 18 (18/0/0) | 14 → 14 |
+| English, web snippets | 75 | 19 (18/0/1) | 18 (18/0/0) | 14 → 13 |
+| Roman, Hindi-leaning | 78 | 17 (14/1/2) | 16 (14/1/1) | 13 → 12 |
+| Roman Urdu | 80 | 9 (8/1/0) | 9 (8/1/0) | 5 → 5 |
+| Hindi, Simple English Wikipedia | 119 | 4 (3/1/0) | 4 (3/1/0) | |
+| Urdu, Simple English Wikipedia | 120 | 0 | 0 | |
+| Hindi, Hindi Wikipedia | 119 | 20 (16/2/2) | 20 (16/2/2) | |
+| Urdu, Urdu Wikipedia | 120 | 18 (13/5/0) | 18 (13/5/0) | |
+| False claims (English ×2 sources, Roman) | 60 | 0 | 0 | |
+
+- **Supported:** 105 → 103 of 846 claims. Right/part/wrong went from 90/10/5
+  to 90/10/3. The wrong share of supports went from 4.8% [2.1, 10.7] to 2.9%
+  [1.0, 8.2].
+- **Contradictions:** the same 21 claims in both arms (false sets 8, 9 and 3;
+  one English true claim from snippets).
+- **Controls:** no finding in either arm.
+- **The two supports removed were both wrong:**
+  - "Agar "bada" ka matlab kshetrafal (area) hai to duniya ka sabse bada desh
+    Russia hai." against a Hindi web snippet that only asks the question;
+  - "Mona Lisa ki painting Leonardo da Vinci ne banayi thi." against
+    "Leonardo's full name was…".
+
+**Held-out set v2.** It was built as the earlier held-out set was:
+- 30 new questions, on none of the articles of the design sets or the
+  earlier held-out set: science 6, geography 5, history 5, people 4,
+  inventions 4, sport 3, nature 3 (the electron, Galileo, Tokyo, the Dead
+  Sea, Napoleon, World War I, Tolstoy, dynamite, Usain Bolt, the giraffe, …);
+- five wordings each, by hand;
+- the production teacher's answers, with the same call and instructions.
+  There were 179 calls: 150 first answers, then 22 Hindi-leaning and 7 Urdu
+  Roman questions answered in Devanagari or Urdu script, asked again with
+  production's Hinglish instruction. All 60 Roman answers were then in Latin
+  letters. Prompt tokens: 10,770; completion tokens: 83,470. OpenRouter
+  reported a cost of $0.0176;
+- 20 false claims written by hand, 4 per form. 13 of them have a wrong name
+  (Galileo born in Venice, dynamite invented by Thomas Edison, Beethoven born
+  in Salzburg, Marconi Spanish, Genghis Khan died in Japan, …);
+- the questions, the false claims and the answers were each frozen by SHA-256
+  before any result was read.
+
+Supported claims as right / part / wrong, without and with the rule (95%
+Wilson intervals):
+
+| Set | Claims | Supported, without the rule | With it | Talaqqi keeps |
+|---|---|---|---|---|
+| English, Simple English Wikipedia | 84 | 13 = 15.5% [9.3, 24.7] (12/1/0) | 13 (12/1/0) | 11 → 11 |
+| Roman, Hindi-leaning | 86 | 11 = 12.8% [7.3, 21.5] (7/4/0) | 9 = 10.5% [5.6, 18.7] (6/3/0) | 8 → 6 |
+| Roman Urdu | 92 | 10 = 10.9% [6.0, 18.9] (8/2/0) | 10 (8/2/0) | 6 → 6 |
+| Hindi, Simple English Wikipedia | 86 | 3 (2/0/1) | 3 (2/0/1) | |
+| Urdu, Simple English Wikipedia | 77 | 0 | 0 | |
+| Hindi, Hindi Wikipedia | 86 | 8 (5/1/2) | 8 (5/1/2) | |
+| Urdu, Urdu Wikipedia | 77 | 12 (10/2/0) | 12 (10/2/0) | |
+| False claims, all forms | 20 | 2 = 10.0% [2.8, 30.1] | 2 | |
+
+- **Supported:** 59 → 57. Right/part/wrong went from 44/10/5 to 43/9/5.
+- **Contradictions:** the same 8 claims in both arms (7 false claims, and one
+  claim of an Urdu answer against Urdu Wikipedia).
+- **Controls:** no finding in either arm (0 of 608).
+- **The two supports removed:**
+  - "Pehla Vishwa Yuddh 28 July 1914 ko shuru hua tha, jab Austria-Hungary ne
+    Serbia ke khilaf yuddh ka elaan kiya." is **right**. "Pehla Vishwa Yuddh"
+    is World War I in Roman Hindi, and no English sentence writes it. The
+    Roman Urdu answer that wrote "Pehli Jang-e-Azeem (World War I)" kept its
+    support through the gloss;
+  - "Colosseum Rome, Italy mein hai — … Piazza del Colosseo ke paas located
+    hai." is **part**: the source does not name the piazza.
+
+**Against the bar.**
+- False claims supported must not rise: 2 → 2. Met.
+- Wrong supports must fall: 5 → 5. **Not met.**
+
+None of the 13 false claims with a wrong name was supported even without the
+rule, so on this set the rule had nothing to catch. The five wrong supports
+had no name the rule could check:
+- a false direction, "Koala western Australia ke eucalyptus jungle mein rehta
+  hai." against "…eastern Australia.";
+- a false number, "Usain Bolt ne 100 metres 10.58 seconds mein daude hain."
+  against "…9.58 seconds…";
+- three Hindi claims in Devanagari, whose names are in Devanagari: "इसका
+  आधिकारिक नाम बीजिंग 2008 ओलंपिक था।" (twice, against sentences that say only
+  where the games were held), and "ये क्वींसलैंड, न्यू साउथ वेल्स, विक्टोरिया और
+  दक्षिण ऑस्ट्रेलिया के कुछ क्षेत्रों में पाए जाते हैं।" (koalas) against a sentence
+  on the borders of New South Wales.
+
+**What it shows.**
+- Over the three sets, the rule removed 3 wrong supports, 1 right and 2 part.
+  All 3 wrong ones were in Latin letters (two on the design sets, the false
+  Marie Curie claim on the earlier held-out set).
+- A wrong name is the error that check can see, and it was rare among
+  supports: no false claim with a wrong name was supported on v2.
+- Roman Hindi and Urdu names of things ("Pehla Vishwa Yuddh") are not the
+  source's words, so the check refuses true claims written that way.
+- In Devanagari and Urdu script, Qāmūs holds too few names to say which words
+  are names: भारत, पेरू and ब्राज़ील have no reading back.
+
+Two other things were seen while measuring. Isnad cuts a claim at an initial
+or an abbreviation ("Genghis Khan (born Temüjin, c.", "Electron ki khoj
+J.J."), and the fragments are judged as claims.
 
 ## It learns
 
