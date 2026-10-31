@@ -89,10 +89,10 @@ def price_of(model: str) -> tuple[float, float]:
 def utterances(massive_path: Path) -> list[tuple[str, str, str]]:
     """(source, language, text) of MASSIVE's train utterances in en, hi, ur,
     the first ``PER_LANGUAGE`` of each in SHA-256 order that is not about the
-    deen as MIZAN reads it (``student.about_the_deen``: such a message is never
+    deen as MIZAN reads it (``plans.about_the_deen``: such a message is never
     a lesson, so the teacher is not asked)."""
     from tadbir.ruh_reader import corpus as C
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans
 
     by_language: dict[str, list[tuple[str, str, str]]] = {}
     for line in C.massive(massive_path):
@@ -108,7 +108,7 @@ def utterances(massive_path: Path) -> list[tuple[str, str, str]]:
         for row in sorted(found, key=lambda row: _order(row[0])):
             if len(taken) >= PER_LANGUAGE:
                 break
-            if not student.about_the_deen(row[2]):
+            if not plans.about_the_deen(row[2]):
                 taken.append(row)
         rows += taken
     return sorted(rows, key=lambda row: _order(row[0], "stream"))
@@ -127,7 +127,7 @@ def collect(work: Path, massive_path: Path, model: str, limit: int = 0) -> dict:
     """Ask the teacher for every utterance; keep the steps MIZAN's checks pass."""
     from providers import create_provider
     from tadbir.lisan import Lisan
-    from tadbir.tadrib import licence, student
+    from tadbir.tadrib import licence, plans
 
     if not licence.allowed(model):
         raise SystemExit(f"{model}: no licence on record that allows training on its output")
@@ -157,7 +157,7 @@ def collect(work: Path, massive_path: Path, model: str, limit: int = 0) -> dict:
                 return {"source": source, "language": language, "text": text, "error": str(exc)}
             usd = agent.input_tokens * price[0] + agent.output_tokens * price[1]
             spent += usd
-            target = student.target(steps, text, language)
+            target = plans.target(steps, text, language)
             return {
                 "source": source,
                 "language": language,
@@ -203,10 +203,10 @@ def collect(work: Path, massive_path: Path, model: str, limit: int = 0) -> dict:
 
 def again(work: Path, model: str) -> dict:
     """The teacher asked a second time for the first ``AGAIN`` lessons: how often
-    it agrees with itself (``student.agree``), the bar a student must reach."""
+    it agrees with itself (``plans.agree``), the bar a student must reach."""
     from providers import create_provider
     from tadbir.lisan import Lisan
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans
 
     price = price_of(model)
     provider = create_provider("openrouter", model)
@@ -223,12 +223,12 @@ def again(work: Path, model: str) -> dict:
                 reply, steps = await ask_teacher(Lisan(agent), item["text"])
             except Exception as exc:  # noqa: BLE001
                 return {"source": item["source"], "error": str(exc)}
-            second = student.target(steps, item["text"], item["language"])
+            second = plans.target(steps, item["text"], item["language"])
             return {
                 "source": item["source"],
                 "language": item["language"],
                 "target": second,
-                "agree": student.agree(second, item["target"], item["text"], item["language"]),
+                "agree": plans.agree(second, item["target"], item["text"], item["language"]),
                 "usd": agent.input_tokens * price[0] + agent.output_tokens * price[1],
             }
 
@@ -260,12 +260,12 @@ def again(work: Path, model: str) -> dict:
 
 def run(work: Path, weights: Path, setting: dict, erase: bool = False, limit: int = 0) -> dict:
     """The prequential stream: for each lesson in order the student answers
-    first (scored against the teacher, ``student.agree``), then learns it."""
+    first (scored against the teacher, ``plans.agree``), then learns it."""
     import torch
 
     from core.adaptive import BettingEProcess
     from tadbir.ruh_reader import net
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans, student
 
     torch.set_num_threads(int(os.getenv("OMP_NUM_THREADS", "2")))
     lessons = [
@@ -286,20 +286,20 @@ def run(work: Path, weights: Path, setting: dict, erase: bool = False, limit: in
         began = time.perf_counter()
         said, mean_logp = learner.answer(item["text"])
         answer_seconds.append(time.perf_counter() - began)
-        agreed = student.agree(said, item["target"], item["text"], item["language"])
+        agreed = plans.agree(said, item["target"], item["text"], item["language"])
         test = tests[item["language"]]
         test.update(1.0 if agreed else 0.0)
         if promoted[item["language"]] is None and test.value >= 20:
             promoted[item["language"]] = index
         began = time.perf_counter()
-        learner.learn(item["text"], item["target"], student.digest_of(item["source"]))
+        learner.learn(item["text"], item["target"], plans.digest_of(item["source"]))
         learn_seconds.append(time.perf_counter() - began)
         rows.append(
             {
                 "index": index,
                 "language": item["language"],
                 "agree": agreed,
-                "valid": said is not None and student.valid(said, item["text"], item["language"]),
+                "valid": said is not None and plans.valid(said, item["text"], item["language"]),
                 "mean_logp": mean_logp,
                 "e": test.value,
             }
@@ -344,9 +344,9 @@ def erasure(weights: Path, setting: dict, lessons: list[dict]) -> dict:
     """A student that learned these lessons, then forgot one in ten (rebuilt
     without them), equals, bit for bit, one that never learned them."""
     from tadbir.ruh_reader import net
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans, student
 
-    items = [(item["text"], item["target"], student.digest_of(item["source"])) for item in lessons]
+    items = [(item["text"], item["target"], plans.digest_of(item["source"])) for item in lessons]
     erased = [item for item in items if int(_order(item[2], "erase")[:16], 16) % 10 == 0]
     kept = [item for item in items if item not in erased]
     learned = student.Student(net.load(weights), student.Setting(**setting))

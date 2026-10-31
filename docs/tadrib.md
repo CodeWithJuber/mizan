@@ -172,11 +172,11 @@ Without PHINC (2,860 lines), the change is within noise either way:
 
 The owner chose this after the reader's third test. What the reader showed is that agreement with itself is no teacher. Here the teacher is the language model MIZAN already asks, and only what MIZAN's own checks pass is learned.
 
-**The task.** `Lisan.plan_steps` maps a message to MIZAN's actions as one JSON object, `{"steps": [...]}`. It is asked when Fahm cannot build the request by itself. The teacher's answer is a **lesson** (`tadrib.student.target`) only when every step passes `fahm.validate_parsed`, or when it is a lone `converse`. The lesson is the plan in a fixed form: each action with only the fields its schema has, and the words it covers only when there are several actions.
+**The task.** `Lisan.plan_steps` maps a message to MIZAN's actions as one JSON object, `{"steps": [...]}`. It is asked when Fahm cannot build the request by itself. The teacher's answer is a **lesson** (`tadrib.plans.target`) only when every step passes `fahm.validate_parsed`, or when it is a lone `converse`. The lesson is the plan in a fixed form: each action with only the fields its schema has, and the words it covers only when there are several actions.
 
 Three kinds of plan are never lessons:
 - a plan with a Quran or hadith step;
-- a plan for a message Qasd reads as about the deen or a ruling (`student.about_the_deen`);
+- a plan for a message Qasd reads as about the deen or a ruling (`plans.about_the_deen`);
 - a plan that mixes `converse` with actions.
 
 **The teacher.** `deepseek/deepseek-chat-v3-0324`, the model production uses. It is MIT-licensed (its card was read 31 Oct 2026, `tadrib.licence`). Anthropic and OpenAI output never teaches (`licence.forbidden`), and the licence table is the one `mizan_reply.data` enforces. It is asked exactly as Tadbir asks it (`Lisan.plan_steps`, with no earlier messages), through OpenRouter, with spending capped at $3. Each answer is kept with its model id (`Lisan.exchange`).
@@ -191,9 +191,9 @@ Three kinds of plan are never lessons:
 - Everything is seeded by the lesson's digest.
 - This setting is fixed now. A smoke run on the first 11 lessons checked only the mechanics and the speed (learning 0.5 s, answering 0.1 s). There is no dev stream and no grid.
 
-**Agreement** (`student.agree`).
+**Agreement** (`plans.agree`).
 - *Agree:* the student's answer parses, every step passes MIZAN's checks, and it has the teacher's actions in the teacher's order with the same structured values: the arithmetic's value, the link, the schedule, the project kind, the code language.
-- *Same word for word:* free-text fields (a tool `need`, a search `query`) are compared too (`student.same`). This is reported, not judged.
+- *Same word for word:* free-text fields (a tool `need`, a search `query`) are compared too (`plans.same`). This is reported, not judged.
 
 **The stream.** Lessons go in SHA-256 order. For each lesson:
 1. The student answers first (greedy), before it has seen the lesson.

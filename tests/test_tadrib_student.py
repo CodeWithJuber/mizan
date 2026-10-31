@@ -60,56 +60,56 @@ def test_only_a_licensed_teacher_teaches(model, allowed):
 
 @pytest.fixture
 def no_deen(monkeypatch):
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans
 
-    monkeypatch.setattr(student, "about_the_deen", lambda message: False)
-    return student
+    monkeypatch.setattr(plans, "about_the_deen", lambda message: False)
+    return plans
 
 
 def test_a_lone_converse_is_a_lesson_and_scripture_never_is(no_deen):
-    student = no_deen
+    plans = no_deen
     assert (
-        student.target([{"intent": "converse", "text": "hi"}], "hi there", "en")
+        plans.target([{"intent": "converse", "text": "hi"}], "hi there", "en")
         == '{"steps":[{"intent":"converse"}]}'
     )
     quran = [{"intent": "quran", "surah": 1, "ayah_start": 1, "ayah_end": 1}]
-    assert student.target(quran, "surah 1 ayah 1", "en") is None
+    assert plans.target(quran, "surah 1 ayah 1", "en") is None
     mixed = [{"intent": "converse"}, {"intent": "compute", "expression": "2+3"}]
-    assert student.target(mixed, "hi, what is 2+3", "en") is None
+    assert plans.target(mixed, "hi, what is 2+3", "en") is None
 
 
 def test_a_step_mizan_refuses_makes_no_lesson(no_deen):
-    student = no_deen
+    plans = no_deen
     # a bare number is no calculation
-    assert student.target([{"intent": "compute", "expression": "7"}], "seven", "en") is None
+    assert plans.target([{"intent": "compute", "expression": "7"}], "seven", "en") is None
     # a link the user never wrote
     step = {"intent": "web_read", "url": "https://example.com/x"}
-    assert student.target([step], "read that page for me", "en") is None
+    assert plans.target([step], "read that page for me", "en") is None
 
 
 def test_a_lesson_keeps_only_the_schemas_fields(no_deen):
-    student = no_deen
+    plans = no_deen
     message = "what is 12 times 7"
     step = {"intent": "compute", "expression": "12*7", "text": message, "extra": "x"}
-    assert json.loads(student.target([step], message, "en")) == {
+    assert json.loads(plans.target([step], message, "en")) == {
         "steps": [{"intent": "compute", "expression": "12*7"}]
     }
 
 
 def test_agreement_is_the_same_actions_with_the_same_values(no_deen):
-    student = no_deen
+    plans = no_deen
     message = "what is 12 times 7"
     taught = '{"steps":[{"intent":"compute","expression":"12*7"}]}'
-    assert student.agree(
+    assert plans.agree(
         '{"steps":[{"intent":"compute","expression":"7 * 12"}]}', taught, message, "en"
     )
-    assert not student.agree(
+    assert not plans.agree(
         '{"steps":[{"intent":"compute","expression":"12*8"}]}', taught, message, "en"
     )
-    assert not student.agree('{"steps":[{"intent":"converse"}]}', taught, message, "en")
-    assert not student.agree('{"steps":[{"intent":"compute"', taught, message, "en")
-    assert not student.agree(None, taught, message, "en")
-    assert student.same('{"steps":[{"intent":"compute","expression":"12*7"}]}', taught)
+    assert not plans.agree('{"steps":[{"intent":"converse"}]}', taught, message, "en")
+    assert not plans.agree('{"steps":[{"intent":"compute"', taught, message, "en")
+    assert not plans.agree(None, taught, message, "en")
+    assert plans.same('{"steps":[{"intent":"compute","expression":"12*7"}]}', taught)
 
 
 # ── the e-process ────────────────────────────────────────────────────────
@@ -159,10 +159,10 @@ LESSONS = [
 
 
 def test_the_student_learns_only_the_answer_and_rebuilds_bit_for_bit(tiny):
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans, student
 
     setting = student.Setting(steps=1, lr=1e-2, replay=2, micro=2)
-    items = [(m, a, student.digest_of(m)) for m, a in LESSONS]
+    items = [(m, a, plans.digest_of(m)) for m, a in LESSONS]
     first = student.Student(tiny, setting)
     for item in items:
         first.learn(*item)
@@ -190,13 +190,13 @@ def test_the_answers_mask_covers_only_the_answer():
 def test_the_student_memorises_a_lesson():
     pytest.importorskip("torch")
     from tadbir.ruh_reader import net
-    from tadbir.tadrib import student
+    from tadbir.tadrib import plans, student
 
     base = net.Reader(net.Config(d_model=64, layers=2, heads=2, d_ff=128, context=64, dropout=0.0))
     learner = student.Student(base, student.Setting(steps=4, lr=1e-2, replay=0, micro=1))
     message, answer = LESSONS[1]
     for round_ in range(80):
-        learner.learn(message, answer, student.digest_of(f"{message}{round_}"))
+        learner.learn(message, answer, plans.digest_of(f"{message}{round_}"))
     said, mean_logp = learner.answer(message)
     assert said == answer and mean_logp > -1.0
 
