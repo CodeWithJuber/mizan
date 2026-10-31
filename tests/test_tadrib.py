@@ -334,3 +334,19 @@ def test_the_daftar_counts_the_messages_the_reader_learned_from(home):
     store.settle("u1", "d2", "held_out", "en")
     entry = next(e for e in daftar.learned(None, "u1") if e["id"] == "learned:reader")
     assert entry["content"].endswith(": 2") and entry["editable"] is False
+
+
+def test_micro_batches_take_the_same_step_with_less_memory(installed):
+    import torch
+
+    from tadbir.tadrib.online import Online, Setting
+
+    languages = installed.manifest["languages"]
+    lines, _ = ruh_reader.training_lines(ruh_reader.seeds(), languages)
+    whole = Online(installed.model, Setting(steps=2, lr=1e-3, batch=8, micro=8), lines)
+    split = Online(installed.model, Setting(steps=2, lr=1e-3, batch=8, micro=2), lines)
+    for learner in (whole, split):
+        for text in WORDS[:3]:
+            learner.learn(text, 0, ruh_reader.text_digest(text))
+    for a, b in zip(whole.fast.state_dict().values(), split.fast.state_dict().values(), strict=True):
+        assert torch.allclose(a, b, atol=1e-5)

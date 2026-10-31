@@ -38,6 +38,7 @@ class Setting:
     batch: int = 16
     seeds: int = 4  # seed lines in every batch
     recent: int = 512  # lessons kept for replay
+    micro: int = 4  # rows per forward pass; gradients accumulate (same step, less memory)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -48,6 +49,17 @@ Encoded = tuple[list[int], int]
 
 def _seed(digest: str) -> int:
     return int(digest[:15], 16)
+
+
+def _trim() -> None:
+    """Give the freed activation memory back to the system (glibc keeps it
+    otherwise, and a long-lived server would hold its high-water mark)."""
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 class Online:
@@ -116,14 +128,20 @@ class Online:
                 self.seed_lines[rng.randrange(len(self.seed_lines))]
                 for _ in range(room - len(recent))
             ]
-            inputs, labels, mask = net.batch(pieces)
-            logits, _ = self.fast(inputs)
-            loss = F.cross_entropy(logits[mask], labels[mask])
-            losses.append(float(loss.detach()))
-            if setting.anchor > 0:
-                loss = loss + setting.anchor / 2 * self._penalty()
             self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            # The mean over every target of the batch, accumulated over
+            # micro-batches: the same gradient, a quarter of the activations.
+            tokens = sum(len(targets) for targets, _slot in pieces)
+            total = 0.0
+            for begin in range(0, len(pieces), max(1, setting.micro)):
+                inputs, labels, mask = net.batch(pieces[begin : begin + max(1, setting.micro)])
+                logits, _ = self.fast(inputs)
+                part = F.cross_entropy(logits[mask], labels[mask], reduction="sum") / tokens
+                part.backward()
+                total += float(part.detach())
+            losses.append(total)
+            if setting.anchor > 0:
+                (setting.anchor / 2 * self._penalty()).backward()
             torch.nn.utils.clip_grad_norm_(self.fast.parameters(), 1.0)
             self.optimizer.step()
         self.fast.eval()
@@ -135,6 +153,7 @@ class Online:
             if index < setting.recent:
                 self.recent[index] = lesson
         self.learned.append(digest)
+        _trim()
         return sum(losses) / len(losses)
 
     def replay(self, lessons: Sequence[tuple[str, int, str]]) -> None:

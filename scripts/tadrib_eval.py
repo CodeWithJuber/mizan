@@ -33,6 +33,13 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 SALT = "tadrib-reader-1"
 GRID = [(k, lr, lam) for k in (1, 2) for lr in (1e-4, 3e-4, 1e-3) for lam in (0.0, 1.0)]
+# The second test (docs/tadrib.md, "v2"): one step, smaller anchors, more seed replay.
+GRID_V2 = [
+    {"steps": 1, "lr": lr, "anchor": lam, "seeds": seeds}
+    for lr in (1e-4, 3e-4)
+    for lam in (0.03, 0.1, 0.3, 1.0)
+    for seeds in (4, 8)
+]
 PER_LANGUAGE = {"dev": 300, "test": 800}
 MORE_THAN = 8  # words: the gates' short slices took 3 to 8
 PER_DOCUMENT = 3  # lines a never-read FineWeb-2 document gives at most
@@ -377,16 +384,44 @@ def forgetting(work: Path, stream: str, frozen, fast, fit, languages) -> dict:
     R.score_reads(frozen, old, languages)
     R.score_reads(fast, new, languages)
     truths = [read.truth for read in reads]
-    verdict, risk, loss_old, loss_new = R.no_worse(
-        R.arms(old, fit)["reader"], R.arms(new, fit)["reader"], truths
-    )
+    before, after = R.arms(old, fit)["reader"], R.arms(new, fit)["reader"]
+    verdict, risk, loss_old, loss_new = R.no_worse(before, after, truths)
+    # v2's rule: no evidence that it got worse, in accuracy (Ta'lim's paired
+    # bootstrap, as no_worse) or in log-loss (grouped paired bootstrap).
+    rises = [-a[t] + b[t] for a, b, t in zip(after, before, truths, strict=True)]
+    loss_risk = p_higher(rises, [read.group for read in reads])
     return {
         "reads": "dev" if stream == "dev" else "held_out",
         "n": len(reads),
         "no_worse": verdict,
         "p_worse": risk,
+        "p_loss_higher": loss_risk,
+        "no_evidence_worse": risk < 0.95 and loss_risk < 0.95,
         "log_loss": {"frozen": round(loss_old, 6), "online": round(loss_new, 6)},
     }
+
+
+def p_higher(differences: list[float], groups: list[str], resamples: int = 2000) -> float:
+    """P(mean difference > 0) under a paired bootstrap of whole groups
+    (``ruh_reader.p_not_better`` counts ≥ 0, which an unchanged model meets)."""
+    import random
+
+    by_group: dict[str, list[float]] = {}
+    for difference, group in zip(differences, groups, strict=True):
+        by_group.setdefault(group, []).append(difference)
+    sums = [(sum(values), len(values)) for values in by_group.values()]
+    if not sums:
+        return 0.0
+    rng = random.Random(0)
+    higher = 0
+    for _ in range(resamples):
+        total = count = 0.0
+        for _ in range(len(sums)):
+            value, n = sums[rng.randrange(len(sums))]
+            total += value
+            count += n
+        higher += total / count > 0
+    return higher / resamples
 
 
 def safety(per: list[dict]) -> dict:
@@ -472,7 +507,8 @@ def erasure(learner, lessons, held_texts, frozen, slots) -> dict:
 
 
 def _name(stream: str, seed: int, setting: dict) -> str:
-    return f"{stream}-s{seed}-k{setting['steps']}-lr{setting['lr']:g}-a{setting['anchor']:g}"
+    name = f"{stream}-s{seed}-k{setting['steps']}-lr{setting['lr']:g}-a{setting['anchor']:g}"
+    return name + (f"-r{setting['seeds']}" if "seeds" in setting else "")
 
 
 def launch(
@@ -546,6 +582,58 @@ def grid(work: Path, args) -> dict:
     return found
 
 
+def grid_v2(work: Path, args) -> dict:
+    """The second test's grid: chosen by lowest dev prequential log-loss among
+    the settings with no evidence of forgetting on the seeds' dev reads, p95 at
+    most 2.0 s per lesson and at most 150 MB added."""
+    results = launch(work, "dev", 0, GRID_V2, args, erase=False)
+    table = sorted(
+        (
+            {
+                "setting": r["setting"],
+                "log_loss_online": r["log_loss"]["online"],
+                "log_loss_frozen": r["log_loss"]["frozen"],
+                "p_not_better": r["p_not_better"],
+                "no_evidence_worse": r["forgetting"]["no_evidence_worse"],
+                "seeds_log_loss": r["forgetting"]["log_loss"],
+                "p95": r["seconds_per_lesson"]["p95"],
+                "memory_mb": r["memory_mb"],
+            }
+            for r in results
+        ),
+        key=lambda row: row["log_loss_online"],
+    )
+    qualified = [
+        row
+        for row in table
+        if row["no_evidence_worse"] and (row["p95"] or 0) <= 2.0 and row["memory_mb"] <= 150
+    ]
+    found = {"table": table, "chosen": qualified[0]["setting"] if qualified else None}
+    (work / "chosen_v2.json").write_text(json.dumps(found, indent=1), encoding="utf-8")
+    return found
+
+
+def judge_v2(work: Path, args) -> dict:
+    chosen = json.loads((work / "chosen_v2.json").read_text())["chosen"]
+    if chosen is None:
+        raise SystemExit("no setting qualified on the dev stream: the test stream is not run")
+    results = {}
+    for seed in (0, 1):
+        results[seed] = launch(work, "test", seed, [chosen], args, erase=seed == 0)[0]
+    main = results[0]
+    bars = {
+        "1 it learns": main["log_loss"]["online"] < main["log_loss"]["frozen"]
+        and main["p_not_better"] < ALPHA,
+        "2 it does not forget": main["forgetting"]["no_evidence_worse"],
+        "3 fast enough": (main["seconds_per_lesson"]["p95"] or 0) <= 2.0
+        and main["memory_mb"] <= 150,
+        "4 forgetting is exact": main["erasure"]["bit_for_bit"],
+    }
+    verdict = {"chosen": chosen, "bars": bars, "passed": all(bars.values()), "seeds": results}
+    (work / "verdict_v2.json").write_text(json.dumps(verdict, indent=1), encoding="utf-8")
+    return verdict
+
+
 def judge(work: Path, args) -> dict:
     chosen = json.loads((work / "chosen.json").read_text())["chosen"]
     if chosen is None:
@@ -579,6 +667,8 @@ def main() -> None:
     parser.add_argument("--run", type=Path)
     parser.add_argument("--grid", type=Path)
     parser.add_argument("--test", type=Path)
+    parser.add_argument("--grid-v2", type=Path, dest="grid_v2")
+    parser.add_argument("--test-v2", type=Path, dest="test_v2")
     parser.add_argument("--stream", default="dev")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--setting", default="{}")
@@ -613,6 +703,10 @@ def main() -> None:
         print(json.dumps(grid(args.grid, args), indent=1))
     elif args.test:
         print(json.dumps(judge(args.test, args), indent=1))
+    elif args.grid_v2:
+        print(json.dumps(grid_v2(args.grid_v2, args), indent=1))
+    elif args.test_v2:
+        print(json.dumps(judge_v2(args.test_v2, args), indent=1))
     else:
         parser.print_help()
 

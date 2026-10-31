@@ -68,6 +68,38 @@ Lessons are stored per person in `private/<sha256(owner)>/tadrib.sqlite3`: the d
 
 The prequential log-loss and accuracy of the product P_L · P_R^b are reported, and so are the 1-in-5 held-out messages on their own and the safety check's e-values (whether it would have reset the fast copy). None of these decides. Whatever the outcome, `MIZAN_RUH_READER` stays `shadow`: the reader's online copy changes what is logged, not what Lughah decides, until the owner turns the reader on.
 
+## First test (v1): refused at the dev stage (31 Oct 2026)
+
+All 12 settings were run on the dev stream (1,500 messages, about 1,200 lessons each; reader v2 seed 0). None qualified, so, as fixed above, the test stream was not run and Tadrib for the reader was not adopted. `MIZAN_TADRIB` stays `off`.
+
+| k | lr | λ | Prequential log-loss, frozen → online | P(not better) | Held-out lessons | Seeds' dev reads, log-loss | p95 s |
+|---|---|---|---|---|---|---|---|
+| 1 | 1e-4 | 0 | 0.2335 → 0.1655 | 0.006 | 0.180 → 0.165 | 0.0045 → 0.0052 | 1.08 |
+| 2 | 1e-4 | 0 | 0.2335 → 0.1555 | 0.007 | 0.180 → 0.185 | 0.0045 → 0.0139 | 2.01 |
+| 1 | 3e-4 | 0 | 0.2335 → 0.1776 | 0.051 | 0.180 → 0.189 | 0.0045 → 0.0119 | 1.10 |
+| 1 | 3e-4 | 1 | 0.2335 → 0.2280 | 0.013 | 0.180 → 0.177 | 0.0045 → 0.0045 (higher in the 5th digit) | 1.17 |
+| 2 | 1e-4 | 1 | 0.2335 → 0.2302 | 0.002 | 0.180 → 0.180 | 0.0045 → 0.0045 (higher in the 5th digit) | 2.13 |
+| 1 | 1e-3 | 0 | 0.2335 → 0.2909 | 0.943 | 0.180 → 0.309 | 0.0045 → 0.0048 | 1.12 |
+| 2 | 1e-3 | 0 | 0.2335 → 0.5358 | 1.000 | 0.180 → 0.353 | 0.0045 → 0.0137 | 2.07 |
+
+(Five other settings lie between these.) What it showed:
+- **The reader learns from the stream.** With no anchor and a small learning rate, the prequential log-loss fell by 29%, and on the one-in-five lessons it never learned by 8%. The product's accuracy rose from 98.53% to 98.80% (k = 2: 99.00%).
+- **The labels it learns are right.** Where Lughah and the reader agreed, they matched the dataset's label 98.7 to 99.3% of the time.
+- **Without an anchor it forgets a little; with λ = 1 it hardly forgets and hardly learns.** The rule "log-loss not higher at all" failed every setting, the anchored ones by a change in the fifth decimal place.
+- **Memory was over the bar** (+400 to +750 MB). The cause was found: one forward pass of 16 rows held about 260 MB of activations, and glibc kept the high-water mark. The online learner now accumulates the same gradient over micro-batches of 4 rows and returns freed memory after each lesson (`malloc_trim`): +121 MB with the reader loaded (60 lessons). The tests check that the micro-batched step equals the whole batch's.
+- **Speed:** one step per lesson took 1.1 to 1.2 s at the 95th percentile; two steps, 2.0 to 2.2 s.
+
+## Second test (v2), fixed 31 Oct 2026 after v1's dev results, before the test stream is read
+
+The test stream (3,514 messages) has still not been read. What changes, and why:
+
+- **The forgetting rule** becomes *no evidence of being worse* on the seeds' reads: Ta'lim's paired bootstrap for accuracy (P(worse) < 0.95, as in `no_worse`) and a grouped paired bootstrap for the log-loss (P(mean rise > 0) < 0.95). The nightly promotion keeps the strict `no_worse`: a fast copy is reset to the slow weights each night, and the live sign test resets it sooner if held-out lessons read worse.
+- **The grid** keeps one step per lesson (two cannot meet the speed bar) and looks between λ = 0 and λ = 1: learning rate ∈ {1e-4, 3e-4}, λ ∈ {0.03, 0.1, 0.3, 1}, seed lines per batch ∈ {4, 8} (the rest of the 16 recent lessons), micro-batches of 4.
+- **The choice** is the lowest dev prequential log-loss among the settings with no evidence of forgetting on the seeds' **dev** reads, a p95 of at most 2.0 s and at most 150 MB added. If none qualifies, the test stream is still not run.
+- **The bars on the test stream** (seed 0; seed 1 reported): 1 and 4 as in v1; 2 is the rule above on the seeds' **held-out** reads; 3 as in v1.
+
+`scripts/tadrib_eval.py --grid-v2 WORK`, then `--test-v2 WORK`.
+
 ## Settings, routes and files
 
 - `MIZAN_TADRIB` (`on` | `off`; Settings → Developer → System settings): whether lessons are kept and learned. With `off`, nothing is kept, and the reader learns at night from reviewed messages as before. The default stays `off` until the measurement above passes.
