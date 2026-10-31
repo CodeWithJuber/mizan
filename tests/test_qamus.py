@@ -1,7 +1,10 @@
 """Qāmūs: MIZAN's own cross-lingual lexicon, learned from parallel sentences."""
 
 import gzip
+import hashlib
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 
@@ -177,6 +180,59 @@ def test_the_shipped_lexicon_is_small_and_records_how_it_was_measured():
             assert 0.5 < measured["precision_at_1"] <= 1.0, direction
             assert data["fit"][direction]["iterations"] >= 1
             assert set(data["fit"][direction]["removed"]) == {"names", "pieces"}
+
+
+def test_the_shipped_lexicons_are_learned_from_massive_alone():
+    # PMIndia was measured as extra Hindi pairs and not adopted (docs/qamus.md):
+    # neither the lexicon nor the Roman reading is built from it.
+    for path in qamus.DATA.glob("*-en.json.gz"):
+        data = json.loads(gzip.decompress(path.read_bytes()))
+        assert "extra" not in data["source"], path.name
+        assert data["source"]["dataset"] == "AmazonScience/massive"
+    roman = json.loads(gzip.decompress((qamus.DATA / qamus.ROMAN).read_bytes()))
+    assert "extra" not in roman["source"]["vocabulary"]
+    assert not any(name.endswith(".tsv") for name in roman["source"]["files"])
+
+
+def _builder():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "build_qamus.py"
+    spec = importlib.util.spec_from_file_location("build_qamus", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_extra_parallel_text_is_read_only_as_pinned(tmp_path, monkeypatch):
+    builder = _builder()
+    rows = [
+        "The capital of India is New Delhi.\tभारत की राजधानी नई दिल्ली है।",
+        "The capital of India is New Delhi.\tभारत की राजधानी नई दिल्ली है।",  # the same pair again
+        "Only English here.\t",
+        " ".join(["word"] * (builder.LONGEST + 1)) + "\tशब्द",  # longer than a side may be
+        "Gold is a metal.\tसोना एक धातु है।\r",
+    ]
+    text = "\n".join(rows).encode()
+    (tmp_path / "pairs.tsv").write_bytes(text)
+    source = {
+        "dataset": "test",
+        "url": "https://example.invalid/pairs.tsv",  # never fetched: the file is there
+        "file": "pairs.tsv",
+        "sha256": hashlib.sha256(text).hexdigest(),
+        "licence": "CC BY 4.0",
+    }
+    monkeypatch.setitem(builder.EXTRA, "xx", source)
+    pairs, read = builder.extra_pairs(tmp_path, "xx")
+    assert [english for english, _other in pairs] == [
+        ["the", "capital", "of", "india", "is", "new", "delhi"],
+        ["gold", "is", "a", "metal"],
+    ]
+    assert pairs[1][1] == ["सोना", "एक", "धातु", "है"]
+    assert read["pairs"] == 2 and read["licence"] == "CC BY 4.0"
+    assert builder.extra_pairs(tmp_path, "no-such-language") == ([], {})
+    # A file that is not the pinned one is refused.
+    monkeypatch.setitem(builder.EXTRA, "xx", {**source, "sha256": "0" * 64})
+    with pytest.raises(SystemExit):
+        builder.extra_pairs(tmp_path, "xx")
 
 
 def test_translations_from_the_shipped_lexicon():

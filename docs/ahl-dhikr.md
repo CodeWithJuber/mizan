@@ -340,6 +340,389 @@ English articles, with none against another question's pages. Those articles
 were picked by title, not found by Wikipedia's search, so this is not a
 measurement of asking by the claims, and it is not wired.
 
+### Held-out (31 October 2026)
+
+Three designs were chosen on the 30 questions above, with about twenty
+variants measured on them: claims read across scripts through
+[Qāmūs](qamus.md), each claim read with its subject, and Roman Hindi and Urdu
+read through Qāmūs ([Roman Hindi and Urdu](qamus.md#roman-hindi-and-urdu)). So
+they were measured again on a new set, with no change to the code and nothing
+tuned on it.
+
+**The set.**
+- 30 new fact questions, none of the 30 above and on none of their articles:
+  science 6, geography 5, history 5, people 4, inventions 4, sport 3, nature 3
+  (Marie Curie, the Sahara, the Titanic, Nelson Mandela, the World Wide Web,
+  the first modern Olympics, the cheetah, …). None is about the deen. Each has
+  1–3 articles in the same Simple English Wikipedia dump.
+- Five wordings of each, written by hand: English, Hindi in Devanagari, Urdu in
+  Urdu script, Hindi-leaning Roman ("Polio ka pehla teeka kisne banaya tha?")
+  and Roman Urdu ("Polio ki pehli vaccine kis ne banai thi?"). The questions
+  were frozen (SHA-256 recorded) before the teacher was asked.
+- The production teacher answered all 150 with the call and instruction used
+  above ("one paragraph of a few sentences, in the language of the
+  question"). The 27 Roman questions answered in Devanagari or Urdu script (16
+  Hindi-leaning, 11 Urdu-leaning) were asked once more with production's reply
+  instruction for Hinglish, and all 60 then were in Latin letters. 177 calls,
+  10,970 prompt and 40,668 completion tokens, $0.0092 as OpenRouter reported
+  it.
+- 20 false claims written by hand, 4 in each form, each one sentence with one
+  fact changed (a year, a place, a number or a name), with the article sentence
+  that contradicts it. They were frozen before any measurement was read.
+- Judged offline by the real NLI model as above: English with
+  `scripts/ahl_coverage.py`, the others by the same `judge()` with the same
+  contexts. Each set was read against its own articles and, as a control,
+  against another question's (j against j + 7). The Hindi and Urdu answers
+  were also read against the Hindi and Urdu articles whose titles they hold,
+  as above. Those are often a general page (मनुष्य "human", मीटर "metre").
+- Every supported or contradicted claim was read against its source sentence
+  and labelled right, part or wrong.
+
+The current code, with 95% Wilson intervals, and the audit as right/part/wrong:
+
+| Set | Claims | Supported | Audit | Contradicted | Audit | Control: supported, contradicted |
+|---|---|---|---|---|---|---|
+| English, Simple English Wikipedia | 72 | 17 = 23.6% [15.3, 34.6] | 12/4/1 | 0 [0, 5.1] | | 0, 0 |
+| Hindi, Simple English Wikipedia | 80 | 2 = 2.5% [0.7, 8.7] | 2/0/0 | 0 [0, 4.6] | | 0, 0 |
+| Urdu, Simple English Wikipedia | 72 | 1 = 1.4% [0.2, 7.5] | 0/1/0 | 0 [0, 5.1] | | 0, 0 |
+| Roman, Hindi-leaning | 85 | 9 = 10.6% [5.7, 18.9] | 5/3/1 | 1 [0.2, 6.4] | 0/0/1 | 0, 0 |
+| Roman Urdu | 75 | 9 = 12.0% [6.4, 21.3] | 5/3/1 | 0 [0, 4.9] | | 0, 0 |
+| Hindi, Hindi Wikipedia | 80 | 8 = 10.0% [5.2, 18.5] | 5/3/0 | 0 [0, 4.6] | | 0, 0 |
+| Urdu, Urdu Wikipedia | 72 | 8 = 11.1% [5.7, 20.4] | 6/2/0 | 1 [0.2, 7.5] | 0/0/1 | 0, 0 |
+| False claims, English | 4 | 0 | | 2 | 2/0/0 | 0, 0 |
+| False claims, Hindi and Urdu script | 8 | 0 | | 0 | | 0, 0 |
+| False claims, Roman | 8 | 1 | 0/0/1 | 2 | 2/0/0 | 0, 0 |
+
+- **Controls:** no claim of 556 was read against another question's articles
+  (404 against Simple English pages, 152 against Hindi and Urdu ones; 0
+  [0, 0.7%]).
+- **No false English claim was supported.** Talaqqi would keep 14 of the 30
+  English answers.
+- **Part** (11 of 44 findings against Simple English pages): a claim with one
+  detail its source does not hold ("licensed in 1955", "dormant volcano",
+  "Unhe 27 saal jail mein rakhna pada…").
+- **Wrong** (5 of 44 against Simple English pages, 1 of 17 against Hindi and
+  Urdu ones):
+  - a **false Roman Urdu claim supported**: "Marie Curie 7 November 1867 ko
+    Berlin mein paida hui thin." against "Skłodowska-Curie was born on 7
+    November 1867 in Warsaw, Poland." joined with two other sentences of the
+    page (entailment 0.61). It is read in Devanagari as "Marie Curie 7 November
+    1867 को Berlin में पैदा हुई तीन." "Berlin" has no reading and stays in Latin
+    letters. "thin" (Urdu تھیں, "were") is read as Hindi तीन ("three"), which
+    also puts "three" into the search and brings "The three found radium in
+    1898" into the joined premise. Written "…paida hui thi.", the claim is still
+    supported, by the one sentence (0.77), while "Marie Curie was born on 7
+    November 1867 in Berlin." is contradicted (0.98). A Roman claim is
+    contradicted only when every writing of it is, but supported when its
+    Devanagari writing is. By Talaqqi's rule the answer would be kept;
+  - a **true Roman claim contradicted**: "Duniya ka pehla controlled, powered
+    aur sustained hawai jahaz Orville aur Wilbur Wright (Wright Brothers) ne
+    udaya tha." against the Wright brothers article's first sentence (0.74,
+    both ways). Lughah reads the claim as English, so the NLI model reads it as
+    written, and the agreement of writings does not apply;
+  - a **true Urdu claim contradicted by Urdu Wikipedia**: "ماچو پیچو پیرو کے
+    جنوبی امریکی ملک میں، اینڈیز پہاڑوں کے سلسلے میں واقع ہے۔" against "ماچو پیچو
+    جنوبی امریکا میں پیرو کے کاسکو علاقے میں واقع ہے۔", the NLI model misreading
+    a pair both ways;
+  - **true claims supported by joined premises that do not say them**: "The
+    biggest animal alive today is the blue whale." against three sentences on
+    the blue whale, none of them saying it is the biggest animal (the dump
+    drops the lengths: "The biggest blue whale found was  and measured
+    long."), and "World Wide Web ko Tim Berners-Lee ne banaya tha." (in both
+    Roman sets) against three sentences on the World Wide Web Consortium and
+    his birth.
+
+**Each design on and off**, against Simple English Wikipedia unless named
+(supported, contradicted; wrong findings in the audit). "Without subjects" is
+the code with every claim's context empty; a joined premise still never
+contradicts:
+
+| Set | Current code | Without subjects | Roman reading off | Qāmūs off |
+|---|---|---|---|---|
+| English (72) | 17, 0 (1 wrong) | 17, 0 (1 wrong) | 17, 0 (1 wrong) | 17, 0 (1 wrong) |
+| Hindi (80) | 2, 0 | 2, 0 | 2, 0 | 1, 0 |
+| Urdu (72) | 1, 0 | 2, 0 (1 wrong) | 1, 0 | 0, 0 |
+| Roman (160) | 18, 1 (3 wrong) | 17, 1 (3 wrong) | 5, 2 (2 wrong) | 5, 2 (2 wrong) |
+| False claims (20) | 1, 4 (1 wrong) | 1, 4 (1 wrong) | 0, 4 | 0, 4 |
+| Hindi and Urdu, own Wikipedia (152) | 16, 1 (1 wrong) | 20, 1 (2 wrong) | | |
+| Controls | 0, 0 | 0, 0 | 0, 0 | 0, 0 |
+
+The claim each subject check took away is one that does not name its
+subject, read against a sentence on something else: "یہ ان کی سب سے مشہور تصاویر
+میں شمار ہوتی ہے۔" (The Starry Night) against The Potato Eaters, and
+"इसे प्राचीन मिस्र के शासकों द्वारा कराए गए विशाल निर्माणों में सबसे प्रसिद्ध माना
+जाता है।" (the Great Pyramid) against a sentence on the Badari culture. With
+the Roman reading off, "Unhone 1789 se 1797 tak United States ke pehle
+President ke roop mein kaam kiya." is contradicted by "On January 7, 1789,
+Washington was elected president…"; with it on, it is supported (right).
+
+**Against the design set**, the current code on both:
+
+| | Design set (30 October) | Held-out (31 October) |
+|---|---|---|
+| English supported | 18/75 = 24.0% [15.8, 34.8] | 17/72 = 23.6% [15.3, 34.6] |
+| English answers Talaqqi keeps | 14/30 | 14/30 |
+| Hindi and Urdu supported by Simple English pages | 4/239 = 1.7% [0.7, 4.2] | 3/152 = 2.0% [0.7, 5.6] |
+| Hindi and Urdu supported by their own Wikipedia | 38/239 = 15.9% [11.8, 21.1] | 16/152 = 10.5% [6.6, 16.4] |
+| Roman supported | 26/158 = 16.5% [11.5, 23.0] | 18/160 = 11.2% [7.2, 17.1] |
+| Roman supported with the Roman reading off | 8/158 | 5/160 |
+| True claims contradicted (Simple English; own Wikipedia) | 0/472; 0/239 | 1/384; 1/152, both wrong |
+| False claims supported | 0/40 | 1/20 (Roman Urdu) |
+| False claims contradicted | English 8/20, Roman 3/20 | English 2/4, Roman 2/8, Hindi and Urdu script 0/8 |
+| Findings against Simple English pages: right/part/wrong | 54/3/2 of 59 | 28/11/5 of 44 |
+| Findings against another question's articles | 0 | 0 of 556 |
+
+- **English held.** The same share of claims was supported, none was
+  contradicted, and Talaqqi would keep as many answers. One support in 17 is
+  wrong, against none in 18.
+- **Roman fell**, from 16.5% to 11.2% supported (the intervals overlap). The
+  Roman reading still gives most of it (5 → 18 claims here, 8 → 26 there), but
+  here it also gave the first false claim supported in any set, and one true
+  Roman claim is read as contradicted.
+- **Reading a claim with its subject changed little here.** It took away one
+  wrong support against Simple English pages and one against Hindi and Urdu
+  ones. Against Hindi and Urdu pages it also took away three right or part
+  supports (20 → 16); against Simple English pages as many claims are
+  supported with it as without (39), a few of them others. On the design set,
+  12 of 17 wrong findings in Hindi and Urdu were claims that do not name their
+  subject; here 2 of the 8 distinct wrong findings over all arms are.
+- **Across scripts** (Hindi and Urdu answers against English pages) as few
+  claims were supported as on the design set, about 2%.
+- **No finding against another question's articles,** in any arm, as on the
+  design set.
+- **Wrong findings were more common**: 5 of 44 [5.0, 24.0%] against 2 of 59
+  [0.9, 11.5%]. The audit was made by a different hand from the design set's
+  and marked part more often (11 of 44 against 3 of 59).
+- The Hindi and Urdu answers here answer questions written in Hindi and Urdu;
+  on the design set they answered English or Roman questions. Answers here hold
+  fewer claims (2.4 to 2.8 each, against 4 in Hindi and Urdu there).
+
+#### What changed after the held-out set
+
+The set was read once, to measure; three of its findings then changed the
+code, and two rules were measured and not adopted. From here on it is no
+longer untouched: the next comparison needs a set of its own. Each change was
+measured on the design sets and on this one; nothing else changed.
+
+- **A code-mixed claim is contradicted only however it is written**
+  (`writings`). "Duniya ka pehla controlled, powered aur sustained hawai jahaz
+  Orville aur Wilbur Wright (Wright Brothers) ne udaya tha." is read by Lughah
+  as English, so the rule that a Roman claim must be contradicted as written
+  and in Devanagari, both ways, never applied: it was contradicted as written.
+  Now every disputed claim is checked as written, as the NLI model read it, and
+  in Devanagari wherever Qāmūs reads its words as Roman Hindi or Urdu; a
+  capitalised word of a claim read as English is a name and stays as written
+  ("Rhea" is the moon, not रिया). Held-out Roman: 1 true claim contradicted → 0.
+  On the design sets and the other held-out sets no finding changed (English
+  false claims contradicted: 8/20 and 2/4, as before).
+- **An abbreviation ends no sentence** when the next word goes on in lower
+  case (Isnad): "…at about 11:40 p.m. ship's time, and sank…" was two claims,
+  the second a fragment. Held-out English: 72 claims → 71, the fragment's
+  support gone and the whole claim supported; no other set changed.
+- **Not adopted: a Roman claim supported only when its writings agree.** The
+  false claim "Marie Curie 7 November 1867 ko Berlin mein paida hui thin." is
+  supported because its Devanagari writing alone is read as entailed: Qāmūs
+  reads "thin" (Urdu "were") as तीन (three) and "Marie" as मेरी, the search then
+  finds "The three found radium in 1898", and with "thi" the sentence on her
+  birth in Warsaw is read as entailing it. Two symmetric rules were measured:
+
+  | Supported (true Roman claims) | Current | Not contradicted as written | Entailed as written too |
+  |---|---|---|---|
+  | Design set, 158 claims | 26 | 21 | 11 |
+  | Held-out, 160 claims | 18 | 13 | 8 |
+  | The false Marie Curie claim | supported | supported | not supported |
+
+  The first removes wrong and right supports alike (of the design set's five,
+  one wrong, one part, three right) and keeps the false claim; the second
+  removes it at the cost of more than half of all Roman supports. Read as
+  written, the NLI model misreads Roman Hindi (the reason it reads Devanagari
+  at all), so neither writing is a witness on its own. The false claim stays a
+  known failure: a Roman claim can be kept (`ilm`, Talaqqi) on one misread
+  writing. What would address it is a reading that does not misspell ("thin"
+  is not Hindi) and a check that a claim's names are its source's (Berlin is
+  not Warsaw), both to be measured on a set not yet seen. The second was
+  measured on a new set and not adopted ([Names](#names-31-october-2026)).
+
+### Names (31 October 2026)
+
+**Not adopted.** A check that a supporting sentence names what the claim names
+removed wrong supports on the design sets, but on a fresh held-out set it
+removed none, so it did not meet its bar. The code was reverted; the measured
+version is commit `9b3df51`.
+
+**The failure it was for.** "Marie Curie 7 November 1867 ko Berlin mein paida
+hui thin." was supported by "Skłodowska-Curie was born on 7 November 1867 in
+Warsaw, Poland." The NLI model can read a sentence about another place or
+person as agreeing with a claim.
+
+**The rule.** A source sentence or joined premise may **support** a claim only
+when it holds each of the claim's names. When the most decisive premise is an
+entailment that does not hold them, the claim is left unknown, as a one-way
+contradiction is. No other premise takes its place, so the rule cannot make a
+claim contradicted, and contradiction is not affected.
+
+- **A claim's names, in Latin letters** (English, Roman Hindi and Urdu): runs
+  of capitalised words standing apart only by spaces ("Marie Curie",
+  "Skłodowska-Curie", "Doosri Jang-e-Azeem"). The first word of every sentence
+  is capitalised, so a lone first word ("The", "Yeh", "Paris") is not taken
+  for a name. A run that goes on past it ("Marie Curie 7 November…") is one.
+- **In Devanagari or Urdu script**: the words written in Latin letters only.
+  Words in the claim's own script carry no case.
+- **A name in parentheses** is another writing of the name right before it
+  ("Doosri Jang-e-Azeem (World War II)", "ورلڈ وائڈ ویب (WWW)"). Either
+  writing is enough, and the gloss is not asked for on its own.
+- **When a name is held.** A name of several words is held when the sentence
+  holds any one of its words that carries more than an average word's
+  information ("Curie" names Marie Curie; "The" of "The Taj Mahal" is no
+  evidence). A word is held by a sentence word that also carries more than
+  average information, when that word is:
+  - the same word, or the same with its accents dropped ("Röntgen", "Rontgen");
+  - a word with the same consonant skeleton, the one Qāmūs compares names by
+    ("Mumtaz", "Mumtaaz");
+  - a word that begins it or that it begins ("Olympic", "Olympics";
+    "Japan", "Japanese");
+  - in another script, a Qāmūs translation of it.
+
+  A Latin-letter name is never held through a Roman reading of it into English:
+  "Marie" is not मेरी ("my").
+- **No runtime romaniser.** anyascii, which the Qāmūs builder romanises names
+  with, is not a runtime dependency (not in `pyproject.toml`). The check used
+  only Unicode decomposition and Qāmūs's shipped data.
+
+**The bar, set before measuring.** On the design sets, with the rule against
+without it:
+- wrong supports fall;
+- right supports fall by at most 10% of the right supports;
+- no finding against another question's articles;
+- no claim newly contradicted;
+- no false English claim supported.
+
+If these held, a fresh held-out set (v2) decided: false claims supported must
+not rise and wrong supports must fall.
+
+**Two versions.** The first version also counted a Devanagari or Urdu word as
+a name when Qāmūs translated it into an English word that its Roman reading
+reads back as the word ("जापान" → "japan"). It had no gloss rule and no
+endings. It met the bar on the design sets: wrong supports 5 → 2, right 90 →
+89. On the earlier held-out set (31 October, above) it removed 5 of 34 right
+supports, which would fail the bar (14.7%):
+- the read-back test took cognates and homographs for names: नाम ("name"),
+  बार ("times", read back from "bar"), ڈرامہ ("drama", which the source spells
+  ڈراما);
+- glosses were asked for on their own: "(WWW)", "(IPV)";
+- "Olympic" was not found in "Olympics".
+
+That set had already been used to change code (above), and no result of v2
+existed yet, so the rule was revised to the version above before v2 was
+measured. On the design sets the revised rule met the bar again. On the
+earlier held-out set it refused the false Marie Curie claim (false supports
+1 → 0) and one part support ("…HTML-based system…"), with no right support
+lost (right/part/wrong 34/16/4 → 34/15/3).
+
+**Design sets** (the sets above; each against its own sources and, as the
+control, against question j + 7's). Supported claims as right / part / wrong:
+
+| Set | Claims | Supported, without the rule | With it | Talaqqi keeps |
+|---|---|---|---|---|
+| English, Simple English Wikipedia | 75 | 18 (18/0/0) | 18 (18/0/0) | 14 → 14 |
+| English, web snippets | 75 | 19 (18/0/1) | 18 (18/0/0) | 14 → 13 |
+| Roman, Hindi-leaning | 78 | 17 (14/1/2) | 16 (14/1/1) | 13 → 12 |
+| Roman Urdu | 80 | 9 (8/1/0) | 9 (8/1/0) | 5 → 5 |
+| Hindi, Simple English Wikipedia | 119 | 4 (3/1/0) | 4 (3/1/0) | |
+| Urdu, Simple English Wikipedia | 120 | 0 | 0 | |
+| Hindi, Hindi Wikipedia | 119 | 20 (16/2/2) | 20 (16/2/2) | |
+| Urdu, Urdu Wikipedia | 120 | 18 (13/5/0) | 18 (13/5/0) | |
+| False claims (English ×2 sources, Roman) | 60 | 0 | 0 | |
+
+- **Supported:** 105 → 103 of 846 claims. Right/part/wrong went from 90/10/5
+  to 90/10/3. The wrong share of supports went from 4.8% [2.1, 10.7] to 2.9%
+  [1.0, 8.2].
+- **Contradictions:** the same 21 claims in both arms (false sets 8, 9 and 3;
+  one English true claim from snippets).
+- **Controls:** no finding in either arm.
+- **The two supports removed were both wrong:**
+  - "Agar "bada" ka matlab kshetrafal (area) hai to duniya ka sabse bada desh
+    Russia hai." against a Hindi web snippet that only asks the question;
+  - "Mona Lisa ki painting Leonardo da Vinci ne banayi thi." against
+    "Leonardo's full name was…".
+
+**Held-out set v2.** It was built as the earlier held-out set was:
+- 30 new questions, on none of the articles of the design sets or the
+  earlier held-out set: science 6, geography 5, history 5, people 4,
+  inventions 4, sport 3, nature 3 (the electron, Galileo, Tokyo, the Dead
+  Sea, Napoleon, World War I, Tolstoy, dynamite, Usain Bolt, the giraffe, …);
+- five wordings each, by hand;
+- the production teacher's answers, with the same call and instructions.
+  There were 179 calls: 150 first answers, then 22 Hindi-leaning and 7 Urdu
+  Roman questions answered in Devanagari or Urdu script, asked again with
+  production's Hinglish instruction. All 60 Roman answers were then in Latin
+  letters. Prompt tokens: 10,770; completion tokens: 83,470. OpenRouter
+  reported a cost of $0.0176;
+- 20 false claims written by hand, 4 per form. 13 of them have a wrong name
+  (Galileo born in Venice, dynamite invented by Thomas Edison, Beethoven born
+  in Salzburg, Marconi Spanish, Genghis Khan died in Japan, …);
+- the questions, the false claims and the answers were each frozen by SHA-256
+  before any result was read.
+
+Supported claims as right / part / wrong, without and with the rule (95%
+Wilson intervals):
+
+| Set | Claims | Supported, without the rule | With it | Talaqqi keeps |
+|---|---|---|---|---|
+| English, Simple English Wikipedia | 84 | 13 = 15.5% [9.3, 24.7] (12/1/0) | 13 (12/1/0) | 11 → 11 |
+| Roman, Hindi-leaning | 86 | 11 = 12.8% [7.3, 21.5] (7/4/0) | 9 = 10.5% [5.6, 18.7] (6/3/0) | 8 → 6 |
+| Roman Urdu | 92 | 10 = 10.9% [6.0, 18.9] (8/2/0) | 10 (8/2/0) | 6 → 6 |
+| Hindi, Simple English Wikipedia | 86 | 3 (2/0/1) | 3 (2/0/1) | |
+| Urdu, Simple English Wikipedia | 77 | 0 | 0 | |
+| Hindi, Hindi Wikipedia | 86 | 8 (5/1/2) | 8 (5/1/2) | |
+| Urdu, Urdu Wikipedia | 77 | 12 (10/2/0) | 12 (10/2/0) | |
+| False claims, all forms | 20 | 2 = 10.0% [2.8, 30.1] | 2 | |
+
+- **Supported:** 59 → 57. Right/part/wrong went from 44/10/5 to 43/9/5.
+- **Contradictions:** the same 8 claims in both arms (7 false claims, and one
+  claim of an Urdu answer against Urdu Wikipedia).
+- **Controls:** no finding in either arm (0 of 608).
+- **The two supports removed:**
+  - "Pehla Vishwa Yuddh 28 July 1914 ko shuru hua tha, jab Austria-Hungary ne
+    Serbia ke khilaf yuddh ka elaan kiya." is **right**. "Pehla Vishwa Yuddh"
+    is World War I in Roman Hindi, and no English sentence writes it. The
+    Roman Urdu answer that wrote "Pehli Jang-e-Azeem (World War I)" kept its
+    support through the gloss;
+  - "Colosseum Rome, Italy mein hai — … Piazza del Colosseo ke paas located
+    hai." is **part**: the source does not name the piazza.
+
+**Against the bar.**
+- False claims supported must not rise: 2 → 2. Met.
+- Wrong supports must fall: 5 → 5. **Not met.**
+
+None of the 13 false claims with a wrong name was supported even without the
+rule, so on this set the rule had nothing to catch. The five wrong supports
+had no name the rule could check:
+- a false direction, "Koala western Australia ke eucalyptus jungle mein rehta
+  hai." against "…eastern Australia.";
+- a false number, "Usain Bolt ne 100 metres 10.58 seconds mein daude hain."
+  against "…9.58 seconds…";
+- three Hindi claims in Devanagari, whose names are in Devanagari: "इसका
+  आधिकारिक नाम बीजिंग 2008 ओलंपिक था।" (twice, against sentences that say only
+  where the games were held), and "ये क्वींसलैंड, न्यू साउथ वेल्स, विक्टोरिया और
+  दक्षिण ऑस्ट्रेलिया के कुछ क्षेत्रों में पाए जाते हैं।" (koalas) against a sentence
+  on the borders of New South Wales.
+
+**What it shows.**
+- Over the three sets, the rule removed 3 wrong supports, 1 right and 2 part.
+  All 3 wrong ones were in Latin letters (two on the design sets, the false
+  Marie Curie claim on the earlier held-out set).
+- A wrong name is the error that check can see, and it was rare among
+  supports: no false claim with a wrong name was supported on v2.
+- Roman Hindi and Urdu names of things ("Pehla Vishwa Yuddh") are not the
+  source's words, so the check refuses true claims written that way.
+- In Devanagari and Urdu script, Qāmūs holds too few names to say which words
+  are names: भारत, पेरू and ब्राज़ील have no reading back.
+
+Two other things were seen while measuring. Isnad cuts a claim at an initial
+or an abbreviation ("Genghis Khan (born Temüjin, c.", "Electron ki khoj
+J.J."), and the fragments are judged as claims.
+
 ## It learns
 
 - **Kept for this user.** What an outside source settled is kept in the user's

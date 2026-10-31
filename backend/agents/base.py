@@ -3269,6 +3269,22 @@ Match the requested depth and self-correct errors."""
                     except Exception:
                         logger.warning("Chat learning capture unavailable")
                         result["learning_capture"] = "unavailable"
+            # Tadrib: the person's own words of a chat turn become a lesson that
+            # MIZAN's own language reader learns in the background within
+            # seconds (docs/tadrib.md); the gates are re-checked inside.
+            if (context or {}).get("session_id") and stateless.trains():
+                from security.auth import current_user_id
+
+                learner_owner = current_user_id()
+                if learner_owner:
+                    try:
+                        from tadbir import tadrib
+
+                        result["usage"]["memory"]["lesson"] = await tadrib.offer(
+                            learner_owner, str((context or {})["session_id"]), task
+                        )
+                    except Exception:
+                        logger.warning("Tadrib lesson unavailable")
             finished = time.perf_counter()
             execution_ms = (finished - execution_started) * 1000
             measured = self._execution_timings

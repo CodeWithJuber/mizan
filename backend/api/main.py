@@ -413,6 +413,10 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(interval)
 
     rest_task = asyncio.create_task(rest())
+    # Tadrib: the reader learns each lesson while no request runs.
+    from tadbir import tadrib
+
+    tadrib.configure(_no_run_active)
 
     async def watch_for_users() -> None:
         # Muraqabah: each user's watchers, judged against salah and attention.
@@ -1606,15 +1610,20 @@ def agent_settings_lock(agent):
 _private_memories: dict[str, DhikrMemorySystem] = {}
 
 
-def _private_memory(user: TokenPayload) -> DhikrMemorySystem:
-    """This user's own memory database, shared by all their agents."""
+def _private_dir(user_id: str) -> Path:
+    """Where this user's own memory and learning live."""
     import hashlib
 
-    directory = (
+    return (
         Path(os.getenv("MIZAN_DATA_DIR", "/data/mizan"))
         / "private"
-        / hashlib.sha256(user.user_id.encode()).hexdigest()
+        / hashlib.sha256(user_id.encode()).hexdigest()
     )
+
+
+def _private_memory(user: TokenPayload) -> DhikrMemorySystem:
+    """This user's own memory database, shared by all their agents."""
+    directory = _private_dir(user.user_id)
     key = str(directory)
     if key not in _private_memories:
         directory.mkdir(parents=True, exist_ok=True)
@@ -5658,22 +5667,34 @@ def _no_run_active() -> bool:
 
 async def nawm_night() -> dict:
     """One night of Nawm (docs/automatic-learning.md): each person whose
-    agents this process holds, and each administrator (whose learning lives
-    with the shared agents), has their lapsed lessons replayed under their own
-    choices, while no request runs and within the night's budget."""
+    agents this process holds, each administrator (whose learning lives with
+    the shared agents), and each other enabled person whose learning is on
+    disk (no agent of theirs has run since the server started), has their
+    lapsed lessons replayed under their own choices, while no request runs and
+    within the night's budget."""
+    from core.adaptive import AdaptiveStateStore
     from tadbir import nawm
 
     deadline = time.monotonic() + nawm.SECONDS
     people: list[tuple[str, Any]] = [
         (user_id, instance.adaptive) for (user_id, _), instance in list(_user_agents.items())
     ]
+    accounts = [account for account in auth.list_users() if account.get("enabled", True)]
     template = _tadbir_coordinator()
     if template is not None:
         people += [
             (account["id"], template.adaptive)
-            for account in auth.list_users()
-            if "admin" in (account.get("roles") or []) and account.get("enabled", True)
+            for account in accounts
+            if "admin" in (account.get("roles") or [])
         ]
+    for account in accounts:
+        if "admin" in (account.get("roles") or []):
+            continue
+        # The same file a private agent's learning opens (``_private_memory``),
+        # read without building the agents; ``seen`` skips it when one is held.
+        kept = _private_dir(account["id"]) / "memory.db"
+        if kept.is_file():
+            people.append((account["id"], AdaptiveStateStore(str(kept))))
     counted = (
         "replayed", "confirmed", "dropped", "unsettled", "sought", "corroborated", "fitted",
         "shadow", "reader_learned",
@@ -5754,6 +5775,52 @@ async def tadbir_audit(
 
     _require_admin(user)
     return await asyncio.to_thread(tadqiq.report, days)
+
+
+@app.get("/api/tadrib")
+async def tadrib_status(user: TokenPayload = Depends(require_auth)):
+    """Tadrib (admin): MIZAN's own reader learning each consented message while it
+    works: lessons learned, held out and turned down, the prequential log-loss of
+    the fast and the slow copy, the safety check, seconds per lesson. Counts only;
+    no words (docs/tadrib.md)."""
+    from tadbir import tadrib
+
+    _require_admin(user)
+    return await asyncio.to_thread(tadrib.status)
+
+
+@app.get("/api/tadrib/lessons")
+async def tadrib_lessons(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: TokenPayload = Depends(require_auth),
+):
+    """Your lessons: the words of yours MIZAN's own reader learned or holds out as
+    test, newest first (docs/tadrib.md)."""
+    from tadbir.tadrib import store
+
+    found, total = await asyncio.to_thread(store.listing, user.user_id, limit, offset)
+    return {
+        "lessons": [lesson.view() for lesson in found],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.delete("/api/tadrib/lessons/{digest}")
+async def tadrib_reject(digest: str, user: TokenPayload = Depends(require_auth)):
+    """Take one of your lessons back: it is deleted, and every version of the
+    reader that learned it is dropped (the fast copy is rebuilt without it)."""
+    import re
+
+    from tadbir import tadrib
+
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise HTTPException(422, "A lesson is named by its SHA-256 (64 hex digits)")
+    if not await asyncio.to_thread(tadrib.reject, user.user_id, digest):
+        raise HTTPException(404, "No such lesson")
+    return {"rejected": digest}
 
 
 @app.get("/api/tadbir/learning/live")

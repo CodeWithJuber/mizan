@@ -71,12 +71,18 @@ corpus (its SHA-256 differs from the seeds'), changes nothing.
 
 **Its own corpus** (``corpus``): Lughah's seeds stay Lughah's; the reader may
 also learn from licence-clean text that is not theirs (Tatoeba sentences the
-seeds do not use, MASSIVE 1.1's training utterances, Hinglish-1M rows), built
-at train time into ``$MIZAN_DATA_DIR`` with every line checked: its own
-script, not a seed's words in any split, not a held-out short message, once,
-never scripture. Its held-out slice of short requests (MASSIVE test
+seeds do not use, MASSIVE 1.1's training utterances, and since v2 lines of
+FineWeb-2's Roman Hindi/Urdu web pages), built at train time into
+``$MIZAN_DATA_DIR`` with every line checked: its own script, not a seed's
+words in any split, not the words of (or near) any measured message, once,
+never scripture or hadith. Its held-out slice of short requests (MASSIVE test
 utterances of 3 to 8 words, held-out Roman Hindi/Urdu rows) is read and
-reported beside the seeds' held-out groups; the gate stays the seeds'.
+reported beside the seeds' held-out groups.
+
+**Never text a language model wrote** (v2, the owner's decision of 31 Oct
+2026): Hinglish-1M, which GPT-4o-mini wrote, is measured only; Lughah's seeds
+from it (``written_by_a_model``) are never the reader's training or
+development lines nor replayed at night (``trainable``).
 
 **Scripture is never a target** (``scripture``): a line is not trained on when
 Lughah reads any piece of it as quoted Quran, when it shares
@@ -84,15 +90,23 @@ Lughah reads any piece of it as quoted Quran, when it shares
 or, once Iqtibas has the Quran's texts, when the mushaf holds such a run of it
 or a span of it is more likely a quote than ordinary speech.
 
-**While MIZAN rests** (``rest``, called by Nawm): a person's own words that
-they let MIZAN train on (``training: on``) and that a named reviewer accepted
-(the learner store) are learned under the language both Lughah and the reader
-read them in (never where they disagree), with a quarter of every batch replayed
-from the seeds (25% replay held a 3.8M byte model's old languages where EWC did
-not). The new version replaces the current one only when it is not worse on
-the held-out seeds (Ta'lim's paired bootstrap), the previous one is kept for
-rollback, and the gate is run again. Erasing a chat (Mahw) drops every version
-that learned from its words (``forget``).
+**While MIZAN works** (Tadrib, ``tadbir/tadrib``, docs/tadrib.md): each
+consented message is a lesson the loaded reader learns within seconds, in a
+fast copy of the current version that serves at once (``swap``) and is kept
+on disk (``fast.pt``, ``fast.json``) so a restart keeps the day.
+
+**While MIZAN rests** (``rest``, called by Nawm): the day's lessons, and a
+person's own words that a named reviewer accepted (the learner store), are
+learned by a challenger trained from the current version, each under the
+language both Lughah and the reader read it in (never where they disagree),
+with a quarter of every batch replayed from the seeds (25% replay held a 3.8M
+byte model's old languages where EWC did not). The challenger replaces the
+current one only when it is not worse on the held-out seeds (Ta'lim's paired
+bootstrap) and none of what it learned was erased while it trained; the
+replaced version is kept for rollback and in ``nights/`` (the last
+``NIGHTS``), and the gate is run again. Erasing a chat (Mahw) drops every
+version that learned from its words, the fast copy too (``forget``); one lock
+(``disk_lock``) covers learning, saving and forgetting.
 
 ``MIZAN_RUH_READER``: ``off``; ``shadow`` (default: computed and logged beside
 Lughah's decision, which it never changes); ``on`` (weighed in once the gate
@@ -104,7 +118,9 @@ passed). Weights and fit: ``$MIZAN_DATA_DIR/models/ruh_reader/``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -117,7 +133,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import cache
@@ -143,6 +159,7 @@ CONFIG = {"d_model": 256, "layers": 4, "heads": 4, "d_ff": 768, "context": 192, 
 PLAN = {"epochs": 12.0, "seconds": 1500.0, "batch": 32, "lr": 2e-3}
 NIGHT = {"epochs": 3.0, "lr": 5e-4, "warmup": 10}
 VERSIONS = ("current", "previous", "base")
+NIGHTS = 7  # replaced versions kept in ``nights/``, newest first, for forgetting
 
 
 def mode() -> str:
@@ -184,6 +201,32 @@ def seeds() -> list[tuple[str, str]]:
     from .. import lughah
 
     return [(text, label) for text, label in lughah.corpus() if label not in lughah.NEUTRAL]
+
+
+@cache
+def written_by_a_model() -> frozenset[str]:
+    """The groups (words as read) of Lughah's seeds that a language model
+    wrote (their source is in ``corpus.MODEL_WRITTEN``: 900 of the 982 Roman
+    Hindi/Urdu seeds are Hinglish-1M rows). Since v2 the reader never trains
+    on them, never checks its checkpoints or fits κ, γ, b on them, and never
+    replays them at night; they are only ever measured (the seeds' held-out
+    groups, reported). Lughah still counts them: that is Lughah's corpus."""
+    from .. import lughah
+    from .corpus import MODEL_WRITTEN
+
+    found: set[str] = set()
+    for path in sorted(lughah.CORPUS.glob("*.tsv")):
+        for row in path.read_text(encoding="utf-8").splitlines():
+            source, _, text = row.partition("\t")
+            if text.strip() and source.split(":", 1)[0] in MODEL_WRITTEN:
+                found.add(group_of(text))
+    return frozenset(found)
+
+
+def trainable(rows: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The rows the reader may learn from or be developed on: not model-written."""
+    written = written_by_a_model()
+    return [row for row in rows if group_of(row[0]) not in written]
 
 
 def corpus_digest(rows: Sequence[tuple[str, str]]) -> str:
@@ -299,34 +342,43 @@ def _golden(loss: Callable[[float], float], low: float, high: float) -> float:
 
 
 def fit_reader(
-    lm: Sequence[Sequence[float]], tokens: Sequence[int], truths: Sequence[int], ref: float
+    lm: Sequence[Sequence[float]],
+    tokens: Sequence[int],
+    truths: Sequence[int],
+    ref: float,
+    gamma: float | None = None,
 ) -> tuple[float, float, float]:
     """κ ∈ (0, 1] and γ ∈ [0, 1] with the lowest log-loss (coordinate descent
     on log κ and γ, the ends of the ranges candidates too, as Tamyiz fits its
     weights). On messages the reader never gets wrong the log-loss falls
-    without end as κ grows; Bayes' own exponent, 1, is the most it is given."""
+    without end as κ grows; Bayes' own exponent, 1, is the most it is given.
+    With ``gamma`` given, γ is held there and only κ is searched (its step of
+    the descent): a calibration of κ on other messages, γ as fitted before."""
 
-    def loss(log_kappa: float, gamma: float) -> float:
+    def loss(log_kappa: float, power: float) -> float:
         kappa = math.exp(log_kappa)
         rows = [
-            reader_log_posterior(r, m, kappa, gamma, ref) for r, m in zip(lm, tokens, strict=True)
+            reader_log_posterior(r, m, kappa, power, ref) for r, m in zip(lm, tokens, strict=True)
         ]
         return log_loss(rows, truths)
 
-    log_kappa, gamma = 0.0, 0.0
-    for _ in range(3):
+    held = gamma is not None
+    log_kappa, power = 0.0, gamma if gamma is not None else 0.0
+    for _ in range(1 if held else 3):
 
-        def along_kappa(x: float, g: float = gamma) -> float:
+        def along_kappa(x: float, g: float = power) -> float:
             return loss(x, g)
 
         log_kappa = min((_golden(along_kappa, math.log(1e-3), 0.0), 0.0), key=along_kappa)
+        if held:
+            break
 
         def along_gamma(g: float, x: float = log_kappa) -> float:
             return loss(x, g)
 
         # The search's ends are candidates too: γ = 0 is plain Bayes.
-        gamma = min((0.0, _golden(along_gamma, 0.0, 1.0), 1.0), key=along_gamma)
-    return math.exp(log_kappa), gamma, loss(log_kappa, gamma)
+        power = min((0.0, _golden(along_gamma, 0.0, 1.0), 1.0), key=along_gamma)
+    return math.exp(log_kappa), power, loss(log_kappa, power)
 
 
 def fit_b(
@@ -532,14 +584,16 @@ def arms(reads: Sequence[Read], fit: Fit) -> dict[str, list[list[float]]]:
     }
 
 
-def fit_on(reads: Sequence[Read], ref: float) -> Fit:
-    """κ and γ for the reader alone, then b for the product, on these reads."""
+def fit_on(reads: Sequence[Read], ref: float, gamma: float | None = None) -> Fit:
+    """κ and γ for the reader alone, then b for the product, on these reads
+    (with ``gamma`` given, γ is held and only κ and b are fitted)."""
     scored = [read for read in reads if read.own]
     kappa, gamma, _loss = fit_reader(
         [read.lm for read in scored],
         [read.tokens for read in scored],
         [r.truth for r in scored],
         ref,
+        gamma,
     )
     fit = Fit(kappa=kappa, gamma=gamma, ref=ref)
     b, _before, _after = fit_b(
@@ -716,17 +770,22 @@ def build(
         splits[part(group_of(row[0]))].append(row)
     if iqtibas.enabled() and iqtibas.ready() is None:
         iqtibas.load()  # the Quran's texts, when on disk: the full scripture check
-    lines, dropped = training_lines(splits["train"], languages)
-    dev_lines, _ = training_lines(splits["dev"], languages)
+    # Model-written seeds are never learned from nor developed on (v2).
+    learnable = {name: trainable(splits[name]) for name in ("train", "dev")}
+    left_out = {name: len(splits[name]) - len(learnable[name]) for name in learnable}
+    lines, dropped = training_lines(learnable["train"], languages)
+    dev_lines, _ = training_lines(learnable["dev"], languages)
     extra: dict | None = None
     if corpus is not None:
         guarded = {group_of(text) for text, _label in [*splits["dev"], *splits["held_out"]]}
         more, extra = _corpus_lines(corpus, languages, guarded)
         lines = [*lines, *more]
     log(
-        f"reader: {len(lines)} training lines ({dropped} seeds set aside as scripture"
+        f"reader: {len(lines)} training lines ({dropped} seeds set aside as scripture, "
+        f"{left_out['train']} model-written left out"
         + (f", {extra['lines']} from the corpus" if extra else "")
-        + f"), {len(splits['dev'])} dev, {len(splits['held_out'])} held out"
+        + f"), {len(learnable['dev'])} dev ({left_out['dev']} model-written left out), "
+        f"{len(splits['held_out'])} held out"
     )
     began = time.monotonic()
     fold = held_out_lughah(rows, calibrate)
@@ -756,7 +815,7 @@ def build(
         if trained is not None:
             keep_trained(trained, seed, key, model, report)
             log(f"reader: seed {seed}'s weights kept in {trained} before reading")
-    dev = read_with_lughah(splits["dev"], languages, fold)
+    dev = read_with_lughah(learnable["dev"], languages, fold)
     held = read_with_lughah(splits["held_out"], languages, fold)
     short: list[Read] = []
     if corpus is not None:
@@ -789,6 +848,7 @@ def build(
         "scripture_set_aside": dropped,
         "scripture_mushaf": iqtibas.ready() is not None,
         "split": {name: len(items) for name, items in splits.items()},
+        "model_written_left_out": left_out,  # seeds: never trained or developed on
         "corpus": extra,
         "fit": fit.to_dict(),
         "held_out_bpb": bits_per_byte(held, languages),
@@ -821,6 +881,36 @@ def _files(name: str) -> tuple[Path, Path, Path]:
     return folder / f"{name}.pt", folder / f"{name}.json", folder / f"{name}.reads.json"
 
 
+_held = threading.local()
+_thread_lock = threading.RLock()
+
+
+@contextlib.contextmanager
+def disk_lock() -> Iterator[None]:
+    """The one lock over the reader's files: learning (a lesson or a night),
+    saving and forgetting. Re-entrant within a thread; across processes an
+    ``flock`` on ``.lock`` in the reader's folder."""
+    with _thread_lock:
+        depth = getattr(_held, "depth", 0)
+        if depth:
+            _held.depth = depth + 1
+            try:
+                yield
+            finally:
+                _held.depth = depth
+            return
+        folder = home()
+        folder.mkdir(parents=True, exist_ok=True)
+        with (folder / ".lock").open("a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            _held.depth = 1
+            try:
+                yield
+            finally:
+                _held.depth = 0
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def _write_reads(path: Path, dev: Sequence[Read], held: Sequence[Read]) -> None:
     """The dev and held-out messages as Lughah read them (they do not change
     while the corpus does not), so a night re-scores only the reader."""
@@ -838,7 +928,7 @@ def _write_reads(path: Path, dev: Sequence[Read], held: Sequence[Read]) -> None:
             for r in reads
         ]
 
-    path.write_text(json.dumps({"dev": plain(dev), "held_out": plain(held)}), encoding="utf-8")
+    _replace_text(path, json.dumps({"dev": plain(dev), "held_out": plain(held)}))
 
 
 def _read_reads(path: Path) -> tuple[list[Read], list[Read]]:
@@ -846,24 +936,36 @@ def _read_reads(path: Path) -> tuple[list[Read], list[Read]]:
     return [Read(**item) for item in data["dev"]], [Read(**item) for item in data["held_out"]]
 
 
+def _replace_text(path: Path, text: str) -> None:
+    """Write a whole file or nothing: a temporary file, then a rename."""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def save(built: Built, name: str = "current") -> None:
     from . import net
 
     weights, manifest, reads = _files(name)
-    weights.parent.mkdir(parents=True, exist_ok=True)
-    net.save(built.model, weights)
-    _write_reads(reads, built.dev, built.held_out)
-    manifest.write_text(json.dumps(built.manifest, indent=1), encoding="utf-8")
+    with disk_lock():
+        weights.parent.mkdir(parents=True, exist_ok=True)
+        net.save(built.model, weights)
+        _write_reads(reads, built.dev, built.held_out)
+        _replace_text(manifest, json.dumps(built.manifest, indent=1))
     reset()
 
 
 def install(built: Built) -> None:
     """A reader built from the seeds becomes the base and the current version."""
-    for name in ("current", "previous"):
-        for path in _files(name):
-            path.unlink(missing_ok=True)
-    save(built, "base")
-    save(built, "current")
+    with disk_lock():
+        for name in ("current", "previous"):
+            for path in _files(name):
+                path.unlink(missing_ok=True)
+        drop_fast()
+        for path in _nights():
+            _remove_night(path)
+        save(built, "base")
+        save(built, "current")
 
 
 def manifest(name: str = "current") -> dict | None:
@@ -877,7 +979,9 @@ def manifest(name: str = "current") -> dict | None:
 def _copy(source: str, target: str) -> None:
     for frm, to in zip(_files(source), _files(target), strict=True):
         if frm.exists():
-            shutil.copyfile(frm, to)
+            temporary = to.with_name(to.name + ".tmp")
+            shutil.copyfile(frm, temporary)
+            os.replace(temporary, to)
 
 
 def _remove(name: str) -> None:
@@ -887,33 +991,119 @@ def _remove(name: str) -> None:
 
 def rollback() -> bool:
     """The previous version becomes the current one again."""
-    if manifest("previous") is None:
-        return False
-    _copy("previous", "current")
-    _remove("previous")
+    with disk_lock():
+        if manifest("previous") is None:
+            return False
+        _copy("previous", "current")
+        _remove("previous")
+        drop_fast()
     reset()
     return True
 
 
-def forget(texts: Iterable[str]) -> int:
-    """Drop every version that learned from any of these texts (Mahw): the
-    newest version that did not becomes the current one. Returns how many
-    versions were dropped."""
-    digests = {text_digest(text) for text in texts if text and text.strip()}
-    if not digests:
+# ── the fast copy (Tadrib) and the replaced versions (nights/) ──────────
+
+
+def fast_files() -> tuple[Path, Path]:
+    folder = home()
+    return folder / "fast.pt", folder / "fast.json"
+
+
+def fast_manifest() -> dict | None:
+    """What the fast copy on disk learned, if it belongs to the current version."""
+    try:
+        data = json.loads(fast_files()[1].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    current = manifest("current")
+    if not isinstance(data, dict) or current is None or data.get("slow") != current.get("created"):
+        return None
+    return data if fast_files()[0].exists() else None
+
+
+def drop_fast() -> None:
+    for path in fast_files():
+        path.unlink(missing_ok=True)
+
+
+def _nights() -> list[Path]:
+    """The replaced versions' manifests, newest first."""
+    folder = home() / "nights"
+    return sorted(folder.glob("*.json"), reverse=True) if folder.is_dir() else []
+
+
+def _remove_night(path: Path) -> None:
+    for suffix in (".pt", ".json", ".reads.json"):
+        path.with_name(path.name.removesuffix(".json") + suffix).unlink(missing_ok=True)
+
+
+def _keep_night(name: str) -> None:
+    """Keep a version in ``nights/`` before it is replaced; the oldest beyond ``NIGHTS`` go."""
+    found = manifest(name)
+    if found is None:
+        return
+    folder = home() / "nights"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = str(found.get("created") or datetime.now(UTC).isoformat()).replace(":", "")
+    for frm, suffix in zip(_files(name), (".pt", ".json", ".reads.json"), strict=True):
+        if frm.exists():
+            shutil.copyfile(frm, folder / f"{stamp}{suffix}")
+    for old in _nights()[NIGHTS:]:
+        _remove_night(old)
+
+
+def _night_manifest(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def forget(texts: Iterable[str] = (), digests: Iterable[str] = ()) -> int:
+    """Drop every version that learned from any of these texts or lesson
+    digests (Mahw, a rejected lesson): the fast copy, the current version,
+    the previous one and the kept nights; the newest version that did not
+    learn them becomes the current one (the seed-only base at worst).
+    Returns how many versions were dropped."""
+    erased = {text_digest(text) for text in texts if text and text.strip()} | set(digests)
+    if not erased:
         return 0
     dropped = 0
-    for name in ("current", "previous"):
-        found = manifest(name)
-        if found is not None and digests & set(found.get("learned") or []):
-            _remove(name)
+    with disk_lock():
+        fast = fast_manifest()
+        if fast is not None and erased & set(fast.get("learned") or []):
+            drop_fast()
             dropped += 1
-    if dropped and manifest("current") is None:
-        if manifest("previous") is not None:
-            _copy("previous", "current")
-            _remove("previous")
-        elif manifest("base") is not None:
-            _copy("base", "current")
+        current_dropped = False
+        for name in ("current", "previous"):
+            found = manifest(name)
+            if found is not None and erased & set(found.get("learned") or []):
+                _remove(name)
+                dropped += 1
+                current_dropped = current_dropped or name == "current"
+        kept_nights = []
+        for path in _nights():
+            found = _night_manifest(path)
+            if found is not None and erased & set(found.get("learned") or []):
+                _remove_night(path)
+                dropped += 1
+            elif found is not None:
+                kept_nights.append(path)
+        if current_dropped:
+            drop_fast()
+            if manifest("previous") is not None:
+                _copy("previous", "current")
+                _remove("previous")
+            elif kept_nights:
+                newest = kept_nights[0]
+                stem = newest.name.removesuffix(".json")
+                for to, suffix in zip(
+                    _files("current"), (".pt", ".json", ".reads.json"), strict=True
+                ):
+                    shutil.copyfile(newest.with_name(stem + suffix), to)
+            elif manifest("base") is not None:
+                _copy("base", "current")
     if dropped:
         reset()
     return dropped
@@ -998,7 +1188,9 @@ def load() -> Loaded | None:
         from . import net
 
         torch.set_num_threads(max(1, min(2, os.cpu_count() or 1)))
-        model = net.load(_files("current")[0])
+        with disk_lock():
+            fast = fast_manifest()
+            model = net.load(fast_files()[0] if fast is not None else _files("current")[0])
         fit = Fit(**found["fit"])
         loaded = Loaded(model, found, fit, languages)
         with _lock:
@@ -1010,6 +1202,18 @@ def load() -> Loaded | None:
         return None
     finally:
         _loading = False
+
+
+def swap(model: Any, slow: str) -> bool:
+    """Serve these weights (the fast copy Tadrib trained from the version
+    created at ``slow``) from now on; False when that version is not the one
+    loaded (it was replaced or forgotten in the meantime)."""
+    global _loaded
+    with _lock:
+        if _loaded is None or _loaded.manifest.get("created") != slow:
+            return False
+        _loaded = Loaded(model, _loaded.manifest, _loaded.fit, _loaded.languages)
+        return True
 
 
 def available() -> Loaded | None:
@@ -1116,7 +1320,31 @@ def agreed_language(text: str, model: Any, fit: Fit, languages: Sequence[str]) -
     own = reading(lughah.own_words(text))
     scored, counts = net.score(model, [own], list(range(len(languages))))
     second = _argmax(reader_log_posterior(scored[0], counts[0], fit.kappa, fit.gamma, fit.ref))
-    return first if first == second else None
+    if first != second or contradicted(text, languages[first]):
+        return None
+    return first
+
+
+def contradicted(text: str, code: str) -> bool:
+    """Whether Qāmūs, a third witness, says otherwise: Lughah and the reader
+    both read the text as English, but Qāmūs reads two Hindi or Urdu words in
+    it written in Latin letters (the count the Roman slices use,
+    ``corpus.V2_LEAST``). A word English writes the same way ("meeting",
+    "alarm": Qāmūs reads them as मीटिंग, अलार्म) is no witness for either.
+    Two readers that make the same mistake agree on it, and a lesson learned
+    from that agreement teaches the mistake (Tadrib's second test,
+    docs/tadrib.md), so a lesson is kept only when no witness says otherwise."""
+    if code != "en":
+        return False
+    from .. import qamus
+    from .corpus import V2_LEAST
+
+    hindi = set()
+    for word in qamus.tokens(text):
+        read = qamus.read_roman(word)
+        if read and not any(word in qamus.translate(native, "en") for native in read.values()):
+            hindi.add(word)
+    return len(hindi) >= V2_LEAST
 
 
 def no_worse(
@@ -1142,12 +1370,20 @@ def learn(
     stop: Callable[[], bool] = lambda: False,
     seed: int = 0,
     threads: int = 2,
+    labelled: Sequence[tuple[str, str]] = (),
+    still: Callable[[set[str]], set[str]] | None = None,
 ) -> dict:
     """Continue training the current reader on these texts (consented and
     verified), with a quarter of every batch replayed from the seeds; the new
     version replaces the current one only when it is not worse on the
     held-out seeds. Never under ``learning: off``, without ``training: on``,
-    or in an evaluation."""
+    or in an evaluation.
+
+    ``labelled``: (text, language) lessons whose language MIZAN already
+    checked when they were given (Tadrib: Lughah and the reader agreed then),
+    learned under that language. ``still``: which of the learned digests may
+    still be kept, asked under the lock just before promoting; if any was
+    erased while the challenger trained, nothing is promoted."""
     from memory import stateless
 
     if not stateless.learns() or not stateless.trains() or stateless.barred_from_training():
@@ -1188,12 +1424,25 @@ def learn(
             continue
         new.append((own, slot))
         digests.append(digest)
+    for text, code in labelled:
+        digest = text_digest(text)
+        if digest in learned or digest in digests:
+            counted["seen"] += 1
+            continue
+        if scripture(text):
+            counted["scripture"] += 1
+            continue
+        own = reading(lughah.own_words(text))
+        if not own or code not in languages:
+            continue
+        new.append((own, languages.index(code)))
+        digests.append(digest)
     report: dict[str, Any] = {"status": "nothing new", "learned": 0, **counted}
     if not new:
         return report
     dev, held = _read_reads(_files("current")[2])
     seed_lines, _ = training_lines(
-        [row for row in rows if part(group_of(row[0])) == "train"], languages
+        trainable(row for row in rows if part(group_of(row[0])) == "train"), languages
     )
     dev_lines = [(r.own, r.truth) for r in dev if r.own and r.kind == "whole"]
     challenger = copy.deepcopy(model)
@@ -1231,21 +1480,65 @@ def learn(
         gate=verdict,
     )
     if promoted:
-        manifest_new = {
-            **current,
-            "created": datetime.now(UTC).isoformat(),
-            "fit": new_fit.to_dict(),
-            "held_out_bpb": bits_per_byte(challenger_held, languages),
-            "gate": verdict,
-            "adopted": verdict["adopted"] and new_fit.b > 0,
-            "tests": test,
-            "learned": sorted(learned | set(digests)),
-            "parent": current.get("created"),
-            "night": {k: v for k, v in report.items() if k != "gate"},
-        }
-        _copy("current", "previous")
-        save(Built(challenger, manifest_new, dev, held, None), "current")
+        with disk_lock():
+            now = manifest("current")
+            if now is None or now.get("created") != current.get("created"):
+                return {
+                    **report,
+                    "status": "stale",
+                    "learned": 0,
+                }  # replaced or forgotten meanwhile
+            if still is not None and still(set(digests)) != set(digests):
+                return {**report, "status": "erased while learning", "learned": 0}
+            _promote(
+                current,
+                challenger,
+                dev,
+                held,
+                new_fit,
+                challenger_held,
+                languages,
+                verdict,
+                test,
+                learned,
+                digests,
+                report,
+            )
+        report["digests"] = digests
     return report
+
+
+def _promote(
+    current: dict,
+    challenger: Any,
+    dev: list[Read],
+    held: list[Read],
+    new_fit: Fit,
+    challenger_held: list[Read],
+    languages: list[str],
+    verdict: dict,
+    test: int,
+    learned: set[str],
+    digests: list[str],
+    report: dict,
+) -> None:
+    """The challenger becomes the current version (called under ``disk_lock``)."""
+    manifest_new = {
+        **current,
+        "created": datetime.now(UTC).isoformat(),
+        "fit": new_fit.to_dict(),
+        "held_out_bpb": bits_per_byte(challenger_held, languages),
+        "gate": verdict,
+        "adopted": verdict["adopted"] and new_fit.b > 0,
+        "tests": test,
+        "learned": sorted(learned | set(digests)),
+        "parent": current.get("created"),
+        "night": {k: v for k, v in report.items() if k != "gate"},
+    }
+    _keep_night("current")
+    _copy("current", "previous")
+    drop_fast()  # the fast copy learned on the replaced version
+    save(Built(challenger, manifest_new, dev, held, None), "current")
 
 
 async def rest(
@@ -1254,9 +1547,9 @@ async def rest(
     deadline: float | None = None,
     idle: Callable[[], bool] = lambda: True,
 ) -> dict:
-    """Nawm's part: the person's reviewed words learned while no request
-    runs, within the night's time, under their own choices. Skipped when the
-    reader is off or absent."""
+    """Nawm's part: the person's lessons of the day (Tadrib) and reviewed
+    words learned while no request runs, within the night's time, under their
+    own choices. Skipped when the reader is off or absent."""
     if mode() == "off":
         return {"status": "off"}
     from memory import stateless
@@ -1268,15 +1561,43 @@ async def rest(
     seconds = None if deadline is None else deadline - time.monotonic()
     if seconds is not None and seconds <= 0:
         return {"status": "skipped"}
+    from .. import tadrib
+    from ..tadrib import store
+
     texts = await asyncio.to_thread(reviewed_words, owner)
-    if not texts:
+    lessons = (
+        await asyncio.to_thread(store.unconsolidated, owner, "reader")
+        if tadrib.mode() == "on"
+        else []
+    )
+    if not texts and not lessons:
         return {"status": "nothing new"}
 
     def stop() -> bool:
         return not idle() or (deadline is not None and time.monotonic() > deadline)
 
+    def still(digests: set[str]) -> set[str]:
+        """What may still be kept: reviewed words and lessons not erased since."""
+        allowed = {text_digest(text) for text in reviewed_words(owner)}
+        allowed |= store.learned_digests(owner, "reader")
+        return digests & allowed
+
     budget = seconds if seconds is not None else 300.0
-    return await asyncio.to_thread(learn, texts, seconds=budget, stop=stop)
+    report = await asyncio.to_thread(
+        learn,
+        texts,
+        seconds=budget,
+        stop=stop,
+        labelled=[(lesson.text, lesson.language) for lesson in lessons],
+        still=still,
+    )
+    if report.get("status") == "promoted":
+        mine = {lesson.digest for lesson in lessons}
+        await asyncio.to_thread(
+            store.consolidate, owner, [d for d in report.get("digests", []) if d in mine]
+        )
+        tadrib.slow_changed()
+    return report
 
 
 def main() -> None:
@@ -1288,6 +1609,32 @@ def main() -> None:
     parser.add_argument("--corpus", action="store_true", help="download and build its corpus")
     parser.add_argument("--bytes-per-language", type=int, default=reader_corpus.BYTES_PER_LANGUAGE)
     parser.add_argument("--workers", type=int, default=1, help="processes for the scripture check")
+    parser.add_argument(
+        "--validation", action="store_true", help="build the validation slices beside the corpus"
+    )
+    parser.add_argument(
+        "--fresh-labels",
+        action="store_true",
+        help="test 3: write the never-read Roman rows to label by hand (labels.tsv)",
+    )
+    parser.add_argument(
+        "--fresh", action="store_true", help="test 3: build the fresh slices beside the corpus"
+    )
+    parser.add_argument(
+        "--old",
+        type=Path,
+        help="v1's corpus folder (its slices are never trained on; v2's slices read what it saw)",
+    )
+    parser.add_argument(
+        "--hadith",
+        action="store_true",
+        help="with --corpus: also leave out runs of the six books (the speaker's rule)",
+    )
+    parser.add_argument(
+        "--v2-labels", action="store_true", help="v2: write the rows to label by hand"
+    )
+    parser.add_argument("--v2", action="store_true", help="v2: build its slices (before --corpus)")
+    parser.add_argument("--dakshina", type=Path, help="v2: folder of Dakshina's romanized files")
     parser.add_argument("--train", action="store_true", help="train and install as current")
     parser.add_argument("--seeds-only", action="store_true", help="train without the corpus")
     parser.add_argument("--seed", type=int, default=0)
@@ -1295,13 +1642,45 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # signed download links stay out
+    if args.v2 or args.v2_labels:
+        if args.old is None or args.dakshina is None:
+            parser.error("--v2 needs --old (v1's corpus) and --dakshina")
+        reader_corpus.folder().mkdir(parents=True, exist_ok=True)
+        made = reader_corpus.build_v2(
+            old=args.old, dakshina_folder=args.dakshina, labels_only=not args.v2, log=print
+        )
+        print(json.dumps({k: v for k, v in made.items() if k != "created"}, indent=1))
     if args.corpus:
+        hadith = None
+        if args.hadith:
+            from .speaker import Hadith, hadith_editions
+
+            hadith = Hadith(*hadith_editions())
         found = reader_corpus.build(
-            bytes_per_language=args.bytes_per_language, workers=args.workers, log=print
+            bytes_per_language=args.bytes_per_language,
+            workers=args.workers,
+            hadith=hadith,
+            measured=reader_corpus.measured_texts(args.old),
+            log=print,
         )
         print(json.dumps({k: found[k] for k in ("train", "short", "kept", "dropped")}, indent=1))
+    if args.validation:
+        made = reader_corpus.build_validation(log=print)
+        print(
+            json.dumps({k: made[k] for k in ("lines", "per_half", "dropped", "sha256")}, indent=1)
+        )
+    if args.fresh or args.fresh_labels:
+        made = reader_corpus.build_fresh(labels_only=not args.fresh, log=print)
+        print(json.dumps({k: v for k, v in made.items() if k != "created"}, indent=1))
     if not args.train:
-        if not args.corpus:
+        if not (
+            args.corpus
+            or args.validation
+            or args.fresh
+            or args.fresh_labels
+            or args.v2
+            or args.v2_labels
+        ):
             print(json.dumps(status(), indent=1))
         return
     extra = None if args.seeds_only else reader_corpus.load()

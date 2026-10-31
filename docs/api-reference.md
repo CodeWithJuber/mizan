@@ -4,9 +4,9 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-304 routes in 60 areas.
+307 routes in 61 areas.
 
-Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
+Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tadrib](#tadrib) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
 ## agent-skills
 
@@ -499,6 +499,14 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/tadbir/talim/import` | admin | Teach from a Hugging Face dataset split (read through the dataset viewer). |
 | DELETE | `/api/tadbir/talim/{batch}` | admin | Talim undo |
 | GET | `/api/tadbir/teacher-calls` | user (more for admin) | How often MIZAN answered with no hosted-model call, the goal's measure: the share overall, per day and per (family, language), each with a Wilson 95 % interval, and which Lisan tasks still called the model (docs/teacher-calls.md). Counts and shares only; no message content. |
+
+## tadrib
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/api/tadrib` | admin | Tadrib (admin): MIZAN's own reader learning each consented message while it works: lessons learned, held out and turned down, the prequential log-loss of the fast and the slow copy, the safety check, seconds per lesson. Counts only; no words (docs/tadrib.md). |
+| GET | `/api/tadrib/lessons` | user | Your lessons: the words of yours MIZAN's own reader learned or holds out as test, newest first (docs/tadrib.md). |
+| DELETE | `/api/tadrib/lessons/{digest}` | user | Take one of your lessons back: it is deleted, and every version of the reader that learned it is dropped (the fast copy is rebuilt without it). |
 
 ## tasks
 

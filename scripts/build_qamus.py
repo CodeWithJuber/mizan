@@ -30,6 +30,15 @@ the name types (types the translators did not translate in more than half of
 their slots, over the four locales) against the same names shuffled within
 their slot type. Tokens that are pieces of a word written apart
 (``qamus.pieces``) are dropped. Needs ``pyarrow`` and ``anyascii==0.3.2``.
+
+With ``--extra``, Hindi also learns from **PMIndia** v1 (Haddow and Kirefu,
+2020; CC BY 4.0), the news updates of the Prime Minister of India's website in
+English and Hindi, pinned by SHA-256 and downloaded into ``--data``: its pairs
+are added to MASSIVE's train pairs (``EXTRA``), every pair with at most
+``LONGEST`` words a side, exact duplicates dropped. Everything else is fitted
+and measured on MASSIVE as above; pieces are judged over all the training
+text. Measured and not adopted (``docs/qamus.md``): the shipped lexicons are
+built without it.
 """
 
 from __future__ import annotations
@@ -39,7 +48,9 @@ import gzip
 import hashlib
 import json
 import re
+import shutil
 import sys
+import urllib.request
 from collections import Counter
 from pathlib import Path
 
@@ -57,6 +68,19 @@ LOCALES = {"hi": "hi-IN", "ur": "ur-PK", "ar": "ar-SA", "ta": "ta-IN"}
 SPLITS = ("train", "validation", "test")
 ROMANISER = ("anyascii", "0.3.2")  # ISC licence
 _SLOT = re.compile(r"\[\s*([^\]:]+?)\s*:\s*([^\]]*?)\s*\]")
+# Parallel text learned from besides MASSIVE's train split with ``--extra``, per
+# language: a tab-separated file of (English, the language) sentence pairs,
+# pinned by SHA-256. Measured, not adopted (docs/qamus.md).
+EXTRA = {
+    "hi": {
+        "dataset": "PMIndia v1",
+        "url": "https://data.statmt.org/pmindia/v1/parallel/pmindia.v1.hi-en.tsv",
+        "file": "pmindia.v1.hi-en.tsv",
+        "sha256": "bfa9fe6c994f492a79c288cbd8ba95a3b0c9407997f453b59e6dc4b13bd2029f",
+        "licence": "CC BY 4.0",
+    },
+}
+LONGEST = 40  # words a side: IndicTrans2's cut-off for mined pairs; IBM Model 1 is quadratic
 
 
 def fetch(data: Path, locale: str) -> dict[str, Path]:
@@ -78,6 +102,46 @@ def fetch(data: Path, locale: str) -> dict[str, Path]:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def download(data: Path, source: dict) -> Path:
+    """A pinned file, downloaded once into ``data``; a file whose SHA-256 is not
+    the pinned one is refused."""
+    path = data / source["file"]
+    if not path.exists():
+        if not source["url"].startswith("https://"):
+            raise SystemExit(f"{source['url']}: only https is fetched")
+        data.mkdir(parents=True, exist_ok=True)
+        partial = path.with_name(path.name + ".part")
+        with urllib.request.urlopen(source["url"], timeout=300) as response:  # noqa: S310 - https only
+            with partial.open("wb") as out:
+                shutil.copyfileobj(response, out)
+        partial.replace(path)
+    if sha256(path) != source["sha256"]:
+        raise SystemExit(f"{path.name}: its SHA-256 is not the pinned {source['sha256'][:16]}")
+    return path
+
+
+def extra_pairs(data: Path, language: str) -> tuple[list[tuple[list[str], list[str]]], dict]:
+    """The language's extra (English words, its words) pairs (``EXTRA``), in
+    the file's order: both sides with words, at most ``LONGEST`` words a side,
+    each pair once; and what was read."""
+    source = EXTRA.get(language)
+    if source is None:
+        return [], {}
+    path = download(data, source)
+    pairs: list[tuple[list[str], list[str]]] = []
+    seen: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
+    for line in path.read_text(encoding="utf-8").split("\n"):
+        english, _, other = line.rstrip("\r").partition("\t")
+        e, x = qamus.tokens(english), qamus.tokens(other)
+        key = (tuple(e), tuple(x))
+        if not e or not x or max(len(e), len(x)) > LONGEST or key in seen:
+            continue
+        seen.add(key)
+        pairs.append((e, x))
+    read = {key: source[key] for key in ("dataset", "url", "sha256", "licence")}
+    return pairs, {**read, "pairs": len(pairs), "longest": LONGEST}
 
 
 def read(path: Path) -> dict[str, dict]:
@@ -279,7 +343,13 @@ def english_names(data: Path) -> tuple[set[str], set[str]]:
     return name_words(read(fetch(data, ENGLISH)["train"]), judges)
 
 
-def build(language: str, data: Path, types: list[str], english: tuple[set[str], set[str]]) -> dict:
+def build(
+    language: str,
+    data: Path,
+    types: list[str],
+    english: tuple[set[str], set[str]],
+    with_extra: bool = False,
+) -> dict:
     romanise = romaniser()
     name_kinds = set(types)
     locale = LOCALES[language]
@@ -289,6 +359,9 @@ def build(language: str, data: Path, types: list[str], english: tuple[set[str], 
     }
     split = {s: parallel(rows[(ENGLISH, s)], rows[(locale, s)]) for s in SPLITS}
     scripts = {"en": written_in(split["train"], 0), language: written_in(split["train"], 1)}
+    massive = {s: len(pairs) for s, pairs in split.items()}
+    added, added_from = extra_pairs(data, language) if with_extra else ([], {})
+    split["train"] = split["train"] + added
     found = {
         s: single_word_slots(rows[(ENGLISH, s)], rows[(locale, s)], scripts, language)
         for s in ("validation", "test")
@@ -328,9 +401,13 @@ def build(language: str, data: Path, types: list[str], english: tuple[set[str], 
     }
     # Pieces: tokens that are parts of a word written apart.
     pieces = {
-        "en": qamus.pieces(qamus.tokens(row["utt"]) for row in rows[(ENGLISH, "train")].values()),
+        "en": qamus.pieces(
+            [qamus.tokens(row["utt"]) for row in rows[(ENGLISH, "train")].values()]
+            + [e for e, _x in added]
+        ),
         language: qamus.pieces(
-            qamus.tokens(row["utt"]) for row in rows[(locale, "train")].values()
+            [qamus.tokens(row["utt"]) for row in rows[(locale, "train")].values()]
+            + [x for _e, x in added]
         ),
     }
 
@@ -417,7 +494,8 @@ def build(language: str, data: Path, types: list[str], english: tuple[set[str], 
                 for name, paths in files.items()
                 for s, path in paths.items()
             },
-            "pairs": {s: len(pairs) for s, pairs in split.items()},
+            "pairs": massive,
+            **({"extra": added_from} if added_from else {}),
         },
         "fit": {**fit, "name_types": types, "pieces": {k: len(v) for k, v in pieces.items()}},
         "measured": measured,
@@ -436,6 +514,11 @@ def main() -> int:
         "--check", action="store_true", help="fail if a file differs from a rebuild"
     )
     parser.add_argument("--languages", default=",".join(LOCALES))
+    parser.add_argument(
+        "--extra",
+        action="store_true",
+        help="also learn from EXTRA (PMIndia for Hindi): measured, not adopted",
+    )
     args = parser.parse_args()
     data = Path(args.data).resolve()
     if ROOT in data.parents or data == ROOT:
@@ -444,7 +527,7 @@ def main() -> int:
     types = name_types(data)
     english = english_names(data)
     for language in [item.strip() for item in args.languages.split(",") if item.strip()]:
-        text = render(build(language, data, types, english))
+        text = render(build(language, data, types, english, with_extra=args.extra))
         digest = hashlib.sha256(text).hexdigest()
         path = qamus.DATA / f"{language}-en.json.gz"
         if args.check:

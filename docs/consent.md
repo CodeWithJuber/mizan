@@ -13,13 +13,20 @@ MIZAN learns from each person's work for that person, keeps a ledger of what it 
 | A blinded audit of MIZAN's own answers against the teacher | 2 to 5 % of answers, about $0.17 a week | Built (Tadqiq, [tadqiq.md](tadqiq.md)): only runs whose person has learning on |
 | Learning shared across users | Opt-in when it is built | Not built |
 
+On 31 Oct 2026 the owner decided that MIZAN's own models should learn while it works, not only in a training run ([tadrib.md](tadrib.md)):
+
+| Question | Decision | Status |
+|---|---|---|
+| Does each lesson need a person's review first? | No: a check by MIZAN stands in for the review on this path, every lesson is listed, and the person (or an administrator) can take any lesson back, after which every model that learned it is rebuilt without it | Built for the reader (phase 1) |
+| May an own model answer instead of the teacher? | Per task and language, once an anytime-valid test shows it is as good; MIZAN still checks every answer and the teacher answers when the check fails | Phase 2, not built |
+
 ## Purposes
 
 Each run has one of these purposes, and only the person can widen it.
 
 - **Turn.** Answering the message. Always allowed; the chat's messages are saved so the chat can be read back.
 - **Self.** Learning for the same person: Ta'allum wording, Qasd intents, Hifz programs, Tajriba lessons, Majlis routing, Ahl al-Dhikr `ilm`, memory strengthening on recall (FSRS review, Masalik), task records and the knowledge graph. On by default. Switched off with `learning: off`.
-- **Train.** Keeping the person's messages and MIZAN's replies as unreviewed training candidates for MIZAN's own model. Off by default. Switched on with `training: on`. A candidate is still not training data until a named reviewer accepts it (`docs/own-learning-cycle.md`).
+- **Train.** Keeping the person's messages and MIZAN's replies as unreviewed training candidates for MIZAN's own model. Off by default. Switched on with `training: on`. A candidate is still not training data until a named reviewer accepts it (`docs/own-learning-cycle.md`). One path differs, by the owner's decision of 31 Oct 2026: the person's own words are a **lesson** for MIZAN's language reader as soon as Lughah and the reader read them in the same language (Tadrib, [tadrib.md](tadrib.md)); each lesson is listed under `GET /api/tadrib/lessons` and taken back with `DELETE /api/tadrib/lessons/{digest}`. MIZAN's own models are one per server, shared by everyone who switched training on; the reader learns which language words are in, not what they say.
 
 A note the person asks MIZAN to remember is kept whatever `learning` says, because they asked for it.
 
@@ -40,7 +47,7 @@ A choice applies from the person's next message.
 - `trains()` is true only under the person's yes (`allow_training`) and never in an evaluation or a WhatsApp run. With no choice bound, nothing is captured. The two places a chat's words become candidates check it (`agents/base.py`, `agents/khalifah.py`).
 - `barred_from_training()` is what no yes can lift: an evaluation, or a channel whose terms forbid training (WhatsApp). The training store (`learner/ruh_learner.py`) refuses these itself.
 
-MIZAN's own language reader (`tadbir/ruh_reader`, `docs/ruh-reader.md`) is the one model that trains on a person's words while MIZAN rests. It reads only messages captured under their `training: on` that a named reviewer accepted (the review hash must still match), checks `learns()`, `trains()` and `barred_from_training()` again itself, never learns a message holding the Quran's words, and keeps the SHA-256 of each learned message (no words) so that erasing the chat (Mahw) drops every version that learned from it.
+MIZAN's own language reader (`tadbir/ruh_reader`, `docs/ruh-reader.md`) is the one model that trains on a person's words: while MIZAN works, from the lessons Tadrib keeps under their `training: on` (`tadbir/tadrib`, which checks `learns()`, `trains()`, `barred_from_training()` and stateless runs itself, and never keeps pasted text, an injection or scripture), and while MIZAN rests, from those lessons and the messages a named reviewer accepted (the review hash must still match). It checks `learns()`, `trains()` and `barred_from_training()` again itself, never learns a message holding the Quran's words, and keeps the SHA-256 of each learned message (no words) so that erasing the chat (Mahw) drops every version that learned from it. Since v2 (31 Oct 2026) it also never learns text a language model wrote: Hinglish-Everyday-Conversations-1M, which GPT-4o-mini wrote, is measured only, and Lughah's seeds from it are never its training, development or replay lines (`corpus.MODEL_WRITTEN`, `ruh_reader.written_by_a_model`).
 
 `consent_bindings` in `api/main.py` turns a person's saved choices into those gates, and `owner_consent` reads them for a run done for an owner. Every path that runs a person's request binds them: the web chat stream, `POST /api/chat`, the WebSocket chat and task messages, `POST /api/tasks`, the federation route, watchers, unattended runs (schedules, triggers, queue), and Telegram, WhatsApp and email turns. If the choices cannot be read, the run learns and keeps nothing.
 

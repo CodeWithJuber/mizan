@@ -138,3 +138,15 @@ def test_a_hindi_answer_is_split_at_the_danda():
         "यह पेरू के एंडीज़ पर्वतों से निकलती है।",
         "यह अटलांटिक महासागर में गिरती है।",
     ]
+
+
+def test_an_abbreviation_ends_no_sentence_when_the_sentence_goes_on():
+    text = (
+        "The Titanic hit an iceberg at about 11:40 p.m. ship's time, and sank two hours later. "
+        "It sailed from the U.S. It never arrived."
+    )
+    assert [unit["text"] for unit in isnad.claims(text)] == [
+        "The Titanic hit an iceberg at about 11:40 p.m. ship's time, and sank two hours later.",
+        "It sailed from the U.S.",
+        "It never arrived.",
+    ]

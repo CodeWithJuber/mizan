@@ -428,6 +428,20 @@ def roman(claim: str) -> bool:
     return bool(found) and max(found, key=found.__getitem__) == "hi-latn"
 
 
+def writings(claim: str, premise: str, read: str) -> set[str]:
+    """How the claim may be written against a premise: as written, as the NLI
+    model read it, and in Devanagari wherever Qāmūs reads its words as Roman
+    Hindi or Urdu. A claim Lughah reads as English can still be code-mixed
+    ("Duniya ka pehla … hawai jahaz Wright Brothers ne udaya tha", read as
+    English and contradicted as written on the held-out set of 31 Oct 2026);
+    its capitalised words are names and stay as written ("Rhea" is the moon,
+    not रिया), as the premise's own words do."""
+    if read != claim:
+        return {claim, read}
+    names = " ".join(re.findall(r"\b[^\W\d_a-z][^\W\d_]*", claim))
+    return {claim, qamus.devanagari(claim, keep=f"{premise} {names}")}
+
+
 def hypothesis(claim: str, premise: str, in_roman: bool) -> str:
     """The claim as the NLI model reads it against a premise. A Roman Hindi or
     Urdu claim is written in Devanagari, the premise's own words (names,
@@ -492,16 +506,17 @@ async def judge(
     # Contradiction is symmetric: if the source contradicts the claim, the claim
     # contradicts the source. A one-way reading is the NLI model misreading a
     # pair (an agreeing page read as "says otherwise"), so it settles nothing.
-    # Nor does it depend on how the claim is written: a Roman claim read in
-    # Devanagari must be contradicted as written too, both ways.
+    # Nor does it depend on how the claim is written: a claim Qāmūs reads as
+    # Roman Hindi or Urdu, in whole or in part, must be contradicted as written
+    # and in Devanagari, both ways (``writings``).
     disputed = [index for index, (_, label, _, _) in best.items() if label == "contradiction"]
     checks: list[tuple[int, tuple[str, str]]] = []
     for index in disputed:
         _decisive, _label, passage, read = best[index]
         checks.append((index, (read, passage.text)))
-        if read != claims[index]:
-            checks.append((index, (passage.text, claims[index])))
-            checks.append((index, (claims[index], passage.text)))
+        for written in sorted(writings(claims[index], passage.text, read) - {read}):
+            checks.append((index, (passage.text, written)))
+            checks.append((index, (written, passage.text)))
     reverse = await nli([pair for _index, pair in checks])
     unsettled = {
         index

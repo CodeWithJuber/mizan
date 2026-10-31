@@ -221,6 +221,54 @@ def test_a_log_the_defaults_explain_is_not_refitted():
     assert found["status"] == "kept" and found["e_value"] < found["needed"]
 
 
+# ── the need: a label the parameters did not write ───────────────────────
+
+
+def test_a_need_is_when_a_memory_was_used_or_said_again_whatever_its_grade():
+    rows = [
+        ("m", int(tadhkir.Rating.Good), "learn", "2026-01-01T00:00:00+00:00"),
+        ("m", GOOD, "use", "2026-01-05T00:00:00+00:00"),
+        ("m", int(tadhkir.AGAIN), "repeat", "2026-02-01T00:00:00+00:00"),
+        ("x", GOOD, "use", "2026-01-02T00:00:00+00:00"),  # its writing is not logged
+    ]
+    found = tadhkir.needs(rows)
+    assert list(found) == ["m"]
+    learned, grade, times = found["m"]
+    assert grade == tadhkir.Rating.Good and [t.day for t in times] == [5, 1]
+
+
+def test_the_time_a_memory_is_held_is_read_in_closed_form():
+    decay, factor = tadhkir._curve(tadhkir.DEFAULTS)
+    steps = 20_000
+    numeric = sum(
+        (1 + factor * (5 * (i + 0.5) / steps) / 3.0) ** decay * 5 / steps for i in range(steps)
+    )
+    assert tadhkir._held(3.0, decay, factor, 0.0, 5.0) == pytest.approx(numeric, rel=1e-6)
+
+
+def _needs_of(truth, seed=0):
+    rows = tadhkir.simulate_needs(truth, rate=0.05, memories=400, seed=seed)
+    end = tadhkir._parse(rows[-1][3]) + timedelta(seconds=1)
+    return tadhkir.need_test(tadhkir.needs(rows), tadhkir.DEFAULTS, 1, end=end)
+
+
+def test_another_persons_needs_are_told_from_the_defaults_and_the_defaults_own_are_not():
+    other = _needs_of(tadhkir.FASTER)
+    assert other["status"] == "tested" and other["would_adopt"]
+    assert other["e_value"] >= other["needed"] == pytest.approx(40.0)
+    # Toward the person: a steeper curve.
+    assert other["parameters"][20] > tadhkir.DEFAULTS[20]
+    own = _needs_of(tadhkir.DEFAULTS)
+    assert own["status"] == "tested" and not own["would_adopt"]
+
+
+def test_the_need_test_is_reported_beside_the_review_test_and_never_adopted(tmp_path):
+    found = tadhkir.measure(tadhkir.DEFAULTS, seed=0, optimizer=False, memories=150)
+    need = found["need"]
+    assert need["status"] == "tested" and need["test"] == 1
+    assert set(need) >= {"e_value", "needed", "would_adopt", "parameters", "rate_per_day"}
+
+
 @pytest.mark.skipif(
     not all(importlib.util.find_spec(name) for name in ("torch", "pandas", "tqdm")),
     reason="FSRS's optimizer is not installed (fsrs[optimizer])",

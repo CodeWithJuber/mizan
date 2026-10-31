@@ -339,6 +339,7 @@ const server = http.createServer(async (req, res) => {
   if (path === "/api/workspaces" || path.startsWith("/api/workspaces/")) return workspaces(req, res, url);
   if (path === "/api/memory/list") return json(res, 200, { results: [] });
   if (path === "/api/chat/preferences") return json(res, 200, { preferences: [...preferences.values()] });
+  if (path === "/api/tadrib/lessons") return json(res, 200, { lessons: [], total: 0, limit: 20, offset: 0 });
   if (path.startsWith("/api/chat/preferences/")) {
     const key = decodeURIComponent(path.slice("/api/chat/preferences/".length));
     if (method === "DELETE") return json(res, 200, { deleted: preferences.delete(key) });

@@ -58,7 +58,9 @@ A fit that passes is put to use only under ``MIZAN_TADHKIR_FIT=apply``. By
 default (``shadow``) it is measured and reported, not adopted, because the log
 is partly written by the parameters it tests (``applies``): a restatement is
 graded Again only when R(t) under the parameters in use fell below 0.9, and
-only a memory that was recalled gets a use review.
+only a memory that was recalled gets a use review. Beside it, every night,
+the same log is read by when each memory was needed, a label the parameters
+did not write (``need_test``): reported as ``need``, never adopted.
 
 A memory's stored S and D stay valid: later reviews and R(t) use the
 parameters in use from then on. Lessons kept by Talaqqi are not memories and
@@ -525,6 +527,230 @@ def optimizer_fit(
     return fitted, "", ran
 
 
+# ── A label the parameters did not write: when each memory was needed ─────
+#
+# A memory is needed when the person's request or MIZAN's answer holds it: it
+# was recalled and used, or the person said it again. When that happens is the
+# person's doing, not the parameters' (their grade, Good or Again, is the part
+# the parameters in use wrote). The rational analysis of memory (Anderson &
+# Schooler 1991, "Reflections of the environment in memory", Psychological
+# Science 2:396) found that the odds an item is needed fall with the time since
+# it was last needed as human recall does. So R(t) is read as the shape of
+# that need: a memory last needed u days ago is needed again at the rate
+# λ·R(u), λ the person's own rate. The log-likelihood of the needs in a window
+# is Σ log(λ·R(uⱼ)) − λ·∫R over the time each memory was held there (a point
+# process with that intensity), and λ is set to its best value, n / ∫R.
+
+NEED_LIGHT = (1, 2, 3, 8, 20)  # LIGHT without w11: a need is never a lapse
+
+
+def needs(
+    rows: Iterable[tuple[str, int, str, str]],
+) -> dict[str, tuple[datetime, Rating, list[datetime]]]:
+    """Each memory's first writing (time, grade) and the times it was needed
+    after it: a ``use`` or a ``repeat`` review, whatever grade it was given.
+    Rows as ``histories`` reads them; a memory whose writing is not logged is
+    left out."""
+    found: dict[str, tuple[datetime, Rating, list[datetime]]] = {}
+    for memory_id, events in histories(rows).items():
+        (learned, grade), *later = events
+        found[memory_id] = (learned, grade, [at for at, _grade in later])
+    return found
+
+
+def _days(earlier: datetime, later: datetime) -> float:
+    return (later - earlier).total_seconds() / 86400.0
+
+
+def _held(stability: float, decay: float, factor: float, start: float, end: float) -> float:
+    """∫ R(u) du over [start, end] days, R(u) = (1 + f·u/S)^decay, in closed form."""
+    if end <= start:
+        return 0.0
+    power = decay + 1.0
+    lo, hi = 1.0 + factor * start / stability, 1.0 + factor * end / stability
+    if abs(power) < 1e-12:
+        return stability / factor * math.log(hi / lo)
+    return float(stability / (factor * power) * (hi**power - lo**power))
+
+
+def need_terms(
+    found: dict[str, tuple[datetime, Rating, list[datetime]]],
+    parameters: Sequence[float],
+    *,
+    until: datetime,
+    since: datetime | None = None,
+) -> tuple[int, float, float]:
+    """(needs, Σ log R at them, ∫R) in [since, until) under ``parameters``: each
+    memory held from its writing, each need a Good review."""
+    chosen = _chosen(parameters)
+    scheduler = _scheduler(chosen)
+    decay, factor = _curve(chosen)
+    count, log_r, exposure = 0, 0.0, 0.0
+    for learned, grade, times in found.values():
+        if learned >= until:
+            continue
+        card, _log = scheduler.review_card(Card(card_id=1), grade, learned)
+        last = learned
+        for at in [*times, until]:
+            end = min(at, until)
+            start = last if since is None else max(last, since)
+            stability = float(card.stability or 0.0)
+            if stability <= 0:
+                break
+            if end > start:
+                exposure += _held(stability, decay, factor, _days(last, start), _days(last, end))
+            if at >= until:
+                break
+            if since is None or at >= since:
+                count += 1
+                log_r += decay * math.log1p(factor * _days(last, at) / stability)
+            card, _log = scheduler.review_card(card, GOOD, at)
+            last = at
+    return count, log_r, exposure
+
+
+def _likelihood(terms: tuple[int, float, float], rate: float | None = None) -> tuple[float, float]:
+    """(log-likelihood, λ): at the given rate λ, or at its best value n / ∫R."""
+    count, log_r, exposure = terms
+    if rate is None:
+        rate = count / exposure if exposure > 0 else 0.0
+    if count == 0:
+        return -rate * exposure, rate
+    if rate <= 0:
+        return -math.inf, rate
+    return count * math.log(rate) + log_r - rate * exposure, rate
+
+
+def need_split(found: dict[str, tuple[datetime, Rating, list[datetime]]]) -> datetime | None:
+    """The moment halfway through the needs: the earlier half fits, the later tests."""
+    times = sorted(at for _learned, _grade, needed in found.values() for at in needed)
+    if len(times) < 2 or times[len(times) // 2] <= times[0]:
+        return None
+    return times[len(times) // 2]
+
+
+def need_fit(
+    found: dict[str, tuple[datetime, Rating, list[datetime]]],
+    until: datetime,
+    start: Sequence[float] = DEFAULTS,
+    stop: Callable[[], bool] = lambda: False,
+) -> tuple[float, ...] | None:
+    """Maximum likelihood of the needs before ``until`` over ``NEED_LIGHT``, by the
+    compass search of ``light_fit``. None when ``stop``."""
+    point = list(_chosen(start))
+
+    def objective(candidate: list[float]) -> float:
+        terms = need_terms(found, candidate, until=until)
+        return -_likelihood(terms)[0] / max(1, terms[0])
+
+    best = objective(point)
+    step = math.log(2.0)
+    while step >= math.log(2.0) / 64:
+        improved = False
+        for index in NEED_LIGHT:
+            for sign in (1.0, -1.0):
+                if stop():
+                    return None
+                trial = list(point)
+                trial[index] = _moved(index, point[index], sign * step)
+                if trial[index] == point[index]:
+                    continue
+                loss = objective(trial)
+                if loss < best:
+                    point, best, improved = trial, loss, True
+                    break
+        if not improved:
+            step /= 2
+    return tuple(point)
+
+
+def need_test(
+    found: dict[str, tuple[datetime, Rating, list[datetime]]],
+    current: Sequence[float],
+    test: int,
+    *,
+    end: datetime,
+    stop: Callable[[], bool] = lambda: False,
+) -> dict:
+    """A challenger fitted on the earlier half of the needs, tested against the
+    parameters in use on the later half. The e-value is the likelihood ratio of
+    the later needs given all before them: the challenger with the rate it fitted
+    on the earlier half, over the parameters in use at the rate best for the
+    later half itself (the null's own best, so it is conservative: universal
+    inference, Wasserman, Ramdas & Balakrishnan 2020). Its ``test``-th test needs
+    k(k+1)/α, as the review test does."""
+    cut = need_split(found)
+    if cut is None:
+        return {"status": "too few needs"}
+    challenger = need_fit(found, cut, current, stop)
+    if challenger is None:
+        return {"status": "stopped"}
+    _fitted, rate = _likelihood(need_terms(found, challenger, until=cut))
+    later = need_terms(found, challenger, since=cut, until=end)
+    numerator, _rate = _likelihood(later, rate)
+    in_use = need_terms(found, current, since=cut, until=end)
+    denominator, _best = _likelihood(in_use)
+    log_e = numerator - denominator
+    per_need = max(1, later[0])
+    return {
+        "status": "tested",
+        "needs": sum(len(needed) for _learned, _grade, needed in found.values()),
+        "memories": len(found),
+        "split": cut.isoformat(),
+        "tested_on": later[0],
+        "rate_per_day": round(rate, 6),
+        "log_likelihood_per_need": {
+            "in_use": round(denominator / per_need, 6),
+            "fitted": round(numerator / per_need, 6),
+        },
+        "e_value": math.exp(min(log_e, 700.0)) if log_e > -700 else 0.0,
+        "needed": needed(test),
+        "test": test,
+        "would_adopt": log_e >= math.log(needed(test)),
+        "parameters": [round(value, 6) for value in challenger],
+    }
+
+
+def simulate_needs(
+    parameters: Sequence[float],
+    *,
+    rate: float = 0.3,
+    memories: int = 300,
+    days: int = 360,
+    seed: int = 0,
+    start: datetime | None = None,
+) -> list[tuple[str, int, str, str]]:
+    """A log of needs drawn from the model itself: each memory written at a
+    uniform time with a uniform importance, then needed at the rate λ·R(u)
+    (``rate`` λ per day, u the days since it was last needed), drawn by thinning
+    (a proposal at rate λ kept with probability R). Each need is logged as a use."""
+    rng = random.Random(seed)
+    chosen = _chosen(parameters)
+    scheduler = _scheduler(chosen)
+    decay, factor = _curve(chosen)
+    origin = start or datetime(2026, 1, 1, tzinfo=UTC)
+    finish = origin + timedelta(days=days)
+    rows: list[tuple[str, int, str, str]] = []
+    for number in range(memories):
+        at = origin + timedelta(days=rng.uniform(0, days))
+        grade = first_grade(rng.random())
+        card, _log = scheduler.review_card(Card(card_id=1), grade, at)
+        rows.append((f"m{number}", int(grade), "learn", at.isoformat()))
+        last, proposal = at, at
+        while True:
+            proposal = proposal + timedelta(days=rng.expovariate(rate))
+            stability = float(card.stability or 0.0)
+            if proposal >= finish or stability <= 0:
+                break
+            held = (1.0 + factor * _days(last, proposal) / stability) ** decay
+            if rng.random() < held:
+                card, _log = scheduler.review_card(card, GOOD, proposal)
+                rows.append((f"m{number}", int(GOOD), "use", proposal.isoformat()))
+                last = proposal
+    rows.sort(key=lambda row: row[3])
+    return rows
+
+
 def applies() -> bool:
     """Whether a fit that passed its test is put to use (``MIZAN_TADHKIR_FIT``:
     ``shadow``, the default, measures and reports it; ``apply`` adopts it). The
@@ -627,6 +853,24 @@ def refit(
         "adopted": adopted,
         "parameters": [round(value, 6) for value in challenger],
     }
+    # The same log read by when each memory was needed, a label the parameters
+    # did not write (``need_test``): reported beside the review test, never
+    # adopted, with its own count of tests.
+    previous = int(((record["latest"] or {}).get("need") or {}).get("test", 0))
+    latest_at = max((at for events in found.values() for at, _grade in events), default=cut)
+    try:
+        need = need_test(
+            needs(row[1:] for row in rows),
+            current,
+            previous + 1,
+            end=max(datetime.now(UTC), latest_at) + timedelta(seconds=1),
+            stop=lambda: stop() or (seconds is not None and time.monotonic() - began > seconds),
+        )
+    except Exception as exc:  # noqa: BLE001 - the report never ends the night's fit
+        need = {"status": f"failed: {type(exc).__name__}"}
+    if need.get("status") != "tested":
+        need["test"] = previous
+    evaluation["need"] = need
     applied = adopted and (applies() if apply is None else apply)
     if adopted and not applied:
         evaluation.update(adopted=False, would_adopt=True, mode="shadow")
