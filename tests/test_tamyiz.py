@@ -228,3 +228,33 @@ def test_the_script_alone_is_no_evidence_of_the_deen(text):
 )
 def test_a_question_about_the_quran_or_hadith_is_about_the_deen(text):
     assert qasd.facet("deen", text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "پاکستان کا سب سے بڑا شہر کون سا ہے؟",
+        "اسلام آباد کی آبادی کتنی ہے؟",
+        "آج لاہور میں موسم کیسا ہے؟",
+        "قل هو الله أحد",
+        "Quote ayah 2:255 in Arabic",
+    ],
+)
+def test_an_everyday_urdu_question_does_not_ask_for_a_root(text):
+    # Production, 31 Oct 2026: an Urdu question about Pakistan's largest city
+    # was answered with the root of "ستان".
+    assert not qasd.facet("sarf", text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "كاتب ka root kya hai?",
+        "ما جذر كلمة يستغفرون؟",
+        "What is the wazn of استغفر?",
+        "مسجد کا وزن بتائیں",
+        "نور کا مادہ کیا ہے؟",
+    ],
+)
+def test_a_request_for_a_root_or_pattern_is_sarf(text):
+    assert qasd.facet("sarf", text)

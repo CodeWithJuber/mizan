@@ -77,6 +77,47 @@ The answer gives, for each word:
 It ends naming the corpus. Isnad grades it sahih ("read by MIZAN from the
 Quranic Arabic Corpus").
 
+### Everyday Urdu is not a request for a root (31 Oct 2026)
+
+On production, "پاکستان کا سب سے بڑا شہر کون سا ہے؟" was answered with the root
+of "ستان". This predates the deen facet's rebuild.
+
+`scripts/facet_eval.py --sarf` measures the facet on everyday questions and
+requests people wrote (MASSIVE 1.1, CC BY 4.0). These rates matter only in
+Urdu and Arabic, because only Arabic-script words can become targets.
+
+**`no` rows alone did not work.** Adding everyday Urdu and Arabic messages as
+`no` rows removed the false positives. But it lowered the leave-one-out
+recall of the facet's 24 `yes` seeds from 0.875 to 0.46–0.71, and Ta'lim's
+check refused every count.
+
+**What was added.** As for the deen facet:
+- First, a held-out set was written and is never a seed (`scripts/data/facet_sarf_heldout.tsv`). It has 30 requests for a root or pattern in Latin, Devanagari and Arabic script, with Arabic words no seed uses, and 10 messages that are not.
+- Then 52 requests with other words were written as `yes` seeds (`scripts/data/facet_sarf_written.tsv`).
+- Both were written by a language model and are marked so.
+
+**How the setting was chosen.** The rule was committed before any result
+(`measure_sarf`):
+1. Ta'lim keeps the change.
+2. The seeds' recall and the held-out recall are no lower than before.
+3. Among those, the setting with the fewest false positives on `dev` Urdu questions wins.
+
+Only one setting met the rule: the 52 written requests plus 10 everyday
+questions and 10 everyday requests per language as `no`.
+
+| Held out (`test`, 300 each) | Before | After |
+|---|---|---|
+| Urdu questions read as asking for a root | 8.3% | 0.7% |
+| Urdu requests | 2.7% | 0% |
+| Arabic questions | 2% | 1% |
+| Arabic requests | 2% | **3%** |
+| The held-out messages that are not requests (the production question among them) | 1 of 10 | 0 of 10 |
+| Recall of the 24 seeds (leave-one-out) | 0.875 | 1.0 |
+| Recall of the held-out requests (Latin / Devanagari / Arabic script) | 1.0 / 1.0 / 1.0 | 1.0 / 1.0 / 1.0 |
+
+With 20 or more `no` rows, held-out Arabic-script recall fell (0.75 and
+lower). The full grid is in the commit that wrote the rows.
+
 ## The API
 
 `POST /api/v1/root-analyze {"text": "..."}` (public, at most 2000 characters;

@@ -115,14 +115,14 @@ def _order(key: str) -> str:
 
 
 def everyday(
-    path: Path, kinds: tuple[str, ...] = EVERYDAY
+    path: Path, kinds: tuple[str, ...] = EVERYDAY, locales: dict[str, str] = LOCALES
 ) -> dict[str, dict[str, list[tuple[str, str]]]]:
     """partition -> language -> [(id, text)] of everyday requests, SHA-256 ordered."""
     found: dict[str, dict[str, list[tuple[str, str]]]] = {}
     with tarfile.open(path, "r:gz") as archive:
         for member in archive:
             locale = Path(member.name).stem
-            if not member.isfile() or locale not in LOCALES or not member.name.endswith(".jsonl"):
+            if not member.isfile() or locale not in locales or not member.name.endswith(".jsonl"):
                 continue
             handle = archive.extractfile(member)
             assert handle is not None
@@ -133,7 +133,7 @@ def everyday(
                 part = found.setdefault(str(item["partition"]), {})
                 key = f"{locale}:{item['id']}"
                 text = " ".join(str(item["utt"]).split())
-                part.setdefault(LOCALES[locale], []).append((key, text))
+                part.setdefault(locales[locale], []).append((key, text))
     for part in found.values():
         for language in part:
             part[language].sort(key=lambda row: _order(row[0]))
@@ -310,6 +310,108 @@ def write(massive: Path, count: int) -> int:
     return len(lines) - 7
 
 
+# Sarf is asked only of a message with Arabic-script words outside the seeds'
+# frame (``fahm.sarf_targets``), so its false positives that matter are in
+# Urdu and Arabic messages.
+SARF_LOCALES = {"ur-PK": "ur", "ar-SA": "ar"}
+SARF_COUNTS = (10, 20, 40, 80)
+
+
+SARF_WRITTEN = ROOT / "scripts" / "data" / "facet_sarf_written.tsv"
+SARF_HELD_OUT = ROOT / "scripts" / "data" / "facet_sarf_heldout.tsv"
+
+
+def _sarf_extra(
+    questions: dict, commands: dict, count: int, with_written: bool
+) -> list[tuple[str, str]]:
+    rows = [
+        (text, "no")
+        for found in (questions, commands)
+        for language in SARF_LOCALES.values()
+        for _key, text in found[language][:count]
+    ]
+    if with_written:
+        rows += [(text, "yes") for _script, text in _tsv(SARF_WRITTEN)]
+    return rows
+
+
+def measure_sarf(massive: Path) -> dict:
+    """Sarf's facet with N everyday questions and N everyday requests per
+    language (Urdu, Arabic; MASSIVE train) as ``no`` rows, with and without
+    the written ``yes`` requests (``facet_sarf_written.tsv``).
+
+    Chosen before any result (31 Oct 2026): among the settings Ta'lim keeps
+    (P(worse) < 0.95), whose leave-one-out recall of the facet's own 24 ``yes``
+    seeds is no lower than before and whose recall of the held-out ``yes``
+    requests (``facet_sarf_heldout.tsv``) is no lower than before, the one
+    with the fewest false positives on ``dev`` Urdu questions (ties: fewer
+    rows). ``test`` and the held-out ``no`` messages are reported."""
+    from core.tamyiz import Tamyiz
+    from tadbir import qasd, talim
+
+    asked = everyday(massive, QUESTIONS, SARF_LOCALES)
+    commands = everyday(massive, EVERYDAY, SARF_LOCALES)
+    seeds = qasd.facet_examples("sarf")
+    yes = [row for row in seeds if row[1] == "yes"]
+    held = _tsv(SARF_HELD_OUT)
+    report: dict = {"seeds_yes": len(yes), "seeds_no": len(seeds) - len(yes)}
+    for with_written in (False, True):
+        for count in (0, *SARF_COUNTS):
+            extra = _sarf_extra(asked["train"], commands["train"], count, with_written)
+            model = Tamyiz(qasd._features).fit([*seeds, *extra])
+            correct = model.held_out_correct(yes)
+            entry: dict = {
+                "rows": len(extra),
+                "recall_yes_loo": round(sum(correct) / max(1, len(correct)), 4),
+                "recall_held_out": {
+                    script: rate(model, [t for lab, s, t in held if lab == "yes" and s == script])
+                    for script in ("latin", "deva", "arab")
+                },
+                "false_positive_held_out": rate(model, [t for lab, _s, t in held if lab == "no"]),
+                **{
+                    f"false_positive_{part}": {
+                        f"{language}_{kind}": rate(
+                            model, [t for _k, t in found[part][language][:300]]
+                        )
+                        for language in SARF_LOCALES.values()
+                        for kind, found in (("questions", asked), ("commands", commands))
+                    }
+                    for part in ("dev", "test")
+                },
+            }
+            if extra:
+                verdict = talim.judge("qasd.sarf", extra)
+                entry["talim"] = {
+                    key: verdict[key] for key in ("before", "after", "p_worse", "kept")
+                }
+            key = f"{count}{'+written' if with_written else ''}"
+            report[key] = entry
+            print("sarf", key, json.dumps(entry), flush=True)
+    return report
+
+
+def write_sarf(massive: Path, count: int) -> int:
+    """Append ``count`` everyday Urdu and Arabic questions and requests each
+    (MASSIVE 1.1 train, CC BY 4.0) as ``no`` rows and the written requests as
+    ``yes`` rows to the sarf facet."""
+    extra = _sarf_extra(
+        everyday(massive, QUESTIONS, SARF_LOCALES)["train"],
+        everyday(massive, EVERYDAY, SARF_LOCALES)["train"],
+        count,
+        True,
+    )
+    lines = [
+        "# sarf: everyday questions and requests people wrote in Urdu and Arabic (MASSIVE 1.1 train,",
+        "# CC BY 4.0) ask for no root or pattern; requests for one written for the facet",
+        "# (scripts/data/facet_sarf_written.tsv, by a language model, marked there) do",
+        "# (scripts/facet_eval.py --sarf --write N).",
+        *(f"sarf\t{label}\t{text}" for text, label in extra),
+    ]
+    with SEEDS.open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return len(extra)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -317,7 +419,18 @@ def main() -> None:
     parser.add_argument("--massive", type=Path, required=True)
     parser.add_argument("--write", type=int, default=0)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--sarf", action="store_true", help="the sarf facet (Urdu, Arabic)")
     args = parser.parse_args()
+    if args.sarf and args.write:
+        print(f"{write_sarf(args.massive, args.write)} sarf rows written to {SEEDS}")
+        return
+    if args.sarf:
+        report = measure_sarf(args.massive)
+        text = json.dumps(report, indent=1, ensure_ascii=False)
+        if args.out:
+            args.out.write_text(text, encoding="utf-8")
+        print(text)
+        return
     if args.write:
         print(f"{write(args.massive, args.write)} rows written to {SEEDS}")
         return
