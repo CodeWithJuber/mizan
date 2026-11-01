@@ -1037,14 +1037,6 @@ PHRASES: dict[str, dict[str, str]] = {
         "hi": "सत्यापित नहीं: इस नतीजे को जाँचने के लिए दूसरा प्रोग्राम नहीं चल सका, इसलिए यह मीज़ान की जाँच के बिना दिखाया गया है।",
         "ar": "غير متحقَّق: تعذّر تشغيل برنامج ثانٍ للتحقق من هذه النتيجة، فهي معروضة دون تحقّق ميزان.",
     },
-    # A salam returned with the fuller greeting (4:86), then an offer of help.
-    "salam": {
-        "en": "Wa alaikum assalam wa rahmatullahi wa barakatuh. How can I help you?",
-        "hi-latn": "Wa alaikum assalam wa rahmatullahi wa barakatuh. Batayiye, main kya madad karun?",
-        "ur": "وعلیکم السلام ورحمۃ اللہ وبرکاتہ۔ بتائیے، میں کیا مدد کروں؟",
-        "hi": "व अलैकुम अस्सलाम व रहमतुल्लाहि व बरकातुहू। बताइए, मैं क्या मदद करूँ?",
-        "ar": "وعليكم السلام ورحمة الله وبركاته. كيف أستطيع مساعدتك؟",
-    },
     "capabilities": {
         "en": "MIZAN works through its own tools, and they are real:",
         "hi-latn": "MIZAN apne asli tools se kaam karta hai:",

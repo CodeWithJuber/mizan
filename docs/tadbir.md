@@ -45,7 +45,6 @@ and before the model-driven loop.
 | Intent | Example | Model calls |
 |--------|---------|-------------|
 | capabilities | "Hai tumhare paas tools?" | none: answered from the live tool registry |
-| salam | "Assalamualaikum", "السلام علیکم" | none: MIZAN returns the salam with the fuller greeting (4:86) in the message's script and offers help. A salam with a request, and a returned salam, go on as conversation ([fahm.md](fahm.md), "Salam (4:86)"). |
 | compute | "2**100 kitna hai?" | none. When the user asks for the working (Qasd's `explain` facet), the steps come from MIZAN's own evaluation. |
 | run_code | "Python me 2\*\*100 run karo", or a fenced code block plus "run" | none. MIZAN writes `print(...)` itself, runs it, and cross-checks the output against its own calculation. |
 | build_and_run | "Ek python program likho jo … aur run karo", "Help me write a Python script that …" | Lisan writes the program. MIZAN runs it; on failure Lisan repairs it, at most twice. A program that prints numbers is verified only when an independent program Lisan writes for the same request prints the same numbers (Tathabbut); a verified program is kept and re-run for the same request with no model call (Hifz, [automatic-learning.md](automatic-learning.md)). A program that opens a window (tkinter, PyQt, pygame, …, read from its imports) is compiled instead of run, because the sandbox has no screen; the reply shows the code and says it was not run. |

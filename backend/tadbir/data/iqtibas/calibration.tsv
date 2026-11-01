@@ -4,7 +4,6 @@
 # editions Fihris downloads write it (Tanzil quran-simple-clean and
 # en.transliteration, Saheeh International); short quotations only.
 # converse: Quranic formulas said in ordinary conversation.
-# salam: a salam and nothing else (Qasd's intent since 1 Nov 2026).
 # None of these is a phrase the tests route (light upon light, سدرة المنتهى, ...).
 quran_search	قل هو الله أحد
 quran_search	الله لا إله إلا هو الحي القيوم
@@ -42,7 +41,7 @@ converse	SubhanAllah kya nazara hai
 converse	Astaghfirullah, mujhse galti ho gayi
 converse	May Allah reward you
 converse	Allah bless you brother
-salam	Peace be upon you all
+converse	Peace be upon you all
 converse	In the name of God, I start my work
 converse	Allah is the greatest, what a day
 converse	May Allah forgive us
@@ -51,7 +50,7 @@ converse	Ya Allah meri madad kar
 converse	Allah hafiz, phir milte hain
 converse	JazakAllah khair, bahut madad hui
 converse	Rabbana, aap sab ko khush rakhe
-salam	السلام عليكم ورحمة الله وبركاته
+converse	السلام عليكم ورحمة الله وبركاته
 converse	الحمد لله على كل حال
 converse	إن شاء الله نلتقي غدا
 converse	بارك الله فيك يا أخي

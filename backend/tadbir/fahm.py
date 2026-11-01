@@ -472,8 +472,6 @@ def _with(intent: str, read):
 
 _BUILDERS = {
     "capabilities": _simple("capabilities"),
-    # A salam and nothing else: MIZAN returns it with the fuller greeting (4:86).
-    "salam": _simple("salam"),
     "watch": _with("watch", watch_request),
     "salah": _with("salah", lambda m: {"prayer": _prayer_named(m)}),
     "quran": _quran,
@@ -644,7 +642,7 @@ FAMILIES = {
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
 # Recipes whose answer is the same whatever the message says.
-FIXED_ANSWERS = frozenset({"capabilities", "salam"})
+FIXED_ANSWERS = frozenset({"capabilities"})
 
 
 def _families(ranked: list[tuple[str, float]]) -> list[tuple[str, float, list[tuple[str, float]]]]:
@@ -683,10 +681,6 @@ def _clauses(text: str) -> list[str]:
 _WORDS_ONLY = {
     "converse",
     "capabilities",
-    "salam",
-    # "Walaikum assalam": a returned salam, recognised so it is never read as a
-    # salam, and answered as conversation (no builder).
-    "salam_returned",
     "silsila_follow",
     "search_bare",
     "run_follow",

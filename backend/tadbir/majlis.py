@@ -39,7 +39,6 @@ ROLE_FOR = {
     "recall": "khalifah",
     "remember": "khalifah",
     "capabilities": "khalifah",
-    "salam": "khalifah",
     "edit_project": "katib",
     "project_task": "katib",
     "run_file": "katib",

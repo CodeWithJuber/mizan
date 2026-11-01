@@ -355,15 +355,11 @@ class Background:
 
 def _ordinary() -> list[tuple[str, list[str]]]:
     """Ordinary speech that ships with MIZAN: the Lughah corpora (not the
-    Uthmani quotes or names) and Qasd's conversation and salam seeds."""
+    Uthmani quotes or names) and Qasd's conversation seeds."""
     from . import lughah, qasd
 
     texts = [text for text, label in lughah.corpus() if label not in {"quote", "name"}]
-    texts += [
-        text
-        for label, text in qasd._rows("intents.tsv")
-        if label in {"converse", "salam", "salam_returned"}
-    ]
+    texts += [text for label, text in qasd._rows("intents.tsv") if label == "converse"]
     return [(text, tokens(text)) for text in texts]
 
 

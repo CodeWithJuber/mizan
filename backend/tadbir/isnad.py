@@ -35,7 +35,6 @@ BASIS = {
     "salah": "computed by MIZAN for your place (Adhan astronomical method)",
     "watch": "MIZAN saved the watcher and computed when it runs",
     "capabilities": "MIZAN's live tool registry",
-    "salam": "MIZAN's fixed reply to a greeting (4:86)",
     "run_code": "MIZAN ran it in its sandbox and checked the result",
     "build_and_run": "MIZAN ran it in its sandbox and checked the result",
     "qiyas": "the rule reproduced every example in MIZAN's sandbox",

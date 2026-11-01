@@ -132,7 +132,7 @@ Qasd reads four kinds of evidence:
 - the context (`c:` tokens)
 - the chat so far, as the prior (below)
 
-It returns a posterior over 32 recipes, `converse` and `salam_returned` (a returned salam, recognised and answered as conversation) (among them `quran_count`: how many surahs or ayahs, answered from the surah index, never by a search). `use_tool` is the
+It returns a posterior over 31 recipes and `converse` (among them `quran_count`: how many surahs or ayahs, answered from the surah index, never by a search). `use_tool` is the
 request for one of the user's connected tools (GitHub, calendar, email, Drive):
 it has no recipe of its own, so it goes to Lisan, which picks among the tools
 the user actually has, and MIZAN checks the arguments against the tool's schema. The seeds are in
@@ -171,7 +171,7 @@ intents.
    small readings spread over unrelated actions are uncertainty, not a
    request, and are never mapped. Lisan sees the user's last three messages
    as context, so a word taught in a dialect lesson reads as part of the
-   lesson. A fixed answer (`capabilities`, `salam`) is never mapped. MIZAN validates
+   lesson. A fixed answer (`capabilities`) is never mapped. MIZAN validates
    every step and runs it itself. A Quran surah must be the user's own, as a
    hadith number must be. If Lisan names a surah the user did not write (53:14
    from memory for "Sidratul muntaha kya hai"), the step is refused. Its
@@ -266,7 +266,7 @@ short odd message as a Quran search. `tadbir/iqtibas.py` looks instead:
      a span could start.
    - The second comes from a Witten–Bell bigram model of the ordinary speech
      that ships with MIZAN: the Lughah corpora, without the Uthmani quotes or
-     the names, and Qasd's conversation and salam seeds, where everyday salam and dhikr
+     the names, and Qasd's conversation seeds, where everyday salam and dhikr
      live. A phrase people say ("Alhamdulillah") is cheap; "light upon light"
      is not said in passing.
    - The evidence is multiplied by the share of the message the span is, so
@@ -309,9 +309,8 @@ Effect on the held-out requests:
 | "سدرة المنتهى" | 0.48 | Lisan maps the wording |
 | "Who created the heavens and the earth?" (39:38) | 0.99 | `quran_search` |
 
-Dhikr, "In the name of Allah, let's begin" and the other guard phrases stay
-conversation; a salam alone ("peace be upon you") is MIZAN's own `salam` recipe,
-never a Quran search. A paraphrase ("Allah does not
+Salam, dhikr, "peace be upon you", "In the name of Allah, let's begin" and
+the other guard phrases stay conversation. A paraphrase ("Allah does not
 burden a soul beyond its capacity") is not a quote and is not helped.
 Finding the span takes about 1–17 ms per message.
 
@@ -379,7 +378,7 @@ the gained ones are questions that used to get the fixed tool list. With the
 
 **Why.** On production, every conversation answer still came from the teacher model: since 29 Oct, 0 of 26 answers needed no model call. The smallest piece of conversation MIZAN can own is the greeting, which the Quran commands answering with a better greeting or at least the same (4:86).
 
-**What is built** (the owner's decision of 1 Nov):
+**What was to be built** (the owner's decision of 1 Nov; not built, see the results below):
 - A message that is a salam and nothing else ("Assalamualaikum", "AoA bhai", "السلام علیکم ورحمۃ اللہ", "अस्सलामु अलैकुम") is a new Qasd intent, `salam`, with a fixed answer like `capabilities`.
 - MIZAN answers it with no model call: "Wa alaikum assalam wa rahmatullahi wa barakatuh" in the message's script, then one line offering help in the message's language.
 - A salam with a request or question, a returned salam, other greetings and questions about the salam stay as they are.
@@ -406,7 +405,7 @@ the gained ones are questions that used to get the fixed tool list. With the
 - **Fired:** both in Arabic, "السلام عليكم، اكتب لي قصيدة" (a salam with a request) and "ما معنى السلام عليكم؟" (a question about the salam).
 - **MASSIVE report:** three Arabic rows read as a salam. One, "سلام انته موجود" ("salam, are you there?"), is a salam with a question. The other two, "رياضيات" ("mathematics") and "تحديثات الأصدقاء" ("friends' updates"), are everyday words.
 - **The cause** is the one the deen facet had: Qasd holds few short Arabic-script messages, so most of them are now salam seeds and the script itself became evidence.
-- **Measured on the way and kept:** Qasd's letter n-grams stay inside words, so it cannot see word order. A returned salam ("Walaikum assalam") and a salam are the same bag of words. Returned salams are therefore their own class, `salam_returned`, answered as conversation (dev: six false fires → none).
+- **Measured on the way and kept:** Qasd's letter n-grams stay inside words, so it cannot see word order. A returned salam ("Walaikum assalam") and a salam are the same bag of words. During the rounds, returned salams were their own class, `salam_returned`, answered as conversation (dev: six false fires → none). It was taken back out with the recipe.
 - The recipe stays off.
 
 **Round 2, pre-registered 1 Nov (before any round 2 seed):**
@@ -419,6 +418,20 @@ the gained ones are questions that used to get the fixed tool list. With the
   4. **new:** MASSIVE 1.1's test requests other than `general_greet` (en, hi, ur, ar; people's own words) read as `salam` with a Wilson upper bound **below 0.1%**, every such row listed.
 - `general_greet` stays report-only.
 - If a bar fails, the recipe stays off and the round is written as it came.
+
+**Round 2 result (1 Nov, test2 read once): refused.** The seeds were chosen on dev and MASSIVE dev: dev recall 47/51, no false fire, and MASSIVE dev 0/8124. The fits were refit (Iqtibas b 0.0448 → 0.0598).
+
+| Bar (test2 and MASSIVE test) | Result | Passed |
+|---|---|---|
+| 1. Salam-only read as `salam` (≥ 90%) | 25/34 = 73.5% (Wilson 57–85%) | no |
+| 2. Other rows read as `salam` (none) | 1/42 ("وعليكم السلام يا صديقي", a returned salam) | no |
+| 3. Earlier seeds no worse (P(worse) < 0.95) | 95.29% → 94.67%, P(worse) 0.92 | yes (barely) |
+| 4. MASSIVE everyday test read as `salam` (Wilson upper < 0.1%) | 0/11,892 (upper 0.03%) | yes |
+
+- **Missed (9):** "AoA bhaijaan", "Aoa madam", "Assalamu alaikum, brothers and sisters", "Salam alaikum wa rahmatullah", "Peace be upon you and Allah's mercy", "السلام عليكم يا أستاذ", "السلام عليكم يا جماعة الخير", the fully vowelled "اَلسَّلَامُ عَلَيْكُمْ" and "सलाम अलैकुम भाई साहब". All read as `converse`.
+- **What two rounds show.** Qasd reads a message as a bag of letter n-grams inside its words. A salam alone, a salam with a request, and a returned salam share almost every feature: the difference lies in word order and in what else the message says. Seeds moved the errors from one side to the other rather than removing them. Round 2's everyday Arabic rows ended the script-as-evidence problem (0 of 11,892 everyday requests), but they cost salam recall.
+- **Decision:** the recipe stays off. The recipe wiring was taken back out of the branch; the eval (`scripts/salam_eval.py`) and the three held-out sets stay. A third round of seed tuning would be fitting to the tests.
+- **Next, proposed:** a reader that sees word order and "nothing else". One example is a Witten–Bell bigram model of salam formulas against ordinary speech, scored over the whole message as Iqtibas scores quotes. It would be pre-registered with a fresh test set.
 
 ## What is still written by hand, and why
 

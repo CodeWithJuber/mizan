@@ -93,10 +93,8 @@ def test_a_quote_reaches_mizans_quran_search(monkeypatch, quotes):
     monkeypatch.setattr(iqtibas, "_quotes", quotes)
     understood = fahm.understand("light upon light")
     assert understood.intent == "quran_search"
-    for said in ("Alhamdulillah", "Bismillah", "Allah knows best"):
+    for said in ("Assalamu alaikum", "Alhamdulillah", "Bismillah", "Allah knows best"):
         assert fahm.understand(said).intent == "converse", said
-    # A salam alone is MIZAN's to return (4:86), never a Quran search.
-    assert fahm.understand("Assalamu alaikum").intent == "salam"
 
 
 def test_the_shipped_fit_is_of_the_shipped_seeds_and_calibration():
