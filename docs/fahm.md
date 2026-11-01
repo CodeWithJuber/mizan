@@ -433,6 +433,21 @@ the gained ones are questions that used to get the fixed tool list. With the
 - **Decision:** the recipe stays off. The recipe wiring was taken back out of the branch; the eval (`scripts/salam_eval.py`) and the three held-out sets stay. A third round of seed tuning would be fitting to the tests.
 - **Next, proposed:** a reader that sees word order and "nothing else". One example is a Witten–Bell bigram model of salam formulas against ordinary speech, scored over the whole message as Iqtibas scores quotes. It would be pre-registered with a fresh test set.
 
+**Round 3, pre-registered 1 Nov (the owner chose this method; before the reader or any of its seeds existed): Tahiyya, a reader that sees order.**
+- **The reader.** `tadbir/tahiyya.py` (تحية, the greeting of 4:86) holds two character-level, interpolated Witten–Bell n-gram models. Each reads the whole message, from a start mark to an end mark. Word order is in the n-grams, and anything said after the salam is read too.
+  - **F, the salam formulas:** `data/tahiyya/salam.tsv`, written fresh. No row is in a held-out set.
+  - **O, ordinary speech:** the Lughah corpora (without the Uthmani quotes and names) and Qasd's seeds (without its two bare salams). It also takes returned salams and salams with a request, written for O in `data/tahiyya/other.tsv`.
+- **The decision.** The log-likelihood ratio log P_F(x) − log P_O(x) is turned into a probability: P(salam | x) = σ(a·LLR + c). a and c are fitted by leave-one-out log-loss over both models' rows, each row taken out of its own model while it is read. MAP: a salam when P > ½. The n-gram order (3, 4 or 5) is chosen on the development data.
+- **Wiring.** Fahm asks Tahiyya first. When the message reads as a salam, the recipe is the fixed answer of rounds 1 and 2; otherwise Qasd decides as today. **Qasd's seeds and fits are not changed.**
+- **Development data (may be read many times):** `dev`, `test` and `test2`, all already read, and MASSIVE dev.
+- **Fresh test set:** `test3.tsv`, 33 salam / 46 other, read once. Its other rows are salams with a request, returned salams, other greetings, questions about the salam, and short everyday requests (among them "Salman Khan movies", "सलमान खान की फ़िल्में" and "Salamander facts", which begin like a salam).
+- **Bars, all must pass:**
+  1. at least 90% of test3's salam-only rows read as a salam;
+  2. no other test3 row read as a salam;
+  3. none of Qasd's own seeds read as a salam (the two bare salams left out);
+  4. MASSIVE 1.1's test requests other than `general_greet` (en, hi, ur, ar) read as a salam, Wilson upper bound below 0.1%.
+- If a bar fails, the recipe stays off and the round is written as it came.
+
 ## What is still written by hand, and why
 
 - **Grammars: exact readers whose findings are evidence.** Quran and hadith

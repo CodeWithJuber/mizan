@@ -80,7 +80,8 @@ def check_overlap(split: str) -> None:
     seeds = {_key(text) for _label, text in seed_rows((ROOT / SEEDS).read_text(encoding="utf-8"))}
     mine = {_key(text) for _l, _k, text in held_out(split)}
     clash = mine & seeds
-    for earlier in {"test": ("dev",), "test2": ("dev", "test")}.get(split, ()):
+    earlier_splits = {"test": ("dev",), "test2": ("dev", "test"), "test3": ("dev", "test", "test2")}
+    for earlier in earlier_splits.get(split, ()):
         clash |= mine & {_key(text) for _l, _k, text in held_out(earlier)}
     if clash:
         raise SystemExit(f"{split} rows also in the seeds or dev: {sorted(clash)[:10]}")
@@ -199,6 +200,26 @@ def _massive_rows(path: Path, partition: str):
                     yield locale, str(item["intent"]), " ".join(str(item["utt"]).split())
 
 
+# Qasd seeds that are a salam alone (labelled conversation before the salam rounds).
+BARE_SALAM_SEEDS = {"Assalamualaikum dost", "السلام عليكم يا صديقي"}
+
+
+def qasd_seeds_read_as_salam() -> dict:
+    """Round 3's third bar: Qasd's own seeds (requests and conversation) read as
+    a salam; the two seeds that are a salam alone are left out."""
+    from tadbir import fahm, qasd
+
+    rows = [
+        (label, text)
+        for label, text in seed_rows((ROOT / SEEDS).read_text(encoding="utf-8"))
+        if text not in BARE_SALAM_SEEDS and label != "salam"
+    ]
+    fired = [
+        [label, text] for label, text in rows if fahm.understand(qasd._text(text)).intent == "salam"
+    ]
+    return {"k": len(fired), "n": len(rows), "fired": fired}
+
+
 def massive(path: Path, partition: str = "test") -> list[dict]:
     """MASSIVE greetings and small talk read as a salam (report only, no bar)."""
     from tadbir import fahm
@@ -227,7 +248,7 @@ def massive_everyday(path: Path, partition: str = "test") -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--split", choices=("dev", "test", "test2"), required=True)
+    parser.add_argument("--split", choices=("dev", "test", "test2", "test3"), required=True)
     parser.add_argument("--quran", type=Path, help="a folder holding the Quran's editions")
     parser.add_argument("--massive", type=Path)
     parser.add_argument(
@@ -256,11 +277,14 @@ def main() -> None:
     loaded = iqtibas.load() if args.quran is not None else None
     report: dict = {"split": args.split, "iqtibas": loaded is not None}
     report.update(read_split(args.split))
-    if not args.no_seeds_check:
+    if args.split == "test3":
+        # Round 3 leaves Qasd unchanged: its seeds must not be read as a salam.
+        report["qasd_seeds"] = qasd_seeds_read_as_salam()
+    elif not args.no_seeds_check:
         report["known_seeds"] = known_seeds(args.base)
     if args.massive is not None:
         report["massive_read_as_salam"] = massive(args.massive, args.massive_partition)
-        if args.split == "test2" or args.massive_partition != "test":
+        if args.split in ("test2", "test3") or args.massive_partition != "test":
             report["massive_everyday"] = massive_everyday(args.massive, args.massive_partition)
     bars = {
         "recall": report["recall"]["share"] >= RECALL_BAR,
@@ -268,6 +292,8 @@ def main() -> None:
     }
     if "known_seeds" in report:
         bars["known_seeds"] = report["known_seeds"]["kept"]
+    if "qasd_seeds" in report:
+        bars["qasd_seeds"] = report["qasd_seeds"]["k"] == 0
     if "massive_everyday" in report:
         bars["massive_everyday"] = report["massive_everyday"]["wilson"][1] < EVERYDAY_BAR
     report["bars"] = bars
