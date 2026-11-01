@@ -1,0 +1,190 @@
+# Ordinary speech Tahiyya must not read as a salam (tadbir/tahiyya.py), beside the Lughah corpora and
+# Qasd's seeds: returned salams, salams with a request, questions about the salam and words that
+# begin like one. Written by MIZAN's coding assistant (a language model) for the salam rounds; none
+# is in test3. CC0. One message per line.
+Assalamualaikum, aaj kya plan hai?
+Assalamualaikum bhai, sab khairiyat?
+AoA, ek sawal poochna tha
+Assalamu alaikum, could you explain recursion?
+Salam, mujhe ek recipe batao
+Assalamualaikum, mera din acha nahi guzra
+AoA dost, kya kar rahe ho?
+Assalamu alaikum, what should I eat for dinner?
+السلام علیکم، ایک سوال پوچھنا تھا
+السلام عليكم، هل يمكنك مساعدتي؟
+अस्सलामु अलैकुम, एक सवाल पूछना था
+अस्सलामु अलैकुम, आज का दिन कैसा रहा?
+अस्सलामु अलैकुम भाई, सब ठीक है?
+अस्सलाम अलैकुम, मुझे मदद चाहिए
+अस्सलामु अलैकुम, आप कहाँ से हैं?
+Assalamualaikum, kaise hain aap?
+Salam, kaise ho bhai?
+AoA, kya haal chaal?
+Assalamu alaikum, how are you?
+Assalamualaikum, theek ho?
+Asalam o alaikum, kaisi ho?
+Hi Mizan
+Salam ka jawab dena wajib hai?
+Assalamu alaikum ka jawab kya hota hai?
+What is the reply to salam?
+Assalamualaikum, kaise ho?
+Assalamualaikum bhai, kya haal hai?
+Assalamu alaikum, how are you doing?
+AoA, kya haal hai?
+Salam, kaise ho?
+السلام عليكم، كيف حالك؟
+السلام علیکم، آپ کیسے ہیں؟
+अस्सलामु अलैकुम, आप कैसे हैं?
+Assalamualaikum, mujhe ek sawal poochna hai
+Salam ka jawab kya hai?
+Assalamu alaikum ka matlab kya hai?
+ما معنى السلام عليكم؟
+سلام کا جواب کیسے دیں؟
+Salman
+Salmon recipe
+Salami sandwich
+सलमान
+سلمان
+# The other rows of dev, test and test2 (development data once read).
+AoA, aaj ka mausam kaisa hai?
+Assalamualaikum, mujhe zakat ke baare mein batao
+Assalamu alaikum, can you help me with my homework?
+Salam, what is the capital of France?
+AoA sir, ek email likhne mein madad karo
+Assalamualaikum, Surah Ikhlas sunao
+Assalamualaikum, 25 times 48 kitna hota hai?
+Assalamualaikum, aaj ki Hijri date kya hai?
+Assalamualaikum, Bukhari ki pehli hadith dikhao
+Assalamu alaikum, how are you doing today?
+Assalamualaikum, maghrib ka waqt kab hai?
+Assalamualaikum, ek python program likho jo primes print kare
+Assalamu alaikum, I need some advice about my job
+Assalamualaikum, yaad rakhna mera birthday 5 March hai
+AOA, tum kaun ho?
+Assalamualaikum, kuch acha sunao
+Salam alaikum, please explain how photosynthesis works
+السلام علیکم، آج موسم کیسا ہے؟
+السلام عليكم، كيف حالك اليوم؟
+السلام علیکم، نماز کا وقت بتائیں
+السلام عليكم، ما هي عاصمة فرنسا؟
+السلام علیکم، مجھے ایک خط لکھنے میں مدد کریں
+السلام عليكم، اقرأ سورة الإخلاص
+السلام علیکم بھائی، کیا حال ہے؟
+السلام عليكم، أريد مساعدة في واجبي
+अस्सलामु अलैकुम, आज मौसम कैसा है?
+अस्सलाम अलैकुम, मुझे ज़कात के बारे में बताइए
+अस्सलामु अलैकुम भाई, क्या हाल है?
+अस्सलामु अलैकुम, सूरह इख़लास सुनाइए
+Hello
+Hi
+Hey there
+Good morning
+Good evening, how are you?
+Namaste
+नमस्ते
+Kaise ho?
+Kya haal hai?
+مرحبا
+صبح بخیر
+Adaab
+Sat sri akal
+Hello Mizan
+hii
+JazakAllah khair
+Shukriya bhai
+Salamun alaikum kis surah mein aata hai?
+Salam ka jawab kaise dete hain?
+Assalamualaikum likhne ka sahi tareeqa kya hai?
+Salam karne ki fazilat batao
+What does Assalamu alaikum mean?
+السلام علیکم کا مطلب کیا ہے؟
+सलाम का जवाब कैसे देते हैं?
+Assalamualaikum, aap kaise hain?
+AoA, kal ka mausam batao
+Assalamualaikum bhai, roze ke masail batao
+Assalamu alaikum, what time is it in Mecca?
+Salam, can you write a poem about rain?
+AoA, 144 ka square root kya hai?
+Assalamualaikum, Surah Fatiha ka tarjuma dikhao
+Assalamualaikum, Muslim ki hadith 1 sunao
+Assalamualaikum, aaj kaun si tareekh hai?
+Assalamualaikum, isha ki namaz kab hai?
+Assalamualaikum, javascript mein array sort kaise karte hain?
+Assalamu alaikum, I feel stressed today
+Assalamualaikum, yaad rakho meri beti ka naam Aisha hai
+AoA sir, aap kya kya kar sakte hain?
+Assalamualaikum, mujhe neend nahi aati, kya karun?
+Assalamu alaikum, tell me about the battle of Badr
+Salam bhai, ek kahani sunao
+Assalamualaikum, Pakistan ki capital kya hai?
+السلام علیکم، کل کا موسم بتائیں
+السلام عليكم، كم الساعة الآن؟
+السلام علیکم، روزے کے مسائل بتائیں
+السلام عليكم، اكتب لي قصيدة
+السلام علیکم، سورہ فاتحہ کا ترجمہ دکھائیں
+السلام عليكم يا أخي، ما أخبارك؟
+السلام علیکم، آپ کیا کیا کر سکتے ہیں؟
+अस्सलामु अलैकुम, कल का मौसम बताइए
+अस्सलामु अलैकुम, रोज़े के मसाइल बताइए
+अस्सलाम अलैकुम, आप क्या क्या कर सकते हैं?
+अस्सलामु अलैकुम, एक कहानी सुनाइए
+अस्सलामु अलैकुम सर, आज कौन सी तारीख़ है?
+Hello there Mizan
+Hi bhai
+Good afternoon
+Good night
+Hey, what's up?
+Namaskar
+नमस्कार
+Kya chal raha hai?
+Aur sunao
+أهلا وسهلا
+شب بخیر
+Khuda hafiz
+Allah hafiz
+Thank you so much
+Jazakallahu khairan
+hey
+Salam ka sahi jawab kya hai?
+Assalamu alaikum kahne ka sawab kitna hai?
+Salam mein pehal karna kaisa hai?
+How do I reply to Assalamu alaikum?
+Why do Muslims say Assalamu alaikum?
+अस्सलामु अलैकुम का मतलब क्या है?
+Assalamualaikum, aaj sehri kab hai?
+AoA, mera account login nahi ho raha
+Assalamu alaikum, recommend me a good book
+Salam, ek joke sunao
+Assalamualaikum bhai, yeh code dekh lo
+Assalamualaikum, mujhe Arabic seekhni hai
+السلام عليكم، ما هو الطقس اليوم؟
+السلام عليكم، احسب لي ١٢ ضرب ٧
+السلام عليكم، أريد وصفة كبسة
+السلام عليكم، من أنت؟
+السلام علیکم، مجھے ایک کہانی سنائیں
+السلام علیکم، آج کون سی تاریخ ہے؟
+السلام علیکم بھائی، کیا آپ میری مدد کریں گے؟
+अस्सलामु अलैकुम, मुझे एक कविता लिखकर दीजिए
+अस्सलामु अलैकुम, आज सेहरी कब है?
+Good morning everyone
+Hello bhai
+Hey Mizan, good evening
+صباح الخير
+مساء الخير يا صديقي
+ہیلو
+हेलो
+Ram Ram
+Shubh prabhat
+كيف أرد على السلام؟
+ما فضل إلقاء السلام؟
+سلام میں پہل کرنے کا ثواب کیا ہے؟
+Salam ka matlab samjhao
+अस्सलामु अलैकुम लिखने का सही तरीका क्या है?
+رياضة
+أخبار اليوم
+موسيقى هادئة
+شغل الأغاني
+تذكير غدا
+خبریں سنائیں
+موسم
+اطلاعات
