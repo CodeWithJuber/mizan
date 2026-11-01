@@ -1,0 +1,12 @@
+{
+  "source_files": 131,
+  "source_zip_files": 46,
+  "leaf_occurrences": 38258,
+  "original_unique_leaf_hashes": 1622,
+  "recovered_unique_leaf_hashes": 21084,
+  "total_unique_leaf_hashes": 22706,
+  "source_content_missing_after_merge": 0,
+  "method": "Recursive ZIP leaf content SHA-256 comparison; duplicate contents referenced, unique missing contents recovered. ZIP container bytes are not promised to be reconstructible identically.",
+  "distinct_source_name_hash_pairs": 130,
+  "distinct_zip_sha256": 44
+}

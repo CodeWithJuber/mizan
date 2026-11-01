@@ -198,9 +198,9 @@ def check_api_keys() -> CheckResult:
     except Exception:
         try:
             sys.path.insert(0, str(_get_project_root() / "backend"))
-            from settings import get_settings
+            from settings import get_settings as fallback_get_settings
 
-            settings = get_settings()
+            settings = fallback_get_settings()
         except Exception as e:
             return CheckResult("API keys", CheckStatus.WARN, f"Cannot load settings: {e}")
 
@@ -464,15 +464,15 @@ def check_node() -> CheckResult:
         if result.returncode == 0:
             version = result.stdout.strip()
             major = int(version.lstrip("v").split(".")[0])
-            if major >= 18:
+            if major == 24:
                 return CheckResult("Node.js", CheckStatus.PASS, version)
-            return CheckResult("Node.js", CheckStatus.FAIL, f"{version} (need >= 18)")
+            return CheckResult("Node.js", CheckStatus.FAIL, f"{version} (need Node.js 24 LTS)")
     except FileNotFoundError:
         return CheckResult(
             "Node.js",
             CheckStatus.WARN,
             "Not installed (needed for frontend)",
-            fix_description="Install Node.js 18+ from https://nodejs.org",
+            fix_description="Install Node.js 24 LTS from https://nodejs.org",
         )
     except Exception as e:
         return CheckResult("Node.js", CheckStatus.WARN, str(e))
@@ -488,9 +488,9 @@ def check_provider_connectivity() -> CheckResult:
         settings = get_settings()
     except Exception:
         try:
-            from settings import get_settings
+            from settings import get_settings as fallback_get_settings
 
-            settings = get_settings()
+            settings = fallback_get_settings()
         except Exception:
             return CheckResult("Provider connectivity", CheckStatus.SKIP, "Cannot load settings")
 
@@ -512,7 +512,7 @@ def check_provider_connectivity() -> CheckResult:
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
+                    "anthropic-version": "2026-10-21",
                 },
                 timeout=5,
             )

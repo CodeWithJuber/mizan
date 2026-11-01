@@ -13,9 +13,11 @@ Nafs levels 3-4: Lawwama rises  (self-correction — check work)
 Nafs levels 5-7: Mutmainna leads (integrated balance — wisdom)
 """
 
-import math
 import logging
+import math
 from dataclasses import dataclass
+
+from core.adaptive import softmax, tokenize
 
 logger = logging.getLogger("mizan.nafs_triad")
 
@@ -23,18 +25,19 @@ logger = logging.getLogger("mizan.nafs_triad")
 @dataclass
 class NafsVoice:
     """A single inner voice with its bias and dynamic weight."""
-    name: str        # "Ammara" | "Lawwama" | "Mutmainna"
+
+    name: str  # "Ammara" | "Lawwama" | "Mutmainna"
     arabic: str
-    bias: str        # "drive" | "caution" | "balance"
+    bias: str  # "drive" | "caution" | "balance"
     quran_ref: str
 
     def score(self, task: str, complexity: str) -> float:
         """Score this task from this voice's perspective."""
-        task_lower = task.lower()
+        words = set(tokenize(task))
         if self.bias == "drive":
             # Ammara: prefers action verbs, quick tasks
             action_words = ["do", "run", "make", "create", "build", "send", "write", "execute"]
-            matches = sum(1 for w in action_words if w in task_lower)
+            matches = sum(1 for w in action_words if w in words)
             base = 0.5 + 0.1 * matches
             # Penalise extreme complexity (Ammara is impatient)
             if complexity == "extreme":
@@ -44,7 +47,7 @@ class NafsVoice:
         elif self.bias == "caution":
             # Lawwama: prefers verify/check/review tasks
             check_words = ["check", "verify", "review", "audit", "test", "validate", "ensure"]
-            matches = sum(1 for w in check_words if w in task_lower)
+            matches = sum(1 for w in check_words if w in words)
             base = 0.4 + 0.12 * matches
             # More weight on complex tasks (Lawwama is thorough)
             if complexity in ("complex", "extreme"):
@@ -53,9 +56,19 @@ class NafsVoice:
 
         else:  # balance / Mutmainna
             # Mutmainna: weighs both sides, prefers nuanced tasks
-            nuance_words = ["explain", "analyse", "compare", "understand", "balance",
-                            "consider", "reflect", "what", "why", "how"]
-            matches = sum(1 for w in nuance_words if w in task_lower)
+            nuance_words = [
+                "explain",
+                "analyse",
+                "compare",
+                "understand",
+                "balance",
+                "consider",
+                "reflect",
+                "what",
+                "why",
+                "how",
+            ]
+            matches = sum(1 for w in nuance_words if w in words)
             base = 0.45 + 0.08 * matches
             return min(1.0, base)
 
@@ -63,10 +76,11 @@ class NafsVoice:
 @dataclass
 class NafsDecision:
     """Result of Nafs Triad deliberation."""
-    dominant_voice: str      # "Ammara" | "Lawwama" | "Mutmainna"
-    approach: str            # Instruction injected into system prompt
-    confidence: float        # 0-1 how strongly one voice won
-    dissent_ratio: float     # fraction of weight held by losing voices
+
+    dominant_voice: str  # "Ammara" | "Lawwama" | "Mutmainna"
+    approach: str  # Instruction injected into system prompt
+    confidence: float  # 0-1 how strongly one voice won
+    dissent_ratio: float  # fraction of weight held by losing voices
     nafs_level: int
 
 
@@ -98,10 +112,15 @@ _APPROACHES = {
 
 
 def _softmax(values: list[float]) -> list[float]:
-    max_v = max(values)
-    exps = [math.exp(v - max_v) for v in values]
-    total = sum(exps)
-    return [e / total for e in exps]
+    """Softmax at a temperature equal to the bids' own spread.
+
+    Bids live on a ~0.1 scale, so a unit temperature made every decision a
+    near-uniform ~0.35. Scaling by the standard deviation keeps the result
+    invariant to the weights' units and lets real differences show.
+    """
+    mean = sum(values) / len(values)
+    spread = math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
+    return [float(p) for p in softmax(values, temperature=max(spread, 0.02))]
 
 
 class NafsTriad:
@@ -115,15 +134,9 @@ class NafsTriad:
     """
 
     def __init__(self):
-        self.ammara = NafsVoice(
-            "Ammara", "أمارة", "drive", "12:53"
-        )
-        self.lawwama = NafsVoice(
-            "Lawwama", "لوامة", "caution", "75:2"
-        )
-        self.mutmainna = NafsVoice(
-            "Mutmainna", "مطمئنة", "balance", "89:27"
-        )
+        self.ammara = NafsVoice("Ammara", "أمارة", "drive", "12:53")
+        self.lawwama = NafsVoice("Lawwama", "لوامة", "caution", "75:2")
+        self.mutmainna = NafsVoice("Mutmainna", "مطمئنة", "balance", "89:27")
         self._voices = [self.ammara, self.lawwama, self.mutmainna]
 
     def deliberate(self, task: str, nafs_level: int, complexity: str = "moderate") -> NafsDecision:
@@ -141,7 +154,7 @@ class NafsTriad:
         weights = _LEVEL_WEIGHTS[level]
 
         raw_scores = [v.score(task, complexity) for v in self._voices]
-        weighted = [s * w for s, w in zip(raw_scores, weights)]
+        weighted = [s * w for s, w in zip(raw_scores, weights, strict=False)]
         probs = _softmax(weighted)
 
         winner_idx = probs.index(max(probs))
@@ -159,7 +172,11 @@ class NafsTriad:
 
         logger.debug(
             "[NAFS_TRIAD] level=%d task='%s...' → %s (conf=%.2f dissent=%.2f)",
-            level, task[:60], winner.name, winner_prob, dissent,
+            level,
+            task[:60],
+            winner.name,
+            winner_prob,
+            dissent,
         )
         return decision
 

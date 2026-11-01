@@ -6,6 +6,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { PageProps, Skill } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
+import AgentSkillsPanel from "../components/AgentSkillsPanel";
+import { confirmDialog } from "@/components/ui/confirm";
+
+/** Readable names for agent-type slugs shown under "Best For". */
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  browser: "Browser",
+  mubashir: "Mubashir",
+  research: "Research",
+  general: "General",
+  code: "Code",
+  katib: "Katib",
+  communication: "Communication",
+};
 
 const BUILTIN_SKILLS: Skill[] = [
   {
@@ -149,11 +163,13 @@ const PERMISSION_LABELS: Record<string, string> = {
 };
 
 export default function SkillsPage({ api, addTerminalLine }: PageProps) {
+  const { addToast } = useToast();
   const [skills, setSkills] = useState<Skill[]>(BUILTIN_SKILLS);
   const [activeTab, setActiveTab] = useState<string>("installed");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [pendingSkill, setPendingSkill] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     setLoading(true);
@@ -174,28 +190,48 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
   }, [loadSkills]);
 
   const installSkill = async (skillName: string) => {
+    setPendingSkill(skillName);
     try {
       await api.post("/skills/install", { name: skillName });
-      addTerminalLine?.(`Skill installed: ${skillName}`, "gold");
+      addToast({
+        type: "success",
+        title: "Added — find it under Added",
+      });
+      addTerminalLine?.(`Skill added: ${skillName}`, "gold");
       setSkills((prev) =>
         prev.map((s) => (s.name === skillName ? { ...s, installed: true } : s)),
       );
-    } catch {
-      addTerminalLine?.(`Failed to install skill: ${skillName}`, "error");
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Add nahi ho paya",
+      });
+      addTerminalLine?.(`Failed to add skill: ${skillName}`, "error");
+    } finally {
+      setPendingSkill(null);
     }
   };
 
   const uninstallSkill = async (skillName: string) => {
+    if (!(await confirmDialog({ title: `Remove the skill "${skillName}"?`, confirmLabel: "Remove", destructive: true }))) return;
+    setPendingSkill(skillName);
     try {
       await api.post("/skills/uninstall", { name: skillName });
-      addTerminalLine?.(`Skill uninstalled: ${skillName}`, "gold");
+      addToast({ type: "success", title: "Skill remove ho gaya" });
+      addTerminalLine?.(`Skill removed: ${skillName}`, "gold");
       setSkills((prev) =>
         prev.map((s) =>
           s.name === skillName ? { ...s, installed: false } : s,
         ),
       );
-    } catch {
-      addTerminalLine?.(`Failed to uninstall skill: ${skillName}`, "error");
+    } catch (e) {
+      addToast({
+        type: "error",
+        title: (e as Error).message || "Remove nahi ho paya",
+      });
+      addTerminalLine?.(`Failed to remove skill: ${skillName}`, "error");
+    } finally {
+      setPendingSkill(null);
     }
   };
 
@@ -221,7 +257,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           </p>
         </div>
         <input
-          className="form-input w-48"
+          className="form-input w-full sm:w-48"
           placeholder="Search skills..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -235,9 +271,10 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
 
       <div className="tab-bar">
         {[
-          { id: "installed", label: "Installed" },
+          { id: "installed", label: "Added" },
           { id: "available", label: "Available" },
           { id: "all", label: "All Skills" },
+          { id: "agent", label: "Agent Skills (SKILL.md)" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -251,7 +288,9 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         ))}
       </div>
 
-      {loading && (
+      {activeTab === "agent" && <AgentSkillsPanel api={api} />}
+
+      {activeTab !== "agent" && loading && (
         <div className="p-5" aria-live="polite">
           <div className="card-grid">
             <SkeletonCard count={4} />
@@ -259,7 +298,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className={`flex-1 overflow-y-auto p-5 ${activeTab === "agent" ? "hidden" : ""}`}>
         <div className="card-grid">
           {filteredSkills.map((skill) => {
             const cat = CATEGORY_STYLES[skill.category] || {
@@ -292,10 +331,10 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                     {skill.arabic}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="text-sm font-semibold text-foreground">
                       {skill.display}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
                       {isExpanded
                         ? skill.description
                         : skill.description.split(".")[0] + "."}
@@ -321,7 +360,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                   >
                     {skill.category}
                   </span>
-                  <span className="text-micro font-mono text-gray-400 dark:text-gray-500">
+                  <span className="text-micro font-mono text-muted-foreground/80">
                     v{skill.version}
                   </span>
                   {skill.installed && (
@@ -347,7 +386,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                   <div className="mb-3 space-y-3">
                     {/* Permissions with readable labels */}
                     <div>
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                         Required Permissions
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -365,10 +404,10 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                     {/* Agent affinity */}
                     {affinity && (
                       <div>
-                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                           Best For
                         </div>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                        <p className="text-xs text-foreground/75 leading-relaxed">
                           {affinity.note}
                         </p>
                         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -377,7 +416,7 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                               key={type}
                               className="text-xs px-1.5 py-0.5 bg-mizan-gold/10 border border-mizan-gold/20 rounded text-mizan-gold font-mono"
                             >
-                              {type}
+                              {AGENT_TYPE_LABELS[type] || type}
                             </span>
                           ))}
                         </div>
@@ -387,15 +426,21 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
                 )}
 
                 <button
-                  className={`w-full ${skill.installed ? "btn-danger" : "btn-gold"} btn-sm`}
+                  className={`w-full ${skill.installed ? "btn-danger" : "btn-gold"} btn-sm min-h-[44px]`}
+                  disabled={pendingSkill === skill.name}
                   onClick={(e) => {
                     e.stopPropagation();
-                    skill.installed
-                      ? uninstallSkill(skill.name)
-                      : installSkill(skill.name);
+                    if (skill.installed) uninstallSkill(skill.name);
+                    else installSkill(skill.name);
                   }}
                 >
-                  {skill.installed ? "Uninstall" : "Install"}
+                  {pendingSkill === skill.name
+                    ? skill.installed
+                      ? "Removing…"
+                      : "Adding…"
+                    : skill.installed
+                      ? "Remove"
+                      : "Add"}
                 </button>
               </div>
             );
@@ -404,9 +449,11 @@ export default function SkillsPage({ api, addTerminalLine }: PageProps) {
           {filteredSkills.length === 0 && (
             <div className="empty-state col-span-full">
               <div className="empty-arabic">حكمة</div>
-              <div className="empty-text">No skills found</div>
+              <div className="empty-text">No skills in this view yet</div>
               <div className="empty-sub">
-                Search or browse the MizanHub registry
+                {searchQuery
+                  ? "Try a different search"
+                  : "Nayi skills install karke yahan dekho"}
               </div>
             </div>
           )}

@@ -1,0 +1,45 @@
+{
+  "eval": "morphology root accuracy",
+  "date": "2026-10-28",
+  "analyzer": "ArabicMorphAnalyzer (rule-based, stdlib-only; NOT a trained model)",
+  "gold": {
+    "path": "ruh_model/benchmarks/data/morph_gold_qac_test.tsv",
+    "source": "Q-CSMP v2 test split (Zenodo DOI 10.5281/zenodo.23024527, CC-BY-4.0); roots trace to Quranic Arabic Corpus annotation",
+    "n_types": 172,
+    "n_token_records": 3135,
+    "excluded": "35 test records with no triliteral root (particles e.g. LIAOLAA) — excluded, not counted as misses",
+    "normalization": "diacritics stripped + hamza normalized on BOTH wordform and gold root, exactly as the analyzer does internally",
+    "pattern": "NOT SCORED — Q-CSMP v2 does not annotate the coarse pattern vocabulary"
+  },
+  "ruh": {
+    "n": 172,
+    "n_scored": 172,
+    "n_failed": 0,
+    "root_accuracy": 0.47093023255813954,
+    "pattern_accuracy": 0.0,
+    "exact_accuracy": 0.0
+  },
+  "failure_analysis": {
+    "words_with_U0671_superscript_alef": {
+      "n": 40,
+      "correct": 19,
+      "accuracy": 0.475
+    },
+    "words_without_U0671": {
+      "n": 132,
+      "correct": 62,
+      "accuracy": 0.4697
+    },
+    "note": "U+0671 is mapped to plain alef before affix stripping (0/40 before that fix); a one-letter prefix is kept as a root letter when only that reading gives a root the lexicon knows (كتاب -> كتب)"
+  },
+  "camel": {
+    "status": "skipped",
+    "note": "use_camel=False"
+  },
+  "verdict": "47.1% root accuracy (81/172), up from 34.9% (60/172) on 2026-09-29. Still a rule-based baseline: the lexicon has 55 roots and hollow or doubled roots are not restored. No trained-model claim.",
+  "previous": {
+    "date": "2026-09-29",
+    "root_accuracy": 0.3488372093023256,
+    "correct": 60
+  }
+}

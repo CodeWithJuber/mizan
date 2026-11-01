@@ -19,33 +19,46 @@ features progressively, mirroring embryonic development from the Quran (23:12-14
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
+
+from core.adaptive import BetaEstimator
 
 logger = logging.getLogger("mizan.dev_stages")
 
 
 # All tools available in the system
-ALL_TOOLS = frozenset({
-    "bash", "http_get", "http_post", "read_file", "write_file",
-    "list_files", "python_exec", "create_agent", "create_skill",
-    "compact_context", "recall_memory",
-})
+ALL_TOOLS = frozenset(
+    {
+        "bash",
+        "http_get",
+        "http_post",
+        "read_file",
+        "write_file",
+        "list_files",
+        "python_exec",
+        "create_agent",
+        "compact_context",
+        "recall_memory",
+    }
+)
 
 
 @dataclass
 class StageCapabilities:
     """Capabilities unlocked at a given developmental stage."""
+
     stage_name: str
     nafs_level: int
     quran_ref: str
     allowed_tools: frozenset
     max_turns: int
     # Feature flags
-    can_delegate: bool = False    # Can delegate to sub-agents
-    nafs_triad: bool = False      # Nafs Triad deliberation
-    causal_rung: int = 0          # 0=none, 1=observe, 2=intervene, 3=counterfactual
-    lubb_active: bool = False     # Metacognitive monitoring
-    fuad_active: bool = False     # Conviction formation
+    can_delegate: bool = False  # Can delegate to sub-agents
+    nafs_triad: bool = False  # Nafs Triad deliberation
+    causal_rung: int = 0  # 0=none, 1=observe, 2=intervene, 3=counterfactual
+    lubb_active: bool = False  # Metacognitive monitoring
+    fuad_active: bool = False  # Conviction formation
     description: str = ""
 
 
@@ -64,10 +77,16 @@ _STAGES: dict[int, StageCapabilities] = {
         stage_name="Alaqah",
         nafs_level=2,
         quran_ref="23:14",
-        allowed_tools=frozenset({
-            "bash", "read_file", "write_file", "http_get",
-            "recall_memory", "compact_context",
-        }),
+        allowed_tools=frozenset(
+            {
+                "bash",
+                "read_file",
+                "write_file",
+                "http_get",
+                "recall_memory",
+                "compact_context",
+            }
+        ),
         max_turns=8,
         causal_rung=0,
         description="Clot stage — can now write and fetch external data",
@@ -76,29 +95,46 @@ _STAGES: dict[int, StageCapabilities] = {
         stage_name="Mudghah",
         nafs_level=3,
         quran_ref="23:14",
-        allowed_tools=frozenset({
-            "bash", "read_file", "write_file", "list_files",
-            "http_get", "http_post", "python_exec",
-            "recall_memory", "compact_context",
-        }),
+        allowed_tools=frozenset(
+            {
+                "bash",
+                "read_file",
+                "write_file",
+                "list_files",
+                "http_get",
+                "http_post",
+                "python_exec",
+                "recall_memory",
+                "compact_context",
+            }
+        ),
         max_turns=10,
         can_delegate=True,
-        causal_rung=1,   # Can observe causal associations
+        causal_rung=1,  # Can observe causal associations
         description="Structured stage — execute code, observe causality",
     ),
     4: StageCapabilities(
         stage_name="Izham",
         nafs_level=4,
         quran_ref="23:14",
-        allowed_tools=frozenset({
-            "bash", "read_file", "write_file", "list_files",
-            "http_get", "http_post", "python_exec",
-            "create_agent", "recall_memory", "compact_context",
-        }),
+        allowed_tools=frozenset(
+            {
+                "bash",
+                "read_file",
+                "write_file",
+                "list_files",
+                "http_get",
+                "http_post",
+                "python_exec",
+                "create_agent",
+                "recall_memory",
+                "compact_context",
+            }
+        ),
         max_turns=12,
         can_delegate=True,
         nafs_triad=True,
-        causal_rung=2,   # Can intervene and predict effects
+        causal_rung=2,  # Can intervene and predict effects
         description="Skeleton stage — can create sub-agents, nafs deliberation active",
     ),
     5: StageCapabilities(
@@ -109,7 +145,7 @@ _STAGES: dict[int, StageCapabilities] = {
         max_turns=15,
         can_delegate=True,
         nafs_triad=True,
-        causal_rung=3,   # Full causal reasoning
+        causal_rung=3,  # Full causal reasoning
         lubb_active=True,
         fuad_active=True,
         description="Full capability — all tools, metacognition, conviction formation",
@@ -146,6 +182,7 @@ _STAGES: dict[int, StageCapabilities] = {
 @dataclass
 class UpgradeReport:
     """Result of checking if an agent is ready to advance nafs levels."""
+
     current_level: int
     target_level: int
     ready: bool
@@ -160,6 +197,15 @@ class UpgradeReport:
             "missing": self.missing_requirements,
             "tazkiyah_score": round(self.tazkiyah_score, 3),
         }
+
+
+def promotion_confidence() -> float:
+    """Posterior probability required to accept a stage's success rate."""
+    try:
+        value = float(os.getenv("MIZAN_NAFS_CONFIDENCE", "0.7"))
+    except ValueError:
+        value = 0.7
+    return min(0.99, max(0.5, value))
 
 
 class DevelopmentalGate:
@@ -181,9 +227,7 @@ class DevelopmentalGate:
         level = max(1, min(7, nafs_level))
         return _STAGES[level]
 
-    def filter_tool_schemas(
-        self, tool_schemas: list[dict], nafs_level: int
-    ) -> list[dict]:
+    def filter_tool_schemas(self, tool_schemas: list[dict], nafs_level: int) -> list[dict]:
         """
         Filter tool schemas to only include tools allowed at this nafs level.
         Skills and plugin tools are always allowed (dynamic capabilities).
@@ -200,7 +244,9 @@ class DevelopmentalGate:
             else:
                 logger.debug(
                     "[DEV_GATE] Blocking tool '%s' at nafs_level=%d (%s)",
-                    name, nafs_level, caps.stage_name,
+                    name,
+                    nafs_level,
+                    caps.stage_name,
                 )
         return filtered
 
@@ -227,24 +273,32 @@ class DevelopmentalGate:
         missing = []
 
         success_rate = getattr(agent, "success_rate", 0.0)
-        total_tasks = getattr(agent, "total_tasks", 0)
+        total_tasks = int(getattr(agent, "total_tasks", 0) or 0)
+        successes = getattr(agent, "success_count", round(success_rate * total_tasks))
         required_sr = threshold.get("success_rate", 0.0)
         required_tasks = threshold.get("min_tasks", 0)
+        # Weigh the evidence (Mizan) instead of comparing a raw ratio: the
+        # Beta posterior of the success rate must make the stage's rate
+        # probable enough. The task count is the stage's minimum evidence.
+        posterior = (
+            BetaEstimator().update(1.0, successes).update(0.0, max(0, total_tasks - successes))
+        )
+        confidence = posterior.probability_at_least(required_sr)
 
-        if success_rate < required_sr:
-            missing.append(f"success_rate {success_rate:.0%} < {required_sr:.0%}")
+        if confidence < promotion_confidence():
+            missing.append(
+                f"P(success rate ≥ {required_sr:.0%}) = {confidence:.0%} "
+                f"< {promotion_confidence():.0%} ({successes}/{total_tasks} tasks)"
+            )
         if total_tasks < required_tasks:
             missing.append(f"tasks {total_tasks} < {required_tasks}")
         if "min_hikmah" in threshold:
-            hikmah = len(getattr(agent, "hikmah", []))
+            hikmah = int(getattr(agent, "hikmah_count", 0) or len(getattr(agent, "hikmah", [])))
             if hikmah < threshold["min_hikmah"]:
                 missing.append(f"hikmah {hikmah} < {threshold['min_hikmah']}")
 
-        # Compute rough tazkiyah score
-        tazkiyah = (
-            min(1.0, success_rate / max(required_sr, 0.01)) * 0.6
-            + min(1.0, total_tasks / max(required_tasks, 1)) * 0.4
-        )
+        # Tazkiyah: posterior confidence, scaled by how much evidence exists.
+        tazkiyah = confidence * min(1.0, total_tasks / max(required_tasks, 1))
 
         report = UpgradeReport(
             current_level=current,
@@ -257,7 +311,9 @@ class DevelopmentalGate:
         if report.ready:
             logger.info(
                 "[DEV_GATE] Agent ready to advance nafs_level %d → %d (tazkiyah=%.2f)",
-                current, target, tazkiyah,
+                current,
+                target,
+                tazkiyah,
             )
 
         return report

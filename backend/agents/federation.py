@@ -139,7 +139,7 @@ class AgentFederation:
         capabilities: list[str],
         nafs_level: int = 1,
         success_rate: float = 0.0,
-        specializations: list[str] = None,
+        specializations: list[str] | None = None,
     ) -> AgentCapability:
         """Register an agent's capabilities in the federation."""
         cap = AgentCapability(
@@ -172,7 +172,10 @@ class AgentFederation:
     # ─── Discovery ───
 
     def discover(
-        self, required_capabilities: list[str] = None, min_nafs: int = 1, exclude: set[str] = None
+        self,
+        required_capabilities: list[str] | None = None,
+        min_nafs: int = 1,
+        exclude: set[str] | None = None,
     ) -> list[AgentCapability]:
         """
         Discover agents matching criteria.
@@ -197,7 +200,7 @@ class AgentFederation:
         return [cap for _, cap in candidates]
 
     def find_best_agent(
-        self, task_type: str, required_capabilities: list[str] = None, min_nafs: int = 1
+        self, task_type: str, required_capabilities: list[str] | None = None, min_nafs: int = 1
     ) -> AgentCapability | None:
         """Find the single best agent for a task."""
         # Map task types to capability hints
@@ -240,9 +243,9 @@ class AgentFederation:
         self,
         from_agent: str,
         task: str,
-        required_capabilities: list[str] = None,
+        required_capabilities: list[str] | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
-        context: dict = None,
+        context: dict | None = None,
     ) -> dict | None:
         """
         Delegate a task to the best available agent.
@@ -344,10 +347,10 @@ class AgentFederation:
         from_agent_id: str,
         target_agent_id: str,
         task: str,
-        context: dict = None,
+        context: dict | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
         timeout: float = 120.0,
-        execute_fn: Callable = None,
+        execute_fn: Callable | None = None,
     ) -> dict:
         """
         Delegate a task directly from one agent to a specific target agent.

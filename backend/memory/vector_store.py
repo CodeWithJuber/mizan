@@ -8,8 +8,10 @@ Semantic memory using ChromaDB vector embeddings.
 Enables meaning-based retrieval rather than keyword matching.
 """
 
+import asyncio
 import logging
 import uuid
+from typing import Any, cast
 
 logger = logging.getLogger("mizan.vector")
 
@@ -26,7 +28,7 @@ class VectorStore:
         self.chroma_url = chroma_url
         self.collection_name = collection_name
         self._client = None
-        self._collection = None
+        self._collection: Any = None
         self._available = False
         self._init_client()
 
@@ -56,7 +58,9 @@ class VectorStore:
     def is_available(self) -> bool:
         return self._available
 
-    async def store(self, content: str, memory_id: str = None, metadata: dict = None) -> str | None:
+    async def store(
+        self, content: str, memory_id: str | None = None, metadata: dict | None = None
+    ) -> str | None:
         """Store content with auto-generated embedding"""
         if not self._available:
             return None
@@ -64,24 +68,26 @@ class VectorStore:
         mem_id = memory_id or str(uuid.uuid4())
 
         try:
-            self._collection.add(
+            await asyncio.to_thread(
+                self._collection.add,
                 documents=[content],
                 ids=[mem_id],
-                metadatas=[metadata or {}],
+                metadatas=[metadata or {"source": "dhikr"}],
             )
             return mem_id
         except Exception as e:
             logger.error(f"[VECTOR] Store failed: {e}")
             return None
 
-    async def search(self, query: str, limit: int = 10, filters: dict = None) -> list[dict]:
+    async def search(self, query: str, limit: int = 10, filters: dict | None = None) -> list[dict]:
         """Semantic similarity search"""
         if not self._available:
             return []
 
         try:
             where = filters if filters else None
-            results = self._collection.query(
+            results = await asyncio.to_thread(
+                self._collection.query,
                 query_texts=[query],
                 n_results=limit,
                 where=where,
@@ -97,6 +103,10 @@ class VectorStore:
                             "distance": results["distances"][0][i]
                             if results.get("distances")
                             else None,
+                            # Similarity in (0, 1] from the embedding distance.
+                            "score": 1.0 / (1.0 + float(results["distances"][0][i]))
+                            if results.get("distances")
+                            else 0.5,
                             "metadata": results["metadatas"][0][i]
                             if results.get("metadatas")
                             else {},
@@ -123,6 +133,6 @@ class VectorStore:
         if not self._available:
             return 0
         try:
-            return self._collection.count()
+            return cast(int, self._collection.count())
         except Exception:
             return 0

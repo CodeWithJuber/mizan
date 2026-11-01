@@ -7,8 +7,8 @@
 # --- Data ---
 samples: 500000                # Total samples from HuggingFace
 mixing_ratios:
-  quran: 0.30                  # Quranic text (primary theological source)
-  hadith: 0.20                 # Hadith collections
+  quran: 0.0                   # Never a training target; a positive weight is refused
+  hadith: 0.0                  # Never a training target; a positive weight is refused
   arabic_wiki: 0.25            # Arabic Wikipedia (general knowledge)
   opus: 0.15                   # OPUS-100 parallel corpus (bilingual)
   morphology: 0.10             # Tashkeela diacritized text (morphology)

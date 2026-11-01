@@ -3,6 +3,11 @@
  * Core type definitions for the Quranic AGI System
  */
 
+import type { AmanahSummary } from "./utils/amanah.ts";
+import type { IsnadSummary } from "./utils/isnad.ts";
+import type { SidqReport } from "./utils/sidq.ts";
+import type { AhlReport } from "./utils/ahl.ts";
+
 // ===== API Types =====
 
 export interface ApiClient {
@@ -15,6 +20,10 @@ export interface ApiClient {
     path: string,
     body?: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
+  patch: (
+    path: string,
+    body?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
   del: (path: string) => Promise<Record<string, unknown>>;
   API_URL: string;
 }
@@ -22,11 +31,7 @@ export interface ApiClient {
 // ===== Agent Types =====
 
 export type AgentState =
-  | "resting"
-  | "thinking"
-  | "acting"
-  | "learning"
-  | "error";
+  "resting" | "thinking" | "acting" | "learning" | "error";
 export type NafsLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type NafsName =
   | "Ammara"
@@ -80,11 +85,7 @@ export interface YaqinTag {
 // ===== Cognitive Method Types =====
 
 export type CognitiveMethod =
-  | "tafakkur"
-  | "tadabbur"
-  | "istidlal"
-  | "qiyas"
-  | "ijma";
+  "tafakkur" | "tadabbur" | "istidlal" | "qiyas" | "ijma";
 
 // ===== Qalb Emotional Types =====
 
@@ -97,12 +98,7 @@ export type EmotionalState =
   | "determined"
   | "fatigued";
 export type ToneStyle =
-  | "standard"
-  | "encouraging"
-  | "patient"
-  | "concise"
-  | "warm"
-  | "focused";
+  "standard" | "encouraging" | "patient" | "concise" | "warm" | "focused";
 
 export interface QalbReading {
   state: EmotionalState;
@@ -162,6 +158,9 @@ export interface KnowledgeItem {
 // ===== Cognitive Metadata (QALB-7 Pipeline) =====
 
 export interface CognitiveMetadata {
+  /** Internal heuristics and policy counters, never measured answer accuracy. */
+  metrics_kind?: string;
+  metric_provenance?: Record<string, unknown>;
   nafs_level?: NafsLevel;
   nafs_name?: NafsName;
   ruh_energy?: number;
@@ -180,6 +179,15 @@ export interface CognitiveMetadata {
 
 // ===== Chat Types =====
 
+/** An image the user attached (Basar): a local preview while sending, or the
+ *  kept image's id when the chat is read back. */
+export interface ChatImage {
+  sha?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface ChatMessage {
   id: number;
   role: "user" | "assistant" | "system";
@@ -190,6 +198,143 @@ export interface ChatMessage {
   cognitive?: CognitiveMetadata;
   perception?: PerceptionResult;
   thinkingMessageId?: string;
+  /** Stable server transport identities, retained for history reconciliation. */
+  requestId?: string;
+  messageId?: string;
+  /** The server explicitly rejected this new request before it started. */
+  notStarted?: boolean;
+  /** Provider-reported usage plus application-measured model-call timing.
+   *  Missing usage values mean "not reported"; cost estimates are marked. */
+  meta?: MessageUsageMeta;
+  /** CHAT UPGRADE: true when the user stopped generation mid-stream — the
+      content is a partial answer, not a finished one. */
+  stopped?: boolean;
+  /** Server cancellation/partial history without evidence of a user Stop action. */
+  interrupted?: boolean;
+  /** Terminal failure notice, separate from preserved partial answer text. */
+  error?: { code?: string; message: string };
+  /** Tool steps, plan and approvals observed while this reply ran. */
+  activity?: import("./utils/agentActivity").AgentActivity;
+  /** Actions an unattended run (a watcher) held for the owner's approval. */
+  held?: HeldActionRef[];
+  /** Images attached to this message (Basar). */
+  images?: ChatImage[];
+  /** The chat's project as it was before this user message ("Rewind" goes back to it). */
+  checkpoint?: { workspace_id: string; id: string };
+  /** What MIZAN could do without asking when this message was sent (this tab only). */
+  mode?: import("./utils/agentActivity").PermissionMode;
+}
+
+export interface HeldActionRef {
+  id: string;
+  tool: string;
+  reason?: string;
+}
+
+// ===== Model Transparency / Cost Types (chat upgrade workstreams C + E) =====
+
+/** Observed per-message provider usage and application-measured timing.
+ *  `model` is the OBSERVED model id from the wire, not the requested one.
+ *  `cost_usd` is provider-reported (authoritative) when `cost_estimated`
+ *  is false, else an estimate from the built-in price table — the UI must
+ *  render estimates with a "≈" prefix. Absent fields = not reported. */
+export interface MessageUsageMeta {
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  /** Provider-reported reasoning usage; it may be part of output_tokens. */
+  reasoning_tokens?: number;
+  /** Derived output minus reasoning tokens; may include tool calls, not just visible text. */
+  visible_output_tokens?: number;
+  reasoning_observed?: boolean;
+  /** Application-measured duration of model calls, not end-to-end task time. */
+  latency_ms?: number;
+  finish_reason?: string;
+  completion_status?: "abstained" | "unverified_answer" | "evidence_observed" | "incomplete"
+    | "human_review_required" | "reviewed_memory" | "missing_receipt" | "empty_response" | "tool_request" | "failed"
+    | "verified_by_mizan";
+  /** "mizan" when MIZAN's own orchestration (Tadbir) produced the answer. */
+  orchestrator?: "mizan" | "language_model";
+  /** What supports each claim of the answer (Isnad). */
+  isnad?: IsnadSummary;
+  /** Instructions aimed at the AI that MIZAN found in outside text and ignored (Amanah). */
+  amanah?: AmanahSummary;
+  /** What the Truth Gate (Sidq) corrected, removed or marked before the answer was shown. */
+  sidq?: SidqReport | { mode: string; passed: true };
+  /** What MIZAN's sources said about the claims of an answer in the model's own words (Ahl al-Dhikr). */
+  ahl?: AhlReport;
+  /** Your own words from other chats that the model was shown for this answer. */
+  recalled?: { session_id: string; created_at: string; content: string }[];
+  task_verified?: boolean;
+  answer_delivered?: boolean;
+  error_code?: string;
+  owned_status?: string;
+  owned_reason?: string;
+  owned_prompt?: Record<string, unknown>;
+  /** Checkpoint selected/loaded for this attempt; does not establish completed generation. */
+  owned_checkpoint?: {
+    source: "registry" | "environment";
+    sha256: string;
+    generation?: number;
+  };
+  cost_usd?: number;
+  cost_estimated?: boolean;
+  /** Individual reported calls, used to disclose partial aggregate usage. */
+  calls?: MessageUsageMeta[];
+  /** Application wall-clock intervals; agent time excludes API preparation/persistence. */
+  timings?: {
+    queue_wait_ms?: number;
+    execution_ms?: number;
+    provider_ms?: number;
+    tool_ms?: number;
+    other_execution_ms?: number;
+    total_ms?: number;
+    provider_attempt_count?: number;
+    provider_attempts?: Array<{
+      mode: "stream" | "create";
+      outcome: "completed" | "failed" | "cancelled";
+      latency_ms: number;
+    }>;
+  };
+  /** Byte-for-byte raw usage chunk from the stream (auditability). */
+  raw?: Record<string, unknown>;
+}
+
+// ===== Artifact Types =====
+// Chat artifacts (workstream F): versioned agent-produced documents.
+// Backend: backend/api/artifacts.py. WS convention: {"type": "artifact", "artifact": ArtifactWsPayload}.
+
+export type ArtifactKind = "code" | "html" | "markdown" | "image";
+
+export interface ArtifactVersion {
+  version: number;
+  title?: string;
+  content: string;
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  session_id: string;
+  title: string;
+  kind: ArtifactKind;
+  language?: string;
+  versions: ArtifactVersion[];
+  content?: string;
+  current_version?: number;
+  created_at?: string;
+}
+
+/** Payload the agent pipeline emits over the chat WS when an artifact is created. */
+export interface ArtifactWsPayload {
+  id: string;
+  session_id?: string;
+  title?: string;
+  kind?: string;
+  language?: string;
+  content?: string;
+  version?: number;
+  created_at?: string;
 }
 
 // ===== Memory Types =====
@@ -224,7 +369,11 @@ export interface Channel {
   id: string;
   type: string;
   name: string;
-  status: "connected" | "disconnected";
+  /** "configured": a token is saved but MIZAN does not run the channel. */
+  status: "connected" | "disconnected" | "configured" | "unavailable";
+  running?: boolean;
+  startable?: boolean;
+  detail?: string;
   connected_users: number;
   messages_processed: number;
 }
@@ -469,16 +618,9 @@ export interface PerceptionResult {
 // ===== Queue Types =====
 
 export type QueueTaskStatus =
-  | "pending"
-  | "running"
-  | "complete"
-  | "failed"
-  | "cancelled";
+  "pending" | "running" | "complete" | "failed" | "cancelled";
 export type QueuePriority =
-  | "dharurah"
-  | "hajah"
-  | "tahsiniyyah"
-  | "takmiliyyah";
+  "dharurah" | "hajah" | "tahsiniyyah" | "takmiliyyah";
 
 export interface QueueTask {
   task_id: string;
@@ -509,6 +651,7 @@ export type WsConnectionStatus =
   | "connecting"
   | "reconnecting"
   | "disconnected"
+  | "auth_required"
   | "error";
 
 export interface WsMessage {

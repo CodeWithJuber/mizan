@@ -1,0 +1,60 @@
+{
+  "scope": "Generation diagnosis, not held-out semantic accuracy",
+  "hf_revision": "2ecc917266a626db919fd6af154f9f0d3a286bcf",
+  "files": {
+    "code/minimind/model/model_minimind.py": "548f1203282dccb3be43227b11463f469b976afbab614df52828bdd246c3786f",
+    "code/minimind/model/tokenizer.json": "71f32c68cf63a15355a8fc171b7594b3d41870fe0ddb54fc6aefa55f73a4a668",
+    "code/minimind/model/tokenizer_config.json": "d7cd6a60c9f191c4f9ffec69b2eb289ad2f960366724f328b681ae1e46e4c110",
+    "model/full_sft_768.pth": "4490faad19e43a3f6b8d78f665e62acddd9620e0b922ded0c1df75257be97814"
+  },
+  "torch": "2.13.0+cpu",
+  "transformers": "4.57.6",
+  "strict_state_dict": true,
+  "finite_tensors": true,
+  "parameters": 63912192,
+  "device": "cpu",
+  "cases": [
+    {
+      "prompt": "hi",
+      "response": "فَأَنتَ",
+      "input_tokens": 19,
+      "output_tokens": 14,
+      "finish_reason": "eos"
+    },
+    {
+      "prompt": "who are you?",
+      "response": "فَأَنتَ بِأَذْنِتْ قَوْمُهُمْ فَهُمْ ل",
+      "input_tokens": 22,
+      "output_tokens": 64,
+      "finish_reason": "length"
+    },
+    {
+      "prompt": "السَّلَامُ عَلَيْكُمْ",
+      "response": "yuʿ'yakum",
+      "input_tokens": 48,
+      "output_tokens": 9,
+      "finish_reason": "eos"
+    },
+    {
+      "prompt": "What is 2 + 2?",
+      "response": "San",
+      "input_tokens": 23,
+      "output_tokens": 3,
+      "finish_reason": "eos"
+    },
+    {
+      "prompt": "Explain the difference between علم and عمل.",
+      "response": " عه فٓ إِلَّا قَلِيبٌۭ مَّا يَسْتَطِيعُون",
+      "input_tokens": 33,
+      "output_tokens": 64,
+      "finish_reason": "length"
+    },
+    {
+      "prompt": "Bhai, tum kya kar sakte ho?",
+      "response": "وَإِنَّا لَنَعْلَمُونَ",
+      "input_tokens": 32,
+      "output_tokens": 35,
+      "finish_reason": "eos"
+    }
+  ]
+}

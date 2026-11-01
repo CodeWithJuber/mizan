@@ -8,11 +8,14 @@ Extracts knowledge from external sources (URLs, PDFs, YouTube)
 and stores it in MIZAN's memory system.
 """
 
+import asyncio
 import logging
 import re
 from html.parser import HTMLParser
 
 import httpx
+
+from connectors.net_guard import pinned_destination
 
 logger = logging.getLogger("mizan.knowledge")
 
@@ -49,24 +52,58 @@ class _TextExtractor(HTMLParser):
                 self.text.append(stripped)
 
 
+MAX_FETCH_BYTES = 2 * 1024 * 1024
+MAX_REDIRECTS = 5
+
+
+# Checked and pinned destinations live in the connectors' network guard.
+_public_destination = pinned_destination
+
+
 async def extract_url(url: str) -> dict:
-    """Extract text content from a web URL."""
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; MIZAN/1.0)"}
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-
-        extractor = _TextExtractor()
-        extractor.feed(response.text)
-        content = " ".join(extractor.text)
-
-        return {
-            "title": extractor._title or url,
-            "content": content[:50000],
-            "source": url,
-            "source_type": "url",
-            "char_count": len(content),
-        }
+    """Fetch a bounded public document, checking and pinning every redirect."""
+    original = url
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False) as client:
+        for redirect in range(MAX_REDIRECTS + 1):
+            destination, host_header, tls_hostname = await _public_destination(url)
+            async with client.stream(
+                "GET",
+                destination,
+                headers={
+                    "User-Agent": "MIZAN/1.0",
+                    "Host": host_header,
+                    "Accept-Encoding": "identity",
+                },
+                extensions={"sni_hostname": tls_hostname},
+            ) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location or redirect == MAX_REDIRECTS:
+                        raise ValueError("Invalid or excessive redirects")
+                    url = str(httpx.URL(url).join(location))
+                    continue
+                response.raise_for_status()
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ValueError("Compressed documents are not accepted")
+                if int(response.headers.get("content-length", "0")) > MAX_FETCH_BYTES:
+                    raise ValueError("Document exceeds size limit")
+                body = bytearray()
+                async for chunk in response.aiter_raw(chunk_size=65536):
+                    if len(body) + len(chunk) > MAX_FETCH_BYTES:
+                        raise ValueError("Document exceeds size limit")
+                    body.extend(chunk)
+                text = body.decode(response.encoding or "utf-8", errors="replace")
+                extractor = _TextExtractor()
+                extractor.feed(text)
+                content = " ".join(extractor.text)
+                return {
+                    "title": extractor._title or original,
+                    "content": content[:50000],
+                    "source": original,
+                    "source_type": "url",
+                    "char_count": len(content),
+                }
+    raise ValueError("Unable to fetch document")
 
 
 def extract_pdf(file_bytes: bytes, filename: str = "upload.pdf") -> dict:
@@ -134,8 +171,9 @@ async def extract_youtube(url: str) -> dict:
         }
 
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        content = " ".join(entry["text"] for entry in transcript_list)
+        # The 1.x SDK returns typed transcript snippets and performs blocking HTTP.
+        transcript = await asyncio.to_thread(YouTubeTranscriptApi().fetch, video_id)
+        content = " ".join(snippet.text for snippet in transcript)
 
         return {
             "title": f"YouTube: {video_id}",
@@ -143,7 +181,7 @@ async def extract_youtube(url: str) -> dict:
             "source": url,
             "source_type": "youtube",
             "video_id": video_id,
-            "segment_count": len(transcript_list),
+            "segment_count": len(transcript),
             "char_count": len(content),
         }
     except Exception as exc:

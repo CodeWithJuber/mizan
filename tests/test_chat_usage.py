@@ -1,0 +1,340 @@
+"""Chat usage / cost tests — model-transparency + cost-display workstreams.
+
+Covers:
+  - prices.py: estimate_cost for configured models, unknown model -> None,
+    env override, never invents a price
+  - usage.py: extract_llm_meta reads the OBSERVED model + all usage key
+    styles, build_usage_block cost precedence
+    (provider cost -> estimate(≈) -> absent)
+  - providers.py: _OpenAIStreamWrapper captures the usage chunk + observed
+    model and requests stream_options.include_usage
+  - agents/base.py: _record_llm_call stash + execute() reset
+"""
+
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+
+from api.prices import estimate_cost, lookup
+from api.usage import (
+    build_usage_block,
+    build_usage_summary,
+    extract_llm_meta,
+    teacher_calls,
+    teacher_share,
+)
+from providers import LLMResponse, _OpenAIStreamWrapper
+
+# ── prices ──
+
+
+class TestEstimateCost:
+    def test_known_models(self):
+        # gpt-4o: $2.50/$10.00 per 1M
+        assert estimate_cost("gpt-4o", 1_000_000, 1_000_000) == pytest.approx(12.50)
+        # claude-sonnet-4-20250514: $3.00/$15.00 per 1M
+        assert estimate_cost("claude-sonnet-4-20250514", 2_000_000, 500_000) == pytest.approx(13.50)
+
+    def test_unknown_model_never_invents(self):
+        assert estimate_cost("some-future-model-99", 1000, 1000) is None
+        assert lookup("some-future-model-99") is None
+
+    def test_local_models_are_free(self):
+        assert estimate_cost("ruh-local", 100_000, 50_000) == 0.0
+
+    def test_openrouter_prefix_normalized(self):
+        assert lookup("anthropic/claude-sonnet-4") == (3.00, 15.00)
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("MIZAN_PRICE_OVERRIDES", "gpt-4o:1.00/2.00")
+        assert estimate_cost("gpt-4o", 1_000_000, 1_000_000) == pytest.approx(3.00)
+
+
+# ── usage extraction ──
+
+
+class TestExtractLlmMeta:
+    def test_observed_model_and_usage(self):
+        r = LLMResponse(
+            content=[],
+            model="claude-sonnet-4-20250514-observed",
+            usage={"input": 100, "output": 50},
+            stop_reason="end_turn",
+        )
+        meta = extract_llm_meta(r)
+        assert meta["model"] == "claude-sonnet-4-20250514-observed"
+        assert meta["input_tokens"] == 100
+        assert meta["output_tokens"] == 50
+        assert meta["finish_reason"] == "end_turn"
+
+    def test_openai_key_style(self):
+        r = LLMResponse(
+            content=[], model="gpt-4o", usage={"prompt_tokens": 10, "completion_tokens": 5}
+        )
+        meta = extract_llm_meta(r)
+        assert meta["input_tokens"] == 10
+        assert meta["output_tokens"] == 5
+
+    def test_ruh_key_style(self):
+        r = LLMResponse(
+            content=[], model="ruh-local", usage={"input_tokens": 7, "output_tokens": 3}
+        )
+        meta = extract_llm_meta(r)
+        assert meta["input_tokens"] == 7
+        assert meta["output_tokens"] == 3
+
+    def test_mizan_gate_and_advisory_metadata_preserved(self):
+        marker = {
+            "gate": {"outcome": "PASS", "code": "RESPONSE_GATES_PASSED"},
+            "nlp_advisory": "signals",
+            "semantic_or_religious_certification": False,
+        }
+        response = LLMResponse(
+            content=[], model="Qwen/Qwen3-4B-Instruct-2507", usage={"mizan": marker}
+        )
+
+        assert extract_llm_meta(response)["mizan"] == marker
+        call = {"response": response, "latency_ms": 10}
+        assert build_usage_block(call)["mizan"] == marker
+
+    def test_missing_values_absent_never_invented(self):
+        meta = extract_llm_meta(LLMResponse(content=[]))
+        assert "model" not in meta
+        assert "input_tokens" not in meta
+        assert "cost_usd" not in meta
+
+    def test_none_response(self):
+        assert extract_llm_meta(None) == {}
+
+    def test_checkpoint_receipt_preserves_identity_without_private_path(self):
+        checkpoint = {
+            "source": "registry",
+            "sha256": "a" * 64,
+            "generation": 3,
+            "path": "/private/model/checkpoint.pt",
+        }
+        response = LLMResponse(
+            content=[], model="mizan-owned", usage={"owned_checkpoint": checkpoint}
+        )
+        meta = extract_llm_meta(response)
+        assert meta["owned_checkpoint"] == {
+            "source": "registry",
+            "sha256": "a" * 64,
+            "generation": 3,
+        }
+
+    @pytest.mark.parametrize(
+        "checkpoint",
+        [
+            {"source": "remote", "sha256": "a" * 64},
+            {"source": "registry", "sha256": "not-a-digest"},
+            {"source": "registry", "sha256": 42},
+        ],
+    )
+    def test_invalid_checkpoint_identity_is_not_displayed(self, checkpoint):
+        response = LLMResponse(content=[], usage={"owned_checkpoint": checkpoint})
+        assert "owned_checkpoint" not in extract_llm_meta(response)
+
+    @pytest.mark.parametrize("invalid", [True, -1, 1.5, "3", None])
+    def test_invalid_reasoning_counts_remain_absent(self, invalid):
+        response = LLMResponse(
+            content=[], usage={"reasoning_tokens": invalid, "visible_output_tokens": invalid}
+        )
+        meta = extract_llm_meta(response)
+        assert "reasoning_tokens" not in meta
+        assert "visible_output_tokens" not in meta
+
+
+def test_multi_call_summary_sums_reported_reasoning_without_inventing_missing_usage():
+    calls = [
+        {"response": LLMResponse(content=[], usage=usage)}
+        for usage in [
+            {"input": 10, "output": 8, "reasoning_tokens": 6, "visible_output_tokens": 2},
+            {"input": 12, "output": 4, "reasoning_observed": True},
+        ]
+    ]
+    summary = build_usage_summary(calls)
+    assert summary["input_tokens"] == 22
+    assert summary["output_tokens"] == 12
+    assert summary["reasoning_tokens"] == 6
+    assert summary["visible_output_tokens"] == 2
+    assert summary["reasoning_observed"] is True
+    assert "reasoning_tokens" not in summary["calls"][1]
+    assert "cost_usd" not in summary
+
+
+class TestBuildUsageBlock:
+    def _llm_call(self, model, usage, latency=123.4):
+        return {
+            "response": LLMResponse(content=[], model=model, usage=usage),
+            "latency_ms": latency,
+        }
+
+    def test_estimate_path_flagged(self):
+        block = self._build(model="gpt-4o", usage={"input": 1_000_000, "output": 0})
+        assert block["cost_usd"] == pytest.approx(2.50)
+        assert block["cost_estimated"] is True
+        assert block["latency_ms"] == 123.4
+        assert block["model"] == "gpt-4o"
+
+    def test_provider_cost_is_authoritative(self):
+        block = self._build(model="gpt-4o", usage={"input": 100, "output": 100, "cost": 0.99})
+        assert block["cost_usd"] == 0.99
+        assert block["cost_estimated"] is False
+
+    def test_unknown_model_cost_absent(self):
+        block = self._build(model="mystery-model", usage={"input": 100, "output": 100})
+        assert "cost_usd" not in block
+        assert block["input_tokens"] == 100
+
+    def test_no_llm_call_empty_block(self):
+        assert build_usage_block(None) == {}
+
+    def _build(self, model, usage):
+        return build_usage_block(self._llm_call(model, usage))
+
+
+# ── OpenAI stream wrapper usage capture ──
+
+
+def _chunk(*, content=None, finish=None, model=None, usage=None):
+    choices = []
+    if content is not None or finish is not None:
+        choices = [
+            SimpleNamespace(
+                delta=SimpleNamespace(content=content, tool_calls=None),
+                finish_reason=finish,
+            )
+        ]
+    ns = SimpleNamespace(choices=choices)
+    if model is not None:
+        ns.model = model
+    if usage is not None:
+        ns.usage = usage
+    return ns
+
+
+class TestOpenAIStreamUsage:
+    def test_usage_chunk_captured_and_observed_model_used(self):
+        w = _OpenAIStreamWrapper(None, "gpt-4o", 10, [])
+        w._stream = [
+            _chunk(content="hi", model="gpt-4o-2024-08-06"),
+            _chunk(finish="stop"),
+            _chunk(usage=SimpleNamespace(prompt_tokens=42, completion_tokens=7, total_tokens=49)),
+        ]
+        assert list(w.text_stream) == ["hi"]
+        resp = w.get_final_response()
+        # Observed model from the wire, not the requested one
+        assert resp.model == "gpt-4o-2024-08-06"
+        assert resp.usage["input"] == 42
+        assert resp.usage["output"] == 7
+        # Raw chunk forwarded byte-for-byte for auditing
+        assert resp.usage["raw"]["total_tokens"] == 49
+
+    def test_no_usage_chunk_means_absent_not_zero(self):
+        w = _OpenAIStreamWrapper(None, "gpt-4o", 10, [])
+        w._stream = [_chunk(content="hi", finish="stop")]
+        list(w.text_stream)
+        resp = w.get_final_response()
+        assert resp.usage == {}
+        meta = extract_llm_meta(resp)
+        assert "input_tokens" not in meta
+
+    def test_stream_options_include_usage_requested(self):
+        created = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                created.update(kwargs)
+                return iter([])
+
+        class FakeClient:
+            chat = SimpleNamespace(completions=FakeCompletions())
+
+        w = _OpenAIStreamWrapper(FakeClient(), "gpt-4o", 10, [{"role": "user", "content": "x"}])
+        with w:
+            pass
+        assert created["stream_options"] == {"include_usage": True}
+
+
+# ── agent recording ──
+
+
+class TestRecordLlmCall:
+    def test_record_and_execute_reset(self):
+        from agents.base import BaseAgent
+
+        agent = BaseAgent.__new__(BaseAgent)
+        resp = LLMResponse(content=[], model="m", usage={"input": 1, "output": 2})
+        agent._record_llm_call(resp, 10.5)
+        assert agent._last_llm_call["response"] is resp
+        assert agent._last_llm_call["latency_ms"] == 10.5
+
+
+# ── the teacher-call share (docs/teacher-calls.md) ──
+
+
+def test_teacher_calls_names_every_call():
+    result = {"orchestrator": "mizan", "task_verified": True}
+    record = teacher_calls(
+        result, 3, {"write_code": 1, "cross_check": 1}, {"intent": "run_code", "language": "ur"}
+    )
+    assert record == {
+        "calls": 3,
+        "zero_call": False,
+        "tasks": {"write_code": 1, "cross_check": 1, "answer": 1},
+        "family": "run_code",
+        "language": "ur",
+        "source": "mizan",
+        "verified": True,
+    }
+    unread = teacher_calls({}, 0, None, None)
+    assert unread["zero_call"] and unread["family"] == "unplaced"
+    assert unread["source"] == "language_model" and unread["tasks"] == {}
+
+
+def _answer(day: str, lisan: dict | None = None, **meta) -> tuple[str, str]:
+    import json
+
+    usage = {"lisan": lisan} if lisan is not None else meta.pop("usage", {})
+    return (f"{day}T10:00:00+00:00", json.dumps({"status": "complete", "usage": usage, **meta}))
+
+
+def test_teacher_share_counts_zero_call_answers_with_intervals():
+    def lisan(calls: int, family: str, language: str = "en", **tasks: int) -> dict:
+        return {"calls": calls, "family": family, "language": language, "tasks": tasks,
+                "verified": calls == 0}  # fmt: skip
+
+    rows = [
+        _answer("2026-10-29", lisan(0, "compute")),
+        _answer("2026-10-29", lisan(0, "compute")),
+        _answer("2026-10-30", lisan(1, "converse", answer=1)),
+        _answer("2026-10-30", lisan(2, "run_code", "ur", write_code=1, cross_check=1)),
+        # Saved before usage.lisan: counted by its recorded calls.
+        _answer("2026-10-30", usage={"calls": [{"model": "m"}]}),
+        _answer("2026-10-30", usage={}),
+        # Left out: an evaluation, an unfinished answer, unreadable metadata.
+        _answer("2026-10-30", lisan(0, "compute"), stateless=True),
+        ("2026-10-30T11:00:00+00:00", '{"status": "stopped", "usage": {}}'),
+        ("2026-10-30T12:00:00+00:00", "not json"),
+    ]
+    share = teacher_share(rows)
+    assert share["requests"] == 6 and share["zero_call"] == 3
+    assert share["zero_call_share"] == 0.5
+    low, high = share["interval"]
+    assert 0.18 < low < 0.5 < high < 0.82  # Wilson 95 % for 3/6
+    assert [(d["day"], d["requests"], d["zero_call"]) for d in share["by_day"]] == [
+        ("2026-10-29", 2, 2),
+        ("2026-10-30", 4, 1),
+    ]
+    families = {(f["family"], f["language"]): f for f in share["by_family"]}
+    assert families[("compute", "en")]["zero_call_share"] == 1.0
+    assert families[("unrecorded", "unknown")]["requests"] == 2
+    assert families[("run_code", "ur")]["calls"] == 2
+    assert share["lisan_tasks"] == {"answer": 1, "write_code": 1, "cross_check": 1}
+    empty = teacher_share([])
+    assert empty["requests"] == 0 and empty["zero_call_share"] is None

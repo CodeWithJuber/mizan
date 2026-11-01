@@ -9,60 +9,266 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check backend/ tests/
-      - run: ruff format --check backend/ tests/
+      # Pin to the same range as pyproject [dev] — unpinned ruff drift has
+      # flipped I001 verdicts on already-committed code between releases.
+      - run: pip install "ruff>=0.17.2,<0.18"
+      - run: ruff check backend/ nlp/ tests/
+      - run: ruff format --check backend/ nlp/ tests/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,nlp,knowledge]"
       - name: Run tests
         run: pytest tests/ -v --tb=short --cov=backend --cov-report=xml
       - name: Upload coverage
         if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
-          file: coverage.xml
+          files: coverage.xml
+
+  own-research:
+    name: Own architecture research invariants
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
+      - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
 
   build:
     name: Build package
-    runs-on: ubuntu-latest
-    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install build
+      - run: pip install "build>=1.6.1,<2"
       - run: python -m build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
 
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,nlp,knowledge]"
+      - run: PYTHONPATH=backend:. mypy backend/
+
+  ruh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
+      - run: pip install -e ".[dev,nlp,knowledge]" datasets
+      - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
+
+  bayan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      # The vendored copy must match ruh_model/tokenizer/ (writes nothing).
+      - run: python packages/bayan/scripts/sync_vendor.py --check
+      - run: pip install pytest
+      - run: PYTHONPATH=packages/bayan/src python -m pytest --noconftest --import-mode=importlib packages/bayan/tests -q
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:utils
+      - run: npm run build
+      - run: npm run size
+      - name: Browser tests (mocked API, desktop and phone)
+        run: npx playwright install --with-deps chromium && npm run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
+  provenance:
+    name: Docker provenance preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up attestation-capable builder
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify actual OCI provenance export
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
+
   docker:
     name: Docker build
-    runs-on: ubuntu-latest
-    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build backend image
-        run: docker build -f docker/Dockerfile.backend -t mizan-backend ./backend
+        run: docker build -f docker/Dockerfile.backend.prod -t mizan-backend .
+      - name: Verify production runtime dependencies
+        run: >-
+          docker run --rm --entrypoint python mizan-backend
+          -c "import torch, fastapi, openai, anthropic, PIL;
+          from ruh_model.tokenizer.bayan import BayanTokenizer;
+          from mizan_owned.learning_cycle import _implementation;
+          from mizan_owned.learning_service import worker_environment;
+          from importlib.metadata import version;
+          assert torch.version.cuda is None;
+          assert version('pip') == '26.2.1';
+          assert version('setuptools') == '84.0.0';
+          assert len(_implementation()) == 12;
+          assert worker_environment()['PYTHONPATH'] == '/app';
+          assert BayanTokenizer().encode('knowledge')"
       - name: Build frontend image
-        run: docker build -f docker/Dockerfile.frontend -t mizan-frontend ./frontend
+        run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build isolated coding images
+        run: |
+          bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
+          bash scripts/build_workspace_image.sh workspace-runner mizan-workspace-runner:v1 --load
+      - name: Verify the isolated runner and actual code execution
+        env:
+          MIZAN_DATA_DIR: ${{ runner.temp }}/isolated-coding-tests
+          DB_PATH: ${{ runner.temp }}/isolated-coding-tests/memory.db
+        run: |
+          python -m pip install -e '.[dev,nlp]'
+          mkdir -p "$MIZAN_DATA_DIR"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
+          pytest tests/test_coding_workspace.py tests/test_artifacts.py -q
+
+  browser:
+    name: Browser sandbox (Shahid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the browser sandbox image
+        run: bash scripts/build_workspace_image.sh workspace-browser mizan-workspace-browser:v1 --load
+      - name: A real browser follows Shahid's rules inside the hardened container
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges --user 65534:65534 --shm-size 256m
+          --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --env HOME=/tmp
+          mizan-workspace-browser:v1 python3 -I /browse_selftest.py
+      - name: The browse egress proxy starts in public mode
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges --env MIZAN_EGRESS_MODE=public
+          mizan-workspace-browser:v1 python3 -I -c
+          "import sys; sys.path.insert(0, '/'); import egress_proxy as e;
+          assert e.public_mode() and e.host_allowed('example.org', e.allowlist())"
+
+  publish-production:
+    name: Publish production images
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    needs: [build, docker, provenance, browser]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up attestation-capable publisher
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+      - name: Verify publisher OCI provenance before building production images
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: python3 scripts/verify_build_provenance.py
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: repository
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Publish production backend
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          file: docker/Dockerfile.backend.prod
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/backend:${{ github.sha }}
+      - name: Publish production frontend
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: ./frontend
+          file: docker/Dockerfile.frontend.prod
+          push: true
+          tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
+      - name: Publish isolated workspace runtime
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runtime
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }} --push
+      - name: Publish private workspace runner
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-runner
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push
+      - name: Publish the browser sandbox (Shahid)
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: >-
+          bash scripts/build_workspace_image.sh workspace-browser
+          ghcr.io/${{ steps.repository.outputs.name }}/workspace-browser:${{ github.sha }} --push

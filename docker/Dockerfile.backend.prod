@@ -3,7 +3,7 @@
 # Multi-stage build for minimal image size
 # ═══════════════════════════════════════════════════════════════
 
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -11,22 +11,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+COPY backend/requirements.txt ./requirements.txt
+# The VPS runs inference on CPU; install the CPU wheel explicitly so the
+# unqualified requirements entry cannot pull several gigabytes of CUDA libraries.
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
+    pip install --no-cache-dir --prefix=/install --ignore-installed --no-deps \
+      "pip==26.2.1" "setuptools==84.0.0" \
+    && PYTHONPATH=/install/lib/python3.13/site-packages \
+      python -m pip install --no-cache-dir --prefix=/install \
+      --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu" \
+    && PYTHONPATH=/install/lib/python3.13/site-packages \
+      python -m pip install --no-cache-dir --prefix=/install -r requirements.txt \
+    && PYTHONPATH=/install/lib/python3.13/site-packages \
+      python -c "import torch; assert torch.version.cuda is None, 'CPU-only wheel required'"
 
 # ── Production stage ──
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl git openssh-client sshpass \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r mizan && useradd -r -g mizan -d /app -s /sbin/nologin mizan
 
+# Replace the base image's installer metadata with the tested current versions.
+RUN python -m pip uninstall -y pip setuptools
 COPY --from=builder /install /usr/local
+RUN python -c "import torch; from importlib.metadata import version; assert torch.version.cuda is None; assert version('pip') == '26.2.1'; assert version('setuptools') == '84.0.0'"
 
-COPY . .
+# Backend code, packaged NLP (mizan.nlp), and Ruh model weights/code.
+# Build context is the repo root (see docker-compose.prod.yml).
+COPY backend/ ./
+COPY nlp/ ./nlp/
+COPY ruh_model/ ./ruh_model/
+COPY mizan_reply/ ./mizan_reply/
+COPY mizan_research/ ./mizan_research/
+COPY research/registry/runtime_sources.json ./research/registry/runtime_sources.json
 
 RUN mkdir -p /data plugins && chown -R mizan:mizan /app /data
 
@@ -52,6 +74,19 @@ if [ -n "$MISSING" ]; then
     exit 1
 fi
 
+# Bound stream draining before Docker's stop deadline. The deployment script
+# derives stop_grace_period as this value +15s; rollout also honors the prior value.
+graceful_shutdown_seconds=${MIZAN_GRACEFUL_SHUTDOWN_SECONDS-${UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN-90}}
+if ! [[ "$graceful_shutdown_seconds" =~ ^[1-9][0-9]{1,2}$ ]] ||
+   (( graceful_shutdown_seconds < 10 || graceful_shutdown_seconds > 180 )); then
+    echo "ERROR: Graceful shutdown must be decimal seconds from 10 to 180." >&2
+    exit 1
+fi
+export MIZAN_GRACEFUL_SHUTDOWN_SECONDS="$graceful_shutdown_seconds"
+# Uvicorn's Click entry point uses auto_envvar_prefix=UVICORN. Keep exec below
+# so SIGTERM reaches the server directly; this deadline cancels unfinished work.
+export UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN="$graceful_shutdown_seconds"
+
 echo "Environment validated. Starting MIZAN backend..."
 
 # ── Graceful shutdown: exec replaces shell so PID 1 receives SIGTERM ──
@@ -67,4 +102,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Single worker: auth sessions, API keys, and scheduler state are process-local
+# (in-memory). Scale horizontally only after these move to shared stores.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

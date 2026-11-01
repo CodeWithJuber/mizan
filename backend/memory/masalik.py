@@ -33,6 +33,77 @@ from dataclasses import dataclass
 logger = logging.getLogger("mizan.masalik")
 
 
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-4) ──────────────────────────
+# Flag-gated: MIZAN_NLP_NATIVE_WSD=1 computes an ADVISORY native-sense read of
+# Arabic lemmas in the recall query BEFORE activation. Advisory-only: the
+# spreading-activation below is untouched -- the read is logged (not
+# returned), so same-root/different-sense merges stay observable while the
+# network logic is unchanged. Default OFF = today's behavior bit-for-bit.
+
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
+
+_ARABIC_TOKEN_RE = re.compile(r"[\u0600-\u06FF]+")
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Distinct Arabic tokens in `text`, in order (native-WSD input lemmas)."""
+    seen: list[str] = []
+    for tok in _ARABIC_TOKEN_RE.findall(text or ""):
+        if tok not in seen:
+            seen.append(tok)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
+def _log_native_sense_advisory(query: str) -> None:
+    """Advisory native-WSD read of Arabic lemmas in a recall query (IP-4).
+
+    Computed BEFORE activation; advisory-only -- spreading activation is
+    unchanged. Fail-closed: import failure / not-ready / inference exceptions
+    are LOGGED and skipped. Unknown lemmas stay unknown (never backfilled).
+    """
+    lemmas = _arabic_lemmas(query)
+    if not lemmas or not _nlp_native_wsd_enabled():
+        return
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- recall advisory skipped", exc)
+        return
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- recall advisory skipped")
+        return
+    bits: list[str] = []
+    for lemma in lemmas:
+        try:
+            candidates = disambiguate(text=query, lemma=lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- recall advisory skipped")
+            return
+        except Exception as exc:  # fail-closed: never break recall
+            logger.warning("mizan.nlp inference failed for lemma %r (%s) -- skipped", lemma, exc)
+            continue
+        if not candidates:
+            continue  # unknown stays unknown -- never backfilled
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        margin = confidence - runner_up
+        if passes_sense_gate(confidence, margin):
+            bits.append(f"{lemma}->{sense_id} ({confidence:.2f})")
+    if bits:
+        logger.info("mizan.nlp recall advisory for query %r: %s", query[:80], "; ".join(bits))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA STRUCTURES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -326,6 +397,7 @@ class MasalikNetwork:
         self.pathways: dict[str, Silah] = {}
         self._activation_history: list[set[str]] = []
         self._last_decay: float = time.time()
+        self._stats_cache: dict[str, object] | None = None
 
         # Use environment DB_PATH directory if available, else fallback
         if persist_path:
@@ -342,6 +414,10 @@ class MasalikNetwork:
         if not restored:
             self._init_fitrah()
 
+    def _invalidate_stats_cache(self) -> None:
+        """Drop cached statistics before any graph mutation begins."""
+        self._stats_cache = None
+
     def _init_fitrah(self):
         """
         Fitrah (فطرة) — innate disposition.
@@ -350,6 +426,7 @@ class MasalikNetwork:
         "So direct your face toward the religion, inclining to truth.
          [Adhere to] the fitrah of Allah upon which He has created people." — 30:30
         """
+        self._invalidate_stats_cache()
         fitrah_concepts = [
             "truth",
             "justice",
@@ -399,6 +476,7 @@ class MasalikNetwork:
     def _get_or_create(self, concept_id: str) -> Mafhum:
         """Get existing concept or create new one. Never duplicates."""
         if concept_id not in self.concepts:
+            self._invalidate_stats_cache()
             self.concepts[concept_id] = Mafhum(id=concept_id)
         return self.concepts[concept_id]
 
@@ -424,6 +502,8 @@ class MasalikNetwork:
         concepts = extract_concepts(text)
         if not concepts:
             return {"encoded": 0, "pathways_strengthened": 0, "new_pathways": 0}
+
+        self._invalidate_stats_cache()
 
         # Scale strengthening by importance (0.05 to 0.20)
         strength = 0.05 + importance * 0.15
@@ -483,9 +563,15 @@ class MasalikNetwork:
 
         "And remember (udhkuru) Allah much, that you may be successful." — 8:45
         """
+        # Phase 2 (mizan.nlp, IP-4): advisory native-sense read BEFORE
+        # activation -- logged only, spreading activation below is unchanged.
+        _log_native_sense_advisory(query)
         query_concepts = extract_concepts(query)
         if not query_concepts:
             return []
+
+        if any(c in self.concepts for c in query_concepts):
+            self._invalidate_stats_cache()
 
         # Phase 1: Directly activate query concepts
         activations: dict[str, float] = {}
@@ -493,6 +579,18 @@ class MasalikNetwork:
             if c in self.concepts:
                 self.concepts[c].fire(strength=1.0)
                 activations[c] = 1.0
+
+        # Preserve global pathway order while avoiding a full graph scan for
+        # every activated concept. Rebuild this view for each recall so encode,
+        # consolidation, pruning and restored graphs cannot leave a stale
+        # index. Entries reference the original pathways: strengthening still
+        # occurs at the same point, in the same order, in both waves.
+        adjacent: dict[str, list[Silah]] = defaultdict(list)
+        if activations:
+            for pathway in self.pathways.values():
+                adjacent[pathway.source].append(pathway)
+                if pathway.target != pathway.source:
+                    adjacent[pathway.target].append(pathway)
 
         # Phase 2: Two waves of spreading activation
         for wave in range(2):
@@ -502,7 +600,7 @@ class MasalikNetwork:
             for concept, act_level in list(activations.items()):
                 if act_level < 0.05:
                     continue
-                for _key, pathway in self.pathways.items():
+                for pathway in adjacent.get(concept, ()):
                     other = None
                     if pathway.source == concept:
                         other = pathway.target
@@ -558,7 +656,7 @@ class MasalikNetwork:
 
     # ─── NISYAN: Forgetting (Pruning) ────────────────────────────────────
 
-    def apply_nisyan(self, force_hours: float = None) -> dict:
+    def apply_nisyan(self, force_hours: float | None = None) -> dict:
         """
         NISYAN (نسيان) — Forgetting as mercy and optimization.
 
@@ -575,6 +673,7 @@ class MasalikNetwork:
             if elapsed_hours < 0.1:
                 return {"pruned_pathways": 0, "pruned_concepts": 0}
 
+        self._invalidate_stats_cache()
         self._last_decay = now
 
         # Decay all non-hikmah pathways
@@ -632,6 +731,8 @@ class MasalikNetwork:
         """
         if len(self._activation_history) < 3:
             return {"new_connections": 0, "strengthened": 0}
+
+        self._invalidate_stats_cache()
 
         # Count co-activation frequency for each concept pair
         pair_counts: dict[str, int] = defaultdict(int)
@@ -700,12 +801,17 @@ class MasalikNetwork:
         ]
 
     def stats(self) -> dict:
-        """Network statistics."""
+        """Return network statistics without rescanning an unchanged graph."""
+        if self._stats_cache is not None:
+            return dict(self._stats_cache)
+
+        # Keep the original calculations (including Python's float sum semantics)
+        # so cached and uncached results remain bit-for-bit compatible.
         hikmah_pathways = sum(1 for p in self.pathways.values() if p.is_hikmah)
         hikmah_concepts = sum(1 for c in self.concepts.values() if c.is_hikmah)
         fitrah_count = sum(1 for c in self.concepts.values() if c.is_fitrah)
         avg_weight = sum(p.weight for p in self.pathways.values()) / max(len(self.pathways), 1)
-        return {
+        self._stats_cache = {
             "total_concepts": len(self.concepts),
             "total_pathways": len(self.pathways),
             "fitrah_concepts": fitrah_count,
@@ -714,6 +820,8 @@ class MasalikNetwork:
             "avg_pathway_weight": round(avg_weight, 3),
             "persisted": self._persist_path,
         }
+        # Preserve the old fresh-dict behavior and isolate the cache from callers.
+        return dict(self._stats_cache)
 
     # ─── PERSISTENCE: Save/Load to Disk ──────────────────────────────────
 
@@ -779,6 +887,8 @@ class MasalikNetwork:
         try:
             with open(self._persist_path) as f:
                 state = json.load(f)
+
+            self._invalidate_stats_cache()
 
             # Restore concepts
             for cid, cdata in state.get("concepts", {}).items():

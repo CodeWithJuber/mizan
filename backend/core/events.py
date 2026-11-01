@@ -145,7 +145,7 @@ class EventBus:
             self._handlers[pattern] = [h for h in self._handlers[pattern] if h.source != source]
         self._wildcard_handlers = [h for h in self._wildcard_handlers if h.source != source]
 
-    async def emit(self, event_name: str, data: dict[str, Any] = None, source: str = ""):
+    async def emit(self, event_name: str, data: dict[str, Any] | None = None, source: str = ""):
         """
         Emit an event to all matching handlers.
 
@@ -209,7 +209,7 @@ class EventBus:
 
         return len(pattern_parts) == len(name_parts)
 
-    def get_history(self, event_name: str = None, limit: int = 50) -> list[dict]:
+    def get_history(self, event_name: str | None = None, limit: int = 50) -> list[dict]:
         """Get recent event history."""
         events = self._history
         if event_name:

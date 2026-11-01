@@ -1,0 +1,12 @@
+{
+  "source_id": "__REPLACE_SOURCE_ITEM_ID__",
+  "source_family": "__REPLACE_CANONICAL_PASSAGE_OR_CONVERSATION_LINEAGE__",
+  "kind": "__REPLACE_SOURCE_KIND__",
+  "title": "__REPLACE_TITLE__",
+  "edition": "__REPLACE_EDITION_PUBLISHER_ORIGINAL_CAPTURE_DATE__",
+  "locator": "__REPLACE_EXACT_SOURCE_LOCATOR__",
+  "uri": "__REPLACE_HTTPS_OR_URN__",
+  "rights": "__REPLACE_LICENSE_AND_USAGE_PERMISSION__",
+  "sha256": "__REPLACE_RAW_ORIGINAL_FILE_SHA256__",
+  "local_path": "assets/__REPLACE_ORIGINAL_ASSET_FILENAME__"
+}

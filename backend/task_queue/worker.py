@@ -2,9 +2,9 @@
 
 import asyncio
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
-from task_queue.task_queue import QueuedTask
+from task_queue.task_queue import MizanTaskQueue, QueuedTask
 
 logger = logging.getLogger("mizan.queue.worker")
 

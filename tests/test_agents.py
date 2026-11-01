@@ -49,9 +49,10 @@ class TestBaseAgent:
         agent.evolve_nafs()
         assert agent.nafs_level == 3  # Mulhama
 
-        # Simulate excellent → Mutmainna (>=85%, >=250 tasks)
+        # Simulate excellent → Mutmainna (>=85%, >=250 tasks, >=50 hikmah)
         agent.total_tasks = 250
         agent.success_count = 220  # 88%
+        agent.hikmah = [{"pattern": f"p{i}", "outcome": "ok"} for i in range(50)]
         agent.evolve_nafs()
         assert agent.nafs_level == 4  # Mutmainna
 

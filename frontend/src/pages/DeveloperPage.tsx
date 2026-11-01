@@ -4,8 +4,11 @@
  * Designed for both technical and non-technical users.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import ImtihanPanel from "../components/ImtihanPanel";
+import TalimPanel from "../components/TalimPanel";
 import type { ApiClient } from "../types";
+import { useToast } from "../components/Toast";
 
 interface PluginInfo {
   name: string;
@@ -51,10 +54,13 @@ interface VersionInfo {
   can_check: boolean;
 }
 
-export default function DeveloperPage({ api }: { api: ApiClient }) {
-  const [activeTab, setActiveTab] = useState<
-    "system" | "plugins" | "events" | "hooks" | "guide"
-  >("system");
+export type DeveloperTab = "system" | "agi" | "teach" | "plugins" | "events" | "hooks" | "guide";
+
+/** With `tab`, one section is shown inside Settings → Developer (no own header or tabs). */
+export default function DeveloperPage({ api, tab }: { api: ApiClient; tab?: DeveloperTab }) {
+  const { addToast } = useToast();
+  const [ownTab, setActiveTab] = useState<DeveloperTab>("system");
+  const activeTab = tab ?? ownTab;
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [events, setEvents] = useState<Record<string, string>>({});
   const [eventHandlers, setEventHandlers] = useState<EventHandler[]>([]);
@@ -66,7 +72,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
       const [pluginsRes, eventsRes, hooksRes, toolsRes] = await Promise.all([
@@ -92,27 +98,41 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
       setRegisteredHooks(hkData.registered || []);
       setPluginTools((toolsRes as { tools: PluginTool[] }).tools || []);
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: "Couldn't load developer data — check your connection.",
+      });
     }
     setLoading(false);
-  };
+  }, [api, addToast]);
 
-  const fetchVersion = async () => {
+  const fetchVersion = useCallback(async () => {
     try {
       const data = (await api.get("/version")) as unknown as VersionInfo;
       setVersionInfo(data);
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: "Couldn't load version info — check your connection.",
+      });
     }
-  };
+  }, [api, addToast]);
 
   const checkForUpdates = async () => {
     setCheckingUpdate(true);
     try {
       const data = (await api.get("/version")) as unknown as VersionInfo;
       setVersionInfo(data);
+      if (!data.updates_available) {
+        addToast({ type: "success", title: "You're up to date." });
+      } else {
+        addToast({
+          type: "info",
+          title: `${data.updates_available} update${data.updates_available === 1 ? "" : "s"} available — ask your server admin to install.`,
+        });
+      }
     } catch {
-      /* ignore */
+      addToast({ type: "error", title: "Couldn't check — try again." });
     }
     setCheckingUpdate(false);
   };
@@ -120,7 +140,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   useEffect(() => {
     fetchAll();
     fetchVersion();
-  }, []);
+  }, [fetchAll, fetchVersion]);
 
   const handlePluginAction = async (
     name: string,
@@ -128,14 +148,20 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   ) => {
     try {
       await api.post(`/plugins/${name}/${action}`);
+      addToast({ type: "success", title: `Plugin ${action}ed: ${name}` });
       await fetchAll();
     } catch {
-      /* ignore */
+      addToast({
+        type: "error",
+        title: `Couldn't ${action} plugin ${name} — try again.`,
+      });
     }
   };
 
   const tabs = [
     { id: "system" as const, label: "System" },
+    { id: "agi" as const, label: "AGI Test" },
+    { id: "teach" as const, label: "Teach MIZAN" },
     { id: "plugins" as const, label: "Plugins" },
     { id: "events" as const, label: "Events" },
     { id: "hooks" as const, label: "Hooks" },
@@ -145,7 +171,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
   return (
     <div className="page-wrapper">
       {/* Header */}
-      <div className="page-header">
+      {!tab && <div className="page-header">
         <div>
           <h2 className="page-title">Developer</h2>
           <p className="page-description">
@@ -153,32 +179,35 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             needed
           </p>
         </div>
-      </div>
+      </div>}
 
       {/* Tabs */}
-      <div className="tab-bar">
-        {tabs.map((tab) => (
+      {!tab && <div className="tab-bar">
+        {tabs.map((item) => (
           <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
-            aria-selected={activeTab === tab.id}
+            key={item.id}
+            className={`tab ${activeTab === item.id ? "active" : ""}`}
+            onClick={() => setActiveTab(item.id)}
+            aria-selected={activeTab === item.id}
             role="tab"
           >
-            {tab.label}
+            {item.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="page-body">
+        {activeTab === "agi" && <ImtihanPanel api={api} />}
+        {activeTab === "teach" && <TalimPanel api={api} />}
+
         {/* System Tab */}
         {activeTab === "system" && (
           <div className="space-y-5">
             {/* Version Card */}
             <div className="card">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-wrap gap-3 items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  <h3 className="text-lg font-semibold text-foreground mb-1">
                     MIZAN
                   </h3>
                   <div className="flex items-center gap-3">
@@ -243,8 +272,8 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                     </p>
                   )}
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Run <code className="code">./update.sh</code> or{" "}
-                    <code className="code">make update</code> to update
+                    Updates are installed by your server admin — there&apos;s
+                    nothing to run here.
                   </p>
                 </div>
               ) : null}
@@ -253,30 +282,30 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             {/* Quick Info Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="card text-center py-4">
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                <div className="text-2xl font-bold text-foreground">
                   {versionInfo?.version?.split(".")[0] || "3"}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   Major Version
                 </div>
               </div>
               <div className="card text-center py-4">
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                <div className="text-2xl font-bold text-foreground">
                   {versionInfo?.can_check ? (
-                    <span className="text-emerald-500">Git</span>
+                    <span className="text-emerald-500">Source</span>
                   ) : (
                     <span className="text-gray-400">-</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Install Method
+                <div className="text-xs text-muted-foreground mt-1">
+                  Installed from source code
                 </div>
               </div>
               <div className="card text-center py-4">
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                <div className="text-2xl font-bold text-foreground">
                   {versionInfo?.updates_available || 0}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   Pending Updates
                 </div>
               </div>
@@ -284,57 +313,14 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
 
             {/* How to Update */}
             <div className="card">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-base font-semibold text-foreground mb-3">
                 How to Update
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                MIZAN has a built-in one-command updater. Choose any of these:
+              <p className="text-sm text-muted-foreground">
+                Updates are installed by your server admin. If you run Mizan
+                yourself, pull the latest code on the server and restart the
+                backend.
               </p>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    ./update.sh
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Direct command
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    make update
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Via Makefile
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                  <code className="text-sm font-mono text-mizan-gold flex-1">
-                    ./start.sh update
-                  </code>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Via start script
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-                The updater automatically stops services, pulls code, rebuilds
-                everything, and restarts.
-              </p>
-            </div>
-
-            {/* Check Only */}
-            <div className="card">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                Check Without Installing
-              </h3>
-              <div className="flex items-center gap-3 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
-                <code className="text-sm font-mono text-mizan-gold flex-1">
-                  ./update.sh --check
-                </code>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  See if updates exist
-                </span>
-              </div>
             </div>
           </div>
         )}
@@ -343,7 +329,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
         {activeTab === "plugins" && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              <h2 className="text-base font-semibold text-foreground">
                 Installed Plugins
               </h2>
               <button
@@ -356,14 +342,19 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
 
             {plugins.length === 0 ? (
               <div className="card text-center py-10">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                <h3 className="text-base font-semibold text-foreground mb-2">
                   No Plugins Yet
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                  Create a folder in <code className="code">plugins/</code> with
-                  a <code className="code">plugin.json</code> and
-                  <code className="code">main.py</code> to get started.
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+                  Plugins are installed on the server by your admin. If you
+                  build your own, the Developer Guide shows how.
                 </p>
+                <button
+                  className="btn-secondary text-sm min-h-[44px]"
+                  onClick={() => setActiveTab("guide")}
+                >
+                  Open Developer Guide
+                </button>
               </div>
             ) : (
               <div className="grid gap-3">
@@ -376,24 +367,24 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                         : ""
                     }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                          <h3 className="font-semibold text-foreground">
                             {p.name}
                           </h3>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             v{p.version}
                           </span>
                           {p.loaded && (
                             <span className="badge badge-success">Active</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           {p.description}
                         </p>
                         {p.author && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                          <p className="text-xs text-muted-foreground/80 mt-1">
                             by {p.author}
                           </p>
                         )}
@@ -445,7 +436,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             {/* Plugin Tools */}
             {pluginTools.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                <h3 className="text-sm font-semibold text-foreground mb-3">
                   Tools from Plugins
                 </h3>
                 <div className="grid gap-2">
@@ -455,7 +446,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                         <span className="font-mono text-mizan-gold text-sm">
                           {t.name}
                         </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-xs text-muted-foreground">
                           from {t.plugin}
                         </span>
                       </div>
@@ -471,10 +462,10 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
         {activeTab === "events" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h2 className="text-base font-semibold text-foreground mb-2">
                 Event Bus
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Events let different parts of MIZAN communicate without knowing
                 about each other. Plugins can listen to any event and react to
                 it.
@@ -482,7 +473,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-sm font-semibold text-foreground mb-2">
                 Active Listeners ({eventHandlers.length})
               </h3>
               {eventHandlers.length > 0 ? (
@@ -490,20 +481,20 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                   {eventHandlers.map((h, i) => (
                     <div
                       key={i}
-                      className="card flex items-center justify-between py-3"
+                      className="card flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between py-3"
                     >
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-cyan-600 dark:text-cyan-400 text-sm">
                           {h.pattern}
                         </span>
                         {h.source && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             from {h.source}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-xs text-muted-foreground">
                           priority: {h.priority}
                         </span>
                         {h.once && (
@@ -514,14 +505,14 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   No active listeners. Load a plugin to see them here.
                 </p>
               )}
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-sm font-semibold text-foreground mb-2">
                 Available Events
               </h3>
               <div className="grid gap-1 max-h-80 overflow-y-auto pr-2">
@@ -533,7 +524,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                     <code className="text-xs text-cyan-600 dark:text-cyan-400 font-mono whitespace-nowrap">
                       {name}
                     </code>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {desc}
                     </span>
                   </div>
@@ -543,7 +534,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
 
             {eventHistory.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                <h3 className="text-sm font-semibold text-foreground mb-2">
                   Recent Events
                 </h3>
                 <div className="space-y-1 max-h-60 overflow-y-auto">
@@ -555,14 +546,14 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                         key={i}
                         className="text-xs flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800/50"
                       >
-                        <span className="text-gray-400 dark:text-gray-500 font-mono">
+                        <span className="text-muted-foreground/80 font-mono">
                           {ev.timestamp.split("T")[1]?.split(".")[0]}
                         </span>
                         <span className="text-cyan-600 dark:text-cyan-400 font-mono">
                           {ev.name}
                         </span>
                         {ev.source && (
-                          <span className="text-gray-400 dark:text-gray-500">
+                          <span className="text-muted-foreground/80">
                             &larr; {ev.source}
                           </span>
                         )}
@@ -578,10 +569,10 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
         {activeTab === "hooks" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h2 className="text-base font-semibold text-foreground mb-2">
                 Hook System
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Hooks let plugins modify data as it flows through MIZAN. Unlike
                 events (fire-and-forget), hooks pass data through a chain where
                 each handler can modify it.
@@ -589,7 +580,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-sm font-semibold text-foreground mb-2">
                 Active Hooks ({registeredHooks.length})
               </h3>
               {registeredHooks.length > 0 ? (
@@ -597,33 +588,33 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                   {registeredHooks.map((h, i) => (
                     <div
                       key={i}
-                      className="card flex items-center justify-between py-3"
+                      className="card flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between py-3"
                     >
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-purple-600 dark:text-purple-400 text-sm">
                           {h.hook}
                         </span>
                         {h.source && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             from {h.source}
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         priority: {h.priority}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   No active hooks. Load a plugin to see them here.
                 </p>
               )}
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-sm font-semibold text-foreground mb-2">
                 Available Hook Points
               </h3>
               <div className="grid gap-1 max-h-80 overflow-y-auto pr-2">
@@ -635,7 +626,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
                     <code className="text-xs text-purple-600 dark:text-purple-400 font-mono whitespace-nowrap">
                       {name}
                     </code>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {desc}
                     </span>
                   </div>
@@ -649,10 +640,10 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
         {activeTab === "guide" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h2 className="text-base font-semibold text-foreground mb-2">
                 How to Build a Plugin
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Anyone can extend MIZAN — no need to touch core code. Here is
                 how:
               </p>
@@ -662,7 +653,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
               <h3 className="text-mizan-gold font-semibold mb-2">
                 Step 1: Create a Plugin Folder
               </h3>
-              <pre className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-gray-200 dark:border-zinc-700">{`plugins/
+              <pre className="bg-muted/60 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-border">{`plugins/
 \u2514\u2500\u2500 my_plugin/
     \u251C\u2500\u2500 plugin.json    \u2190 Describes your plugin
     \u2514\u2500\u2500 main.py        \u2190 Your plugin code`}</pre>
@@ -672,7 +663,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
               <h3 className="text-mizan-gold font-semibold mb-2">
                 Step 2: Write plugin.json
               </h3>
-              <pre className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-gray-200 dark:border-zinc-700">{`{
+              <pre className="bg-muted/60 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-border">{`{
   "name": "my_plugin",
   "version": "1.0.0",
   "description": "What your plugin does",
@@ -687,7 +678,7 @@ export default function DeveloperPage({ api }: { api: ApiClient }) {
               <h3 className="text-mizan-gold font-semibold mb-2">
                 Step 3: Write main.py
               </h3>
-              <pre className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-gray-200 dark:border-zinc-700">{`from core.plugins import PluginBase
+              <pre className="bg-muted/60 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-300 overflow-x-auto border border-border">{`from core.plugins import PluginBase
 
 class Plugin(PluginBase):
     async def on_load(self):
@@ -738,7 +729,7 @@ class Plugin(PluginBase):
                   <span className="text-cyan-600 dark:text-cyan-400 font-semibold whitespace-nowrap">
                     Events
                   </span>
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-muted-foreground">
                     Fire-and-forget notifications. Like shouting into a room —
                     anyone can hear.
                   </span>
@@ -747,7 +738,7 @@ class Plugin(PluginBase):
                   <span className="text-purple-600 dark:text-purple-400 font-semibold whitespace-nowrap">
                     Hooks
                   </span>
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-muted-foreground">
                     Data transformation pipeline. Like an assembly line — each
                     handler modifies and passes data along.
                   </span>
@@ -756,7 +747,7 @@ class Plugin(PluginBase):
                   <span className="text-mizan-gold font-semibold whitespace-nowrap">
                     Tools
                   </span>
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-muted-foreground">
                     Give agents new abilities. Agents autonomously decide when
                     to use your tool.
                   </span>
@@ -765,7 +756,7 @@ class Plugin(PluginBase):
                   <span className="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
                     Plugins
                   </span>
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-muted-foreground">
                     Bundle hooks + events + tools into a reusable package. Easy
                     to share.
                   </span>

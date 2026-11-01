@@ -1,7 +1,7 @@
 """Ruh Model LLM Provider for MIZAN."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from providers import BaseLLMProvider, ContentBlock, LLMResponse
 
@@ -12,6 +12,8 @@ class RuhModelProvider(BaseLLMProvider):
     """Local Ruh Model provider implementing the MIZAN LLM interface."""
 
     provider_name = "ruh"
+    supports_tools = False
+    max_output_tokens = 1024
 
     def __init__(self, model_path: str, device: str = "cpu") -> None:
         self.model_path = model_path
@@ -32,7 +34,9 @@ class RuhModelProvider(BaseLLMProvider):
             self._model.to(self.device)
             # Set model to inference mode
             self._model.train(False)
-            self._tokenizer = BayanTokenizer()
+            self._tokenizer = self._model.tokenizer or BayanTokenizer.from_pretrained(
+                self.model_path
+            )
             self._loaded = True
             logger.info("Ruh Model loaded from %s on %s", self.model_path, self.device)
         except Exception as exc:
@@ -51,8 +55,22 @@ class RuhModelProvider(BaseLLMProvider):
         """Generate a response using the local Ruh Model."""
         self._ensure_loaded()
 
-        prompt = self._extract_prompt(messages)
-        tokens = self._tokenizer.encode(prompt)
+        from ruh_model.tokenizer.conversation import serialize_messages
+
+        context_limit = getattr(getattr(self._model, "config", None), "max_seq_len", 2048)
+        new_tokens = min(max_tokens or 256, self.max_output_tokens)
+        budget = max(64, context_limit - new_tokens) if isinstance(context_limit, int) else None
+        # Drop the oldest turns first so the system prompt and the latest
+        # request survive; only then clip from the left as a last resort.
+        kept = list(messages)
+        prompt = serialize_messages(kept, system=system)
+        tokens = self._tokenizer.encode(prompt, add_eos=False)
+        while budget is not None and len(tokens) > budget and len(kept) > 1:
+            kept = kept[1:]
+            prompt = serialize_messages(kept, system=system)
+            tokens = self._tokenizer.encode(prompt, add_eos=False)
+        if budget is not None:
+            tokens = tokens[-budget:]
         root_ids, pattern_ids = self._tokens_to_tensors(tokens)
 
         import torch
@@ -61,19 +79,49 @@ class RuhModelProvider(BaseLLMProvider):
             generated = self._model.generate(
                 root_ids,
                 pattern_ids,
-                max_new_tokens=min(max_tokens or 256, 1024),
-                temperature=temperature or 1.0,
+                max_new_tokens=new_tokens,
+                temperature=1.0 if temperature is None else temperature,
+                valid_n_roots=self._tokenizer._vocab.n_roots,
             )
 
         generated_root_ids = generated[0].tolist() if generated.ndim == 2 else generated.tolist()
-        generated_tokens = [(int(root_id), 0) for root_id in generated_root_ids]
+        generated_root_ids = generated_root_ids[len(tokens) :]
+        generation_pattern = 0 if getattr(self._tokenizer, "version", 1) == 2 else 1
+        generated_tokens = [(int(root_id), generation_pattern) for root_id in generated_root_ids]
         output_text = self._tokenizer.decode(generated_tokens)
+        eos_root = getattr(getattr(self._model, "config", None), "EOS_ROOT", 2)
+        ended = bool(generated_root_ids) and generated_root_ids[-1] == eos_root
 
         return LLMResponse(
             content=[ContentBlock(type="text", text=output_text)],
-            stop_reason="end_turn",
+            stop_reason="end_turn" if ended else "max_tokens",
             model="ruh-local",
             usage={"input_tokens": len(tokens), "output_tokens": len(generated_root_ids)},
+        )
+
+    def stream(
+        self,
+        model: str,
+        max_tokens: int,
+        system: str,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ):
+        """Stream an assistant turn.
+
+        The Ruh model generates whole responses at once (no token-by-token
+        streaming), so this wraps :meth:`create` and yields the complete text
+        as a single chunk, matching the :class:`BaseLLMProvider` stream
+        protocol used by the chat loop.
+        """
+        return _RuhStreamWrapper(
+            self,
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            temperature=temperature,
         )
 
     def _extract_prompt(self, messages: list[dict]) -> str:
@@ -83,11 +131,7 @@ class RuhModelProvider(BaseLLMProvider):
                 continue
             content = msg.get("content", "")
             if isinstance(content, list):
-                texts = [
-                    block.get("text", "")
-                    for block in content
-                    if block.get("type") == "text"
-                ]
+                texts = [block.get("text", "") for block in content if block.get("type") == "text"]
                 return " ".join(texts)
             return str(content)
         return ""
@@ -97,9 +141,64 @@ class RuhModelProvider(BaseLLMProvider):
         import torch
 
         root_ids = torch.tensor(
-            [[token[0] for token in tokens]], dtype=torch.long
+            [[token[0] for token in tokens]], dtype=torch.long, device=self.device
         )
         pattern_ids = torch.tensor(
-            [[token[1] for token in tokens]], dtype=torch.long
+            [[token[1] for token in tokens]], dtype=torch.long, device=self.device
         )
         return root_ids, pattern_ids
+
+
+class _RuhStreamWrapper:
+    """Adapt :meth:`RuhModelProvider.create` to the provider stream protocol.
+
+    The chat loop (``base.py`` / ``khalifah.py``) calls ``provider.stream(...)``
+    as a context manager and reads ``text_stream`` for deltas, then
+    ``get_final_response()`` for the complete response. Ruh has no native
+    token streaming, so the full response is generated on ``__enter__`` and
+    yielded as one chunk.
+    """
+
+    def __init__(
+        self,
+        provider: RuhModelProvider,
+        model: str,
+        max_tokens: int,
+        system: str,
+        messages: list[dict],
+        temperature: float | None,
+    ) -> None:
+        self._provider = provider
+        self._model = model
+        self._max_tokens = max_tokens
+        self._system = system
+        self._messages = messages
+        self._temperature = temperature
+        self._response: LLMResponse | None = None
+
+    def __enter__(self) -> "_RuhStreamWrapper":
+        self._response = self._provider.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=self._system,
+            messages=self._messages,
+            temperature=self._temperature,
+        )
+        return self
+
+    def __exit__(self, *exc_info: object) -> Literal[False]:
+        return False
+
+    @property
+    def text_stream(self):
+        """Yield the response text as a single chunk."""
+        if self._response is None:
+            return
+        for block in self._response.content:
+            if block.type == "text" and block.text:
+                yield block.text
+
+    def get_final_response(self) -> LLMResponse:
+        if self._response is None:
+            raise RuntimeError("stream was not entered")
+        return self._response

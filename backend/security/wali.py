@@ -13,6 +13,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 logger = logging.getLogger("mizan.wali")
 
@@ -148,6 +149,19 @@ class RateLimiter:
 
         return False
 
+    def peek(self, key: str) -> float:
+        """The tokens this key has now, without spending one."""
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            return float(self.burst)
+        elapsed = time.time() - bucket["last_refill"]
+        return float(min(self.burst, bucket["tokens"] + elapsed * (self.per_minute / 60.0)))
+
+    def wait_seconds(self, key: str) -> int:
+        """Seconds until this key has a token again (0 when it has one)."""
+        missing = 1 - self.peek(key)
+        return 0 if missing <= 0 else max(1, int(missing * 60 / self.per_minute + 0.999))
+
     def cleanup(self, max_age_seconds: int = 3600):
         """Remove stale entries"""
         now = time.time()
@@ -182,7 +196,7 @@ class AuditLog:
         if len(self._events) > self._max_events:
             self._events = self._events[-self._max_events :]
 
-    def get_recent(self, limit: int = 100, severity: str = None) -> list[dict]:
+    def get_recent(self, limit: int = 100, severity: str | None = None) -> list[dict]:
         events = self._events
         if severity:
             events = [e for e in events if e["severity"] == severity]
@@ -195,7 +209,7 @@ class WaliGuardian:
     All tool calls, API requests, and messages pass through here.
     """
 
-    def __init__(self, config: SecurityConfig = None, memory=None):
+    def __init__(self, config: SecurityConfig | None = None, memory=None):
         self.config = config or SecurityConfig.from_env()
         self.rate_limiter = RateLimiter(
             per_minute=self.config.rate_limit_per_minute,
@@ -314,48 +328,22 @@ class WaliGuardian:
         return True
 
     def validate_url(self, url: str) -> bool:
-        """Validate URL to prevent SSRF"""
-        from urllib.parse import urlparse
+        """Validate URL to prevent SSRF.
 
-        try:
-            parsed = urlparse(url)
-        except Exception:
-            return False
+        Delegates to the hardened security.validation.validate_url, which
+        rejects IP literals in any notation (decimal/hex/octal/IPv6) that
+        point at non-public addresses. Keeps the ssrf_blocked audit event.
+        """
+        from security.validation import validate_url as _validate_url
 
-        # Block internal/private networks
-        blocked_hosts = [
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "169.254.",
-            "10.",
-            "172.16.",
-            "172.17.",
-            "172.18.",
-            "192.168.",
-            "::1",
-            "fc00:",
-            "fe80:",
-        ]
-
-        host = parsed.hostname or ""
-        for blocked in blocked_hosts:
-            if host.startswith(blocked) or host == blocked:
-                self.audit.log(
-                    "ssrf_blocked",
-                    {
-                        "url": url,
-                        "blocked_host": host,
-                    },
-                    severity="warning",
-                )
-                return False
-
-        # Only allow http and https
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        return True
+        is_safe, reason = _validate_url(url)
+        if not is_safe:
+            self.audit.log(
+                "ssrf_blocked",
+                {"url": url, "reason": reason},
+                severity="warning",
+            )
+        return cast(bool, is_safe)
 
     def validate_input_length(self, text: str, field_name: str = "input") -> bool:
         """Check input doesn't exceed maximum length"""

@@ -162,39 +162,52 @@ class NafsProfile:
         """
         self.compute_tazkiyah_score()
 
-        # Check for demotion: if recent performance declining
+        from core.adaptive import BetaEstimator
+        from core.developmental_stages import promotion_confidence
+
+        successes = round(self.success_rate * self.total_tasks)
+        posterior = (
+            BetaEstimator().update(1.0, successes).update(0.0, max(0, self.total_tasks - successes))
+        )
+
+        # Demotion when the evidence makes the current stage's rate improbable.
         if self.nafs_level > 1:
             threshold = self.EVOLUTION_THRESHOLDS.get(self.nafs_level, {})
             min_sr = threshold.get("success_rate", 0.0)
-            if self.success_rate < min_sr - 0.10:
+            if posterior.probability_at_least(min_sr) < 1.0 - promotion_confidence():
                 self.nafs_level = max(1, self.nafs_level - 1)
                 return self.nafs_level
 
-        # Check for promotion
+        # Promotion when the next stage's rate is probable enough (and the
+        # stage's minimum evidence exists).
         for level in range(self.nafs_level + 1, 8):
-            threshold = self.EVOLUTION_THRESHOLDS.get(level)
-            if not threshold:
+            promotion_threshold = self.EVOLUTION_THRESHOLDS.get(level)
+            if not promotion_threshold:
                 break
             if (
-                self.success_rate >= threshold["success_rate"]
-                and self.total_tasks >= threshold["min_tasks"]
+                posterior.probability_at_least(promotion_threshold["success_rate"])
+                >= promotion_confidence()
+                and self.total_tasks >= promotion_threshold["min_tasks"]
             ):
                 # Check extra conditions
-                if "min_hikmah" in threshold and self.hikmah_count < threshold["min_hikmah"]:
-                    break
                 if (
-                    "min_hikmah_applied" in threshold
-                    and self.hikmah_applied < threshold["min_hikmah_applied"]
+                    "min_hikmah" in promotion_threshold
+                    and self.hikmah_count < promotion_threshold["min_hikmah"]
                 ):
                     break
                 if (
-                    "user_satisfaction" in threshold
-                    and self.user_satisfaction < threshold["user_satisfaction"]
+                    "min_hikmah_applied" in promotion_threshold
+                    and self.hikmah_applied < promotion_threshold["min_hikmah_applied"]
                 ):
                     break
                 if (
-                    "min_reliability_days" in threshold
-                    and self.reliability_days < threshold["min_reliability_days"]
+                    "user_satisfaction" in promotion_threshold
+                    and self.user_satisfaction < promotion_threshold["user_satisfaction"]
+                ):
+                    break
+                if (
+                    "min_reliability_days" in promotion_threshold
+                    and self.reliability_days < promotion_threshold["min_reliability_days"]
                 ):
                     break
                 self.nafs_level = level
@@ -275,7 +288,9 @@ class MizanBalancer:
         }
         self.load_weights[agent_id] = 0.0
 
-    def select_agent(self, role: AgentRole = None, min_capability: float = 0.0) -> str | None:
+    def select_agent(
+        self, role: AgentRole | None = None, min_capability: float = 0.0
+    ) -> str | None:
         """Select agent with least load (Adl - justice)"""
         eligible = {
             aid: data

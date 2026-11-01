@@ -162,7 +162,7 @@ class FitrahSystem:
         """Get all axioms (read-only)."""
         return dict(self._axioms)
 
-    def get_axioms(self, category: str = None) -> list[FitrahAxiom]:
+    def get_axioms(self, category: str | None = None) -> list[FitrahAxiom]:
         """Get axioms, optionally filtered by category."""
         if category:
             return [a for a in FITRAH_AXIOMS if a.category == category]

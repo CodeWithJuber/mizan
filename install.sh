@@ -38,7 +38,7 @@ MIZAN_DIR="${MIZAN_DIR:-$HOME/mizan}"
 MIZAN_BRANCH="${MIZAN_BRANCH:-main}"
 MIZAN_REPO="https://github.com/CodeWithJuber/mizan.git"
 MIZAN_MIN_PYTHON="3.11"
-MIZAN_MIN_NODE="18"
+MIZAN_MIN_NODE="24"
 
 # ───── Parse CLI Arguments ─────
 while [[ $# -gt 0 ]]; do
@@ -192,7 +192,7 @@ install_python() {
             sudo pacman -S --noconfirm python python-pip
             ;;
         brew)
-            brew install python@3.12
+            brew install python@3.13
             ;;
         apk)
             sudo apk add python3 py3-pip
@@ -231,18 +231,18 @@ install_node() {
     info "Installing Node.js..."
     case "$PKG_MANAGER" in
         apt)
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
             sudo apt-get install -y -qq nodejs
             ;;
         dnf|yum)
-            curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+            curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash -
             sudo "$PKG_MANAGER" install -y nodejs
             ;;
         pacman)
             sudo pacman -S --noconfirm nodejs npm
             ;;
         brew)
-            brew install node@20
+            brew install node@24
             ;;
         apk)
             sudo apk add nodejs npm
@@ -343,7 +343,7 @@ install_via_pip() {
     source "$HOME/.mizan/venv/bin/activate"
     info "Installing mizan package..."
     pip install --upgrade pip -q
-    pip install mizan -q 2>/dev/null || {
+    pip install pymizan -q 2>/dev/null || {
         warn "PyPI package not available yet. Falling back to git install..."
         MIZAN_METHOD="git"
         install_via_git
@@ -530,7 +530,7 @@ print_success() {
 interactive_setup() {
     echo -e "  ${BOLD}Choose installation method:${NC}"
     echo ""
-    echo -e "    ${GOLD}1)${NC} pip install ${DIM}(recommended — quick setup)${NC}"
+    echo -e "    ${GOLD}1)${NC} pip install pymizan ${DIM}(recommended — quick setup)${NC}"
     echo -e "    ${GOLD}2)${NC} git clone   ${DIM}(development — full source)${NC}"
     echo -e "    ${GOLD}3)${NC} docker      ${DIM}(containerized — production)${NC}"
     echo ""

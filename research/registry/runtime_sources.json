@@ -1,0 +1,63 @@
+[
+  {
+    "path": "mizan_reply/__init__.py",
+    "sha256": "d1c770cfd8b7fbe624fbb266f6fa1a0ef119445c6ea7a9fabb114c645958ee5e",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/__init__.py"
+  },
+  {
+    "path": "mizan_reply/checkpoint.py",
+    "sha256": "1560355f462096b31f41a0fb42517d6c82fac8c98b55f465d60b48b8c3210390",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/checkpoint.py"
+  },
+  {
+    "path": "mizan_reply/cli.py",
+    "sha256": "b07d2158347da178d19d681ce096e79e20213181a4b1c5ae0eb78d8aad959f17",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/cli.py"
+  },
+  {
+    "path": "mizan_reply/data.py",
+    "sha256": "d9dd8c96b19df8b2c546b13189dcc8a8139db7eff2369217f15e5da2e83d13b4",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/data.py",
+    "revised": "2026-10-30: licensed_teacher origin, the owner's teacher-data decision (docs/consent.md)"
+  },
+  {
+    "path": "mizan_reply/evaluate.py",
+    "sha256": "98f914cac03dab7d3a34b393ce66581916dee35b62f38a4dae98e4bb96223253",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/evaluate.py"
+  },
+  {
+    "path": "mizan_reply/generation.py",
+    "sha256": "0f2f3e98acaa9ed3039675254dfc63b56ddbbb32e6e824fd37c0af6ce6518663",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/generation.py"
+  },
+  {
+    "path": "mizan_reply/model.py",
+    "sha256": "77fb839830d82adb9e33bca2d4ecc29512f052e9c7a4599bcb75da69b79525c1",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/model.py"
+  },
+  {
+    "path": "mizan_reply/train.py",
+    "sha256": "9e5e5ba23905d1fb90bec3097e0773c0c66c979e87864e5165c393cf4180122b",
+    "source": "Mizan-Full-Corrected-2026-10-24/own_model/mizan_reply/train.py"
+  },
+  {
+    "path": "mizan_research/finite_context.py",
+    "sha256": "7932e65aadc5ec28a658d62ded766741b9dcbd8d6029712bfca840547a7b9b2d",
+    "source": "meaning-model-stage30.zip!language-stage30/meaning_model/finite_context.py"
+  },
+  {
+    "path": "mizan_research/learning.py",
+    "sha256": "206608b7c68b6c8d86c291d4cd995b6cedfda64624af491071146f21114b11d8",
+    "source": "meaning-model-stage30.zip!language-stage30/meaning_model/learning.py"
+  },
+  {
+    "path": "mizan_research/existential_context.py",
+    "sha256": "db7f81f8fcbfefba820ad05ca05e77038c879333603aee7d31306ac2bb012b61",
+    "source": "meaning-model-stage30.zip!language-stage30/meaning_model/existential_context.py"
+  },
+  {
+    "path": "mizan_research/context_revision.py",
+    "sha256": "9c9059231eb37534c3a13501d4d67afecbdd541d14ea51b986be2c2eebeb78cc",
+    "source": "meaning-model-stage30.zip!language-stage30/meaning_model/context_revision.py"
+  }
+]

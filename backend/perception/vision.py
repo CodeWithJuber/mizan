@@ -11,8 +11,14 @@ Supports Anthropic Claude Vision, OpenAI GPT-4o Vision, and OpenRouter.
 import base64
 import logging
 import os
+from typing import cast
 
-from providers import create_provider, get_default_model
+from providers import (
+    DEFAULT_CLAUDE_MODEL,
+    configured_provider_name,
+    create_provider,
+    get_default_model,
+)
 
 logger = logging.getLogger("mizan.vision")
 
@@ -25,8 +31,8 @@ class VisionProcessor:
     """
 
     def __init__(self):
-        provider_name = os.getenv("LLM_PROVIDER", "") or None
-        model = os.getenv("DEFAULT_MODEL", "claude-opus-4-6")
+        provider_name = configured_provider_name()
+        model = os.getenv("DEFAULT_MODEL", "") or DEFAULT_CLAUDE_MODEL
         self._provider = create_provider(provider=provider_name, model=model)
         self._model = (
             model
@@ -34,7 +40,7 @@ class VisionProcessor:
             else (
                 get_default_model(self._provider.provider_name)
                 if self._provider
-                else "claude-opus-4-6"
+                else DEFAULT_CLAUDE_MODEL
             )
         )
 
@@ -77,7 +83,7 @@ class VisionProcessor:
             # Extract text from normalized response
             for block in response.content:
                 if block.type == "text":
-                    return block.text
+                    return cast(str, block.text)
 
             return "No text response from vision analysis"
 

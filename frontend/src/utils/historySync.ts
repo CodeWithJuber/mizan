@@ -1,0 +1,191 @@
+/**
+ * historySync — resilient chat-history loading and client/server merging.
+ *
+ * Two problems solved here:
+ *  1. Flaky networks: `fetchChatHistoryWithRetry` retries the
+ *     GET /api/chat/{sid} fetch with exponential backoff (default 3 attempts)
+ *     so a single dropped request doesn't leave the chat empty.
+ *  2. Divergence: `mergeHistoryMessages` merges server history with locally
+ *     held messages (cache render + optimistic user echoes) without
+ *     duplicating messages that exist in both.
+ *
+ * DEDUPE KEY (documented — do not change casually):
+ *   - Server messages carry a numeric DB `id` → key `srv:<id>`.
+ *   - Everything else (optimistic echoes, cache entries) → key
+ *     `local:<role>:<ts>:<hash(content)>`, a djb2 hash of the content.
+ *   - Request/message identities reconcile live responses with stored rows.
+ *   - Legacy nonempty messages may use role+content when transport identities
+ *     do not conflict. Failure/interruption rows always require identity;
+ *     identical empty or partial answer bytes are not evidence of a match.
+ * Merge order: all server messages first (server order), then surviving
+ * local-only messages in their local order (these are always the newest).
+ */
+
+export interface HistoryMessage {
+  id?: number | string;
+  role: string;
+  content: string;
+  agent_id?: string;
+  agent?: string;
+  created_at?: string;
+  ts?: string;
+  requestId?: string;
+  messageId?: string;
+  error?: { code?: string; message: string };
+  interrupted?: boolean;
+  stopped?: boolean;
+  notStarted?: boolean;
+}
+
+/** Cache hydration may seed an empty view, never replace newer local activity. */
+export function hydrateCachedMessages<T>(
+  current: T[],
+  cached: T[] | null,
+  sameAuthenticatedSession: boolean,
+): T[] {
+  return sameAuthenticatedSession && current.length === 0 && cached?.length
+    ? cached : current;
+}
+
+/** Loading belongs to one view/request. Resetting the view clears it even
+ * when an old request's finally block correctly refuses to touch the new view. */
+export function createHistoryLoadTracker(setLoading: (loading: boolean) => void) {
+  let generation = 0;
+  return {
+    begin(sameContext: () => boolean) {
+      const request = sameContext() ? ++generation : -1;
+      if (request !== -1) setLoading(true);
+      const isCurrent = () => request === generation && sameContext();
+      return {
+        isCurrent,
+        finish() {
+          if (isCurrent()) { generation++; setLoading(false); }
+        },
+      };
+    },
+    reset() { generation++; setLoading(false); },
+  };
+}
+
+/** Small djb2 hash for the local dedupe key — not cryptographic, just stable. */
+function contentHash(content: string): string {
+  let h = 5381;
+  for (let i = 0; i < content.length; i++) {
+    h = ((h << 5) + h + content.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+}
+
+export function historyDedupeKey(m: HistoryMessage): string {
+  if (m.messageId) return `message:${m.role}:${m.messageId}`;
+  if (m.requestId) return `request:${m.role}:${m.requestId}`;
+  if (typeof m.id === "number" && Number.isFinite(m.id)) {
+    return `srv:${m.id}`;
+  }
+  return `local:${m.role}:${m.ts ?? m.created_at ?? ""}:${contentHash(m.content ?? "")}`;
+}
+
+function sameMessageIdentity(a: HistoryMessage, b: HistoryMessage): boolean {
+  if (a.role !== b.role) return false;
+  if (a.messageId && b.messageId) return a.messageId === b.messageId;
+  if (a.requestId && b.requestId) return a.requestId === b.requestId;
+  return typeof a.id === "number" && Number.isFinite(a.id) && a.id === b.id;
+}
+
+function needsIdentity(m: HistoryMessage): boolean {
+  return Boolean(m.error || m.interrupted || m.stopped || m.notStarted || !m.content.trim());
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export interface HistoryFetchResult {
+  ok: boolean;
+  /** Raw server messages (the `messages` array of the response body). */
+  messages: HistoryMessage[];
+  /** Set when the session is unknown server-side (HTTP 404). */
+  missing: boolean;
+  /** The server holds older messages than the returned page. */
+  hasMore?: boolean;
+  /** The chat's project (null: none); undefined when the server did not say. */
+  workspaceId?: string | null;
+  /** The last error, when ok === false. */
+  error?: Error;
+}
+
+/**
+ * GET /api/chat/{sid} with exponential backoff.
+ *
+ * @param fetchHistory a thunk performing ONE fetch attempt and returning the
+ *   raw Response (kept injectable so App.tsx's authFetch stays in one place
+ *   and unit tests can stub it).
+ */
+export async function fetchChatHistoryWithRetry(
+  fetchHistory: () => Promise<Response>,
+  attempts = 3,
+  baseDelayMs = 600,
+  isCurrent: () => boolean = () => true,
+): Promise<HistoryFetchResult> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (!isCurrent()) return { ok: false, messages: [], missing: false };
+    try {
+      const res = await fetchHistory();
+      if (res.status === 404) {
+        return { ok: true, messages: [], missing: true };
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      // The chat's project as the server keeps it (null: none); absent from older servers.
+      const workspaceId = typeof data?.workspace_id === "string" || data?.workspace_id === null
+        ? (data.workspace_id as string | null)
+        : undefined;
+      return { ok: true, messages, missing: false, hasMore: data?.has_more === true, workspaceId };
+    } catch (err) {
+      if (!isCurrent()) return { ok: false, messages: [], missing: false };
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < attempts) {
+        await sleep(baseDelayMs * 2 ** (attempt - 1));
+      }
+    }
+  }
+  return { ok: false, messages: [], missing: false, error: lastError };
+}
+
+/**
+ * Merge server history with locally held messages.
+ * Server wins on content; local-only messages are appended in order. A local
+ * transport notice may add delivery details to the same cancelled server row.
+ */
+export function mergeHistoryMessages<T extends HistoryMessage>(
+  server: T[],
+  local: T[],
+): T[] {
+  const merged = [...server];
+  const extras: T[] = [];
+  for (const message of local) {
+    const matched = merged.findIndex((row) => sameMessageIdentity(row, message));
+    if (matched >= 0) {
+      const saved = merged[matched];
+      if ((message.error || message.interrupted || message.stopped) && needsIdentity(saved)) {
+        merged[matched] = {
+          ...saved,
+          error: saved.error ?? message.error,
+          content: message.content.startsWith(saved.content) ? message.content : saved.content,
+          stopped: message.stopped || saved.stopped,
+          interrupted: message.stopped ? false : saved.interrupted,
+        };
+      }
+      continue;
+    }
+    const legacyDuplicate = !needsIdentity(message) && server.some((row) =>
+      !needsIdentity(row) && row.role === message.role && row.content === message.content &&
+      !(row.requestId && message.requestId && row.requestId !== message.requestId) &&
+      !(row.messageId && message.messageId && row.messageId !== message.messageId),
+    );
+    if (!legacyDuplicate) extras.push(message);
+  }
+  return [...merged, ...extras];
+}

@@ -1,0 +1,84 @@
+# Round 3 test split for the salam reader (Tahiyya; scripts/salam_eval.py, docs/fahm.md "Salam (4:86)");
+# never a seed. Written by MIZAN's coding assistant (a language model) on 1 Nov 2026, after rounds 1
+# and 2 were refused and before the reader or any of its seeds existed; read once. No row equals a
+# dev, test, test2 or seed row once case, spaces, punctuation and marks are set aside. CC0.
+# label<TAB>kind<TAB>text   (as in dev.tsv; kind "everyday" = an ordinary short request)
+salam	only	Asalamo alaykum
+salam	only	Asalamualaykum
+salam	only	Salaam alaikoum
+salam	address	Assalamualaikum aunty
+salam	address	Assalamualaikum chacha
+salam	address	AoA bhai log
+salam	address	Assalamu alaikum sab ko
+salam	address	Assalamualaikum Mizan bhai jaan
+salam	address	Assalamu alaikum my friends
+salam	address	Salam alaikum everyone
+salam	address	Assalam o alaikum ji
+salam	address	Assalamualaikum brother and sister
+salam	full	Assalamualaikum warahmatullahi taala
+salam	full	Assalamu alaikum warahmatullah wabarakatuh
+salam	full	Asalam o alaikum wa rahmatullah
+salam	full	Peace be upon you and the mercy of Allah
+salam	address	Peace be upon you, Mizan
+salam	only	السلام عليكم ورحمه الله
+salam	address	السلام علیکم ماموں
+salam	address	السلام علیکم بیٹا
+salam	address	السلام عليكم يا إخوان
+salam	address	السلام عليكم يا رفاق
+salam	full	السلام علیکم ورحمۃ اللہ وبرکاتہ سب کو
+salam	full	السلام عليكم و رحمة الله و بركاته يا أحبة
+salam	address	سلام علیکم بھائی جان
+salam	address	اسلام علیکم سر
+salam	address	السلام عليكم يا أبي
+salam	address	अस्सलामु अलैकुम अम्मी
+salam	address	अस्सलाम अलैकुम दोस्तो
+salam	address	अस्सलामु अलैकुम सर जी
+salam	full	अस्सलाम अलैकुम व रहमतुल्लाह
+salam	address	असलामु अलैकुम भाई
+salam	address	सलाम अलैकुम सब को
+no	with_request	Assalamualaikum, mujhe namaz ka tareeqa batao
+no	with_request	AoA, ek message likh do
+no	with_request	Assalamu alaikum, what is 15 times 12?
+no	with_request	Assalamualaikum bhai, aaj ki khabrein sunao
+no	with_request	Salam, can you translate this into Urdu?
+no	with_request	Assalamualaikum, mera laptop slow hai
+no	with_request	Assalamualaikum, Surah Mulk sunao
+no	with_request	Assalamualaikum, aap kaise ho bhai?
+no	with_request	AoA dost, kya kar rahe ho aaj?
+no	with_request	السلام عليكم، كم عمرك؟
+no	with_request	السلام عليكم، أين أقرب مسجد؟
+no	with_request	السلام علیکم، مجھے انگریزی سکھائیں
+no	with_request	السلام علیکم، آپ کا نام کیا ہے؟
+no	with_request	السلام عليكم ورحمة الله، عندي مشكلة
+no	with_request	अस्सलामु अलैकुम, आज का मौसम बताओ
+no	with_request	अस्सलामु अलैकुम, आप कौन हैं?
+no	with_request	अस्सलाम अलैकुम भाई, कैसे हो?
+no	returned	Walaikum asalam
+no	returned	Wa alaikum salam wa rahmatullah
+no	returned	W alaikum assalam ji
+no	returned	وعليكم السلام ورحمه الله
+no	returned	وعلیکم السلام و رحمۃ اللہ بھائی
+no	returned	वालैकुम अस्सलाम भाईजान
+no	other_greeting	Hello Mizan bhai
+no	other_greeting	Hey there friend
+no	other_greeting	Good day
+no	other_greeting	Hi there, how are you?
+no	other_greeting	Namaste ji
+no	other_greeting	नमस्ते भाई
+no	other_greeting	أهلا
+no	other_greeting	آداب
+no	other_greeting	Khuda hafiz bhai
+no	other_greeting	JazakAllah
+no	about_salam	Salam ka jawab kaise diya jata hai?
+no	about_salam	What does wa alaikum assalam mean?
+no	about_salam	ما حكم رد السلام؟
+no	about_salam	سلام کا مطلب کیا ہے؟
+no	about_salam	सलाम का सही जवाब क्या है?
+no	everyday	مرحبا كيف الحال
+no	everyday	ماذا تفعل
+no	everyday	بارش
+no	everyday	موسیقی چلاؤ
+no	everyday	موسم کیسا ہے
+no	everyday	सलमान खान की फ़िल्में
+no	everyday	Salman Khan movies
+no	everyday	Salamander facts

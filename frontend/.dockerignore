@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+.env.production
+npm-debug.log*
+dist-e2e
+playwright-report
+test-results
+reports
+research_notes

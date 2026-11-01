@@ -97,7 +97,7 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
           Tasrif Operator Playground
         </h4>
         <p className="text-xs text-gray-400">
@@ -112,7 +112,7 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
           {DIMENSIONS.map((dim, idx) => (
             <div key={dim} className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-gray-500 dark:text-gray-400 capitalize">{dim}</label>
+                <label className="text-xs text-muted-foreground capitalize">{dim}</label>
                 <span className="text-[10px] font-mono text-gray-400">{features[idx].toFixed(2)}</span>
               </div>
               <input
@@ -131,12 +131,12 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
         {/* Feature bar visualization */}
         <div className="flex gap-1 h-8">
           {features.map((val, idx) => (
-            <div key={idx} className="flex-1 relative rounded overflow-hidden bg-gray-100 dark:bg-zinc-800">
+            <div key={idx} className="flex-1 relative rounded overflow-hidden bg-muted">
               <div
-                className="absolute bottom-0 w-full bg-gradient-to-t from-purple-500 to-purple-400 transition-all"
+                className="absolute bottom-0 w-full bg-linear-to-t from-purple-500 to-purple-400 transition-all"
                 style={{ height: `${val * 100}%` }}
               />
-              <span className="absolute inset-0 flex items-center justify-center text-[8px] font-mono text-gray-500 dark:text-gray-400">
+              <span className="absolute inset-0 flex items-center justify-center text-[8px] font-mono text-muted-foreground">
                 {DIMENSIONS[idx][0].toUpperCase()}
               </span>
             </div>
@@ -160,7 +160,7 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors border ${
                   selected
                     ? "bg-purple-100 dark:bg-purple-500/15 border-purple-300 dark:border-purple-500/30 text-purple-700 dark:text-purple-400"
-                    : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-700/30"
+                    : "bg-muted/50 border-border text-muted-foreground hover:bg-gray-100 dark:hover:bg-zinc-700/30"
                 }`}
                 title={OPERATOR_INFO[op] ?? op}
               >
@@ -194,13 +194,13 @@ export function TasrifVisualizer({ api }: TasrifVisualizerProps) {
           {result.steps.map((step, idx) => (
             <div
               key={idx}
-              className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-3 border border-gray-100 dark:border-zinc-700/50"
+              className="bg-muted/50 rounded-lg p-3 border border-border/60"
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-5 h-5 rounded-full bg-purple-500 text-white text-[10px] flex items-center justify-center">
                   {idx + 1}
                 </span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{step.operator}</span>
+                <span className="text-xs font-semibold text-foreground/80">{step.operator}</span>
                 <span className="text-[10px] text-gray-400">{OPERATOR_INFO[step.operator] ?? ""}</span>
               </div>
 
@@ -293,7 +293,7 @@ function FeatureBar({ values, changedDims }: { values: number[]; changedDims: nu
             }`}
             style={{ height: `${val * 100}%` }}
           />
-          <span className="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-gray-600 dark:text-gray-400">
+          <span className="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-muted-foreground">
             {DIMENSIONS[idx]?.[0]?.toUpperCase()}
           </span>
         </div>

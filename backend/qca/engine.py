@@ -17,13 +17,91 @@ This module implements the complete 7-layer cognitive pipeline:
 """
 
 import logging
+import os
 import re
 import time
 from collections import Counter, defaultdict
+from typing import cast
 
+from nlp.arabic import arabic_tokens, lookup_key
 from qca.roots import ARABIC_ROOTS, CONCEPT_MAP, RELATED_DOMAINS
 
 logger = logging.getLogger("mizan.qca")
+
+
+# ── Phase 2: mizan.nlp native Arabic WSD (IP-3) ──────────────────────────
+# Flag-gated: MIZAN_NLP_NATIVE_WSD=1 augments process_input() with native
+# sense candidates under the additive key `senses_identified`. Default OFF =
+# today's dict shape exactly. Fail-closed: ModelNotReadyError / inference
+# exceptions -> logged fallback, the 7-layer pipeline is never touched.
+
+#: Native-sense gate: single source of truth in nlp/gate.py (measured
+#: Track 3 evidence; operator-tunable via MIZAN_NLP_MIN_SENSE_*).
+from nlp.gate import (  # noqa: E402
+    passes_sense_gate,
+)
+
+
+def _nlp_native_wsd_enabled() -> bool:
+    """True when the operator opted into Phase-2 native WSD."""
+    return os.getenv("MIZAN_NLP_NATIVE_WSD", "").strip().lower() in ("1", "true", "yes")
+
+
+def _arabic_lemmas(text: str, limit: int = 5) -> list[str]:
+    """Observed Arabic surface tokens; no root-to-lemma substitution."""
+    return arabic_tokens(text, limit)
+
+
+def _native_senses_for_roots(text: str, roots: list[dict], limit: int = 5) -> list[dict]:
+    """Native WSD candidates for observed Arabic tokens only.
+
+    English concept mappings do not create Arabic occurrences. The same
+    surface-token path is used for Arabic-only and mixed-script input.
+    Returns [] when disabled, unavailable, unknown, or below the sense gate.
+    ``roots`` remains in the call signature for existing callers.
+    """
+    if not _nlp_native_wsd_enabled():
+        return []
+    # English concept roots are not Arabic occurrences. Always use the actual
+    # Arabic tokens, including in mixed-script input; otherwise a root channel
+    # manufactures a context-free sense and hides Arabic tokens in the sentence.
+    items = [(lemma, "") for lemma in _arabic_lemmas(text, limit)]
+    if not items:
+        return []
+    try:
+        from nlp import ModelNotReadyError, disambiguate, is_ready
+    except ImportError as exc:
+        logger.warning("mizan.nlp import failed (%s) -- QCA senses skipped", exc)
+        return []
+    if not is_ready():
+        logger.info("mizan.nlp artifact not ready -- QCA senses skipped")
+        return []
+    out: list[dict] = []
+    for lemma, english_term in items:
+        if not lemma:
+            continue
+        try:
+            candidates = disambiguate(text, lemma)
+        except ModelNotReadyError:
+            logger.info("mizan.nlp became not-ready mid-call -- QCA senses skipped")
+            return out
+        except Exception as exc:  # fail-closed: never break the pipeline
+            logger.warning("mizan.nlp inference failed for lemma %r (%s) -- skipped", lemma, exc)
+            continue
+        if not candidates:
+            continue
+        sense_id, confidence = candidates[0]
+        _, runner_up = candidates[1] if len(candidates) > 1 else (None, 0.0)
+        if passes_sense_gate(confidence, confidence - runner_up):
+            out.append(
+                {
+                    "lemma": lemma,
+                    "sense_id": sense_id,
+                    "confidence": round(confidence, 4),
+                    "english_term": english_term,
+                }
+            )
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +256,9 @@ class DualInputProcessor:
             try:
                 basirah = BasirahEngine()
                 insight = await basirah.analyze(
-                    image_bytes, context=context, media_type=media_type,
+                    image_bytes,
+                    context=context,
+                    media_type=media_type,
                     qalb_state=qalb_state,
                 )
                 results["basirah"] = insight.to_dict()
@@ -198,8 +278,12 @@ class DualInputProcessor:
             results["fuad"] = fuad
         else:
             results["fuad"] = {
-                "zahir": "", "batin": "", "key_terms": [],
-                "vocabulary_richness": 0, "sequential_pairs": [], "total_tokens": 0,
+                "zahir": "",
+                "batin": "",
+                "key_terms": [],
+                "vocabulary_richness": 0,
+                "sequential_pairs": [],
+                "total_tokens": 0,
             }
 
         return results
@@ -238,8 +322,12 @@ class ISMLayer:
         "افْتِعَال": ("self-directed action", "doing action with effort"),
     }
 
-    def __init__(self, root_db: dict = None):
-        self.root_db = root_db or ARABIC_ROOTS
+    def __init__(self, root_db: dict | None = None):
+        self.root_db = ARABIC_ROOTS if root_db is None else root_db
+        self._surface_roots: dict[str, set[str]] = {}
+        for root, entry in self.root_db.items():
+            for form in (root, *entry.get("derivatives", {})):
+                self._surface_roots.setdefault(lookup_key(form), set()).add(root)
 
     def get_word_info(self, arabic_word: str) -> dict | None:
         """Get full ISM info for an Arabic word."""
@@ -248,8 +336,8 @@ class ISMLayer:
 
     def generalize_meaning(self, root: str, pattern: str) -> dict | None:
         """
-        ZERO-SHOT: predict meaning of unknown word from Root + Pattern alone.
-        Impossible in standard NLP. Core QCA advantage.
+        Compose a heuristic gloss from a dictionary root and pattern.
+        This does not establish an unseen word's meaning or zero-shot accuracy.
         """
         root_entry = self.root_db.get(root)
         pattern_entry = self.PATTERNS.get(pattern)
@@ -269,7 +357,7 @@ class ISMLayer:
     def find_root_family(self, root: str) -> dict:
         """Get all words sharing a root — the family cluster."""
         entry = self.root_db.get(root, {})
-        return entry.get("derivatives", {})
+        return cast(dict, entry.get("derivatives", {}))
 
     def root_distance(self, root1: str, root2: str) -> float:
         """Semantic distance between two roots based on domain."""
@@ -285,26 +373,36 @@ class ISMLayer:
         return 0.75
 
     def find_roots_in_text(self, text: str) -> list[dict]:
-        """Find Arabic roots/concepts relevant to an English text."""
-        words = text.lower().split()
+        """Find dictionary-supported candidates in Arabic and mapped English.
+
+        These are lexical candidates, not semantic/religious certification.
+        Unknown forms abstain. Ambiguous dictionary forms keep every candidate.
+        """
+        matches = []
+        for word in re.findall(r"[A-Za-z]+", text.lower()):
+            if word in CONCEPT_MAP:
+                matches.append((CONCEPT_MAP[word], word, "", "english_concept_map"))
+        for form in arabic_tokens(text, limit=256):
+            for root in sorted(self._surface_roots.get(lookup_key(form), ())):
+                matches.append((root, "", form, "arabic_dictionary"))
         found_roots = []
         seen_roots = set()
-        for word in words:
-            clean = re.sub(r"[^a-z]", "", word)
-            if clean in CONCEPT_MAP:
-                root = CONCEPT_MAP[clean]
-                if root not in seen_roots:
-                    seen_roots.add(root)
-                    root_data = self.root_db.get(root, {})
-                    found_roots.append(
-                        {
-                            "english_term": clean,
-                            "root": root,
-                            "meaning": root_data.get("meaning", ""),
-                            "domain": root_data.get("domain", ""),
-                            "derivatives": list(root_data.get("derivatives", {}).items())[:3],
-                        }
-                    )
+        for root, english_term, surface, match_type in matches:
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+            root_data = self.root_db.get(root, {})
+            found_roots.append(
+                {
+                    "english_term": english_term,
+                    "surface": surface,
+                    "match_type": match_type,
+                    "root": root,
+                    "meaning": root_data.get("meaning", ""),
+                    "domain": root_data.get("domain", ""),
+                    "derivatives": list(root_data.get("derivatives", {}).items())[:3],
+                }
+            )
         return found_roots
 
 
@@ -489,7 +587,7 @@ class AqlLayer:
         }
         self.graph[a].append(entry)
 
-    def query(self, concept: str, btype: str = None) -> list[dict]:
+    def query(self, concept: str, btype: str | None = None) -> list[dict]:
         """Query all bindings for a concept, optionally filtered by type."""
         results = self.graph.get(concept, [])
         if btype:
@@ -620,7 +718,12 @@ class LawhMemory:
         return count
 
     def store(
-        self, key: str, content: str, certainty: float, source: str = "inference", tier: int = None
+        self,
+        key: str,
+        content: str,
+        certainty: float,
+        source: str = "inference",
+        tier: int | None = None,
     ) -> bool:
         """Store knowledge in the appropriate tier."""
         if tier is None:
@@ -647,7 +750,7 @@ class LawhMemory:
         return None
 
     def search(
-        self, query_text: str, top_k: int = 5, tiers: list[int] = None
+        self, query_text: str, top_k: int = 5, tiers: list[int] | None = None
     ) -> list[tuple[int, str, dict]]:
         """Keyword search across tiers."""
         if tiers is None:
@@ -722,7 +825,7 @@ class FurqanBayan:
     "He taught him clear expression (Bayan)." — 55:4
     """
 
-    def __init__(self, mizan: MizanLayer = None, lawh: LawhMemory = None):
+    def __init__(self, mizan: MizanLayer | None = None, lawh: LawhMemory | None = None):
         self.mizan = mizan or MizanLayer()
         self.lawh = lawh
 
@@ -743,7 +846,7 @@ class FurqanBayan:
         self, claim: str, confidence: float, source: str = "inference"
     ) -> dict:
         """Validate a claim through Furqan checks and produce Bayan output."""
-        report = {
+        report: dict = {
             "passed": True,
             "checks": [],
             "confidence": confidence,
@@ -880,13 +983,20 @@ class QCAEngine:
             tier=3,
         )
 
-        return {
+        result = {
             "perception": perception,
             "roots_identified": roots,
             "key_terms": key_terms,
             "zahir": perception["fuad"]["zahir"],
             "batin": perception["fuad"]["batin"],
         }
+        # Phase 2 (mizan.nlp, IP-3): native sense candidates per root.
+        # Additive signal only -- the key exists ONLY when the flag is on, so
+        # flag-off output is bit-for-bit identical to today. The 7-layer
+        # pipeline is untouched.
+        if _nlp_native_wsd_enabled():
+            result["senses_identified"] = _native_senses_for_roots(text, roots)
+        return result
 
     async def process_input_multimodal(
         self,
@@ -953,7 +1063,7 @@ class QCAEngine:
             "has_audio": audio_bytes is not None,
         }
 
-    def reason(self, question: str, context_text: str = None) -> dict:
+    def reason(self, question: str, context_text: str | None = None) -> dict:
         """
         Full QCA reasoning pipeline for answering a question.
         Routes through all 7 layers.
@@ -1092,16 +1202,16 @@ class QCAEngine:
         """Weigh a claim through the Mizan layer."""
         weight = self.mizan.weigh(certainty_level, source)
         report = self.furqan.validate_and_express(claim, weight, source)
-        return report
+        return cast(dict, report)
 
     def trace_concept(self, concept: str, depth: int = 4) -> list[str]:
         """Trace causal chain through 'Aql bindings."""
-        return self.aql.tadabbur_trace(concept, depth)
+        return cast(list[str], self.aql.tadabbur_trace(concept, depth))
 
     def remember(self, key: str, content: str, certainty: float, source: str = "agent") -> bool:
         """Store knowledge in Lawh memory."""
-        return self.lawh.store(key, content, certainty, source)
+        return cast(bool, self.lawh.store(key, content, certainty, source))
 
     def recall(self, query: str, top_k: int = 5) -> list:
         """Search Lawh memory."""
-        return self.lawh.search(query, top_k, tiers=[1, 2, 3])
+        return cast(list, self.lawh.search(query, top_k, tiers=[1, 2, 3]))

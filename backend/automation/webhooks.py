@@ -27,7 +27,9 @@ class WebhookManager:
         self._webhooks: dict[str, dict] = {}
         self._handlers: dict[str, Callable] = {}
 
-    def register(self, webhook_id: str, name: str, secret: str = "", handler: Callable = None):
+    def register(
+        self, webhook_id: str, name: str, secret: str = "", handler: Callable | None = None
+    ):
         """Register a webhook endpoint."""
         self._webhooks[webhook_id] = {
             "id": webhook_id,

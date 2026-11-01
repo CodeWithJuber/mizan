@@ -27,8 +27,11 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export function LossCurveChart({ metrics, history = [] }: LossCurveChartProps) {
+  // Guard: when logged out the API returns a 401 body ({detail: ...}) that
+  // is truthy but has no losses — never .map() an undefined array.
+  const losses = metrics?.losses ?? [];
   // Build data points from current run losses
-  const currentData = metrics.losses.map((loss, idx) => ({
+  const currentData = losses.map((loss, idx) => ({
     epoch: idx + 1,
     current: loss,
   }));
@@ -36,12 +39,13 @@ export function LossCurveChart({ metrics, history = [] }: LossCurveChartProps) {
   // Merge historical runs as additional series
   const historicalSeries: { key: string; color: string; data: { epoch: number; loss: number }[] }[] = [];
   history.slice(-3).forEach((run, idx) => {
-    if (run.losses.length > 0) {
+    const runLosses = run?.losses ?? [];
+    if (runLosses.length > 0) {
       const key = `${run.stage}_${idx}`;
       historicalSeries.push({
         key,
         color: STAGE_COLORS[run.stage] ?? "#94a3b8",
-        data: run.losses.map((loss, epoch) => ({ epoch: epoch + 1, loss })),
+        data: runLosses.map((loss, epoch) => ({ epoch: epoch + 1, loss })),
       });
     }
   });
@@ -70,15 +74,15 @@ export function LossCurveChart({ metrics, history = [] }: LossCurveChartProps) {
 
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Loss Curve
       </h4>
       {noData ? (
-        <div className="flex items-center justify-center h-48 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+        <div className="flex items-center justify-center h-48 bg-muted/40 rounded-lg border border-dashed border-border">
           <p className="text-sm text-gray-400">No training data yet</p>
         </div>
       ) : (
-        <div className="h-64 bg-gray-50 dark:bg-zinc-800/30 rounded-lg border border-gray-100 dark:border-zinc-700/50 p-2">
+        <div className="h-64 bg-muted/40 rounded-lg border border-border/60 p-2">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />

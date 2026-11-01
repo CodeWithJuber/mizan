@@ -19,6 +19,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger("mizan.tawbah")
 
@@ -94,7 +95,7 @@ class TawbahProtocol:
 
     def __init__(self):
         self._records: dict[str, TawbahRecord] = {}
-        self._lessons: list[dict] = []
+        self._lessons: list[dict[str, Any]] = []
         self._error_patterns: dict[str, int] = {}
 
     def acknowledge(self, agent_id: str, error: Exception | str, task: str) -> TawbahRecord:
@@ -191,7 +192,7 @@ class TawbahProtocol:
 
         return record
 
-    def get_lessons(self, error_type: str = None) -> list[dict]:
+    def get_lessons(self, error_type: str | None = None) -> list[dict[str, Any]]:
         """Get lessons learned from past error recoveries."""
         if error_type:
             return [lesson for lesson in self._lessons if lesson["error_type"] == error_type]
@@ -201,16 +202,16 @@ class TawbahProtocol:
         """Get frequency of error patterns (for systemic issue detection)."""
         return dict(self._error_patterns)
 
-    def has_prior_fix(self, error_type: str) -> dict | None:
+    def has_prior_fix(self, error_type: str) -> dict[str, Any] | None:
         """Check if we have a prior fix for this error type."""
-        for lesson in reversed(self._lessons):
+        for lesson in self._lessons[::-1]:
             if lesson["error_type"] == error_type:
                 return lesson
         return None
 
-    def get_active_recoveries(self, agent_id: str = None) -> list[TawbahRecord]:
+    def get_active_recoveries(self, agent_id: str | None = None) -> list[TawbahRecord]:
         """Get active (uncompleted) recovery records."""
-        records = self._records.values()
+        records = list(self._records.values())
         if agent_id:
             records = [r for r in records if r.agent_id == agent_id]
         return [r for r in records if r.stage != TawbahStage.COMPLETE]

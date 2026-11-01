@@ -1,10 +1,38 @@
-import { useState, useMemo } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  isValidElement,
+  cloneElement,
+  memo,
+} from "react";
+import type { ReactNode } from "react";
 import type {
   ChatMessage as ChatMessageType,
-  CognitiveMetadata,
   PerceptionResult,
 } from "../types";
-import { Markdown } from "./Markdown";
+import { Markdown, type Components } from "./Markdown";
+import {
+  Check, Copy, GitCompareArrows, History, Pencil, RotateCcw, Scale, Volume2, VolumeX,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { addToast } from "./Toast";
+import { convertCopyFormat, type CopyFormatId } from "../utils/copyFormat";
+import { speakable } from "../utils/voice.ts";
+import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
+import { HeldActions } from "./HeldActions";
+import { ChatImages } from "./ChatImages";
+import { SourcesAndChecks } from "../features/chat/SourcesAndChecks";
+import { RunTimeline } from "../features/chat/RunTimeline";
+import type { ThinkingTrace } from "../types/ruh";
+// MORPH-FEAT: Arabic word tap-to-explore
+import { useMorphology } from "../hooks/useMorphology";
+import { VerifiedBadge } from "./ruh/VerifiedBadge";
+import type { AnalyzeWordResponse } from "../types/morphology";
 
 type ContentBlock =
   | { type: "text"; content: string }
@@ -52,19 +80,195 @@ function parseChatContent(text: string): ContentBlock[] {
   return blocks;
 }
 
-export function TypingIndicator() {
+
+// ===== MORPH-FEAT: Arabic word tap-to-explore (start) =====
+// Splits text into Arabic / non-Arabic runs. Matches the contract regex
+// /[\u0600-\u06FF]+/g. The non-global TEST_RE avoids lastIndex state bugs.
+const ARABIC_RUN_RE = /([\u0600-\u06FF]+)/g;
+const ARABIC_TEST_RE = /^[\u0600-\u06FF]+$/;
+
+function ArabicWord({
+  word,
+  onExplore,
+}: {
+  word: string;
+  onExplore?: (word: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <span className="inline-flex gap-1 items-center py-1">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "150ms" }} />
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+    <span className="relative inline-block">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`Explore Arabic word ${word}`}
+        className="underline decoration-dotted decoration-mizan-gold/60 underline-offset-2 cursor-pointer focus-ring rounded-sm"
+      >
+        {word}
+      </button>
+      {open && (
+        <WordTapPopover
+          word={word}
+          onExplore={onExplore}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </span>
   );
 }
 
-export function ChatMessageContent({ content }: { content: string }) {
+function WordTapPopover({
+  word,
+  onExplore,
+  onClose,
+}: {
+  word: string;
+  onExplore?: (word: string) => void;
+  onClose: () => void;
+}) {
+  const morph = useMorphology();
+  const [data, setData] = useState<AnalyzeWordResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    morph
+      .analyzeWord(word)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "Lookup failed");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [word, morph]);
+
+  return (
+    <span
+      className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[78vw] p-3 rounded-xl bg-card border border-border shadow-xl text-left animate-fade-in"
+      role="dialog"
+      aria-label={`Preview of ${word}`}
+    >
+      <button
+        onClick={onClose}
+        aria-label="Close preview"
+        className="absolute top-1 right-1 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer focus-ring"
+      >
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="w-4 h-4"
+          aria-hidden="true"
+        >
+          <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+        </svg>
+      </button>
+      {loading && (
+        <span className="text-xs text-gray-400">
+          Looking up &ldquo;{word}&rdquo;&hellip;
+        </span>
+      )}
+      {error && !loading && (
+        <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
+      )}
+      {data && !loading && (
+        <span className="block">
+          <span
+            dir="rtl"
+            lang="ar"
+            className="block text-lg font-bold text-foreground pr-6"
+          >
+            {data.word}
+          </span>
+          <span className="mt-1 flex items-center gap-2">
+            <span
+              dir="rtl"
+              lang="ar"
+              className="text-base font-semibold text-mizan-gold-text dark:text-mizan-gold"
+            >
+              {data.root || "\u2014"}
+            </span>
+            <VerifiedBadge level={data.provenance} source={data.source} />
+          </span>
+          {onExplore && (
+            <button
+              onClick={() => onExplore(word)}
+              className="mt-2 w-full min-h-[44px] px-3 text-sm font-medium rounded-lg bg-mizan-gold/15 text-mizan-gold-text dark:text-mizan-gold hover:bg-mizan-gold/25 transition-colors cursor-pointer focus-ring"
+            >
+              Explore root
+            </button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Recursively walks rendered Markdown children and wraps Arabic runs in
+ * <ArabicWord> tap targets. Skips <code> elements (code stays untappable).
+ */
+function linkifyArabic(
+  node: ReactNode,
+  onExplore: ((word: string) => void) | undefined,
+  keyPrefix: string,
+): ReactNode {
+  if (typeof node === "string") {
+    const parts = node.split(ARABIC_RUN_RE);
+    if (parts.length === 1) return node;
+    return parts.map((part, i) =>
+      ARABIC_TEST_RE.test(part) ? (
+        <ArabicWord
+          key={`${keyPrefix}-${i}`}
+          word={part}
+          onExplore={onExplore}
+        />
+      ) : (
+        <span key={`${keyPrefix}-${i}`}>{part}</span>
+      ),
+    );
+  }
+  if (Array.isArray(node)) {
+    return node.map((child, i) =>
+      linkifyArabic(child, onExplore, `${keyPrefix}.${i}`),
+    );
+  }
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    if (node.type === "code") return node; // never linkify code
+    return cloneElement(node, {
+      key: node.key ?? keyPrefix,
+      children: linkifyArabic(node.props.children, onExplore, `${keyPrefix}.c`),
+    });
+  }
+  return node;
+}
+// ===== MORPH-FEAT: Arabic word tap-to-explore (end) =====
+
+export function ChatMessageContent({
+  content,
+  onExploreWord,
+  streaming = false,
+}: {
+  content: string;
+  onExploreWord?: (word: string) => void;
+  streaming?: boolean;
+}) {
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
   const blocks = useMemo(() => parseChatContent(content), [content]);
+  // MORPH-FEAT: element overrides that linkify Arabic words in
+  // paragraphs. Memoized so the memoized <Markdown> keeps its memo.
+  const arabicComponents = useMemo(() => {
+    const p = ({ children }: { children?: ReactNode }) => (
+      <p dir="auto">{linkifyArabic(children, onExploreWord, "p")}</p>
+    );
+    return { p } as unknown as Partial<Components>;
+  }, [onExploreWord]);
 
   const toggleTool = (idx: number) => {
     setExpandedTools((prev) => {
@@ -76,14 +280,23 @@ export function ChatMessageContent({ content }: { content: string }) {
   };
 
   if (blocks.length === 1 && blocks[0].type === "text") {
-    return <Markdown content={blocks[0].content} />;
+    return (
+      <Markdown content={blocks[0].content} components={arabicComponents} streaming={streaming} />
+    );
   }
 
   return (
     <div className="space-y-2">
       {blocks.map((block, idx) => {
         if (block.type === "text") {
-          return <Markdown key={idx} content={block.content} />;
+          return (
+            <Markdown
+              key={idx}
+              content={block.content}
+              components={arabicComponents}
+              streaming={streaming}
+            />
+          );
         }
 
         if (block.type === "error") {
@@ -125,7 +338,7 @@ export function ChatMessageContent({ content }: { content: string }) {
               className={`rounded-lg border transition-colors ${
                 block.isError
                   ? "bg-red-50/50 dark:bg-red-500/5 border-red-200/60 dark:border-red-500/15"
-                  : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200/60 dark:border-zinc-700/50"
+                  : "bg-muted/50 border-border/60"
               }`}
             >
               <button
@@ -175,13 +388,13 @@ export function ChatMessageContent({ content }: { content: string }) {
               </button>
               {isExpanded ? (
                 <div className="px-3 pb-2">
-                  <pre className="text-xs font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
+                  <pre className="text-xs font-mono text-muted-foreground bg-gray-100 dark:bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
                     {block.result}
                   </pre>
                 </div>
               ) : block.result ? (
                 <div className="px-3 pb-2">
-                  <div className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
+                  <div className="text-xs font-mono text-muted-foreground/80 truncate">
                     {truncated}
                   </div>
                 </div>
@@ -195,209 +408,16 @@ export function ChatMessageContent({ content }: { content: string }) {
   );
 }
 
-// ===== Qalb state → color mapping =====
-const QALB_COLORS: Record<string, string> = {
-  neutral: "bg-gray-100 dark:bg-zinc-700/40 text-gray-600 dark:text-gray-300",
-  positive:
-    "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  frustrated: "bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400",
-  anxious:
-    "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  confused:
-    "bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400",
-  determined:
-    "bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  fatigued: "bg-gray-100 dark:bg-zinc-700/40 text-gray-500 dark:text-gray-400",
-};
-
-const YAQIN_LABELS: Record<string, string> = {
-  ilm_al_yaqin: "'ilm",
-  ayn_al_yaqin: "'ayn",
-  haqq_al_yaqin: "haqq",
-};
-
-const LUBB_COLORS: Record<string, string> = {
-  confident:
-    "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  hedged:
-    "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  uncertain: "bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400",
-};
-
-function CognitiveBar({ cognitive }: { cognitive: CognitiveMetadata }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const hasPills =
-    cognitive.qalb ||
-    cognitive.yaqin ||
-    cognitive.lubb ||
-    cognitive.ruh_energy != null ||
-    cognitive.nafs_level != null ||
-    (cognitive.lawwama && cognitive.lawwama.repair_level > 0);
-
-  if (!hasPills) return null;
-
-  return (
-    <div className="mt-1.5 animate-fade-in">
-      <button
-        onClick={() => setExpanded((prev) => !prev)}
-        className="flex flex-wrap items-center gap-1.5 cursor-pointer group"
-        aria-expanded={expanded}
-        aria-label="Cognitive metadata"
-      >
-        {/* Qalb state pill */}
-        {cognitive.qalb && (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${QALB_COLORS[cognitive.qalb.state] || QALB_COLORS.neutral}`}
-            title={`Qalb: ${cognitive.qalb.state} (${(cognitive.qalb.confidence * 100).toFixed(0)}%)`}
-          >
-            <span className="opacity-60">Qalb</span>
-            {cognitive.qalb.state}
-          </span>
-        )}
-
-        {/* Yaqin level pill */}
-        {cognitive.yaqin && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400"
-            title={`Yaqin: ${cognitive.yaqin.level} (${(cognitive.yaqin.confidence * 100).toFixed(0)}%)`}
-          >
-            <span className="opacity-60">Yaqin</span>
-            {YAQIN_LABELS[cognitive.yaqin.level] || cognitive.yaqin.level}
-            <span className="w-8 h-1 rounded-full bg-sky-200 dark:bg-sky-800 overflow-hidden inline-block align-middle">
-              <span
-                className="block h-full rounded-full bg-sky-500 dark:bg-sky-400"
-                style={{ width: `${cognitive.yaqin.confidence * 100}%` }}
-              />
-            </span>
-          </span>
-        )}
-
-        {/* Lubb quality pill */}
-        {cognitive.lubb && (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${LUBB_COLORS[cognitive.lubb.quality] || LUBB_COLORS.uncertain}`}
-            title={`Lubb: ${cognitive.lubb.quality} (coherence ${(cognitive.lubb.coherence_score * 100).toFixed(0)}%)`}
-          >
-            <span className="opacity-60">Lubb</span>
-            {cognitive.lubb.quality}
-          </span>
-        )}
-
-        {/* Ruh energy pill */}
-        {cognitive.ruh_energy != null && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400"
-            title={`Ruh energy: ${(cognitive.ruh_energy * 100).toFixed(0)}%`}
-          >
-            <span className="opacity-60">Ruh</span>
-            {(cognitive.ruh_energy * 100).toFixed(0)}%
-          </span>
-        )}
-
-        {/* Nafs level pill */}
-        {cognitive.nafs_level != null && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-mizan-gold/10 text-mizan-gold-text dark:text-mizan-gold border border-mizan-gold/20"
-            title={`Nafs: Level ${cognitive.nafs_level} — ${cognitive.nafs_name || ""}`}
-          >
-            N{cognitive.nafs_level}
-            {cognitive.nafs_name && (
-              <span className="opacity-70">{cognitive.nafs_name}</span>
-            )}
-          </span>
-        )}
-
-        {/* Lawwama repair pill (only when active) */}
-        {cognitive.lawwama && cognitive.lawwama.repair_level > 0 && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400"
-            title={`Lawwama: L${cognitive.lawwama.repair_level} repair, health ${(cognitive.lawwama.health * 100).toFixed(0)}%`}
-          >
-            <span className="opacity-60">Heal</span>L
-            {cognitive.lawwama.repair_level}
-          </span>
-        )}
-
-        {/* Expand chevron */}
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-          aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </button>
-
-      {/* Expanded details */}
-      {expanded && (
-        <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-1.5 animate-fade-in">
-          {cognitive.cognitive_method && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Method:
-              </span>{" "}
-              {cognitive.cognitive_method}
-            </div>
-          )}
-          {cognitive.mizan_label && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Mizan:
-              </span>{" "}
-              {cognitive.mizan_label}
-            </div>
-          )}
-          {cognitive.qalb?.signals && cognitive.qalb.signals.length > 0 && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Signals:
-              </span>{" "}
-              {cognitive.qalb.signals.join(", ")}
-            </div>
-          )}
-          {cognitive.yaqin?.evidence && cognitive.yaqin.evidence.length > 0 && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Evidence:
-              </span>{" "}
-              {cognitive.yaqin.evidence.join(", ")}
-            </div>
-          )}
-          {cognitive.lubb?.bias_flags &&
-            cognitive.lubb.bias_flags.length > 0 && (
-              <div className="text-orange-600 dark:text-orange-400">
-                <span className="font-medium">Bias flags:</span>{" "}
-                {cognitive.lubb.bias_flags.join(", ")}
-              </div>
-            )}
-          {cognitive.lawwama && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                Health:
-              </span>{" "}
-              {(cognitive.lawwama.health * 100).toFixed(0)}% | Hallucination:{" "}
-              {(cognitive.lawwama.hallucination_score * 100).toFixed(0)}% |
-              Errors: {cognitive.lawwama.errors}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const PERCEPTION_CATEGORY_COLORS: Record<string, string> = {
   text: "bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  diagram: "bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400",
-  screenshot: "bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
-  photo: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  document: "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  diagram:
+    "bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400",
+  screenshot:
+    "bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
+  photo:
+    "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  document:
+    "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400",
 };
 
 function PerceptionCard({ perception }: { perception: PerceptionResult }) {
@@ -419,9 +439,18 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${PERCEPTION_CATEGORY_COLORS[basirah.category] || PERCEPTION_CATEGORY_COLORS.text}`}
             title={`Basirah: ${basirah.category} (${(basirah.confidence * 100).toFixed(0)}%)`}
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" aria-hidden="true">
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-3 h-3"
+              aria-hidden="true"
+            >
               <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
-              <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                clipRule="evenodd"
+              />
             </svg>
             {basirah.category}
           </span>
@@ -433,7 +462,12 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400"
             title={`Nutq: ${nutq.intent} (${nutq.language})`}
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" aria-hidden="true">
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-3 h-3"
+              aria-hidden="true"
+            >
               <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
               <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
             </svg>
@@ -457,7 +491,11 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
           className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
           aria-hidden="true"
         >
-          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+            clipRule="evenodd"
+          />
         </svg>
       </button>
 
@@ -465,18 +503,31 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
         <div className="mt-1.5 p-2.5 rounded-lg bg-gray-50/80 dark:bg-zinc-800/50 border border-gray-200/60 dark:border-zinc-700/40 text-xs space-y-2 animate-fade-in">
           {basirah && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">Vision (Basirah)</div>
-              <p className="text-gray-500 dark:text-gray-400">{basirah.description}</p>
+              <div className="font-medium text-foreground/80">
+                Vision (Basirah)
+              </div>
+              <p className="text-muted-foreground">
+                {basirah.description}
+              </p>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 w-16">Confidence</span>
                 <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-zinc-700 overflow-hidden">
-                  <div className="h-full rounded-full bg-amber-500" style={{ width: `${(basirah.confidence * 100).toFixed(0)}%` }} />
+                  <div
+                    className="h-full rounded-full bg-amber-500"
+                    style={{
+                      width: `${(basirah.confidence * 100).toFixed(0)}%`,
+                    }}
+                  />
                 </div>
-                <span className="font-mono text-gray-400 w-8 text-right">{(basirah.confidence * 100).toFixed(0)}%</span>
+                <span className="font-mono text-gray-400 w-8 text-right">
+                  {(basirah.confidence * 100).toFixed(0)}%
+                </span>
               </div>
               {basirah.extracted_text && (
-                <div className="text-gray-500 dark:text-gray-400">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Text: </span>
+                <div className="text-muted-foreground">
+                  <span className="font-medium text-foreground/80">
+                    Text:{" "}
+                  </span>
                   {basirah.extracted_text.substring(0, 200)}
                   {basirah.extracted_text.length > 200 && "..."}
                 </div>
@@ -484,7 +535,10 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
               {basirah.key_elements?.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {basirah.key_elements.map((el, i) => (
-                    <span key={i} className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400 text-[10px]">
+                    <span
+                      key={i}
+                      className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-muted-foreground text-[10px]"
+                    >
                       {el}
                     </span>
                   ))}
@@ -494,23 +548,37 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
           )}
           {nutq && (
             <div className="space-y-1">
-              <div className="font-medium text-gray-700 dark:text-gray-300">Voice (Nutq)</div>
-              <p className="text-gray-500 dark:text-gray-400">{nutq.text}</p>
-              <div className="text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-gray-700 dark:text-gray-300">Intent: </span>{nutq.intent}
+              <div className="font-medium text-foreground/80">
+                Voice (Nutq)
+              </div>
+              <p className="text-muted-foreground">{nutq.text}</p>
+              <div className="text-muted-foreground">
+                <span className="font-medium text-foreground/80">
+                  Intent:{" "}
+                </span>
+                {nutq.intent}
                 {" · "}
-                <span className="font-medium text-gray-700 dark:text-gray-300">Lang: </span>{nutq.language}
+                <span className="font-medium text-foreground/80">
+                  Lang:{" "}
+                </span>
+                {nutq.language}
               </div>
             </div>
           )}
           {perception.zahir && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">Zahir: </span>{perception.zahir}
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                Zahir:{" "}
+              </span>
+              {perception.zahir}
             </div>
           )}
           {perception.batin && (
-            <div className="text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-700 dark:text-gray-300">Batin: </span>{perception.batin}
+            <div className="text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                Batin:{" "}
+              </span>
+              {perception.batin}
             </div>
           )}
         </div>
@@ -519,34 +587,173 @@ function PerceptionCard({ perception }: { perception: PerceptionResult }) {
   );
 }
 
-interface ChatMessageBubbleProps {
-  msg: ChatMessageType;
-  selectedAgent?: { name: string } | null;
+
+const COPY_FORMATS: { id: CopyFormatId; label: string; hint: string }[] = [
+  { id: "markdown", label: "Copy", hint: "as written" },
+  { id: "plain", label: "Copy plain text", hint: "no formatting" },
+  { id: "whatsapp", label: "Copy for WhatsApp", hint: "*bold* style" },
+];
+
+/** An icon button with a tooltip and an accessible name. */
+export function IconAction({
+  label,
+  onClick,
+  children,
+  pressed,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  pressed?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={pressed}
+            onClick={onClick}
+            className="text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
-export function ChatMessageBubble({
-  msg,
-  selectedAgent,
-}: ChatMessageBubbleProps) {
-  const [copied, setCopied] = useState(false);
+function copyText(text: string, label: string, done: () => void) {
+  navigator.clipboard.writeText(text).then(
+    () => {
+      done();
+      addToast({ type: "success", title: "Copied", description: label === "Copy" ? undefined : label });
+    },
+    () => addToast({ type: "error", title: "Copy failed — clipboard unavailable" }),
+  );
+}
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(msg.content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+function CopyMenu({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const done = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" aria-label="Copy options" className="text-muted-foreground hover:text-foreground" />
+              }
+            />
+          }
+        >
+          {copied ? <Check className="text-success" /> : <Copy />}
+        </TooltipTrigger>
+        <TooltipContent>Copy</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent className="w-52" side="top">
+        {COPY_FORMATS.map((format) => (
+          <DropdownMenuItem key={format.id} onClick={() => copyText(convertCopyFormat(content, format.id), format.label, done)}>
+            <span className="flex-1">{format.label}</span>
+            <span className="text-xs text-muted-foreground">{format.hint}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReadAloud({ content }: { content: string }) {
+  const [speaking, setSpeaking] = useState(false);
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !content.trim()) return null;
+  const toggle = () => {
+    const voice = window.speechSynthesis;
+    voice.cancel();
+    if (speaking) {
+      setSpeaking(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(convertCopyFormat(speakable(content), "plain"));
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    voice.speak(utterance);
+    setSpeaking(true);
+  };
+  return (
+    <IconAction
+      label={speaking ? "Stop reading aloud" : "Read aloud (Quran text is not read by the voice)"}
+      onClick={toggle}
+      pressed={speaking}
+    >
+      {speaking ? <VolumeX className="text-brand" /> : <Volume2 />}
+    </IconAction>
+  );
+}
+
+export function MizanMark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-brand ${className}`}
+    >
+      <Scale className="size-4" />
+    </span>
+  );
+}
+
+interface ChatMessageBubbleProps {
+  msg: ChatMessageType;
+  /** The chatting agent's name, used when a message does not name its own. */
+  agentName?: string;
+  // Loaded agents list — used to resolve a raw agent_id into a display name.
+  agents?: NamedAgent[];
+  // Forwarded to ChatMessageContent; opens the root explorer.
+  onExploreWord?: (word: string) => void;
+  // Optional in-message CTA button (e.g. "Open providers").
+  onNavigateTab?: (tab: string) => void;
+  /** Debug mode: raw metadata and heuristic diagnostics under answers. */
+  debug?: boolean;
+  /** Ask again (the last answer only). */
+  onRetry?: () => void;
+  /** Put a sent message back in the message box. */
+  onEdit?: (text: string) => void;
+  /** Debug mode: compare this message with the base model alone. */
+  onCompare?: (text: string) => void;
+  /** Put the chat's project back to how it was before this message. */
+  onRewind?: (checkpoint: NonNullable<ChatMessageType["checkpoint"]>) => void;
+  /** The thinking steps of this answer, shown with its tools in the run summary. */
+  trace?: ThinkingTrace;
+}
+
+export const ChatMessageBubble = memo(function ChatMessageBubble({
+  msg,
+  agentName,
+  agents,
+  onExploreWord,
+  onNavigateTab,
+  debug = false,
+  onRetry,
+  onEdit,
+  onCompare,
+  onRewind,
+  trace,
+}: ChatMessageBubbleProps) {
+  const cta = (msg as ChatMessageType & { cta?: { label: string; tab: string } }).cta;
 
   if (msg.role === "system") {
     return (
       <div className="chat-message-row">
         <div className="chat-message-container flex justify-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50/80 dark:bg-amber-500/5 border border-amber-200/40 dark:border-amber-500/10 text-xs text-amber-700 dark:text-amber-300/80">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3" aria-hidden="true">
-              <path d="M7 9l3 3-3 3M13 15h4" />
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-            </svg>
-            <span>{msg.content}</span>
+          <div className="inline-flex max-w-full items-center gap-2 rounded-full border bg-muted/60 px-4 py-1.5 text-xs text-muted-foreground">
+            <span className="break-words">{msg.content}</span>
           </div>
         </div>
       </div>
@@ -555,83 +762,98 @@ export function ChatMessageBubble({
 
   if (msg.role === "user") {
     return (
-      <div className="chat-message-row">
-        <div className="chat-message-container flex justify-end">
-          <div className="max-w-[80%] lg:max-w-[70%]">
-            <div className="px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed bg-blue-600 text-white shadow-sm">
-              {msg.content}
-            </div>
-            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right font-mono px-1">
-              {msg.ts}
-            </div>
+      <div className="chat-message-row group/msg">
+        <div className="chat-message-container flex flex-col items-end">
+          <div
+            dir="auto"
+            className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[15px] leading-relaxed text-foreground"
+          >
+            {msg.content}
+          </div>
+          <ChatImages images={msg.images} />
+          {msg.notStarted && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-warning">
+              Not started — no model execution was started for this message.
+            </p>
+          )}
+          <div className="mt-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100 md:focus-within:opacity-100">
+            <span className="mr-1 font-mono text-[11px] text-muted-foreground">{msg.ts}</span>
+            <CopyMenu content={msg.content} />
+            {onEdit && (
+              <IconAction label="Edit and send again" onClick={() => onEdit(msg.content)}>
+                <Pencil />
+              </IconAction>
+            )}
+            {onCompare && (
+              <IconAction label="Compare with the base model" onClick={() => onCompare(msg.content)}>
+                <GitCompareArrows />
+              </IconAction>
+            )}
+            {onRewind && msg.checkpoint && (
+              <IconAction label="Rewind code to before this message" onClick={() => onRewind(msg.checkpoint!)}>
+                <History />
+              </IconAction>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  // Assistant message — full-width like ChatGPT/Claude
+  // Assistant message — full width, no bubble.
   return (
     <div className="chat-message-row group/msg">
       <div className="chat-message-container">
-        <div className="flex gap-3.5">
-          {/* Avatar */}
-          <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm">
-            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
-              <path d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6z" />
-            </svg>
-          </div>
-
-          {/* Body */}
-          <div className="min-w-0 flex-1 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[13px] font-semibold text-gray-900 dark:text-gray-100">
-                {msg.agent || selectedAgent?.name || "MIZAN"}
+        <div className="flex gap-3">
+          <MizanMark className="mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex h-7 items-center gap-2">
+              <span className="text-sm font-medium text-foreground">
+                {resolveAgentName(msg.agent, agents, agentName)}
               </span>
-              {msg.model && (
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400">
-                  {msg.model}
-                </span>
-              )}
             </div>
-
-            {/* Content */}
-            <div className="prose">
-              <ChatMessageContent content={msg.content} />
-            </div>
-
-            {/* Cognitive bar */}
-            {msg.cognitive && <CognitiveBar cognitive={msg.cognitive} />}
-
-            {/* Perception card */}
+            <RunTimeline activity={msg.activity} trace={trace} />
+            {msg.content.trim() && (
+              <ChatMessageContent content={msg.content} onExploreWord={onExploreWord} />
+            )}
+            {msg.error && (
+              <p role="alert" className="mt-2 break-words rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-sm text-destructive">
+                {msg.error.message}
+              </p>
+            )}
             {msg.perception && <PerceptionCard perception={msg.perception} />}
-
-            {/* Action buttons — hover reveal */}
-            <div className="flex items-center gap-1 mt-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
-              <button
-                onClick={handleCopy}
-                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                title="Copy"
-              >
-                {copied ? (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-green-500">
-                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
-                    <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
-                  </svg>
-                )}
-              </button>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">
-                {msg.ts}
-              </span>
+            {/* Pictures MIZAN made for this answer (Shahid's screenshot) */}
+            <ChatImages images={msg.images} align="start" />
+            {msg.stopped && (
+              <p role="status" className="mt-2 text-xs text-muted-foreground">
+                Stopped · {msg.content.length ? "received text kept" : "no answer received"}
+              </p>
+            )}
+            {msg.interrupted && (
+              <p role="status" className="mt-2 text-xs text-muted-foreground">
+                Interrupted · {msg.content.trim() ? "partial response saved" : "no answer received"}
+              </p>
+            )}
+            {msg.held && <HeldActions items={msg.held} />}
+            <SourcesAndChecks meta={msg.meta} cognitive={msg.cognitive} debug={debug} />
+            {cta && (
+              <Button className="mt-2" onClick={() => onNavigateTab?.(cta.tab)}>
+                {cta.label}
+              </Button>
+            )}
+            <div className="mt-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100 md:focus-within:opacity-100">
+              {msg.content.trim() && <CopyMenu content={msg.content} />}
+              <ReadAloud content={msg.content} />
+              {onRetry && (
+                <IconAction label="Ask again" onClick={onRetry}>
+                  <RotateCcw />
+                </IconAction>
+              )}
+              <span className="ml-1 font-mono text-[11px] text-muted-foreground">{msg.ts}</span>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
+});

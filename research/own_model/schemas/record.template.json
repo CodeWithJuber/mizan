@@ -1,0 +1,45 @@
+{
+  "schema_version": "mizan.reply.v1",
+  "id": "__REPLACE_RECORD_ID__",
+  "split": "__REPLACE_train_dev_or_test__",
+  "group_id": "__REPLACE_CONVERSATION_OR_PASSAGE_FAMILY__",
+  "language": "__REPLACE_BCP47_TAG__",
+  "task": "__REPLACE_TASK__",
+  "messages": [
+    {
+      "role": "user",
+      "content": "__REPLACE_ORIGINAL_USER_WORDS__"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "__REPLACE_EVIDENCE_ID__",
+      "source_id": "__REPLACE_SOURCE_ID__",
+      "locator": "__REPLACE_EXACT_SOURCE_LOCATOR__",
+      "text": "__REPLACE_EXACT_SOURCE_TEXT__",
+      "sha256": "__REPLACE_SHA256_OF_EXACT_TEXT_UTF8__"
+    }
+  ],
+  "target": {
+    "text": "__REPLACE_HUMAN_AUTHORED_RESPONSE_WITH_VISIBLE_REFERENCES_WHERE_NEEDED__",
+    "citations": [
+      "__REPLACE_EVIDENCE_ID__"
+    ],
+    "answer_status": "__REPLACE_answer_clarify_or_abstain__"
+  },
+  "provenance": {
+    "origin": "__REPLACE_human_original_or_source_transcription__",
+    "source_ids": [
+      "__REPLACE_SOURCE_ID__"
+    ],
+    "rights": "__REPLACE_ACTUAL_LICENSE_OR_PERMISSION__",
+    "author_ids": [
+      "__REPLACE_AUTHOR_ID__"
+    ],
+    "reviewer_ids": [],
+    "review_status": "pending",
+    "creation_method": "__REPLACE_human_manual_transcription_or_automated_transcription__",
+    "lineage": []
+  },
+  "roots": []
+}

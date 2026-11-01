@@ -151,7 +151,12 @@ class TestBaseAgentAttributes:
         for tool in expected_tools:
             assert tool in agent.tools, f"Missing tool: {tool}"
 
-    def test_tool_schemas_valid(self, mock_wali, mock_izn):
+    def test_tool_schemas_valid(self, mock_wali, mock_izn, monkeypatch):
+        # Exercise tool schemas with a capable provider, independent of .env defaults.
+        monkeypatch.setattr(
+            "agents.base.create_provider",
+            lambda **kwargs: MagicMock(provider_name="test", supports_tools=True),
+        )
         agent = make_agent("general", wali=mock_wali, izn=mock_izn)
         schemas = agent.get_tool_schemas()
         assert len(schemas) >= 6
@@ -215,10 +220,11 @@ class TestNafsEvolution:
         assert agent.nafs_level == 3
 
     def test_evolve_to_mutmainna(self, mock_wali, mock_izn):
-        """Level 4: Tranquil soul — requires >= 85%, >= 250 tasks."""
+        """Level 4: Tranquil soul — requires >= 85%, >= 250 tasks, >= 50 hikmah."""
         agent = make_agent("general", wali=mock_wali, izn=mock_izn)
         agent.total_tasks = 250
         agent.success_count = 220
+        agent.hikmah = [{"pattern": f"p{i}", "outcome": "ok"} for i in range(50)]
         agent.evolve_nafs()
         assert agent.nafs_level == 4
 
@@ -453,9 +459,7 @@ class TestAgentFederation:
         fed.register_agent("manager", "Manager", "general", ["management"])
         fed.register_agent("coder", "Coder", "katib", ["coding", "testing"])
 
-        result = asyncio.get_event_loop().run_until_complete(
-            fed.delegate_task("manager", "Write unit tests", ["coding"])
-        )
+        result = asyncio.run(fed.delegate_task("manager", "Write unit tests", ["coding"]))
         assert result is not None
         assert "delegated_to" in result
         assert result["delegated_to"] == "coder"
@@ -480,7 +484,7 @@ class TestAgentFederation:
             recipient_id="receiver",
             payload={"status": "ok"},
         )
-        asyncio.get_event_loop().run_until_complete(fed.send_message(msg))
+        asyncio.run(fed.send_message(msg))
         assert len(received) == 1
         assert received[0].sender_id == "sender"
 

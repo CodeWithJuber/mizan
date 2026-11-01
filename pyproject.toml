@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.32.4,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mizan"
-version = "3.0.0"
+name = "pymizan"
+version = "3.3.0"
 description = "Agentic Personal AI - Quranic Cognitive Architecture for human-like reasoning"
 readme = "README.md"
 license = "Apache-2.0"
@@ -25,67 +25,97 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    "websockets>=12.0",
-    "pydantic>=2.9.0",
-    "pydantic-settings>=2.5.0",
-    "anthropic>=0.34.0",
-    "openai>=1.40.0",
-    "httpx>=0.27.0",
-    "python-multipart>=0.0.12",
-    "aiofiles>=24.1.0",
-    "aiosqlite>=0.20.0",
-    "python-dotenv>=1.0.0",
-    "PyJWT>=2.9.0",
-    "passlib[bcrypt]>=1.7.4",
-    "cryptography>=43.0.0",
-    "croniter>=2.0.7",
-    "click>=8.1.0",
-    "rich>=13.7.0",
+    "fastapi>=0.162.0,<0.163",
+    "uvicorn[standard]>=0.54.0,<0.55",
+    "websockets>=17.3,<18",
+    "pydantic>=2.14.1,<3",
+    "pydantic-settings>=2.16.1,<3",
+    "anthropic>=2.3.0,<3",
+    "openai>=3.38.0,<4",
+    "httpx>=0.28.1,<0.29",
+    "python-multipart>=0.0.32,<0.1",
+    "aiofiles>=25.1.0,<26",
+    "aiosqlite>=0.22.1,<0.23",
+    "python-dotenv>=1.2.4,<2",
+    "PyJWT>=2.15.1,<3",
+    "bcrypt>=5.0.0,<6",
+    "cryptography>=50.0.2,<51",
+    "croniter>=6.2.4,<7",
+    "click>=8.5.0,<9",
+    "rich>=15.0.0,<16",
+    "Pillow>=13.0.0,<14",
+    "pyyaml>=6.0.3,<7",
+    "mcp>=2.3.0,<3",
+    "hijridate>=2.6.0,<3",
+    "adhanpy>=1.0.5,<2",
+    "tzdata>=2026.5",
+    "jsonschema>=4.26.0,<5",
+    "pywebpush>=2.5.0,<3",
+    "rfc8785>=0.1.4,<0.2",
+    "phonenumbers>=9.0.42,<10",
+    "fsrs>=6.3.0,<7",
 ]
 
 [project.optional-dependencies]
+knowledge = [
+    "pymupdf>=2.0,<3",
+    "youtube-transcript-api>=1.2.4,<2",
+]
 all = [
-    "chromadb>=0.5.0",
-    "python-telegram-bot>=21.5",
-    "discord.py>=2.3.2",
-    "slack-bolt>=1.20.0",
-    "elevenlabs>=1.5.0",
+    "chromadb>=1.5.9,<2",
+    "python-telegram-bot>=22.8,<23",
+    "discord.py>=2.7.1,<3",
+    "slack-bolt>=1.30.0,<2",
+    "elevenlabs>=2.74.1,<3",
 ]
 channels = [
-    "python-telegram-bot>=21.5",
-    "discord.py>=2.3.2",
-    "slack-bolt>=1.20.0",
+    "python-telegram-bot>=22.8,<23",
+    "discord.py>=2.7.1,<3",
+    "slack-bolt>=1.30.0,<2",
 ]
 vector = [
-    "chromadb>=0.5.0",
+    "chromadb>=1.5.9,<2",
 ]
 voice = [
-    "elevenlabs>=1.5.0",
+    "elevenlabs>=2.74.1,<3",
+]
+voice-local = [
+    # Speech to text on this server (Sama'): Whisper on CTranslate2, MIT.
+    "faster-whisper>=1.2.1,<2",
 ]
 ml = [
-    "torch>=2.1.0",
-    "numpy>=1.26.0",
-    "tqdm>=4.66.0",
-    "safetensors>=0.4.0",
-    "epitran>=1.25.0",
-    "panphon>=0.20.0",
-    "datasets>=2.16.0",
-    "huggingface-hub>=0.20.0",
+    "torch>=2.14.1,<2.15",
+    "numpy>=2.4.6,<2.5; python_version < '3.12'",
+    "numpy>=2.5.3,<3; python_version >= '3.12'",
+    "tqdm>=4.70.1",
+    "safetensors>=0.8.0",
+    "epitran>=1.35.3",
+    "panphon>=0.22.2",
+    "datasets>=5.1.0,<6",
+    "pyyaml>=6.0.3,<7",
+    "huggingface-hub>=2.3.0,<3",
+]
+nlp = [
+    # Native inference deps for mizan.nlp (nlp/) — CPU-friendly WSD.
+    # Phase 1: sklearn per-lemma classifiers (joblib artifact). Install with: pip install "pymizan[nlp]"
+    "scikit-learn>=1.9.1,<1.10",
+    "joblib>=1.6.0,<2",
+    "numpy>=2.4.6,<2.5; python_version < '3.12'",
+    "numpy>=2.5.3,<3; python_version >= '3.12'",
 ]
 dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.6.0",
-    "pre-commit>=3.8.0",
-    "mypy>=1.11.0",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.1,<2",
+    "pytest-cov>=7.1.0,<8",
+    "ruff>=0.17.2,<0.18",
+    "pre-commit>=4.7.0,<5",
+    "mypy>=2.4.0,<3",
 ]
 
 [project.urls]
@@ -98,12 +128,33 @@ Issues = "https://github.com/CodeWithJuber/mizan/issues"
 mizan = "backend.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend"]
+packages = ["backend", "nlp", "ruh_model", "mizan_reply", "mizan_research"]
+exclude = [
+    "ruh_model/checkpoints/**",
+    "ruh_model/tests/**",
+    "ruh_model/data/training/**",
+    "ruh_model/data/processed/**",
+    "ruh_model/data/downloads/**",
+    "**/*.pt",
+    "**/*.safetensors",
+    "**/*.ckpt",
+    "ruh_model/data/**/*.jsonl",
+    "**/*.parquet",
+    "**/*.arrow",
+    "**/*.db",
+    "**/*.sqlite*",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"research/registry/runtime_sources.json" = "research/registry/runtime_sources.json"
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
 src = ["backend"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nlp"]
 
 [tool.ruff.lint]
 select = [
@@ -139,7 +190,8 @@ asyncio_mode = "auto"
 addopts = "-v --tb=short"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
+explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

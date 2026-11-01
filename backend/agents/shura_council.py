@@ -24,7 +24,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 logger = logging.getLogger("mizan.shura")
 
@@ -40,6 +39,7 @@ class ProposalStatus(Enum):
 @dataclass
 class AgentProposal:
     """A single agent's proposal in a Shūrā meeting."""
+
     agent_id: str
     agent_name: str
     expertise_domain: str
@@ -55,26 +55,29 @@ class AgentProposal:
 @dataclass
 class Challenge:
     """A challenge from one agent to another's proposal."""
+
     challenger_id: str
     target_proposal_agent: str
     critique: str
-    severity: float     # 0.0 - 1.0
+    severity: float  # 0.0 - 1.0
     valid: bool = True
 
 
 @dataclass
 class Rebuttal:
     """A defense against a challenge."""
+
     defender_id: str
     challenge_critique: str
     defense: str
-    strength: float    # 0.0 - 1.0
+    strength: float  # 0.0 - 1.0
     valid: bool = True
 
 
 @dataclass
 class DissentRecord:
     """Records disagreement for future reference."""
+
     agent_id: str
     agent_name: str
     alternative_proposal: str
@@ -85,10 +88,11 @@ class DissentRecord:
 @dataclass
 class MeetingResult:
     """Full result of a Shūrā council meeting."""
+
     meeting_id: str
     problem: str
     decision: str
-    decision_source: str    # "synthesis" or agent_name
+    decision_source: str  # "synthesis" or agent_name
     confidence: float
     proposals: list[AgentProposal]
     dissent_records: list[DissentRecord]
@@ -99,6 +103,7 @@ class MeetingResult:
 @dataclass
 class KnowledgePackage:
     """Packaged knowledge for sharing between agents."""
+
     source_agent: str
     target_agent: str
     content: str
@@ -204,13 +209,14 @@ class ShuraCouncil:
 
         logger.info(
             "[SHURA] Meeting %s concluded: source=%s confidence=%.2f dissents=%d",
-            meeting_id, decision_source, confidence, len(dissent_records),
+            meeting_id,
+            decision_source,
+            confidence,
+            len(dissent_records),
         )
         return result
 
-    def _generate_proposal(
-        self, agent: dict, problem: str, context: dict | None
-    ) -> AgentProposal:
+    def _generate_proposal(self, agent: dict, problem: str, context: dict | None) -> AgentProposal:
         """
         Each agent independently analyzes the problem.
         In production, this calls the agent's LLM evaluate function.
@@ -230,9 +236,7 @@ class ShuraCouncil:
             f"using {expertise} principles"
         )
         reasoning = (
-            f"Based on {expertise} analysis: "
-            f"relevance={relevance:.2f}, "
-            f"confidence={confidence:.2f}"
+            f"Based on {expertise} analysis: relevance={relevance:.2f}, confidence={confidence:.2f}"
         )
         evidence = [f"{expertise}_analysis", f"domain_knowledge_{expertise}"]
 
@@ -258,9 +262,7 @@ class ShuraCouncil:
                     continue
 
                 # Generate challenge based on expertise difference
-                challenge = self._generate_challenge(
-                    challenger_source, proposal, problem
-                )
+                challenge = self._generate_challenge(challenger_source, proposal, problem)
                 if not challenge:
                     continue
 
@@ -301,9 +303,7 @@ class ShuraCouncil:
             valid=severity > 0.3,  # only valid if substantive
         )
 
-    def _generate_rebuttal(
-        self, defender: AgentProposal, challenge: Challenge
-    ) -> Rebuttal | None:
+    def _generate_rebuttal(self, defender: AgentProposal, challenge: Challenge) -> Rebuttal | None:
         """Defender responds to a challenge."""
         # Rebuttal strength proportional to evidence quality
         strength = min(0.8, 0.3 + 0.1 * len(defender.evidence))
@@ -321,9 +321,7 @@ class ShuraCouncil:
             valid=strength > 0.4,
         )
 
-    def _integrate(
-        self, proposals: list[AgentProposal], problem: str
-    ) -> tuple[str, str, float]:
+    def _integrate(self, proposals: list[AgentProposal], problem: str) -> tuple[str, str, float]:
         """
         Integration: NOT majority vote — weighted by expertise and evidence quality.
 
@@ -336,17 +334,12 @@ class ShuraCouncil:
 
         # Score each proposal
         for proposal in proposals:
-            expertise_weight = self._expertise_relevance(
-                proposal.expertise_domain, problem
-            )
+            expertise_weight = self._expertise_relevance(proposal.expertise_domain, problem)
             evidence_quality = min(1.0, 0.5 + 0.1 * len(proposal.evidence))
             weakness_penalty = min(0.5, 0.1 * len(proposal.weaknesses))
 
             proposal.score = (
-                expertise_weight
-                * proposal.confidence
-                * evidence_quality
-                * (1.0 - weakness_penalty)
+                expertise_weight * proposal.confidence * evidence_quality * (1.0 - weakness_penalty)
             )
 
         # Best individual proposal
@@ -373,9 +366,7 @@ class ShuraCouncil:
                 elements.append(f"[{proposal.expertise_domain}] {key_element}")
         return f"Synthesis for '{problem[:40]}': " + " + ".join(elements[:3])
 
-    def _share_knowledge(
-        self, proposals: list[AgentProposal], agents: list[dict]
-    ) -> int:
+    def _share_knowledge(self, proposals: list[AgentProposal], agents: list[dict]) -> int:
         """Post-meeting knowledge sharing: each agent learns from others."""
         shared = 0
         for proposal in proposals:
@@ -436,9 +427,7 @@ class ShuraCouncil:
         # Exponential moving average
         alpha = 0.2
         current = self.expertise_profiles[agent_id].get(domain, 0.5)
-        self.expertise_profiles[agent_id][domain] = (
-            alpha * score + (1 - alpha) * current
-        )
+        self.expertise_profiles[agent_id][domain] = alpha * score + (1 - alpha) * current
 
     def _expertise_relevance(self, expertise: str, problem: str) -> float:
         """How relevant is an expertise domain to the problem?"""

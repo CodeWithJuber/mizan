@@ -14,6 +14,43 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 
+@pytest.fixture(autouse=True)
+def isolated_provider_mode(monkeypatch):
+    """Legacy provider contracts run outside owned mode unless explicitly enabled.
+
+    Doctor tests can create/load .env from .env.example; deployment defaults
+    must not silently change unrelated tests later in the same process.
+    """
+    monkeypatch.setenv("MIZAN_OWNED_ONLY", "false")
+    monkeypatch.setenv("LLM_PROVIDER", "")
+    # No live catalog fetches from the app lifespan during tests.
+    monkeypatch.setenv("MIZAN_MODEL_LIMITS_REFRESH", "false")
+    monkeypatch.setenv("MIZAN_MEMORY_MAINTENANCE", "false")
+    # Legacy suites test the model-driven agent loop; tests/test_tadbir.py
+    # covers MIZAN's own orchestration (the production default).
+    monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
+    monkeypatch.setenv("MIZAN_LOCKED_EVAL", "off")  # tests never download the locked eval
+    monkeypatch.setenv("MIZAN_HADITH_INDEX", "off")  # nor the six books' text
+    monkeypatch.setenv("MIZAN_IQTIBAS", "off")  # nor read the Quran's texts for quotes
+    monkeypatch.setenv("MIZAN_TADQIQ", "off")  # nor ask a scripted model an audit's question
+    monkeypatch.setenv("MIZAN_TADRIB", "off")  # nor keep lessons for an own model to learn
+    monkeypatch.setenv("MIZAN_EPISODIC", "off")  # nor keep episodes of what people said
+
+
+@pytest.fixture
+def unplaced_wording(monkeypatch):
+    """Qasd reads every message as an action whose recipe finds nothing to build
+    in the words (a page to read, but no link), so P(converse) < ½ and MIZAN
+    asks Lisan to map the wording. Tests of that path use it, whatever Qasd
+    would make of their particular sentence."""
+    from tadbir import qasd
+
+    def posterior(message, project=False, overlay=None, earlier=()):
+        return {"web_read": 0.7, "converse": 0.3}
+
+    monkeypatch.setattr(qasd, "posterior", posterior)
+
+
 @pytest.fixture
 def temp_db():
     """Provide a temporary database file for tests."""

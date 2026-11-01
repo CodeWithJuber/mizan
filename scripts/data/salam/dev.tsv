@@ -1,0 +1,124 @@
+# Held out to measure the salam recipe (scripts/salam_eval.py, docs/fahm.md "Salam (4:86)"); never a seed.
+# Dev split: used to choose the seeds, may be read many times.
+# Written by MIZAN's coding assistant (a language model) on 1 Nov 2026, before any salam seed was
+# written and before any result, as for the deen and sarf facets. Greetings and requests only,
+# no Quran text. CC0.
+# label<TAB>kind<TAB>text
+#   label: salam = the message is a salam and nothing else (an address such as "bhai" or "sir" may follow)
+#          no    = anything else; MIZAN must not answer it with the salam alone
+#   kind:  only | address | full (with wa rahmatullah...) | with_request | returned | other_greeting | about_salam
+salam	only	Assalamualaikum
+salam	only	Assalam o alaikum
+salam	only	Assalamu alaikum
+salam	only	Asalamualaikum
+salam	only	Aslamualaikum
+salam	only	Aslam o alaikum
+salam	only	Salam alaikum
+salam	only	Salaam alaikum
+salam	only	AoA
+salam	only	A.o.A
+salam	only	As-salamu alaykum
+salam	only	Assalamu'alaikum
+salam	only	assalamualaikum!
+salam	only	Asslamualaikum
+salam	only	Salam o alaikum
+salam	only	Salamualaikum
+salam	only	Salaam
+salam	address	AOA bhai
+salam	address	Assalamualaikum bhai
+salam	address	Assalamualaikum sir
+salam	address	Assalamualaikum dosto
+salam	address	Assalamu alaikum everyone
+salam	address	Assalamualaikum Mizan
+salam	address	Assalamualaikum ji
+salam	address	Salam bhai
+salam	address	Assalamualaikum brother
+salam	full	Assalamualaikum wa rahmatullah
+salam	full	Assalamualaikum warahmatullahi wabarakatuh
+salam	full	Assalamu alaikum wa rahmatullahi wa barakatuh
+salam	only	Peace be upon you
+salam	address	Peace be upon you all
+salam	only	السلام علیکم
+salam	only	السلام عليكم
+salam	only	اسلام علیکم
+salam	only	سلام علیکم
+salam	full	السلام علیکم ورحمۃ اللہ
+salam	full	السلام عليكم ورحمة الله وبركاته
+salam	full	السلام علیکم و رحمۃ اللہ و برکاتہ
+salam	address	السلام علیکم بھائی
+salam	address	السلام عليكم يا أخي
+salam	address	السلام علیکم سر
+salam	address	السلام عليكم جميعا
+salam	address	السلام علیکم دوستو
+salam	only	अस्सलामु अलैकुम
+salam	only	अस्सलाम अलैकुम
+salam	only	अस्सलामुअलैकुम
+salam	only	सलाम अलैकुम
+salam	only	अस्सलाम वालेकुम
+salam	address	अस्सलामु अलैकुम भाई
+salam	full	अस्सलामु अलैकुम व रहमतुल्लाह
+salam	address	अस्सलामु अलैकुम सर
+no	with_request	Assalamualaikum, kaise ho?
+no	with_request	Assalamualaikum bhai, kya haal hai?
+no	with_request	AoA, aaj ka mausam kaisa hai?
+no	with_request	Assalamualaikum, mujhe zakat ke baare mein batao
+no	with_request	Assalamu alaikum, can you help me with my homework?
+no	with_request	Salam, what is the capital of France?
+no	with_request	AoA sir, ek email likhne mein madad karo
+no	with_request	Assalamualaikum, Surah Ikhlas sunao
+no	with_request	Assalamualaikum, 25 times 48 kitna hota hai?
+no	with_request	Assalamualaikum, aaj ki Hijri date kya hai?
+no	with_request	Assalamualaikum, Bukhari ki pehli hadith dikhao
+no	with_request	Assalamu alaikum, how are you doing today?
+no	with_request	Assalamualaikum, maghrib ka waqt kab hai?
+no	with_request	Assalamualaikum, ek python program likho jo primes print kare
+no	with_request	Assalamu alaikum, I need some advice about my job
+no	with_request	Assalamualaikum, yaad rakhna mera birthday 5 March hai
+no	with_request	AOA, tum kaun ho?
+no	with_request	Assalamualaikum, kuch acha sunao
+no	with_request	Salam alaikum, please explain how photosynthesis works
+no	with_request	السلام علیکم، آج موسم کیسا ہے؟
+no	with_request	السلام عليكم، كيف حالك اليوم؟
+no	with_request	السلام علیکم، نماز کا وقت بتائیں
+no	with_request	السلام عليكم، ما هي عاصمة فرنسا؟
+no	with_request	السلام علیکم، مجھے ایک خط لکھنے میں مدد کریں
+no	with_request	السلام عليكم، اقرأ سورة الإخلاص
+no	with_request	السلام علیکم بھائی، کیا حال ہے؟
+no	with_request	السلام عليكم، أريد مساعدة في واجبي
+no	with_request	अस्सलामु अलैकुम, आप कैसे हैं?
+no	with_request	अस्सलामु अलैकुम, आज मौसम कैसा है?
+no	with_request	अस्सलाम अलैकुम, मुझे ज़कात के बारे में बताइए
+no	with_request	अस्सलामु अलैकुम भाई, क्या हाल है?
+no	with_request	अस्सलामु अलैकुम, सूरह इख़लास सुनाइए
+no	returned	Walaikum assalam
+no	returned	Wa alaikum assalam bhai
+no	returned	Walaikum salam
+no	returned	W.salam
+no	returned	وعلیکم السلام
+no	returned	وعليكم السلام ورحمة الله
+no	returned	वालेकुम अस्सलाम
+no	other_greeting	Hello
+no	other_greeting	Hi
+no	other_greeting	Hey there
+no	other_greeting	Good morning
+no	other_greeting	Good evening, how are you?
+no	other_greeting	Namaste
+no	other_greeting	नमस्ते
+no	other_greeting	Kaise ho?
+no	other_greeting	Kya haal hai?
+no	other_greeting	مرحبا
+no	other_greeting	صبح بخیر
+no	other_greeting	Adaab
+no	other_greeting	Sat sri akal
+no	other_greeting	Hello Mizan
+no	other_greeting	hii
+no	other_greeting	JazakAllah khair
+no	other_greeting	Shukriya bhai
+no	about_salam	Salamun alaikum kis surah mein aata hai?
+no	about_salam	Assalamu alaikum ka matlab kya hai?
+no	about_salam	Salam ka jawab kaise dete hain?
+no	about_salam	Assalamualaikum likhne ka sahi tareeqa kya hai?
+no	about_salam	Salam karne ki fazilat batao
+no	about_salam	What does Assalamu alaikum mean?
+no	about_salam	السلام علیکم کا مطلب کیا ہے؟
+no	about_salam	सलाम का जवाब कैसे देते हैं?

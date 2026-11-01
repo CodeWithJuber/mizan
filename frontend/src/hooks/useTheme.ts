@@ -1,68 +1,59 @@
 /**
- * Theme Hook for MIZAN
- * Supports light, dark, and system (auto-detect) modes.
- * Persists choice in localStorage.
+ * Theme for MIZAN: light, dark, or system (follows the device).
+ * One shared store, so every component — editor, preview, toasts — changes
+ * together when the person switches theme. Saved in localStorage.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useSyncExternalStore } from "react";
 
 export type ThemeMode = "light" | "dark" | "system";
 
-export function useTheme() {
-  const [theme, setThemeState] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem("mizan_theme");
+const KEY = "mizan_theme";
+// Missing in some embedded browsers and in jsdom: then the device counts as light.
+const media = (): MediaQueryList | undefined => window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function readMode(): ThemeMode {
+  try {
+    const stored = localStorage.getItem(KEY);
     if (stored === "light" || stored === "dark" || stored === "system") return stored;
-    return "system";
-  });
+  } catch {
+    // Storage blocked: follow the device.
+  }
+  return "system";
+}
 
-  const [isDark, setIsDark] = useState(() => {
-    const stored = localStorage.getItem("mizan_theme");
-    if (stored === "dark") return true;
-    if (stored === "light") return false;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
+let mode: ThemeMode = readMode();
+let dark = mode === "dark" || (mode === "system" && Boolean(media()?.matches));
+const listeners = new Set<() => void>();
 
-  const applyTheme = useCallback((mode: ThemeMode) => {
-    let dark: boolean;
-    if (mode === "system") {
-      dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } else {
-      dark = mode === "dark";
-    }
-    setIsDark(dark);
-    if (dark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, []);
+function apply() {
+  dark = mode === "dark" || (mode === "system" && Boolean(media()?.matches));
+  document.documentElement.classList.toggle("dark", dark);
+  listeners.forEach((listener) => listener());
+}
 
-  const setTheme = useCallback((mode: ThemeMode) => {
-    setThemeState(mode);
-    localStorage.setItem("mizan_theme", mode);
-    applyTheme(mode);
-  }, [applyTheme]);
+media()?.addEventListener("change", () => {
+  if (mode === "system") apply();
+});
+apply();
 
-  // Apply on mount
-  useEffect(() => {
-    applyTheme(theme);
-  }, []);
+export function setThemeMode(next: ThemeMode) {
+  mode = next;
+  try {
+    localStorage.setItem(KEY, next);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  apply();
+}
 
-  // Listen for system preference changes
-  useEffect(() => {
-    if (theme !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => {
-      setIsDark(e.matches);
-      if (e.matches) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [theme]);
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
-  return { theme, setTheme, isDark };
+export function useTheme() {
+  const theme = useSyncExternalStore(subscribe, () => mode);
+  const isDark = useSyncExternalStore(subscribe, () => dark);
+  return { theme, setTheme: setThemeMode, isDark };
 }

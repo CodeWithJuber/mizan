@@ -1,0 +1,131 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main, master]
+    types: [completed]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/deploy.yml
+      - scripts/deploy_production.sh
+      - scripts/setup_workspace_runner.py
+      - deploy/known_hosts
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: mizan-production
+  cancel-in-progress: false
+
+jobs:
+  connection-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the production SSH handshake without credentials
+        env:
+          SSH_HOST: ${{ vars.SSH_COMPUTING_HOST || '203.0.113.20' }}
+        run: |
+          set -euo pipefail
+          keys=$(ssh-keyscan -T 15 -t ed25519 "$SSH_HOST")
+          test -n "$keys"
+          while IFS= read -r key; do
+            echo "::notice title=Production SSH host key::$key"
+          done <<< "$keys"
+
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-24.04
+    # Workflow ceiling: deploy lock 10, site deploy ~6, runner upgrade 15 and its
+    # restore 10 minutes. Docker/registry RPCs can still fail.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Check deployment credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+        run: |
+          for name in SSH_HOST SSH_USER SSHPASS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub deployment setting: $name (see docs/deployment.md)"
+              exit 1
+            fi
+          done
+          test -s deploy/known_hosts || { echo '::error::Production SSH host key is not pinned'; exit 1; }
+      - name: Install SSH password client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Deploy the tested images
+        id: production
+        env:
+          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
+          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
+          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" --jq .sha)
+          if [ "$current" != "$DEPLOY_SHA" ]; then
+            echo "A newer commit is on $DEPLOY_BRANCH; its CI run will deploy it."
+            exit 0
+          fi
+          # Keepalives: image pulls in the runner upgrade can be silent for minutes.
+          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
+          # A private, unguessable directory for this release's scripts, removed afterwards.
+          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077 && mkdir -p /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/release.XXXXXXXX')
+          if [[ ! "$remote_dir" =~ ^/var/lib/mizan-deploy/release\.[A-Za-z0-9]{8}$ ]]; then
+            echo '::error::Unexpected remote release directory'
+            exit 1
+          fi
+          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true' EXIT
+          sshpass -e scp "${ssh_options[@]}" scripts/deploy_production.sh scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
+          # The runner's images are rebuilt on every commit; pull them only when what
+          # they are built from changed (docs/runner-setup.md, upgrades during deployment).
+          runner_inputs=$(git ls-files -s -- backend/workspace docker/Dockerfile.workspace-runtime \
+            docker/Dockerfile.workspace-runner docker/Dockerfile.workspace-browser \
+            docker/workspace-runtime-requirements.txt scripts/build_workspace_image.sh \
+            scripts/setup_workspace_runner.py | sha256sum | cut -d ' ' -f 1)
+          status=0
+          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            "bash '$remote_dir/deploy_production.sh' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}' '$remote_dir/setup_workspace_runner.py' '$runner_inputs'" || status=$?
+          case $status in
+            0) ;;
+            75)
+              echo '::error title=Workspace runner not upgraded::The site is deployed; the previous runner was kept and verified. See docs/runbook.md.'
+              echo 'runner=kept' >> "$GITHUB_OUTPUT" ;;
+            76)
+              echo '::error title=Workspace runner needs attention::The site is deployed; the runner could not be verified. See docs/runbook.md.'
+              echo 'runner=unverified' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+          printf '%s\n' "$DEPLOY_SHA" > deployed-sha.txt
+          echo 'deployed=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: steps.production.outputs.deployed == 'true'
+        with:
+          name: production-deployment
+          path: deployed-sha.txt
+          retention-days: 30
+      - name: Workspace runner
+        if: steps.production.outputs.runner != ''
+        env:
+          RUNNER: ${{ steps.production.outputs.runner }}
+        run: |
+          echo "::error::The site is live, but the workspace runner was not upgraded (runner=$RUNNER). See docs/runbook.md."
+          exit 1

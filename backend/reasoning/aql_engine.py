@@ -31,6 +31,7 @@ def _lazy_causal_engine():
     """Lazy-load CausalEngine to avoid circular imports."""
     try:
         from reasoning.causal_engine import CausalEngine
+
         return CausalEngine()
     except ImportError:
         return None
@@ -40,6 +41,7 @@ def _lazy_fuad_engine():
     """Lazy-load FuadEngine to avoid circular imports."""
     try:
         from core.fuad import FuadEngine
+
         return FuadEngine()
     except ImportError:
         return None
@@ -85,6 +87,7 @@ class AqlEngine:
         if self._qca is None:
             try:
                 from qca.engine import QCAEngine
+
                 self._qca = QCAEngine()
             except ImportError:
                 self._qca = None
@@ -108,8 +111,8 @@ class AqlEngine:
         self,
         task: str,
         agent,
-        context: dict = None,
-        stream_callback: Callable = None,
+        context: dict | None = None,
+        stream_callback: Callable | None = None,
     ) -> AsyncGenerator[ReasoningStep, None]:
         """
         Full reasoning loop with Claude tool_use API.
@@ -244,8 +247,8 @@ class AqlEngine:
         self,
         task: str,
         agent,
-        context: dict = None,
-        stream_callback: Callable = None,
+        context: dict | None = None,
+        stream_callback: Callable | None = None,
     ) -> dict:
         """
         Run reasoning loop to completion and return full result.
@@ -351,7 +354,7 @@ class AqlEngine:
 
         return result
 
-    def _build_initial_messages(self, task: str, context: dict = None) -> list[dict]:
+    def _build_initial_messages(self, task: str, context: dict | None = None) -> list[dict]:
         """Build initial message list"""
         messages = []
 

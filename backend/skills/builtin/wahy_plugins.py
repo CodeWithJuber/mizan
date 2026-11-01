@@ -41,7 +41,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from ..base import SkillBase, SkillManifest
 
@@ -205,7 +205,7 @@ class WahyIsolation:
     - Error isolation — plugin failures do not crash the host system
     """
 
-    def __init__(self, plugin_name: str, plugin_dir: str, permissions: list[str] = None):
+    def __init__(self, plugin_name: str, plugin_dir: str, permissions: list[str] | None = None):
         self.plugin_name = plugin_name
         self.plugin_dir = os.path.realpath(plugin_dir)
         self.permissions = set(permissions or [])
@@ -375,7 +375,7 @@ class OpenClawBridge:
         self._audit_log: list[dict] = []
         self._conversion_stats = {"total": 0, "converted": 0, "rejected": 0}
 
-    def _audit(self, action: str, details: dict = None) -> None:
+    def _audit(self, action: str, details: dict | None = None) -> None:
         self._audit_log.append(
             {
                 "action": action,
@@ -666,7 +666,7 @@ class WahyPluginSkill(SkillBase):
         tags=["وحي", "Plugins", "OpenClaw"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self.plugins_dir = (config or {}).get("plugins_dir", PLUGINS_DIR)
         os.makedirs(self.plugins_dir, exist_ok=True)
@@ -702,11 +702,11 @@ class WahyPluginSkill(SkillBase):
     # Execute — single entry-point dispatcher
     # ==================================================================
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"wahy_{action}")
         if handler:
-            return await handler(params, context or {})
+            return cast(dict, await handler(params, context or {}))
         return {
             "error": f"Unknown Wahy action: '{action}'",
             "available": list(a.replace("wahy_", "") for a in self._tools),
@@ -801,7 +801,7 @@ class WahyPluginSkill(SkillBase):
             f"INTEGRITY FAILURE: expected {manifest.checksum[:16]}... but got {file_hash[:16]}..."
         )
 
-    def _check_permissions(self, plugin_name: str, context: dict = None) -> tuple[bool, str]:
+    def _check_permissions(self, plugin_name: str, context: dict | None = None) -> tuple[bool, str]:
         """
         Validate that the plugin's required permissions are satisfiable
         within the current Izn policy.
@@ -970,7 +970,7 @@ class WahyPluginSkill(SkillBase):
         logger.info(f"[WAHY] Deactivated plugin '{plugin_name}'")
         return True, "Plugin deactivated"
 
-    def _hot_reload(self, plugin_name: str, context: dict = None) -> tuple[bool, str]:
+    def _hot_reload(self, plugin_name: str, context: dict | None = None) -> tuple[bool, str]:
         """
         Hot-reload: deactivate, re-verify, re-load, re-activate.
         Thread-safe via _reload_lock.

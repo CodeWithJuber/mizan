@@ -2,6 +2,7 @@
 Tests for the API endpoints
 """
 
+import builtins
 from unittest.mock import patch
 
 import pytest
@@ -25,6 +26,16 @@ def client():
         return TestClient(app, raise_server_exceptions=False)
 
 
+@pytest.fixture
+def auth_headers(client):
+    """Create an admin user and return Bearer auth headers."""
+    from api.main import auth
+
+    user = auth.create_user("testadmin", "testpass", roles=["admin"])
+    token = auth.create_token(user)
+    return {"Authorization": f"Bearer {token}"}
+
+
 class TestRootEndpoint:
     def test_root(self, client):
         resp = client.get("/")
@@ -35,9 +46,50 @@ class TestRootEndpoint:
         assert data["status"] == "active"
 
 
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/api/v1/root-analyze", "analysis"),
+        ("/api/v1/tokenize", "tokens"),
+        ("/api/v1/q28-features", "features"),
+    ],
+)
+def test_public_nlp_routes_use_installed_package(client, monkeypatch, path, field):
+    # Production contains ruh_model, without a standalone tokenizer package.
+    # Other model tests may have exposed its directory on sys.path, so reject
+    # that development-only import explicitly to reproduce the deployed layout.
+    original_import = builtins.__import__
+
+    def installed_import(name, *args, **kwargs):
+        if name.startswith("tokenizer.") or name == "torch" or name.startswith("torch."):
+            raise ModuleNotFoundError("No standalone tokenizer package or optional Torch runtime")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", installed_import)
+    from tadbir import sarf
+
+    async def small_corpus():  # the analyzer's corpus, without a download
+        return sarf.build("1:1:1:1\tعِلْمٌ\tN\tROOT:علم|LEM:عِلْم|M|NOM\n", ["knowledge"])
+
+    monkeypatch.setattr(sarf, "corpus", small_corpus)
+    response = client.post(path, json={"text": "علم", "lang": "ar"})
+    assert response.status_code == 200, response.text
+    assert response.json()[field]
+
+
+def test_versioned_features_work_through_production_api_prefix(client, auth_headers):
+    body = {"texts": ["علم"], "dims": 8}
+    assert client.post("/api/v1/embed", json=body).status_code == 401
+    response = client.post("/api/v1/embed", json=body, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["vectors"][0]["dims"] == 8
+    assert response.json()["note"] == "beta/unverified"
+    assert client.post("/v1/embed", json=body, headers=auth_headers).json() == response.json()
+
+
 class TestAgentEndpoints:
-    def test_list_agents(self, client):
-        resp = client.get("/api/agents")
+    def test_list_agents(self, client, auth_headers):
+        resp = client.get("/api/agents", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "agents" in data
@@ -45,7 +97,7 @@ class TestAgentEndpoints:
 
 
 class TestMemoryEndpoints:
-    def test_store_memory(self, client):
+    def test_store_memory(self, client, auth_headers):
         resp = client.post(
             "/api/memory/store",
             json={
@@ -53,27 +105,53 @@ class TestMemoryEndpoints:
                 "memory_type": "semantic",
                 "importance": 0.7,
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.json()["stored"] is True
 
-    def test_query_memory(self, client):
+    def test_query_memory(self, client, auth_headers):
         resp = client.post(
             "/api/memory/query",
             json={
                 "query": "test",
                 "limit": 5,
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert "results" in resp.json()
 
 
+class TestAuthEnforcement:
+    """Anonymous/invalid credentials must fail on state-changing routes."""
+
+    def test_anonymous_store_memory_denied(self, client):
+        resp = client.post("/api/memory/store", json={"content": "x"})
+        assert resp.status_code == 401
+
+    def test_anonymous_query_memory_denied(self, client):
+        resp = client.post("/api/memory/query", json={"query": "x"})
+        assert resp.status_code == 401
+
+    def test_invalid_token_denied(self, client):
+        resp = client.post(
+            "/api/memory/store",
+            json={"content": "x"},
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+        assert resp.status_code == 401
+
+
 class TestSystemEndpoints:
-    def test_status(self, client):
-        resp = client.get("/api/status")
+    def test_status(self, client, auth_headers):
+        resp = client.get("/api/status", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["system"] == "MIZAN"
         assert "agents" in data
         assert "security" in data
+
+    def test_status_anonymous_denied(self, client):
+        resp = client.get("/api/status")
+        assert resp.status_code == 401

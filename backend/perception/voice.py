@@ -9,6 +9,7 @@ Text-to-Speech and Speech-to-Text with multiple backends.
 
 import logging
 import os
+from typing import cast
 
 logger = logging.getLogger("mizan.voice")
 
@@ -19,7 +20,7 @@ class VoiceProcessor:
     Supports ElevenLabs for TTS and Whisper for STT.
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         self.config = config or {}
         self._elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
         self._openai_key = os.getenv("OPENAI_API_KEY", "")
@@ -46,7 +47,9 @@ class VoiceProcessor:
             audio_generator = client.text_to_speech.convert(
                 text=text[:5000],
                 voice_id=voice if voice != "default" else "21m00Tcm4TlvDq8ikWAM",
-                model_id="eleven_monolingual_v1",
+                # Multilingual (incl. Arabic, Urdu, Hindi); eleven_monolingual_v1
+                # was English-only and is legacy. MIZAN_TTS_MODEL overrides it.
+                model_id=os.getenv("MIZAN_TTS_MODEL", "eleven_multilingual_v2"),
             )
 
             # Collect audio bytes
@@ -73,11 +76,11 @@ class VoiceProcessor:
                     "https://api.openai.com/v1/audio/transcriptions",
                     headers={"Authorization": f"Bearer {self._openai_key}"},
                     files={"file": ("audio.wav", audio_bytes, "audio/wav")},
-                    data={"model": "whisper-1"},
+                    data={"model": os.getenv("MIZAN_STT_MODEL", "gpt-4o-transcribe")},
                 )
 
                 if response.status_code == 200:
-                    return response.json().get("text", "")
+                    return cast(str | None, response.json().get("text", ""))
                 else:
                     logger.error(f"[VOICE] Whisper API error: {response.text}")
                     return None

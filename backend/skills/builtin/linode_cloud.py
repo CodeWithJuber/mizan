@@ -18,7 +18,7 @@ Uses the Linode API v4: https://api.linode.com/v4/
 
 import logging
 import os
-from datetime import UTC, datetime
+from typing import cast
 
 import httpx
 
@@ -49,7 +49,7 @@ class LinodeCloudSkill(SkillBase):
         tags=["سماء", "Linode", "Cloud"],
     )
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict | None = None):
         super().__init__(config)
         self._token = os.environ.get("LINODE_API_TOKEN", "")
         self._tools = {
@@ -70,8 +70,7 @@ class LinodeCloudSkill(SkillBase):
         t = token or self._token
         if not t:
             raise ValueError(
-                "No Linode API token. Set LINODE_API_TOKEN env var "
-                "or call linode_set_token first."
+                "No Linode API token. Set LINODE_API_TOKEN env var or call linode_set_token first."
             )
         return {
             "Authorization": f"Bearer {t}",
@@ -115,7 +114,9 @@ class LinodeCloudSkill(SkillBase):
                     errors = data.get("errors", []) if isinstance(data, dict) else []
                     error_msgs = [e.get("reason", str(e)) for e in errors]
                     return {
-                        "error": "; ".join(error_msgs) if error_msgs else f"HTTP {resp.status_code}",
+                        "error": "; ".join(error_msgs)
+                        if error_msgs
+                        else f"HTTP {resp.status_code}",
                         "status_code": resp.status_code,
                         "details": data,
                     }
@@ -151,7 +152,7 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Instance Management ─────────────────────────────────
 
-    async def list_instances(self, params: dict = None) -> dict:
+    async def list_instances(self, params: dict | None = None) -> dict:
         """List all Linode instances."""
         result = await self._request("GET", "/linode/instances")
         if result.get("error"):
@@ -286,10 +287,11 @@ class LinodeCloudSkill(SkillBase):
             return {"error": "Password must be at least 11 characters (Linode requirement)"}
 
         # Step 1: Shut down
-        shutdown = await self._request(
-            "POST", f"/linode/instances/{linode_id}/shutdown"
-        )
-        if shutdown.get("error") and "already powered off" not in str(shutdown.get("error", "")).lower():
+        shutdown = await self._request("POST", f"/linode/instances/{linode_id}/shutdown")
+        if (
+            shutdown.get("error")
+            and "already powered off" not in str(shutdown.get("error", "")).lower()
+        ):
             return {"error": f"Shutdown failed: {shutdown.get('error')}"}
 
         # Step 2: Wait for offline status (poll up to 60s)
@@ -315,7 +317,7 @@ class LinodeCloudSkill(SkillBase):
             return {"error": f"Password reset failed: {reset.get('error')}"}
 
         # Step 4: Boot back up
-        boot = await self._request("POST", f"/linode/instances/{linode_id}/boot")
+        await self._request("POST", f"/linode/instances/{linode_id}/boot")
 
         return {
             "success": True,
@@ -326,7 +328,7 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Reference Data ──────────────────────────────────────
 
-    async def list_regions(self, params: dict = None) -> dict:
+    async def list_regions(self, params: dict | None = None) -> dict:
         """List available Linode regions."""
         result = await self._request("GET", "/regions")
         if result.get("error"):
@@ -344,7 +346,7 @@ class LinodeCloudSkill(SkillBase):
             ],
         }
 
-    async def list_types(self, params: dict = None) -> dict:
+    async def list_types(self, params: dict | None = None) -> dict:
         """List available Linode instance types (plans)."""
         result = await self._request("GET", "/linode/types")
         if result.get("error"):
@@ -387,11 +389,11 @@ class LinodeCloudSkill(SkillBase):
 
     # ── Execute (generic entry) ─────────────────────────────
 
-    async def execute(self, params: dict, context: dict = None) -> dict:
+    async def execute(self, params: dict, context: dict | None = None) -> dict:
         action = params.get("action", "list")
         handler = self._tools.get(f"linode_{action}")
         if handler:
-            return await handler(params)
+            return cast(dict, await handler(params))
         return {"error": f"Unknown action: {action}. Available: {list(self._tools.keys())}"}
 
     # ── Tool Schemas ────────────────────────────────────────

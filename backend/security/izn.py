@@ -89,6 +89,21 @@ NAFS_PERMISSION_TIERS: dict[int, dict[str, "PermissionLevel"]] = {
 }
 
 
+_HIGH_RATE_TOOLS = frozenset(
+    {
+        "workspace_read",
+        "workspace_tree",
+        "workspace_glob",
+        "workspace_grep",
+        "workspace_list",
+        "workspace_diff",
+        "workspace_edit",
+        "todo_write",
+        "read_skill_file",
+    }
+)
+
+
 @dataclass
 class ToolPermission:
     """Permission definition for a specific tool"""
@@ -123,10 +138,12 @@ class IznPolicy:
     def get_tool_permission(self, tool_name: str) -> ToolPermission:
         if tool_name in self.tool_permissions:
             return self.tool_permissions[tool_name]
-        # Default: restricted
+        # Default: restricted. Read-only project tools are called in quick
+        # succession while coding, so they get a higher per-minute budget.
         return ToolPermission(
             tool_name=tool_name,
             level=PermissionLevel.RESTRICTED,
+            max_calls_per_minute=120 if tool_name in _HIGH_RATE_TOOLS else 30,
         )
 
 
@@ -189,7 +206,7 @@ class IznPermission:
 
     def __init__(self):
         self._policies: dict[str, IznPolicy] = {}
-        self._call_counts: dict[str, dict[str, list[float]]] = {}
+        self._call_counts: dict[str, list[float]] = {}
         self._pending_approvals: dict[str, dict] = {}
 
     def get_policy(self, agent_id: str, agent_role: str = "wakil") -> IznPolicy:
@@ -214,7 +231,7 @@ class IznPermission:
         return policy
 
     def check_permission(
-        self, agent_id: str, agent_role: str, tool_name: str, params: dict = None
+        self, agent_id: str, agent_role: str, tool_name: str, params: dict | None = None
     ) -> dict:
         """
         Check if an agent has permission to use a tool.

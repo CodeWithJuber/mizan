@@ -1,0 +1,1650 @@
+# Seed examples for Qasd's yes/no facets (CC0). facet<TAB>label<TAB>text
+# current: the answer depends on something current or outside MIZAN (news, prices, results).
+current	yes	Who won the match last night?
+current	yes	What is the gold price today?
+current	yes	Latest AI news
+current	yes	Weather tomorrow in Mumbai
+current	yes	Kal ka match kisne jeeta
+current	yes	Aaj mausam kaisa hai
+current	yes	Bitcoin ka current rate kya hai
+current	yes	Who is the president of the USA right now?
+current	yes	When does the iPhone 18 launch?
+current	yes	Python 3.15 release date
+current	yes	Top headlines today
+current	yes	Stock price of Apple now
+current	yes	What happened in Gaza this week?
+current	yes	Election results 2026
+current	yes	Is the website down right now?
+current	yes	Current exchange rate of dollar to rupee
+current	yes	Abhi petrol kitne ka hai
+current	yes	Recent updates on the new law
+current	yes	ما آخر الأخبار اليوم؟
+current	yes	آج کی تازہ خبریں
+current	yes	आज का मौसम कैसा है
+current	yes	Score of today's cricket match
+current	yes	New releases this month
+current	yes	Who won the 2026 World Cup?
+current	no	Why is the sky blue?
+current	no	What is the capital of France?
+current	no	Explain recursion
+current	no	Who was Salahuddin Ayyubi?
+current	no	What are the pillars of Islam?
+current	no	How does photosynthesis work?
+current	no	Tell me a joke
+current	no	What is a prime number?
+current	no	Summarize the story of Prophet Yusuf
+current	no	Difference between list and tuple
+current	no	Sabr ka matlab kya hai
+current	no	Roza kyun rakhte hain
+current	no	Write a poem about the sea
+current	no	How do I sort a list in Python?
+current	no	What is machine learning?
+current	no	Who wrote Sahih Bukhari?
+current	no	لماذا السماء زرقاء؟
+current	no	نماز کیوں پڑھتے ہیں؟
+current	no	प्रकाश संश्लेषण क्या है?
+current	no	Explain the theory of relativity
+current	no	Translate hello into Arabic
+current	no	Give me tips for better sleep
+current	no	What is zakat?
+current	no	Kaise pata chale ki number prime hai
+# harder: the user asks for more effort on what was asked before.
+harder	yes	Karo koshish
+harder	yes	Jaldi haar kyun maan rahe ho
+harder	yes	Try harder
+harder	yes	Don't give up
+harder	yes	Take your time and think deeply
+harder	yes	Can you learn and take time to find the next number
+harder	yes	Keep trying
+harder	yes	Dobara koshish karo, dhyan se
+harder	yes	Phir se try karo, achhe se socho
+harder	yes	Tum internet se learn karo saare number theories
+harder	yes	Think more carefully this time
+harder	yes	Give it another serious try
+harder	yes	Mehnat karo thodi
+harder	yes	Haar mat mano
+harder	yes	کوشش کریں، ہار نہ مانیں
+harder	yes	حاول مرة أخرى بجد
+harder	yes	हार मत मानो, फिर से कोशिश करो
+harder	no	Find the next number
+harder	no	Agla number kya hoga
+harder	no	What comes next then?
+harder	no	Solve it
+harder	no	Check OEIS for this sequence
+harder	no	Use number theory to find it
+harder	no	Next term please
+harder	no	Show the pattern
+harder	no	Ok thanks
+harder	no	What is the rule?
+harder	no	Explain the formula
+harder	no	اگلا نمبر بتائیں
+harder	no	ما الرقم التالي؟
+harder	no	अगला नंबर क्या है
+current	yes	What's the price of silver this week?
+current	yes	Aaj Sensex kitna gira?
+current	yes	Latest version of Node.js
+current	yes	Is Netflix down today?
+current	yes	Dubai mein aaj ka temperature
+current	yes	Who is leading the election now?
+current	yes	Recent earthquake news
+current	yes	Train 12951 ka current status
+current	yes	Flight EK500 ka status batao
+current	yes	Kal ki taaza khabrein
+current	yes	What did the central bank decide yesterday?
+current	yes	Upcoming Apple event date
+current	yes	Price of the new Pixel phone in India now
+current	yes	Who won the Ballon d'Or this year?
+current	yes	Is there a public holiday in the UAE next week?
+current	yes	Current USD to AED rate
+current	yes	Abhi Bitcoin upar hai ya neeche
+current	yes	Latest research on Alzheimer's this year
+current	yes	Mumbai traffic right now
+current	yes	New movies releasing this Friday
+current	yes	آج سونے کا ریٹ کیا ہے
+current	yes	अभी डॉलर का रेट क्या है
+current	yes	ما سعر الذهب اليوم؟
+current	yes	Today's IPL points table
+current	yes	Kya aaj bank khule hain
+current	yes	Status of the ceasefire talks
+current	yes	Most downloaded apps this week
+current	yes	Is the Hajj registration open yet this season?
+current	no	Who was Umar ibn al-Khattab?
+current	no	What is the boiling point of water?
+current	no	Explain how a car engine works
+current	no	Write a story about a brave girl
+current	no	What does HTTP stand for?
+current	no	Teach me the Arabic alphabet
+current	no	How many days are in a leap year?
+current	no	Why do leaves change colour in autumn?
+current	no	Iman ke arkan kitne hain
+current	no	Give me a recipe for biryani
+current	no	What is the meaning of tawakkul?
+current	no	Difference between a virus and bacteria
+current	no	How do magnets work?
+current	no	Explain compound interest
+current	no	Write an email to my teacher asking for leave
+current	no	قرآن کتنے پاروں میں ہے؟
+current	no	ما معنى الصبر؟
+current	no	गुरुत्वाकर्षण क्या है?
+current	no	Who built the pyramids?
+current	no	What is the speed of light?
+current	no	How can I become more patient?
+current	no	Safar ki dua batao
+current	no	What is an API?
+current	no	Shukr ka matlab samjhao
+current	no	Tips to learn coding faster
+current	no	Explain the water cycle
+current	no	Who discovered penicillin?
+current	no	What is the largest ocean?
+# fact: the question asks about the world (people, places, history, science, numbers), so a source can confirm the answer.
+fact	yes	What is the largest moon of Saturn?
+fact	yes	Who wrote the book Muqaddimah?
+fact	yes	When was the Ottoman Empire founded?
+fact	yes	How tall is Mount Everest?
+fact	yes	What is the capital of Indonesia?
+fact	yes	How many bones are there in the human body?
+fact	yes	Who discovered penicillin?
+fact	yes	What is the boiling point of water at sea level?
+fact	yes	Which is the longest river in Africa?
+fact	yes	What is the speed of light?
+fact	yes	How far is the Moon from the Earth?
+fact	yes	Who was the first Caliph after the Prophet?
+fact	yes	When did the Abbasid caliphate end?
+fact	yes	What is the population of Pakistan?
+fact	yes	Where was Imam Bukhari born?
+fact	yes	Who built the Taj Mahal and when?
+fact	yes	What does DNA stand for?
+fact	yes	How many planets are in the solar system?
+fact	yes	Saturn ka sabse bada chand kaun sa hai?
+fact	yes	Taj Mahal kisne banwaya tha?
+fact	yes	Everest ki unchai kitni hai?
+fact	yes	Pakistan ki aabadi kitni hai?
+fact	yes	Ibn Khaldun kaun the?
+fact	yes	Insaan ke jism mein kitni haddiyan hoti hain?
+fact	yes	زحل کا سب سے بڑا چاند کون سا ہے؟
+fact	yes	تاج محل کس نے بنوایا؟
+fact	yes	امام بخاری کہاں پیدا ہوئے؟
+fact	yes	शनि का सबसे बड़ा चंद्रमा कौन सा है?
+fact	yes	ताजमहल किसने बनवाया?
+fact	yes	ما هو أكبر أقمار زحل؟
+fact	yes	من بنى تاج محل؟
+fact	yes	متى تأسست الدولة العثمانية؟
+fact	no	Salaam, how are you?
+fact	no	Write a poem about the rain
+fact	no	Tell me a joke
+fact	no	What do you think about my plan?
+fact	no	Help me write an email to my boss
+fact	no	Thank you so much
+fact	no	Can you motivate me today?
+fact	no	Summarise this paragraph for me
+fact	no	Make my sentence sound more polite
+fact	no	I feel sad today
+fact	no	Give me a name for my cat
+fact	no	Which colour should I paint my room?
+fact	no	Translate this into Urdu: good morning
+fact	no	Let's brainstorm ideas for a birthday party
+fact	no	Explain recursion to a child
+fact	no	Write a short story about a lion
+fact	no	Kaise ho?
+fact	no	Mujhe ek shayari likh do
+fact	no	Shukriya bhai
+fact	no	Mera mood kharab hai
+fact	no	Is email ko achha bana do
+fact	no	Koi mazedaar baat sunao
+fact	no	آپ کیسے ہیں؟
+fact	no	مجھے ایک نظم لکھ دیں
+fact	no	आप कैसे हैं?
+fact	no	मुझे एक कविता लिख दो
+fact	no	كيف حالك؟
+fact	no	اكتب لي قصيدة
+# ruling: the question asks what Islamic law rules for the asker (halal, haram, valid, obligatory); a scholar answers that.
+ruling	yes	Is it halal to invest in crypto?
+ruling	yes	Is my fast broken if I swallowed water by mistake?
+ruling	yes	Can I pray with nail polish on?
+ruling	yes	Is mortgage interest haram in my case?
+ruling	yes	How should my father's inheritance be divided between us?
+ruling	yes	Is my nikah valid without a wali?
+ruling	yes	Do I have to pay zakat on my gold jewellery?
+ruling	yes	Is it permissible to combine prayers while travelling for work?
+ruling	yes	Is talaq valid if said in anger?
+ruling	yes	Can a woman travel for Umrah without a mahram?
+ruling	yes	Is music haram?
+ruling	yes	Is it allowed to take a loan with interest for a house?
+ruling	yes	What is the ruling on missed fasts due to illness?
+ruling	yes	Kya crypto mein paisa lagana halal hai?
+ruling	yes	Kya galti se paani peene se roza toot jata hai?
+ruling	yes	Gusse mein di gayi talaq hoti hai ya nahi?
+ruling	yes	Kya nail polish laga kar namaz ho jati hai?
+ruling	yes	Mere walid ki wirasat kaise taqseem hogi?
+ruling	yes	Kya sone ke zewar par zakat farz hai?
+ruling	yes	کیا کرپٹو میں سرمایہ کاری حلال ہے؟
+ruling	yes	کیا غصے میں دی گئی طلاق واقع ہو جاتی ہے؟
+ruling	yes	کیا بغیر محرم کے عمرہ جائز ہے؟
+ruling	yes	क्या क्रिप्टो में निवेश हलाल है?
+ruling	yes	क्या गलती से पानी पीने से रोज़ा टूट जाता है?
+ruling	yes	هل الاستثمار في العملات الرقمية حلال؟
+ruling	yes	هل يقع الطلاق في حال الغضب؟
+ruling	yes	هل تجب الزكاة في الذهب المستعمل؟
+ruling	no	What is the largest moon of Saturn?
+ruling	no	When is Fajr today?
+ruling	no	Recite Surah Ikhlas
+ruling	no	Who compiled Sahih Bukhari?
+ruling	no	What does the word zakat mean?
+ruling	no	Tell me the story of Prophet Yusuf
+ruling	no	How many rakat are in Fajr prayer?
+ruling	no	Write a Python program to add two numbers
+ruling	no	What is the Hijri date today?
+ruling	no	Explain the history of the Hajj
+ruling	no	Remind me to pray Asr
+ruling	no	Who was Imam Abu Hanifa?
+ruling	no	Aaj Fajr kitne baje hai?
+ruling	no	Surah Yaseen ka matlab batao
+ruling	no	Zakat ka lafzi matlab kya hai?
+ruling	no	Hazrat Yusuf ka qissa sunao
+ruling	no	آج فجر کا وقت کیا ہے؟
+ruling	no	سورہ اخلاص سنائیں
+ruling	no	आज फ़ज्र कितने बजे है?
+ruling	no	من جمع صحيح البخاري؟
+ruling	no	ما معنى كلمة الزكاة؟
+ruling	no	Analyze the quote "make it pass". Reply in one JSON object.
+ruling	no	Is this code correct?
+ruling	no	Is this sentence grammatically correct?
+ruling	no	Is it okay to use tabs instead of spaces in Python?
+ruling	no	Is it allowed to park here on Sundays?
+ruling	no	Is my essay good enough to submit?
+ruling	no	Can I use this library in a commercial project?
+ruling	no	Is it valid JSON?
+ruling	no	Reply in one JSON object with the meaning of this phrase
+ruling	no	Should I learn Rust or Go first?
+ruling	no	Kya yeh code sahi hai?
+ruling	no	Kya main yahan gaadi park kar sakta hoon?
+ruling	no	کیا یہ جملہ درست ہے؟
+ruling	no	क्या यह कोड सही है?
+ruling	no	هل هذا الكود صحيح؟
+fact	no	Analyze the quote "make it pass". Reply in one JSON object.
+fact	no	Reply in one JSON object with the meaning of this phrase
+fact	no	Is this code correct?
+fact	no	Fix the bug in my function
+fact	no	Rewrite this paragraph in simple English
+fact	no	What does this sentence mean to you?
+fact	no	Classify this review as positive or negative
+fact	no	Kya yeh code sahi hai?
+fact	no	Is paragraph ko aasaan banao
+fact	no	اس پیراگراف کو آسان کریں
+fact	no	इस कोड की गलती ठीक करो
+fact	no	صحح هذا الكود
+ruling	yes	Is it haram to take a bank loan for my business?
+ruling	yes	Can I pray Jumuah at home if I am working?
+ruling	yes	Is it permissible to celebrate birthdays in Islam?
+ruling	yes	Do I need to repeat my prayer if I forgot a sajdah?
+ruling	yes	Is gelatin in sweets halal to eat?
+ruling	yes	Can I give my zakat to my brother?
+ruling	yes	Is it allowed to keep a dog at home in Islam?
+ruling	yes	Is insurance halal or haram?
+ruling	yes	Kya bank se loan lena jaiz hai?
+ruling	yes	Kya birthday manana Islam mein jaiz hai?
+ruling	yes	Kya main apni zakat apne bhai ko de sakta hoon?
+ruling	yes	Kya insurance lena haram hai?
+ruling	yes	کیا بینک سے قرض لینا جائز ہے؟
+ruling	yes	کیا سالگرہ منانا جائز ہے؟
+ruling	yes	क्या बैंक से लोन लेना जायज़ है?
+ruling	yes	هل يجوز الاحتفال بعيد الميلاد؟
+ruling	yes	هل التأمين حلال أم حرام؟
+# deen: the question is about the Quran, a hadith, Islamic belief or worship, or a word of the Quran; MIZAN answers it from its own sources, never from Wikipedia or a web search.
+deen	yes	Is the hadith "seek knowledge even in China" authentic?
+deen	yes	Is this hadith sahih: whoever reads this dua once will enter Jannah?
+deen	yes	Is "the ink of the scholar is holier than the blood of the martyr" a real hadith?
+deen	yes	Did the Prophet ﷺ say that cleanliness is half of faith?
+deen	yes	Which hadith talks about actions being judged by intentions?
+deen	yes	Who narrated the hadith of Jibril?
+deen	yes	Quote the hadith about the best of you being those who learn the Quran
+deen	yes	Which verse of the Quran talks about the splitting of the moon?
+deen	yes	Is there a verse that says paradise lies under the feet of mothers?
+deen	yes	What does the word ard mean in the Quran?
+deen	yes	What are the different meanings of yawm in the Quran?
+deen	yes	Explain Ayat al-Kursi
+deen	yes	What is the tafsir of Surah al-Ikhlas?
+deen	yes	What does the Quran say about patience?
+deen	yes	What does Allah say about orphans in the Quran?
+deen	yes	Where in the Quran is Maryam mentioned?
+deen	yes	What are the names of Allah mentioned at the end of Surah al-Hashr?
+deen	yes	What is the root of the Arabic word kitab?
+deen	yes	What is tawakkul according to the Quran and Sunnah?
+deen	yes	What are the six pillars of iman?
+deen	yes	Kya yeh hadith sahih hai: ilm hasil karo chahe China jana pade?
+deen	yes	Kya Nabi ﷺ ne farmaya tha ki safai aadha iman hai?
+deen	yes	Bukhari mein niyat wali hadith kaunsi hai?
+deen	yes	Quran mein sabr ke baare mein kya aaya hai?
+deen	yes	Ayat al-Kursi ka matlab samjhao
+deen	yes	Surah Ikhlas ki tafseer batao
+deen	yes	Quran mein ard lafz ka kya matlab hai?
+deen	yes	Allah ke 99 naam kaunse hain?
+deen	yes	کیا یہ حدیث صحیح ہے: علم حاصل کرو چاہے چین جانا پڑے؟
+deen	yes	قرآن میں صبر کے بارے میں کیا آیا ہے؟
+deen	yes	آیت الکرسی کا مطلب سمجھائیں
+deen	yes	سورہ اخلاص کی تفسیر بتائیں
+deen	yes	क्या यह हदीस सही है: इल्म हासिल करो चाहे चीन जाना पड़े?
+deen	yes	क़ुरआन में सब्र के बारे में क्या आया है?
+deen	yes	आयतुल कुर्सी का मतलब समझाओ
+deen	yes	هل حديث اطلبوا العلم ولو في الصين صحيح؟
+deen	yes	ما معنى كلمة الأرض في القرآن؟
+deen	yes	ما تفسير سورة الإخلاص؟
+deen	yes	ماذا يقول القرآن عن الصبر؟
+deen	yes	ما جذر كلمة كاتب؟
+deen	yes	من روى حديث جبريل؟
+deen	yes	ما معاني كلمة يوم في القرآن؟
+deen	no	What is the largest moon of Saturn?
+deen	no	When was the Ottoman Empire founded?
+deen	no	When did the Abbasid caliphate end?
+deen	no	Who built the Taj Mahal and when?
+deen	no	How tall is the Burj Khalifa?
+deen	no	What is the capital of Indonesia?
+deen	no	What is the population of Pakistan?
+deen	no	What is the GDP of Saudi Arabia?
+deen	no	How tall is Mount Everest?
+deen	no	Who discovered penicillin?
+deen	no	What is the speed of light?
+deen	no	Which is the longest river in Africa?
+deen	no	How many bones are there in the human body?
+deen	no	When is the next solar eclipse?
+deen	no	Saturn ka sabse bada chand kaun sa hai?
+deen	no	Taj Mahal kisne banwaya tha?
+deen	no	Pakistan ki aabadi kitni hai?
+deen	no	Dubai mein aaj mausam kaisa hai?
+deen	no	زحل کا سب سے بڑا چاند کون سا ہے؟
+deen	no	تاج محل کس نے بنوایا؟
+deen	no	शनि का सबसे बड़ा चंद्रमा कौन सा है?
+deen	no	ताजमहल किसने बनवाया?
+deen	no	ما هو أكبر أقمار زحل؟
+deen	no	متى تأسست الدولة العثمانية؟
+deen	no	كم عدد سكان مصر؟
+deen	no	Salaam, how are you?
+deen	no	Assalamualaikum bhai, kaise ho?
+deen	no	Thank you so much
+deen	no	Tell me a joke
+deen	no	Write a poem about the rain
+deen	no	Help me write an email to my boss
+deen	no	Fix the bug in my function
+deen	no	Summarise this paragraph for me
+deen	no	Translate this into Urdu: good morning
+deen	no	Give me a name for my cat
+deen	no	Explain recursion to a child
+deen	no	Kya yeh code sahi hai?
+deen	no	Mujhe ek shayari likh do
+deen	no	آپ کیسے ہیں؟
+deen	no	मुझे एक कविता लिख दो
+deen	no	كيف حالك؟
+deen	no	اكتب لي قصيدة
+# fact: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no fact evidence.
+fact	no	quick
+fact	no	READY
+fact	no	Reply with exactly READY and nothing else.
+fact	no	hello
+fact	no	hi
+fact	no	Thanks!
+fact	no	ok
+fact	no	okay thanks
+fact	no	yes
+fact	no	Assalamualaikum
+fact	no	Jazakallah khair
+fact	no	Reply in one sentence.
+fact	no	What is 17*23?
+fact	no	What is 17*23 and explain step by step?
+fact	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+fact	no	Write a Python function that removes duplicates from a list
+fact	no	Write a SQL query that finds customers with no orders
+fact	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+fact	no	Explain the difference between a connection timeout and a read timeout
+fact	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+fact	no	Summarise this in three lines
+fact	no	theek hai
+fact	no	acha
+fact	no	شکریہ
+fact	no	ठीक है
+fact	no	شكرا
+# ruling: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no ruling evidence.
+ruling	no	quick
+ruling	no	READY
+ruling	no	Reply with exactly READY and nothing else.
+ruling	no	hello
+ruling	no	hi
+ruling	no	Thanks!
+ruling	no	ok
+ruling	no	okay thanks
+ruling	no	yes
+ruling	no	Assalamualaikum
+ruling	no	Jazakallah khair
+ruling	no	Reply in one sentence.
+ruling	no	What is 17*23?
+ruling	no	What is 17*23 and explain step by step?
+ruling	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+ruling	no	Write a Python function that removes duplicates from a list
+ruling	no	Write a SQL query that finds customers with no orders
+ruling	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+ruling	no	Explain the difference between a connection timeout and a read timeout
+ruling	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+ruling	no	Summarise this in three lines
+ruling	no	theek hai
+ruling	no	acha
+ruling	no	شکریہ
+ruling	no	ठीक है
+ruling	no	شكرا
+# current: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no current evidence.
+current	no	quick
+current	no	READY
+current	no	Reply with exactly READY and nothing else.
+current	no	hello
+current	no	hi
+current	no	Thanks!
+current	no	ok
+current	no	okay thanks
+current	no	yes
+current	no	Assalamualaikum
+current	no	Jazakallah khair
+current	no	Reply in one sentence.
+current	no	What is 17*23?
+current	no	What is 17*23 and explain step by step?
+current	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+current	no	Write a Python function that removes duplicates from a list
+current	no	Write a SQL query that finds customers with no orders
+current	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+current	no	Explain the difference between a connection timeout and a read timeout
+current	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+current	no	Summarise this in three lines
+current	no	theek hai
+current	no	acha
+current	no	شکریہ
+current	no	ठीक है
+current	no	شكرا
+# harder: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no harder evidence.
+harder	no	quick
+harder	no	READY
+harder	no	Reply with exactly READY and nothing else.
+harder	no	hello
+harder	no	hi
+harder	no	Thanks!
+harder	no	ok
+harder	no	okay thanks
+harder	no	yes
+harder	no	Assalamualaikum
+harder	no	Jazakallah khair
+harder	no	Reply in one sentence.
+harder	no	What is 17*23?
+harder	no	What is 17*23 and explain step by step?
+harder	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+harder	no	Write a Python function that removes duplicates from a list
+harder	no	Write a SQL query that finds customers with no orders
+harder	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+harder	no	Explain the difference between a connection timeout and a read timeout
+harder	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+harder	no	Summarise this in three lines
+harder	no	theek hai
+harder	no	acha
+harder	no	شکریہ
+harder	no	ठीक है
+harder	no	شكرا
+# deen: ordinary messages (greetings, acknowledgements, format instructions, arithmetic, code) carry no deen evidence.
+deen	no	quick
+deen	no	READY
+deen	no	Reply with exactly READY and nothing else.
+deen	no	hello
+deen	no	hi
+deen	no	Thanks!
+deen	no	ok
+deen	no	okay thanks
+deen	no	yes
+deen	no	Assalamualaikum
+deen	no	Jazakallah khair
+deen	no	Reply in one sentence.
+deen	no	What is 17*23?
+deen	no	What is 17*23 and explain step by step?
+deen	no	A shop gives 20% off and then 10% off; what is the final price of $1000?
+deen	no	Write a Python function that removes duplicates from a list
+deen	no	Write a SQL query that finds customers with no orders
+deen	no	Return JSON with the sum and the sorted list of [9, -2, 0, 9]
+deen	no	Explain the difference between a connection timeout and a read timeout
+deen	no	Is this inference valid: all cats are animals, some animals are black, so some cats are black?
+deen	no	Summarise this in three lines
+deen	no	theek hai
+deen	no	acha
+deen	no	شکریہ
+deen	no	ठीक है
+deen	no	شكرا
+# explain: the user asks for the working (the steps, how it was found), not only the result.
+explain	yes	What is 17*23 and explain step by step?
+explain	yes	Calculate 125*204 and show your working
+explain	yes	Show the steps for 45*67
+explain	yes	How did you get that answer? Show the steps
+explain	yes	Solve 3/4 + 5/6 step by step
+explain	yes	Explain how to work out 15% of 240
+explain	yes	What is 12*13? Explain the method
+explain	yes	Walk me through 999*7
+explain	yes	Show working: 1234 + 5678
+explain	yes	Can you explain the calculation of 2^10?
+explain	yes	17*23 kitna hai, step by step samjhao
+explain	yes	45*67 ka hisab steps ke saath batao
+explain	yes	Yeh kaise nikla, tareeqa samjhao
+explain	yes	125*204 ko samjha ke hal karo
+explain	yes	17*23 کتنا ہے؟ مرحلہ وار سمجھائیں
+explain	yes	45*67 کا حساب طریقے کے ساتھ بتائیں
+explain	yes	17*23 कितना है? स्टेप बाय स्टेप समझाओ
+explain	yes	45*67 का हिसाब तरीके के साथ बताओ
+explain	yes	كم يساوي 17*23؟ اشرح خطوة بخطوة
+explain	yes	احسب 45*67 مع توضيح الخطوات
+explain	no	What is 17*23?
+explain	no	17*23
+explain	no	Calculate 125*204
+explain	no	What is 15% of 240?
+explain	no	2^10
+explain	no	Compute 999*7
+explain	no	How much is 1234 + 5678?
+explain	no	17*23 kitna hai?
+explain	no	45*67 batao
+explain	no	125*204 ka jawab
+explain	no	17*23 کتنا ہے؟
+explain	no	45*67 कितना है?
+explain	no	كم يساوي 17*23؟
+explain	no	Explain recursion to a child
+explain	no	Explain how a database index works
+explain	no	What does tawakkul mean?
+explain	no	Write a Python function that adds two numbers
+explain	no	hello
+explain	no	Thanks!
+explain	no	READY
+# ruling: guidance, inspiration and reflection from the Quran is not a request for a ruling.
+ruling	no	Hum koshish toh kar sakte hai quran se guidance lenge maths nahi ishara lenge inspiration lenge
+ruling	no	Quran se inspiration lekar research kaise karein?
+ruling	no	Prime number pe research karni hai, kya Quran mein koi ishara hai?
+ruling	no	How can the Quran inspire new research in mathematics?
+ruling	no	Can we take guidance from the Quran for science research?
+ruling	no	What does the Quran say about reflecting on creation?
+ruling	no	Quran ke paas har cheez ka jawab hai, iske baare mein batao
+ruling	no	قرآن سے رہنمائی لے کر تحقیق کیسے کریں؟
+ruling	no	क़ुरआन से प्रेरणा लेकर रिसर्च कैसे करें?
+ruling	no	كيف نستلهم من القرآن أفكارا للبحث العلمي؟
+ruling	yes	Can I pray with socks on?
+ruling	yes	Can I combine Zuhr and Asr while travelling?
+ruling	yes	Is zakat due on the gold my wife wears?
+ruling	yes	Kya mozon par masah jaiz hai?
+ruling	yes	Kya bina wuzu Quran chhoo sakte hain?
+ruling	yes	Is it permissible to eat food with gelatin?
+ruling	yes	کیا سفر میں نماز قصر کرنا ضروری ہے؟
+ruling	yes	هل يجوز الجمع بين الصلاتين في السفر؟
+# sarf: the user asks for the root, pattern (wazn) or part of speech of an Arabic word; MIZAN reads it from the Quranic Arabic Corpus.
+sarf	yes	What is the root of كاتب?
+sarf	yes	What is the root of the word مكتوب?
+sarf	yes	Give me the root and pattern of مدرسة
+sarf	yes	What is the wazn of استغفر?
+sarf	yes	Analyze the morphology of يستغفرون
+sarf	yes	Which root does the word المسلمون come from?
+sarf	yes	Root and pattern of the Arabic word رحمة
+sarf	yes	Is يوم a noun or a verb?
+sarf	yes	What part of speech is كاتب in Arabic?
+sarf	yes	كاتب ka root kya hai?
+sarf	yes	مكتوب ka wazn batao
+sarf	yes	مدرسة kis root se bana hai?
+sarf	yes	يوم ism hai ya fel?
+sarf	yes	Is lafz ka maadda batao: علم
+sarf	yes	كاتب کا مادہ کیا ہے؟
+sarf	yes	مكتوب کا وزن بتائیں
+sarf	yes	لفظ رحمة کس مادے سے ہے؟
+sarf	yes	كاتب का रूट क्या है?
+sarf	yes	مكتوب शब्द का वज़न बताओ
+sarf	yes	ما جذر كلمة كاتب؟
+sarf	yes	ما وزن كلمة مكتوب؟
+sarf	yes	ما أصل كلمة مدرسة؟
+sarf	yes	هل كلمة يوم اسم أم فعل؟
+sarf	yes	ما جذر ووزن كلمة استغفار؟
+sarf	no	قل هو الله أحد
+sarf	no	Surah Ikhlas ki pehli ayat batao
+sarf	no	Quote ayah 2:255 in Arabic
+sarf	no	Translate السلام عليكم to English
+sarf	no	What does the Quran say about الصبر?
+sarf	no	ما معنى الصبر في القرآن؟
+sarf	no	اكتب لي قصيدة عن المطر
+sarf	no	كم الساعة الآن؟
+sarf	no	ما هو أكبر أقمار زحل؟
+sarf	no	Bukhari 1 dikhao
+sarf	no	Is the hadith اطلبوا العلم ولو في الصين authentic?
+sarf	no	يوم الجمعة ki namaz kab hai?
+sarf	no	Write my name محمد in a nice font
+sarf	no	Assalamualaikum
+sarf	no	السلام عليكم
+sarf	no	hello
+sarf	no	Thanks!
+sarf	no	READY
+sarf	no	What is 17*23?
+sarf	no	Write a Python function that removes duplicates from a list
+ruling	no	2 ki power 10 kitni hoti hai?
+ruling	no	12 x 13 kitna hai
+ruling	no	3 to the power of 4
+ruling	no	How do I kill a zombie process in Linux?
+ruling	no	How do I kill a stuck process on Windows?
+ruling	no	Which household chemicals should never be mixed?
+ruling	no	Innamal a'malu bin-niyyat
+ruling	no	Naya rule: is chat mein '#' ka matlab multiplication hai
+ruling	no	Kya 97 prime number hai?
+ruling	no	Is 1000003 a prime number?
+ruling	no	What day of the week was 15 August 1947?
+ruling	no	Write a 50-word paragraph about the desert that never uses the letter e
+ruling	yes	Can a traveller combine Zuhr and Asr prayers?
+ruling	yes	Musafir Zuhr aur Asr ek saath padh sakta hai?
+ruling	yes	Kya Asr ke baad nafl padhna jaiz hai?
+ruling	yes	Does bleeding break wudu?
+sarf	no	پانی کس درجہ حرارت پر جم جاتا ہے؟
+sarf	no	آج لاہور میں موسم کیسا ہے؟
+sarf	no	کراچی سے اسلام آباد کتنا دور ہے؟
+sarf	no	مجھے صحت مند ناشتے کے بارے میں بتائیں
+sarf	no	دودھ کتنے دن تک تازہ رہتا ہے؟
+sarf	no	قرآن مجید میں کتنی آیات ہیں؟
+sarf	no	ما عاصمة اليابان؟
+sarf	no	كم تبعد مكة عن المدينة؟
+sarf	no	كيف حالك اليوم؟
+sarf	no	في أي درجة حرارة يتجمد الماء؟
+# form: the request asks its answer to take a form MIZAN can count or match (a number of sentences, words, bullets or paragraphs; JSON; a case; a script; a required first or last phrase; a word or character to use or avoid).
+form	yes	Describe Ramadan in exactly two sentences.
+form	yes	Write three sentences about honesty without using any commas.
+form	yes	Give me 5 bullet points on healthy eating.
+form	yes	Reply in under 30 words: what is gravity?
+form	yes	Answer in no more than 20 words, please.
+form	yes	List four fruits as a numbered list.
+form	yes	Return the result as JSON with the keys "name" and "age".
+form	yes	Give me a JSON object with the fields title and year for the book Sapiens.
+form	yes	Write your whole answer in lowercase.
+form	yes	Reply in capital letters only.
+form	yes	End your reply with the words "JazakAllah khair".
+form	yes	Start your answer with the word Bismillah.
+form	yes	Write two paragraphs about winter with a blank line between them.
+form	yes	Explain the water cycle in exactly 4 sentences.
+form	yes	Summarise this in one sentence.
+form	yes	Do not use the word "very" anywhere in your answer.
+form	yes	Write a short note about Jumuah that includes the word mosque.
+form	yes	Use at least 100 words to describe your city.
+form	yes	Give three tips, one per line, and nothing else.
+form	yes	Answer only in Urdu script, not Roman Urdu.
+form	yes	Write it in Devanagari script only.
+form	yes	Make it a bulleted list of exactly six items.
+form	yes	Keep it under 50 words and avoid the word "basically".
+form	yes	Format the answer as three numbered steps.
+form	yes	Teen jumlon mein batao sabr kya hai.
+form	yes	5 points mein list bana do, bullet ke saath.
+form	yes	20 shabdon se kam mein samjhao.
+form	yes	Jawab JSON format mein do, keys name aur city.
+form	yes	Sirf lowercase mein likho, capital letters nahi.
+form	yes	Do paragraph mein likho, beech mein khali line.
+form	yes	Ek hi jumle mein jawab do.
+form	yes	تین جملوں میں بتائیں کہ صبر کیا ہے۔
+form	yes	پانچ نکات کی فہرست بنائیں۔
+form	yes	بیس الفاظ سے کم میں جواب دیں۔
+form	yes	جواب صرف اردو رسم الخط میں لکھیں۔
+form	yes	तीन वाक्यों में बताइए कि धैर्य क्या है।
+form	yes	पाँच बिंदुओं की सूची बनाइए।
+form	yes	बीस शब्दों से कम में उत्तर दीजिए।
+form	yes	اكتب ثلاث جمل عن الصبر.
+form	yes	أجب في أقل من عشرين كلمة.
+form	yes	اكتب قائمة من خمس نقاط.
+form	yes	أعطني النتيجة بصيغة JSON بالمفتاحين name و age.
+# form: ordinary requests, and questions about counting or formats, ask for no form of the answer.
+form	no	What is patience in Islam?
+form	no	Explain the water cycle.
+form	no	Tell me about healthy eating.
+form	no	What is 25 times 4?
+form	no	Write a Python function that sorts a list.
+form	no	Hello, how are you?
+form	no	Thanks a lot!
+form	no	Who was the first caliph?
+form	no	How many ayahs are in Surah al-Mulk?
+form	no	Write a poem about the moon.
+form	no	Make it a bit shorter.
+form	no	Explain it like I'm five.
+form	no	Translate "good morning" into Arabic.
+form	no	What is JSON?
+form	no	What is a bullet point?
+form	no	How many words are in the Quran?
+form	no	Count the sentences in this paragraph for me.
+form	no	Write an email to my teacher asking for leave.
+form	no	Build me a web page for a bakery.
+form	no	Read https://example.com and tell me what it says.
+form	no	Remember that my son's name is Yusuf.
+form	no	Explain recursion in Hinglish.
+form	no	What does tawakkul mean?
+form	no	Fix the bug in my code.
+form	no	Is this hadith authentic?
+form	no	Summarise today's news.
+form	no	Sabr kya hai?
+form	no	Mujhe Ramadan ke baare mein batao.
+form	no	2 ki power 10 kitna hai?
+form	no	Kal ka mausam kaisa hoga?
+form	no	Quran ki pehli 5 ayat dikhao.
+form	no	Mera code theek kar do.
+form	no	صبر کیا ہے؟
+form	no	رمضان کے بارے میں بتائیں
+form	no	دو اور دو کتنے ہوتے ہیں؟
+form	no	धैर्य क्या है?
+form	no	रमज़ान के बारे में बताइए
+form	no	ما هو الصبر؟
+form	no	حدثني عن رمضان
+form	no	كم عدد سور القرآن؟
+form	no	READY
+form	no	ok
+form	yes	Answer with just one word.
+form	yes	Reply with only the number, nothing else.
+form	yes	Answer with the letter only.
+form	yes	Give a one-line summary of this.
+form	yes	Summarise the article below in two sentences.
+form	yes	Reply with yes or no only.
+form	yes	Write exactly 5 lines.
+form	yes	List the steps as a numbered list.
+form	yes	Use no more than 3 bullet points.
+form	yes	Write a three-line poem about rain, three lines exactly.
+form	yes	Give me the list as JSON.
+form	yes	Ek lafz mein jawab do.
+form	yes	Sirf number batao, aur kuch nahi.
+form	yes	Haan ya na mein jawab do.
+form	yes	صرف ایک لفظ میں جواب دیں۔
+form	yes	صرف نمبر بتائیں۔
+form	yes	केवल एक शब्द में उत्तर दें।
+form	yes	सिर्फ़ संख्या बताइए।
+form	yes	أجب بكلمة واحدة فقط.
+form	yes	اكتب الجواب في سطر واحد.
+form	no	Ali has 3 brothers and each brother has 2 sisters. How many sisters does Ali have?
+form	no	If a train leaves at 9 and arrives at 1, how long is the trip?
+form	no	Read this story and tell me who the hero is: Once a boy named Adam found a lost lamb and carried it home through the storm.
+form	no	Here is my CSV: name,score / Ali,9 / Sara,7. Who scored higher?
+form	no	What is the capital of Kenya?
+form	no	Who compiled Sahih al-Bukhari?
+form	no	Why is the sky blue?
+form	no	Which is heavier, a kilo of iron or a kilo of cotton?
+form	no	Tell me the story of Prophet Yusuf.
+form	no	How do I make chai?
+form	no	What happened at the Battle of Badr?
+form	no	Is it halal to eat crab?
+form	no	Can you explain quantum entanglement simply?
+form	no	What did I say earlier about my trip?
+form	no	I told you where I parked the car before. Where was it?
+form	no	Which of these numbers is prime: 21, 23, 25?
+form	no	Sara put her book on the shelf and left. Her brother moved it to the table. Where will Sara look for it?
+form	no	What happens if I mix baking soda and vinegar?
+form	no	How many legs does a spider have?
+form	no	Solve for x: 2x + 3 = 11
+form	no	Find the next number: 1, 4, 9, 16, ?
+form	no	What's the difference between hadith and sunnah?
+form	no	Explain the rules of chess.
+form	no	Log: 10:01 server started, 10:05 user login, 10:09 error 500. When did the error happen?
+form	no	Items: apple, banana, apple, cherry. Which fruit appears twice?
+form	no	At what temperature does iron melt?
+form	no	Who was the first person to climb Everest?
+form	no	Omar thanked his friend for the gift and smiled. How did Omar feel?
+form	no	The meeting moved from Monday to Wednesday. When is it now?
+form	no	What is the remainder when 100 is divided by 7?
+form	no	Paani kitne degree par ubalta hai?
+form	no	Pakistan ki capital kya hai?
+form	no	Aaj kaunsa din hai?
+form	no	Mere bete ka naam kya hai?
+form	no	Yeh code kyun fail ho raha hai?
+form	no	Agar main 5 ghante kaam karun aur 3 ghante aaram, toh kul kitne ghante hue?
+form	no	Ek kahani sunao jisme ek imaandar lakadhara ho.
+form	no	Hazrat Umar ke baare mein kuch batao.
+form	no	پاکستان کا دارالحکومت کون سا ہے؟
+form	no	آج موسم کیسا ہے؟
+form	no	میرے بیٹے کا نام کیا ہے؟
+form	no	मेरे बेटे का नाम क्या है?
+form	no	भारत की राजधानी क्या है?
+form	no	एक हफ़्ते में कितने दिन होते हैं?
+form	no	من هو أول الخلفاء الراشدين؟
+form	no	لماذا السماء زرقاء؟
+form	no	كم يوما في الأسبوع؟
+form	no	Write a Python script that renames my photos by date.
+form	no	Help me write a bash script to back up a folder.
+form	no	Make me a small script with a GUI window and a button.
+form	no	Write a JavaScript function to validate an email address.
+form	no	Create a Python program that reads a CSV and prints the totals.
+form	no	Ek Python script likh do jo files ko rename kare.
+form	no	Explain how a for loop works in Python.
+form	no	Show me how to parse JSON in Python.
+# ruling: questions about the world in any script are not requests for a ruling.
+ruling	no	زمین سورج کے گرد ایک چکر کتنے دن میں لگاتی ہے؟
+ruling	no	پانی کا کیمیائی فارمولا کیا ہے؟
+ruling	no	دنیا کا سب سے اونچا پہاڑ کون سا ہے؟
+ruling	no	روشنی کی رفتار کتنی ہے؟
+ruling	no	انسانی جسم میں کتنی ہڈیاں ہوتی ہیں؟
+ruling	no	لاہور سے کراچی کتنے کلومیٹر دور ہے؟
+ruling	no	چاند زمین سے کتنا دور ہے؟
+ruling	no	بارش کیسے بنتی ہے؟
+ruling	no	کمپیوٹر میں ریم کیا کام کرتی ہے؟
+ruling	no	چائے بنانے کا طریقہ بتائیں
+ruling	no	پانچ اور سات کا حاصل ضرب کیا ہے؟
+ruling	no	ہندوستان کی آبادی کتنی ہے؟
+ruling	no	पृथ्वी सूर्य का एक चक्कर कितने दिन में लगाती है?
+ruling	no	दुनिया का सबसे ऊँचा पहाड़ कौन सा है?
+ruling	no	मानव शरीर में कितनी हड्डियाँ होती हैं?
+ruling	no	चाय बनाने का तरीका बताइए
+ruling	no	रोशनी की गति कितनी है?
+ruling	no	كم يوما تستغرق الأرض للدوران حول الشمس؟
+ruling	no	ما هي الصيغة الكيميائية للماء؟
+ruling	no	ما هو أعلى جبل في العالم؟
+ruling	no	كم عظمة في جسم الإنسان؟
+ruling	no	كيف يتكون المطر؟
+ruling	no	كم تبعد القاهرة عن الإسكندرية؟
+ruling	no	How many bones are in the human body?
+ruling	no	At what temperature does water freeze?
+ruling	yes	کیا روزے میں انجکشن لگوانا جائز ہے؟
+ruling	yes	کیا تصویر بنانا حرام ہے؟
+ruling	yes	کیا سود پر قرض لینا جائز ہے؟
+ruling	yes	کیا عورت بغیر محرم کے سفر کر سکتی ہے؟
+ruling	yes	کیا ناخن پالش کے ساتھ وضو ہو جاتا ہے؟
+ruling	yes	کیا گانا سننا جائز ہے؟
+ruling	yes	क्या रोज़े में दवाई ले सकते हैं?
+ruling	yes	क्या म्यूज़िक सुनना हराम है?
+ruling	yes	क्या सूद पर लोन लेना जायज़ है?
+ruling	yes	क्या नेल पॉलिश के साथ वुज़ू होता है?
+ruling	yes	هل يجوز سماع الموسيقى؟
+ruling	yes	هل ينتقض الوضوء بلمس المرأة؟
+ruling	yes	هل يجوز تأخير صلاة العشاء إلى منتصف الليل؟
+ruling	yes	هل يجوز أخذ قرض بفائدة؟
+ruling	no	Pakistan ki capital kya hai?
+ruling	no	India ki capital kya hai?
+ruling	no	Saudi Arabia ki currency kya hai?
+ruling	no	Taj Mahal kisne banwaya?
+ruling	no	Duniya ka sabse bada samundar kaunsa hai?
+ruling	no	Pani ka boiling point kya hai?
+ruling	no	Quaid-e-Azam ka poora naam kya hai?
+ruling	no	Makkah ki aabadi kitni hai?
+ruling	no	Masjid-e-Nabawi kis shehar mein hai?
+ruling	no	Insaan ke jism mein kitni haddiyan hoti hain?
+ruling	no	Mount Everest ki unchai kitni hai?
+ruling	no	Sooraj se zameen kitni door hai?
+ruling	no	Urdu kis mulk ki qaumi zuban hai?
+ruling	no	Pakistan kab azad hua?
+ruling	no	Chand par pehla insaan kab gaya?
+ruling	no	پاکستان کا دارالحکومت کیا ہے؟
+ruling	no	ہندوستان کی کرنسی کیا ہے؟
+ruling	yes	Kya roze mein injection lagwa sakte hain?
+ruling	yes	Kya roze ki halat mein khoon test karwa sakte hain?
+ruling	yes	Kya sood par mila hua paisa istemal kar sakte hain?
+ruling	yes	Kya aurat bina mehram ke hajj par ja sakti hai?
+ruling	yes	Kya shaadi mein music bajana jaiz hai?
+# deen: Qasd's own Quran and hadith requests (half of them, by SHA-256; the other half is
+# held out to read recall) are about the deen; half of Qasd's requests for MIZAN's own actions
+# and everyday requests people wrote in English, Hindi and Urdu (MASSIVE 1.1 train, CC BY 4.0)
+# are not: the script is no evidence; questions about worship and belief written for the
+# facet (scripts/data/facet_deen_written.tsv, by a language model, at the owner's request) are
+# (scripts/facet_eval.py --write 40).
+deen	yes	مجھے سورہ یٰسین سنائیں
+deen	yes	اعرض لي سورة الفاتحة
+deen	yes	Mujhe Surah Mulk padh ke sunao
+deen	yes	Show 18:10
+deen	yes	Read Ayat al-Kursi
+deen	yes	Ayatul Kursi padh ke sunao
+deen	yes	3:190
+deen	yes	Quran 2:285-286
+deen	yes	surah yaseen ayat 5-7
+deen	yes	سورة الملك
+deen	yes	سورہ رحمٰن
+deen	yes	Surah Nas ayah 1
+deen	yes	Surah Asr sunao
+deen	yes	सूरह यासीन दिखाओ
+deen	yes	आयतुल कुर्सी सुनाओ
+deen	yes	What did the people say in 2:71?
+deen	yes	According to Surah 2, Ayah 255, who has the knowledge of what is before and behind them?
+deen	yes	What does Surah Asr say about loss?
+deen	yes	Which people are mentioned in Surah Fil?
+deen	yes	ما الذي تذكره الآية ٢:٢٥٥ عن الكرسي؟
+deen	yes	सूरह इखलास के अनुसार अल्लाह कैसा है?
+deen	yes	In 2:255, what does not overtake Him?
+deen	yes	What is the NAME of the sea in this ayah? The ayah (Surah 20, Ayah 97)
+deen	yes	بحسب سورة الإخلاص، هل لله ولد؟
+deen	yes	According to the attached ayah, whom alone does the believer worship? Surah 1, Ayah 5
+deen	yes	2:255 ka matlab samjhao
+deen	yes	What is the meaning of Surah Asr?
+deen	yes	Surah Fatiha ki tashreeh karo
+deen	yes	Give me the tafsir of 112:1
+deen	yes	اشرح لي معنى سورة العصر
+deen	yes	सूरह इखलास की व्याख्या करो
+deen	yes	Explain the meaning of Surah Kawthar
+deen	yes	Tafseer of Surah Nas please
+deen	yes	Show me Sahih Muslim 8
+deen	yes	Bukhari ki hadees number 52 sunao
+deen	yes	Quote Sahih Bukhari number one
+deen	yes	Sahih Muslim hadith no. 8
+deen	yes	Muslim ki pehli hadees
+deen	yes	hadith 3 of muslim
+deen	yes	Abu Dawud 4607
+deen	yes	nawawi 40 hadith number 6
+deen	yes	صحيح مسلم ٨
+deen	yes	Tirmidhi 1924
+deen	yes	Muwatta Malik 2
+deen	yes	What is the meaning of Muslim 2564?
+deen	yes	Nawawi 13 ki sharah batao
+deen	yes	Explain the hadith Bukhari 6018
+deen	yes	Tirmidhi 2516 ki tashreeh karo
+deen	yes	Explain Bukhari 6018
+deen	yes	Main aaj kal Surah Baqarah parh raha hoon aur mujhe yeh samajhna hai ke Surah 2 Ayat 286 ke mutabik Allah insaan par kitna bojh daalta hai aur woh dua kya hai
+deen	yes	Bhai ek sawal hai, mere dost ne kaha ke Surah 49 Ayat 13 mein insaanon ki pehchaan ka zikr hai, to us ayat ke hisaab se Allah ke nazdeek sab se izzat wala kaun hai?
+deen	yes	I was reading with my family last night and we got stuck on one point: according to Surah 94, Ayah 5 and 6, what comes together with hardship?
+deen	yes	Hamare halqe mein aaj bahas hui ke Surah 103 ayat 3 mein kin logon ko khasare se bahar rakha gaya hai, aap us ayat ki roshni mein batayein
+deen	yes	میں نے آج تلاوت کے دوران سوچا اور سمجھنا چاہتا ہوں کہ سورہ 2 آیت 153 کے مطابق اللہ کس کے ساتھ ہے، براہ کرم آیت سے بتائیں
+deen	yes	Can you check this for me, my teacher said Surah 65 Ayah 3 talks about trust, so according to that ayah what is Allah to the one who relies on Him?
+deen	yes	Find the verse that says Allah is with the patient
+deen	yes	Search the Quran for the story of Musa and Khidr
+deen	yes	Which verse talks about the heavens and earth being joined?
+deen	yes	Show me ayahs about honey
+deen	yes	Where does the Quran mention the orphans?
+deen	yes	Which surah mentions the people of the cave?
+deen	yes	Woh ayat dhoondo jisme Allah kehta hai main qareeb hoon
+deen	yes	Yusuf alaihis salam ka qissa kis surah me hai
+deen	yes	Kis ayat me likha hai ke har mushkil ke saath aasani hai
+deen	yes	La tahzan innallaha maana kis ayat me hai
+deen	yes	قرآن میں یتیم کا ذکر کہاں ہے؟
+deen	yes	وہ آیت ڈھونڈیں جس میں شہد کا ذکر ہے
+deen	yes	موسیٰ اور خضر کا قصہ کس سورت میں ہے؟
+deen	yes	أين ورد ذكر العسل في القرآن؟
+deen	yes	ابحث في القرآن عن آيات الصبر
+deen	yes	ما الآية التي تذكر اليتيم؟
+deen	yes	क़ुरआन में यतीम का ज़िक्र कहाँ है?
+deen	yes	Find where the Quran talks about the creation of man from clay
+deen	yes	Rabbana atina fid dunya hasanatan wa fil akhirati hasanah
+deen	yes	La ilaha illa anta subhanaka inni kuntu minaz zalimin
+deen	yes	Jannatul Mawa kya hai
+deen	yes	Allahu nurus samawati wal ard
+deen	yes	Wa tuizzu man tashau wa tuzillu man tashau
+deen	yes	How many ayat are in the whole Quran?
+deen	yes	How many verses does the Quran have?
+deen	yes	Total number of verses in the Quran
+deen	yes	How many verses are in Surah Yasin?
+deen	yes	Number of ayat in Surah Kahf
+deen	yes	Quran ki total ayat kitni hain
+deen	yes	Quran mein kitni surah hain
+deen	yes	قرآن میں کتنی آیات ہیں؟
+deen	yes	قرآن میں کتنی سورتیں ہیں؟
+deen	yes	كم عدد آيات القرآن؟
+deen	yes	كم آية في سورة البقرة؟
+deen	yes	كم سورة في القرآن؟
+deen	yes	सूरह यासीन में कितनी आयतें हैं?
+deen	yes	Give the Arabic text of Quran 2:285
+deen	yes	Show me the Arabic text of 2:255
+deen	yes	Arabic text of Surah Baqarah ayat 285 do
+deen	yes	Quran 3:190-191 ka Arabic text dikhao
+deen	yes	Surah Yasin ki pehli 5 ayaat Arabic mein
+deen	yes	Surah Fatiha Urdu tarjuma ke saath
+deen	yes	Surah Mulk ki aakhri 2 ayat Hindi mein
+deen	yes	First 3 verses of Surah Mulk
+deen	yes	Surah Kahf ki pehli 10 ayat sunao
+deen	yes	Quote the ayah that talks about the night journey
+deen	yes	Find the verse discussing the inheritance of daughters
+deen	yes	Which verse discusses the rights of parents?
+deen	yes	Which ayah describes the trumpet being blown?
+deen	yes	Cite the verse that refers to the people of Lut
+deen	yes	Cite the ayah where Allah speaks of iron
+deen	yes	Is there a verse mentioning the dog of the cave?
+deen	yes	Quote the ayah mentioning the ant and Sulaiman
+deen	yes	Quote the verse talking about the sun and the moon in their orbits
+deen	yes	Shajaratuz zaqqum kya hai
+deen	yes	Salsabeel kya hai Quran mein
+deen	yes	Sijjeen kya hai
+deen	yes	Zul Qarnain ka zikr
+deen	yes	Ashabul Ukhdood kaun the
+deen	yes	Naqatullah ka qissa
+deen	yes	Firdaus ka zikr kis ayat me
+deen	yes	سلسبیل کیا ہے
+deen	yes	یاجوج ماجوج کا ذکر
+deen	yes	ayah about gratitude
+deen	yes	ayah on kindness to parents
+deen	yes	verses about tawakkul and trust
+deen	yes	ayat about salah and zakat
+deen	yes	shukr ke baare me ayat
+deen	yes	आयत शुक्र के बारे में
+deen	yes	رزق کے بارے میں آیات
+deen	yes	آية عن الشكر
+deen	yes	Ala bi dhikrillahi tatmainnul qulub
+deen	yes	Wa nahnu aqrabu ilayhi min hablil warid
+deen	yes	Fadhkuruni adhkurkum
+deen	yes	Innallaha ala kulli shayin qadeer
+deen	yes	Wa lasawfa yutika rabbuka fatarda
+deen	yes	Which ayah orders us to guard the prayers?
+deen	yes	verse about standing in prayer at night
+deen	yes	ayah about being patient in hardship
+deen	yes	ayah about death and the grave
+deen	yes	Innamal a'malu bin-niyyat kaunsi hadith hai?
+deen	yes	Which hadith says actions are judged by intentions?
+deen	yes	إنما الأعمال بالنيات في أي كتاب؟
+deen	yes	Find the hadith: the strong man is not the one who wrestles
+deen	no	Do you have any abilities like search or code?
+deen	no	Tum kya kya kar sakte ho
+deen	no	Aapke paas kaun se tools hain
+deen	no	Kya kya kar sakte ho tum
+deen	no	What are your capabilities?
+deen	no	Tell me what you are able to do
+deen	no	Tumhare paas internet access hai kya
+deen	no	آپ کیا کیا کر سکتے ہیں؟
+deen	no	آپ کے پاس کون سے ٹولز ہیں؟
+deen	no	Tools dikhao apne
+deen	no	Do you have access to tools?
+deen	no	Tum internet use kar sakte ho kya?
+deen	no	Which features and tools are available?
+deen	no	Tell me your abilities
+deen	no	Kya kya features hain tumhare paas
+deen	no	Are you able to run Python code?
+deen	no	Can you read web pages?
+deen	no	Tumhare paas kaun kaun se tools hain?
+deen	no	What are you capable of?
+deen	no	तुम्हारे पास क्या क्या टूल्स हैं?
+deen	no	Every day after Fajr send me an ayah
+deen	no	Remind me every morning at 7 am to drink water
+deen	no	Har roz raat 10 baje Quran padhne ka reminder do
+deen	no	Daily 9 pm mujhe aaj ka summary bhejna
+deen	no	Har subah 6 baje ek hadith bhej dena
+deen	no	Remind me 20 minutes before Asr to finish work
+deen	no	Zuhr ke baad roz ek dua bhejo
+deen	no	أرسل لي آية كل صباح بعد الفجر
+deen	no	हर सुबह फज्र के बाद एक आयत भेजो
+deen	no	Rozana 7 baje mujhe exercise ka yaad dilao
+deen	no	Every night at 11 pm remind me to sleep
+deen	no	After Isha every day send me Surah Mulk reminder
+deen	no	Kal Hijri date kya hogi
+deen	no	How many days until Ramadan?
+deen	no	Today's Islamic date please
+deen	no	Eid kab hai is saal
+deen	no	रमज़ान कब शुरू होगा?
+deen	no	aaj ki islamic date batao
+deen	no	آج کون سی تاریخ ہے
+deen	no	ما هو تاريخ اليوم الهجري؟
+deen	no	आज कौन सी तारीख है
+deen	no	Ramzan kab shuru hoga
+deen	no	Current time please
+deen	no	आज क्या तारीख है?
+deen	no	Solve this puzzle {"train": [{"input": [[0,1],[1,0]], "output": [[1,0],[0,1]]}], "test": [{"input": [[1,1],[0,0]]}]}
+deen	no	Find the rule and give the test output: {"train": [{"input": [[1,0,0]], "output": [[0,0,1]]}], "test": [{"input": [[0,1,0]]}]}
+deen	no	```json\n{"train": [{"input": [[0,5],[5,0]], "output": [[5,0],[0,5]]}], "test": [{"input": [[5,5],[0,0]]}]}\n```\nWhat is the output grid?
+deen	no	اس پہیلی کا حل بتائیں {"train": [{"input": [[1,0]], "output": [[0,1]]}], "test": [{"input": [[2,0]]}]}
+deen	no	Next number in 2, 4, 8, 16, 32?
+deen	no	Is sequence ka agla number kya hoga 7, 35, 3385, 74099
+deen	no	What comes next: 1, 1, 2, 3, 5, 8, 13
+deen	no	Series complete karo 3, 9, 27, 81
+deen	no	Missing number in 2, 6, 12, 20, 30?
+deen	no	agla number batao 1 4 9 16 25
+deen	no	Find the pattern: 5, 10, 20, 40, 80
+deen	no	ما الرقم التالي في المتتالية 2، 4، 6، 8؟
+deen	no	Try again, think harder
+deen	no	Find the next number
+deen	no	Tum internet se learn karo saare number theories sab pattern sequence
+deen	no	Dobara try karo sequence ko
+deen	no	What comes next then?
+deen	no	Solve it properly
+deen	no	Use number theory to find it
+deen	no	کوشش کریں، اگلا نمبر ڈھونڈیں
+deen	no	Take help of all number theories and search the internet
+deen	no	Use maths theories and the internet to solve it
+deen	no	Learn from the internet all the number patterns and solve it
+deen	no	Research the sequence online and find the next term
+deen	no	What is the next one?
+deen	no	Continue the series
+deen	no	Think step by step and find the next term
+deen	no	Itni jaldi haar mat mano
+deen	no	Don't give up so fast
+deen	no	Is code ko chalao ```python\nprint(sum(range(10)))\n```
+deen	no	Python me 12345 * 6789 nikal ke run karo
+deen	no	Run python and print 3**50
+deen	no	Python se 25! calculate karke chalao
+deen	no	Python me 3**40 calculate karke chalao
+deen	no	main.py chala ke output dikhao
+deen	no	Run app.py
+deen	no	Execute report.py
+deen	no	Run tests.py please
+deen	no	Run `main.py` and show the output
+deen	no	Sales.csv me total kitna hai nikalo
+deen	no	Which month had the highest sales in sales.csv?
+deen	no	data.json me kitne users hain gino
+deen	no	Average marks nikalo results.csv se
+deen	no	Filter the failed entries in events.jsonl
+deen	no	Group expenses.csv by category and total it
+deen	no	Calculate 2**100
+deen	no	What is the square root of 144?
+deen	no	Twelve squared kitna
+deen	no	2^10 kya hai
+deen	no	كم يساوي 5 ضرب 7؟
+deen	no	What is 7 times 8?
+deen	no	45 + 67 + 89
+deen	no	3+5?
+deen	no	7*8 kitna hota hai?
+deen	no	What is 20% of 450?
+deen	no	2/5 + 1/10
+deen	no	25% of 80 kitna
+deen	no	9 + 10?
+deen	no	दो और दो कितना होता है? 2+2
+deen	no	List my datasets on Hugging Face
+deen	no	Show the files in https://huggingface.co/datasets/Zubairshaikh/mizan-eval-v1
+deen	no	Which models do I have on huggingface?
+deen	no	Read https://example.com and tell me the main points
+deen	no	According to https://example.com/report, what was the total revenue?
+deen	no	What does https://example.com/docs say about installation?
+deen	no	اقرأ هذه الصفحة ولخصها https://example.com
+deen	no	Is link ko padho aur khulasa do https://example.org/a
+deen	no	From https://example.com/pricing, what does the pro plan cost?
+deen	no	According to https://example.org/report, how many users signed up?
+deen	no	Write a program that prints the first ten primes and run it
+deen	no	Write and run a JavaScript program that prints today's weekday
+deen	no	Ek script banao jo 20 random numbers sort kare aur run karo
+deen	no	Program likho jo 1000 tak ke prime count kare aur chala do
+deen	no	Write a function slugify that turns 'Hello World' into 'hello-world' and test it
+deen	no	Write a Python function that returns the sum of a list, with tests
+deen	no	Write code to check if 97 is prime and run it
+deen	no	Write a script that counts vowels in a sentence and run it
+deen	no	Python code likho jo 1 se 50 tak ke even numbers print kare
+deen	no	Ek program likho jo 20 prime print kare aur chalao
+deen	no	Pehle 15 fibonacci numbers program se nikalo
+deen	no	Mere liye ek website bana do
+deen	no	Create a landing page for my bakery
+deen	no	Portfolio website banao mere liye
+deen	no	Build a tip calculator
+deen	no	Make a simple counter game
+deen	no	Ek quiz game banao science par
+deen	no	Create a BMI calculator web page
+deen	no	Make a portfolio site for a photographer
+deen	no	Banao ek todo list app
+deen	no	Create a simple notes app
+deen	no	Ek stopwatch website banao
+deen	no	Ek simple todo app banao
+deen	no	Create a memory card game
+deen	no	Build a calculator app
+deen	no	एक टाइमर ऐप बनाओ
+deen	no	एक नोट्स ऐप बनाइए
+deen	no	Make the button bigger and green
+deen	no	Title change karo "My Shop"
+deen	no	Header me logo lagao
+deen	no	Background ka rang neela kar do
+deen	no	Isme ek reset button jod do
+deen	no	Navbar me About link jodo
+deen	no	Remove the dark mode toggle
+deen	no	Add a reset button to the calculator
+deen	no	Button ka rang hara karo
+deen	no	Ek contact page banao
+deen	no	Footer ka text badlo
+deen	no	Fix the failing test in utils.py
+deen	no	Add error handling to main.py
+deen	no	parser.py me bug theek karo
+deen	no	Fix the crash in app.py when the list is empty
+deen	no	latest AI news search karo
+deen	no	Search the web for the latest AI news
+deen	no	Look up the price of gold right now
+deen	no	Sona aaj kitne ka chal raha hai
+deen	no	What's the current bitcoin price?
+deen	no	ابحث عن آخر الأخبار
+deen	no	Browse for reviews of the Pixel 11
+deen	no	What is the latest version of Python?
+deen	no	Current price of petrol in Delhi
+deen	no	Who won the election yesterday?
+deen	no	Latest updates on the Gaza ceasefire
+deen	no	Search online for cheap flights to Dubai
+deen	no	Google best phones under 20000
+deen	no	Aaj ka gold rate kya hai
+deen	no	Find the newest research on intermittent fasting
+deen	no	Search the web for MIZAN AI reviews
+deen	no	Aaj ke weather ki news search karo
+deen	no	latest tech news search karo
+deen	no	Latest Python release kya hai search karo
+deen	no	Ek notes app chahiye mujhe jo web pe chale
+deen	no	I want a quiz game I can open in my browser
+deen	no	Hamein apni dukaan ke liye ek website chahiye
+deen	no	Need a simple expense tracker page
+deen	no	मुझे एक कैलकुलेटर चाहिए जो ब्राउज़र में चले
+deen	no	I'd like a portfolio site for my drawings
+deen	no	Help me write a Python script that renames all my photos by date
+deen	no	Can you write me a script that converts a CSV file to JSON?
+deen	no	I need a Python program that tells me how many days are left until Ramadan
+deen	no	Help me write a small program that checks if a year is a leap year
+deen	no	Write me a Python script with a simple window and a button
+deen	no	Make a Python program with a small UI where I type my name and it greets me
+deen	no	Mujhe ek Python script chahiye jo meri files ko size ke hisaab se sort kare
+deen	no	Ek Python script likhne mein madad karo jo password generate kare
+deen	no	मेरे लिए एक पायथन स्क्रिप्ट लिखो जो फ़ाइलें गिने
+deen	no	ساعدني في كتابة برنامج بايثون يحسب متوسط الدرجات
+deen	no	What is the 40th Fibonacci number?
+deen	no	Lucas series ka 20th term kya hai?
+deen	no	What's the 1000th prime number?
+deen	no	पचासवाँ फ़िबोनाची नंबर क्या है?
+deen	no	Write a function that checks whether a Quran reference like Surah 2, Ayah 300 is valid, with tests
+deen	no	Python function likho jo surah aur ayah number se quran.com ka link banaye
+deen	no	Make a program that lists how many ayahs Surah 2 and Surah 3 have
+deen	no	Koshish jaari rakho
+deen	no	Haar kyun maan rahe ho, try karo
+deen	no	Don't quit, keep going
+deen	no	Run `server.py` and tell me what it prints
+deen	no	3/8 aur 1/6 ka jod fraction mein batao
+deen	no	Simplify 12/18
+deen	no	Add 2/9 and 4/15 and give the exact fraction
+deen	no	Ek FAQ page banao
+deen	no	Update the React component to show the total
+deen	no	Change the API URL in config.ts
+deen	no	Run this code
+deen	no	Run the program you wrote
+deen	no	Can you run that code?
+deen	no	Run the script and show me the output
+deen	no	Yeh code chala ke dikhao
+deen	no	Upar wala code run karo
+deen	no	Is program ko execute karo
+deen	no	Pehle wala code dobara chalao
+deen	no	اسے چلائیں
+deen	no	یہ کوڈ چلا کر دکھائیں
+deen	no	इसे चलाओ
+deen	no	यह कोड रन करो
+deen	no	شغّل هذا الكود
+deen	no	Chalao isko
+deen	no	Run karo
+deen	no	Code run karke result dikhao
+deen	no	Convert this screenshot into HTML and CSS
+deen	no	Turn this design into a working page and show the preview
+deen	no	Build this mockup as a website
+deen	no	Is image ka html page bana do aur preview dikhao
+deen	no	Image ka html banana tha
+deen	no	Is design jaisa page banao
+deen	no	Create a website about my bakery
+deen	no	Make a game about space for kids
+deen	no	Build a small app about healthy recipes
+deen	no	Make me a React app to track my expenses
+deen	no	Create a Next.js blog for me
+deen	no	Make me a small web app where I can add tasks and mark them done
+deen	no	एक React ऐप बनाओ जिसमें टू डू लिस्ट हो
+deen	no	Make me an Express API with two routes
+deen	no	Mera React app bana do jisme login ho
+deen	no	Set up a Vite React project with a contact form
+deen	no	Mere GitHub repo ke open pull requests dikhao
+deen	no	Kal ke liye mere calendar mein kya hai?
+deen	no	Send an email to the team about Friday's meeting
+deen	no	Meri Google Drive mein invoice wali files dhoondo
+deen	no	Find the budget spreadsheet in my Google Drive
+deen	no	Jira pe mere assigned tickets kaun se hain?
+deen	no	मेरे कैलेंडर में कल क्या है?
+deen	no	میرے جی میل میں آج کی ای میلز دکھاؤ
+deen	no	اعرض رسائل البريد غير المقروءة في Gmail
+deen	no	Tribonacci series ka 25th term kya hai?
+deen	no	Catalan numbers mein 15th number kya hai?
+deen	no	Pell series ka 30th term kitna hai?
+deen	no	Open https://example.com and click on Pricing
+deen	no	Go to https://shop.example.com, search for Ajwa dates and tell me the price
+deen	no	Visit https://example.com/contact and fill my name Zubair in the form
+deen	no	https://example.com par jao aur Contact page kholo
+deen	no	Is site pe jao https://shop.example.com aur dates search karo
+deen	no	https://example.com pe login button dabao aur batao kya aata hai
+deen	no	https://example.com/products pe next page pe jao aur items batao
+deen	no	3 to the power of 4
+deen	no	What is 25 x 4?
+deen	no	Is 1000003 a prime number?
+deen	no	Check whether 7919 is prime
+deen	no	What day of the week was 15 August 1947?
+deen	no	26 January 1950 ko kaunsa din tha?
+deen	no	A shirt costs 1200 rupees with a 15% discount. What is the final price?
+deen	no	500 par 20% discount ke baad kitna bachega?
+deen	no	Is 101 a prime number?
+deen	no	Is 97 prime?
+deen	no	Check if 1009 is a prime
+deen	no	What can you do for me?
+deen	no	What else can you do?
+deen	no	What can you do, MIZAN?
+deen	no	Batao tum kya kya kar sakte ho
+deen	no	Count how many times apple appears: apple, pear, apple, plum, apple, fig, pear, apple
+deen	no	A = 5; B = A + 3; C = B * 2; D = C - A. What is D?
+deen	no	x1 = 4, x2 = x1, x3 = x2, x4 = x3, x5 = x4. What value does x5 have?
+deen	no	Scores: Ali 78, Sana 91, Omar 65, Hiba 88, Zaid 91, Aisha 72. How many scored above 80?
+deen	no	Animals seen: cat, dog, cat, goat, cow, cat, dog, hen, cat, goat. How many cats?
+deen	no	Readings: 12, 15, 11, 19, 14, 15, 13. What is the average?
+deen	no	اس فہرست میں کتنی بار "سیب" آیا: سیب، کیلا، سیب، آم، سیب، انار
+deen	no	Basket: plum, mango, guava, peach, guava, mango, plum, plum, mango, peach, mango, peach, peach, orange, orange, banana, banana, apple, banana, apple, apple, mango, guava, orange, apple, orange, guava, mango, orange, plum, banana, peach, peach, peach, orange, banana, mango, guava, mango, peach, guava, guava, apple, plum, peach, plum, orange, peach, peach, plum, orange, banana, peach, apple, mango, orange, banana, mango, apple, peach, banana, mango, plum, peach, banana, banana, peach, mango, orange, banana.\nHow many mangoes are in the basket?
+deen	yes	How do I perform wudu?
+deen	yes	What breaks wudu?
+deen	yes	How many rakats are in Fajr prayer?
+deen	yes	When does the time for Asr prayer begin?
+deen	yes	How do I pray Witr?
+deen	yes	What do I say in sujood?
+deen	yes	How is the Janazah prayer performed?
+deen	yes	What are the conditions of a valid salah?
+deen	yes	What invalidates the fast?
+deen	yes	Who is exempt from fasting in Ramadan?
+deen	yes	How is fidya paid for missed fasts?
+deen	yes	What is the nisab for zakat?
+deen	yes	On which wealth is zakat due?
+deen	yes	Who can receive zakat?
+deen	yes	How much is zakat al-fitr?
+deen	yes	What are the pillars of Hajj?
+deen	yes	What is the difference between Hajj and Umrah?
+deen	yes	What is done on the day of Arafah?
+deen	yes	What is ihram?
+deen	yes	What are the six articles of faith?
+deen	yes	What does tawheed mean?
+deen	yes	What is shirk?
+deen	yes	What happens in the grave according to Islam?
+deen	yes	What are the major signs of the Day of Judgement?
+deen	yes	Which dua is read before sleeping?
+deen	yes	How do I perform ghusl?
+deen	yes	What is the meaning of ihsan?
+deen	yes	When is Laylat al-Qadr?
+deen	yes	How is the Eid prayer performed?
+deen	yes	What are the sunnahs of Friday?
+deen	yes	Who was Abu Bakr as-Siddiq?
+deen	yes	How many rakats is Taraweeh?
+deen	yes	Wuzu karne ka sahi tareeqa kya hai?
+deen	yes	Wuzu kin cheezon se toot jaata hai?
+deen	yes	Fajr ki namaz mein kitni rakat hoti hain?
+deen	yes	Asr ki namaz ka waqt kab shuru hota hai?
+deen	yes	Witr ki namaz kaise padhte hain?
+deen	yes	Sajde mein kya padhna chahiye?
+deen	yes	Janaze ki namaz ka tareeqa batao
+deen	yes	Namaz sahi hone ki sharten kya hain?
+deen	yes	Roza kin cheezon se toot jaata hai?
+deen	yes	Ramzan mein kin logon ko roze ki chhoot hai?
+deen	yes	Sehri ki dua kya hai?
+deen	yes	Qaza roze ka fidya kaise dete hain?
+deen	yes	Zakat ka nisab kitna hai?
+deen	yes	Kis maal par zakat farz hoti hai?
+deen	yes	Zakat kisko de sakte hain?
+deen	yes	Sadqa-e-fitr kitna dena hota hai?
+deen	yes	Hajj ke farz kya hain?
+deen	yes	Hajj aur Umrah mein kya farq hai?
+deen	yes	Arafah ke din kya kiya jaata hai?
+deen	yes	Ehram kya hota hai?
+deen	yes	Iman ke chhe arkaan kaun se hain?
+deen	yes	Tauheed ka matlab kya hai?
+deen	yes	Shirk kya hota hai?
+deen	yes	Qabr mein kya sawal poochhe jaate hain?
+deen	yes	Qayamat ki badi nishaniyan kya hain?
+deen	yes	Sone se pehle kaunsi dua padhte hain?
+deen	yes	Namaz ke baad kya padhna sunnat hai?
+deen	yes	Ghusl ka tareeqa kya hai?
+deen	yes	Ihsan ka matlab kya hai?
+deen	yes	Shab-e-Qadr kab hoti hai?
+deen	yes	Eid ki namaz kaise padhte hain?
+deen	yes	Jumma ke din ki sunnatein kya hain?
+deen	yes	Hazrat Abu Bakr Siddiq kaun the?
+deen	yes	Taraweeh kitni rakat hoti hai?
+deen	yes	वुज़ू करने का सही तरीक़ा क्या है?
+deen	yes	वुज़ू किन चीज़ों से टूट जाता है?
+deen	yes	फ़ज्र की नमाज़ में कितनी रकात होती हैं?
+deen	yes	अस्र की नमाज़ का वक़्त कब शुरू होता है?
+deen	yes	वित्र की नमाज़ कैसे पढ़ते हैं?
+deen	yes	जनाज़े की नमाज़ का तरीक़ा बताओ
+deen	yes	नमाज़ सही होने की शर्तें क्या हैं?
+deen	yes	रोज़ा किन चीज़ों से टूट जाता है?
+deen	yes	सहरी की दुआ क्या है?
+deen	yes	ज़कात का निसाब कितना है?
+deen	yes	ज़कात किसको दे सकते हैं?
+deen	yes	सदक़ा-ए-फ़ित्र कितना देना होता है?
+deen	yes	हज के फ़र्ज़ क्या हैं?
+deen	yes	हज और उमरा में क्या फ़र्क़ है?
+deen	yes	एहराम क्या होता है?
+deen	yes	ईमान के छह अरकान कौन से हैं?
+deen	yes	तौहीद का मतलब क्या है?
+deen	yes	शिर्क क्या होता है?
+deen	yes	क़ब्र में क्या सवाल पूछे जाते हैं?
+deen	yes	क़यामत की बड़ी निशानियाँ क्या हैं?
+deen	yes	सोने से पहले कौन सी दुआ पढ़ते हैं?
+deen	yes	ग़ुस्ल का तरीक़ा क्या है?
+deen	yes	शब-ए-क़द्र कब होती है?
+deen	yes	ईद की नमाज़ कैसे पढ़ते हैं?
+deen	yes	जुमे के दिन की सुन्नतें क्या हैं?
+deen	yes	हज़रत अबू बक्र सिद्दीक़ कौन थे?
+deen	yes	तहज्जुद की नमाज़ कितनी रकात है?
+deen	yes	नमाज़ में कितने फ़र्ज़ हैं?
+deen	yes	रमज़ान में तरावीह कितनी रकात है?
+deen	yes	وضو کرنے کا صحیح طریقہ کیا ہے؟
+deen	yes	وضو کن چیزوں سے ٹوٹ جاتا ہے؟
+deen	yes	فجر کی نماز میں کتنی رکعتیں ہوتی ہیں؟
+deen	yes	عصر کی نماز کا وقت کب شروع ہوتا ہے؟
+deen	yes	وتر کی نماز کیسے پڑھتے ہیں؟
+deen	yes	نماز جنازہ کا طریقہ بتائیں
+deen	yes	نماز صحیح ہونے کی شرائط کیا ہیں؟
+deen	yes	روزہ کن چیزوں سے ٹوٹ جاتا ہے؟
+deen	yes	سحری کی دعا کیا ہے؟
+deen	yes	زکوٰۃ کا نصاب کتنا ہے؟
+deen	yes	زکوٰۃ کس کو دی جا سکتی ہے؟
+deen	yes	صدقۂ فطر کتنا دینا ہوتا ہے؟
+deen	yes	حج کے فرائض کیا ہیں؟
+deen	yes	حج اور عمرہ میں کیا فرق ہے؟
+deen	yes	احرام کیا ہوتا ہے؟
+deen	yes	ایمان کے چھ ارکان کون سے ہیں؟
+deen	yes	توحید کا مطلب کیا ہے؟
+deen	yes	شرک کیا ہوتا ہے؟
+deen	yes	قبر میں کیا سوال پوچھے جاتے ہیں؟
+deen	yes	قیامت کی بڑی نشانیاں کیا ہیں؟
+deen	yes	سونے سے پہلے کون سی دعا پڑھتے ہیں؟
+deen	yes	غسل کا طریقہ کیا ہے؟
+deen	yes	شب قدر کب ہوتی ہے؟
+deen	yes	عید کی نماز کیسے پڑھتے ہیں؟
+deen	yes	جمعہ کے دن کی سنتیں کیا ہیں؟
+deen	yes	حضرت ابوبکر صدیق کون تھے؟
+deen	yes	تہجد کی نماز کتنی رکعت ہے؟
+deen	yes	نماز میں کتنے فرائض ہیں؟
+deen	yes	رمضان میں تراویح کتنی رکعت ہے؟
+deen	yes	ما هي فرائض الوضوء؟
+deen	yes	ما هي نواقض الوضوء؟
+deen	yes	كم ركعة في صلاة الفجر؟
+deen	yes	كيف تصلى صلاة الوتر؟
+deen	yes	ما هي شروط صحة الصلاة؟
+deen	yes	ما هي مفطرات الصيام؟
+deen	yes	ما هو نصاب الزكاة؟
+deen	yes	من هم مستحقو الزكاة؟
+deen	yes	ما هي أركان الحج؟
+deen	yes	ما الفرق بين الحج والعمرة؟
+deen	yes	ما هي أركان الإيمان الستة؟
+deen	yes	ما معنى التوحيد؟
+deen	yes	ما هو الشرك؟
+deen	yes	ما هي علامات الساعة الكبرى؟
+deen	yes	ما هو دعاء النوم؟
+deen	yes	كيف يكون الغسل؟
+deen	yes	متى تكون ليلة القدر؟
+deen	yes	كيف تصلى صلاة العيد؟
+deen	yes	من هو أبو بكر الصديق؟
+deen	yes	ما هي سنن يوم الجمعة؟
+deen	no	i want to hear my favorite jazz music genre
+deen	no	i want to start a new list
+deen	no	turn off speaker
+deen	no	select shuffle all
+deen	no	add a new email contact to my list
+deen	no	request an uber now
+deen	no	olly any new emails
+deen	no	book me on a train leaving penn station tomorrow traveling to any city more than two hundred miles away
+deen	no	add to my groceries
+deen	no	play the health show on my cell phone
+deen	no	tell me the last message
+deen	no	play squash with me
+deen	no	send mail to sanantha about body exercise schedule
+deen	no	turn up the volume on the music
+deen	no	jazz could be choice for me
+deen	no	how bad is the traffic near the airport
+deen	no	please switch the channel to classic f. m.
+deen	no	hey sound is low can you tune it up
+deen	no	send raj a mail for job
+deen	no	can i order takeaway dinner from byron's
+deen	no	play metallica
+deen	no	please turn on the lights in my house
+deen	no	play purple haze
+deen	no	have i received any email from ron in last couple of days
+deen	no	set an alarm for me at eight am
+deen	no	weather for next eight days san antonio texas
+deen	no	olly alert me at three p. m. to go to the concert
+deen	no	play the next episode
+deen	no	name the singer
+deen	no	should i bring extra water with me today
+deen	no	what date is the third friday of this month
+deen	no	traffic status please
+deen	no	make a note of this on the list
+deen	no	what is the high for today
+deen	no	let me know when a new email arrives from rachel
+deen	no	what's on my to do list
+deen	no	what's my latest email
+deen	no	remove mother from my contact list
+deen	no	what is the name of that song that just went off
+deen	no	weather fulton missouri
+deen	no	रोशनी का रंग बदल कर नीला करें
+deen	no	बैठक कक्ष में बत्तियों को लाल करें
+deen	no	मोबाइल चार्जर प्लग पर
+deen	no	गायक कौन है
+deen	no	क्या मेरे रास्ते में कोई देरी है
+deen	no	olly मेरा अलार्म दिखाओ
+deen	no	मेरे संपर्कों में apahelp at yahoo dot com प्राप्त करें
+deen	no	कृपया मुझे आगामी अलार्म के बारे में बताएं
+deen	no	मेरे लिए बार्डोनिया के लिए एक उबर टैक्सी बुक करें
+deen	no	मुझे बताओ सूची में क्या है
+deen	no	चलो शतरंज का खेल खेलते हैं
+deen	no	मुझे काल्का जोधपुर की आज train का समय दिखाओ
+deen	no	radia को open करे
+deen	no	आप सुअर का मांस किस तापमान पर पकाते हैं
+deen	no	कृपया शयनकक्ष में बत्तियाँ कम करें
+deen	no	संगीत की मात्रा नब्बे तक बढ़नी चाहिए
+deen	no	बजाना चालू रखें जहाँ मैंने छोड़ा था
+deen	no	क्या आप बत्तियों को उच्च सेटिंग पर रख सकते हैं
+deen	no	सोने का समय
+deen	no	राष्ट्रपति के बारे में प्रगतिशील के रूप में हमें क्या करना चाहिए
+deen	no	कृपया रोशनी का रंग बदल कर लाल करें
+deen	no	पर्वत समय क्षेत्र में समय क्या है
+deen	no	मेरा अलार्म बदलो
+deen	no	क्या मुझे आज की रात दस्ताना को पहनना चाहिए
+deen	no	बेटी को ईमेल भेजें
+deen	no	नाम का जवाब
+deen	no	मुझे दिल्ली में समय दीजिए
+deen	no	आकाशवाणी चालू करो
+deen	no	क्या आप मुझे सिएटल में उड़ान संग्रहालय जाने के लिए दिशा निर्देश दिखा सकते हैं
+deen	no	olly दो गानो को skip करो
+deen	no	प्लेलिस्ट से हटा दें मेरे पुराने अंग्रेज़ी गानों की सूची
+deen	no	क्या आप मुझे इस समय क्षेत्र में समय दे सकते हैं
+deen	no	कितना समय लगेगा वहां तक जाने के लिए
+deen	no	कृपया चाचा राम को निम्नलिखित ईमेल भेजें हाँ मैं वहाँ रहूँगा
+deen	no	वॉल्यूम को शून्य पर सेट करें
+deen	no	मैं जो सुन रहा हूं उसके परिणाम मुझे दिखाओ
+deen	no	अगर मैं दिल्ली में छह पी. एम. माइक पर कॉल करूं
+deen	no	मुझे सुबह चार बजे उठाओ
+deen	no	बेंगलुरू में समय क्या है
+deen	no	olly स्टारबक्स कॉफी शॉप को एक कॉफी ऑर्डर करें
+deen	no	google کی طرف سے کوئی نئی الیکٹرانک میل چیک کریں
+deen	no	بغیر پڑھی ہوئی ای میل چیک کریں
+deen	no	ایک صفر تین عشاریہ تین پر میں ھنر گھر شو سننا چاہتا ہوں
+deen	no	دس مارچ بو بجکر سترہ پر کے لیے الارم منسوخ کریں
+deen	no	راولپنڈی میں کیا موسم ہے
+deen	no	مجھے پاکستانی موسیقی سننا پسند ہے
+deen	no	باورچی خانہ کی روشنی کو نیلے رنگ میں تبدیل کریں
+deen	no	کیا آپ مجھے کچھ کافی بنا سکتے ہیں
+deen	no	ویمو پلگ کو بند کر دیں
+deen	no	دس ہونے پر مجھے بتائیں
+deen	no	کیا تم میرے لئے ایک اوبر بلا سکتے ہو
+deen	no	مجھے تلاش کرکے دو اس آڈیو کتاب کی ایک تیار کھلاڑی اور میرے لیئے چلاو
+deen	no	براہ مہربانی علی کو یاد دہانی کے ساتھ ای میل بھیجو
+deen	no	درست پیمائش اور ضروری آلات کے ساتھ کھانا پکانے کے لیے درکار تمام اجزاء جمع کریں
+deen	no	آج باہر کیسا ہے
+deen	no	کیا آپ میرے لیے کامل کو ای میل لکھیں گے
+deen	no	کیا مجھے اپنی فہرست مل سکتی ہے
+deen	no	سورج کی روشنی سے بچنے کا ماسک آج لگانا چاہئے
+deen	no	وہ خوفناک پیچھےگانا
+deen	no	google play سے کچھ بے ترتیب کھیلیں
+deen	no	ایلکسا کیا برنس روڈ پر آج ٹریفک زیادہ ہے
+deen	no	کچھ قوالی چلاؤ
+deen	no	سامنے کا پورچ کی لائٹس روشن کریں
+deen	no	برائے مہربانی میری پسندیدہ ریڈیو اسٹیشن چلائیں
+deen	no	علی کیا میرے پاس کسی بھی فہرست میں کچھ باقی ہے
+deen	no	کام کے منصوبے کے بارے میں کمپنی کے کارکن کو ای میل کریں
+deen	no	آج کے لیے میرے کرنے کی فہرست میں کیا ہے
+deen	no	موسم کی طرح ہے
+deen	no	ایمازون ایکو ڈاٹ ریڈیو شروع کرو
+deen	no	کیا آپ والیوم کو بڑھا سکتے ہیں
+deen	no	اگلے ہفتے کیا موسم ہوگا
+deen	no	تئیس تاریخ کو کتنی سالگرہ ہے
+deen	no	میری تازہ ترین فہرست کو ہٹا دیں
+deen	no	روابط میں ترمیم کرو
+deen	no	فہرست سے آئٹم کو ہٹا دیں
+deen	no	کیا میں سینڈلس پہن سکتی
+deen	no	ہلکے رنگ کو سبز میں تبدیل کریں
+deen	no	تمام اشیائے خوردونوش جن کا بلا ڈرائر ہے فہرست سے ہٹا دیا جائے
+deen	no	آپ اس موسیقی کو کیسے محفوظ کریں گے
+deen	no	ریل گاڑی کے اوقات کی جگہ
+# sarf: everyday questions and requests people wrote in Urdu and Arabic (MASSIVE 1.1 train,
+# CC BY 4.0) ask for no root or pattern; requests for one written for the facet
+# (scripts/data/facet_sarf_written.tsv, by a language model, marked there) do
+# (scripts/facet_eval.py --sarf --write N).
+sarf	no	میرے قریب کون سی ریل کمپنیاں ہیں
+sarf	no	آئی فون سیون کی قیمت کیا ہے
+sarf	no	درست پیمائش اور ضروری آلات کے ساتھ کھانا پکانے کے لیے درکار تمام اجزاء جمع کریں
+sarf	no	باٹا کمپنی کی اسٹاک بند ہونے کی قیمت کیا ہے
+sarf	no	برائے مہربانی ہنڈا کے افتتاحی اسٹاک کی قیمت بتاؤ
+sarf	no	میں یہاں خریداری کے لیے کہاں جا سکتا ہوں
+sarf	no	گیند کی شکل کیا ہے
+sarf	no	علی قریبی پارک کہاں ہے جہاں میں دوڑ کر جا سکتا ہوں
+sarf	no	کیا یہ سچ ہے کہ جم سات میل دور ہے
+sarf	no	مجھے اسمارٹ فون سافٹ ویئر کی تفصیل بتاؤ
+sarf	no	وش الفعاليات اللي قاعدة تصير في خميس مشيط
+sarf	no	وريني ايش المحلات القريبة مني
+sarf	no	ترتيب الريال السعودي الآن
+sarf	no	وين ممكن ألحق أشياء حلوة أسويها الليلة
+sarf	no	عرف اقتصاد
+sarf	no	أخبرني عن باراك أوباما
+sarf	no	افتح الأسهم
+sarf	no	وش هي أعلى سلسلة جبال في السعودية
+sarf	no	الأكل حلو
+sarf	no	أين يقع أكبر شلال في العالم
+sarf	no	google کی طرف سے کوئی نئی الیکٹرانک میل چیک کریں
+sarf	no	بغیر پڑھی ہوئی ای میل چیک کریں
+sarf	no	ایک صفر تین عشاریہ تین پر میں ھنر گھر شو سننا چاہتا ہوں
+sarf	no	دس مارچ بو بجکر سترہ پر کے لیے الارم منسوخ کریں
+sarf	no	راولپنڈی میں کیا موسم ہے
+sarf	no	مجھے پاکستانی موسیقی سننا پسند ہے
+sarf	no	باورچی خانہ کی روشنی کو نیلے رنگ میں تبدیل کریں
+sarf	no	کیا آپ مجھے کچھ کافی بنا سکتے ہیں
+sarf	no	ویمو پلگ کو بند کر دیں
+sarf	no	دس ہونے پر مجھے بتائیں
+sarf	no	لو سمحت ارسل email لأختي
+sarf	no	خلني اعرف موعد قطار كاليفورنيا
+sarf	no	حط منبه بعد أربعين دقيقة من الحين
+sarf	no	كيف هي حركة المرور اليوم
+sarf	no	اكتم الصوت
+sarf	no	عرض قائمة
+sarf	no	قطار الرياض
+sarf	no	أبغى أسمع لعبد المجيد
+sarf	no	سوف تمطر يوم السبت
+sarf	no	شغل قايمة موسيقى حفلة
+sarf	yes	What is the root of صلاة?
+sarf	yes	What is the root of the word جنة?
+sarf	yes	Give me the root and pattern of مؤمن
+sarf	yes	What is the wazn of ذكر?
+sarf	yes	Analyze the morphology of الحمد
+sarf	yes	Which root does the word ساجد come from?
+sarf	yes	Root and pattern of the Arabic word عبادة
+sarf	yes	Is خالق a noun or a verb?
+sarf	yes	What part of speech is كريم in Arabic?
+sarf	yes	What are the root letters of رحيم?
+sarf	yes	Break down the word ملك into root and pattern
+sarf	yes	Morphology of the word السماء please
+sarf	yes	صلاة ka root kya hai?
+sarf	yes	جنة ka wazn batao
+sarf	yes	مؤمن kis root se bana hai?
+sarf	yes	ذكر ism hai ya fel?
+sarf	yes	Is lafz ka maadda batao: عبادة
+sarf	yes	خالق ka maadda aur wazn kya hai?
+sarf	yes	كريم kis maadde se hai?
+sarf	yes	رحيم ka root aur wazn batao
+sarf	yes	ملك lafz ka maadda kya hai?
+sarf	yes	تقوى ka root kya hota hai?
+sarf	yes	صلاة का रूट क्या है?
+sarf	yes	جنة शब्द का वज़न बताओ
+sarf	yes	مؤمن किस मूल से बना है?
+sarf	yes	ذكر संज्ञा है या क्रिया?
+sarf	yes	عبادة का मादा क्या है?
+sarf	yes	خالق शब्द का रूट और वज़न बताइए
+sarf	yes	كريم का मूल अक्षर क्या हैं?
+sarf	yes	تقوى का वज़न क्या है?
+sarf	yes	صلاة کا مادہ کیا ہے؟
+sarf	yes	جنة کا وزن بتائیں
+sarf	yes	لفظ مؤمن کس مادے سے ہے؟
+sarf	yes	ذكر اسم ہے یا فعل؟
+sarf	yes	عبادة کا مادہ اور وزن بتائیں
+sarf	yes	خالق کا مادہ کیا ہے؟
+sarf	yes	كريم کس مادے سے بنا ہے؟
+sarf	yes	رحيم کا وزن کیا ہے؟
+sarf	yes	ملك کا مادہ بتائیں
+sarf	yes	تقوى کا مادہ اور وزن کیا ہے؟
+sarf	yes	ما جذر كلمة صلاة؟
+sarf	yes	ما وزن كلمة جنة؟
+sarf	yes	ما أصل كلمة مؤمن؟
+sarf	yes	هل كلمة ذكر اسم أم فعل؟
+sarf	yes	ما جذر ووزن كلمة عبادة؟
+sarf	yes	من أي جذر كلمة خالق؟
+sarf	yes	ما نوع كلمة كريم؟
+sarf	yes	ما الجذر الثلاثي لكلمة رحيم؟
+sarf	yes	ما وزن كلمة ملك وما جذرها؟
+sarf	yes	أعرب كلمة تقوى صرفيا

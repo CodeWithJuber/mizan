@@ -24,12 +24,11 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from typing import Any
+from typing import Any, cast
 
 from cognitive.thinking_stream import ThinkingPhase, ThinkingStep, ThinkingStream
 from learner.ruh_learner import RuhLearner
 from providers import BaseLLMProvider, create_provider, get_default_model
-
 from task_queue.priorities import TaskPriority
 from task_queue.task_queue import MizanTaskQueue
 
@@ -59,7 +58,23 @@ _TASK_KEYWORDS: frozenset[str] = frozenset(
 )
 
 _QUESTION_STARTERS: frozenset[str] = frozenset(
-    {"what", "why", "how", "when", "where", "who", "which", "is", "are", "does", "do", "can", "could", "would", "should"}
+    {
+        "what",
+        "why",
+        "how",
+        "when",
+        "where",
+        "who",
+        "which",
+        "is",
+        "are",
+        "does",
+        "do",
+        "can",
+        "could",
+        "would",
+        "should",
+    }
 )
 
 _SYSTEM_PROMPT = (
@@ -115,7 +130,7 @@ class KhalifahAgent:
         on_thinking receives (request_id, ThinkingStep) for each cognitive step.
         """
         request_id = str(uuid.uuid4())
-        trace = self._thinking.create_trace(request_id)
+        self._thinking.create_trace(request_id)
 
         if on_thinking:
             self._thinking.on_step(on_thinking)
@@ -173,9 +188,7 @@ class KhalifahAgent:
         self._thinking.complete(request_id)
 
         # 5. Capture for Ruh Learner (fire-and-forget; never blocks streaming)
-        asyncio.create_task(
-            self._capture_interaction(message, full_response, client_id)
-        )
+        asyncio.create_task(self._capture_interaction(message, full_response, client_id))
 
     # ── Intent classification ─────────────────────────────────────────────────
 
@@ -202,7 +215,7 @@ class KhalifahAgent:
             agent_id=client_id,
         )
         logger.info("Enqueued task %s for client %s", task_id, client_id)
-        return task_id
+        return cast(str, task_id)
 
     async def get_active_tasks(self, client_id: str) -> list[dict[str, Any]]:
         """Return pending and running tasks for a given client."""
@@ -259,6 +272,10 @@ class KhalifahAgent:
         client_id: str,
     ) -> None:
         """Record the interaction for Ruh Model training; swallow non-critical errors."""
+        from memory import stateless
+
+        if not stateless.trains():
+            return  # an evaluation run, or words a channel's terms keep out of training
         provider = _build_provider()
         provider_name = provider.provider_name if provider else "unknown"
         model = get_default_model(provider_name) if provider else "unknown"

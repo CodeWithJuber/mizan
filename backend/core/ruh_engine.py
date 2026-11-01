@@ -15,6 +15,8 @@ Energy model inspired by the soul's need for spiritual refreshment.
 """
 
 import logging
+import math
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -29,6 +31,7 @@ class RuhState:
     max_energy: float = 100.0  # Maximum energy capacity
     regen_rate: float = 2.0  # Energy regenerated per minute of rest
     last_activity: float = field(default_factory=time.time)
+    last_regeneration: float = field(default_factory=time.time)
     last_rest_start: float | None = None
     total_tasks_since_rest: int = 0
     fatigue_level: float = 0.0  # 0=fresh, 1=exhausted
@@ -71,10 +74,13 @@ class RuhEngine:
         self, agent_id: str, max_energy: float = 100.0, regen_rate: float = 2.0
     ) -> RuhState:
         """Initialize Ruh state for a new agent."""
+        now = time.time()
         state = RuhState(
             energy=max_energy,
             max_energy=max_energy,
             regen_rate=regen_rate,
+            last_activity=now,
+            last_regeneration=now,
         )
         self._states[agent_id] = state
         return state
@@ -109,6 +115,7 @@ class RuhEngine:
 
         state.energy = max(0.0, state.energy - cost)
         state.last_activity = time.time()
+        state.last_regeneration = state.last_activity
         state.last_rest_start = None
         state.total_tasks_since_rest += 1
 
@@ -134,33 +141,65 @@ class RuhEngine:
         state = self._states[agent_id]
         now = time.time()
 
-        if state.last_rest_start:
-            rest_minutes = (now - state.last_rest_start) / 60.0
-            regen = rest_minutes * state.regen_rate
-            state.energy = min(state.max_energy, state.energy + regen)
-            state.fatigue_level = 1.0 - (state.energy / state.max_energy)
+        # Dashboard reads and can_handle_task probes must not credit the same
+        # elapsed interval repeatedly. A backwards clock cannot create energy.
+        previous = state.last_regeneration
+        if now <= previous:
+            return
+        state.last_regeneration = now
+        if state.last_rest_start is not None:
+            start = max(previous, state.last_rest_start)
+            rate = state.regen_rate
         else:
-            # Passive regen even when not explicitly resting (but slower)
-            idle_minutes = (now - state.last_activity) / 60.0
-            if idle_minutes > 1.0:
-                passive_regen = idle_minutes * (state.regen_rate * 0.3)
-                state.energy = min(state.max_energy, state.energy + passive_regen)
-                state.fatigue_level = 1.0 - (state.energy / state.max_energy)
+            # Slower passive regeneration starts after one idle minute.
+            start = max(previous, state.last_activity + 60.0)
+            rate = state.regen_rate * 0.3
+        regenerated = max(0.0, now - start) / 60.0 * rate
+        state.energy = min(state.max_energy, state.energy + regenerated)
+        state.fatigue_level = 1.0 - (state.energy / state.max_energy)
+
+    # Strongest requested action, on a log-effort scale (word-boundary match).
+    _ACTION_EFFORT = {
+        **dict.fromkeys(("hello", "hi", "hey", "thanks", "salam", "status"), -2.0),
+        **dict.fromkeys(("read", "check", "find", "get", "show", "list", "open"), -1.0),
+        **dict.fromkeys(("analyze", "analyse", "review", "compare", "summarize", "explain"), 0.0),
+        **dict.fromkeys(("research", "implement", "refactor", "design", "build", "debug"), 1.0),
+        **dict.fromkeys(("architect", "migrate", "overhaul", "rewrite", "redesign"), 2.0),
+    }
+    _COMPLEXITY_BANDS = ((-2.0, "trivial"), (-0.6, "simple"), (0.6, "moderate"), (1.8, "complex"))
+
+    def task_complexity_score(self, task: str) -> float:
+        """Continuous effort estimate (log scale) from the request's structure.
+
+        score = 1.2·action + 0.6·(ln(1+words) − ln 7) + 0.4·extra_steps + 0.5·code
+        Requests without a known action word default to a light action (-0.5)
+        and are judged by length and structure, so any language works.
+        """
+        from core.adaptive import tokenize
+
+        words = tokenize(task)
+        efforts = [self._ACTION_EFFORT[w] for w in words if w in self._ACTION_EFFORT]
+        action = max(efforts) if efforts else -0.5
+        steps = len(re.findall(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s", task or "")) + len(
+            re.findall(r"\b(?:then|after that|and also)\b", (task or "").lower())
+        )
+        has_code = (
+            1.0 if "```" in (task or "") or re.search(r"\w+\.\w{1,4}\b|/\w+/", task or "") else 0.0
+        )
+        return (
+            1.2 * action
+            + 0.6 * (math.log1p(len(words)) - math.log(7))
+            + 0.4 * min(steps, 10)
+            + 0.5 * has_code
+        )
 
     def classify_task_complexity(self, task: str) -> str:
-        """Estimate task complexity from description."""
-        task_lower = task.lower()
-        if any(w in task_lower for w in ["hello", "hi", "status", "list", "show"]):
-            return "trivial"
-        if any(w in task_lower for w in ["read", "check", "find", "get"]):
-            return "simple"
-        if any(w in task_lower for w in ["analyze", "review", "compare", "summarize"]):
-            return "moderate"
-        if any(w in task_lower for w in ["research", "implement", "refactor", "design"]):
-            return "complex"
-        if any(w in task_lower for w in ["architect", "migrate", "overhaul", "rewrite"]):
-            return "extreme"
-        return "moderate"
+        """Bucket the continuous effort estimate into the energy cost classes."""
+        score = self.task_complexity_score(task)
+        for upper, label in self._COMPLEXITY_BANDS:
+            if score < upper:
+                return label
+        return "extreme"
 
     def get_fatigue_label(self, agent_id: str) -> str:
         """Get human-readable fatigue status."""
@@ -189,7 +228,7 @@ class RuhEngine:
         if not agent_ids:
             return None
         best = None
-        best_energy = -1
+        best_energy = -1.0
         for aid in agent_ids:
             state = self.get_state(aid)
             if state.energy > best_energy:

@@ -3,6 +3,8 @@
 import asyncio
 import heapq
 import json
+import math
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -27,7 +29,7 @@ _CREATE_TABLE_SQL = """
 
 _RESTORE_SQL = (
     "SELECT task_id, priority, payload, status, agent_id, created_at "
-    "FROM tasks WHERE status = 'pending' ORDER BY priority, created_at"
+    " , result, error FROM tasks ORDER BY priority, created_at"
 )
 
 _INSERT_SQL = (
@@ -36,10 +38,15 @@ _INSERT_SQL = (
     "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
 
-_UPDATE_SQL = (
-    "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? "
-    "WHERE task_id = ?"
-)
+_UPDATE_SQL = "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? WHERE task_id = ?"
+
+
+def effective_priority(task: "QueuedTask", now: float) -> float:
+    try:
+        tau = max(1.0, float(os.getenv("MIZAN_QUEUE_AGING_SECONDS", "300")))
+    except ValueError:
+        tau = 300.0
+    return task.priority - math.log1p(max(0.0, now - task.created_at) / tau)
 
 
 @dataclass(order=True)
@@ -70,8 +77,21 @@ class MizanTaskQueue:
         """Create tables and restore pending tasks from DB."""
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(_CREATE_TABLE_SQL)
+            # Interrupted jobs may have produced side effects. Preserve them as failed
+            # for explicit operator retry rather than silently executing twice.
+            await db.execute(
+                "UPDATE tasks SET status = 'failed', error = ?, updated_at = ? WHERE status = 'running'",
+                (
+                    "Interrupted by worker restart; inspect side effects before retrying",
+                    time.time(),
+                ),
+            )
             await db.commit()
+            self._heap.clear()
+            self._tasks.clear()
             await self._restore_pending(db)
+            if self._heap:
+                self._event.set()
 
     async def _restore_pending(self, db: aiosqlite.Connection) -> None:
         """Load pending tasks from the database into the in-memory heap."""
@@ -84,8 +104,11 @@ class MizanTaskQueue:
                     payload=json.loads(row[2]),
                     status=row[3],
                     agent_id=row[4],
+                    result=json.loads(row[6]) if row[6] else None,
+                    error=row[7],
                 )
-                heapq.heappush(self._heap, task)
+                if task.status == "pending":
+                    heapq.heappush(self._heap, task)
                 self._tasks[task.task_id] = task
 
     async def enqueue(
@@ -111,14 +134,22 @@ class MizanTaskQueue:
         return task.task_id
 
     async def dequeue(self) -> QueuedTask | None:
-        """Pop highest priority task. Returns None if empty."""
+        """Pop the task with the best *effective* priority. None if empty.
+
+        effective = priority − ln(1 + wait / τ): waiting raises a task's
+        urgency smoothly (τ = MIZAN_QUEUE_AGING_SECONDS, default 300), so a
+        stream of urgent work cannot starve lower levels forever.
+        """
         async with self._lock:
-            while self._heap:
-                task = heapq.heappop(self._heap)
-                if task.status == "pending":
-                    task.status = "running"
-                    await self._update_status(task.task_id, "running")
-                    return task
+            self._heap = [task for task in self._heap if task.status == "pending"]
+            if self._heap:
+                now = time.time()
+                task = min(self._heap, key=lambda t: (effective_priority(t, now), t.created_at))
+                self._heap.remove(task)
+                heapq.heapify(self._heap)
+                task.status = "running"
+                await self._update_status(task.task_id, "running")
+                return task
             self._event.clear()
         return None
 
@@ -126,7 +157,7 @@ class MizanTaskQueue:
         """Wait for next available task with timeout."""
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         return await self.dequeue()
 

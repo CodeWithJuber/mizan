@@ -3,12 +3,23 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>MIZAN - Agentic Personal AI</title>
+  <title>MIZAN</title>
   <meta name="description" content="MIZAN — Production-ready agentic personal AI with Quranic Cognitive Architecture"/>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><polygon points='18,4 22,14 34,14 24,21 27,32 18,26 9,32 12,21 2,14 14,14' fill='%23c9a227' stroke='%23c9a227' stroke-width='1'/></svg>"/>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Amiri:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="manifest" href="/manifest.webmanifest"/>
+  <meta name="theme-color" content="#fdfdfd" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)"/>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <script>
+    // Apply the saved theme before the first paint, so a dark page never flashes white.
+    (function () {
+      try {
+        var mode = localStorage.getItem("mizan_theme");
+        var dark = mode === "dark" || ((mode !== "light") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>

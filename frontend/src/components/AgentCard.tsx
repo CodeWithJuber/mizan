@@ -14,7 +14,7 @@ export const NAFS_LEVELS: Record<
 };
 
 const STATE_COLORS: Record<string, string> = {
-  resting: "bg-gray-100 dark:bg-zinc-700/30 text-gray-500 dark:text-gray-400",
+  resting: "bg-gray-100 dark:bg-zinc-700/30 text-muted-foreground",
   thinking: "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400",
   acting:
     "bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400",
@@ -46,18 +46,18 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
-      aria-selected={selected}
+      aria-pressed={selected}
       aria-label={`Agent ${agent.name}, ${nafs.desc}, ${agent.state}`}
     >
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-mizan-gold font-semibold text-sm shrink-0">
+        <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-mizan-gold font-semibold text-sm shrink-0">
           {agent.name[0]?.toUpperCase() || "A"}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+          <div className="font-semibold text-sm text-foreground truncate">
             {agent.name}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wide">
+          <div className="text-xs text-muted-foreground font-mono uppercase tracking-wide">
             {agent.role}
           </div>
         </div>
@@ -70,7 +70,7 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
 
       <div className="flex items-center gap-2 mb-2">
         <span
-          className="text-xs text-gray-500 dark:text-gray-400 min-w-[60px]"
+          className="text-xs text-muted-foreground min-w-[60px]"
           title={`Trust tier ${agent.nafs_level}/7`}
         >
           Level {agent.nafs_level}
@@ -84,36 +84,36 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
             }}
           />
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 italic whitespace-nowrap">
+        <span className="text-xs text-muted-foreground/80 italic whitespace-nowrap">
           {nafs.desc}
         </span>
       </div>
 
-      {/* Ruh energy bar */}
+      {/* Internal Ruh workload counter — backend sends 0-100 already. */}
       {agent.ruh_energy != null && (
         <div className="flex items-center gap-2 mb-3">
           <span
-            className="text-xs text-gray-500 dark:text-gray-400 min-w-[60px]"
-            title={`Ruh energy: ${(agent.ruh_energy * 100).toFixed(0)}%`}
+            className="text-xs text-muted-foreground min-w-[60px]"
+            title="Internal task/idle counter; not training progress, CPU usage, or capability."
           >
-            Ruh
+            Ruh workload
           </span>
           <div className="flex-1 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{
-                width: `${agent.ruh_energy * 100}%`,
+                width: `${Math.min(100, agent.ruh_energy)}%`,
                 background:
-                  agent.ruh_energy > 0.6
+                  agent.ruh_energy > 60
                     ? "#10b981"
-                    : agent.ruh_energy > 0.3
+                    : agent.ruh_energy > 30
                       ? "#f59e0b"
                       : "#ef4444",
               }}
             />
           </div>
-          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums whitespace-nowrap">
-            {(agent.ruh_energy * 100).toFixed(0)}%
+          <span className="text-xs text-muted-foreground/80 font-mono tabular-nums whitespace-nowrap">
+            {agent.ruh_energy.toFixed(0)}/100
           </span>
         </div>
       )}
@@ -138,14 +138,14 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
         ].map((s) => (
           <div
             key={s.label}
-            className="text-center py-1.5 px-1 bg-gray-50 dark:bg-zinc-800/50 rounded border border-gray-100 dark:border-zinc-700/50"
+            className="text-center py-1.5 px-1 bg-muted/50 rounded border border-border/60"
           >
             <span
-              className={`block font-mono text-sm ${s.color === false ? "text-red-500" : s.color ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100"}`}
+              className={`block font-mono text-sm ${s.color === false ? "text-red-500" : s.color ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}
             >
               {s.value}
             </span>
-            <span className="block text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            <span className="block text-xs text-muted-foreground/80 uppercase tracking-wider">
               {s.label}
             </span>
           </div>
@@ -160,7 +160,7 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
             </span>
           ))}
           {(agent.tools || []).length > 4 && (
-            <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-gray-400 font-mono">
+            <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-gray-400 font-mono">
               +{(agent.tools || []).length - 4}
             </span>
           )}

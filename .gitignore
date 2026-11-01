@@ -28,7 +28,9 @@ node_modules/
 # Database (local only)
 *.db
 *.sqlite
-data/
+*.sqlite3
+backend/data/
+/data/
 
 # Model checkpoints (large binaries)
 ruh_model/checkpoints/
@@ -59,3 +61,5 @@ backend/.vault.key
 # Research pipeline scratch + derived artifacts (datasets/ + results/ ARE committed)
 backend/research/output/
 backend/research/research.db
+# Archify delivery receipts hold local paths (docs/diagrams/README.md)
+docs/diagrams/*.delivery.json
