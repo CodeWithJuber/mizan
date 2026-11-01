@@ -367,6 +367,19 @@ async def test_a_lesson_erased_while_the_night_trained_is_not_promoted(
     assert ruh_reader.manifest("current") == before
 
 
+def test_the_status_shows_what_the_reader_saw_in_shadow(home, monkeypatch):
+    """An administrator reads shadow's counts in GET /api/tadrib before the
+    reader is ever turned on (counts only, no words)."""
+    found = tadrib.status()["reader"]
+    assert found["present"] is False and found["mode"] == ruh_reader.mode()
+    assert set(found["shadow"]) == {"read", "agreed", "would_change", "reader_differs"}
+    monkeypatch.setitem(ruh_reader._shadow, "read", 3)
+    monkeypatch.setitem(ruh_reader._shadow, "would_change", 1)
+    shadow = tadrib.status()["reader"]["shadow"]
+    assert shadow["read"] == 3 and shadow["would_change"] == 1
+    assert all(isinstance(value, int) for value in shadow.values())
+
+
 def test_the_daftar_counts_the_messages_the_reader_learned_from(home):
     from memory import daftar
 

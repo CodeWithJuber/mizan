@@ -1,4 +1,4 @@
-import { test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // Screenshots for a person to look at (SCREENSHOTS=1 npx playwright test screens).
 test.skip(!process.env.SCREENSHOTS, "screenshots only when asked");
@@ -12,6 +12,8 @@ async function open(page: Page, scheme: "light" | "dark") {
   await page.getByLabel("Username").fill("tester");
   await page.getByLabel("Password", { exact: true }).fill("secret");
   await page.getByRole("button", { name: "Sign in" }).click();
+  // Signed in once the page leaves /login: reloading earlier races the stored token.
+  await expect(page).not.toHaveURL(/\/login/);
   await page.evaluate(() => localStorage.setItem("mizan_setup_complete", "1"));
   await page.goto("/chat");
 }
