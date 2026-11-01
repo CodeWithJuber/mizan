@@ -454,6 +454,21 @@ the gained ones are questions that used to get the fixed tool list. With the
   - **A second view, the first word read alone, with its own fitted weight b.** A returned salam followed by an address ("Walaikum assalam brother") was explained by F's addresses; the opening word tells them apart. The two orders are chosen by leave-one-out: 3 for the whole message, 4 for the first word.
   - **Data.** F, R and O hold the rows of dev, test and test2 (development data once read); O also reads Qasd's facet rows. A seed equal to a formula or a returned salam is not counted as ordinary speech.
   - **Development result, leave-one-out:** formulas read 94.3%, returned salams read as a salam 0/122, other messages 2/3,101. MASSIVE dev: 0/8,124.
+  - Three Tahiyya rows equal to test3 rows (from the round 1/2 seed rows) were removed before test3 was read. The overlap check now reads Tahiyya's data too.
+
+**Round 3 result (1 Nov, test3 read once): passed. The recipe is on** (`MIZAN_TAHIYYA`, on by default).
+
+| Bar (test3 and MASSIVE test) | Result | Passed |
+|---|---|---|
+| 1. Salam-only read as a salam (≥ 90%) | 30/33 = 90.9% (Wilson 76–97%) | yes |
+| 2. Other test3 rows read as a salam (none) | 0/46 | yes |
+| 3. Qasd's own seeds read as a salam (none) | 0/1,317 | yes |
+| 4. MASSIVE everyday test read as a salam (Wilson upper < 0.1%) | 1/11,892, "s." (upper 0.05%) | yes |
+
+- **Missed (3):** "السلام علیکم ماموں", "السلام عليكم يا رفاق" and "अस्सलामु अलैकुम अम्मी", each a salam with a family address the formulas never held. They go on to the model, as before.
+- **None of the other rows was read as a salam:** 17 salams with a request, 6 returned salams, 10 other greetings, 5 questions about the salam and 8 everyday words.
+- **The one MASSIVE row**, the one-letter "s.", shows the reader's weakness on inputs too short to carry evidence. Recall is the bar that only just passed.
+- **In production:** Fahm asks Tahiyya before Qasd. A salam alone is answered with "Wa alaikum assalam wa rahmatullahi wa barakatuh" in the message's script, then a line offering help, with no model call. Isnad grades it sahih ("MIZAN's fixed reply to a greeting (4:86)"), and it is counted as zero-call in `usage.lisan`. The reader loads in about 1.4 s and reads a message in about 0.1 ms.
 
 ## What is still written by hand, and why
 

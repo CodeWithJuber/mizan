@@ -158,6 +158,12 @@ SETTINGS: tuple[Setting, ...] = (
             "(Mahw). Never pasted text, an injection or scripture. off keeps nothing "
             "(docs/episodic-memory.md).",
             "shadow", ("shadow", "off")),
+    Setting("MIZAN_TAHIYYA", "Model", "Return a salam (Tahiyya)", "choice",
+            "on: a message that is a salam and nothing else is answered by MIZAN with the "
+            "fuller greeting (4:86), with no model call; a salam with a request, a returned "
+            "salam or a question about the salam goes on as usual. Measured before it was "
+            "turned on (docs/fahm.md, \"Salam (4:86)\"). off sends every greeting to the model.",
+            "on", ("on", "off")),
     Setting("MIZAN_HARNESS_EVOLUTION", "Model", "Instruction renewal (Tajdid)", "choice",
             "After repeated failures MIZAN asks the model to rewrite one of its code "
             "instructions, tries the new version on part of the work, and keeps it only when "
