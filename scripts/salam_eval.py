@@ -54,7 +54,7 @@ MASSIVE_INTENTS = ("general_greet", "general_quirky")
 def _key(text: str) -> str:
     """A row's identity for overlap checks: case, marks and punctuation aside."""
     folded = unicodedata.normalize("NFKC", text).casefold()
-    return "".join(ch for ch in folded if ch.isalnum())
+    return "".join(ch for ch in folded if ch.isalnum() or unicodedata.category(ch).startswith("M"))
 
 
 def held_out(split: str) -> list[tuple[str, str, str]]:

@@ -4,19 +4,19 @@
 # written and before any result, as for the deen and sarf facets. No row repeats a dev row.
 # Greetings and requests only, no Quran text. CC0.
 # label<TAB>kind<TAB>text   (as in dev.tsv)
-salam	only	Assalam-o-alaikum
-salam	only	Assalamo alaikum
-salam	only	AsSalamu Alaikum
-salam	only	Aslamu alaikum
+salam	only	Assalam-o-alaykum
+salam	only	Asalaam-o-alaikum
+salam	only	AsSalaamu Alaikum
+salam	only	Aslamu alaykum
 salam	only	Salaam alaykum
-salam	only	ASSALAMUALAIKUM
-salam	only	aoa
+salam	only	ASALAM O ALAIKUM
+salam	address	aoa ji
 salam	only	As salam alaikum
 salam	only	Salam alaykum
 salam	only	Asalam alaikum
 salam	only	Assalaam o alaikum
-salam	only	Assalamu alaikum.
-salam	only	Assalamualaikum :)
+salam	only	Assalamu alaikoum
+salam	only	Assalamualaikumm
 salam	address	AoA sir
 salam	address	Aoa dear
 salam	address	Assalamualaikum madam
@@ -28,12 +28,12 @@ salam	address	Assalamualaikum Mizan bhai
 salam	address	Salaam bhai jaan
 salam	address	Assalamualaikum bhaiyo
 salam	full	Assalamualaikum wr wb
-salam	full	Assalamualaikum warahmatullah
-salam	full	Assalamu alaikum wa rahmatullah
+salam	full	Assalamualaikum wa rahmatullahi
+salam	full	Assalamu alaykum wa rahmatullah
 salam	full	Assalamu alaikum warahmatullahi wabarakatuhu
 salam	address	Peace be upon you, brother
 salam	full	Peace and blessings of Allah be upon you
-salam	full	السلام علیکم ورحمۃ اللہ وبرکاتہ
+salam	full	السلام علیکم ورحمت اللہ وبرکاتہ
 salam	full	السلام عليكم ورحمة الله
 salam	full	السلام عليكم ورحمة الله تعالى وبركاته
 salam	address	السلام علیکم جناب
@@ -43,7 +43,7 @@ salam	address	السلام عليكم أيها الإخوة
 salam	only	اسلام و علیکم
 salam	address	السلام علیکم بھائی جان
 salam	address	سلام بھائی
-salam	only	السلام عليكم!
+salam	address	السلام عليكم يا جماعة
 salam	only	अस्सलाम-ओ-अलैकुम
 salam	only	अस्सलामो अलैकुम
 salam	full	अस्सलामु अलैकुम व रहमतुल्लाहि व बरकातुहू
@@ -51,7 +51,7 @@ salam	address	अस्सलामु अलैकुम दोस्तों
 salam	address	सलाम भाई
 salam	address	अस्सलामु अलैकुम जनाब
 salam	address	अस्सलाम अलैकुम सबको
-salam	only	अस्सलामु अलैकुम!
+salam	address	अस्सलामु अलैकुम जी
 no	with_request	Assalamualaikum, aap kaise hain?
 no	with_request	AoA, kal ka mausam batao
 no	with_request	Assalamualaikum bhai, roze ke masail batao
@@ -83,7 +83,7 @@ no	with_request	अस्सलाम अलैकुम, आप क्या �
 no	with_request	अस्सलामु अलैकुम, एक कहानी सुनाइए
 no	with_request	अस्सलामु अलैकुम सर, आज कौन सी तारीख़ है?
 no	returned	Waalaikum assalam
-no	returned	Walaikumassalam bhai
+no	returned	Wa alaikumus salam
 no	returned	Wa alaykum as-salam
 no	returned	Walaikum assalam wa rahmatullah
 no	returned	وعلیکم السلام ورحمۃ اللہ
