@@ -1,0 +1,199 @@
+# Tahiyya's salam formulas (tadbir/tahiyya.py): messages that are a salam and nothing else, with an
+# address at most. Written by MIZAN's coding assistant (a language model) for the salam rounds
+# (docs/fahm.md, "Salam (4:86)"); rows may repeat the dev, test and test2 splits, which are
+# development data now, and none is in test3. CC0. One message per line.
+Assalamualaikum doston
+Assalamualaikum aapa
+Assalamualaikum baji
+Assalamualaikum sab ko
+Assalamualaikum ustad ji
+Assalamu alaikum sister
+Assalamu alaikum ya akhi
+AoA everyone
+AoA dosto
+AOA all
+Salam sab ko
+Asalam o alaikum bhai jan
+Asalaam alaikum
+Aslaam alaikum
+Asalaamu alaykum
+Salam o alaykum
+Assalamualaikum MIZAN ji
+Assalamu alaikum wa rahmatullahi wa barakatuhu sab ko
+Assalamualaikum wa rahmatullahi ta'ala wa barakatuh
+Peace be upon you, my friends
+السلام علیکم جی
+السلام علیکم سب دوستوں کو
+السلام علیکم باجی
+السلام علیکم امی جان
+السلام عليكم يا أصدقائي
+السلام عليكم ورحمة الله وبركاته يا إخوتي
+السلام عليكم يا دكتور
+السلام علیکم ورحمۃ اللہ تعالیٰ وبرکاتہ
+اسلام علیکم بھائی
+سلام علیکم سر
+अस्सलामु अलैकुम दीदी
+अस्सलाम अलैकुम भाईजान
+अस्सलामु अलैकुम व रहमतुल्लाहि
+अस्सलामु अलैकुम सभी को
+सलाम अलैकुम दोस्तो
+अस्सलामो अलैकुम भाई
+Salam
+Slm
+Assalamualeikum
+Asalamu alaykum
+Assalaamu alaykum
+Salam aleikum
+Asalamalaykum
+Asalaam o alaykum
+Aoa sab
+السّلام عليكم
+السلامُ عليكم
+اسلام عليكم
+سلام عليكم
+سلام
+असलाम अलैकुम
+सलाम
+अस्सलामु अलैकुम्
+السلام علیکم و رحمت اللہ
+Salaam sab ko
+Salam ji
+Salaam bhai log
+Assalamualaikum
+Assalamu alaikum
+Assalam o alaikum
+Asalamualaikum
+Salam alaikum
+Salaam alaikum
+AoA
+Aoa
+Salaam
+As-salamu alaykum
+Assalamu alaikum wa rahmatullah
+Assalamu alaikum wa rahmatullahi wa barakatuh
+Assalamualaikum warahmatullahi wabarakatuh
+Peace be upon you
+Assalamualaikum bhai
+Assalamualaikum sir
+Salam bhai
+AoA bhai
+AoA sir
+السلام علیکم
+السلام عليكم
+السلام علیکم ورحمۃ اللہ وبرکاتہ
+السلام عليكم ورحمة الله وبركاته
+السلام عليكم ورحمة الله
+السلام علیکم بھائی
+سلام علیکم
+اسلام علیکم
+अस्सलामु अलैकुम
+अस्सलाम अलैकुम
+अस्सलामु अलैकुम व रहमतुल्लाहि व बरकातुहू
+सलाम अलैकुम
+अस्सलामु अलैकुम भाई
+# The salam-only rows of dev, test and test2 (development data once read).
+Aslamualaikum
+Aslam o alaikum
+A.o.A
+Assalamu'alaikum
+assalamualaikum!
+Asslamualaikum
+Salam o alaikum
+Salamualaikum
+AOA bhai
+Assalamualaikum dosto
+Assalamu alaikum everyone
+Assalamualaikum Mizan
+Assalamualaikum ji
+Assalamualaikum brother
+Assalamualaikum wa rahmatullah
+Peace be upon you all
+السلام علیکم ورحمۃ اللہ
+السلام علیکم و رحمۃ اللہ و برکاتہ
+السلام عليكم يا أخي
+السلام علیکم سر
+السلام عليكم جميعا
+السلام علیکم دوستو
+अस्सलामुअलैकुम
+अस्सलाम वालेकुम
+अस्सलामु अलैकुम व रहमतुल्लाह
+अस्सलामु अलैकुम सर
+Assalam-o-alaykum
+Asalaam-o-alaikum
+AsSalaamu Alaikum
+Aslamu alaykum
+Salaam alaykum
+ASALAM O ALAIKUM
+aoa ji
+As salam alaikum
+Salam alaykum
+Asalam alaikum
+Assalaam o alaikum
+Assalamu alaikoum
+Assalamualaikumm
+Aoa dear
+Assalamualaikum madam
+Assalamualaikum uncle
+Assalamualaikum friends
+Assalamu alaikum dear
+Assalamualaikum to all
+Assalamualaikum Mizan bhai
+Salaam bhai jaan
+Assalamualaikum bhaiyo
+Assalamualaikum wr wb
+Assalamualaikum wa rahmatullahi
+Assalamu alaykum wa rahmatullah
+Assalamu alaikum warahmatullahi wabarakatuhu
+Peace be upon you, brother
+Peace and blessings of Allah be upon you
+السلام علیکم ورحمت اللہ وبرکاتہ
+السلام عليكم ورحمة الله تعالى وبركاته
+السلام علیکم جناب
+السلام عليكم يا شيخ
+السلام علیکم سب کو
+السلام عليكم أيها الإخوة
+اسلام و علیکم
+السلام علیکم بھائی جان
+سلام بھائی
+السلام عليكم يا جماعة
+अस्सलाम-ओ-अलैकुम
+अस्सलामो अलैकुम
+अस्सलामु अलैकुम दोस्तों
+सलाम भाई
+अस्सलामु अलैकुम जनाब
+अस्सलाम अलैकुम सबको
+अस्सलामु अलैकुम जी
+Asalaam o alaikum sir
+Assalamu alaikum bhaiyon
+AoA bhaijaan
+Aoa madam
+Assalam alaikum doctor sahab
+Salaam ji
+Assalamualaikum everybody
+Asalamualaikum dear friends
+Assalamu alaikum, brothers and sisters
+Salam alaikum wa rahmatullah
+Peace be upon you, sister
+Peace be upon you and Allah's mercy
+Assalamualaikum Mizan sahab
+Asalamo alaikum ji
+Slaam alaikum
+Assalamu alaykum bhai
+Asalaam alaykum ji
+السلام علیکم سب دوستو
+السلام علیکم ابو
+السلام عليكم يا أستاذ
+السلام عليكم ورحمة الله وبركاته يا شباب
+السلام علیکم ورحمۃ اللہ بھائی
+اَلسَّلَامُ عَلَيْكُمْ
+السلام عليكم ورحمة الله وبركاته يا عائلتي
+سلام علیکم جناب
+السلام عليكم يا جماعة الخير
+السلام علیکم آپا
+اسلام علیکم دوستو
+अस्सलामु अलैकुम भाइयों
+अस्सलामु अलैकुम दोस्त
+अस्सलाम अलैकुम जी
+सलाम अलैकुम भाई साहब
+अस्सलामु अलैकुम व रहमतुल्लाहि व बरकातुह
+अस्सलामु अलैकुम सब लोगों को

@@ -37,6 +37,7 @@ from . import (
     qiyas,
     quran,
     silsila,
+    tahiyya,
     trace,
     waqt,
 )
@@ -533,6 +534,11 @@ _BUILDERS = {
 def understand(text: str, history: list[dict] | None = None, overlay: Any = None) -> Understanding:
     message = text.strip()
     language = detect_language(message, history)
+    # A salam and nothing else is MIZAN's to return (4:86). Tahiyya reads the
+    # whole message in order, which Qasd's bag of letters cannot.
+    greeting = tahiyya.posterior(message)
+    if greeting > 0.5:
+        return Understanding("salam", language, greeting, {})
     # The chat so far is the prior: in a conversation, a message that reads only
     # a little like a request stays conversation (qasd.prior).
     earlier = qasd.earlier_messages(history)
@@ -642,7 +648,7 @@ FAMILIES = {
 }
 _FAMILY = {intent: family for family, members in FAMILIES.items() for intent in members}
 # Recipes whose answer is the same whatever the message says.
-FIXED_ANSWERS = frozenset({"capabilities"})
+FIXED_ANSWERS = frozenset({"capabilities", "salam"})
 
 
 def _families(ranked: list[tuple[str, float]]) -> list[tuple[str, float, list[tuple[str, float]]]]:
@@ -681,6 +687,7 @@ def _clauses(text: str) -> list[str]:
 _WORDS_ONLY = {
     "converse",
     "capabilities",
+    "salam",
     "silsila_follow",
     "search_bare",
     "run_follow",

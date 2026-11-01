@@ -447,6 +447,13 @@ the gained ones are questions that used to get the fixed tool list. With the
   3. none of Qasd's own seeds read as a salam (the two bare salams left out);
   4. MASSIVE 1.1's test requests other than `general_greet` (en, hi, ur, ar) read as a salam, Wilson upper bound below 0.1%.
 - If a bar fails, the recipe stays off and the round is written as it came.
+- **Changed on development data before test3 was read** (written here first):
+  - **c is the log prior odds, not fitted.** With c fitted, a short word with no evidence either way read as a salam ("adele", "اسم", "मोबाइल": MASSIVE dev 11/8124).
+  - **The evidence is divided by (n/ñ)^γ**, as Tamyiz weighs a long message's text. Otherwise short salams carried too little evidence. γ is fitted by leave-one-out.
+  - **A third reader, R, for returned salams** (`data/tahiyya/returned.tsv`), with the posterior over F, R and O. Returned salams share a salam's words, and with only two readers about one in seven read as a salam.
+  - **A second view, the first word read alone, with its own fitted weight b.** A returned salam followed by an address ("Walaikum assalam brother") was explained by F's addresses; the opening word tells them apart. The two orders are chosen by leave-one-out: 3 for the whole message, 4 for the first word.
+  - **Data.** F, R and O hold the rows of dev, test and test2 (development data once read); O also reads Qasd's facet rows. A seed equal to a formula or a returned salam is not counted as ordinary speech.
+  - **Development result, leave-one-out:** formulas read 94.3%, returned salams read as a salam 0/122, other messages 2/3,101. MASSIVE dev: 0/8,124.
 
 ## What is still written by hand, and why
 
