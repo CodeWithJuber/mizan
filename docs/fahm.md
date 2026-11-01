@@ -374,6 +374,25 @@ the gained ones are questions that used to get the fixed tool list. With the
   - Adding MASSIVE's everyday questions as well lowered Urdu false positives (19% → 2%), but Devanagari worship recall fell to 40–50%.
 - **What is left.** Everyday "how do I…" questions in Roman Hindi and Urdu ("Chai banane ka tareeqa kya hai?") still read as about the deen 25–50% of the time on small sets. The `ruling` facet is unchanged: every "no" count tried lowered its recall.
 
+## Salam (4:86): pre-registered 1 Nov 2026
+
+**Why.** On production, every conversation answer still came from the teacher model: since 29 Oct, 0 of 26 answers needed no model call. The smallest piece of conversation MIZAN can own is the greeting, which the Quran commands answering with a better greeting or at least the same (4:86).
+
+**What is built** (the owner's decision of 1 Nov):
+- A message that is a salam and nothing else ("Assalamualaikum", "AoA bhai", "السلام علیکم ورحمۃ اللہ", "अस्सलामु अलैकुम") is a new Qasd intent, `salam`, with a fixed answer like `capabilities`.
+- MIZAN answers it with no model call: "Wa alaikum assalam wa rahmatullahi wa barakatuh" in the message's script, then one line offering help in the message's language.
+- A salam with a request or question, a returned salam, other greetings and questions about the salam stay as they are.
+- It is turned on directly if it passes, with no shadow, because the reply is fixed words.
+
+**Measured** by `scripts/salam_eval.py` through `fahm.understand`, as production runs it (MIZAN orchestration, Iqtibas on with the Quran's editions):
+- **Held-out sets** in `scripts/data/salam/`: `dev.tsv` (51 salam / 64 not) to choose the seeds, and `test.tsv` (48 / 61), read once. Both cover Latin, Arabic and Devanagari script, and neither shares a row with the seeds or the other. They were written by MIZAN's coding assistant (a language model) before any seed, and are marked as such.
+- **Bars, on test, all must pass:**
+  1. at least **90%** of salam-only messages read as `salam` (Wilson interval reported);
+  2. **no** other message read as `salam` (Wilson upper bound reported);
+  3. Qasd's earlier seeds no worse by exact leave-one-out against main at 7be4f47, with relabelled rows left out: refused at P(worse) ≥ 0.95, Ta'lim's gate.
+- **Reported with no bar:** MASSIVE 1.1's `general_greet` and `general_quirky` test rows (en, hi, ur, ar) read as a salam, listed for a look by hand, since a translator may have written a salam for "hello".
+- **If a bar fails**, the result is written as it came and the recipe stays off. The seeds may then be revised against dev only, with a fresh test set.
+
 ## What is still written by hand, and why
 
 - **Grammars: exact readers whose findings are evidence.** Quran and hadith
