@@ -1,22 +1,22 @@
 {
  "order": 3,
  "first_order": 4,
- "a": 0.19044222821226425,
- "b": 0.4428736475382894,
+ "a": 0.19091623428890553,
+ "b": 0.445781816347273,
  "gamma": 1.0,
  "ref": 29.0,
  "prior": {
-  "salam": 0.05677494878548434,
-  "returned": 0.0357038337723149,
-  "other": 0.9075212174422007
+  "salam": 0.056239015817223195,
+  "returned": 0.035735207967193906,
+  "other": 0.9080257762155829
  },
- "loo_loss": 0.012741,
- "formulas_read": 0.943299,
+ "loo_loss": 0.012658,
+ "formulas_read": 0.942708,
  "returned_read_as_salam": 0.0,
  "others_read_as_salam": 0.000645,
- "sha256": "5236d4638357b1dc573dd52af6a15fd0f5acca93c86d629ee30ebd60d97aabe7",
- "rows_salam": 194,
+ "sha256": "37b4d4c71ca73c6f8026b1037979f4a988821a90da3157505c8e9401a47aaa61",
+ "rows_salam": 192,
  "rows_returned": 122,
- "rows_other": 3101,
+ "rows_other": 3100,
  "rows_speech": 4715
 }

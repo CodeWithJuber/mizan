@@ -78,6 +78,15 @@ def seed_rows(text: str) -> list[tuple[str, str]]:
 def check_overlap(split: str) -> None:
     """No held-out row may be a seed, and test shares no row with dev."""
     seeds = {_key(text) for _label, text in seed_rows((ROOT / SEEDS).read_text(encoding="utf-8"))}
+    # Tahiyya's own data (round 3) is a seed too.
+    for name in ("salam.tsv", "returned.tsv", "other.tsv"):
+        path = ROOT / "backend" / "tadbir" / "data" / "tahiyya" / name
+        if path.exists():
+            seeds |= {
+                _key(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.startswith("#")
+            }
     mine = {_key(text) for _l, _k, text in held_out(split)}
     clash = mine & seeds
     earlier_splits = {"test": ("dev",), "test2": ("dev", "test"), "test3": ("dev", "test", "test2")}
