@@ -19,6 +19,10 @@ as ``repo@revision:weights:vocabulary``) under each arm:
   keeps its subject;
 - ``joint+window``: both.
 
+``--information gharib`` weighs words by their self-information in their own
+language (``tadbir.gharib``) instead of the inverse document frequency in use
+(``ahl_dhikr.WORDS``; measured and not adopted, ``docs/ahl-dhikr.md``).
+
 Reported per arm: claims supported and contradicted with 95% Wilson intervals,
 the questions Talaqqi would keep (``talaqqi.keep``'s rule), and every claim
 whose verdict differs from ``single``, with the premise, for a hand audit.
@@ -158,8 +162,15 @@ async def main() -> None:
     sources.add_argument("--pools", type=Path)
     parser.add_argument("--nli", help="repo@revision:weights:vocabulary")
     parser.add_argument("--arms", default="single,joint,window,joint+window")
+    parser.add_argument(
+        "--information",
+        choices=("lughah", "gharib"),
+        default=ahl_dhikr.WORDS,
+        help="the word information about() weighs by (ahl_dhikr.WORDS)",
+    )
     parser.add_argument("--out", type=Path)
     options = parser.parse_args()
+    ahl_dhikr.WORDS = options.information
     if options.nli:
         named, weights, vocabulary = options.nli.split(":")
         ahl_dhikr.REPO, ahl_dhikr.REVISION = named.split("@")
