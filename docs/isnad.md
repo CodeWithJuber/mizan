@@ -23,7 +23,7 @@ The **Mizan** (balance) is the share of the answer's claims graded sahih or hasa
 
 There are three cases:
 
-1. **MIZAN's own established work** (compute, quran, quran search and count, sarf, hadith, waqt, salah times, a saved watcher, the capabilities list, a verified run, a proven Qiyas or Silsila rule, passed project checks, a project task or file run, a Hugging Face read), when MIZAN verified the outcome and it does not rest on outside evidence. Every claim is sahih, and the basis is named (`isnad.BASIS`): "MIZAN calculated it exactly", "read verbatim from MIZAN's Quran source", and so on.
+1. **MIZAN's own established work** (compute, quran, quran search and count, sarf, hadith, waqt, salah times, a saved watcher, the capabilities list, a returned salam, a verified run, a proven Qiyas or Silsila rule, passed project checks, a project task or file run, a Hugging Face read), when MIZAN verified the outcome and it does not rest on outside evidence. Every claim is sahih, and the basis is named (`isnad.BASIS`): "MIZAN calculated it exactly", "read verbatim from MIZAN's Quran source", and so on.
 2. **Answers Lisan worded from evidence** (web search and read, tool results, recall). Each claim is weighed against the facts and tool receipts of that run.
 3. **The model's words with no evidence.** Every claim is da'if, unless it fabricates an action, a citation or a link, which makes it mawdu'.
 

@@ -132,7 +132,7 @@ Qasd reads four kinds of evidence:
 - the context (`c:` tokens)
 - the chat so far, as the prior (below)
 
-It returns a posterior over 31 recipes and `converse` (among them `quran_count`: how many surahs or ayahs, answered from the surah index, never by a search). `use_tool` is the
+It returns a posterior over 32 recipes, `converse` and `salam_returned` (a returned salam, recognised and answered as conversation) (among them `quran_count`: how many surahs or ayahs, answered from the surah index, never by a search). `use_tool` is the
 request for one of the user's connected tools (GitHub, calendar, email, Drive):
 it has no recipe of its own, so it goes to Lisan, which picks among the tools
 the user actually has, and MIZAN checks the arguments against the tool's schema. The seeds are in
@@ -171,7 +171,7 @@ intents.
    small readings spread over unrelated actions are uncertainty, not a
    request, and are never mapped. Lisan sees the user's last three messages
    as context, so a word taught in a dialect lesson reads as part of the
-   lesson. A fixed answer (`capabilities`) is never mapped. MIZAN validates
+   lesson. A fixed answer (`capabilities`, `salam`) is never mapped. MIZAN validates
    every step and runs it itself. A Quran surah must be the user's own, as a
    hadith number must be. If Lisan names a surah the user did not write (53:14
    from memory for "Sidratul muntaha kya hai"), the step is refused. Its
@@ -266,7 +266,7 @@ short odd message as a Quran search. `tadbir/iqtibas.py` looks instead:
      a span could start.
    - The second comes from a Witten–Bell bigram model of the ordinary speech
      that ships with MIZAN: the Lughah corpora, without the Uthmani quotes or
-     the names, and Qasd's conversation seeds, where everyday salam and dhikr
+     the names, and Qasd's conversation and salam seeds, where everyday salam and dhikr
      live. A phrase people say ("Alhamdulillah") is cheap; "light upon light"
      is not said in passing.
    - The evidence is multiplied by the share of the message the span is, so
@@ -309,8 +309,9 @@ Effect on the held-out requests:
 | "سدرة المنتهى" | 0.48 | Lisan maps the wording |
 | "Who created the heavens and the earth?" (39:38) | 0.99 | `quran_search` |
 
-Salam, dhikr, "peace be upon you", "In the name of Allah, let's begin" and
-the other guard phrases stay conversation. A paraphrase ("Allah does not
+Dhikr, "In the name of Allah, let's begin" and the other guard phrases stay
+conversation; a salam alone ("peace be upon you") is MIZAN's own `salam` recipe,
+never a Quran search. A paraphrase ("Allah does not
 burden a soul beyond its capacity") is not a quote and is not helped.
 Finding the span takes about 1–17 ms per message.
 
