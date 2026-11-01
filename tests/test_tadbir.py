@@ -108,7 +108,7 @@ def tools(agent, monkeypatch, **results):
         ("Assalamu alaikum bhai kaise ho", "converse", "hi-latn"),
         # A salam and nothing else is returned by MIZAN (4:86); with a request,
         # or returned to it, it stays conversation.
-        ("Assalamualaikum bhai jaan", "salam", "en"),
+        ("Assalamualaikum bhai jaan", "salam", "hi-latn"),
         ("السلام علیکم ورحمۃ اللہ وبرکاتہ", "salam", "ur"),
         ("Walaikum assalam bhai", "converse", "hi-latn"),
         ("Assalamualaikum, Surah Ikhlas sunao", "quran", "hi-latn"),
