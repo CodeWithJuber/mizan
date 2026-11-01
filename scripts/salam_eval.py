@@ -45,6 +45,7 @@ SEEDS = "backend/tadbir/data/qasd/intents.tsv"
 # The commit the seeds are compared against: main before the salam round.
 BASE = "7be4f475937b910b1528fc695717f7e8278eeeef"
 RECALL_BAR = 0.90
+EVERYDAY_BAR = 0.001
 REFUSE_AT = 0.95
 LOO_SAMPLE = 1500
 MASSIVE_LOCALES = {"en-US": "en", "hi-IN": "hi", "ur-PK": "ur", "ar-SA": "ar"}
@@ -79,8 +80,8 @@ def check_overlap(split: str) -> None:
     seeds = {_key(text) for _label, text in seed_rows((ROOT / SEEDS).read_text(encoding="utf-8"))}
     mine = {_key(text) for _l, _k, text in held_out(split)}
     clash = mine & seeds
-    if split == "test":
-        clash |= mine & {_key(text) for _l, _k, text in held_out("dev")}
+    for earlier in {"test": ("dev",), "test2": ("dev", "test")}.get(split, ()):
+        clash |= mine & {_key(text) for _l, _k, text in held_out(earlier)}
     if clash:
         raise SystemExit(f"{split} rows also in the seeds or dev: {sorted(clash)[:10]}")
 
@@ -182,11 +183,7 @@ def known_seeds(base: str = BASE) -> dict:
     }
 
 
-def massive(path: Path) -> list[dict]:
-    """MASSIVE greetings and small talk read as a salam (report only, no bar)."""
-    from tadbir import fahm
-
-    found = []
+def _massive_rows(path: Path, partition: str):
     with tarfile.open(path, "r:gz") as archive:
         for member in archive:
             locale = Path(member.name).stem
@@ -198,19 +195,44 @@ def massive(path: Path) -> list[dict]:
             assert handle is not None
             for row in io.TextIOWrapper(handle, encoding="utf-8"):
                 item = json.loads(row)
-                if item["partition"] != "test" or item["intent"] not in MASSIVE_INTENTS:
-                    continue
-                text = " ".join(str(item["utt"]).split())
-                if fahm.understand(text).intent == "salam":
-                    found.append({"locale": locale, "intent": item["intent"], "text": text})
-    return found
+                if item["partition"] == partition:
+                    yield locale, str(item["intent"]), " ".join(str(item["utt"]).split())
+
+
+def massive(path: Path, partition: str = "test") -> list[dict]:
+    """MASSIVE greetings and small talk read as a salam (report only, no bar)."""
+    from tadbir import fahm
+
+    return [
+        {"locale": locale, "intent": intent, "text": text}
+        for locale, intent, text in _massive_rows(path, partition)
+        if intent in MASSIVE_INTENTS and fahm.understand(text).intent == "salam"
+    ]
+
+
+def massive_everyday(path: Path, partition: str = "test") -> dict:
+    """Round 2's fourth bar: MASSIVE's requests other than greetings (en, hi, ur,
+    ar), people's own words, read as a salam: Wilson upper bound below 0.1%."""
+    from tadbir import fahm
+
+    rows = [row for row in _massive_rows(path, partition) if row[1] != "general_greet"]
+    fired = [
+        {"locale": locale, "intent": intent, "text": text}
+        for locale, intent, text in rows
+        if fahm.understand(text).intent == "salam"
+    ]
+    bound = _wilson(len(fired), len(rows))
+    return {"k": len(fired), "n": len(rows), "wilson": bound, "fired": fired}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--split", choices=("dev", "test"), required=True)
+    parser.add_argument("--split", choices=("dev", "test", "test2"), required=True)
     parser.add_argument("--quran", type=Path, help="a folder holding the Quran's editions")
     parser.add_argument("--massive", type=Path)
+    parser.add_argument(
+        "--massive-partition", default="test", help="MASSIVE split to read (dev while choosing)"
+    )
     parser.add_argument("--base", default=BASE)
     parser.add_argument("--no-seeds-check", action="store_true", help="skip the slow LOO bar")
     args = parser.parse_args()
@@ -237,13 +259,17 @@ def main() -> None:
     if not args.no_seeds_check:
         report["known_seeds"] = known_seeds(args.base)
     if args.massive is not None:
-        report["massive_read_as_salam"] = massive(args.massive)
+        report["massive_read_as_salam"] = massive(args.massive, args.massive_partition)
+        if args.split == "test2" or args.massive_partition != "test":
+            report["massive_everyday"] = massive_everyday(args.massive, args.massive_partition)
     bars = {
         "recall": report["recall"]["share"] >= RECALL_BAR,
         "no_false_fire": report["false_fires"]["k"] == 0,
     }
     if "known_seeds" in report:
         bars["known_seeds"] = report["known_seeds"]["kept"]
+    if "massive_everyday" in report:
+        bars["massive_everyday"] = report["massive_everyday"]["wilson"][1] < EVERYDAY_BAR
     report["bars"] = bars
     report["passed"] = all(bars.values())
     print(json.dumps(report, ensure_ascii=False, indent=1))

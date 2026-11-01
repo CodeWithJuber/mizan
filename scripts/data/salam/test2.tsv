@@ -1,0 +1,82 @@
+# Round 2 test split for the salam recipe (scripts/salam_eval.py, docs/fahm.md "Salam (4:86)");
+# never a seed. Written by MIZAN's coding assistant (a language model) on 1 Nov 2026, after round 1
+# was refused and before any round 2 seed was written; read once. No row equals a dev, test or seed
+# row once case, spaces and punctuation are set aside. Heavier on Arabic script, where round 1 failed.
+# Greetings and requests only, no Quran text. CC0.
+# label<TAB>kind<TAB>text   (as in dev.tsv; kind "everyday" = an ordinary short request)
+salam	address	Asalaam o alaikum sir
+salam	address	Assalamu alaikum bhaiyon
+salam	address	AoA bhaijaan
+salam	address	Aoa madam
+salam	address	Assalam alaikum doctor sahab
+salam	address	Salaam ji
+salam	address	Assalamualaikum everybody
+salam	address	Asalamualaikum dear friends
+salam	address	Assalamu alaikum, brothers and sisters
+salam	full	Salam alaikum wa rahmatullah
+salam	address	Peace be upon you, sister
+salam	full	Peace be upon you and Allah's mercy
+salam	address	Assalamualaikum Mizan sahab
+salam	address	Asalamo alaikum ji
+salam	only	Slaam alaikum
+salam	address	Assalamu alaykum bhai
+salam	address	Asalaam alaykum ji
+salam	address	السلام علیکم سب دوستو
+salam	address	السلام علیکم ابو
+salam	address	السلام عليكم يا أستاذ
+salam	full	السلام عليكم ورحمة الله وبركاته يا شباب
+salam	full	السلام علیکم ورحمۃ اللہ بھائی
+salam	only	اَلسَّلَامُ عَلَيْكُمْ
+salam	full	السلام عليكم ورحمة الله وبركاته يا عائلتي
+salam	address	سلام علیکم جناب
+salam	address	السلام عليكم يا جماعة الخير
+salam	address	السلام علیکم آپا
+salam	address	اسلام علیکم دوستو
+salam	address	अस्सलामु अलैकुम भाइयों
+salam	address	अस्सलामु अलैकुम दोस्त
+salam	address	अस्सलाम अलैकुम जी
+salam	address	सलाम अलैकुम भाई साहब
+salam	full	अस्सलामु अलैकुम व रहमतुल्लाहि व बरकातुह
+salam	address	अस्सलामु अलैकुम सब लोगों को
+no	with_request	Assalamualaikum, aaj sehri kab hai?
+no	with_request	AoA, mera account login nahi ho raha
+no	with_request	Assalamu alaikum, recommend me a good book
+no	with_request	Salam, ek joke sunao
+no	with_request	Assalamualaikum bhai, yeh code dekh lo
+no	with_request	Assalamualaikum, mujhe Arabic seekhni hai
+no	with_request	السلام عليكم، ما هو الطقس اليوم؟
+no	with_request	السلام عليكم، احسب لي ١٢ ضرب ٧
+no	with_request	السلام عليكم، أريد وصفة كبسة
+no	with_request	السلام عليكم، من أنت؟
+no	with_request	السلام علیکم، مجھے ایک کہانی سنائیں
+no	with_request	السلام علیکم، آج کون سی تاریخ ہے؟
+no	with_request	السلام علیکم بھائی، کیا آپ میری مدد کریں گے؟
+no	with_request	अस्सलामु अलैकुम, मुझे एक कविता लिखकर दीजिए
+no	with_request	अस्सलामु अलैकुम, आज सेहरी कब है?
+no	returned	Wa alaikumus salaam wa rahmatullah
+no	returned	Walaikum assalam sir
+no	returned	وعليكم السلام يا صديقي
+no	returned	وعلیکم السلام جناب
+no	returned	वालैकुम अस्सलाम
+no	other_greeting	Good morning everyone
+no	other_greeting	Hello bhai
+no	other_greeting	Hey Mizan, good evening
+no	other_greeting	صباح الخير
+no	other_greeting	مساء الخير يا صديقي
+no	other_greeting	ہیلو
+no	other_greeting	हेलो
+no	other_greeting	Ram Ram
+no	other_greeting	Shubh prabhat
+no	about_salam	كيف أرد على السلام؟
+no	about_salam	ما فضل إلقاء السلام؟
+no	about_salam	سلام میں پہل کرنے کا ثواب کیا ہے؟
+no	about_salam	Salam ka matlab samjhao
+no	about_salam	अस्सलामु अलैकुम लिखने का सही तरीका क्या है?
+no	everyday	رياضة
+no	everyday	أخبار اليوم
+no	everyday	موسيقى هادئة
+no	everyday	شغل الأغاني
+no	everyday	تذكير غدا
+no	everyday	خبریں سنائیں
+no	everyday	موسم
+no	everyday	اطلاعات

@@ -394,6 +394,32 @@ the gained ones are questions that used to get the fixed tool list. With the
 - **Reported with no bar:** MASSIVE 1.1's `general_greet` and `general_quirky` test rows (en, hi, ur, ar) read as a salam, listed for a look by hand, since a translator may have written a salam for "hello".
 - **If a bar fails**, the result is written as it came and the recipe stays off. The seeds may then be revised against dev only, with a fresh test set.
 
+**Round 1 result (1 Nov, test read once): refused.** Seeds were chosen on dev, where recall was 48/51 with no false fire. Qasd and Iqtibas were refit (Iqtibas b 0.0425 → 0.0448), and Iqtibas was on with the editions.
+
+| Bar (test) | Result | Passed |
+|---|---|---|
+| 1. Salam-only read as `salam` (≥ 90%) | 42/48 = 87.5% (Wilson 75–94%) | no |
+| 2. Other messages read as `salam` (none) | 2/61 (Wilson 0.9–11%) | no |
+| 3. Earlier seeds no worse (P(worse) < 0.95) | 95.29% → 95.45%, P(worse) 0.09 | yes |
+
+- **Missed:** six short address forms and English forms ("AoA sir", "Aoa dear", "Salaam bhai jaan", "सलाम भाई", "Peace be upon you, brother", "Peace and blessings of Allah be upon you").
+- **Fired:** both in Arabic, "السلام عليكم، اكتب لي قصيدة" (a salam with a request) and "ما معنى السلام عليكم؟" (a question about the salam).
+- **MASSIVE report:** three Arabic rows read as a salam. One, "سلام انته موجود" ("salam, are you there?"), is a salam with a question. The other two, "رياضيات" ("mathematics") and "تحديثات الأصدقاء" ("friends' updates"), are everyday words.
+- **The cause** is the one the deen facet had: Qasd holds few short Arabic-script messages, so most of them are now salam seeds and the script itself became evidence.
+- **Measured on the way and kept:** Qasd's letter n-grams stay inside words, so it cannot see word order. A returned salam ("Walaikum assalam") and a salam are the same bag of words. Returned salams are therefore their own class, `salam_returned`, answered as conversation (dev: six false fires → none).
+- The recipe stays off.
+
+**Round 2, pre-registered 1 Nov (before any round 2 seed):**
+- **Fresh test set:** `test2.tsv`, 34 salam / 42 other rows, heavier on Arabic script. It holds salam with a request, returned salams, other greetings, questions about the salam, and short everyday Arabic and Urdu requests. No row equals a dev, test or seed row, and it is read once.
+- **Seeds may change, chosen on dev and MASSIVE's train and dev splits only, never MASSIVE test.** Short everyday Arabic and Urdu requests from MASSIVE train go in as `converse`: Qasd already reads all of MASSIVE's intents as conversation, so the script stops being evidence. More salam-with-request and questions about the salam go in, in Arabic script.
+- **Bars, on `test2` and MASSIVE test, all must pass:**
+  1. at least 90% of salam-only messages read as `salam`;
+  2. no other row of `test2` read as `salam`;
+  3. Qasd's earlier seeds no worse (P(worse) < 0.95);
+  4. **new:** MASSIVE 1.1's test requests other than `general_greet` (en, hi, ur, ar; people's own words) read as `salam` with a Wilson upper bound **below 0.1%**, every such row listed.
+- `general_greet` stays report-only.
+- If a bar fails, the recipe stays off and the round is written as it came.
+
 ## What is still written by hand, and why
 
 - **Grammars: exact readers whose findings are evidence.** Quran and hadith
