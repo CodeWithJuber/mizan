@@ -56,7 +56,7 @@ import httpx
 
 from core.adaptive import BetaEstimator, bm25_scores, tokenize
 
-from . import amanah, isnad, qamus, qasd
+from . import amanah, gharib, isnad, qamus, qasd
 from .taallum import content_words
 
 logger = logging.getLogger("mizan.ahl_dhikr")
@@ -249,10 +249,37 @@ def average_information() -> float:
     return sum(count * information(word) for word, count in counts.items()) / occurrences
 
 
-def distinctive(text: str) -> dict[str, float]:
+# The word information ``about`` weighs by: "lughah" (in use), the inverse
+# document frequency above; or "gharib", each word's self-information in the
+# claim's own language from word frequencies (``gharib``), with a translation
+# counted when it carries more than an average word of the sentence's language.
+# "gharib" was measured on 30 Oct 2026 and not adopted: it did not make Hindi
+# and Urdu supports more precise and lost English contradictions
+# (docs/ahl-dhikr.md); ``scripts/ahl_coverage.py --information gharib`` reads it.
+WORDS = "lughah"
+
+
+def _weigher(claim: str) -> Callable[[str], float]:
+    if WORDS == "gharib":
+        language = gharib.language_of(claim)
+        return lambda word: gharib.information(word, language)
+    return information
+
+
+def _evidence(sentence: str) -> Callable[[str], bool]:
+    """Which words of the sentence are evidence when a translation finds them:
+    not function words."""
+    if WORDS == "gharib":
+        language = gharib.language_of(sentence)
+        return lambda word: gharib.informative(word, language)
+    floor = average_information()
+    return lambda word: information(word) > floor
+
+
+def distinctive(text: str, weigh: Callable[[str], float] = information) -> dict[str, float]:
     """A text's distinctive words with their information: those carrying more
     than its average word (names, numbers, terms: never "is", "the", "hai")."""
-    weights = {word: information(word) for word in dict.fromkeys(tokenize(text))}
+    weights = {word: weigh(word) for word in dict.fromkeys(tokenize(text))}
     if not weights:
         return {}
     mean = sum(weights.values()) / len(weights)
@@ -293,17 +320,13 @@ def about(claim: str, sentence: str, context: str = "") -> bool:
     must besides name one of them, as it is or translated: one thing the claim
     may refer to. A context word MIZAN could not see in the sentence's script
     (no translation into it) is no evidence either way."""
-    weights = distinctive(claim)
+    weights = distinctive(claim, _weigher(claim))
     if not weights:
         return False
     present = set(tokenize(sentence))
     covered = sum(weight for word, weight in weights.items() if word in present)
     total = sum(weights.values())
-    floor = average_information()
-
-    def counts(word: str) -> bool:
-        return information(word) > floor
-
+    counts = _evidence(sentence)
     if 2 * covered <= total:
         missing = sorted(
             (word for word in weights if word not in present),
