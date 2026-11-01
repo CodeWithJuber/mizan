@@ -488,10 +488,9 @@ def status() -> dict:
 
     return {
         "mode": mode(),
-        "reader": {
-            "mode": ruh_reader.mode(),
-            "present": ruh_reader.manifest("current") is not None,
-        },
+        # The serving reader: mode, gate, fit, and what shadow saw since the
+        # last restart (counts only), read before the reader is ever turned on.
+        "reader": ruh_reader.status(),
         "setting": setting().to_dict() if ruh_reader.has_torch() else None,
         "held_out": f"1/{HELD_OUT}",
         "trainer": _trainer.status(),
