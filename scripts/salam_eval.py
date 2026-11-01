@@ -230,7 +230,9 @@ def main() -> None:
     sys.path.insert(0, str(ROOT / "backend"))
     from tadbir import iqtibas
 
-    report: dict = {"split": args.split, "iqtibas": bool(args.quran and iqtibas.ready())}
+    # Production reads the editions at startup; read them now, before any message.
+    loaded = iqtibas.load() if args.quran is not None else None
+    report: dict = {"split": args.split, "iqtibas": loaded is not None}
     report.update(read_split(args.split))
     if not args.no_seeds_check:
         report["known_seeds"] = known_seeds(args.base)

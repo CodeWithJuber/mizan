@@ -12,7 +12,7 @@ from providers import BaseLLMProvider, ContentBlock, LLMResponse
 from security.izn import IznPermission
 from tadbir import amal, calc, fahm, hadith, majlis, project, qasd, quran, taallum, waqt
 from tadbir import lisan as lisan_module
-from tadbir.express import furqan
+from tadbir.express import furqan, phrase
 
 
 class ScriptedProvider(BaseLLMProvider):
@@ -106,6 +106,12 @@ def tools(agent, monkeypatch, **results):
         ("Yaad hai maine kya bataya tha?", "recall", "hi-latn"),
         ("Explain recursion simply", "converse", "en"),
         ("Assalamu alaikum bhai kaise ho", "converse", "hi-latn"),
+        # A salam and nothing else is returned by MIZAN (4:86); with a request,
+        # or returned to it, it stays conversation.
+        ("Assalamualaikum bhai jaan", "salam", "en"),
+        ("السلام علیکم ورحمۃ اللہ وبرکاتہ", "salam", "ur"),
+        ("Walaikum assalam bhai", "converse", "hi-latn"),
+        ("Assalamualaikum, Surah Ikhlas sunao", "quran", "hi-latn"),
         # Addressed to MIZAN, but not about its tools (none of these is a seed)
         ("Kya tum pagal ho gaye?", "converse", "hi-latn"),
         ("Can you tell the future of Pakistan?", "converse", "en"),
@@ -557,6 +563,15 @@ async def test_capabilities_come_from_the_registry_not_the_model(agent):
     assert "sandbox" in result["result"] and "web search" in result["result"]
     # It lists what MIZAN can do; it never answers "yes" to a question it did not read.
     assert not result["result"].startswith(("Yes", "Haan"))
+
+
+async def test_a_salam_is_returned_by_mizan_with_no_model_call(agent):
+    result = await agent.execute("السلام علیکم")
+    assert agent.ai_client.requests == []
+    assert result["result"] == phrase("salam", "ur")
+    assert result["result"].startswith("وعلیکم السلام ورحمۃ اللہ وبرکاتہ")
+    assert result["orchestration"]["intent"] == "salam"
+    assert result["usage"]["lisan"]["zero_call"] and result["usage"]["lisan"]["family"] == "salam"
 
 
 async def test_quran_text_never_passes_through_the_model(agent, monkeypatch):

@@ -783,6 +783,13 @@ class Tadbir:
         text = f"{phrase('capabilities', language)}\n\n{bullets}\n\n{phrase('capabilities_tail', language)}"
         return Outcome(text, True, {"capabilities": lines})
 
+    async def _salam(self, task: str, u: fahm.Understanding) -> Outcome:
+        """A salam and nothing else, returned with the fuller greeting (4:86) in the
+        message's language and script; fixed words, no model call."""
+        await self._begin(["Return the salam (4:86)"])
+        await self._step()
+        return Outcome(phrase("salam", u.language), True, {"salam": u.language}, tool_backed=False)
+
     async def _compute(self, task: str, u: fahm.Understanding) -> Outcome:
         await self._begin(
             ["Understand the arithmetic (Fahm)", "Calculate exactly (MIZAN)", "Reply"]
