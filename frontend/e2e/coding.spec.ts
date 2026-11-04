@@ -85,7 +85,7 @@ test("an edit asks with its diff, Always is listed, and can be taken back", asyn
   await page.getByLabel("Message MIZAN").fill("Build a todo app in React");
   await page.getByLabel("Message MIZAN").press("Enter");
 
-  const prompt = page.getByRole("alert").filter({ hasText: "Allow workspace_write?" });
+  const prompt = page.getByRole("alert").filter({ hasText: "Allow Write files?" });
   await expect(prompt.getByText("New file")).toBeVisible();
   await expect(prompt.getByText("export default function Todo")).toBeVisible();
   await prompt.getByRole("button", { name: "Always in this chat" }).click();

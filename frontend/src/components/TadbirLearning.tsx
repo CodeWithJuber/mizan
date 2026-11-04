@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiClient } from "../types";
 import { useToast } from "./Toast";
+import { confirmDialog } from "./ui/confirm";
 import { NOTE_LABELS, ago, mergeNotes, type LearningNote } from "../utils/sijill.ts";
 import {
   learnedCount,
@@ -251,6 +252,13 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
   };
 
   const forget = async () => {
+    const ok = await confirmDialog({
+      title: "Forget the wording MIZAN learned from you?",
+      description: "MIZAN will read your requests from scratch again. This cannot be undone.",
+      confirmLabel: "Forget wording",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.del("/tadbir/learning/wording");
@@ -264,6 +272,13 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
   };
 
   const forgetAnswers = async () => {
+    const ok = await confirmDialog({
+      title: "Forget the answers MIZAN kept?",
+      description: "Those questions will be sent to the language model again. This cannot be undone.",
+      confirmLabel: "Forget answers",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.del("/tadbir/answers");
@@ -385,6 +400,13 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           className="btn-secondary btn-sm"
           disabled={busy || !programs?.programs}
           onClick={async () => {
+            const ok = await confirmDialog({
+              title: "Forget the programs MIZAN kept?",
+              description: "Verified programs are deleted and MIZAN must write them again. This cannot be undone.",
+              confirmLabel: "Forget programs",
+              destructive: true,
+            });
+            if (!ok) return;
             setBusy(true);
             try {
               await api.del("/tadbir/programs");
@@ -469,9 +491,15 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
         <button
           className="btn-secondary btn-sm"
           disabled={busy || !lessons?.lessons}
-          onClick={() =>
-            run(() => api.del("/tadbir/lessons"), "MIZAN forgot its repair lessons", "Could not forget the lessons")
-          }
+          onClick={async () => {
+            const ok = await confirmDialog({
+              title: "Forget MIZAN's repair lessons?",
+              description: "Lessons learned from past fixes are deleted. This cannot be undone.",
+              confirmLabel: "Forget lessons",
+              destructive: true,
+            });
+            if (ok) await run(() => api.del("/tadbir/lessons"), "MIZAN forgot its repair lessons", "Could not forget the lessons");
+          }}
         >
           Forget my lessons
         </button>
@@ -515,13 +543,20 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
                   <button
                     className="btn-secondary btn-sm"
                     disabled={busy}
-                    onClick={() =>
-                      run(
+                    onClick={async () => {
+                      const ok = await confirmDialog({
+                        title: "Reset this instruction?",
+                        description: "The renewed instruction is dropped and MIZAN goes back to its built-in one.",
+                        confirmLabel: "Reset",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      await run(
                         () => api.del(`/tadbir/harness/${row.task}`),
                         "Back to MIZAN's built-in instruction",
                         "Could not reset the instruction",
-                      )
-                    }
+                      );
+                    }}
                   >
                     Reset
                   </button>

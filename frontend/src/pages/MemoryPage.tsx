@@ -8,9 +8,8 @@ import { ConversationMemorySummary } from "../components/ConversationMemorySumma
 import { LearningConsent } from "../components/LearningConsent";
 import { ReaderLessons } from "../components/ReaderLessons";
 import { addToast } from "../components/Toast";
+import { confirmDialog } from "@/components/ui/confirm";
 import { useApi } from "../hooks/useApi";
-import { config } from "../config";
-import { authFetch } from "../utils/authFetch";
 import type { Memory } from "../types";
 
 const TYPES = [
@@ -29,26 +28,18 @@ export default function MemoryPage() {
   const [type, setType] = useState("all");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(EMPTY);
+  const [loadError, setLoadError] = useState("");
 
   const load = async (search = query, filter = type) => {
+    const typed: Record<string, string> = filter !== "all" ? { memory_type: filter } : {};
     try {
-      let data;
-      if (search.trim()) {
-        const res = await authFetch(`${config.API_URL}/memory/query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: search, limit: 30, ...(filter !== "all" ? { memory_type: filter } : {}) }),
-        });
-        data = await res.json();
-      } else {
-        const params = new URLSearchParams({ limit: "30" });
-        if (filter !== "all") params.set("memory_type", filter);
-        const res = await authFetch(`${config.API_URL}/memory/list?${params.toString()}`);
-        data = await res.json();
-      }
-      setMemories(data.results || []);
-    } catch {
-      /* the list stays as it was */
+      const data = search.trim()
+        ? await api.post("/memory/query", { query: search, limit: 30, ...typed })
+        : await api.get(`/memory/list?${new URLSearchParams({ limit: "30", ...typed }).toString()}`);
+      setMemories(Array.isArray(data.results) ? (data.results as Memory[]) : []);
+      setLoadError("");
+    } catch (error) {
+      setLoadError((error as Error).message);
     }
   };
 
@@ -58,20 +49,42 @@ export default function MemoryPage() {
   }, []);
 
   const save = async () => {
-    await authFetch(`${config.API_URL}/memory/store`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/memory/store", {
         content: draft.content,
         memory_type: draft.memory_type,
         importance: draft.importance,
         tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-      }),
-    });
+      });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Memory not saved",
+        description: `${(error as Error).message}. Your text is still in the form.`,
+      });
+      return;
+    }
     setDraft(EMPTY);
     setAdding(false);
     void load("", type);
     addToast({ type: "success", title: "Memory saved" });
+  };
+
+  const consolidate = async () => {
+    const confirmed = await confirmDialog({
+      title: "Consolidate memory?",
+      description: "MIZAN links related records and deletes weak and old ones. Deleted records cannot be restored.",
+      confirmLabel: "Consolidate",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      await api.post("/memory/consolidate");
+      addToast({ type: "success", title: "Memory consolidated" });
+      void load("", type);
+    } catch (error) {
+      addToast({ type: "error", title: "Memory not consolidated", description: (error as Error).message });
+    }
   };
 
   return (
@@ -102,11 +115,7 @@ export default function MemoryPage() {
           </form>
           <Button
             variant="outline"
-            onClick={async () => {
-              await authFetch(`${config.API_URL}/memory/consolidate`, { method: "POST" });
-              addToast({ type: "success", title: "Memory consolidated" });
-              void load("", type);
-            }}
+            onClick={() => void consolidate()}
           >
             Consolidate
           </Button>
@@ -162,7 +171,14 @@ export default function MemoryPage() {
           ))}
         </div>
 
-        {memories.length === 0 ? (
+        {loadError ? (
+          <div role="alert" className="empty-state">
+            <Brain className="size-8 text-muted-foreground" />
+            <p className="empty-text mt-3">Could not load knowledge records</p>
+            <p className="empty-sub">{loadError}. Check that the server is running, then try again.</p>
+            <Button variant="outline" className="mt-3" onClick={() => void load(query, type)}>Try again</Button>
+          </div>
+        ) : memories.length === 0 ? (
           <div className="empty-state">
             <Brain className="size-8 text-muted-foreground" />
             <p className="empty-text mt-3">No knowledge records stored yet</p>

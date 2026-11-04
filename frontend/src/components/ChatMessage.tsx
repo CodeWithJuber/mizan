@@ -26,6 +26,8 @@ import { speakable } from "../utils/voice.ts";
 import { resolveAgentName, type NamedAgent } from "../utils/agentDisplay";
 import { HeldActions } from "./HeldActions";
 import { ChatImages } from "./ChatImages";
+import { PreviewableCode } from "../features/chat/CodePreview";
+import { MessageArtifacts } from "../features/chat/MessageArtifacts";
 import { SourcesAndChecks } from "../features/chat/SourcesAndChecks";
 import { RunTimeline } from "../features/chat/RunTimeline";
 import type { ThinkingTrace } from "../types/ruh";
@@ -267,7 +269,7 @@ export function ChatMessageContent({
     const p = ({ children }: { children?: ReactNode }) => (
       <p dir="auto">{linkifyArabic(children, onExploreWord, "p")}</p>
     );
-    return { p } as unknown as Partial<Components>;
+    return { p, code: PreviewableCode } as unknown as Partial<Components>;
   }, [onExploreWord]);
 
   const toggleTool = (idx: number) => {
@@ -824,6 +826,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             {msg.perception && <PerceptionCard perception={msg.perception} />}
             {/* Pictures MIZAN made for this answer (Shahid's screenshot) */}
             <ChatImages images={msg.images} align="start" />
+            <MessageArtifacts ids={msg.artifacts} />
             {msg.stopped && (
               <p role="status" className="mt-2 text-xs text-muted-foreground">
                 Stopped · {msg.content.length ? "received text kept" : "no answer received"}

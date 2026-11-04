@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DiffView, type ApprovalDecision } from "../../components/AgentActivity";
 import {
-  type AgentActivity, type ApprovalRequest, type ToolCall, toolLabel,
+  type AgentActivity, type ApprovalRequest, type ToolCall, allowedLabel, toolLabel,
 } from "../../utils/agentActivity";
 import { phaseLabel } from "../../utils/chatRecovery.ts";
 import type { ThinkingTrace } from "../../types/ruh";
@@ -109,7 +109,7 @@ export function ApprovalPrompt({
     return (
       <li className="flex items-center gap-2 px-1.5 text-xs text-muted-foreground">
         <ShieldAlert className="size-3.5" />
-        <span className="font-mono">{approval.tool}</span>
+        <span title={approval.tool}>{allowedLabel(approval.tool)}</span>
         {approval.decision === "deny" ? "declined" : approval.decision === "always" ? "allowed for this chat"
           : approval.decision === "expired" ? "expired" : "allowed"}
       </li>
@@ -130,7 +130,7 @@ export function ApprovalPrompt({
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-brand" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">
-            Allow <span className="font-mono">{approval.tool}</span>?
+            Allow <span title={approval.tool}>{allowedLabel(approval.tool)}</span>?
           </p>
           {headline && <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{headline}</p>}
           {approval.reason && <p className="mt-1 text-xs text-muted-foreground">{approval.reason}</p>}

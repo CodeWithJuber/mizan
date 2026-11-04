@@ -13,7 +13,10 @@ interface WelcomePageProps {
   api: ApiClient;
   wsStatus: string;
   onComplete: () => void;
+  /** Only for administrators: the provider settings page is theirs. */
   onOpenSettings?: () => void;
+  /** Leave setup for another page (marks setup done). */
+  onNavigate?: (to: string) => void;
 }
 
 type Step = "login" | "welcome" | "provider" | "ready";
@@ -32,6 +35,7 @@ export default function WelcomePage({
   wsStatus,
   onComplete,
   onOpenSettings,
+  onNavigate,
 }: WelcomePageProps) {
   const { addToast } = useToast();
   const [step, setStep] = useState<Step>(() =>
@@ -151,7 +155,7 @@ export default function WelcomePage({
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
-      setLoginError("Username aur password dono chahiye");
+      setLoginError("Enter both a username and a password");
       return;
     }
     setLoginLoading(true);
@@ -171,11 +175,11 @@ export default function WelcomePage({
         setStep("welcome");
       } else {
         setLoginError(
-          data.error || "Login failed — username/password check karo",
+          data.error || "Login failed. Check your username and password.",
         );
       }
     } catch {
-      setLoginError("Server se connect nahi ho paya — backend chal raha hai?");
+      setLoginError("Could not reach the server. Is the backend running?");
     }
     setLoginLoading(false);
   };
@@ -191,7 +195,7 @@ export default function WelcomePage({
         addToast({
           type: "warning",
           title: `${name} not healthy`,
-          description: "API key check karo ya provider ka status dekho.",
+          description: "Check the API key or the provider status.",
         });
       }
     } catch {
@@ -199,7 +203,7 @@ export default function WelcomePage({
       addToast({
         type: "error",
         title: `${name} test failed`,
-        description: "Server se connect nahi ho paya.",
+        description: "Could not reach the server.",
       });
     }
     setTesting(null);
@@ -245,7 +249,7 @@ export default function WelcomePage({
                 Welcome to MIZAN
               </h1>
               <p className="text-muted-foreground">
-                Pehle login karo, phir setup karenge.
+                Log in first, then we will set up MIZAN.
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500">
                 Ask the person who set up Mizan for the admin login.
@@ -367,27 +371,28 @@ export default function WelcomePage({
               <h2 className="text-2xl font-bold text-foreground">
                 Choose Your AI Provider
               </h2>
-              <p className="text-muted-foreground">
-                You need at least one AI provider. Add your key in{" "}
-                <span className="font-medium text-foreground">
-                  Settings → AI Providers
-                </span>
-                .
-              </p>
-              <button
-                onClick={() => {
-                  // Deep-link to Settings → AI Providers section
-                  localStorage.setItem("mizan_settings_section", "providers");
-                  if (onOpenSettings) {
-                    onOpenSettings();
-                  } else {
-                    onComplete();
-                  }
-                }}
-                className="text-sm text-mizan-gold hover:underline min-h-[44px] px-3"
-              >
-                Open Settings → AI Providers
-              </button>
+              {onOpenSettings ? (
+                <>
+                  <p className="text-muted-foreground">
+                    You need at least one AI provider. Add its key in{" "}
+                    <span className="font-medium text-foreground">
+                      Settings → Developer → Models &amp; providers
+                    </span>
+                    .
+                  </p>
+                  <button
+                    onClick={onOpenSettings}
+                    className="text-sm text-mizan-gold hover:underline min-h-[44px] px-3 focus-ring rounded"
+                  >
+                    Open Models &amp; providers
+                  </button>
+                </>
+              ) : (
+                <p className="text-muted-foreground">
+                  MIZAN needs at least one AI provider. Only an administrator can add one: ask
+                  yours to add a provider key, then continue below.
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3">
@@ -489,24 +494,29 @@ export default function WelcomePage({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-lg mx-auto">
               {[
                 {
-                  label: "Start Chatting",
-                  desc: "Talk to your AI",
+                  label: "Start chatting",
+                  desc: "Ask MIZAN anything",
                   icon: "\uD83D\uDCAC",
+                  to: "/chat",
                 },
                 {
-                  label: "Meet Your Agents",
+                  label: "Meet your agents",
                   desc: "See your AI team",
                   icon: "\uD83E\uDD16",
+                  to: "/agents",
                 },
                 {
-                  label: "Read the Docs",
-                  desc: "Learn to extend",
-                  icon: "\uD83D\uDCD6",
+                  label: "Set up automations",
+                  desc: "Reminders and watchers",
+                  icon: "\u23F0",
+                  to: "/automations/watchers",
                 },
               ].map((item) => (
-                <div
+                <button
+                  type="button"
                   key={item.label}
-                  className="bg-card border border-border rounded-xl p-4 text-center"
+                  onClick={() => (onNavigate ? onNavigate(item.to) : finishSetup())}
+                  className="bg-card border border-border rounded-xl p-4 text-center hover:border-primary transition-colors focus-ring"
                 >
                   <div className="text-2xl mb-2">{item.icon}</div>
                   <div className="font-medium text-sm text-foreground">
@@ -515,7 +525,7 @@ export default function WelcomePage({
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {item.desc}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 

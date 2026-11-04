@@ -106,6 +106,10 @@ Events arrive in this order:
     `orchestrator` (`mizan` when MIZAN did the work itself);
     each of these is present only when it applies (no claims to grade, no
     gate run, no source asked, nothing injected), so read them as optional;
+  - `artifacts`: the ids of the artifacts saved during this answer (each also
+    arrived earlier as an `artifact` event, without its content). The same ids
+    are kept in the saved message's `metadata.artifacts`; read the content
+    with `GET /api/artifacts/{id}/versions`;
   - `task_verified` and `completion_status`.
 
 **`POST /api/chat`** takes only `session_id`, `content`, `timezone` and the

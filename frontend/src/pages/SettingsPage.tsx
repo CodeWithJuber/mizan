@@ -675,14 +675,14 @@ export default function SettingsPage({ api, section }: { api: ApiClient; section
                     .then(() =>
                       addToast({
                         type: "success",
-                        title: "Memory consolidation shuru ho gayi",
+                        title: "Memory consolidation started",
                       }),
                     )
                     .catch(() =>
                       addToast({
                         type: "error",
-                        title: "Consolidation fail ho gayi",
-                        description: "Phir se try karo.",
+                        title: "Could not consolidate memory",
+                        description: "Try again.",
                       }),
                     )
                 }

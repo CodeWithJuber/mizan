@@ -23,7 +23,7 @@ const WEEKDAYS = [
 function validateCron(cron: string): string | null {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5)
-    return "5 hisse likho: minute hour day month weekday (jaise 0 9 * * *)";
+    return "Enter 5 fields: minute hour day month weekday (for example 0 9 * * *)";
   const ranges: [number, number][] = [
     [0, 59],
     [0, 23],
@@ -35,14 +35,14 @@ function validateCron(cron: string): string | null {
   for (let i = 0; i < 5; i++) {
     for (const token of parts[i].split(",")) {
       const m = token.match(/^\*(\/(\d+))?$|^(\d+)(?:-(\d+))?(\/(\d+))?$/);
-      if (!m) return `"${parts[i]}" samajh nahi aaya (${names[i]} me)`;
+      if (!m) return `Could not read "${parts[i]}" in the ${names[i]} field`;
       const nums = [m[2], m[3], m[4], m[6]]
         .filter(Boolean)
         .map((n) => parseInt(n as string, 10));
       const [lo, hi] = ranges[i];
       for (const n of nums) {
         if (n < lo || n > hi)
-          return `${names[i]} ${lo}–${hi} ke beech hona chahiye`;
+          return `${names[i]} must be between ${lo} and ${hi}`;
       }
     }
   }
@@ -171,7 +171,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     if (err) return;
     try {
       await api.post("/automation/jobs", newJob);
-      addToast({ type: "success", title: "Job ban gaya" });
+      addToast({ type: "success", title: "Job created" });
       addTerminalLine?.(`Job created: ${newJob.name}`, "gold");
       setShowAddJob(false);
       resetJobForm();
@@ -179,7 +179,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Job ban nahi paya",
+        title: (e as Error).message || "Could not create the job",
       });
       addTerminalLine?.("Failed to create job", "error");
     }
@@ -189,13 +189,13 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     if (!(await confirmDialog({ title: "Delete this scheduled job?", destructive: true }))) return;
     try {
       await api.del(`/automation/jobs/${jobId}`);
-      addToast({ type: "success", title: "Job delete ho gaya" });
+      addToast({ type: "success", title: "Job deleted" });
       addTerminalLine?.("Job removed", "gold");
       loadJobs();
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Job delete nahi ho paya",
+        title: (e as Error).message || "Could not delete the job",
       });
       addTerminalLine?.("Failed to remove job", "error");
     }
@@ -208,13 +208,13 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       });
       addToast({
         type: "success",
-        title: currentlyEnabled ? "Job pause ho gaya" : "Job chalu ho gaya",
+        title: currentlyEnabled ? "Job paused" : "Job resumed",
       });
       loadJobs();
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Job update nahi ho paya",
+        title: (e as Error).message || "Could not update the job",
       });
     }
   };
@@ -222,7 +222,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
   const addWebhookHandler = async () => {
     try {
       await api.post("/automation/webhooks", newWebhook);
-      addToast({ type: "success", title: "Webhook ban gaya" });
+      addToast({ type: "success", title: "Webhook created" });
       addTerminalLine?.(`Webhook created: ${newWebhook.name}`, "gold");
       setShowAddWebhook(false);
       setNewWebhook({ name: "", task_template: "", agent_id: "" });
@@ -230,7 +230,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Webhook ban nahi paya",
+        title: (e as Error).message || "Could not create the webhook",
       });
       addTerminalLine?.("Failed to create webhook", "error");
     }
@@ -241,7 +241,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
       await navigator.clipboard.writeText(path);
       addToast({ type: "success", title: "Copied" });
     } catch {
-      addToast({ type: "error", title: "Copy nahi ho paya" });
+      addToast({ type: "error", title: "Could not copy to the clipboard" });
     }
   };
 
@@ -303,9 +303,9 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
         {!loading && loadError && (
           <div className="empty-state">
             <div className="empty-arabic">قدر</div>
-            <div className="empty-text">Load nahi ho paya</div>
+            <div className="empty-text">Could not load automations</div>
             <div className="empty-sub">
-              Automation data fetch fail ho gaya — connection check karo
+              Check your connection, then try again.
             </div>
             <button
               className="btn-gold btn-sm min-h-[44px] mt-3"
@@ -320,7 +320,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 );
               }}
             >
-              Dobara try karo
+              Try again
             </button>
           </div>
         )}
@@ -353,8 +353,8 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       <div className="text-sm font-semibold text-foreground truncate">
                         {job.name}
                       </div>
-                      <div className="text-2xs font-mono text-mizan-gold truncate">
-                        {job.cron}
+                      <div className="text-2xs text-mizan-gold truncate" title={job.cron}>
+                        {describeCron(job.cron)}
                       </div>
                     </div>
                   </div>
@@ -373,7 +373,7 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                     <button
                       className="btn-secondary btn-sm min-h-[44px]"
                       onClick={() => toggleJob(job.id, job.enabled)}
-                      title={job.enabled ? "Job pause karo" : "Job chalu karo"}
+                      title={job.enabled ? "Pause job" : "Resume job"}
                     >
                       {job.enabled ? "Pause" : "Resume"}
                     </button>
@@ -623,11 +623,11 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 disabled={!newJob.name || !newJob.task || !!cronError}
                 title={
                   !newJob.name
-                    ? "Pehle job ka naam likho"
+                    ? "Enter a job name first"
                     : !newJob.task
-                      ? "Pehle task likho"
+                      ? "Enter a task first"
                       : cronError
-                        ? "Schedule theek karo"
+                        ? "Fix the schedule"
                         : ""
                 }
               >
@@ -748,9 +748,9 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                 disabled={!newWebhook.name || !newWebhook.task_template}
                 title={
                   !newWebhook.name
-                    ? "Pehle webhook ka naam likho"
+                    ? "Enter a webhook name first"
                     : !newWebhook.task_template
-                      ? "Pehle task template likho"
+                      ? "Enter a task template first"
                       : ""
                 }
               >

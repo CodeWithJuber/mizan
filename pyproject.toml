@@ -158,6 +158,9 @@ extend-exclude = ["backend/research/experiments", "backend/research/analyzer"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nlp"]
+# As CI sorts it: docker-compose leaves an empty backend/ruh_model/ mountpoint
+# on the host, which would otherwise make a local run call it first-party.
+known-third-party = ["ruh_model"]
 
 [tool.ruff.lint]
 select = [

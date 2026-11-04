@@ -403,7 +403,7 @@ _workspace_only: ContextVar[str | None] = ContextVar("mizan_workspace_only", def
 WORKSPACE_AGENT_TOOLS = frozenset(
     {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_edit",
      "workspace_write", "workspace_run", "workspace_sandbox", "workspace_git", "workspace_diff",
-     "workspace_checkpoint", "todo_write"}
+     "workspace_checkpoint", "workspace_artifact", "todo_write"}
 )  # fmt: skip
 # Their results are the project's text (files, program output): data, never instructions.
 _WORKSPACE_READS = frozenset(

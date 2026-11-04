@@ -11,6 +11,7 @@ import { config } from "../config";
 import { authFetch } from "../utils/authFetch";
 import { useToast } from "./Toast";
 import { checkLine, isReceipt } from "../utils/mahw.ts";
+import { confirmDialog } from "./ui/confirm";
 import { KINDS, expiryIn, isLedger, provenance, type DaftarEntry, type EntryKind, type Ledger } from "../utils/daftar.ts";
 
 const KIND_BADGE: Record<EntryKind, { label: string; style: string }> = {
@@ -82,8 +83,15 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
       setEditing(null);
     }, "Updated");
 
-  const forgetOne = (entry: DaftarEntry) =>
-    act(() => api.post("/daftar/forget", { ids: [entry.id] }), "Forgotten");
+  const forgetOne = async (entry: DaftarEntry) => {
+    const ok = await confirmDialog({
+      title: "Forget this entry?",
+      description: "MIZAN stops using it and it is deleted for good. This cannot be undone.",
+      confirmLabel: "Forget",
+      destructive: true,
+    });
+    if (ok) await act(() => api.post("/daftar/forget", { ids: [entry.id] }), "Forgotten");
+  };
 
   const previewTopic = async () => {
     if (!topic.trim()) return;
@@ -113,9 +121,25 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
     URL.revokeObjectURL(url);
   };
 
-  const importFile = (file: File | undefined) =>
-    file &&
-    act(async () => {
+  const importFile = async (file: File | undefined) => {
+    if (!file) return;
+    let count: number | undefined;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const entries = parsed?.entries ?? parsed?.items;
+      if (Array.isArray(entries)) count = entries.length;
+    } catch {
+      // Unreadable file: the import below reports the error as before.
+    }
+    const ok = await confirmDialog({
+      title: "Import this file?",
+      description:
+        (count === undefined ? "Its entries" : `${count} ${count === 1 ? "entry" : "entries"}`) +
+        " will be added to what MIZAN keeps about you. Entries carrying instructions are skipped.",
+      confirmLabel: "Import",
+    });
+    if (!ok) return;
+    await act(async () => {
       const data = JSON.parse(await file.text());
       const result = await api.post("/daftar/import", data);
       const imported = result.imported as Record<string, number> | undefined;
@@ -123,6 +147,7 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
         addToast({ type: "info", title: `${imported.skipped} entries were skipped (empty, invalid or carrying instructions)` });
       }
     }, "Imported");
+  };
 
   return (
     <section className="mx-5 mt-3 space-y-3" aria-label="Daftar: what MIZAN keeps about you">

@@ -9,6 +9,7 @@ import { useSocketStatus } from "../realtime/socket";
 import { addTerminalLine } from "../realtime/terminal";
 import { AppShell } from "./AppShell";
 import { RequireAdmin, RequireAuth } from "./RequireAuth";
+import { useIsAdmin } from "./auth";
 import { RouteError } from "./ErrorBoundary";
 import { SectionLayout } from "./SectionLayout";
 import { SettingsLayout } from "./SettingsLayout";
@@ -82,13 +83,25 @@ function Welcome() {
   const api = useApi();
   const status = useSocketStatus((state) => state.status);
   const navigate = useNavigate();
+  const admin = useIsAdmin();
+  // Leaving setup for a page counts as finishing it; otherwise the app shell
+  // sends the person straight back here.
+  const leave = (to: string) => {
+    try {
+      localStorage.setItem("mizan_setup_complete", "true");
+    } catch {
+      // Storage blocked: the app shell skips setup anyway.
+    }
+    navigate(to, { replace: true });
+  };
   return (
     <Suspense fallback={<PageFallback />}>
       <WelcomePage
         api={api}
         wsStatus={status}
         onComplete={() => navigate("/chat", { replace: true })}
-        onOpenSettings={() => navigate("/settings/developer/providers", { replace: true })}
+        onOpenSettings={admin ? () => leave("/settings/developer/providers") : undefined}
+        onNavigate={leave}
       />
     </Suspense>
   );

@@ -58,4 +58,24 @@ for (const [language, file] of [["jsx", "/App.js"], ["tsx", "/App.tsx"]]) {
   check(`${language}: React component keeps its proper entry`, jsx.state.activeFile === file);
 }
 check("code-only view does not start executable preview", !renderConfig("javascript", script, "code").config.options.autorun);
+
+// A one-file React artifact may import npm packages; Sandpack installs them.
+const charts = renderConfig(
+  "jsx",
+  [
+    'import React from "react";',
+    'import { LineChart } from "recharts";',
+    'import { Star } from "lucide-react";',
+    'import debounce from "lodash/debounce";',
+    'import * as Dialog from "@radix-ui/react-dialog";',
+    'import "./styles.css";',
+    "export default function App() { return <LineChart />; }",
+  ].join("\n"),
+);
+const deps = JSON.parse(charts.state.files["/package.json"].code).dependencies ?? {};
+for (const name of ["recharts", "lucide-react", "lodash", "@radix-ui/react-dialog"]) {
+  check(`React artifact installs ${name}`, typeof deps[name] === "string");
+}
+check("a relative import is not a package", !Object.keys(deps).some((name) => name.startsWith(".")));
+check("a subpath import names its package", !("lodash/debounce" in deps));
 console.log(`codeArtifact: ${passed} checks passed`);

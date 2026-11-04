@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiClient } from "../types";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "../components/ui/confirm";
 import {
   PRAYERS,
   STATUS_LABELS,
@@ -37,6 +38,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
   const [data, setData] = useState<Overview | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [city, setCity] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("");
   const [taskKind, setTaskKind] = useState("ayah_of_the_day");
@@ -52,6 +54,8 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
       setNotices(((await api.get("/muraqabah/notices")).notices as Notice[]) ?? []);
     } catch {
       addToast({ type: "error", title: "Watchers could not be loaded" });
+    } finally {
+      setLoaded(true);
     }
   }, [api, addToast]);
 
@@ -262,7 +266,8 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
         </section>
 
         <section className="space-y-2" aria-label="Your watchers">
-          {(data?.watchers ?? []).length === 0 && <p className="text-sm text-gray-400 text-center py-4">No watchers yet.</p>}
+          {!loaded && <p className="text-sm text-muted-foreground text-center py-4">Loading…</p>}
+          {loaded && (data?.watchers ?? []).length === 0 && <p className="text-sm text-gray-400 text-center py-4">No watchers yet.</p>}
           {data?.watchers.map((watcher) => (
             <article key={watcher.id} className={`card space-y-1 ${watcher.enabled ? "" : "opacity-60"}`}>
               <div className="flex flex-wrap items-center gap-2">
@@ -279,7 +284,15 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
                 <button className="btn-ghost btn-sm" disabled={busy} onClick={() => act(() => api.patch(`/muraqabah/watchers/${watcher.id}`, { enabled: !watcher.enabled }), "")}>
                   {watcher.enabled ? "Pause" : "Resume"}
                 </button>
-                <button className="btn-danger btn-sm" disabled={busy} onClick={() => act(() => api.del(`/muraqabah/watchers/${watcher.id}`), "Removed")}>
+                <button className="btn-danger btn-sm" disabled={busy} onClick={async () => {
+                    const ok = await confirmDialog({
+                      title: "Remove this watcher?",
+                      description: "It stops running and its schedule is deleted. This cannot be undone.",
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    });
+                    if (ok) act(() => api.del(`/muraqabah/watchers/${watcher.id}`), "Removed");
+                  }}>
                   Remove
                 </button>
               </div>
@@ -298,7 +311,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
                 .join(" · ") || "MIZAN is still learning"}
             </p>
           )}
-          {notices.length === 0 && <p className="text-sm text-gray-400">Nothing yet.</p>}
+          {loaded && notices.length === 0 && <p className="text-sm text-gray-400">Nothing yet.</p>}
           <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
             {notices.map((notice) => (
               <li key={notice.id} className="py-2 space-y-1">

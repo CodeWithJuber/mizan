@@ -19,6 +19,7 @@ import type { ApiClient } from "../types";
 import { CompareView, type Run } from "./DebugCompare";
 import HumanPanel from "./HumanPanel";
 import { Legend2, ReportSummary, VIZ_STYLE } from "./ReportSummary";
+import { confirmDialog } from "./ui/confirm";
 import {
   BLOCK_LABELS,
   historyPoints,
@@ -181,6 +182,12 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
   }, [runs, selected, select]);
 
   const start = async () => {
+    const ok = await confirmDialog({
+      title: "Run the AGI test?",
+      description: `${taskCount} tasks × ${repeats} × 2 arms; at least ${taskCount * repeats * 2} model calls, which cost money.`,
+      confirmLabel: "Run the test",
+    });
+    if (!ok) return;
     setError("");
     try {
       const all = chosen.length === blocks.length;
@@ -193,6 +200,15 @@ export default function ImtihanPanel({ api }: { api: ApiClient }) {
 
   const togglePublished = async (publish: boolean) => {
     if (!selected) return;
+    if (publish) {
+      const ok = await confirmDialog({
+        title: "Publish this run?",
+        description:
+          "Its scores become visible to anyone on the public page (aggregates only: no prompts or answers). You can remove it later.",
+        confirmLabel: "Publish",
+      });
+      if (!ok) return;
+    }
     setError("");
     try {
       if (publish) await api.post(`/imtihan/runs/${selected.id}/publish`);

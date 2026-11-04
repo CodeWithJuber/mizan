@@ -104,7 +104,7 @@ export function SettingsLayout() {
           </div>
           {groups.map((group) => (
             <div key={group.label} className="flex gap-1 md:block md:space-y-0.5">
-              <p className="hidden px-2.5 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground md:block">
+              <p className="shrink-0 self-center whitespace-nowrap border-l pl-2 pr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground md:block md:border-l-0 md:px-2.5 md:pb-1 md:pt-2">
                 {group.label === "Server" ? "Developer · Server" : group.label}
               </p>
               {group.items.map((item) => <Link key={item.to} item={item} />)}

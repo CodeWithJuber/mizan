@@ -25,11 +25,11 @@ describe("SourcesAndChecks", () => {
     const meta = { model: "m-1", input_tokens: 812, output_tokens: 96, isnad } as unknown as MessageUsageMeta;
     render(<SourcesAndChecks meta={meta} />);
     const row = screen.getByRole("button", { expanded: false });
-    expect(row.textContent).toContain("2 sahih · 1 hasan · 1 da'if");
+    expect(row.textContent).toContain("2 verified · 1 supported · 1 model's words only");
     expect(row.textContent).toContain("m-1");
-    expect(screen.queryByText("Isnad — what supports each claim")).toBeNull();
+    expect(screen.queryByText("Sources — what supports each claim")).toBeNull();
     fireEvent.click(row);
-    expect(screen.getByText("Isnad — what supports each claim")).toBeTruthy();
+    expect(screen.getByText("Sources — what supports each claim")).toBeTruthy();
     expect(screen.queryByText("Raw metadata (debug)")).toBeNull();
   });
 

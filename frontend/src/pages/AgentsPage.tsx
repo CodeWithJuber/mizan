@@ -4,11 +4,10 @@ import { Plus, Settings2, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentCard } from "../components/AgentCard";
 import { AgentModal } from "../components/AgentModal";
+import { SkeletonCard } from "../components/Skeleton";
 import { addToast } from "../components/Toast";
 import { confirmDialog } from "../components/ui/confirm";
 import { useApi } from "../hooks/useApi";
-import { config } from "../config";
-import { authFetch } from "../utils/authFetch";
 import { agentCreatePayload, agentFormData, agentSettingsScope, saveAgentEdits, type AgentFormData } from "../utils/agentSettings.ts";
 import { useAuth } from "../app/auth";
 import { useAgents, useRefreshAgents, useSelectedAgent, useSelectedAgentId } from "../features/agents/agents";
@@ -61,12 +60,12 @@ export default function AgentsPage() {
   const remove = async (agent: Agent) => {
     if (!(await confirmDialog({ title: `Delete ${agent.name}?`, destructive: true }))) return;
     try {
-      await authFetch(`${config.API_URL}/agents/${agent.id}`, { method: "DELETE" });
+      await api.del(`/agents/${agent.id}`);
       if (selected?.id === agent.id) select(null);
       refresh();
       addToast({ type: "success", title: "Agent deleted" });
-    } catch {
-      addToast({ type: "error", title: "Agent not deleted" });
+    } catch (error) {
+      addToast({ type: "error", title: "Agent not deleted", description: (error as Error).message });
     }
   };
 
@@ -96,6 +95,7 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {agents.length === 0 && isLoading && <SkeletonCard count={3} />}
             {agents.map((agent) => (
               <div key={agent.id} className="group relative">
                 <AgentCard agent={agent} selected={selected?.id === agent.id} onClick={() => select(agent.id)} />

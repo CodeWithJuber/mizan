@@ -140,7 +140,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
 
   // Backend skill errors come back as {error: "..."} with HTTP 200 — truthy but failed
   const errOf = (data: Record<string, unknown> | null): string | null => {
-    if (!data) return "Server se jawab nahi mila";
+    if (!data) return "No response from the server. Try again.";
     return typeof data.error === "string" ? data.error : null;
   };
 
@@ -159,9 +159,15 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     [api],
   );
 
+  const [agentsError, setAgentsError] = useState("");
   const loadAgents = useCallback(async () => {
     const data = await exec("discover");
-    if (data?.agents) setAgents(data.agents as MajlisAgent[]);
+    // Same reading as errOf: no answer, or an {error} that came back with 200.
+    const failure = !data
+      ? "No response from the server"
+      : typeof data.error === "string" ? data.error : "";
+    setAgentsError(failure);
+    if (!failure && data?.agents) setAgents(data.agents as MajlisAgent[]);
   }, [exec]);
 
   const loadHalaqahs = useCallback(async () => {
@@ -209,7 +215,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     } else {
       addToast({
         type: "error",
-        title: "Agent register nahi hua",
+        title: "Could not register the agent",
         description: err || undefined,
       });
     }
@@ -223,7 +229,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     if (!err && data?.halaqah_id) {
       addToast({
         type: "success",
-        title: `Study circle "${halaqahForm.name}" ban gaya`,
+        title: `Study circle "${halaqahForm.name}" created`,
       });
       addTerminalLine?.(`Halaqah created: ${halaqahForm.name}`, "gold");
       setShowHalaqah(false);
@@ -232,7 +238,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     } else {
       addToast({
         type: "error",
-        title: "Circle ban nahi paya",
+        title: "Could not create the study circle",
         description: err || undefined,
       });
     }
@@ -244,14 +250,14 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     setBusyKey("share", false);
     const err = errOf(data);
     if (!err && data?.knowledge_id) {
-      addToast({ type: "success", title: "Knowledge Majlis me share ho gaya" });
+      addToast({ type: "success", title: "Knowledge shared to the Majlis" });
       addTerminalLine?.("Knowledge shared to Majlis", "gold");
       setShowShare(false);
       setShareForm({ topic: "", content: "", source: "" });
     } else {
       addToast({
         type: "error",
-        title: "Share nahi hua",
+        title: "Could not share the knowledge",
         description: err || undefined,
       });
     }
@@ -263,13 +269,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     setBusyKey(`join:${h.halaqah_id}`, false);
     const err = errOf(data);
     if (!err) {
-      addToast({ type: "success", title: `"${h.name}" me shamil ho gaye` });
+      addToast({ type: "success", title: `Joined "${h.name}"` });
       addTerminalLine?.(`Joined halaqah: ${h.name}`, "gold");
       loadHalaqahs();
     } else {
       addToast({
         type: "error",
-        title: "Join nahi hua",
+        title: "Could not join the study circle",
         description: err,
       });
     }
@@ -295,7 +301,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     } else {
       addToast({
         type: "error",
-        title: "Message nahi gaya",
+        title: "Message not sent",
         description: err,
       });
     }
@@ -312,7 +318,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
     } else {
       addToast({
         type: "error",
-        title: "Rating fail ho gayi",
+        title: "Could not submit the rating",
         description: err,
       });
     }
@@ -331,13 +337,13 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
         type: "info",
         title:
           results.length === 0
-            ? "Kuch nahi mila — alag lafz try karo"
+            ? "No results. Try different words."
             : `${results.length} result${results.length === 1 ? "" : "s"} found`,
       });
     } else {
       addToast({
         type: "error",
-        title: "Search fail ho gayi",
+        title: "Could not search the knowledge base",
         description: err || undefined,
       });
     }
@@ -462,7 +468,15 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
               </div>
             )}
 
-            {agents.length === 0 && (
+            {agentsError ? (
+              <div role="alert" className="empty-state">
+                <div className="empty-text">Could not load the Majlis</div>
+                <div className="empty-sub">{agentsError}. Check that the server is running, then try again.</div>
+                <button type="button" className="btn-secondary mt-3 focus-ring" onClick={() => void loadAgents()}>
+                  Try again
+                </button>
+              </div>
+            ) : agents.length === 0 && (
               <div className="empty-state">
                 <div className="empty-arabic">مجلس</div>
                 <div className="empty-text">No agents in the Majlis</div>
@@ -522,8 +536,8 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                         e.stopPropagation();
                         setShowNafsInfo((v) => !v);
                       }}
-                      title="Nafs level kya hai? Tap karo"
-                      aria-label="Nafs level ki jankari dekho"
+                      title="What is the Nafs level? Tap to learn more"
+                      aria-label="Show Nafs level details"
                     >
                       ⓘ {NAFS_LABELS[agent.nafs_level] || agent.nafs_level}
                     </button>
@@ -533,9 +547,9 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                   </div>
                   {showNafsInfo && (
                     <div className="text-2xs text-muted-foreground mt-1.5 px-1">
-                      Nafs level = agent ka bharosa / maturity stage (Ammara →
-                      Kamila). ★ = doosre agents ki rating se bana reputation
-                      score.
+                      Nafs level = the agent's trust and maturity stage (Ammara →
+                      Kamila). ★ = reputation score built from other agents'
+                      ratings.
                     </div>
                   )}
 
@@ -594,7 +608,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                           {(agent.reputation_score ?? 0) > 0 && (
                             <>
                               {" "}
-                              (abhi ★ {(agent.reputation_score ?? 0).toFixed(1)}
+                              (current ★ {(agent.reputation_score ?? 0).toFixed(1)}
                               )
                             </>
                           )}
@@ -605,7 +619,7 @@ export default function MajlisPage({ api, addTerminalLine }: PageProps) {
                             className="btn-secondary btn-sm text-micro px-3 py-2 min-h-[44px]"
                             onClick={() => rateAgent(agent.agent_id, s)}
                             disabled={busy[`rate:${agent.agent_id}`]}
-                            aria-label={`${s} out of 5 rate karo`}
+                            aria-label={`Rate ${s} out of 5`}
                           >
                             {"★".repeat(s)}
                           </button>

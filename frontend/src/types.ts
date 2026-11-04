@@ -219,6 +219,8 @@ export interface ChatMessage {
   held?: HeldActionRef[];
   /** Images attached to this message (Basar). */
   images?: ChatImage[];
+  /** Artifacts saved for this answer, by id (shown as cards under it). */
+  artifacts?: string[];
   /** The chat's project as it was before this user message ("Rewind" goes back to it). */
   checkpoint?: { workspace_id: string; id: string };
   /** What MIZAN could do without asking when this message was sent (this tab only). */

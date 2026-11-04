@@ -48,7 +48,7 @@ export function chatFailureFields(
 export function restoredMessageFields(
   content: string,
   metadata: Record<string, unknown> = {},
-): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held" | "images" | "checkpoint"> {
+): Pick<ChatMessage, "content" | "error" | "meta" | "model" | "stopped" | "interrupted" | "requestId" | "messageId" | "held" | "images" | "artifacts" | "checkpoint"> {
   const failure = metadata.status === "error"
     ? chatFailureFields({ ...metadata, content }) : undefined;
   const meta = failure?.meta ?? messageUsage(metadata);
@@ -62,6 +62,7 @@ export function restoredMessageFields(
     interrupted: !failure && (metadata.status === "cancelled" || metadata.partial === true),
     held: heldActions(metadata.held),
     images: keptImages(metadata.images),
+    artifacts: keptArtifacts(metadata.artifacts),
     checkpoint: checkpointRef(metadata.checkpoint),
   };
 }
@@ -71,6 +72,13 @@ export function checkpointRef(value: unknown): ChatMessage["checkpoint"] {
   return record(value) && typeof value.workspace_id === "string" && typeof value.id === "string"
     ? { workspace_id: value.workspace_id, id: value.id }
     : undefined;
+}
+
+/** The artifacts saved for an answer, by id (ids the server issued). */
+export function keptArtifacts(value: unknown): ChatMessage["artifacts"] {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter((id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id));
+  return ids.length ? ids : undefined;
 }
 
 /** The images a user message carried, by their kept ids. */

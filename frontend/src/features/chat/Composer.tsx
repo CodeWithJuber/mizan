@@ -153,11 +153,13 @@ export function Composer() {
 
   const hasSendable = input.trim().length > 0 || attachedFiles.length > 0;
   const overLimit = input.length > CHAT_INPUT_LIMIT;
-  const sendDisabled = !hasSendable || recovery.blocked || overLimit;
+  const costUnconfirmed = state.agentMode === "deep_research" && !state.deepResearchConfirmed;
+  const sendDisabled = !hasSendable || recovery.blocked || overLimit || costUnconfirmed;
   const sendTitle = recovery.blocked
     ? "Check the previous run before sending"
     : overLimit ? `Messages are limited to ${CHAT_INPUT_LIMIT.toLocaleString()} characters`
-      : hasSendable ? "Send message" : "Type a message to send";
+      : costUnconfirmed ? "Confirm the deep research cost in + before sending"
+        : hasSendable ? "Send message" : "Type a message to send";
 
   const chips = [
     state.agentMode === "deep_research" && (

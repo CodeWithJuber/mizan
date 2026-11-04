@@ -48,3 +48,24 @@ export function headline(summary: IsnadSummary): string {
     .map((grade) => `${summary.counts[grade]} ${GRADES[grade].label.toLowerCase()}`)
     .join(" · ");
 }
+
+const PLAIN: Record<Grade, string> = {
+  sahih: "verified",
+  hasan: "supported",
+  daif: "model's words only",
+  mawdu: "fabricated",
+};
+
+/** "3 verified · 1 model's words only" — the same counts as `headline`, in plain words. */
+export function plainHeadline(summary: IsnadSummary): string {
+  return ORDER.filter((grade) => summary.counts[grade] > 0)
+    .map((grade) => `${summary.counts[grade]} ${PLAIN[grade]}`)
+    .join(" · ");
+}
+
+/** Tooltip that keeps the traditional grade names: "2 Sahih · 1 Da'if". */
+export function gradeTerms(summary: IsnadSummary): string {
+  return ORDER.filter((grade) => summary.counts[grade] > 0)
+    .map((grade) => `${summary.counts[grade]} ${GRADES[grade].label}`)
+    .join(" · ");
+}

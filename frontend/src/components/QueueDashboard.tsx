@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { ApiClient, QueueTask, QueueStatus } from "../types";
+import { confirmDialog } from "./ui/confirm";
 
 interface QueueDashboardProps {
   api: ApiClient;
@@ -60,6 +61,14 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
   }, [fetchStatus]);
 
   const handleCancel = async (taskId: string) => {
+    const ok = await confirmDialog({
+      title: "Cancel this task?",
+      description: "It is removed from the queue and will not run.",
+      confirmLabel: "Cancel task",
+      destructive: true,
+      cancelLabel: "Keep task",
+    });
+    if (!ok) return;
     try {
       await api.del(`/queue/tasks/${taskId}`);
       onCancel?.(taskId);
@@ -161,6 +170,7 @@ export function QueueDashboard({ api, onCancel }: QueueDashboardProps) {
                     onClick={() => handleCancel(task.task_id)}
                     className="text-[10px] text-red-400 hover:text-red-600 transition-colors shrink-0"
                     title="Cancel task"
+                    aria-label="Cancel task"
                   >
                     <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                       <path

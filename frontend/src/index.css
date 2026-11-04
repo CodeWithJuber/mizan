@@ -370,7 +370,7 @@
 }
 
 @utility card-hover {
-  @apply bg-card text-card-foreground border border-border rounded-xl p-5 transition-colors hover:border-ring/60 hover:bg-accent/40 cursor-pointer;
+  @apply bg-card text-card-foreground border border-border rounded-xl p-5 transition-colors hover:border-ring/60 hover:bg-accent/40 cursor-pointer focus-ring;
 }
 
 @utility card-grid {
@@ -512,7 +512,7 @@
 }
 
 @utility memory-item {
-  @apply bg-card border border-border rounded-xl p-4 mb-3 transition-colors hover:border-ring/50;
+  @apply bg-card border border-border rounded-xl p-4 mb-3 transition-colors hover:border-ring/50 focus-ring;
 }
 
 @utility memory-type-badge {

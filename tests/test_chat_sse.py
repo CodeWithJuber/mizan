@@ -546,6 +546,43 @@ def test_artifact_events_only_reference_saved_owned_session_artifacts(api):
     assert "Secret" not in response.text
 
 
+def test_artifacts_come_from_this_requests_run_and_stay_on_the_message(api, monkeypatch):
+    import types
+
+    from agents.base import _agent_runs
+    from api.artifacts import create_artifact
+
+    _, client, tokens, users, memory, agent, _ = api
+
+    def saved(title):
+        return create_artifact(
+            user_id=users["alice"].id, session_id="session-a", title=title, kind="html",
+            content=f"<p>{title}</p>",
+        )  # fmt: skip
+
+    stale, fresh = saved("Old"), saved("New")
+    # A real run works on its own copy (``run_of``); the base agent still holds
+    # the previous run's tool results.
+    agent._last_tool_results = [{"name": "workspace_artifact", "result": {"artifact": stale}}]
+    run = types.SimpleNamespace(
+        _last_tool_results=[{"name": "workspace_artifact", "result": {"artifact": fresh}}]
+    )
+    original = agent.execute
+
+    async def execute(content, context, **callbacks):
+        _agent_runs.set({**(_agent_runs.get() or {}), id(agent): run})
+        return await original(content, context, **callbacks)
+
+    monkeypatch.setattr(agent, "execute", execute)
+    response = client.post("/api/chat/stream", json=message(), headers=headers(tokens["alice"]))
+    events = frames(response.text)
+    assert [e["artifact"]["id"] for e in events if e["type"] == "artifact"] == [fresh["id"]]
+    complete = next(e for e in events if e["type"] == "chat_complete")
+    assert complete["artifacts"] == [fresh["id"]]
+    stored = asyncio.run(memory.get_messages("session-a"))[-1]["metadata"]
+    assert stored["artifacts"] == [fresh["id"]]
+
+
 def test_workspace_selection_is_authorized_before_execution_and_bound_for_tools(api, monkeypatch):
     import sys
 
