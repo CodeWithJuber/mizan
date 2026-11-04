@@ -7298,7 +7298,6 @@ async def tasrif_demo(req: TasrifDemoRequest):
     """Apply tasrif morphophonemic operators to articulatory feature vectors."""
     try:
         import numpy as np
-
         from ruh_model.tokenizer.tasrif_ops import TasrifEngine
 
         engine = TasrifEngine()
