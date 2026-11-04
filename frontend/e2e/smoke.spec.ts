@@ -39,6 +39,20 @@ test("a signed-out visit goes to sign in, and a wrong password says so", async (
   await expect(page.getByRole("alert")).toHaveText("Wrong username or password.");
 });
 
+test("setup's provider link opens the providers page instead of looping back to setup", async ({ page }) => {
+  await mockSocket(page);
+  await page.goto("/chat");
+  await page.getByLabel("Username").fill("tester");
+  await page.getByLabel("Password", { exact: true }).fill("secret");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/welcome/);
+  await page.getByRole("button", { name: "Get Started" }).click();
+  await page.getByRole("button", { name: "Open Models & providers" }).click();
+  await expect(page).toHaveURL(/\/settings\/developer\/providers/);
+  await page.reload();
+  await expect(page).not.toHaveURL(/\/welcome/);
+});
+
 test("a web page in an answer opens in a sandboxed preview and saves to the chat", async ({ page }) => {
   await signIn(page);
   await send(page, "Make me a web page");

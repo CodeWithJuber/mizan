@@ -81,7 +81,8 @@ function ChatItem({ row, active, running }: { row: ChatSessionRow; active: boole
 function ChatHistory() {
   const [search, setSearch] = useState("");
   const query = useDeferredValue(search);
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useChatSessions(query);
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useChatSessions(query);
   const current = useChatSummary((state) => state.sessionId);
   const streaming = useChatSummary((state) => state.streaming);
   const { pathname } = useLocation();
@@ -104,6 +105,13 @@ function ChatHistory() {
               <SidebarMenuItem key={index}><SidebarMenuSkeleton /></SidebarMenuItem>
             ))}
           </SidebarMenu>
+        ) : isError ? (
+          <p role="alert" className="px-2 py-3 text-xs text-muted-foreground">
+            Could not load your chats.{" "}
+            <button type="button" className="rounded underline focus-ring" onClick={() => void refetch()}>
+              Try again
+            </button>
+          </p>
         ) : rows.length === 0 ? (
           <p className="px-2 py-3 text-xs text-muted-foreground">{query ? "No chat matches." : "No chats yet."}</p>
         ) : (

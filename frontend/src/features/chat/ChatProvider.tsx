@@ -1300,6 +1300,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setStreaming(true);
     setAwaitingText(true);
     setRunProgress({ startedAt: Date.now(), note: "Starting deep research…" });
+    // A refused or failed request leaves no unanswered message: the text goes back to the box.
+    const undoSend = () => {
+      setMessages((prev) => prev.filter((message) => message.id !== userMsg.id));
+      setInput(query);
+    };
     try {
       const res = await authFetch(`${config.API_URL}/modes/deep-research`, {
         method: "POST",
@@ -1307,6 +1312,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ query, session_id: sessionId, confirmed: deepResearchConfirmed }),
       });
       if (res.status === 409) {
+        undoSend();
         addToast({
           type: "warning",
           title: "Confirmation required",
@@ -1316,10 +1322,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       if (res.status === 402) {
         const err = (await res.json().catch(() => ({}))) as { detail?: string };
+        undoSend();
         addToast({ type: "error", title: "Budget reached", description: err.detail || "The deep-research budget is spent." });
         return;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { detail?: unknown };
+        throw new Error(typeof err.detail === "string" ? err.detail : `The server answered ${res.status}. Try again.`);
+      }
       const data = (await res.json()) as {
         answer?: string; unsupported_claims?: string[]; tokens_used?: number; cost_usd?: number;
       };
@@ -1338,6 +1348,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setMessages((prev) => [...prev, assistantMsg]);
       addTerminalLine(`Deep research done — ${data.tokens_used ?? "?"} tokens, ~$${(data.cost_usd ?? 0).toFixed(4)}`, "info");
     } catch (e) {
+      undoSend();
       addToast({ type: "error", title: "Deep research failed", description: e instanceof Error ? e.message : String(e) });
     } finally {
       setStreaming(false);

@@ -19,13 +19,16 @@ export default function KnowledgePage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [result, setResult] = useState<string | null>(null);
 
+  const [sourcesError, setSourcesError] = useState("");
   const loadSources = async () => {
     try {
       const res = await authFetch(`${config.API_URL}/knowledge/sources`);
+      if (!res.ok) throw new Error(`the server answered ${res.status}`);
       const data = await res.json();
       setSources(data.sources || []);
-    } catch {
-      /* keep the list */
+      setSourcesError("");
+    } catch (error) {
+      setSourcesError((error as Error).message);
     }
   };
   useEffect(() => {
@@ -132,7 +135,14 @@ export default function KnowledgePage() {
       )}
       <section className="card space-y-3">
         <h2 className="font-semibold">Sources ({sources.length})</h2>
-        {sources.length === 0 ? (
+        {sourcesError ? (
+          <p role="alert" className="text-sm text-muted-foreground">
+            Could not load your sources: {sourcesError}.{" "}
+            <button type="button" className="rounded underline focus-ring" onClick={() => void loadSources()}>
+              Try again
+            </button>
+          </p>
+        ) : sources.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing ingested yet. Add a link or a PDF above.</p>
         ) : (
           <ul className="divide-y">

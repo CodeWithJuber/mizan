@@ -57,7 +57,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Notebooks load nahi ho paye",
+        title: (e as Error).message || "Could not load notebooks. Try again.",
       });
     }
   }, [api, addToast]);
@@ -80,7 +80,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       } catch (e) {
         addToast({
           type: "error",
-          title: (e as Error).message || "Notebook refresh nahi ho paya",
+          title: (e as Error).message || "Could not refresh the notebook. Try again.",
         });
       }
     },
@@ -100,7 +100,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         if (!mountedRef.current) return;
         if ((data as Record<string, unknown>).error) {
           openNotebookRef.current = null;
-          addToast({ type: "error", title: "Notebook khul nahi paya" });
+          addToast({ type: "error", title: "Could not open the notebook" });
           return;
         }
         setActiveNotebook(data as unknown as Notebook);
@@ -108,7 +108,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         openNotebookRef.current = null;
         addToast({
           type: "error",
-          title: (e as Error).message || "Notebook khul nahi paya",
+          title: (e as Error).message || "Could not open the notebook",
         });
       }
     },
@@ -122,7 +122,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
   const createNotebook = async () => {
     if (!newTitle.trim()) {
       setCreateError(
-        "Notebook ka title likho — bina title ke create nahi hoga",
+        "Enter a notebook title. A notebook needs a title.",
       );
       return;
     }
@@ -141,15 +141,15 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         setShowCreate(false);
         setNewTitle("");
         loadNotebooks();
-        addToast({ type: "success", title: "Notebook ban gaya" });
+        addToast({ type: "success", title: "Notebook created" });
         addTerminalLine?.(`Kitab created: ${newTitle.trim()}`, "gold");
       } else {
-        addToast({ type: "error", title: "Notebook ban nahi paya" });
+        addToast({ type: "error", title: "Could not create the notebook" });
       }
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Notebook ban nahi paya",
+        title: (e as Error).message || "Could not create the notebook",
       });
     }
   };
@@ -172,14 +172,14 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       if ((data as Record<string, unknown>).deleted) {
         if (openNotebookRef.current === id) closeNotebook();
         loadNotebooks();
-        addToast({ type: "success", title: "Notebook delete ho gaya" });
+        addToast({ type: "success", title: "Notebook deleted" });
       } else {
-        addToast({ type: "error", title: "Delete nahi ho paya" });
+        addToast({ type: "error", title: "Could not delete the notebook" });
       }
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Delete nahi ho paya",
+        title: (e as Error).message || "Could not delete the notebook",
       });
     }
   };
@@ -199,7 +199,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Cell add nahi ho paya",
+        title: (e as Error).message || "Could not add the cell",
       });
     }
   };
@@ -221,17 +221,17 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       if (!cell) {
         addToast({
           type: "error",
-          title: "Cell fail ho gaya — dobara try karo",
+          title: "The cell did not run. Try again.",
         });
       } else if (cell?.status === "error") {
-        addToast({ type: "error", title: "Cell me error aaya" });
+        addToast({ type: "error", title: "The cell finished with an error" });
       } else {
-        addToast({ type: "success", title: "Cell chal gaya" });
+        addToast({ type: "success", title: "Cell ran" });
       }
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Cell fail ho gaya",
+        title: (e as Error).message || "The cell did not run",
       });
     } finally {
       if (mountedRef.current) setExecutingCell(null);
@@ -250,11 +250,11 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         notebook_id: nbId,
       });
       if (openNotebookRef.current === nbId) loadNotebook(nbId);
-      addToast({ type: "success", title: "Saare cells chal gaye" });
+      addToast({ type: "success", title: "All cells ran" });
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Execute fail ho gaya",
+        title: (e as Error).message || "Could not run all cells",
       });
     } finally {
       if (mountedRef.current) setExecutingCell(null);
@@ -274,11 +274,11 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       });
       setEditingCell(null);
       loadNotebook(nbId);
-      addToast({ type: "success", title: "Cell save ho gaya" });
+      addToast({ type: "success", title: "Cell saved" });
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Cell save nahi ho paya",
+        title: (e as Error).message || "Could not save the cell",
       });
     }
   };
@@ -295,21 +295,21 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
       });
       const rec = data as Record<string, unknown>;
       if (rec.error) {
-        addToast({ type: "error", title: "Export nahi ho paya" });
+        addToast({ type: "error", title: "Could not export the notebook" });
         return;
       }
       // Backend sirf server path return karta hai, file content nahi —
       // isliye honest toast: file server pe save hui hai.
       addToast({
         type: "success",
-        title: "Server pe save ho gaya",
+        title: "Saved on the server",
         description: String(rec.exported || ""),
       });
       addTerminalLine?.(`Exported: ${rec.exported}`, "gold");
     } catch (e) {
       addToast({
         type: "error",
-        title: (e as Error).message || "Export nahi ho paya",
+        title: (e as Error).message || "Could not export the notebook",
       });
     }
   };
@@ -359,7 +359,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                   </div>
                   <button
                     className="btn-danger btn-sm shrink-0"
-                    title="Notebook delete karo"
+                    title="Delete notebook"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteNotebook(nb.id, nb.title);
@@ -395,7 +395,7 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
                 <div className="empty-arabic">كتاب</div>
                 <div className="empty-text">No notebooks yet</div>
                 <div className="empty-sub">
-                  "+ New Notebook" dabao — phir "+ Code" se pehla cell jodo
+                  Click "+ New Notebook", then add your first cell with "+ Code"
                 </div>
               </div>
             )}
@@ -530,9 +530,9 @@ export default function NotebookPage({ api, addTerminalLine }: PageProps) {
         {(activeNotebook.cells || []).length === 0 && (
           <div className="empty-state">
             <div className="empty-arabic">✦</div>
-            <div className="empty-text">Khaali notebook</div>
+            <div className="empty-text">This notebook is empty</div>
             <div className="empty-sub">
-              Upar "+ Code" dabao — pehla cell jod ke Run karo
+              Click "+ Code" above to add your first cell, then Run it
             </div>
           </div>
         )}
