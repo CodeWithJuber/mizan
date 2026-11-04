@@ -30,7 +30,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.screenshot({ path: `${OUT}/${tag}-running.png` });
     await page.getByRole("button", { name: "Send message" }).waitFor({ timeout: 20_000 });
     await page.getByText(/Worked/).first().click();
-    await page.getByText("2 sahih · 1 hasan · 1 da'if").click();
+    await page.getByText("2 verified · 1 supported · 1 model's words only").click();
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${tag}-answer.png`, fullPage: true });
     await box.fill("/");
