@@ -12,6 +12,8 @@ sklearn/matplotlib/networkx) — the whole app must be importable in a
 stdlib-only environment.
 """
 
+# Expose paths module as PATHS for callers who prefer attribute access
+import research.paths as PATHS  # noqa: E402  (after other imports for clarity)
 from research.findings import get_registry
 from research.paths import (
     CSV_ENCODING,
@@ -27,9 +29,6 @@ from research.paths import (
     result_path,
 )
 from research.results_loader import list_results, load_result
-
-# Expose paths module as PATHS for callers who prefer attribute access
-import research.paths as PATHS  # noqa: E402  (after other imports for clarity)
 
 __all__ = [
     # Findings

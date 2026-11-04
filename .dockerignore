@@ -12,3 +12,9 @@ venv
 .env.production
 coverage.xml
 htmlcov
+
+# Research datasets and experiment scripts stay out of the backend image
+backend/research/datasets
+backend/research/results
+backend/research/experiments
+backend/research/analyzer

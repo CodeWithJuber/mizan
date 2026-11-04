@@ -6,14 +6,14 @@ Path-traversal is prevented by whitelisting names against list_results().
 """
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 from research.paths import RESULTS_DIR
 from research.schemas import ResultEnvelope
 
 
-@lru_cache(maxsize=None)
+@cache
 def list_results() -> list[str]:
     """Return the stems of all *.json files under RESULTS_DIR, sorted."""
     return sorted(p.stem for p in RESULTS_DIR.glob("*.json"))
@@ -46,12 +46,15 @@ def load_result(name: str) -> dict:
     return _cached_load(name)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _cached_load(name: str) -> dict:
     """Internal cached reader — only called after name has been validated."""
     path: Path = RESULTS_DIR / f"{name}.json"
     with path.open(encoding="utf-8-sig") as fh:
-        return json.load(fh)
+        data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError(f"Result {name!r} is not a JSON object")
+    return data
 
 
 def load_result_typed(name: str) -> ResultEnvelope:

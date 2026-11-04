@@ -9,7 +9,7 @@ legislates.  The four labels reflect epistemic status, not importance; null
 results (is_null=True) are first-class findings, not errors or failures.
 """
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -45,7 +45,7 @@ class Finding(BaseModel):
     is_null: bool = False
     summary: str
     key_numbers: dict[str, str | float | int]
-    results_file: Optional[str] = None
+    results_file: str | None = None
     figures: list[str]
     related_routes: list[str] = []
 
@@ -61,54 +61,54 @@ class WordRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     # Integer fields
-    gidx: Optional[int] = None
-    sura: Optional[int] = None
-    aya: Optional[int] = None
-    n_seg: Optional[int] = None
-    n_letters: Optional[int] = None
-    freq_form: Optional[int] = None
-    freq_norm: Optional[int] = None
-    freq_lemma: Optional[int] = None
-    freq_root: Optional[int] = None
+    gidx: int | None = None
+    sura: int | None = None
+    aya: int | None = None
+    n_seg: int | None = None
+    n_letters: int | None = None
+    freq_form: int | None = None
+    freq_norm: int | None = None
+    freq_lemma: int | None = None
+    freq_root: int | None = None
 
     # Float fields
-    energy_info_norm: Optional[float] = None
-    energy_info_lemma: Optional[float] = None
-    energy_info_root: Optional[float] = None
-    root_degree: Optional[float] = None
-    root_wdegree: Optional[float] = None
-    root_clustering: Optional[float] = None
-    root_eigcent: Optional[float] = None
-    root_pagerank: Optional[float] = None
-    abjad_form: Optional[float] = None
-    abjad_root: Optional[float] = None
+    energy_info_norm: float | None = None
+    energy_info_lemma: float | None = None
+    energy_info_root: float | None = None
+    root_degree: float | None = None
+    root_wdegree: float | None = None
+    root_clustering: float | None = None
+    root_eigcent: float | None = None
+    root_pagerank: float | None = None
+    abjad_form: float | None = None
+    abjad_root: float | None = None
 
     # String fields
-    loc: Optional[str] = None
-    word: Optional[str] = None
-    form: Optional[str] = None
-    translit: Optional[str] = None
-    word_en: Optional[str] = None
-    skeleton: Optional[str] = None
-    norm: Optional[str] = None
-    root: Optional[str] = None
-    root_translit: Optional[str] = None
-    root_en: Optional[str] = None
-    root_en_here: Optional[str] = None
-    lemma: Optional[str] = None
-    pos: Optional[str] = None
-    prev_form: Optional[str] = None
-    prev_en: Optional[str] = None
-    prev_root: Optional[str] = None
-    prev_pos: Optional[str] = None
-    next_form: Optional[str] = None
-    next_en: Optional[str] = None
-    next_root: Optional[str] = None
-    next_pos: Optional[str] = None
-    crosses_verse_prev: Optional[str] = None
-    crosses_verse_next: Optional[str] = None
-    collocate_roots: Optional[str] = None
-    collocate_en: Optional[str] = None
+    loc: str | None = None
+    word: str | None = None
+    form: str | None = None
+    translit: str | None = None
+    word_en: str | None = None
+    skeleton: str | None = None
+    norm: str | None = None
+    root: str | None = None
+    root_translit: str | None = None
+    root_en: str | None = None
+    root_en_here: str | None = None
+    lemma: str | None = None
+    pos: str | None = None
+    prev_form: str | None = None
+    prev_en: str | None = None
+    prev_root: str | None = None
+    prev_pos: str | None = None
+    next_form: str | None = None
+    next_en: str | None = None
+    next_root: str | None = None
+    next_pos: str | None = None
+    crosses_verse_prev: str | None = None
+    crosses_verse_next: str | None = None
+    collocate_roots: str | None = None
+    collocate_en: str | None = None
 
 
 class RootSummary(BaseModel):
@@ -116,20 +116,20 @@ class RootSummary(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    root: Optional[str] = None
-    translit: Optional[str] = None
-    buckwalter: Optional[str] = None
-    meaning_en: Optional[str] = None
-    top_glosses_en: Optional[str] = None
-    abjad: Optional[float] = None
-    freq: Optional[int] = None
-    info: Optional[float] = None
-    n_letters: Optional[int] = None
-    degree: Optional[float] = None
-    wdegree: Optional[float] = None
-    clustering: Optional[float] = None
-    eigcent: Optional[float] = None
-    pagerank: Optional[float] = None
+    root: str | None = None
+    translit: str | None = None
+    buckwalter: str | None = None
+    meaning_en: str | None = None
+    top_glosses_en: str | None = None
+    abjad: float | None = None
+    freq: int | None = None
+    info: float | None = None
+    n_letters: int | None = None
+    degree: float | None = None
+    wdegree: float | None = None
+    clustering: float | None = None
+    eigcent: float | None = None
+    pagerank: float | None = None
 
 
 class WajhOccurrence(BaseModel):
@@ -137,12 +137,12 @@ class WajhOccurrence(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    verse: Optional[str] = None
-    sura: Optional[int] = None
-    aya: Optional[int] = None
-    word: Optional[str] = None
-    prev: Optional[str] = None
-    nxt: Optional[str] = None
-    face: Optional[str] = None
-    confidence: Optional[float] = None
-    basis: Optional[str] = None
+    verse: str | None = None
+    sura: int | None = None
+    aya: int | None = None
+    word: str | None = None
+    prev: str | None = None
+    nxt: str | None = None
+    face: str | None = None
+    confidence: float | None = None
+    basis: str | None = None

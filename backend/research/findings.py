@@ -23,7 +23,7 @@ matplotlib/networkx.
 
 from functools import lru_cache
 
-from research.schemas import EpistemicLabel, Finding
+from research.schemas import Finding
 
 
 @lru_cache(maxsize=1)

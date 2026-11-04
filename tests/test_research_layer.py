@@ -5,7 +5,6 @@ These tests are written FIRST (Red phase). They will fail until the modules
 backend/research/{paths,schemas,results_loader,findings}.py are implemented.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -69,7 +68,6 @@ def test_load_result_rejects_traversal():
 def test_registry_labels_valid():
     """Every Finding in the registry must carry a valid EpistemicLabel."""
     from research.findings import get_registry
-    from research.schemas import EpistemicLabel
 
     allowed = {"Established", "Inference", "Conjecture", "Open"}
     for finding in get_registry():
